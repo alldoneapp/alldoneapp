@@ -243,7 +243,9 @@ async function executeBrowserTool({
         const decision = evaluateBrowserAction({
             action,
             args: toolArgs,
-            allowlist: config.allowlist,
+            // The whole policy, not just the allowlist: the mode and the denylist decide the same
+            // question and must not be answerable anywhere else.
+            allowlist: config.policy,
             target,
             pageUrl,
             allowSearchSubmit: config.allowSearchSubmit,

@@ -381,14 +381,18 @@ function allow(extra = {}) {
 function evaluateBrowserAction({
     action,
     args = {},
+    // The browsing policy (mode + allowlist + denylist). `allowlist` is the historical name and
+    // still accepts a bare entry array, which `checkUrlAgainstAllowlist` reads as `selected`.
+    policy = null,
     allowlist = [],
     target = null,
     pageUrl = '',
     allowSearchSubmit = true,
 } = {}) {
+    const browsingPolicy = policy || allowlist
     switch (action) {
         case 'navigate': {
-            const check = checkUrlAgainstAllowlist(args.url, allowlist)
+            const check = checkUrlAgainstAllowlist(args.url, browsingPolicy)
             if (!check.allowed) return deny(check.reason, check.message)
             let pathname = ''
             try {
@@ -433,7 +437,7 @@ function evaluateBrowserAction({
 
         case 'click':
         case 'type': {
-            const pageCheck = checkUrlAgainstAllowlist(pageUrl, allowlist)
+            const pageCheck = checkUrlAgainstAllowlist(pageUrl, browsingPolicy)
             if (!pageCheck.allowed) return deny(pageCheck.reason, pageCheck.message)
             if (!target || typeof target !== 'object') {
                 return deny(

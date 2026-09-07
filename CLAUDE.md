@@ -548,7 +548,30 @@ missing, and the allowlist is default-deny, so an empty one reaches nothing. The
 complete — allowlist editor, approval card, Gold billing — and the whole stack has been driven
 against a real Chromium (`browser-tests/at2518`, 34 checks), but never in a real environment.
 
-**The bypass this design exists to close is that `click` and `type` can perform a purchase, a login
+****Two access modes, and `all_public` skips exactly ONE check.** `selected` (the default) needs an
+allowlist match; `all_public` is opt-in per project and does not consult the allowlist at all.
+Everything before that last question is unconditional in both: http(s) only, no credentials in the
+URL, no IP literals, no loopback / private / link-local / CGNAT / IPv6-ULA, no cloud metadata hosts,
+no single-label or `.internal` / `.local` names, and a denylist that is checked BEFORE the mode so it
+means the same thing in both. An unrecognised stored value reads as `selected` — the fail-closed
+direction, implemented identically in `normalizeAccessMode` (server) and `normalizeBrowserAccessMode`
+(editor) and pinned by `browserAllowlistParity.test.js`. The mode is **not a client claim**: it is
+read from the project document, folded into one policy object, and travels to the worker inside the
+HMAC-signed token, so editing it breaks the signature.
+
+**A redirect hop does not pass through the route handler, and that was a real gap.** Playwright's
+`route.continue()` makes Chromium follow a 3xx internally and interception is not re-run for the new
+request (verified with a probe against 1.49) — so until AT-2518's second pass, only the LANDING url
+was checked, and a chain that went through an internal host and back out to a permitted one would
+have completed with the internal page fetched and rendered. `ensureNetworkGuard` now also listens on
+the `request` event, which does fire per hop, records a hop that is not permitted, and the action
+functions fail the whole navigation on it. What it still cannot do is stop that hop's request from
+being issued — no Playwright API can — which is why restricted egress on the worker is a required
+deployment step rather than a nice-to-have. A failed navigation now also parks the page on
+`about:blank`, because Chromium's error page commits asynchronously and otherwise interrupts the
+NEXT navigation.
+
+The bypass this design exists to close is that `click` and `type` can perform a purchase, a login
 or a deletion without naming any of them.** A gate reading the model's own description of what it is
 about to do is therefore worthless — the model would only have to call a Buy button "the green
 button". So `browserSession.js` enforces the ordering **observe → classify → approve → act**: for a
@@ -598,7 +621,9 @@ credentials are stripped from what the model sees, credentials _and_ PII from wh
 keeps, and typed text is never persisted at all (`describeTypedValue` keeps a length and a shape).
 Redacting page content on the way to the model would delete the answer the user asked for.
 
-**The allowlist has an editor, reached from the tool row that needs it.** Ticking "Browse a website"
+**The allowlist has an editor, reached from the tool row that needs it, and it is where the mode is
+chosen** (off / only selected websites / all public websites, in that order of risk, with a warning
+under the third that says both what changes and what does not). Ticking "Browse a website"
 and finding that nothing works — because the list is empty and default deny — is the dead end the
 row exists to prevent, so the Tools Access modal shows `Allowed websites (N)` under the checked box
 and hands over to `BrowserAllowlistModal` **sequentially** (close, then open: a nested

@@ -2422,5 +2422,16 @@
     "browser_approval_approved": "Freigegeben. Bitte den Assistenten, weiterzumachen.",
     "browser_approval_failed": "Deine Antwort konnte nicht gesendet werden.",
     "browser_approval_on_host": "auf %{host}",
-    "browser_approval_expired": "Diese Anfrage ist abgelaufen."
+    "browser_approval_expired": "Diese Anfrage ist abgelaufen.",
+    "browser_mode_off": "Browsen ist aus",
+    "browser_mode_off_hint": "Der Assistent kann in diesem Projekt keine Webseite öffnen.",
+    "browser_mode_selected": "Nur ausgewählte Webseiten",
+    "browser_mode_selected_hint": "Der Assistent darf nur die unten aufgeführten Webseiten öffnen. Das ist die empfohlene Einstellung.",
+    "browser_mode_all_public": "Alle öffentlichen Webseiten",
+    "browser_mode_all_public_hint": "Der Assistent darf jede öffentliche Webseite öffnen, auch solche, die er beim Lesen einer Seite findet.",
+    "browser_mode_all_public_warning": "Der Assistent kann dann Webseiten öffnen, die niemand geprüft hat, und eine gelesene Seite kann ihn auf eine andere schicken.",
+    "browser_mode_all_public_still_blocked": "Weiterhin blockiert: dein eigenes Netzwerk, interne und private Adressen, IP-Adressen und Nicht-Web-Links. Buchen, Bezahlen, Anmelden, Hochladen, Senden und Löschen brauchen weiterhin jedes Mal deine Freigabe.",
+    "browser_allowlist_unused_in_all_public": "Wird nicht verwendet, solange alle öffentlichen Webseiten erlaubt sind.",
+    "Blocked websites": "Blockierte Webseiten",
+    "Blocked websites description": "Werden nie geöffnet, egal welche Einstellung oben gewählt ist."
 }

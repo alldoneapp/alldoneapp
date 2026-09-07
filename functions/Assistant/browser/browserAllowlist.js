@@ -1,12 +1,22 @@
 'use strict'
 
-// Which hosts the browser worker may ever open. Default deny: an empty allowlist allows nothing,
-// so the feature is inert until somebody configures it, and a configuration mistake fails closed.
+// Which hosts the browser worker may ever open.
 //
-// This is intentionally stricter than `fetch_url`, which reads any public page. A reader can only
-// ever bring bytes back; a browser holds a live session, follows redirects, runs the page's scripts
-// and can be asked to click — so the set of hosts it may reach has to be a decision somebody made,
-// not the complement of a blocklist.
+// Two access modes, and the difference between them is ONLY the last question this file asks:
+//
+//   `selected`    (default) the host must match a configured allowlist entry
+//   `all_public`  (opt-in)  any host that survives the safety checks below is allowed
+//
+// Everything before that last question is identical in both modes and is not configurable:
+// http(s) only, no credentials in the URL, no IP literals, no loopback / private / link-local /
+// CGNAT / IPv6-ULA ranges, no cloud metadata endpoints, no single-label or `.internal` / `.local`
+// names, and an explicit denylist that wins over both modes. "All public websites" therefore means
+// exactly that — the public web — and can never be talked into reaching infrastructure.
+//
+// `selected` stays the default because a browser is not a reader: it holds a live session, follows
+// redirects, runs the page's scripts and can be asked to click, so the ordinary posture is a set of
+// hosts somebody chose. `all_public` exists because the ordinary posture cannot answer "look this up
+// for me" about a site nobody listed in advance.
 //
 // Entry syntax (all normalized through `normalizeAllowlistEntry`):
 //
@@ -101,6 +111,53 @@ function isBlockedHostname(hostname) {
     return BLOCKED_HOST_PATTERNS.some(pattern => pattern.test(String(hostname || '')))
 }
 
+const ACCESS_MODE_SELECTED = 'selected'
+const ACCESS_MODE_ALL_PUBLIC = 'all_public'
+const ACCESS_MODES = [ACCESS_MODE_SELECTED, ACCESS_MODE_ALL_PUBLIC]
+
+/**
+ * Anything that is not exactly `all_public` is `selected`.
+ *
+ * The default is not a preference, it is the fail-closed direction: a corrupt document, a typo, an
+ * older client writing a field it does not know about, or a future mode name all have to land on
+ * "only the hosts somebody listed" rather than on "the whole internet".
+ */
+function normalizeAccessMode(value) {
+    return String(value || '') === ACCESS_MODE_ALL_PUBLIC ? ACCESS_MODE_ALL_PUBLIC : ACCESS_MODE_SELECTED
+}
+
+/**
+ * The one shape every layer passes around: the mode, the allowlist and the denylist, already
+ * normalized. `browserConfig` builds it, the worker token carries it, and the policy and the
+ * worker's network guard both decide from it — so there is no second place where "which hosts" is
+ * answered and no way for a client to answer it differently.
+ */
+function buildBrowsingPolicy({ mode, allowlist = [], denylist = [] } = {}) {
+    const allowed = Array.isArray(allowlist) ? allowlist : normalizeAllowlist(allowlist).entries
+    const denied = Array.isArray(denylist) ? denylist : normalizeAllowlist(denylist).entries
+    return { mode: normalizeAccessMode(mode), entries: allowed, denyEntries: denied }
+}
+
+/** Accepts the policy object or a bare entry array (the pre-modes shape) and answers as `selected`. */
+function toBrowsingPolicy(policyOrEntries) {
+    if (Array.isArray(policyOrEntries))
+        return buildBrowsingPolicy({ mode: ACCESS_MODE_SELECTED, allowlist: policyOrEntries })
+    if (policyOrEntries && typeof policyOrEntries === 'object') {
+        return buildBrowsingPolicy({
+            mode: policyOrEntries.mode,
+            allowlist: policyOrEntries.entries || policyOrEntries.allowlist || [],
+            denylist: policyOrEntries.denyEntries || policyOrEntries.denylist || [],
+        })
+    }
+    return buildBrowsingPolicy({})
+}
+
+function findMatchingEntry(hostname, pathname, entries) {
+    return (Array.isArray(entries) ? entries : []).find(
+        entry => hostMatchesEntry(hostname, entry) && pathMatchesEntry(pathname, entry)
+    )
+}
+
 /**
  * Parse one configured allowlist entry. Returns null for anything unusable — a bad entry is dropped
  * rather than widened into something permissive, and `normalizeAllowlist` reports what it rejected
@@ -181,10 +238,13 @@ function pathMatchesEntry(pathname, entry) {
 
 /**
  * The single URL gate. Every navigation, every redirect hop and every worker-reported final URL is
- * run through this — a redirect that leaves the allowlist has to fail exactly like a navigation to
- * the same host would, or the allowlist is decorative.
+ * run through this — a redirect that leaves what is permitted has to fail exactly like a navigation
+ * to the same host would, or the policy is decorative.
+ *
+ * The second argument is a browsing policy (`buildBrowsingPolicy`) or, for the pre-modes call sites
+ * and their tests, a bare entry array, which is read as `selected`.
  */
-function checkUrlAgainstAllowlist(rawUrl, allowlistEntries) {
+function checkUrlAgainstAllowlist(rawUrl, policyOrEntries) {
     const value = typeof rawUrl === 'string' ? rawUrl.trim() : ''
     if (!value) return { allowed: false, reason: DENY_REASONS.UNSUPPORTED_SCHEME, message: 'A URL is required.' }
 
@@ -224,15 +284,35 @@ function checkUrlAgainstAllowlist(rawUrl, allowlistEntries) {
         }
     }
 
-    const entries = Array.isArray(allowlistEntries) ? allowlistEntries : []
-    const matched = entries.find(
-        entry => hostMatchesEntry(parsed.hostname, entry) && pathMatchesEntry(parsed.pathname, entry)
-    )
+    const policy = toBrowsingPolicy(policyOrEntries)
+
+    // The denylist is checked BEFORE the mode, so it means the same thing in both: "not this host,
+    // whatever else is configured". Checking it after the mode would make it dead weight in
+    // `selected` (where it can only remove something the allowlist already excluded) and, worse,
+    // would invite the reading that it is an `all_public`-only feature.
+    const denied = findMatchingEntry(parsed.hostname, parsed.pathname, policy.denyEntries)
+    if (denied) {
+        return {
+            allowed: false,
+            reason: DENY_REASONS.NOT_ALLOWLISTED,
+            message: `${parsed.hostname} is on this project's blocked list for automated browsing.`,
+            hostname: parsed.hostname,
+            deniedByEntry: denied,
+        }
+    }
+
+    if (policy.mode === ACCESS_MODE_ALL_PUBLIC) {
+        // Every safety check above has already run. What is left is, by construction, a public
+        // http(s) host that nobody blocked.
+        return { allowed: true, url: parsed.toString(), hostname: parsed.hostname, matchedEntry: null, allPublic: true }
+    }
+
+    const matched = findMatchingEntry(parsed.hostname, parsed.pathname, policy.entries)
     if (!matched) {
         return {
             allowed: false,
             reason: DENY_REASONS.NOT_ALLOWLISTED,
-            message: entries.length
+            message: policy.entries.length
                 ? `${parsed.hostname} is not on the browsing allowlist for this project.`
                 : 'Browsing is not configured for this project: the allowlist is empty, so every host is denied.',
             hostname: parsed.hostname,
@@ -243,8 +323,15 @@ function checkUrlAgainstAllowlist(rawUrl, allowlistEntries) {
 }
 
 module.exports = {
+    ACCESS_MODES,
+    ACCESS_MODE_ALL_PUBLIC,
+    ACCESS_MODE_SELECTED,
     BLOCKED_HOST_PATTERNS,
+    buildBrowsingPolicy,
     checkUrlAgainstAllowlist,
+    findMatchingEntry,
+    normalizeAccessMode,
+    toBrowsingPolicy,
     hostMatchesEntry,
     isBlockedHostname,
     isIpLiteralHostname,

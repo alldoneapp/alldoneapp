@@ -68,20 +68,64 @@ session. `browser_navigate` opens it; everything else needs it open.
 
 ## Security controls
 
-| control                            | where                                     | behaviour                                                                                                              |
-| ---------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Domain allowlist, **default deny** | `browserAllowlist.js`, `browserConfig.js` | empty list ⇒ nothing is reachable. No IPs, no private hosts, no bare `*`, no single-label hosts                        |
-| Redirect containment               | worker `browserActions.js`                | every document request incl. every redirect hop is re-matched; an off-allowlist hop is aborted                         |
-| Run limits                         | `browserLimits.js`                        | steps, navigations, screenshots, requests, bytes, wall clock — charged in the step transaction, persisted on the run   |
-| In-page limits                     | worker                                    | request/byte caps, redirect cap, per-step timeout, idle teardown                                                       |
-| Ephemeral context                  | worker `sessionStore.js`                  | one context per run, no `storageState` in or out, downloads refused, dialogs dismissed, popups closed                  |
-| No credentials anywhere            | policy + worker                           | a credential-shaped string is never typed outside a credential field; nothing is persisted between runs                |
-| Approval gates                     | `browserPolicy.js`, `browserApprovals.js` | login, upload, booking, payment, submit/publish, delete, external message — refused until the requesting user approves |
-| Bypass prevention                  | `browserSession.js`                       | describe-then-classify; an unresolvable element is a refusal, not an unclassified click                                |
-| Audit trail                        | `browserAudit.js`                         | one run doc + one step doc per tool call: decision, category, evidence for the decision, approval id, usage, timings   |
-| Evidence                           | `browserEvidence.js`                      | screenshot + DOM/AX snapshot in Storage with SHA-256, referenced from the step                                         |
-| Redaction                          | `browserRedaction.js`                     | credentials out of model-facing text; credentials **and** PII out of records; typed text never stored                  |
-| Worker authentication              | `browserWorkerClient.js`                  | per-call HMAC token, 2-minute TTL, carrying the allowlist and limits so the worker cannot widen them                   |
+| control                             | where                                     | behaviour                                                                                                                                                                           |
+| ----------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Access mode, **default `selected`** | `browserAllowlist.js`, `browserConfig.js` | `selected` needs an allowlist match; `all_public` is opt-in and skips ONLY that last check. Anything unrecognised reads as `selected`                                               |
+| Domain allowlist, **default deny**  | `browserAllowlist.js`, `browserConfig.js` | empty list ⇒ nothing is reachable in `selected`. No IPs, no private hosts, no bare `*`, no single-label hosts                                                                       |
+| Denylist                            | `browserAllowlist.js`                     | checked BEFORE the mode, so it means the same in both: never this host                                                                                                              |
+| Redirect containment                | worker `browserActions.js`                | every document request AND every redirect hop is checked; a hop that is not permitted fails the whole navigation, including a chain that goes through an internal host and back out |
+| Run limits                          | `browserLimits.js`                        | steps, navigations, screenshots, requests, bytes, wall clock — charged in the step transaction, persisted on the run                                                                |
+| In-page limits                      | worker                                    | request/byte caps, redirect cap, per-step timeout, idle teardown                                                                                                                    |
+| Ephemeral context                   | worker `sessionStore.js`                  | one context per run, no `storageState` in or out, downloads refused, dialogs dismissed, popups closed                                                                               |
+| No credentials anywhere             | policy + worker                           | a credential-shaped string is never typed outside a credential field; nothing is persisted between runs                                                                             |
+| Approval gates                      | `browserPolicy.js`, `browserApprovals.js` | login, upload, booking, payment, submit/publish, delete, external message — refused until the requesting user approves                                                              |
+| Bypass prevention                   | `browserSession.js`                       | describe-then-classify; an unresolvable element is a refusal, not an unclassified click                                                                                             |
+| Audit trail                         | `browserAudit.js`                         | one run doc + one step doc per tool call: decision, category, evidence for the decision, approval id, usage, timings                                                                |
+| Evidence                            | `browserEvidence.js`                      | screenshot + DOM/AX snapshot in Storage with SHA-256, referenced from the step                                                                                                      |
+| Redaction                           | `browserRedaction.js`                     | credentials out of model-facing text; credentials **and** PII out of records; typed text never stored                                                                               |
+| Worker authentication               | `browserWorkerClient.js`                  | per-call HMAC token, 2-minute TTL, carrying the MODE, allowlist, denylist and limits so the worker cannot widen them                                                                |
+
+### Access modes
+
+Three settings, in order of risk, chosen in the assistant's Tools Access → **Allowed websites**:
+
+| mode                       | stored as                          | meaning                                         |
+| -------------------------- | ---------------------------------- | ----------------------------------------------- |
+| Browsing is off            | `enabled: false`                   | no page can be opened in this project           |
+| **Only selected websites** | `accessMode: 'selected'` (default) | only hosts on the allowlist                     |
+| All public websites        | `accessMode: 'all_public'`         | any public host that survives the safety checks |
+
+`all_public` is opt-in, carries a warning in the editor, and changes **exactly one thing**: whether
+the allowlist is consulted. Everything else is unconditional and not configurable —
+
+- http(s) only (`file:`, `data:`, `javascript:`, `ftp:` and the rest are refused),
+- no credentials in the URL,
+- no IP literals at all, public or private,
+- no loopback, private, link-local, CGNAT or IPv6-ULA ranges,
+- no cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`, bare `metadata`),
+- no single-label hosts, `.internal`, `.local`, `.localhost` or `.home.arpa`,
+- **and the same rules on every redirect hop**, which is the case `all_public` makes matter.
+
+An unknown value in the stored field reads as `selected`. That is not a preference, it is the
+fail-closed direction: a corrupt document, a typo, an older client or a future mode name must land on
+"only what somebody listed", never on "the whole internet". Both `normalizeAccessMode` (server) and
+`normalizeBrowserAccessMode` (editor) implement it, and `browserAllowlistParity.test.js` pins that
+they agree.
+
+The mode is **not a client claim**. It is read from the project document by Cloud Functions, folded
+into the browsing policy, and travels to the worker inside the HMAC-signed token — so nothing that
+merely talks to the worker can assert "all public websites", and editing the mode inside a token
+breaks its signature.
+
+### The denylist
+
+`browserAutomation.deniedDomains` (plus the environment-wide `BROWSER_DENIED_DOMAINS`, unioned,
+because union is the safe direction for a deny rule). Same entry syntax and same validation as the
+allowlist; the editor's second list writes it.
+
+It is checked **before** the mode, so it means the same thing in both: "not this host, whatever else
+is configured". Checking it after the mode would make it dead weight in `selected` and would invite
+the reading that it is an `all_public`-only feature.
 
 ### Categories that always pause
 
@@ -176,7 +220,9 @@ Per project, on `projects/{projectId}.browserAutomation`:
 ```js
 {
   enabled: true,                        // false switches browsing off for this project
+  accessMode: 'selected',               // or 'all_public'; anything else reads as 'selected'
   allowedDomains: ['eventim.de', '*.kulturhaus.example', 'shop.example/events'],
+  deniedDomains: ['ads.example', '*.tracker.example'],
   allowSearchSubmit: true,
   limits: { maxNavigations: 5 },        // may only NARROW the defaults
 }
@@ -228,15 +274,33 @@ credentials, and the user's standing with the third-party sites the assistant vi
 | Cost / abuse                                                                  | per-run step, navigation, screenshot, request, byte and wall-clock budgets; worker session cap and max-instances                                     | no Gold metering yet — see below                                                                                                                                                                                   |
 | A project member widens the allowlist                                         | project entries are validated exactly like environment ones; widening only widens what may be READ, since every state change still needs an approval | a member can point the assistant at any public site their project may read                                                                                                                                         |
 
+### One redirect detail worth knowing
+
+Playwright's `route.continue()` makes Chromium follow a 3xx **internally**, and interception is not
+re-run for the new request — verified against Playwright 1.49 with a probe, and it is why the route
+handler alone was never enough. The `request` event _is_ fired for every hop, so `ensureNetworkGuard`
+listens there, records a hop that is not permitted, and the action functions fail the whole
+navigation on it (`reason: 'redirect_off_allowlist'`).
+
+Two consequences, and the second is the honest limitation:
+
+- A chain that redirects **through** an internal host and back out to a permitted one now fails.
+  The landing-URL check alone would have passed it, which is the SSRF shape that matters most.
+- The hop's request is **issued** before it is judged; nothing from it is rendered, returned to the
+  model, stored as evidence or written to the audit beyond the refusal, but a GET did leave the
+  container. No Playwright API can abort a hop the browser follows internally. Restricted egress on
+  the worker service is the control that closes this, and the deploy script prints it as a required
+  step.
+
 ## Open items before production
 
 - **Deployment.** Nothing here has run in a real environment: no worker is deployed, no environment
   carries the configuration, and the price has not been agreed. The integration test proves the code
   works against a real browser on a developer machine; it proves nothing about Cloud Run.
 - **Egress restriction** on the worker service (see DNS rebinding above).
-- **Gold price review.** 1 Gold per executed step is a considered choice, not a measured one — it is
-  pinned to `mcp_tool_call` rather than to observed Cloud Run cost. Worth revisiting once real runs
-  exist.
+- **Gold price review.** 1 Gold per executed step is the agreed product decision (2026-09-07), pinned
+  to `mcp_tool_call` rather than to observed Cloud Run cost. Worth revisiting once real runs exist —
+  a typical "check this site" run is 4–8 steps.
 - **Resume is manual.** After approving, the user asks the assistant to continue. Automatically
   resuming the turn would mean parking a chat run the way a VM run parks, which is a change to the
   streaming tool loop rather than to this feature.

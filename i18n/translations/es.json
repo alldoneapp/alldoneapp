@@ -2833,5 +2833,16 @@
     "browser_approval_approved": "Aprobado. Pide al asistente que continúe.",
     "browser_approval_failed": "No se pudo enviar tu respuesta.",
     "browser_approval_on_host": "en %{host}",
-    "browser_approval_expired": "Esta solicitud ha caducado."
+    "browser_approval_expired": "Esta solicitud ha caducado.",
+    "browser_mode_off": "La navegación está desactivada",
+    "browser_mode_off_hint": "El asistente no puede abrir ningún sitio web en este proyecto.",
+    "browser_mode_selected": "Solo sitios web seleccionados",
+    "browser_mode_selected_hint": "El asistente solo puede abrir los sitios web de la lista de abajo. Es la opción recomendada.",
+    "browser_mode_all_public": "Todos los sitios web públicos",
+    "browser_mode_all_public_hint": "El asistente puede abrir cualquier sitio web público, incluidos los que encuentre al leer una página.",
+    "browser_mode_all_public_warning": "El asistente podrá abrir sitios que nadie ha revisado, y una página que lea puede enviarlo a otra.",
+    "browser_mode_all_public_still_blocked": "Sigue bloqueado: tu propia red, direcciones internas y privadas, direcciones IP y enlaces que no sean web. Reservar, pagar, iniciar sesión, subir, enviar y borrar siguen necesitando tu aprobación cada vez.",
+    "browser_allowlist_unused_in_all_public": "No se usa mientras se permitan todos los sitios web públicos.",
+    "Blocked websites": "Sitios web bloqueados",
+    "Blocked websites description": "Nunca se abren, sea cual sea la opción elegida arriba."
 }
