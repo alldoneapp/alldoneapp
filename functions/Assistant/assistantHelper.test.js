@@ -1938,6 +1938,42 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('limited, occasional proactive web_search behavior')
     })
 
+    test('routes incomplete static reads to the real browser when both web tools are enabled', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['fetch_url', 'browser_automation'])
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('WEB READING ROUTING')
+        expect(systemMessages).toContain('SPA or "#/..." fragment routes')
+        expect(systemMessages).toContain(
+            'fetch_url succeeds technically but does not contain the requested information'
+        )
+        expect(systemMessages).toContain('instead of attempting repeated web_search queries')
+        expect(systemMessages).toContain('call browser_inspect only if')
+
+        const directTools = collectPromptReferencedToolNames(messages, [
+            'fetch_url',
+            'web_search',
+            'browser_navigate',
+            'browser_inspect',
+            'browser_click',
+        ])
+        expect(directTools).toEqual(new Set(['fetch_url', 'web_search', 'browser_navigate', 'browser_inspect']))
+    })
+
+    test('does not advertise browser fallback when browser automation is disabled', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['fetch_url'])
+
+        expect(messages.map(message => message[1]).join('\n')).not.toContain('WEB READING ROUTING')
+    })
+
     test('commits a deferred silent-mode comment when the final reply is not HEARTBEAT_OK', async () => {
         mockDocGet.mockResolvedValue({ data: () => ({}) })
 

@@ -36,6 +36,29 @@ const PRIVATE_HOST_PATTERNS = [
     /^metadata\.google\.internal$/i,
 ]
 
+function getClientSideRouteRecommendation(rawUrl) {
+    try {
+        const hash = new URL(rawUrl).hash
+        if (!/^#(?:!\/|\/)/.test(hash)) return null
+        return {
+            browserRecommended: true,
+            browserReason: 'client_side_fragment_route',
+            note: 'This URL uses a client-side fragment route ("#/..."). Plain HTTP fetching does not send the fragment to the server, so this result may contain only the base page. Use browser_navigate when the requested detail is missing.',
+        }
+    } catch (_) {
+        return null
+    }
+}
+
+function looksLikeClientRenderedAppShell(html, readableText = '') {
+    if (String(readableText).length >= THIN_PAGE_TEXT_CHARS) return false
+    const source = String(html || '')
+    return (
+        String(readableText).length === 0 ||
+        /<(?:div|main)\b[^>]*(?:id|data-reactroot)\s*=\s*["'](?:root|app|__next|__nuxt)["']/i.test(source)
+    )
+}
+
 const HTML_ENTITIES = {
     amp: '&',
     lt: '<',
@@ -341,6 +364,7 @@ async function fetchWebPage(rawUrl, options = {}) {
         return { success: false, url: rawUrl, error: check.reason, blockedHost: check.blockedHost === true }
     }
     const url = check.url
+    const routeRecommendation = getClientSideRouteRecommendation(url)
 
     let direct = null
     let directError = null
@@ -366,6 +390,16 @@ async function fetchWebPage(rawUrl, options = {}) {
               }
         const thin = page.text.length < THIN_PAGE_TEXT_CHARS
         if (!thin || !isTavilyConfigured(tavilyApiKey)) {
+            const appShell = isHtml && looksLikeClientRenderedAppShell(direct.body, page.text)
+            const browserRecommendation =
+                routeRecommendation ||
+                (appShell
+                    ? {
+                          browserRecommended: true,
+                          browserReason: 'client_rendered_app_shell',
+                          note: 'The page returned only a client-rendered app shell. Use browser_navigate to execute JavaScript and read the requested information.',
+                      }
+                    : null)
             return {
                 success: true,
                 source: 'direct',
@@ -377,6 +411,7 @@ async function fetchWebPage(rawUrl, options = {}) {
                 note: thin
                     ? 'The page returned very little readable text; it may be rendered by JavaScript.'
                     : undefined,
+                ...(browserRecommendation || {}),
             }
         }
         // A page that renders through JavaScript reads as empty to a plain fetch; Tavily renders it.
@@ -397,9 +432,18 @@ async function fetchWebPage(rawUrl, options = {}) {
                 truncated: text.length > maxChars,
                 links: page.links,
                 images: page.images.length ? page.images : rendered.images,
+                ...(routeRecommendation || {}),
             }
         } catch (error) {
-            return { success: true, source: 'direct', url, finalUrl: direct.finalUrl, status: direct.status, ...page }
+            return {
+                success: true,
+                source: 'direct',
+                url,
+                finalUrl: direct.finalUrl,
+                status: direct.status,
+                ...page,
+                ...(routeRecommendation || {}),
+            }
         }
     }
 
@@ -432,6 +476,7 @@ async function fetchWebPage(rawUrl, options = {}) {
                 truncated: text.length > maxChars,
                 links: [],
                 images: rendered.images,
+                ...(routeRecommendation || {}),
             }
         } catch (error) {
             // fall through to the direct failure below
@@ -463,6 +508,7 @@ module.exports = {
     decodeHtmlEntities,
     extractPageContent,
     fetchWebPage,
+    getClientSideRouteRecommendation,
     htmlToText,
     isFetchableUrl,
     isTavilyConfigured,

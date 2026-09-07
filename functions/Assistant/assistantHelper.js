@@ -12228,6 +12228,12 @@ async function addBaseInstructions(
                     : ''),
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes('fetch_url') && allowedTools.includes(BROWSER_TOOL_KEY)) {
+        messages.push([
+            'system',
+            'WEB READING ROUTING: Use fetch_url for static, server-rendered HTML that only needs a read. Use browser_navigate for JavaScript-rendered pages, SPA or "#/..." fragment routes, current page state, login or interaction, when the user explicitly asks to browse/open the actual page, or whenever fetch_url succeeds technically but does not contain the requested information. A fetch result containing only navigation or an app shell is not evidence that the detail is unavailable. Switch to browser_navigate instead of attempting repeated web_search queries while the original page can be opened. Browser results already include a fresh snapshot and element refs; call browser_inspect only if the page may have changed independently or the needed element/ref is missing or stale.',
+        ])
+    }
     if (Array.isArray(allowedTools) && allowedTools.includes('search')) {
         messages.push([
             'system',

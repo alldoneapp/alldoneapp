@@ -1354,7 +1354,7 @@ const toolSchemas = {
         function: {
             name: 'fetch_url',
             description:
-                'Reads a public web page and returns its title, description, social image (og:image), readable text and outgoing links. Use it to read a page you found with web_search - a company team page, a personal website, a GitHub profile, a conference bio, an article. LinkedIn pages cannot be read (they require a login); for LinkedIn rely on the web_search result title and snippet instead. Private/internal addresses are refused.',
+                'Fetches the server-provided HTML or text of a public URL without running JavaScript and without interacting with the page. Prefer it for static articles, documents and ordinary read-only pages. It cannot reliably read client-rendered apps, URL fragment routes such as "#/...", content loaded after page scripts, login-protected pages or content requiring clicks. If the requested information is missing, the result contains only navigation or app-shell text, the URL uses a fragment route, or the user explicitly asks to open or browse the actual page, use browser_navigate instead when available. Do not compensate with repeated web_search calls while the original page can be opened in the browser. Returns the title, description, social image (og:image), readable text and outgoing links. LinkedIn pages cannot be read (they require a login); for LinkedIn rely on the web_search result title and snippet instead. Private/internal addresses are refused.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1384,7 +1384,7 @@ const toolSchemas = {
         function: {
             name: 'browser_navigate',
             description:
-                'Opens a page in a real browser and returns its text, headings and interactive elements. Use this instead of fetch_url when the page needs JavaScript to render, when you have to interact with it (search a date, pick a filter), or when the user wants to know what the page actually shows right now — availability, opening times, remaining tickets. Only allowlisted sites can be opened; everything else is refused. This starts a browsing session in this thread that the other browser_ tools then work on.',
+                'Opens a URL in a real browser, executes its JavaScript, waits for rendered content and returns the current page text, headings and interactive elements. Use it immediately for SPA or "#/..." URLs, dynamically rendered pages, current availability or times, login, filters or other interaction. Also use it when fetch_url succeeded technically but did not contain the information the user asked for, or when the user explicitly asks to browse or open the actual page. Do not replace a direct browser read with repeated web_search calls. Browsing is subject to the project policy; unsafe, private and blocked hosts are refused. This starts a browsing session in this thread that the other browser_ tools then work on.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1406,7 +1406,7 @@ const toolSchemas = {
         function: {
             name: 'browser_inspect',
             description:
-                'Returns a fresh snapshot of the page that is currently open: title, readable text, headings and the interactive elements with a "ref" for each. Call this before every click or type — a ref only refers to the element it was captured for, and a stale one is refused rather than guessed. Elements flagged needsApproval will pause for the user.',
+                'Returns a fresh snapshot of the page that is currently open: title, readable text, headings and the interactive elements with a "ref" for each. The latest browser_navigate result and every browser action result already include a fresh page snapshot and refs; call browser_inspect only when the page may have changed independently or the required element is missing from the latest browser result. A stale ref is refused rather than guessed. Elements flagged needsApproval will pause for the user.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1426,7 +1426,7 @@ const toolSchemas = {
         function: {
             name: 'browser_click',
             description:
-                'Clicks one element on the page that is currently open, identified by a ref from the latest browser_inspect snapshot. The element is examined before it is clicked: if it turns out to sign in, upload, book, pay, submit, publish, send or delete, the click is NOT performed and the user is asked to approve it first. When that happens, tell the user what you want to do and stop — there is no alternative element or selector that avoids the check.',
+                'Clicks one element on the page that is currently open, identified by a ref from the latest browser result. Refs returned by browser_navigate, browser_inspect and browser actions are valid until the page changes; call browser_inspect only when the ref is missing or stale. The element is examined before it is clicked: if it turns out to sign in, upload, book, pay, submit, publish, send or delete, the click is NOT performed and the user is asked to approve it first. When that happens, tell the user what you want to do and stop — there is no alternative element or selector that avoids the check.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1446,7 +1446,7 @@ const toolSchemas = {
         function: {
             name: 'browser_type',
             description:
-                "Types text into a field on the page that is currently open, identified by a ref from the latest browser_inspect snapshot. Typing into a search field and submitting it is normal. Passwords, credentials, API keys and card numbers are refused: never type a secret into a page, and never ask the user for one. Submitting a form that books, pays, sends or publishes pauses for the user's approval.",
+                "Types text into a field on the page that is currently open, identified by a ref from the latest browser result. Refs returned by browser_navigate, browser_inspect and browser actions are valid until the page changes; call browser_inspect only when the ref is missing or stale. Typing into a search field and submitting it is normal. Passwords, credentials, API keys and card numbers are refused: never type a secret into a page, and never ask the user for one. Submitting a form that books, pays, sends or publishes pauses for the user's approval.",
             parameters: {
                 type: 'object',
                 properties: {
