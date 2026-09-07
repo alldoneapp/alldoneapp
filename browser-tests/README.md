@@ -546,4 +546,11 @@ allowlisted and the test would be exercising a bypass instead of the product.
 Checks navigate, inspect, type + submit (the GET-search carve-out), wait, screenshot (real PNG
 bytes), the approval pause on a booking button, approve → resume, a denial sticking for the run, an
 off-allowlist host, a redirect off the allowlist blocked inside the worker, the audit trail and the
-Gold charges. 34 checks; exit code 0 = pass.
+Gold charges.
+
+It also runs a **second project in `all_public` mode** against the same worker, which is the only
+place the "all public websites" promise is actually tested end to end: an unlisted public host opens,
+the very same host stays refused in the selected-sites project, the denylist still wins, and
+localhost / a private range / an IP literal / the cloud metadata endpoint / a single-label host / a
+`file:` URL all stay refused — including as **redirect targets**, and including a chain that goes
+through an internal host and back out to a permitted one. 51 checks; exit code 0 = pass.

@@ -49,6 +49,14 @@ function submit(tree) {
     })
 }
 
+function pressMode(tree, label) {
+    const row = tree.root.findAll(node => node.props && node.props.accessibilityLabel === label)[0]
+    if (!row) throw new Error(`No mode row labelled ${label}`)
+    act(() => {
+        row.props.onPress()
+    })
+}
+
 function pressSave(tree) {
     const saveButton = tree.root.findAll(node => node.props && node.props.title === 'Save')[0]
     return act(async () => {
@@ -116,7 +124,9 @@ describe('BrowserAllowlistModal', () => {
 
         expect(mockSave).toHaveBeenCalledWith('p1', {
             enabled: true,
+            accessMode: 'selected',
             allowedDomains: ['eventim.de', 'kulturhaus.example'],
+            deniedDomains: [],
             allowSearchSubmit: true,
             limits: {},
         })
@@ -130,5 +140,94 @@ describe('BrowserAllowlistModal', () => {
         expect(texts).toContain('eventim.de')
         expect(texts).not.toContain('127.0.0.1')
         expect(texts).not.toContain('*')
+    })
+})
+
+describe('BrowserAllowlistModal access modes', () => {
+    beforeEach(() => mockSave.mockClear())
+
+    it('defaults to "only selected websites", whatever the stored value is', () => {
+        // The default is not a preference, it is the fail-closed direction — the same rule the
+        // server applies to the same field.
+        for (const accessMode of [undefined, 'selected', 'ALL_PUBLIC', 'everything']) {
+            const tree = render({ allowedDomains: ['eventim.de'], accessMode })
+            expect(textsOf(tree)).not.toContain('browser_mode_all_public_warning')
+        }
+    })
+
+    it('shows the security warning only when all public websites are chosen', () => {
+        const tree = render({ allowedDomains: [] })
+        expect(textsOf(tree)).not.toContain('browser_mode_all_public_warning')
+
+        pressMode(tree, 'browser_mode_all_public')
+        const texts = textsOf(tree)
+        expect(texts).toContain('browser_mode_all_public_warning')
+        // And says what did NOT change, because "all websites" invites the reading that the safety
+        // rules went with the list.
+        expect(texts).toContain('browser_mode_all_public_still_blocked')
+    })
+
+    it('stops calling an empty allowlist "browsing is off" once it is no longer the gate', () => {
+        const tree = render({ allowedDomains: [] })
+        expect(textsOf(tree)).toContain('browser_allowlist_empty')
+
+        pressMode(tree, 'browser_mode_all_public')
+        const texts = textsOf(tree)
+        expect(texts).toContain('browser_allowlist_unused_in_all_public')
+        expect(texts).not.toContain('browser_allowlist_empty')
+    })
+
+    it('saves the chosen mode', async () => {
+        const tree = render({ allowedDomains: ['eventim.de'] })
+        pressMode(tree, 'browser_mode_all_public')
+        await pressSave(tree)
+
+        expect(mockSave).toHaveBeenCalledWith('p1', {
+            enabled: true,
+            accessMode: 'all_public',
+            // Kept rather than cleared: switching back to "only selected" must not silently have
+            // thrown the list away.
+            allowedDomains: ['eventim.de'],
+            deniedDomains: [],
+            allowSearchSubmit: true,
+            limits: {},
+        })
+    })
+
+    it('turns browsing off without losing the mode the user had chosen', async () => {
+        const tree = render({ allowedDomains: ['eventim.de'], accessMode: 'all_public' })
+        pressMode(tree, 'browser_mode_off')
+        await pressSave(tree)
+
+        expect(mockSave).toHaveBeenCalledWith(
+            'p1',
+            expect.objectContaining({ enabled: false, accessMode: 'all_public' })
+        )
+    })
+
+    it('edits the blocked list with the same validation as the allowed one', async () => {
+        const tree = render({ allowedDomains: [], accessMode: 'all_public' })
+        const inputs = () => tree.root.findAllByType(TextInput)
+
+        act(() => {
+            inputs()[1].props.onChangeText('ads.example, 10.0.0.1')
+        })
+        act(() => {
+            inputs()[1].props.onSubmitEditing()
+        })
+
+        const texts = textsOf(tree)
+        expect(texts).toContain('ads.example')
+        expect(texts).toContain('browser_allowlist_error_private')
+
+        await pressSave(tree)
+        expect(mockSave).toHaveBeenCalledWith('p1', expect.objectContaining({ deniedDomains: ['ads.example'] }))
+    })
+
+    it('drops a stored blocked entry that is no longer valid', () => {
+        const tree = render({ allowedDomains: [], deniedDomains: ['ads.example', '127.0.0.1'] })
+        const texts = textsOf(tree)
+        expect(texts).toContain('ads.example')
+        expect(texts).not.toContain('127.0.0.1')
     })
 })

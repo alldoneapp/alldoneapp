@@ -77,6 +77,38 @@ function startFixtureSite() {
             return
         }
 
+        // The redirect that matters in "all public websites": nothing is off-allowlist any more, so
+        // this is the shape that would reach the cloud metadata server if the safety checks were
+        // part of the allowlist rather than unconditional.
+        if (url.pathname === '/redirect-internal') {
+            response.writeHead(302, { Location: 'http://169.254.169.254/computeMetadata/v1/' })
+            response.end()
+            return
+        }
+
+        // Through an internal host and back out to a public one. The landing URL is permitted, so
+        // only a per-hop check can catch this — it is the shape that makes "the final URL was fine"
+        // an insufficient guarantee.
+        if (url.pathname === '/redirect-through-internal') {
+            response.writeHead(302, { Location: 'http://vault.internal/bounce' })
+            response.end()
+            return
+        }
+
+        // The bounce back OUT to a permitted host. Reached only if the internal hop was followed,
+        // which is exactly what the per-hop check has to notice.
+        if (url.pathname === '/bounce') {
+            response.writeHead(302, { Location: 'http://unlisted.example/' })
+            response.end()
+            return
+        }
+
+        if (url.pathname === '/redirect-localhost') {
+            response.writeHead(302, { Location: 'http://localhost/admin' })
+            response.end()
+            return
+        }
+
         if (url.pathname === '/search') {
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
             response.end(renderSearch(url.searchParams.get('q') || ''))

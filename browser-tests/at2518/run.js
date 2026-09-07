@@ -20,6 +20,9 @@
  *   9. allowlist  an off-allowlist host is refused before the worker is called at all
  *  10. redirect   an allowlisted page that redirects off the allowlist is blocked IN the worker
  *  11. gold       exactly the executed steps are charged, and nothing else
+ *  12. all_public an unlisted public host opens, while localhost, a private range, an IP literal
+ *                 and the cloud metadata endpoint stay refused — including as REDIRECT targets,
+ *                 which is the only place the worker's guard is the last line
  *
  * Requirements (not part of CI):
  *   nvm use 22
@@ -85,7 +88,7 @@ async function main() {
             BROWSER_WORKER_IDLE_MS: '120000',
             // Chromium resolves the fixture's public-looking names to loopback. The allowlist still
             // sees `tickets.example`, so nothing about the policy is relaxed for the test.
-            BROWSER_WORKER_HOST_RESOLVER_RULES: `MAP tickets.example 127.0.0.1:${sitePort}, MAP tracker.example 127.0.0.1:${sitePort}`,
+            BROWSER_WORKER_HOST_RESOLVER_RULES: `MAP tickets.example 127.0.0.1:${sitePort}, MAP tracker.example 127.0.0.1:${sitePort}, MAP unlisted.example 127.0.0.1:${sitePort}, MAP ads.example 127.0.0.1:${sitePort}, MAP vault.internal 127.0.0.1:${sitePort}`,
             // The worker is a separate service with its own dependency tree; Playwright lives
             // outside the repo here, exactly as the other browser-tests runners expect.
             NODE_PATH: path.join(PLAYWRIGHT_HOME, 'node_modules'),
@@ -120,16 +123,35 @@ async function main() {
     const fetchImpl = (url, options) =>
         fetch(String(url).replace('https://browser-worker.invalid', workerBaseUrl), options)
 
-    const call = (toolName, toolArgs) =>
+    const call = (toolName, toolArgs, overrides = {}) =>
         executeBrowserTool({
             toolName,
             toolArgs,
-            projectId: PROJECT_ID,
+            projectId: overrides.projectId || PROJECT_ID,
             assistantId: 'assistant1',
             requestUserId: USER_ID,
-            toolRuntimeContext: { objectId: OBJECT_ID, objectType: 'tasks', assistantCommentId: 'comment1' },
+            toolRuntimeContext: {
+                objectId: overrides.objectId || OBJECT_ID,
+                objectType: 'tasks',
+                assistantCommentId: 'comment1',
+            },
             deps: { db, bucket, env, fetchImpl, deductGold },
         })
+
+    // A second project, configured for "all public websites". Same worker, same code path, only the
+    // stored access mode differs — which is what makes the comparison below meaningful.
+    db.documents.set('projects/p2', {
+        browserAutomation: {
+            accessMode: 'all_public',
+            deniedDomains: ['ads.example'],
+            // A refused navigation still consumes a step and a navigation from the run budget (it
+            // was handed out before the policy ran), and this block deliberately makes a lot of
+            // refusals, so the budget has to be wide enough for them all to actually be attempted.
+            limits: { maxNavigations: 20, maxSteps: 40 },
+        },
+    })
+    const callPublic = (toolName, toolArgs) =>
+        call(toolName, toolArgs, { projectId: 'p2', objectId: 'task-all-public' })
 
     try {
         // ---- 1. navigate ------------------------------------------------------------------
@@ -266,6 +288,86 @@ async function main() {
             'a single-use approval is not reusable for the same action',
             afterApproval.status === 'approval_required',
             afterApproval.status || afterApproval.reason
+        )
+
+        // ---- 12. all public websites ------------------------------------------------------
+        const goldBeforePublic = goldCharges.length
+
+        const unlisted = await callPublic('browser_navigate', { url: 'http://unlisted.example/' })
+        check('all_public opens a host that is on no allowlist', unlisted.success === true, unlisted.error || '')
+        check(
+            'and it really is the fixture page',
+            (unlisted.text || '').includes('Kulturhaus Tickets'),
+            (unlisted.text || '').slice(0, 40)
+        )
+
+        const sameHostInSelected = await call('browser_navigate', { url: 'http://unlisted.example/' })
+        check(
+            'the very same host stays refused in the selected-sites project',
+            sameHostInSelected.success === false && sameHostInSelected.reason === 'not_allowlisted'
+        )
+
+        const deniedPublic = await callPublic('browser_navigate', { url: 'http://ads.example/' })
+        check(
+            'the denylist still wins in all_public',
+            deniedPublic.success === false && /blocked list/i.test(deniedPublic.error || ''),
+            deniedPublic.error || ''
+        )
+
+        for (const url of [
+            'http://localhost/admin',
+            'http://127.0.0.1/',
+            'http://10.0.0.5/',
+            'http://169.254.169.254/computeMetadata/v1/',
+            'http://metadata.google.internal/',
+            'http://8.8.8.8/',
+            'http://intranet/',
+            'file:///etc/passwd',
+        ]) {
+            const refused = await callPublic('browser_navigate', { url })
+            check(`all_public still refuses ${url}`, refused.success === false, refused.reason || '')
+        }
+
+        // The redirect cases are the ones only a real browser can prove: Functions never sees the
+        // hop, so the worker's guard is the only thing between the redirect and the target.
+        const metadataRedirect = await callPublic('browser_navigate', {
+            url: 'http://unlisted.example/redirect-internal',
+        })
+        check(
+            'a redirect to the metadata endpoint is blocked in the worker, in all_public',
+            metadataRedirect.success === false,
+            metadataRedirect.error || metadataRedirect.reason || ''
+        )
+        const localhostRedirect = await callPublic('browser_navigate', {
+            url: 'http://unlisted.example/redirect-localhost',
+        })
+        check(
+            'a redirect to localhost is blocked in the worker, in all_public',
+            localhostRedirect.success === false,
+            localhostRedirect.error || localhostRedirect.reason || ''
+        )
+
+        const throughInternal = await callPublic('browser_navigate', {
+            url: 'http://unlisted.example/redirect-through-internal',
+        })
+        check(
+            'a chain that goes THROUGH an internal host fails, not just one that ends there',
+            throughInternal.success === false && /vault\.internal/i.test(throughInternal.error || ''),
+            `${throughInternal.reason || ''} | ${(throughInternal.error || '').slice(0, 120)}`
+        )
+
+        const afterRedirects = await callPublic('browser_inspect', {})
+        check(
+            'nothing internal ever rendered',
+            afterRedirects.success === false || !/root:|computeMetadata|admin/i.test(afterRedirects.text || '')
+        )
+
+        check(
+            'a refused target in all_public costs nothing',
+            // Only the two successful navigations plus the inspect were executed; every refusal
+            // above returned before the browser was touched or before the worker succeeded.
+            goldCharges.length - goldBeforePublic <= 3,
+            `${goldCharges.length - goldBeforePublic} charges for 2 executed navigations + 1 inspect`
         )
 
         // ---- 11. gold ---------------------------------------------------------------------

@@ -4248,8 +4248,15 @@ export function mapProjectData(projectId, project, customData) {
         // allowlist — which, being default-deny, means browsing is off.
         browserAutomation: {
             enabled: project.browserAutomation ? project.browserAutomation.enabled !== false : true,
+            // Anything that is not exactly 'all_public' is 'selected'. Same rule as the server's
+            // `normalizeAccessMode`, and for the same reason: an unknown value has to land on
+            // "only the hosts somebody listed", never on "the whole internet".
+            accessMode: project.browserAutomation?.accessMode === 'all_public' ? 'all_public' : 'selected',
             allowedDomains: Array.isArray(project.browserAutomation?.allowedDomains)
                 ? project.browserAutomation.allowedDomains
+                : [],
+            deniedDomains: Array.isArray(project.browserAutomation?.deniedDomains)
+                ? project.browserAutomation.deniedDomains
                 : [],
             allowSearchSubmit: project.browserAutomation ? project.browserAutomation.allowSearchSubmit !== false : true,
             limits:

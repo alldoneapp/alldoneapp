@@ -3,8 +3,12 @@
 // What the worker actually does to a page, and the two things it enforces that Functions cannot.
 //
 // 1. THE NETWORK GUARD. Every top-level document request — the navigation the tool asked for, every
-//    redirect hop, and any navigation the PAGE starts by itself — is matched against the allowlist
-//    carried in the signed token, and aborted when it does not match. That has to happen here
+//    redirect hop, and any navigation the PAGE starts by itself — is checked against the browsing
+//    policy carried in the signed token (mode + allowlist + denylist), and aborted when it is not
+//    permitted. In `all_public` the allowlist stops being the gate but nothing else does: loopback,
+//    private, link-local, CGNAT, IPv6-ULA, metadata, IP literals, single-label hosts and non-http(s)
+//    schemes stay refused, which is what keeps a redirect to `http://169.254.169.254/` from
+//    resolving into a page. That has to happen here
 //    because redirects and page-initiated navigations do not go past Functions at all: a policy
 //    that only checks the URL the model passed would be satisfied by `https://allowed.example`
 //    redirecting to anywhere. Sub-resources (images, scripts, fonts from CDNs) are NOT restricted
@@ -21,36 +25,43 @@
 
 const { requireShared } = require('./sharedModules')
 
-const { hostMatchesEntry, pathMatchesEntry } = requireShared('browserAllowlist')
+// The worker asks the SAME function Cloud Functions asks. It used to re-implement the match with
+// `hostMatchesEntry`/`pathMatchesEntry`, which was correct for the allowlist and would have been
+// silently wrong the moment a second mode existed: `all_public` is not "match nothing", it is
+// "everything the safety checks let through", and those checks live in that function.
+const { buildBrowsingPolicy, checkUrlAgainstAllowlist } = requireShared('browserAllowlist')
 
 const REF_ATTRIBUTE = 'data-alldone-ref'
 const INTERACTIVE_SELECTOR =
     'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=textbox], [role=combobox], [role=checkbox], [role=radio], [role=tab], [role=option], [contenteditable=true]'
 
-function isUrlAllowed(url, allowlist) {
-    let parsed
-    try {
-        parsed = new URL(url)
-    } catch (error) {
-        return false
-    }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
-    return (Array.isArray(allowlist) ? allowlist : []).some(
-        entry => hostMatchesEntry(parsed.hostname, entry) && pathMatchesEntry(parsed.pathname, entry)
-    )
+/**
+ * The network guard's verdict, and deliberately the same verdict the policy reached in Cloud
+ * Functions: scheme, credentials, blocked hosts, IP literals, loopback / private / link-local /
+ * CGNAT / IPv6-ULA / metadata, then the denylist, then the mode. A redirect hop and a
+ * page-initiated navigation never pass through Functions at all, so this is the only place those
+ * are checked — and in `all_public` it is the ONLY thing standing between a redirect and
+ * `http://169.254.169.254/`.
+ *
+ * `policy` is what the signed token carried; a request with no policy is refused.
+ */
+function isUrlAllowed(url, policy) {
+    if (!policy) return false
+    return checkUrlAgainstAllowlist(url, policy).allowed === true
 }
 
 /**
  * Install the guard once per session. Idempotent: re-routing a session that already has it would
  * double-count every request.
  */
-async function ensureNetworkGuard(session, { allowlist, limits }) {
+async function ensureNetworkGuard(session, { allowlist, denylist, accessMode, limits }) {
+    const policy = buildBrowsingPolicy({ mode: accessMode, allowlist, denylist })
     if (session.guardInstalled) {
-        session.allowlist = allowlist
+        session.policy = policy
         session.limits = limits
         return
     }
-    session.allowlist = allowlist
+    session.policy = policy
     session.limits = limits
     session.guardInstalled = true
 
@@ -61,7 +72,7 @@ async function ensureNetworkGuard(session, { allowlist, limits }) {
         const maxRequests = Number(session.limits?.requests) || 250
         const maxBytes = Number(session.limits?.bytes) || 20 * 1024 * 1024
 
-        if (isDocument && !isUrlAllowed(url, session.allowlist)) {
+        if (isDocument && !isUrlAllowed(url, session.policy)) {
             session.usage.blockedRequests += 1
             session.lastBlockedNavigation = url
             await route.abort('blockedbyclient')
@@ -81,6 +92,24 @@ async function ensureNetworkGuard(session, { allowlist, limits }) {
         const length = Number(response.headers()['content-length'])
         if (Number.isFinite(length) && length > 0) session.usage.responseBytes += length
     })
+
+    // The route handler above does NOT see a redirect hop: `route.continue()` makes Chromium follow
+    // a 3xx internally and interception is not re-run for the new request (verified against
+    // Playwright 1.49 — the handler is called once, for the original URL). The `request` event IS
+    // fired for every hop, so this is where a chain is actually watched.
+    //
+    // It cannot ABORT the hop — no Playwright API can, from here — so it records it and the action
+    // functions below fail the whole navigation. That matters for two shapes the final-URL check
+    // alone cannot catch: a chain that passes THROUGH an internal host and back out to a public one,
+    // and a chain whose internal hop is what the page wanted all along. What it does not do is stop
+    // the request from being issued; preventing that is the deployment's job (restricted egress),
+    // and browser/README.md says so.
+    session.page.on('request', request => {
+        if (request.resourceType() !== 'document') return
+        const url = request.url()
+        if (url === 'about:blank' || isUrlAllowed(url, session.policy)) return
+        session.disallowedHop = url
+    })
     // A file chooser that is opened and never answered leaves the page waiting forever; refusing it
     // explicitly is also the honest answer, since the worker has no files to give.
     session.page.on('filechooser', chooser => {
@@ -90,6 +119,13 @@ async function ensureNetworkGuard(session, { allowlist, limits }) {
             .keyboard.press('Escape')
             .catch(() => {})
     })
+}
+
+/** The disallowed document hop seen since the last call, if any. Reading it clears it. */
+function takeDisallowedHop(session) {
+    const hop = session.disallowedHop || ''
+    session.disallowedHop = ''
+    return hop
 }
 
 function collectRedirectChain(response) {
@@ -269,10 +305,24 @@ async function describeElement(page, { ref = '', selector = '' }) {
 }
 
 async function performNavigate(session, { url, waitUntil = 'domcontentloaded', maxChars }) {
+    takeDisallowedHop(session)
     let response
     try {
         response = await session.page.goto(url, { waitUntil })
     } catch (error) {
+        // A failed navigation leaves Chromium on its own error page, and that page COMMITS
+        // asynchronously — the next `goto` then dies with "interrupted by another navigation to
+        // chrome-error://chromewebdata/", i.e. one broken link makes the following, unrelated
+        // navigation fail too. Park on about:blank so a run recovers from a dead page.
+        await session.page.goto('about:blank').catch(() => {})
+        const hopBeforeError = takeDisallowedHop(session)
+        if (hopBeforeError) {
+            return {
+                ok: false,
+                reason: 'redirect_off_allowlist',
+                error: `The page redirected through ${hopBeforeError}, which is not permitted. Nothing was loaded.`,
+            }
+        }
         // The guard aborting a hop surfaces here as `net::ERR_BLOCKED_BY_CLIENT`, which on its own
         // reads like the site being down. Name the host that was refused instead — that is the one
         // fact the user needs to decide whether to allowlist it.
@@ -288,7 +338,16 @@ async function performNavigate(session, { url, waitUntil = 'domcontentloaded', m
         throw error
     }
     const finalUrl = session.page.url()
-    if (!isUrlAllowed(finalUrl, session.allowlist)) {
+    const hop = takeDisallowedHop(session)
+    if (hop) {
+        await session.page.goto('about:blank').catch(() => {})
+        return {
+            ok: false,
+            reason: 'redirect_off_allowlist',
+            error: `The page redirected through ${hop}, which is not permitted. Nothing was loaded.`,
+        }
+    }
+    if (!isUrlAllowed(finalUrl, session.policy)) {
         // A redirect chain that ended off-allowlist: the guard aborted the hop, so the page is
         // wherever it stopped. Report it rather than leaving the run on an unclassified page.
         await session.page.goto('about:blank').catch(() => {})
@@ -317,16 +376,18 @@ async function performInspect(session, { maxChars }) {
 
 async function performClick(session, { ref, selector, maxChars }) {
     const target = ref ? refSelector(ref) : selector
+    takeDisallowedHop(session)
     const before = session.page.url()
     await session.page.click(target, { timeout: 10000 })
     await session.page.waitForLoadState('domcontentloaded').catch(() => {})
     const after = session.page.url()
-    if (!isUrlAllowed(after, session.allowlist)) {
+    const clickHop = takeDisallowedHop(session)
+    if (clickHop || !isUrlAllowed(after, session.policy)) {
         await session.page.goBack().catch(() => {})
         return {
             ok: false,
             reason: 'navigated_off_allowlist',
-            error: `The click navigated to ${after}, which is not on the allowlist.`,
+            error: `The click navigated to ${clickHop || after}, which is not permitted.`,
         }
     }
     const snapshot = await snapshotPage(session.page, { maxChars })
@@ -335,6 +396,7 @@ async function performClick(session, { ref, selector, maxChars }) {
 
 async function performType(session, { ref, selector, text, submit, clearFirst, maxChars }) {
     const target = ref ? refSelector(ref) : selector
+    takeDisallowedHop(session)
     if (clearFirst) await session.page.fill(target, '', { timeout: 10000 })
     await session.page.fill(target, String(text), { timeout: 10000 })
     if (submit) {
@@ -342,11 +404,12 @@ async function performType(session, { ref, selector, text, submit, clearFirst, m
         await session.page.waitForLoadState('domcontentloaded').catch(() => {})
     }
     const after = session.page.url()
-    if (!isUrlAllowed(after, session.allowlist)) {
+    const submitHop = takeDisallowedHop(session)
+    if (submitHop || !isUrlAllowed(after, session.policy)) {
         return {
             ok: false,
             reason: 'navigated_off_allowlist',
-            error: `Submitting navigated to ${after}, which is not on the allowlist.`,
+            error: `Submitting navigated to ${submitHop || after}, which is not permitted.`,
         }
     }
     const snapshot = await snapshotPage(session.page, { maxChars })
@@ -378,6 +441,7 @@ async function performScreenshot(session, { fullPage }) {
 
 module.exports = {
     INTERACTIVE_SELECTOR,
+    takeDisallowedHop,
     REF_ATTRIBUTE,
     describeElement,
     ensureNetworkGuard,

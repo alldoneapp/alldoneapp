@@ -17,10 +17,20 @@
 
 const path = require('path')
 
-const { normalizeAllowlistEntry } = require('./browserAllowlist')
+const {
+    ACCESS_MODE_ALL_PUBLIC,
+    ACCESS_MODE_SELECTED,
+    normalizeAccessMode,
+    normalizeAllowlistEntry,
+} = require('./browserAllowlist')
 
 // The web module is ESM; jest transforms it through the root babel config like any other app file.
-const { validateAllowlistEntry } = require(path.join(__dirname, '..', '..', '..', 'utils', 'browserAllowlistInput.js'))
+const {
+    BROWSER_ACCESS_MODE_ALL_PUBLIC,
+    BROWSER_ACCESS_MODE_SELECTED,
+    normalizeBrowserAccessMode,
+    validateAllowlistEntry,
+} = require(path.join(__dirname, '..', '..', '..', 'utils', 'browserAllowlistInput.js'))
 
 function serverNormalized(entry) {
     const parsed = normalizeAllowlistEntry(entry)
@@ -111,5 +121,29 @@ describe('allowlist parity between the editor and the policy', () => {
         const { entries } = normalizeAllowlist([typed.value])
         expect(checkUrlAgainstAllowlist('https://www.eventim.de/city/berlin/konzert-1', entries).allowed).toBe(true)
         expect(checkUrlAgainstAllowlist('https://www.eventim.de/account', entries).allowed).toBe(false)
+    })
+})
+
+describe('access-mode parity between the editor and the policy', () => {
+    it('uses the same two strings on both sides', () => {
+        // The mode travels as a string from the editor through Firestore to the policy and into the
+        // signed worker token. A typo on either side would read as `selected` and look like the
+        // setting being ignored.
+        expect(BROWSER_ACCESS_MODE_SELECTED).toBe(ACCESS_MODE_SELECTED)
+        expect(BROWSER_ACCESS_MODE_ALL_PUBLIC).toBe(ACCESS_MODE_ALL_PUBLIC)
+    })
+
+    it.each([undefined, null, '', 'selected', 'all_public', 'ALL_PUBLIC', 'all public', 'everything', 0, {}])(
+        'agrees on how to read %p',
+        value => {
+            expect(normalizeBrowserAccessMode(value)).toBe(normalizeAccessMode(value))
+        }
+    )
+
+    it('never widens on an unknown value on either side', () => {
+        for (const value of ['anything', 'public', 'ALL', true]) {
+            expect(normalizeBrowserAccessMode(value)).toBe(ACCESS_MODE_SELECTED)
+            expect(normalizeAccessMode(value)).toBe(ACCESS_MODE_SELECTED)
+        }
     })
 })

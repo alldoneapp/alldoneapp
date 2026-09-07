@@ -5,10 +5,12 @@
 // Run service, and everything that constrains a run has to travel with the request in a form the
 // caller cannot rewrite.
 //
-// The token carries the ALLOWLIST and the LIMITS, not just an identity. That is the point: the
-// worker enforces "this navigation is off-allowlist" at the network layer, where redirects and
-// page-initiated navigations actually happen, but it never gets to decide what the allowlist is.
-// Policy stays in Functions; the worker is the place the decision is applied.
+// The token carries the whole BROWSING POLICY — access mode, allowlist, denylist — and the LIMITS,
+// not just an identity. That is the point: the worker enforces "this navigation is not permitted" at
+// the network layer, where redirects and page-initiated navigations actually happen, but it never
+// gets to decide what is permitted. Policy stays in Functions; the worker is the place the decision
+// is applied. In particular the MODE travels signed, so "all public websites" cannot be asserted by
+// anything that merely talks to the worker.
 //
 // Nothing here throws for a page problem — a worker failure comes back as `{ ok: false, error }` so
 // the tool can report it to the model like any other unreachable page.
@@ -43,6 +45,8 @@ function mintWorkerToken(
         projectId,
         userId,
         allowlist = [],
+        denylist = [],
+        accessMode = 'selected',
         limits = {},
         expiresAtMs = Date.now() + DEFAULT_TOKEN_TTL_MS,
     },
@@ -61,6 +65,14 @@ function mintWorkerToken(
                 s: entry.subdomainsOnly === true,
                 p: entry.pathPrefix || '',
             })),
+            deny: (Array.isArray(denylist) ? denylist : []).map(entry => ({
+                h: entry.host,
+                s: entry.subdomainsOnly === true,
+                p: entry.pathPrefix || '',
+            })),
+            // Anything other than the exact string is read as `selected` on the way out, so a
+            // truncated or hand-edited payload cannot become "the whole internet".
+            mode: accessMode === 'all_public' ? 'all_public' : 'selected',
             lim: {
                 redirects: limits.maxRedirectsPerNavigation,
                 requests: limits.maxNetworkRequests,
@@ -115,6 +127,14 @@ function verifyWorkerToken(token, signingSecret, nowMs = Date.now()) {
                   pathPrefix: String(entry?.p || ''),
               }))
             : [],
+        denylist: Array.isArray(data.deny)
+            ? data.deny.map(entry => ({
+                  host: String(entry?.h || ''),
+                  subdomainsOnly: entry?.s === true,
+                  pathPrefix: String(entry?.p || ''),
+              }))
+            : [],
+        accessMode: data.mode === 'all_public' ? 'all_public' : 'selected',
         limits: data.lim && typeof data.lim === 'object' ? data.lim : {},
     }
 }
@@ -151,6 +171,8 @@ async function callBrowserWorker({
                 projectId,
                 userId,
                 allowlist: config.allowlist,
+                denylist: config.denylist,
+                accessMode: config.accessMode,
                 limits: config.limits,
                 expiresAtMs: now + DEFAULT_TOKEN_TTL_MS,
             },

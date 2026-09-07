@@ -142,6 +142,60 @@ describe('browser tool registration', () => {
         }
     })
 
+    it('keeps the access mode a SIGNED claim rather than a request parameter', () => {
+        // The client-only-bypass question: everything that decides "which hosts" has to be inside
+        // the HMAC-signed token, and the worker has to read it from there.
+        const client = readRepoFile('functions/Assistant/browser/browserWorkerClient.js')
+        expect(client).toMatch(/mode: accessMode === 'all_public'/)
+        expect(client).toContain('deny: (Array.isArray(denylist)')
+
+        const actions = readRepoFile('functions/Assistant/browser-worker/browserActions.js')
+        // The worker asks the same function Functions asks, so `all_public` cannot mean something
+        // looser at the network layer than it meant in the policy.
+        expect(actions).toContain("requireShared('browserAllowlist')")
+        expect(actions).toContain('checkUrlAgainstAllowlist(url, policy)')
+        expect(actions).not.toMatch(/hostMatchesEntry\(parsed\.hostname/)
+    })
+
+    it('offers the three modes with a warning, in every shipped language', () => {
+        const modal = readRepoFile('components/UIComponents/FloatModals/BrowserAllowlistModal/BrowserAllowlistModal.js')
+        expect(modal).toContain('browser_mode_all_public_warning')
+        expect(modal).toContain('browser_mode_all_public_still_blocked')
+        expect(modal).toContain('BROWSER_ACCESS_MODE_ALL_PUBLIC')
+
+        for (const language of ['en', 'de', 'es']) {
+            const translations = JSON.parse(readRepoFile(`i18n/translations/${language}.json`))
+            for (const key of [
+                'browser_mode_off',
+                'browser_mode_selected',
+                'browser_mode_all_public',
+                'browser_mode_all_public_warning',
+                'browser_mode_all_public_still_blocked',
+                'browser_allowlist_unused_in_all_public',
+                'Blocked websites',
+            ]) {
+                expect(translations[key]).toBeTruthy()
+            }
+        }
+    })
+
+    it('bills one Gold per executed step and nothing else', () => {
+        // The product decision, ratcheted: refused / paused / failed steps stay free.
+        const { BROWSER_STEP_GOLD } = require('./browserGold')
+        expect(BROWSER_STEP_GOLD).toBe(1)
+
+        const session = readRepoFile('functions/Assistant/browser/browserSession.js')
+        const chargeIndex = session.indexOf('chargeGoldForBrowserStep({')
+        const actIndex = session.indexOf("operation: 'act'")
+        // The charge sits AFTER the worker call and after its failure branch returns, which is what
+        // makes "only executed steps" true by construction rather than by a condition.
+        expect(chargeIndex).toBeGreaterThan(actIndex)
+        // And the charge is keyed on the step id, so a replay of the whole call cannot charge twice.
+        expect(readRepoFile('functions/Assistant/browser/browserGold.js')).toContain(
+            'idempotencyKey: buildIdempotencyKey(stepId)'
+        )
+    })
+
     it('recognises its own tool names and nothing else', () => {
         expect(BROWSER_TOOL_NAMES.every(isBrowserToolName)).toBe(true)
         expect(isBrowserToolName('browser_automation')).toBe(false)
