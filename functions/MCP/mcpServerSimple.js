@@ -52,6 +52,16 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'web_search',
     'get_route_info',
     'get_local_recommendations',
+    // Browsing. The six names are listed individually rather than through the `browser_automation`
+    // Tools Access key: an MCP caller has no assistant document, so the per-assistant toggle does
+    // not apply here — the per-user MCP config (Settings → MCP) is the switch, and the allowlist,
+    // limits and approval gates in Assistant/browser apply to this surface exactly as to the chat.
+    'browser_navigate',
+    'browser_inspect',
+    'browser_click',
+    'browser_type',
+    'browser_wait',
+    'browser_screenshot',
     // Chat attachments
     'get_chat_attachment',
     'list_recent_chat_media',

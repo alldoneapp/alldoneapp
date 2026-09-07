@@ -348,9 +348,14 @@ const deductGold = async (userId, gold, context = {}) => {
         source,
         context,
         requireSufficientBalance: true,
+        // Forwarded exactly as `refundGold` already does. A spend site that can be replayed — a
+        // retried Cloud Function, an at-least-once redelivery — has no other way to be idempotent,
+        // and without it the only options are "charge twice" or "hand-roll a second claim store".
+        // Callers that pass nothing behave exactly as before: no key, no claim, no change.
+        idempotencyKey: context.idempotencyKey,
     })
 
-    if (result.success) {
+    if (result.success && !result.alreadyProcessed) {
         await logGoldAnalytics(userId, 'spend_gold', result.amount, source, context)
     }
 
