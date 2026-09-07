@@ -3,13 +3,13 @@
  *
  * This service provides flexible task searching capabilities that work across
  * all platforms and contexts, supporting partial matching on various criteria:
- * - Task ID (direct lookup via Algolia)
- * - Task name (partial matching via Algolia)
- * - Human readable ID (via Algolia)
+ * - Task ID (direct Firestore lookup)
+ * - Task name (partial matching via Typesense)
+ * - Human readable ID (exact Firestore lookup when supplied as taskId)
  * - Project name (partial matching)
  * - Project ID (direct lookup)
  *
- * Uses Algolia exclusively for all searches (text, ID, and humanReadableId searches).
+ * Exact IDs are resolved against Firestore; flexible text searches use Typesense.
  */
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
@@ -136,6 +136,10 @@ class TaskSearchService {
                     matchScore: 1000, // Highest priority for direct ID match
                     matchType: 'direct_id',
                 })
+            } else {
+                matches.push(
+                    ...(await this.findTasksByHumanReadableId(taskId, userProjects, userId, normalizedCriteria))
+                )
             }
         }
 
@@ -417,10 +421,14 @@ class TaskSearchService {
     filterAndLimitResults(matches, searchCriteria) {
         const { taskId } = searchCriteria
 
-        // If searching by direct ID, return at most 1 result (exact match)
+        // Internal IDs take precedence. Keep every exact visible-number match so
+        // project-prefix collisions require selection instead of updating an arbitrary task.
         if (taskId) {
             const exactMatch = matches.find(m => m.task.id === taskId)
-            return exactMatch ? [exactMatch] : []
+            if (exactMatch) return [exactMatch]
+            return matches
+                .filter(m => m.task.humanReadableId?.toUpperCase() === taskId.toUpperCase())
+                .map(m => ({ ...m, matchScore: 1000, matchType: 'exact_id' }))
         }
 
         // Group matches by relevance tiers
@@ -532,7 +540,7 @@ class TaskSearchService {
                 if (!this.canUserAccessTask(taskData, userId)) continue
 
                 return {
-                    task: { id: taskId, ...taskData },
+                    task: { ...taskData, id: taskDoc.id },
                     projectId: candidateProjectId,
                     projectName: project.name,
                 }
@@ -546,6 +554,39 @@ class TaskSearchService {
         }
 
         return null
+    }
+
+    /**
+     * Resolve visible task numbers without depending on search-index freshness.
+     * Counters and prefixes are project-specific, so collect all accessible matches.
+     */
+    async findTasksByHumanReadableId(taskId, userProjects, userId, { projectId, projectName } = {}) {
+        if (!/^[a-z]+-\d+$/i.test(taskId)) return []
+
+        const targetProjects = userProjects.filter(project => {
+            if (projectId) return project.id === projectId
+            if (projectName) return project.name?.toLowerCase().includes(projectName.toLowerCase())
+            return true
+        })
+        const results = await Promise.all(
+            targetProjects.map(async project => {
+                const snapshot = await this.options.database
+                    .collection(`items/${project.id}/tasks`)
+                    .where('humanReadableId', '==', taskId.toUpperCase())
+                    .get()
+
+                return snapshot.docs
+                    .filter(doc => this.canUserAccessTask(doc.data(), userId))
+                    .map(doc => ({
+                        task: { ...doc.data(), id: doc.id },
+                        projectId: project.id,
+                        projectName: project.name,
+                        matchScore: 1000,
+                        matchType: 'exact_id',
+                    }))
+            })
+        )
+        return results.flat()
     }
 
     /**

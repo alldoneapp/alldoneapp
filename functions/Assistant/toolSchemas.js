@@ -678,7 +678,8 @@ const toolSchemas = {
                 properties: {
                     taskId: {
                         type: 'string',
-                        description: 'The ID of the task to update (for single task updates)',
+                        description:
+                            'The internal task document ID or exact visible task number (humanReadableId, e.g. PT-4902). Both are supported for single task updates. Include projectId or projectName if the visible number exists in multiple projects.',
                     },
                     taskName: {
                         type: 'string',
