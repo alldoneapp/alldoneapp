@@ -185,7 +185,10 @@ const processRambleSecondGen = onCall(
         // looking like an independent measurement.
         const transcriptionStartedAt = Date.now()
         try {
-            transcription = await transcribeAudioBase64(audio, keyterms.length ? { keyterms } : undefined)
+            transcription = await transcribeAudioBase64(audio, {
+                ...(keyterms.length ? { keyterms } : {}),
+                retryEmptyTranscript: true,
+            })
         } catch (error) {
             console.error('[processRamble] Transcription failed:', error)
             await failAfterDraining('internal', 'Failed to transcribe audio')
@@ -198,6 +201,12 @@ const processRambleSecondGen = onCall(
 
         const transcript = transcription.transcript
         if (!transcript) {
+            console.warn('[processRamble] No speech after transcription', {
+                ...timings,
+                payloadChars: audio.length,
+                audioSeconds: transcription.durationSeconds,
+                emptyTranscriptRetried: transcription.emptyTranscriptRetried === true,
+            })
             await failAfterDraining('failed-precondition', 'EMPTY_TRANSCRIPT')
         }
 
@@ -292,6 +301,7 @@ const processRambleSecondGen = onCall(
             // acoustic half of the vocabulary silently did nothing, which is otherwise invisible.
             keytermCount: transcription.keytermCount ?? 0,
             keytermFallback: transcription.keytermFallback === true,
+            emptyTranscriptRetried: transcription.emptyTranscriptRetried === true,
             // Which languages the Nova-3 multilingual model actually detected. `language: 'multi'`
             // covers ten languages; this is how a user dictating outside them becomes visible
             // instead of just quietly getting a worse transcript. Tags only, never content.

@@ -263,6 +263,20 @@ describe('isLikelyBadRequestError', () => {
 })
 
 describe('response handling', () => {
+    test.each([
+        { paragraphs: [] },
+        { paragraphs: [{ sentences: [] }] },
+        { paragraphs: [{ sentences: [{ text: '   ' }] }] },
+        { paragraphs: [null, { sentences: null }] },
+    ])('keeps recognized speech when paragraph formatting is empty or incomplete: %j', ({ paragraphs }) => {
+        const result = {
+            results: {
+                channels: [{ alternatives: [{ transcript: 'Please call Anna.', paragraphs: { paragraphs } }] }],
+            },
+        }
+        expect(formatTranscript(result)).toBe('Please call Anna.')
+    })
+
     test('reports the duration Deepgram measured, not a client hint', async () => {
         const result = await transcribeAudioBase64('AAAA')
         expect(result.durationSeconds).toBe(12.5)
@@ -299,6 +313,90 @@ describe('response handling', () => {
     test('returns an empty string rather than throwing on an empty result', () => {
         expect(formatTranscript({})).toBe('')
         expect(formatTranscript(undefined)).toBe('')
+    })
+})
+
+describe('empty dictation recovery', () => {
+    const empty = {
+        results: { channels: [{ alternatives: [{ transcript: '', paragraphs: { paragraphs: [] } }] }] },
+        metadata: { duration: 12.5, request_id: 'empty-request' },
+    }
+
+    beforeEach(() => {
+        jest.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    test('reuses the same audio and vocabulary once, returning recovered speech', async () => {
+        globalThis.fetch = jest
+            .fn()
+            .mockResolvedValueOnce(jsonResponse(empty))
+            .mockResolvedValueOnce(jsonResponse(TRANSCRIPT_BODY))
+
+        const result = await transcribeAudioBase64('data:audio/webm;base64,QUJD', {
+            keyterms: ['Alldone'],
+            retryEmptyTranscript: true,
+        })
+
+        expect(result).toMatchObject({ transcript: 'hello world', emptyTranscriptRetried: true, durationSeconds: 12.5 })
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+        const [first, second] = globalThis.fetch.mock.calls
+        expect(second[0]).toBe(first[0])
+        expect(Buffer.from(second[1].body)).toEqual(Buffer.from(first[1].body))
+        expect(Buffer.from(second[1].body).toString()).toBe('ABC')
+        expect(JSON.stringify(console.warn.mock.calls)).not.toContain('hello world')
+        expect(JSON.stringify(console.warn.mock.calls)).not.toContain('QUJD')
+    })
+
+    test('does not retry a usable flat transcript hidden behind an empty paragraph array', async () => {
+        globalThis.fetch = jest.fn(async () =>
+            jsonResponse({
+                ...empty,
+                results: {
+                    channels: [{ alternatives: [{ transcript: 'Call Anna.', paragraphs: { paragraphs: [] } }] }],
+                },
+            })
+        )
+        expect((await transcribeAudioBase64('AAAA', { retryEmptyTranscript: true })).transcript).toBe('Call Anna.')
+        expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    test('stops after two empty responses', async () => {
+        globalThis.fetch = jest.fn(async () => jsonResponse(empty))
+        expect(await transcribeAudioBase64('AAAA', { retryEmptyTranscript: true })).toMatchObject({
+            transcript: '',
+            emptyTranscriptRetried: true,
+        })
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    test('does not add retries to meeting transcription', async () => {
+        globalThis.fetch = jest.fn(async () => jsonResponse(empty))
+        expect((await transcribeAudioBase64('AAAA')).emptyTranscriptRetried).toBe(false)
+        expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    test('keeps the no-speech result when recovery fails, without SDK retries', async () => {
+        globalThis.fetch = jest
+            .fn()
+            .mockResolvedValueOnce(jsonResponse(empty))
+            .mockResolvedValue(jsonResponse({ err_msg: 'unavailable' }, 503))
+        expect(await transcribeAudioBase64('AAAA', { retryEmptyTranscript: true })).toMatchObject({
+            transcript: '',
+            durationSeconds: 12.5,
+        })
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    test('does not reintroduce keyterms rejected by the provider', async () => {
+        globalThis.fetch = jest
+            .fn()
+            .mockResolvedValueOnce(jsonResponse({ err_msg: 'keyterm not supported' }, 400))
+            .mockResolvedValueOnce(jsonResponse(empty))
+            .mockResolvedValueOnce(jsonResponse(TRANSCRIPT_BODY))
+        const result = await transcribeAudioBase64('AAAA', { keyterms: ['Alldone'], retryEmptyTranscript: true })
+        expect(globalThis.fetch).toHaveBeenCalledTimes(3)
+        expect(queryOf(globalThis.fetch.mock.calls[2][0]).getAll('keyterm')).toEqual([])
+        expect(result).toMatchObject({ transcript: 'hello world', keytermFallback: true, keytermCount: 0 })
     })
 })
 
