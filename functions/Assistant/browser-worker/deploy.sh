@@ -58,7 +58,8 @@ done
 gcloud run deploy "$SERVICE_NAME" --project="$PROJECT" --region="$REGION" --image="$IMAGE" \
     --service-account="$SA" --no-allow-unauthenticated --ingress=all \
     --memory=2Gi --cpu=2 --concurrency=4 --min-instances=0 --max-instances=3 --timeout=120s \
-    --set-env-vars="BROWSER_WORKER_MAX_SESSIONS=8"
+    --session-affinity \
+    --update-env-vars="BROWSER_WORKER_MAX_SESSIONS=8"
 
 echo
 echo "Deployed ${SERVICE_NAME}."

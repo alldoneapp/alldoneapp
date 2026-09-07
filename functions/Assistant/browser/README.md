@@ -4,11 +4,11 @@ The assistant can open a page in a real browser, read it, interact with it and s
 directory is the Cloud Functions half: configuration, policy, approvals, limits, evidence and the
 audit trail. The browser itself runs in `../browser-worker`, a separate Cloud Run service.
 
-**Status: not enabled anywhere.** Nothing is deployed, no environment carries the configuration, and
-with no configuration every call is refused with a message naming what is missing. Switching it on
-is a deliberate operational act — see _Enabling it_ below. The feature itself is complete: the
-allowlist has an editor, sensitive actions have an approval card, every executed step is billed, and
-the whole stack has been driven against a real Chromium (`browser-tests/at2518`).
+**Status: enabled in production.** The worker is deployed on Cloud Run in `alldonealeph` and the
+production Functions environment carries its URL and signing secret. Staging still fails closed
+unless configured separately. The allowlist has an editor, sensitive actions have an approval card,
+every executed step is billed, and the whole stack is driven against a real Chromium
+(`browser-tests/at2518`).
 
 ## Why not just `fetch_url`
 
@@ -36,6 +36,10 @@ model
                       ├─ worker: act        perform the action
                       ├─ browserEvidence    screenshot + snapshot → Storage, hashed
                       └─ browserRedaction   what the model sees, what the record keeps
+
+user login approval
+  └─ BrowserTakeoverPanel → browserTakeoverSecondGen → worker: takeover
+       └─ one click/type/key/scroll + fresh JPEG per paid cycle; no secret persistence
 ```
 
 The same path serves the in-app assistant, the WhatsApp bridge and the MCP server, because all three
@@ -66,6 +70,26 @@ describe the button — the DOM does.
 A run is scoped to one thread (`browserSessions/{projectId}__{objectId}`), the same shape as a VM
 session. `browser_navigate` opens it; everything else needs it open.
 
+### Session-only login takeover
+
+A click classified as `login` is not offered to the assistant as an ordinary approval. Its card
+offers **Sign in securely**, which opens `BrowserTakeoverPanel` under the same assistant comment.
+The panel is screenshot-driven: each explicit click, type, key, scroll or refresh goes through the
+authenticated `browserTakeoverSecondGen` callable to the IAM-private worker and returns the updated
+viewport. Each successful cycle is a normal one-Gold browser step with its own audit/idempotency key.
+
+Text typed in the panel is held in component state only until the request completes. The callable
+passes it to Playwright but substitutes `{textLength}` before creating the audit step. Takeover JPEGs
+are returned only to the authenticated caller and are not uploaded as evidence, because a login
+viewport may contain account data. Clicking **I'm signed in** hands the same in-memory context back
+to the assistant; no cookies or `storageState` are exported, and closing, expiry or worker teardown
+destroys them. The user must ask the assistant to continue because the original turn already ended.
+
+Cloud Run session affinity is enabled and its opaque routing cookie is stored only on the
+server-owned run document and replayed by Functions. It is a best-effort routing hint, not a
+durability guarantee: an instance restart still ends the session, which is acceptable for this
+occasional, explicitly temporary flow.
+
 ## Security controls
 
 | control                             | where                                     | behaviour                                                                                                                                                                           |
@@ -77,7 +101,7 @@ session. `browser_navigate` opens it; everything else needs it open.
 | Run limits                          | `browserLimits.js`                        | steps, navigations, screenshots, requests, bytes, wall clock — charged in the step transaction, persisted on the run                                                                |
 | In-page limits                      | worker                                    | request/byte caps, redirect cap, per-step timeout, idle teardown                                                                                                                    |
 | Ephemeral context                   | worker `sessionStore.js`                  | one context per run, no `storageState` in or out, downloads refused, dialogs dismissed, popups closed                                                                               |
-| No credentials anywhere             | policy + worker                           | a credential-shaped string is never typed outside a credential field; nothing is persisted between runs                                                                             |
+| Credential isolation                | policy + takeover callable                | the model can never type credentials; the requesting user may type directly into the temporary viewport, and the value exists only in transit to the worker                         |
 | Approval gates                      | `browserPolicy.js`, `browserApprovals.js` | login, upload, booking, payment, submit/publish, delete, external message — refused until the requesting user approves                                                              |
 | Bypass prevention                   | `browserSession.js`                       | describe-then-classify; an unresolvable element is a refusal, not an unclassified click                                                                                             |
 | Audit trail                         | `browserAudit.js`                         | one run doc + one step doc per tool call: decision, category, evidence for the decision, approval id, usage, timings                                                                |
@@ -182,7 +206,9 @@ cannot loop on the dialog.
 assistant comment that asked for it, with **Allow once**, **Allow for this run** and **Deny** — the
 same card, the same three answers and the same wording as `VmInteractionCard`, because it is the same
 question, and a differently-shaped answer to it is how a user learns that approving in one surface
-does not mean what it means in the other.
+does not mean what it means in the other. Login is the deliberate exception: it shows **Sign in
+securely** and gives control to the requesting user, because an approval must never let the model
+receive or type a password.
 
 Which comment it hangs off is decided by `assistantCommentId`, stamped on the request from the
 runtime context (`assistantHelper` puts the assistant's own answer comment id there). A thread can
@@ -258,28 +284,28 @@ The Functions caller sends a Google-issued ID token in `X-Serverless-Authorizati
 IAM and keeps the short-lived browsing-policy HMAC token in `Authorization` for the worker itself.
 Both layers are required; removing either one makes the request fail closed.
 
-**Before production:** nothing in the code is missing, but two operational decisions are: the first
-allowlist (which sites the assistant may open at all) and whether 1 Gold per step is the price you
-want (see _Gold_).
+The production worker uses Cloud Run session affinity. `browserWorkerClient` captures the opaque
+affinity cookie from each response and sends it with the next request for that run; do not expose
+that cookie to the client or confuse it with the third-party site's cookies inside Chromium.
 
 ## Threat model
 
 Assets: the user's Alldone data, their Google Cloud project, other users' data, Alldone's platform
 credentials, and the user's standing with the third-party sites the assistant visits.
 
-| threat                                                                        | mitigation                                                                                                                                           | residual                                                                                                                                                                                                           |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Prompt injection on a visited page tells the model to buy/send/delete         | the model cannot approve anything; every state-changing action needs a human answer on a signature it cannot forge                                   | a user who approves without reading; injection can still waste budget and produce a misleading answer                                                                                                              |
-| Injection tells the model to exfiltrate data by navigating to an attacker URL | allowlist, default deny; every document request and redirect hop re-matched in the worker                                                            | a page may still make **sub-resource** requests anywhere (an image URL can carry data). Sub-resources are not allowlist-restricted because almost no site renders without third-party CDNs                         |
-| SSRF into the GCP network / metadata server                                   | private, link-local, CGNAT, loopback, IPv6 ULA and IP literals refused both at allowlist-entry time and at check time; metadata host refused by name | **DNS rebinding**: an allowlisted name that resolves to a private address is not caught, because the check is on the name. Mitigate by giving the worker service restricted egress (VPC connector + egress policy) |
-| Credential theft (typing a user's password into a site)                       | credential-shaped input refused outside credential fields; password fields require an approval; no credential store exists to draw from              | a user can still approve a login and type the password into the chat — never ask them to                                                                                                                           |
-| Session hijack / persistence                                                  | ephemeral context per run, no storageState in or out, no cookie reuse, idle teardown                                                                 | a site can fingerprint the worker's IP; sessions inside one run share cookies by design                                                                                                                            |
-| Leaked worker token                                                           | 2-minute TTL, HMAC-signed, carries its own allowlist and session id, service is not publicly invokable                                               | up to two minutes of browsing on hosts already allowed for that run                                                                                                                                                |
-| Malicious page attacks the worker (browser exploit)                           | Chromium sandbox on, non-root container, no host mounts, no credentials in the container, max-instances cap                                          | a Chromium 0-day gets a container with a signed token in memory                                                                                                                                                    |
-| Data leaking into the model's context / provider logs                         | credential redaction on all model-facing text; typed text never stored                                                                               | page content the user asked for is by design in the context; a screenshot cannot be redacted and is therefore never handed to the model, only stored and linked                                                    |
-| Audit trail tampering                                                         | `browserRuns` / `browserApprovals` have no security rule (Firestore default deny) and are Admin-SDK-only                                             | anyone with Admin SDK access can rewrite records; the SHA-256 on the evidence detects a swapped object, not a rewritten record                                                                                     |
-| Cost / abuse                                                                  | per-run step, navigation, screenshot, request, byte and wall-clock budgets; worker session cap and max-instances                                     | no Gold metering yet — see below                                                                                                                                                                                   |
-| A project member widens the allowlist                                         | project entries are validated exactly like environment ones; widening only widens what may be READ, since every state change still needs an approval | a member can point the assistant at any public site their project may read                                                                                                                                         |
+| threat                                                                        | mitigation                                                                                                                                                | residual                                                                                                                                                                                                           |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Prompt injection on a visited page tells the model to buy/send/delete         | the model cannot approve anything; every state-changing action needs a human answer on a signature it cannot forge                                        | a user who approves without reading; injection can still waste budget and produce a misleading answer                                                                                                              |
+| Injection tells the model to exfiltrate data by navigating to an attacker URL | allowlist, default deny; every document request and redirect hop re-matched in the worker                                                                 | a page may still make **sub-resource** requests anywhere (an image URL can carry data). Sub-resources are not allowlist-restricted because almost no site renders without third-party CDNs                         |
+| SSRF into the GCP network / metadata server                                   | private, link-local, CGNAT, loopback, IPv6 ULA and IP literals refused both at allowlist-entry time and at check time; metadata host refused by name      | **DNS rebinding**: an allowlisted name that resolves to a private address is not caught, because the check is on the name. Mitigate by giving the worker service restricted egress (VPC connector + egress policy) |
+| Credential theft (typing a user's password into a site)                       | the model path refuses credentials; login opens authenticated human takeover; typed values are replaced by lengths before audit and frames are not stored | compromise of the callable/worker runtime could still observe in-flight input; users must never type credentials into the assistant chat                                                                           |
+| Session hijack / persistence                                                  | ephemeral context per run, no storageState in or out, no cookie reuse, idle teardown                                                                      | a site can fingerprint the worker's IP; sessions inside one run share cookies by design                                                                                                                            |
+| Leaked worker token                                                           | 2-minute TTL, HMAC-signed, carries its own allowlist and session id, service is not publicly invokable                                                    | up to two minutes of browsing on hosts already allowed for that run                                                                                                                                                |
+| Malicious page attacks the worker (browser exploit)                           | Chromium sandbox on, non-root container, no host mounts, no credentials in the container, max-instances cap                                               | a Chromium 0-day gets a container with a signed token in memory                                                                                                                                                    |
+| Data leaking into the model's context / provider logs                         | credential redaction on all model-facing text; typed text never stored                                                                                    | page content the user asked for is by design in the context; a screenshot cannot be redacted and is therefore never handed to the model, only stored and linked                                                    |
+| Audit trail tampering                                                         | `browserRuns` / `browserApprovals` have no security rule (Firestore default deny) and are Admin-SDK-only                                                  | anyone with Admin SDK access can rewrite records; the SHA-256 on the evidence detects a swapped object, not a rewritten record                                                                                     |
+| Cost / abuse                                                                  | per-run step, navigation, screenshot, request, byte and wall-clock budgets; one Gold per successful assistant or takeover cycle; worker session cap       | a user can deliberately spend Gold through repeated takeover gestures; the UI states the unit price and running total                                                                                              |
+| A project member widens the allowlist                                         | project entries are validated exactly like environment ones; widening only widens what may be READ, since every state change still needs an approval      | a member can point the assistant at any public site their project may read                                                                                                                                         |
 
 ### One redirect detail worth knowing
 

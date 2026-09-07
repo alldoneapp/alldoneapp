@@ -37,9 +37,11 @@ const DEFAULT_BROWSER_LIMITS = {
     maxRedirectsPerNavigation: 5,
     maxNetworkRequests: 250,
     maxResponseBytes: 20 * 1024 * 1024,
-    maxRunWallClockMs: 5 * 60 * 1000,
+    // A person completing MFA or a federated login needs more than the old five/three-minute
+    // window. The step cap and per-step Gold charge still bound useful work inside this window.
+    maxRunWallClockMs: 10 * 60 * 1000,
     maxStepTimeoutMs: 20 * 1000,
-    maxSessionIdleMs: 3 * 60 * 1000,
+    maxSessionIdleMs: 10 * 60 * 1000,
     maxSnapshotChars: 16000,
 }
 

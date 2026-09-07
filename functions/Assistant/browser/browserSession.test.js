@@ -498,6 +498,30 @@ describe('executeBrowserTool', () => {
             expect(step.goldCharged).toBe(true)
         })
 
+        it('charges every executed action separately within the same browser run', async () => {
+            const worker = createWorkerDouble({
+                navigate: () => pageResult(),
+                describe: () => ({
+                    ok: true,
+                    pageUrl: 'https://tickets.example/event/42',
+                    target: { tagName: 'a', role: 'link', name: 'Next page', isSubmit: false },
+                }),
+                click: () => pageResult(),
+            })
+            const db = new FirestoreDouble()
+            const ledger = createLedgerDouble()
+
+            await run({ db, worker, ledger })
+            await run({ db, worker, ledger, toolName: 'browser_click', toolArgs: { ref: 'e1' } })
+            await run({ db, worker, ledger, toolName: 'browser_click', toolArgs: { ref: 'e2' } })
+
+            expect(db.listCollection('browserRuns')).toHaveLength(1)
+            expect(worker.calls.filter(call => call.action === 'click')).toHaveLength(2)
+            expect(ledger.charges).toHaveLength(3)
+            expect(ledger.charges.map(charge => charge.amount)).toEqual([1, 1, 1])
+            expect(new Set(ledger.charges.map(charge => charge.context.idempotencyKey)).size).toBe(3)
+        })
+
         it('charges nothing for a step the POLICY refused', async () => {
             // Billing the user for the protection working is the one outcome that would make people
             // switch it off.

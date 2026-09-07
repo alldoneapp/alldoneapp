@@ -143,6 +143,7 @@ async function describeTarget({
     args,
     fetchImpl,
     identityTokenProvider,
+    affinityCookie,
     now,
 }) {
     return callBrowserWorker({
@@ -155,6 +156,7 @@ async function describeTarget({
         userId,
         fetchImpl,
         identityTokenProvider,
+        affinityCookie,
         now,
     })
 }
@@ -226,6 +228,7 @@ async function executeBrowserTool({
     const { runId, stepId, run, budget, limits } = step
     const sessionId = run.workerSessionId
     const startedAt = now
+    let affinityCookie = run.affinityCookie || ''
 
     try {
         // ---- OBSERVE ---------------------------------------------------------------------
@@ -242,8 +245,13 @@ async function executeBrowserTool({
                 args: toolArgs,
                 fetchImpl,
                 identityTokenProvider,
+                affinityCookie,
                 now,
             })
+            if (described.affinityCookie) {
+                affinityCookie = described.affinityCookie
+                await runRef(db, runId).set({ affinityCookie }, { merge: true })
+            }
             if (!described.ok || !described.target) {
                 const message =
                     described.error ||
@@ -430,8 +438,14 @@ async function executeBrowserTool({
             userId: requestUserId,
             fetchImpl,
             identityTokenProvider,
+            affinityCookie,
             now,
         })
+
+        if (workerResult.affinityCookie) {
+            affinityCookie = workerResult.affinityCookie
+            await runRef(db, runId).set({ affinityCookie }, { merge: true })
+        }
 
         if (!workerResult.ok) {
             await completeBrowserStep(db, {
@@ -630,6 +644,7 @@ async function closeBrowserSession({
                 userId: run.requestUserId,
                 fetchImpl,
                 identityTokenProvider,
+                affinityCookie: run.affinityCookie || '',
                 now,
             })
         }

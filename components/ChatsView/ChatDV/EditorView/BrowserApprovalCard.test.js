@@ -23,6 +23,8 @@ jest.mock('../../../../i18n/TranslationService', () => ({
     translate: (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key),
 }))
 
+jest.mock('./BrowserTakeoverPanel', () => 'BrowserTakeoverPanel')
+
 const BrowserApprovalCard = require('./BrowserApprovalCard').default
 
 function approval(overrides = {}) {
@@ -99,6 +101,17 @@ describe('BrowserApprovalCard', () => {
 
         const refused = publish(render(), [approval({ category: 'payment', allowRunScope: false })])
         expect(textsOf(refused)).not.toContain('browser_approval_allow_run')
+    })
+
+    it('routes login approvals into secure human takeover instead of letting the assistant type credentials', () => {
+        const tree = publish(render(), [approval({ category: 'login', allowRunScope: false })])
+
+        expect(textsOf(tree)).toContain('browser_takeover_start')
+        expect(textsOf(tree)).not.toContain('browser_approval_allow_once')
+        act(() => {
+            pressLabelled(tree, 'browser_takeover_start')
+        })
+        expect(tree.root.findByType('BrowserTakeoverPanel').props.approval.approvalId).toBe('bapr_1')
     })
 
     it('sends the answer with the scope the button stands for', async () => {
