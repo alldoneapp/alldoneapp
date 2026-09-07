@@ -10,8 +10,9 @@
 //   die with the context. Two runs — even two runs of the same user on the same site — never share
 //   a logged-in state, which is what makes "the assistant is browsing on your behalf" false in the
 //   only sense that matters: it is browsing as nobody.
-// - Downloads are refused, dialogs are dismissed, popups are closed. Each of them is a way for a
-//   page to move the run somewhere the policy never looked at.
+// - Downloads are refused and dialogs are dismissed. Popups are closed unless they are the direct
+//   result of a short-lived human takeover gesture; even then the context-wide network policy sees
+//   their document request before it loads.
 // - Every session has an idle deadline and the process has a session cap, so a wedged page costs
 //   one context for a bounded time rather than a container.
 
@@ -92,18 +93,12 @@ async function createSession(
     context.setDefaultTimeout(20000)
     context.setDefaultNavigationTimeout(30000)
 
-    const page = await context.newPage()
-    page.on('dialog', dialog => {
-        dialog.dismiss().catch(() => {})
-    })
-    context.on('page', extraPage => {
-        if (extraPage !== page) extraPage.close().catch(() => {})
-    })
-
     const session = {
         sessionId,
         context,
-        page,
+        page: null,
+        previousPages: [],
+        takeoverGestureUntil: 0,
         createdAt: Date.now(),
         lastUsedAt: Date.now(),
         idleMs,
@@ -111,6 +106,41 @@ async function createSession(
         refCounter: 0,
         lastNavigationRedirects: [],
     }
+
+    const attachPage = page => {
+        page.on('dialog', dialog => {
+            dialog.dismiss().catch(() => {})
+        })
+        page.on('filechooser', chooser => {
+            session.lastFileChooserRefusedAt = Date.now()
+            chooser
+                .page()
+                .keyboard.press('Escape')
+                .catch(() => {})
+        })
+        page.on('close', () => {
+            if (session.page !== page) return
+            const previous = session.previousPages.pop()
+            if (previous && !previous.isClosed()) session.page = previous
+        })
+    }
+
+    const page = await context.newPage()
+    session.page = page
+    attachPage(page)
+    context.on('page', extraPage => {
+        if (extraPage === session.page) return
+        // Popups are accepted only as the immediate consequence of a human takeover gesture.
+        // Assistant-driven pages still close exactly as before. The context-wide network route in
+        // browserActions applies to the popup before any document is loaded.
+        if (Date.now() <= session.takeoverGestureUntil) {
+            if (session.page && !session.page.isClosed()) session.previousPages.push(session.page)
+            session.page = extraPage
+            attachPage(extraPage)
+            return
+        }
+        extraPage.close().catch(() => {})
+    })
     sessions.set(sessionId, session)
     startSweeper()
     return session

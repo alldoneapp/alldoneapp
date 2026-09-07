@@ -1457,6 +1457,44 @@ exports.respondToBrowserApprovalSecondGen = onCall(
     }
 )
 
+// Human-controlled, session-only login. Every request carries one gesture at most and is proxied
+// to the IAM-private browser worker. Secret text is intentionally never logged or persisted.
+exports.browserTakeoverSecondGen = onCall(
+    {
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const admin = require('firebase-admin')
+        const { getEnvFunctions } = require('./envFunctionsHelper')
+        const { executeBrowserTakeover, finishBrowserTakeover } = require('./Assistant/browser/browserTakeover')
+        try {
+            if (data && (data.action === 'finish' || data.action === 'cancel')) {
+                return await finishBrowserTakeover(admin.firestore(), {
+                    approvalId: data.approvalId,
+                    userId: auth.uid,
+                    cancelled: data.action === 'cancel',
+                })
+            }
+            return await executeBrowserTakeover({
+                db: admin.firestore(),
+                env: getEnvFunctions(),
+                approvalId: data && data.approvalId,
+                userId: auth.uid,
+                action: data && data.action,
+                input: (data && data.input) || {},
+            })
+        } catch (error) {
+            const code = ['not_owner', 'not_login'].includes(error.reason) ? 'permission-denied' : 'failed-precondition'
+            throw new HttpsError(code, error.message)
+        }
+    }
+)
+
 exports.setDefaultVmAgentReasoningEffort = onCall(
     {
         timeoutSeconds: 30,

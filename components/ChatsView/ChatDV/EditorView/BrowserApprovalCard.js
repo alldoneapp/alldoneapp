@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
+import BrowserTakeoverPanel from './BrowserTakeoverPanel'
 
 // Required lazily, exactly like `linkedEmailActions`: a static import of the backend pulls the redux
 // store and the Firebase client into every suite that renders a chat message, which is how a card
@@ -52,6 +53,7 @@ export default function BrowserApprovalCard({ projectId, objectId, commentId }) 
     const [submitting, setSubmitting] = useState('')
     const [outcome, setOutcome] = useState('')
     const [error, setError] = useState('')
+    const [activeTakeover, setActiveTakeover] = useState(null)
 
     useEffect(() => {
         if (!projectId || !objectId || !userId) return undefined
@@ -61,7 +63,7 @@ export default function BrowserApprovalCard({ projectId, objectId, commentId }) 
     // Only the requests raised for THIS comment. A thread can hold more than one browsing run, and a
     // card attached to the wrong comment is a request the user cannot place in the conversation.
     const pending = approvals.filter(approval => !commentId || approval.assistantCommentId === commentId)
-    if (pending.length === 0 && !outcome) return null
+    if (pending.length === 0 && !activeTakeover && !outcome) return null
 
     const answer = async (approval, action, scope) => {
         if (submitting) return
@@ -96,29 +98,54 @@ export default function BrowserApprovalCard({ projectId, objectId, commentId }) 
                                 : ''}
                         </Text>
                     )}
-                    <View style={styles.actions}>
-                        <ActionButton
-                            label={translate('browser_approval_allow_once')}
-                            onPress={() => answer(approval, 'approve', 'once')}
-                            disabled={!!submitting}
+                    {activeTakeover?.approvalId === approval.approvalId ? (
+                        <BrowserTakeoverPanel
+                            approval={activeTakeover}
+                            onFinished={() => {
+                                setActiveTakeover(null)
+                                setOutcome('browser_takeover_completed')
+                            }}
+                            onCancelled={() => {
+                                setActiveTakeover(null)
+                                setOutcome('browser_approval_denied')
+                            }}
                         />
-                        {/* Offered only when the policy allows a run-scoped answer for this category.
+                    ) : (
+                        <View style={styles.actions}>
+                            {approval.category === 'login' ? (
+                                <ActionButton
+                                    label={translate('browser_takeover_start')}
+                                    onPress={() => {
+                                        setOutcome('')
+                                        setActiveTakeover(approval)
+                                    }}
+                                    disabled={!!submitting}
+                                />
+                            ) : (
+                                <ActionButton
+                                    label={translate('browser_approval_allow_once')}
+                                    onPress={() => answer(approval, 'approve', 'once')}
+                                    disabled={!!submitting}
+                                />
+                            )}
+                            {/* Offered only when the policy allows a run-scoped answer for this category.
                             The server refuses it regardless, so hiding it is a courtesy, not the gate. */}
-                        {approval.allowRunScope === true && (
+                            {approval.category !== 'login' && approval.allowRunScope === true && (
+                                <ActionButton
+                                    label={translate('browser_approval_allow_run')}
+                                    onPress={() => answer(approval, 'approve', 'run')}
+                                    disabled={!!submitting}
+                                    secondary={true}
+                                />
+                            )}
                             <ActionButton
-                                label={translate('browser_approval_allow_run')}
-                                onPress={() => answer(approval, 'approve', 'run')}
+                                label={translate('browser_approval_deny')}
+                                onPress={() => answer(approval, 'deny')}
                                 disabled={!!submitting}
-                                secondary={true}
+                                danger={true}
                             />
-                        )}
-                        <ActionButton
-                            label={translate('browser_approval_deny')}
-                            onPress={() => answer(approval, 'deny')}
-                            disabled={!!submitting}
-                            danger={true}
-                        />
-                    </View>
+                        </View>
+                    )}
                 </View>
             ))}
 

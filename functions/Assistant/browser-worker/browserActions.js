@@ -88,7 +88,7 @@ async function ensureNetworkGuard(session, { allowlist, denylist, accessMode, li
         await route.continue()
     })
 
-    session.page.on('response', response => {
+    session.context.on('response', response => {
         const length = Number(response.headers()['content-length'])
         if (Number.isFinite(length) && length > 0) session.usage.responseBytes += length
     })
@@ -104,20 +104,11 @@ async function ensureNetworkGuard(session, { allowlist, denylist, accessMode, li
     // and a chain whose internal hop is what the page wanted all along. What it does not do is stop
     // the request from being issued; preventing that is the deployment's job (restricted egress),
     // and browser/README.md says so.
-    session.page.on('request', request => {
+    session.context.on('request', request => {
         if (request.resourceType() !== 'document') return
         const url = request.url()
         if (url === 'about:blank' || isUrlAllowed(url, session.policy)) return
         session.disallowedHop = url
-    })
-    // A file chooser that is opened and never answered leaves the page waiting forever; refusing it
-    // explicitly is also the honest answer, since the worker has no files to give.
-    session.page.on('filechooser', chooser => {
-        session.lastFileChooserRefusedAt = Date.now()
-        chooser
-            .page()
-            .keyboard.press('Escape')
-            .catch(() => {})
     })
 }
 
@@ -439,6 +430,118 @@ async function performScreenshot(session, { fullPage }) {
     }
 }
 
+const TAKEOVER_KEYS = new Set([
+    'Tab',
+    'Shift+Tab',
+    'Enter',
+    'Escape',
+    'Backspace',
+    'Delete',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'Home',
+    'End',
+    'PageUp',
+    'PageDown',
+    'Space',
+])
+
+/**
+ * Perform one human-controlled gesture and return the updated viewport. This path deliberately
+ * works on coordinates and the focused element instead of DOM refs: it is driven by the person
+ * looking at the screenshot, not by the model. Typed text is never returned or added to a DOM
+ * snapshot, which keeps passwords out of Functions logs, Firestore and the assistant transcript.
+ */
+async function performTakeover(session, { action, x, y, text, key, deltaX, deltaY }) {
+    const page = session.page
+    const before = page.url()
+    takeDisallowedHop(session)
+
+    if (action !== 'snapshot') session.takeoverGestureUntil = Date.now() + 5000
+
+    switch (action) {
+        case 'snapshot':
+            break
+        case 'click': {
+            const clickX = Math.min(Math.max(Number(x) || 0, 0), 1279)
+            const clickY = Math.min(Math.max(Number(y) || 0, 0), 899)
+            await page.mouse.click(clickX, clickY)
+            break
+        }
+        case 'type':
+            await page.keyboard.insertText(String(text || '').slice(0, 4096))
+            break
+        case 'key':
+            if (!TAKEOVER_KEYS.has(key)) {
+                return { ok: false, reason: 'unsupported_key', error: 'That keyboard key is not supported.' }
+            }
+            await page.keyboard.press(key)
+            break
+        case 'scroll':
+            await page.mouse.wheel(
+                Math.min(Math.max(Number(deltaX) || 0, -2000), 2000),
+                Math.min(Math.max(Number(deltaY) || 0, -2000), 2000)
+            )
+            break
+        default:
+            return { ok: false, reason: 'unsupported_takeover_action', error: 'Unsupported browser interaction.' }
+    }
+
+    let activePage = session.page
+    if (action !== 'snapshot') {
+        await activePage.waitForLoadState('domcontentloaded').catch(() => {})
+        await activePage.waitForTimeout(250)
+        activePage = session.page
+    }
+
+    const after = activePage.url()
+    const disallowedHop = takeDisallowedHop(session)
+    if (disallowedHop || !isUrlAllowed(after, session.policy)) {
+        if (activePage !== page) {
+            await activePage.close().catch(() => {})
+            if (!page.isClosed()) session.page = page
+        } else if (before !== after) {
+            await page.goBack().catch(() => {})
+        }
+        return {
+            ok: false,
+            reason: 'navigated_off_allowlist',
+            error: `The page tried to navigate to ${disallowedHop || after}, which is not permitted.`,
+        }
+    }
+
+    const screenshot = await activePage.screenshot({ type: 'jpeg', quality: 68, fullPage: false })
+    const focused = await activePage
+        .evaluate(() => {
+            const element = document.activeElement
+            if (!element || element === document.body) return null
+            return {
+                tagName: String(element.tagName || '').toLowerCase(),
+                inputType: String(element.getAttribute?.('type') || '').toLowerCase(),
+                name: String(
+                    element.getAttribute?.('aria-label') ||
+                        element.getAttribute?.('name') ||
+                        element.getAttribute?.('placeholder') ||
+                        ''
+                ).slice(0, 120),
+            }
+        })
+        .catch(() => null)
+
+    return {
+        ok: true,
+        action,
+        url: after,
+        title: await activePage.title().catch(() => ''),
+        navigated: before !== after,
+        screenshotBase64: screenshot.toString('base64'),
+        viewport: { width: 1280, height: 900 },
+        focused,
+    }
+}
+
 module.exports = {
     INTERACTIVE_SELECTOR,
     takeDisallowedHop,
@@ -450,6 +553,7 @@ module.exports = {
     performInspect,
     performNavigate,
     performScreenshot,
+    performTakeover,
     performType,
     performWait,
     refSelector,

@@ -45,6 +45,9 @@ const { executeBrowserTool } = require(path.join(ROOT, 'functions', 'Assistant',
 const { respondToBrowserApproval } = require(
     path.join(ROOT, 'functions', 'Assistant', 'browser', 'browserApprovals.js')
 )
+const { executeBrowserTakeover, finishBrowserTakeover } = require(
+    path.join(ROOT, 'functions', 'Assistant', 'browser', 'browserTakeover.js')
+)
 
 const PLAYWRIGHT_HOME = process.env.PLAYWRIGHT_HOME || '/home/user/repro'
 const SIGNING_SECRET = 'at2518-integration-secret'
@@ -105,7 +108,13 @@ async function main() {
     // loopback worker is injected through the same env shape with the check relaxed only by using
     // an https-looking origin the fetch double rewrites. Simpler: point the tool at the real
     // worker over http by pre-resolving the config here.
-    const db = new FirestoreDouble()
+    const db = new FirestoreDouble({
+        'projects/p1': {
+            browserAutomation: {
+                limits: { maxSteps: 60, maxRunWallClockMs: 10 * 60 * 1000, maxSessionIdleMs: 10 * 60 * 1000 },
+            },
+        },
+    })
     const bucket = createBucketDouble()
     const goldCharges = []
     const deductGold = async (userId, amount, context) => {
@@ -173,6 +182,53 @@ async function main() {
             'inspect gives every element a usable ref',
             (inspected.elements || []).every(element => !!element.ref)
         )
+
+        // ---- session-only human login -----------------------------------------------------
+        await call('browser_navigate', { url: 'http://tickets.example/login' })
+        const loginPage = await call('browser_inspect', {})
+        const signIn = (loginPage.elements || []).find(element => element.name === 'Sign in')
+        const loginPause = await call('browser_click', { ref: signIn.ref })
+        check('a login pauses for secure human takeover', loginPause.category === 'login', loginPause.category)
+
+        const takeover = (action, input = {}) =>
+            executeBrowserTakeover({
+                db,
+                env,
+                approvalId: loginPause.approvalId,
+                userId: USER_ID,
+                action,
+                input,
+                fetchImpl,
+                identityTokenProvider: async () => 'local-worker',
+                deductGold,
+            })
+        const loginSecret = 'not-written-anywhere'
+        const firstFrame = await takeover('snapshot')
+        check(
+            'secure takeover returns a real JPEG viewport',
+            firstFrame.screenshotDataUrl.startsWith('data:image/jpeg;base64,')
+        )
+        await takeover('key', { key: 'Tab' })
+        await takeover('type', { text: 'person@example.com' })
+        await takeover('key', { key: 'Tab' })
+        const passwordFrame = await takeover('type', { text: loginSecret })
+        check('the human can type into a password field', passwordFrame.focused?.inputType === 'password')
+        await takeover('key', { key: 'Tab' })
+        await takeover('key', { key: 'Enter' })
+        await finishBrowserTakeover(db, { approvalId: loginPause.approvalId, userId: USER_ID })
+
+        const signedIn = await call('browser_inspect', {})
+        check(
+            'the assistant receives the same logged-in browser context',
+            (signedIn.text || '').includes('Your account')
+        )
+        check(
+            'the login secret is absent from every Firestore document',
+            !JSON.stringify([...db.documents]).includes(loginSecret)
+        )
+
+        // Return to the event page for the remaining policy checks.
+        await call('browser_navigate', { url: 'http://tickets.example/event/42' })
 
         // ---- 4. wait ----------------------------------------------------------------------
         const waited = await call('browser_wait', { selector: '#late-content', state: 'visible' })

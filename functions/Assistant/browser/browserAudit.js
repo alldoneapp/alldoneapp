@@ -96,6 +96,7 @@ async function beginBrowserStep(
         args = {},
         config,
         startsRun = false,
+        expectedRunId = null,
         charges = {},
         now = Date.now(),
     }
@@ -146,6 +147,16 @@ async function beginBrowserStep(
                 limits,
                 allowlist: summarizeAllowlist(config?.allowlist),
                 workerSessionId: newId('bsess'),
+            }
+        }
+
+        // User takeover calls carry the login approval's exact run id. Refuse if the thread has
+        // already moved on to another run; otherwise a stale login card could control a new page.
+        if (expectedRunId && runId !== expectedRunId) {
+            return {
+                ok: false,
+                reason: 'run_mismatch',
+                message: 'This secure login belongs to an older browsing session. Start a new login request.',
             }
         }
 

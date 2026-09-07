@@ -4,6 +4,7 @@
 //
 //   POST /v1/describe   resolve an element and report what it is, without touching it
 //   POST /v1/act        perform one already-approved action
+//   POST /v1/takeover   perform one authenticated human gesture and return the viewport
 //   POST /v1/close      drop the context
 //
 // Authorisation is the signed token minted by Cloud Functions (`browserWorkerClient.mintWorkerToken`),
@@ -28,6 +29,7 @@ const {
     performInspect,
     performNavigate,
     performScreenshot,
+    performTakeover,
     performType,
     performWait,
 } = require('./browserActions')
@@ -141,6 +143,38 @@ app.post('/v1/act', async (request, response) => {
             error: timedOut ? 'The page did not respond in time.' : error.message,
             reason: timedOut ? 'timeout' : 'action_failed',
             usage: session ? takeUsageDelta(session) : null,
+        })
+    }
+})
+
+// Authenticated user takeover. The browser never calls this endpoint directly: an authenticated
+// Firebase callable validates ownership and proxies one gesture at a time, while Cloud Run IAM and
+// the signed worker token remain in force here.
+app.post('/v1/takeover', async (request, response) => {
+    const auth = authorize(request, response)
+    if (!auth) return
+    const session = getSession(auth.sessionId)
+    if (!session) {
+        response.status(409).json({ error: 'This browser session is no longer available.', reason: 'no_session' })
+        return
+    }
+
+    try {
+        await ensureNetworkGuard(session, {
+            allowlist: auth.allowlist,
+            denylist: auth.denylist,
+            accessMode: auth.accessMode,
+            limits: auth.limits,
+        })
+        const result = await performTakeover(session, request.body || {})
+        respond(response, result, session)
+    } catch (error) {
+        const timedOut = /timeout/i.test(error.message || '')
+        response.status(timedOut ? 504 : 500).json({
+            ok: false,
+            error: timedOut ? 'The page did not respond in time.' : error.message,
+            reason: timedOut ? 'timeout' : 'takeover_failed',
+            usage: takeUsageDelta(session),
         })
     }
 })

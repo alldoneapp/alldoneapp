@@ -49,6 +49,29 @@ describe('callBrowserWorker Cloud Run authentication', () => {
         })
     })
 
+    test('round-trips the opaque Cloud Run session-affinity cookie', async () => {
+        const fetchImpl = jest.fn(async (_url, options) => ({
+            ok: true,
+            status: 200,
+            headers: { get: name => (name === 'set-cookie' ? 'GOOG-RUN-AFFINITY=new-route; Path=/; Secure' : '') },
+            json: async () => ({ ok: true }),
+            options,
+        }))
+
+        const result = await callBrowserWorker({
+            operation: 'act',
+            config: CONFIG,
+            runId: 'run1',
+            sessionId: 'session1',
+            fetchImpl,
+            identityTokenProvider: async () => 'google-cloud-run-id-token',
+            affinityCookie: 'GOOG-RUN-AFFINITY=old-route',
+        })
+
+        expect(fetchImpl.mock.calls[0][1].headers.Cookie).toBe('GOOG-RUN-AFFINITY=old-route')
+        expect(result.affinityCookie).toBe('GOOG-RUN-AFFINITY=new-route')
+    })
+
     test('fails closed before calling the worker when Cloud Run authentication fails', async () => {
         const fetchImpl = jest.fn()
 

@@ -15,6 +15,12 @@ function clone(value) {
 function mergeInto(target, patch) {
     const output = { ...(target || {}) }
     for (const [key, value] of Object.entries(patch || {})) {
+        // Firestore treats an explicitly written empty map as a value. Recursing into it would
+        // incorrectly preserve keys that the write intentionally cleared.
+        if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+            output[key] = {}
+            continue
+        }
         if (
             value &&
             typeof value === 'object' &&

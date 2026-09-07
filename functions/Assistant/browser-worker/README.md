@@ -17,7 +17,7 @@ service's job is to apply them at the two points Cloud Functions structurally ca
 
 | file                | role                                                                                                 |
 | ------------------- | ---------------------------------------------------------------------------------------------------- |
-| `server.js`         | three operations: `describe`, `act`, `close`; token auth; usage reporting                            |
+| `server.js`         | `describe`, `act`, `takeover`, `close`; token auth; usage reporting                                  |
 | `browserActions.js` | the network guard, the snapshot, the describe step and the six actions                               |
 | `sessionStore.js`   | one ephemeral context per run, idle sweeper, session cap                                             |
 | `sharedModules.js`  | resolves the token verifier and the allowlist matcher from `./shared` (image) or `../browser` (repo) |
@@ -29,9 +29,16 @@ service's job is to apply them at the two points Cloud Functions structurally ca
 One browser context per browsing run, created with **no `storageState` in and none written out**, so
 cookies, localStorage and any session a page hands out die with the context. Two runs — even two runs
 of the same user on the same site — never share a logged-in state. Downloads are refused, dialogs are
-dismissed, popups are closed and file choosers are cancelled; each of those is a way for a page to
-move the run somewhere the policy never looked. Every session has an idle deadline and the process a
-session cap, so a wedged page costs one context for a bounded time rather than the container.
+dismissed and file choosers are cancelled. Popups are accepted only as the immediate result of a
+human takeover gesture and still pass through the context-wide network guard; assistant-driven
+popups are closed. Every session has an idle deadline and the process a session cap, so a wedged page
+costs one context for a bounded time rather than the container.
+
+`POST /v1/takeover` is still server-to-server and still protected by Cloud Run IAM plus the signed
+policy token. It performs exactly one human gesture and returns a viewport JPEG. It never returns
+typed text or a DOM snapshot. Cloud Run session affinity is enabled by `deploy.sh`; Functions keeps
+the opaque affinity cookie on the server-owned run document so successive takeover gestures normally
+reach the context that owns the page.
 
 ## Environment
 
