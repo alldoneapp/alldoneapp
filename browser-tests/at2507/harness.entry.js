@@ -48,10 +48,24 @@ function GoalSection({ goalId, tasks, exitRunId }) {
     )
 }
 
+/**
+ * AT-2521 — the row a cleared goal actually leaves from. Shaped like `EmptyGoal`: the same goal row
+ * and add-task line, no tasks. It wears the same exit hook for the same reason the real one does.
+ */
+function EmptyGoalRow({ goalId, exitRunId }) {
+    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
+    return (
+        <Animated.View nativeID={`section-${goalId}`} onLayout={onSectionLayout} style={[styles.section, sectionStyle]}>
+            <View style={styles.goalRow} />
+            <View style={styles.addTask} />
+        </Animated.View>
+    )
+}
+
 function Board() {
     const [mainTasks, setMainTasks] = React.useState([[GOAL, [{ id: 't1' }, { id: 't2' }]]])
     const [emptyGoals, setEmptyGoals] = React.useState([])
-    const { mainTasksWithExits, exitRunIdByGoalId } = useGoalSectionExit({
+    const { mainTasksWithExits, emptyGoalsWithExits, exitRunIdByGoalId } = useGoalSectionExit({
         projectId: PROJECT,
         mainTasks,
         emptyGoals,
@@ -62,12 +76,16 @@ function Board() {
     window.__setEmptyGoals = setEmptyGoals
     // What the board is actually rendering, i.e. whether the hold is keeping the section alive.
     window.__sections = mainTasksWithExits.map(group => group[0])
+    window.__emptyGoals = emptyGoalsWithExits.map(goal => goal.id)
     window.__exits = { ...exitRunIdByGoalId }
 
     return (
         <View style={styles.board}>
             {mainTasksWithExits.map(([goalId, tasks]) => (
                 <GoalSection key={goalId} goalId={goalId} tasks={tasks} exitRunId={exitRunIdByGoalId[goalId] || 0} />
+            ))}
+            {emptyGoalsWithExits.map(goal => (
+                <EmptyGoalRow key={goal.id} goalId={goal.id} exitRunId={exitRunIdByGoalId[goal.id] || 0} />
             ))}
             {/* The next thing down the board. Its `top` is how the collapse is measured. */}
             <View nativeID="below" style={styles.below} />
@@ -84,6 +102,12 @@ window.__moveToEmptyGoals = () => {
     window.__setMainTasks([])
     window.__setEmptyGoals([{ id: GOAL }])
 }
+/**
+ * AT-2521 — the SECOND snapshot of the real sequence. The goal document lands, its progress is 100,
+ * and only now is the goal out of the day. This is the frame the user actually sees the goal leave
+ * on, and until AT-2521 nothing was animated for it.
+ */
+window.__dropEmptyGoal = () => window.__setEmptyGoals([])
 
 /**
  * What the user would actually see — PAINTED geometry (`getBoundingClientRect` resolves transforms)

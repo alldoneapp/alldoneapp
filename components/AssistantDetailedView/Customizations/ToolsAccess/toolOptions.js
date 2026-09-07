@@ -38,7 +38,6 @@ export const TOOL_OPTIONS = [
     { key: 'get_notes', labelKey: 'Get notes' },
     { key: 'web_search', labelKey: 'Search the internet' },
     { key: 'fetch_url', labelKey: 'Read a web page' },
-    { key: 'browser_automation', labelKey: 'Browse a website' },
     { key: 'find_profile_photo', labelKey: 'Find a profile photo' },
     { key: 'get_route_info', labelKey: 'Check distance and route between locations' },
     { key: 'get_local_recommendations', labelKey: 'Get local recommendations nearby' },
@@ -49,11 +48,6 @@ export const TOOL_OPTIONS = [
     { key: 'talk_to_assistant', labelKey: 'Talk to assistants' },
 ]
 
-// The one Tools Access key that fans out to the six `browser_*` tool names on the server. Exported
-// so the tools modal can attach the allowlist editor to exactly this row without matching a string
-// literal in two places.
-export const BROWSER_TOOL_KEY = 'browser_automation'
-
 export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
     acc[option.key] = option.labelKey
     return acc
@@ -62,11 +56,7 @@ export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
 // Powerful / billable tools that must be explicitly enabled per assistant.
 // `mcp_servers` reaches out to external MCP servers (per-assistant configured) and
 // is metered, so it is opt-in rather than on by default.
-// `browser_automation` drives a real browser on the owner's behalf: it is the only tool that can
-// interact with a third-party site rather than read it, it needs an explicit site allowlist before
-// it does anything at all, and it runs on infrastructure that costs money per session. Whoever
-// switches it on should be making that decision deliberately.
-export const OPT_IN_ONLY_TOOLS = new Set(['mcp_servers', 'browser_automation'])
+export const OPT_IN_ONLY_TOOLS = new Set(['mcp_servers'])
 
 export const DEFAULT_ALLOWED_TOOLS = TOOL_OPTIONS.map(option => option.key).filter(key => !OPT_IN_ONLY_TOOLS.has(key))
 

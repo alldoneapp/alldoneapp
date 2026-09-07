@@ -10,7 +10,12 @@ jest.mock('react-redux', () => ({
     useSelector: selector => selector({ loggedUserProjects: [{ id: 'project-1' }] }),
 }))
 jest.mock('uuid/v4', () => () => 'watcher-1')
-jest.mock('../../../../i18n/TranslationService', () => ({ translate: text => text }))
+// Resolve against the real English catalogue rather than echoing the key, so the
+// accessibility-label assertions below fail loudly if a key is ever missing again (AT-2522).
+jest.mock('../../../../i18n/TranslationService', () => {
+    const en = require('../../../../i18n/translations/en.json')
+    return { translate: key => (key in en ? en[key] : key) }
+})
 jest.mock('../../../../utils/backends/Chats/chatsComments', () => ({ getParentObjectData: jest.fn() }))
 jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({ watchTask: jest.fn() }))
 jest.mock('../../../../utils/backends/Goals/goalsFirestore', () => ({ watchGoal: jest.fn() }))
@@ -143,7 +148,7 @@ describe('CommentPopupObjectHeader', () => {
     it('shows a graceful fallback for deleted objects', async () => {
         const tree = await renderHeader('tasks', null)
 
-        expect(tree.root.findByProps({ accessibilityLabel: 'Object unavailable' })).toBeTruthy()
+        expect(tree.root.findByProps({ accessibilityLabel: 'Task unavailable' })).toBeTruthy()
         expect(tree.root.findByType('Header').props.title).toBe('Fallback title')
     })
 
@@ -165,7 +170,7 @@ describe('CommentPopupObjectHeader', () => {
         })
 
         expect(tree.root.findByType('TaskPresentation').props.task).toBe(task)
-        expect(tree.root.findAllByProps({ accessibilityLabel: 'Loading object' })).toHaveLength(0)
+        expect(tree.root.findAllByProps({ accessibilityLabel: 'Loading task' })).toHaveLength(0)
 
         act(() => tree.unmount())
     })
@@ -185,14 +190,14 @@ describe('CommentPopupObjectHeader', () => {
                 />
             )
         })
-        expect(tree.root.findByProps({ accessibilityLabel: 'Loading object' })).toBeTruthy()
+        expect(tree.root.findByProps({ accessibilityLabel: 'Loading task' })).toBeTruthy()
 
         act(() => {
             jest.advanceTimersByTime(COMMENT_POPUP_OBJECT_LOAD_TIMEOUT_MS)
         })
 
-        expect(tree.root.findByProps({ accessibilityLabel: 'Object details reconnecting' })).toBeTruthy()
-        expect(tree.root.findAllByProps({ accessibilityLabel: 'Loading object' })).toHaveLength(0)
+        expect(tree.root.findByProps({ accessibilityLabel: 'Task details reconnecting' })).toBeTruthy()
+        expect(tree.root.findAllByProps({ accessibilityLabel: 'Loading task' })).toHaveLength(0)
 
         act(() => {
             const watcherCallback = watchTask.mock.calls[0][3]
@@ -235,5 +240,81 @@ describe('CommentPopupObjectHeader', () => {
         act(() => tree.unmount())
 
         expect(unwatch).toHaveBeenCalledWith('comment-popup-object-watcher-1')
+    })
+
+    // AT-2522: these three states used to render the raw `[missing "en.…" translation]`
+    // placeholder, because the keys existed in no locale file at all.
+    describe('object state wording (AT-2522)', () => {
+        const UNAVAILABLE_TEXT_BY_TYPE = {
+            tasks: 'This task is no longer available.',
+            goals: 'This goal is no longer available.',
+            notes: 'This note is no longer available.',
+            contacts: 'This contact is no longer available.',
+            users: 'This contact is no longer available.',
+            topics: 'This chat is no longer available.',
+            skills: 'This skill is no longer available.',
+            assistants: 'This assistant is no longer available.',
+        }
+
+        // <Text> is rendered as a host <div> by react-native-web, so collect the string
+        // leaves of the serialized tree rather than looking the component type up.
+        const renderedTexts = tree => {
+            const texts = []
+            const walk = node => {
+                if (node == null) return
+                if (typeof node === 'string') return void texts.push(node)
+                if (Array.isArray(node)) return void node.forEach(walk)
+                walk(node.children)
+            }
+            walk(tree.toJSON())
+            return texts
+        }
+
+        test.each(Object.entries(UNAVAILABLE_TEXT_BY_TYPE))(
+            'names the concrete object type for a deleted %s',
+            async (type, expected) => {
+                const tree = await renderHeader(type, null)
+
+                expect(renderedTexts(tree)).toContain(expected)
+            }
+        )
+
+        it('falls back to the generic wording for an unknown object type', async () => {
+            const tree = await renderHeader('somethingElse', null)
+
+            expect(renderedTexts(tree)).toContain('This object is no longer available.')
+        })
+
+        it('names the concrete object type while reconnecting', () => {
+            jest.useFakeTimers()
+            getParentObjectData.mockReturnValue(new Promise(() => {}))
+            let tree
+
+            act(() => {
+                tree = renderer.create(
+                    <CommentPopupObjectHeader projectId="project-1" objectId="object-1" objectType="goals" />
+                )
+            })
+
+            expect(tree.root.findByProps({ accessibilityLabel: 'Loading goal' })).toBeTruthy()
+
+            act(() => jest.advanceTimersByTime(COMMENT_POPUP_OBJECT_LOAD_TIMEOUT_MS))
+
+            expect(tree.root.findByProps({ accessibilityLabel: 'Goal details reconnecting' })).toBeTruthy()
+            expect(renderedTexts(tree)).toContain('Goal details are reconnecting. You can continue commenting.')
+
+            act(() => tree.unmount())
+            jest.useRealTimers()
+        })
+
+        it('never renders an unresolved translation placeholder', async () => {
+            for (const type of [...Object.keys(UNAVAILABLE_TEXT_BY_TYPE), 'somethingElse']) {
+                const tree = await renderHeader(type, null)
+                const rendered = JSON.stringify(tree.toJSON())
+
+                expect(rendered).not.toContain('[missing')
+                expect(rendered).not.toContain('comment_popup_')
+            }
+        })
     })
 })
