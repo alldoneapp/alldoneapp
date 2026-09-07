@@ -230,6 +230,9 @@ const EXTERNAL_TOOL_PREFIX = 'external_tool_'
 // name so we can route a call back to the right server + remote tool.
 const MCP_SERVERS_TOOL_KEY = 'mcp_servers'
 const MCP_TOOL_PREFIX = 'mcp_'
+// Browsing. One Tools Access key (`browser_automation`) fans out to the six `browser_*` tool names;
+// the names, the policy and the audit trail all live under ./browser.
+const { BROWSER_TOOL_KEY, BROWSER_TOOL_PREFIX, isBrowserToolName } = require('./browser/browserToolContract')
 const MAX_MCP_TOOLS = 60
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 // How many projects to scan in parallel when discovering delegation targets. The scan used to
@@ -2305,6 +2308,12 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     }
     if (toolName === 'list_recent_chat_media' && assistantAllowedTools.includes('get_chat_attachment')) {
         return true
+    }
+    // The six browser tools are gated by the single `browser_automation` toggle. Being permitted
+    // here only means the assistant MAY browse; whether this particular action runs is decided by
+    // the allowlist and the approval policy in ./browser, which no toggle can relax.
+    if (isBrowserToolName(toolName)) {
+        return assistantAllowedTools.includes(BROWSER_TOOL_KEY)
     }
 
     const hasDelegationToggle = assistantAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)
@@ -5361,6 +5370,23 @@ async function executeToolNatively(
         }
 
         return result
+    }
+
+    // Browsing. Everything about a browser action — allowlist, limits, the observe-then-classify
+    // ordering, approvals, evidence and the audit trail — lives behind this one call, so every
+    // entry point that reaches `executeToolNatively` (chat, WhatsApp bridge, MCP) is gated
+    // identically. Note the MCP surface calls in with `assistantId === null`; the run is then
+    // attributed to the requesting user, which is what the audit record needs anyway.
+    if (isBrowserToolName(toolName)) {
+        const { executeBrowserTool } = require('./browser/browserSession')
+        return executeBrowserTool({
+            toolName,
+            toolArgs,
+            projectId,
+            assistantId,
+            requestUserId,
+            toolRuntimeContext,
+        })
     }
 
     switch (toolName) {
@@ -13129,6 +13155,7 @@ const TOOL_SEARCH_NAMESPACE_DESCRIPTIONS = {
     people_and_projects: 'Work with contacts, users, projects, project health, and project objectives.',
     assistant_settings: 'Manage assistant settings, memory, heartbeat behavior, skills, and thread context.',
     research: 'Search the web and get weather, routes, places, and other external information.',
+    browsing: 'Open a web page in a real browser, read it, interact with it, and capture screenshots.',
     integrations: 'Use delegated assistants, configured integrations, and remote MCP tools.',
     other: 'Additional tools available to this assistant.',
 }
@@ -13149,6 +13176,10 @@ function getToolSearchNamespaceName(toolName = '') {
     ) {
         return 'integrations'
     }
+    // Same reason the three above are matched first: `browser_navigate` matches /search|route/ only
+    // by accident, and splitting the six across `research` and `other` would advertise half a
+    // workflow — the model would find `browser_navigate` and never look for `browser_click`.
+    if (name.startsWith(BROWSER_TOOL_PREFIX)) return 'browsing'
     if (/gmail|email/.test(name)) return 'gmail'
     if (/calendar|availability/.test(name)) return 'calendar'
     if (/task|goal|focus|execute_.*vm/.test(name)) return 'tasks_and_goals'
