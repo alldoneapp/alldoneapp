@@ -41,6 +41,7 @@ const {
     requestBrowserApproval,
 } = require('./browserApprovals')
 const { getDefaultEvidenceBucket, storeBrowserEvidence } = require('./browserEvidence')
+const { BROWSER_STEP_GOLD, chargeGoldForBrowserStep, hasGoldForBrowserStep } = require('./browserGold')
 const { describeTypedValue, redactForModel, redactUrl } = require('./browserRedaction')
 const { callBrowserWorker } = require('./browserWorkerClient')
 const { summarizeBudget } = require('./browserLimits')
@@ -324,6 +325,10 @@ async function executeBrowserTool({
                     message: decision.message,
                     evidence: decision.evidence,
                     target,
+                    allowRunScope: decision.allowRunScope === true,
+                    // The comment the user is reading when the assistant stops and asks. Without it
+                    // the approval exists but has nowhere to render.
+                    assistantCommentId: toolRuntimeContext?.assistantCommentId || null,
                     now,
                 })
                 await completeBrowserStep(db, {
@@ -350,6 +355,7 @@ async function executeBrowserTool({
                     category: decision.category,
                     action,
                     hostname: decision.hostname,
+                    allowRunScope: decision.allowRunScope === true,
                     error: decision.message,
                     message: `${decision.message} It was NOT performed. The user has to approve it explicitly first.`,
                     instruction:
@@ -361,6 +367,33 @@ async function executeBrowserTool({
                     },
                 }
             }
+        }
+
+        // ---- BILLING GATE ----------------------------------------------------------------
+        // Asked before the browser is touched: acting first and discovering an empty balance
+        // afterwards would perform something on a third-party site that Alldone cannot bill.
+        const affordable = await hasGoldForBrowserStep(db, requestUserId, BROWSER_STEP_GOLD)
+        if (!affordable.ok) {
+            await completeBrowserStep(db, {
+                runId,
+                stepId,
+                outcome: {
+                    status: 'blocked',
+                    decision: 'deny',
+                    reason: 'insufficient_gold',
+                    category: decision.category,
+                    categories: decision.categories,
+                    target,
+                    pageUrl,
+                    error: 'Not enough Gold for another browsing step.',
+                    durationMs: Date.now() - startedAt,
+                },
+                now,
+            })
+            return failure(
+                `Browsing costs ${BROWSER_STEP_GOLD} Gold per step and there is not enough Gold left. Tell the user, and stop browsing.`,
+                { reason: 'insufficient_gold', blocked: true }
+            )
         }
 
         // ---- ACT -------------------------------------------------------------------------
@@ -399,6 +432,23 @@ async function executeBrowserTool({
             if (workerResult.usage) await applyRunUsage(db, { runId, usage: workerResult.usage, now })
             return failure(workerResult.error, { reason: workerResult.reason || 'worker_error' })
         }
+
+        // ---- BILLING ---------------------------------------------------------------------
+        // Only a step that actually did something in the browser is charged; a refusal, a pause for
+        // an approval and a worker failure all return above this line. The step id is the
+        // idempotency key, so a retry of this whole call cannot charge twice.
+        const goldCharge = await chargeGoldForBrowserStep({
+            db,
+            userId: requestUserId,
+            runId,
+            stepId,
+            projectId,
+            objectId,
+            objectType,
+            toolName,
+            hostname: decision.hostname || null,
+            deductGoldImpl: deps.deductGold || null,
+        })
 
         // ---- EVIDENCE + AUDIT ------------------------------------------------------------
         const bucket = deps.bucket !== undefined ? deps.bucket : getDefaultEvidenceBucket()
@@ -464,6 +514,9 @@ async function executeBrowserTool({
         }
         if (action === 'wait') result.waitedMs = Number(workerResult.waitedMs) || null
         if (approvalId) result.approvedBy = { approvalId, scope: approvalScope }
+        // Reported so the model can tell the user what a browsing session is costing them, and so a
+        // step that could not be billed is visible rather than silently free.
+        result.goldCost = goldCharge.charged || goldCharge.alreadyProcessed ? BROWSER_STEP_GOLD : 0
         return result
     } catch (error) {
         await completeBrowserStep(db, {

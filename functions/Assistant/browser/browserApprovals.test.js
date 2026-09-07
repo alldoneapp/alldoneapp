@@ -46,6 +46,7 @@ async function raiseRequest(db, overrides = {}) {
         message: 'This would make a booking on tickets.example.',
         evidence: ['label matched booking'],
         target: { role: 'button', name: 'Jetzt buchen', password: 'must-not-be-stored' },
+        allowRunScope: true,
         now: NOW,
         ...overrides,
     })
@@ -114,6 +115,31 @@ describe('browser approvals', () => {
             const run = db.documents.get('browserRuns/run1')
             const { grants } = consumeApprovalGrant(run, SIGNATURE, NOW)
             expect(findApprovalGrant({ approvalGrants: grants }, SIGNATURE, NOW)).toBeTruthy()
+        })
+
+        it('refuses a run-scoped answer for a category the policy never allows it for', async () => {
+            // The UI hides the button; this is the half that matters, because a client can ask for
+            // whatever it likes. A payment approval always means "this one payment".
+            const db = new FirestoreDouble()
+            seedRun(db)
+            const { approvalId } = await raiseRequest(db, {
+                category: 'payment',
+                categories: ['payment'],
+                allowRunScope: false,
+            })
+            const response = await respondToBrowserApproval(db, {
+                approvalId,
+                userId: 'user1',
+                action: 'approve',
+                scope: 'run',
+                now: NOW,
+            })
+            expect(response.scope).toBe('once')
+            expect(response.scopeDowngraded).toBe(true)
+
+            const run = db.documents.get('browserRuns/run1')
+            const { grants } = consumeApprovalGrant(run, SIGNATURE, NOW)
+            expect(findApprovalGrant({ approvalGrants: grants }, SIGNATURE, NOW)).toBeNull()
         })
 
         it('expires a grant even inside a run that is still open', async () => {

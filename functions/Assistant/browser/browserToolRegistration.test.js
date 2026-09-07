@@ -107,6 +107,41 @@ describe('browser tool registration', () => {
         expect(source).toContain('listBrowserApprovalRequestsSecondGen')
     })
 
+    it('reaches the allowlist editor from the tool row that needs it', () => {
+        // Ticking "Browse a website" and finding that nothing works — because the allowlist is
+        // default deny and empty — is the failure this row exists to prevent.
+        const modal = readRepoFile('components/UIComponents/FloatModals/AssistantToolsModal/AssistantToolsModal.js')
+        expect(modal).toContain('BROWSER_TOOL_KEY')
+        expect(modal).toContain('onEditBrowserAllowlist')
+
+        const wrapper = readRepoFile(
+            'components/AssistantDetailedView/Customizations/ToolsAccess/ToolsAccessWrapper.js'
+        )
+        expect(wrapper).toContain('BrowserAllowlistModal')
+        // Sequential, never nested: a nested react-tiny-popover dismisses its parent on a tap.
+        expect(wrapper).toMatch(/setIsOpen\(false\)[\s\S]{0,80}setAllowlistOpen\(true\)/)
+    })
+
+    it('lets the thread render a pending approval', () => {
+        const rules = readRepoFile('firestore.rules')
+        // Read-only, and only for the person the request was raised for.
+        expect(rules).toContain('match /browserApprovals/{approvalId}')
+        expect(rules).toMatch(/browserApprovals[\s\S]{0,300}allow write: if false/)
+
+        const body = readRepoFile('components/ChatsView/ChatDV/EditorView/MessageItemBody.js')
+        expect(body).toContain('BrowserApprovalCard')
+    })
+
+    it('has a Gold label and a source that the transactions modal knows', () => {
+        const { BROWSER_GOLD_SOURCE } = require('./browserGold')
+        const modal = readRepoFile('components/SettingsView/Profile/Properties/GoldTransactionsModal.js')
+        expect(modal).toContain(`${BROWSER_GOLD_SOURCE}: 'Website visit'`)
+        for (const language of ['en', 'de', 'es']) {
+            const translations = JSON.parse(readRepoFile(`i18n/translations/${language}.json`))
+            expect(translations['Website visit']).toBeTruthy()
+        }
+    })
+
     it('recognises its own tool names and nothing else', () => {
         expect(BROWSER_TOOL_NAMES.every(isBrowserToolName)).toBe(true)
         expect(isBrowserToolName('browser_automation')).toBe(false)

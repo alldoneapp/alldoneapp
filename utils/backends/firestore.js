@@ -4243,6 +4243,20 @@ export function mapProjectData(projectId, project, customData) {
         githubApiBase: project.githubApiBase ? project.githubApiBase : '',
         githubConnectedAt: project.githubConnectedAt ? project.githubConnectedAt : null,
         vmGolden: project.vmGolden ? project.vmGolden : null,
+        // The `browser_automation` tool's per-project configuration (allowlist, on/off, limits).
+        // Normalized here so every reader gets the same shape and an absent field is an empty
+        // allowlist — which, being default-deny, means browsing is off.
+        browserAutomation: {
+            enabled: project.browserAutomation ? project.browserAutomation.enabled !== false : true,
+            allowedDomains: Array.isArray(project.browserAutomation?.allowedDomains)
+                ? project.browserAutomation.allowedDomains
+                : [],
+            allowSearchSubmit: project.browserAutomation ? project.browserAutomation.allowSearchSubmit !== false : true,
+            limits:
+                project.browserAutomation?.limits && typeof project.browserAutomation.limits === 'object'
+                    ? project.browserAutomation.limits
+                    : {},
+        },
         ...customData,
     }
 }

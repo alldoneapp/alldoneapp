@@ -323,6 +323,25 @@ function buildApprovalSignature({ action, category, hostname, target = {} }) {
     return crypto.createHash('sha256').update(shape).digest('hex').slice(0, 32)
 }
 
+// Which categories may be approved ONCE FOR THE WHOLE RUN, and which must be answered every single
+// time. The distinction is not how dangerous the category sounds — every one of these pauses — but
+// whether repeating the operation is the same decision or a new one.
+//
+// A form submission or a booking flow is typically several presses of the same shaped control
+// (`Weiter`, `Weiter`, `Bestätigen`); making the user answer each identical press is what trains
+// them to stop reading the dialog. A payment, a deletion, a login and a file upload are the
+// opposite: each one is its own irreversible act, and "yes, and stop asking" is precisely the
+// answer that must not be available. `external_message` joins them because every send reaches a
+// different person.
+//
+// The UI hides the button for these, and `respondToBrowserApproval` REFUSES a run-scoped answer for
+// them — a hidden button is a hint, not a control.
+const RUN_SCOPED_APPROVAL_CATEGORIES = new Set(['submit_publish', 'booking'])
+
+function allowsRunScopedApproval(category) {
+    return RUN_SCOPED_APPROVAL_CATEGORIES.has(String(category || ''))
+}
+
 function describeCategory(category) {
     switch (category) {
         case 'login':
@@ -392,6 +411,7 @@ function evaluateBrowserAction({
                     message: `Opening ${check.hostname}${pathname} would perform ${describeCategory(category)}.`,
                     hostname: check.hostname,
                     url: check.url,
+                    allowRunScope: allowsRunScopedApproval(category),
                     signature: buildApprovalSignature({
                         action,
                         category,
@@ -456,6 +476,7 @@ function evaluateBrowserAction({
                     evidence: [...evidence, 'the control submits a form'],
                     message: `This would submit a form on ${pageCheck.hostname}.`,
                     hostname: pageCheck.hostname,
+                    allowRunScope: allowsRunScopedApproval(category),
                     signature: buildApprovalSignature({ action, category, hostname: pageCheck.hostname, target }),
                 }
             }
@@ -469,6 +490,7 @@ function evaluateBrowserAction({
                     evidence,
                     message: `This would perform ${describeCategory(sensitive)} on ${pageCheck.hostname}.`,
                     hostname: pageCheck.hostname,
+                    allowRunScope: allowsRunScopedApproval(sensitive),
                     signature: buildApprovalSignature({
                         action,
                         category: sensitive,
@@ -488,6 +510,8 @@ function evaluateBrowserAction({
 
 module.exports = {
     CATEGORY_TERMS,
+    RUN_SCOPED_APPROVAL_CATEGORIES,
+    allowsRunScopedApproval,
     buildApprovalSignature,
     classifyObservedTarget,
     describeCategory,

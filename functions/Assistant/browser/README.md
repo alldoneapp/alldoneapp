@@ -6,7 +6,9 @@ audit trail. The browser itself runs in `../browser-worker`, a separate Cloud Ru
 
 **Status: not enabled anywhere.** Nothing is deployed, no environment carries the configuration, and
 with no configuration every call is refused with a message naming what is missing. Switching it on
-is a deliberate operational act — see _Enabling it_ below.
+is a deliberate operational act — see _Enabling it_ below. The feature itself is complete: the
+allowlist has an editor, sensitive actions have an approval card, every executed step is billed, and
+the whole stack has been driven against a real Chromium (`browser-tests/at2518`).
 
 ## Why not just `fetch_url`
 
@@ -92,6 +94,36 @@ approval. It changes nothing on the far side, and without it the feature cannot 
 it exists for. It never applies when a sensitive category also matched, and a project can switch it
 off with `browserAutomation.allowSearchSubmit: false`.
 
+### Gold
+
+**The billed unit is one EXECUTED browser step** — one `browser_*` tool call that reached the browser
+and did something — at **1 Gold**, the same unit and price as `mcp_tool_call`, which is the closest
+precedent: a single, bounded, externally-effective tool call whose cost is dominated by holding
+infrastructure open rather than by tokens. A typical "check whether that event still has tickets" run
+is 4–8 steps, i.e. 4–8 Gold, which lands in the same order as one assistant answer.
+
+Not billed, and each omission matters:
+
+| not charged                                                               | why                                                                            |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| a step the policy refused                                                 | billing the user for the protection working is how people switch it off        |
+| a step that paused for an approval                                        | nothing was delivered, and the same action is attempted again after the answer |
+| a step the worker failed (timeout, page down, redirect off the allowlist) | nothing usable came back                                                       |
+| a step refused by the run budget                                          | it never reached the browser                                                   |
+
+Double-charging is prevented structurally: the step id is minted once inside the transaction that
+hands the step out, and it is the ledger's **idempotency key** (`browser_step:<stepId>`), so a
+Functions retry or an at-least-once redelivery lands on the existing claim. `deductGold` forwards
+`context.idempotencyKey` exactly as `refundGold` already did.
+
+Affordability is checked **before** the browser is touched — acting first and finding an empty
+balance afterwards would perform something on a third-party site that Alldone then cannot bill. That
+check fails OPEN on an unreadable balance (the charge itself still uses `requireSufficientBalance`,
+so a genuinely empty balance cannot go negative). A charge that fails after a successful action is
+recorded on the step and logged; it never turns a successful page read into a tool error.
+
+`functions/Assistant/browser/browserGold.js` is the only place any of this is decided.
+
 ### What an approval is
 
 A grant against the policy **signature** — `(action, category, host, element shape)` — created only
@@ -99,6 +131,34 @@ by `respondToBrowserApprovalSecondGen`, only by the user the request was raised 
 single use, expiring after 15 minutes and never outliving the run. Approving "book that table" can
 never be replayed as "delete the account". A denial sticks for the rest of the run, so the model
 cannot loop on the dialog.
+
+### The approval card
+
+`components/ChatsView/ChatDV/EditorView/BrowserApprovalCard.js` renders the pending request under the
+assistant comment that asked for it, with **Allow once**, **Allow for this run** and **Deny** — the
+same card, the same three answers and the same wording as `VmInteractionCard`, because it is the same
+question, and a differently-shaped answer to it is how a user learns that approving in one surface
+does not mean what it means in the other.
+
+Which comment it hangs off is decided by `assistantCommentId`, stamped on the request from the
+runtime context (`assistantHelper` puts the assistant's own answer comment id there). A thread can
+hold more than one browsing run, and a card under the wrong comment is a request the user cannot
+place in the conversation.
+
+**"Allow for this run" is a policy decision, not a UI one.** `RUN_SCOPED_APPROVAL_CATEGORIES` in
+`browserPolicy.js` allows it for `submit_publish` and `booking` — several presses of the same shaped
+control in one flow, where answering each identical press is what trains people to stop reading the
+dialog — and refuses it for `login`, `payment`, `delete`, `file_upload` and `external_message`, each
+of which is its own irreversible act. The card hides the button, and `respondToBrowserApproval`
+**downgrades a run-scoped answer to single-use** for those categories regardless of what the client
+asked for: a hidden button is a hint, not a control.
+
+The card reads the request over a live Firestore listener — `browserApprovals` is readable **only**
+by the user the request was raised for and writable by nobody (`firestore.rules`) — and answers
+through `respondToBrowserApprovalSecondGen`. The assistant's turn has already ended by the time it
+asks, so the confirmation says to ask it to continue rather than pretending it resumes by itself; the
+grant is waiting and the next attempt at the same action goes through. That pause → approve → resume
+path runs end to end against real Chromium in `browser-tests/at2518`.
 
 ## Configuration
 
@@ -126,7 +186,12 @@ Allowlist syntax: `example.com` (apex + subdomains), `*.example.com` (subdomains
 `example.com/events` (path prefix), a pasted URL (scheme discarded). The effective list is the union
 of the environment list and the project list; every entry is validated the same way.
 
-Per assistant: enable **Browse a website** in Tools Access (opt-in only).
+Per assistant: enable **Browse a website** in Tools Access (opt-in only). The same row then shows
+**Allowed websites (N)**, which opens the editor for the list above — ticking the box and finding
+that nothing works, because the list is empty and default deny, is exactly the dead end that row
+exists to prevent. The editor validates as you type (`utils/browserAllowlistInput.js`) and names the
+specific problem; it never accepts an entry the server would silently drop, which is pinned by
+`browserAllowlistParity.test.js`.
 
 ## Enabling it
 
@@ -140,9 +205,9 @@ Per assistant: enable **Browse a website** in Tools Access (opt-in only).
 5. Allowlist the first hosts, per environment or per project.
 6. Enable the tool on one assistant and try it on a page you own.
 
-**Before production:** decide the Gold price. This feature currently charges **nothing** — a browsing
-run costs Cloud Run CPU and memory for as long as the session is open and is not metered at all. See
-_Open items_.
+**Before production:** nothing in the code is missing, but two operational decisions are: the first
+allowlist (which sites the assistant may open at all) and whether 1 Gold per step is the price you
+want (see _Gold_).
 
 ## Threat model
 
@@ -165,17 +230,16 @@ credentials, and the user's standing with the third-party sites the assistant vi
 
 ## Open items before production
 
-- **Gold metering.** Nothing is charged. `mcp_tool_call` is the closest precedent; a per-run or
-  per-minute source (`browser_automation`) plus a `GoldTransactionsModal` label and three i18n keys
-  is the shape.
-- **Approval UI.** The gate is enforced server-side and answered by
-  `respondToBrowserApprovalSecondGen`, but no surface renders the pending request yet. Until one
-  exists, a sensitive action is simply refused (fail closed) and the assistant explains why. The
-  natural home is the VM interaction card (`vmInteraction.js` + its chat UI), which already renders
-  approve / deny / allow-for-this-run.
+- **Deployment.** Nothing here has run in a real environment: no worker is deployed, no environment
+  carries the configuration, and the price has not been agreed. The integration test proves the code
+  works against a real browser on a developer machine; it proves nothing about Cloud Run.
 - **Egress restriction** on the worker service (see DNS rebinding above).
-- **Deployment**: nothing here has run against a real browser in CI or in a real environment. The
-  worker's Playwright code is covered by no automated test at all — jest cannot run Chromium here.
+- **Gold price review.** 1 Gold per executed step is a considered choice, not a measured one — it is
+  pinned to `mcp_tool_call` rather than to observed Cloud Run cost. Worth revisiting once real runs
+  exist.
+- **Resume is manual.** After approving, the user asks the assistant to continue. Automatically
+  resuming the turn would mean parking a chat run the way a VM run parks, which is a change to the
+  streaming tool loop rather than to this feature.
 
 ## Tests
 
@@ -186,13 +250,27 @@ npx jest --config ci/jest.functions.config.js functions/Assistant/browser functi
 `browserAllowlist.test.js` (default deny, SSRF hosts, entry syntax), `browserLimits.test.js`
 (clamping, refusal, overshoot), `browserRedaction.test.js` (the model/audit split),
 `browserPolicy.test.js` (category detection in three languages, the generic-click bypass, the search
-carve-out, signatures), `browserApprovals.test.js` (ownership, single use, denial stickiness,
-expiry), `browserSession.test.js` (the whole path with a fake worker: allowlist, limits, audit
-evidence, approval gates), `browserToolRegistration.test.js` (the wiring ratchet), and
+carve-out, signatures, run-scope categories), `browserApprovals.test.js` (ownership, single use,
+denial stickiness, expiry, run-scope downgrade), `browserGold.test.js` (the unit, idempotency, the
+pre-flight balance check, failure behaviour), `browserSession.test.js` (the whole path with a fake
+worker: allowlist, limits, audit evidence, approval gates, billing), `browserAllowlistParity.test.js`
+(the editor and the policy agree), `browserToolRegistration.test.js` (the wiring ratchet), and
 `../browser-worker/browserWorkerGuard.test.js` (the worker's network guard and its token — the two
 rules Functions structurally cannot enforce).
 
-Playwright itself is covered by nothing: it needs a real Chromium, which jest here does not have.
-`sharedModules.js` resolves the shared modules from both the repository and the image layout so at
-least the guard is testable in place, but the describe step, the snapshot and every action have only
-ever been read, never run.
+Web side: `components/ChatsView/ChatDV/EditorView/BrowserApprovalCard.test.js` and
+`components/UIComponents/FloatModals/BrowserAllowlistModal/BrowserAllowlistModal.test.js`.
+
+### The real browser
+
+```bash
+npx playwright install chromium      # into PLAYWRIGHT_HOME, default /home/user/repro
+node browser-tests/at2518/run.js
+```
+
+The only place Playwright is actually executed. It starts the REAL worker process against a REAL
+Chromium and drives the REAL `executeBrowserTool` against a fixture site served under a
+public-looking name (`--host-resolver-rules`, so the allowlist is not weakened for the test), and
+checks navigate, inspect, type+submit, wait, screenshot, the approval pause, the approve→resume
+path, a denial sticking, an off-allowlist host, a redirect off the allowlist, the audit trail and
+the Gold charges. 34 checks; exit code 0 = pass.

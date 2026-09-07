@@ -10220,6 +10220,12 @@ async function storeChunks(
             requestUserId,
         }
 
+        // The assistant's OWN answer comment, which the context built by the caller cannot know
+        // (it carries `messageId`, the user's triggering message). A browser approval request is
+        // rendered under the comment in which the assistant says it needs one, so without this the
+        // request exists server-side with nowhere on screen to appear.
+        runtimeContextForTools.assistantCommentId = commentId
+
         // Recent user-authored turns, so a per-run VM override the user asked for a message or two
         // ago ("do the next one with codex" → "go ahead") is still corroborated. Assistant turns are
         // filtered out inside collectUserRequestText. See vmRunOverrideGuard (AT-2224).

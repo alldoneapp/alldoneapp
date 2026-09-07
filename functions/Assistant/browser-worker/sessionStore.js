@@ -26,6 +26,13 @@ const sessions = new Map()
 let browserPromise = null
 let sweeper = null
 
+// A test hook, and deliberately the narrowest one that works: it can only map hostnames, so it
+// cannot loosen the allowlist, disable the sandbox or change any other launch behaviour. The
+// integration test needs it because the allowlist refuses IP literals and private hosts by design —
+// a fixture site therefore has to be reachable under a public-looking NAME.
+// Unset in every deployed environment; `browser-worker/README.md` says so.
+const HOST_RESOLVER_RULES = process.env.BROWSER_WORKER_HOST_RESOLVER_RULES || ''
+
 async function getBrowser() {
     if (!browserPromise) {
         browserPromise = chromium.launch({
@@ -35,6 +42,7 @@ async function getBrowser() {
                 // The context is the isolation boundary we rely on; the sandbox stays ON.
                 '--disable-background-networking',
                 '--disable-features=Translate,BackForwardCache',
+                ...(HOST_RESOLVER_RULES ? [`--host-resolver-rules=${HOST_RESOLVER_RULES}`] : []),
             ],
         })
         browserPromise.catch(() => {

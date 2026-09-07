@@ -70,10 +70,20 @@ function bookingTarget(overrides = {}) {
     }
 }
 
+function createLedgerDouble() {
+    const charges = []
+    const deductGold = async (userId, amount, context) => {
+        charges.push({ userId, amount, context })
+        return { success: true, amount, newBalance: 99 }
+    }
+    return { deductGold, charges }
+}
+
 async function run(overrides = {}) {
     const db = overrides.db || new FirestoreDouble()
     const bucket = overrides.bucket || createBucketDouble()
     const worker = overrides.worker || createWorkerDouble()
+    const ledger = overrides.ledger || createLedgerDouble()
     const result = await executeBrowserTool({
         toolName: overrides.toolName || 'browser_navigate',
         toolArgs: overrides.toolArgs || { url: 'https://tickets.example/event/42' },
@@ -86,10 +96,11 @@ async function run(overrides = {}) {
             bucket,
             env: overrides.env || ENV,
             fetchImpl: worker.fetchImpl,
+            deductGold: ledger.deductGold,
             now: () => overrides.now || NOW,
         },
     })
-    return { result, db, bucket, worker }
+    return { result, db, bucket, worker, ledger }
 }
 
 function auditSteps(db) {
@@ -370,6 +381,72 @@ describe('executeBrowserTool', () => {
             const step = auditSteps(db).pop()
             expect(JSON.stringify(step)).not.toContain('Konzert 15. September')
             expect(step.typedValue).toMatchObject({ length: 21 })
+        })
+    })
+
+    describe('gold', () => {
+        it('charges exactly one step, keyed on the step id', async () => {
+            const worker = createWorkerDouble({ navigate: () => pageResult() })
+            const ledger = createLedgerDouble()
+            const { db } = await run({ worker, ledger })
+
+            expect(ledger.charges).toHaveLength(1)
+            expect(ledger.charges[0].amount).toBe(1)
+            expect(ledger.charges[0].context.source).toBe('browser_automation')
+
+            const step = auditSteps(db)[0]
+            expect(ledger.charges[0].context.idempotencyKey).toBe(`browser_step:${step.stepId}`)
+            expect(step.goldCharged).toBe(true)
+        })
+
+        it('charges nothing for a step the POLICY refused', async () => {
+            // Billing the user for the protection working is the one outcome that would make people
+            // switch it off.
+            const ledger = createLedgerDouble()
+            const { result } = await run({ ledger, toolArgs: { url: 'https://elsewhere.example/' } })
+            expect(result.success).toBe(false)
+            expect(ledger.charges).toHaveLength(0)
+        })
+
+        it('charges nothing for a step that paused for an approval', async () => {
+            const worker = createWorkerDouble({ navigate: () => pageResult(), describe: () => bookingTarget() })
+            const db = new FirestoreDouble()
+            const ledger = createLedgerDouble()
+            await run({ db, worker, ledger })
+            const chargesAfterNavigate = ledger.charges.length
+
+            const { result } = await run({ db, worker, ledger, toolName: 'browser_click', toolArgs: { ref: 'e1' } })
+            expect(result.status).toBe('approval_required')
+            expect(ledger.charges).toHaveLength(chargesAfterNavigate)
+        })
+
+        it('charges nothing when the worker failed', async () => {
+            const worker = createWorkerDouble({
+                navigate: () => ({ ok: false, reason: 'timeout', error: 'The page did not respond.' }),
+            })
+            const ledger = createLedgerDouble()
+            const { result } = await run({ worker, ledger })
+            expect(result.success).toBe(false)
+            expect(ledger.charges).toHaveLength(0)
+        })
+
+        it('refuses the step BEFORE touching the browser when the balance is empty', async () => {
+            const db = new FirestoreDouble({ 'users/user1': { gold: 0 } })
+            const worker = createWorkerDouble({ navigate: () => pageResult() })
+            const ledger = createLedgerDouble()
+            const { result } = await run({ db, worker, ledger })
+
+            expect(result.success).toBe(false)
+            expect(result.reason).toBe('insufficient_gold')
+            expect(worker.calls).toHaveLength(0)
+            expect(ledger.charges).toHaveLength(0)
+            expect(auditSteps(db)[0]).toMatchObject({ status: 'blocked', decisionReason: 'insufficient_gold' })
+        })
+
+        it('reports the cost back to the model', async () => {
+            const worker = createWorkerDouble({ navigate: () => pageResult() })
+            const { result } = await run({ worker })
+            expect(result.goldCost).toBe(1)
         })
     })
 

@@ -133,7 +133,10 @@ function normalizeAllowlistEntry(rawEntry) {
     if (!host.includes('.')) return null
     if (!/^[a-z0-9.-]+$/.test(host)) return null
 
-    const pathPrefix = pathPrefixRaw ? pathPrefixRaw.replace(/\/+$/, '') || '/' : ''
+    // A bare `/` is not a path constraint, it is the root — `example.com/` (a pasted URL) must
+    // normalize to the same entry as `example.com`, or the two look like different rules and the
+    // editor's duplicate check cannot see them as one.
+    const pathPrefix = pathPrefixRaw ? pathPrefixRaw.replace(/\/+$/, '') : ''
 
     return { host, subdomainsOnly, pathPrefix }
 }

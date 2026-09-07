@@ -100,6 +100,8 @@ function buildApprovalRecord({
     message,
     evidence,
     target,
+    allowRunScope,
+    assistantCommentId,
     now,
 }) {
     return {
@@ -117,6 +119,13 @@ function buildApprovalRecord({
         category: category || null,
         categories: Array.isArray(categories) ? categories : [],
         signature: signature || '',
+        // Whether "allow for the rest of this run" may be offered AT ALL. Decided by the policy per
+        // category (see RUN_SCOPED_APPROVAL_CATEGORIES) and stored on the record, so the answer the
+        // user is offered and the answer the server accepts are the same fact rather than two.
+        allowRunScope: allowRunScope === true,
+        // The assistant comment the request belongs to, so the card renders where the user is
+        // already reading rather than in a separate inbox.
+        assistantCommentId: assistantCommentId || null,
         hostname: hostname || null,
         pageUrl: pageUrl || null,
         message: message || '',
@@ -222,7 +231,10 @@ async function respondToBrowserApproval(db, { approvalId, userId, action, scope 
             return { status: APPROVAL_STATUS.DENIED, approvalId }
         }
 
-        const effectiveScope = normalizeScope(scope)
+        // A hidden button is a hint, not a control: a client that asks for `run` on a category the
+        // policy never allowed it for is answered as a single-use approval rather than trusted.
+        const requestedScope = normalizeScope(scope)
+        const effectiveScope = requestedScope === 'run' && record.allowRunScope !== true ? 'once' : requestedScope
         const grants = Array.isArray(run.approvalGrants) ? run.approvalGrants : []
         const grant = {
             signature: record.signature,
@@ -258,7 +270,12 @@ async function respondToBrowserApproval(db, { approvalId, userId, action, scope 
             { pendingApprovals: pending, approvalGrants: nextGrants, lastActivityAt: now },
             { merge: true }
         )
-        return { status: APPROVAL_STATUS.APPROVED, approvalId, scope: effectiveScope }
+        return {
+            status: APPROVAL_STATUS.APPROVED,
+            approvalId,
+            scope: effectiveScope,
+            scopeDowngraded: requestedScope !== effectiveScope,
+        }
     })
 }
 

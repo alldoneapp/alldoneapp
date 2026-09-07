@@ -321,3 +321,18 @@ export async function getNextTaskId(projectId) {
         return `TA-${timestamp}`
     }
 }
+
+/**
+ * The project's browsing configuration (the `browser_automation` tool's allowlist).
+ *
+ * Stored on the project document rather than on the assistant because a browsing allowlist is a
+ * property of the workspace: two assistants in one project must not be able to disagree about which
+ * sites may be opened. It is written whole rather than merged so removing the last entry actually
+ * removes it — a merge would leave the old array in place and the site would stay allowed.
+ *
+ * Client-written and therefore untrusted: `functions/Assistant/browser/browserAllowlist.js`
+ * re-validates every entry on every read, and no entry can widen anything beyond "may be opened".
+ */
+export function setProjectBrowserAutomation(projectId, browserAutomation) {
+    return getDb().doc(`/projects/${projectId}`).update({ browserAutomation })
+}

@@ -49,6 +49,11 @@ export const TOOL_OPTIONS = [
     { key: 'talk_to_assistant', labelKey: 'Talk to assistants' },
 ]
 
+// The one Tools Access key that fans out to the six `browser_*` tool names on the server. Exported
+// so the tools modal can attach the allowlist editor to exactly this row without matching a string
+// literal in two places.
+export const BROWSER_TOOL_KEY = 'browser_automation'
+
 export const TOOL_LABEL_BY_KEY = TOOL_OPTIONS.reduce((acc, option) => {
     acc[option.key] = option.labelKey
     return acc
