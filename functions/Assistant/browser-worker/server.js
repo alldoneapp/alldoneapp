@@ -12,8 +12,9 @@
 // is a signed claim, not a request parameter, and a leaked token is worth two minutes of browsing
 // under exactly the policy that token was already minted for.
 //
-// The service must be deployed with ingress restricted and `--no-allow-unauthenticated`; the token
-// is the second lock, not the first.
+// The service must be deployed with `--no-allow-unauthenticated`. Cloud Run IAM checks the Google
+// ID token in `X-Serverless-Authorization`; this worker independently checks the application token
+// in `Authorization`.
 
 const express = require('express')
 
