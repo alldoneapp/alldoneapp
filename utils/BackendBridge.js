@@ -288,8 +288,8 @@ export default class Backend {
         bridge.watchUserStatistics(projectId, estimationType, userId, timestamp1, timestamp2, watcherKey, callback)
     }
 
-    static getUserStatistics(projectId, userId, date, callback, callbackOffline) {
-        bridge.getUserStatistics(projectId, userId, date, callback, callbackOffline)
+    static getUserStatistics(projectId, userId, date, callback, callbackOffline, options) {
+        return bridge.getUserStatistics(projectId, userId, date, callback, callbackOffline, options)
     }
 
     static watchAllUserStatisticsByRange(

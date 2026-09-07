@@ -187,7 +187,7 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         // Offline is not a blocked popup: the day is still startable, because
         // the acknowledgement is queued locally (AT-2340).
         expect(has(tree, 'startNewDayButton')).toBe(true)
-        expect(text(tree)).toContain('Reconnect now')
+        expect(text(tree)).toContain('Try again')
     })
 
     it('does not offer it when the statistics loaded and the connection is live', async () => {
@@ -205,7 +205,7 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
 
         await pressReconnect(tree)
 
-        expect(reconnectNow).toHaveBeenCalledTimes(1)
+        expect(reconnectNow).not.toHaveBeenCalled()
         // The popup is still open, now showing what it could not read before.
         expect(tree.toJSON()).not.toBeNull()
         expect(has(tree, 'newDayReconnectButton')).toBe(false)
@@ -227,6 +227,7 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
     })
 
     it('reports a reconnect that did not work and keeps the day startable', async () => {
+        renderer.act(() => store.dispatch(setConnectionHealth('stale')))
         reconnectNow.mockResolvedValue('offline')
         const tree = await render()
 
@@ -235,15 +236,19 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         expect(Backend.getUserStatistics).toHaveBeenCalledTimes(1) // no pointless re-read
         expect(has(tree, 'newDayReconnectButton')).toBe(true)
         expect(has(tree, 'startNewDayButton')).toBe(true)
-        expect(text(tree)).toContain('Still no connection')
+        expect(text(tree)).toContain('Your summary could not be loaded')
     })
 
     it('can be pressed again after a failed attempt', async () => {
+        renderer.act(() => store.dispatch(setConnectionHealth('stale')))
         reconnectNow.mockResolvedValue('offline')
         const tree = await render()
 
         await pressReconnect(tree)
-        reconnectNow.mockResolvedValue('live')
+        reconnectNow.mockImplementation(async () => {
+            store.dispatch(setConnectionHealth('live'))
+            return 'live'
+        })
         readsStatistics({ doneTasks: 2, donePoints: 3, xp: 10, gold: 1 })
         await pressReconnect(tree)
 
@@ -253,16 +258,18 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
     })
 
     it('survives a reconnect that throws, rather than leaving a spinner', async () => {
+        renderer.act(() => store.dispatch(setConnectionHealth('stale')))
         reconnectNow.mockRejectedValue(new Error('boom'))
         const tree = await render()
 
         await pressReconnect(tree)
 
         expect(has(tree, 'newDayReconnectButton')).toBe(true)
-        expect(text(tree)).toContain('Still no connection')
+        expect(text(tree)).toContain('Your summary could not be loaded')
     })
 
     it('gives up when the shared reconnect operation itself never answers', async () => {
+        renderer.act(() => store.dispatch(setConnectionHealth('stale')))
         jest.useFakeTimers()
         reconnectNow.mockImplementation(() => new Promise(() => {}))
         const tree = await render()
@@ -283,7 +290,7 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         expect(text(tree)).not.toContain('Reconnecting')
         expect(has(tree, 'newDayReconnectButton')).toBe(true)
         expect(has(tree, 'startNewDayButton')).toBe(true)
-        expect(text(tree)).toContain('Still no connection')
+        expect(text(tree)).toContain('Your summary could not be loaded')
     })
 
     it('gives up on a re-read that never answers', async () => {
@@ -367,6 +374,100 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
             expect(text(tree)).toContain('Still no connection')
             expect(has(tree, 'newDayReconnectButton')).toBe(true)
         })
+    })
+
+    it('shows the popup before sidebar counters and statistics finish', async () => {
+        readsNothing()
+        renderer.act(() => store.dispatch(setSidebarNumbers({ loading: true })))
+        const tree = await render()
+        expect(has(tree, 'startNewDayButton')).toBe(true)
+        expect(text(tree)).toContain('Loading your daily summary')
+        expect(Backend.getUserStatistics).toHaveBeenCalledWith(
+            'p1',
+            'user-1',
+            expect.any(String),
+            expect.any(Function),
+            expect.any(Function),
+            { preferDirect: true }
+        )
+        expect(text(tree)).not.toContain('offline')
+    })
+
+    it('does not describe a statistics failure as a phone connectivity failure', async () => {
+        const tree = await render()
+        expect(text(tree)).toContain('Your summary could not be loaded')
+        expect(text(tree)).not.toContain('offline right now')
+        expect(text(tree)).not.toContain('You are offline')
+    })
+
+    it('accepts a successful answer after an earlier failure', async () => {
+        let answer
+        Backend.getUserStatistics.mockImplementation((projectId, userId, date, callback, onError) => {
+            answer = () => callback(projectId, { doneTasks: 9 })
+            onError({ code: 'unavailable', message: 'Temporary failure' })
+        })
+        const tree = await render()
+        await renderer.act(async () => answer())
+        expect(text(tree)).toContain('Tasks done:')
+        expect(text(tree)).toContain('"9"')
+        expect(text(tree)).not.toContain('Your summary could not be loaded')
+    })
+
+    it('ignores old statistics callbacks after the day was acknowledged', async () => {
+        let answer
+        Backend.getUserStatistics.mockImplementation((projectId, userId, date, callback) => {
+            answer = () => callback(projectId, { doneTasks: 9 })
+        })
+        const tree = await render()
+        renderer.act(() => tree.root.findByProps({ testID: 'startNewDayButton' }).props.onPress())
+        await renderer.act(async () => answer())
+        expect(tree.toJSON()).toBeNull()
+    })
+
+    it('automatically retries the summary after browser connectivity recovers', async () => {
+        renderer.act(() => store.dispatch(setConnectionState('offline')))
+        const tree = await render()
+        expect(text(tree)).toContain('You are offline')
+        readsStatistics({ doneTasks: 6 })
+        await renderer.act(async () => store.dispatch(setConnectionState('online')))
+        await flush()
+        expect(text(tree)).toContain('Tasks done:')
+        expect(text(tree)).toContain('"6"')
+        expect(reconnectNow).not.toHaveBeenCalled()
+    })
+
+    it('retains successful projects and retries only the failed project', async () => {
+        renderer.act(() => {
+            store.dispatch(storeLoggedUser({ ...store.getState().loggedUser, projectIds: ['p1', 'p2'] }))
+            const second = { ...PROJECT, id: 'p2', index: 1 }
+            store.dispatch(setProjectsInitialData([PROJECT, second], { p1: PROJECT, p2: second }, {}, {}, {}, {}))
+        })
+        Backend.getUserStatistics.mockImplementation((projectId, userId, date, callback, onError) => {
+            projectId === 'p1' ? callback(projectId, { doneTasks: 4 }) : onError()
+        })
+        const tree = await render()
+        Backend.getUserStatistics.mockClear()
+        readsStatistics({ doneTasks: 3 })
+        await pressReconnect(tree)
+        expect(Backend.getUserStatistics).toHaveBeenCalledTimes(1)
+        expect(Backend.getUserStatistics.mock.calls[0][0]).toBe('p2')
+        expect(text(tree)).toContain('"7"')
+    })
+
+    it('does not reload statistics just because the project order changes', async () => {
+        const second = { ...PROJECT, id: 'p2', index: 1 }
+        renderer.act(() => {
+            store.dispatch(storeLoggedUser({ ...store.getState().loggedUser, projectIds: ['p1', 'p2'] }))
+            store.dispatch(setProjectsInitialData([PROJECT, second], { p1: PROJECT, p2: second }, {}, {}, {}, {}))
+        })
+        readsStatistics({ doneTasks: 2 })
+        const tree = await render()
+        Backend.getUserStatistics.mockClear()
+        await renderer.act(async () =>
+            store.dispatch(setProjectsInitialData([second, PROJECT], { p1: PROJECT, p2: second }, {}, {}, {}, {}))
+        )
+        expect(Backend.getUserStatistics).not.toHaveBeenCalled()
+        expect(text(tree)).toContain('"4"')
     })
 
     it('does not double count a project that answered before the retry', async () => {

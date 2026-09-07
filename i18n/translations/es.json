@@ -2794,5 +2794,9 @@
     "Jump to newest message": "Ir al mensaje más reciente",
     "Project skills description": "Las skills son paquetes de instrucciones reutilizables (formato Agent Skills) que los asistentes cargan cuando los necesitan. Las skills que añadas aquí pertenecen a este proyecto y están disponibles de inmediato para los asistentes de este proyecto.",
     "Manage": "Gestionar",
-    "Moving to projectName": "Moviendo a %{projectName}..."
+    "Moving to projectName": "Moviendo a %{projectName}...",
+    "You are offline. Your summary will load when you reconnect.": "Estás sin conexión. Tu resumen se cargará cuando vuelvas a conectarte.",
+    "Your summary could not be loaded. Please try again.": "No se pudo cargar tu resumen. Inténtalo de nuevo.",
+    "Loading your daily summary...": "Cargando tu resumen diario...",
+    "Your summary could not be loaded. You can start the day and try again later.": "No se pudo cargar tu resumen. Puedes empezar el día e intentarlo de nuevo más tarde."
 }

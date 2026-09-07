@@ -151,6 +151,7 @@ import {
 
 import firebase from 'firebase/compat/app'
 import { readDocumentDirectlyFromServer } from './firestoreDirectRead'
+import { readUserStatistics } from './Users/userStatisticsRead'
 import { initializeGoogleIdentity } from '../googleIdentityInitialization'
 import { resolveAdministratorUser } from './administratorUserResolver'
 import { PLAN_STATUS_FREE } from '../../components/Premium/PremiumHelper'
@@ -3527,16 +3528,16 @@ export async function getRangeUserStatistics(projectId, estimationType, userId, 
     }, 0)
 }
 
-export async function getUserStatistics(projectId, userId, date, callback, callbackOffline) {
-    db.doc(`/statistics/${projectId}/${userId}/${date}`)
-        .get()
-        .then(doc => {
-            const statistics = doc.data()
-            callback(projectId, statistics ? statistics : {})
-        })
-        .catch(error => {
-            callbackOffline()
-        })
+export async function getUserStatistics(projectId, userId, date, callback, callbackOffline, options) {
+    let statistics
+    try {
+        statistics = await readUserStatistics(db, `/statistics/${projectId}/${userId}/${date}`, options)
+    } catch (error) {
+        callbackOffline(error)
+        return
+    }
+    // A rendering/consumer error is not evidence that the phone is offline.
+    callback(projectId, statistics)
 }
 
 export function watchAllUserStatisticsByRange(

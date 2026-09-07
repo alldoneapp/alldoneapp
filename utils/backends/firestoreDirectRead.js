@@ -72,13 +72,14 @@ const getDirectReadTarget = documentPath => {
 // (`Service firestore/lite is not available` in production), so use Firestore's authenticated
 // REST document endpoint instead. It has no local cache/listener state and applies the same
 // Firebase Auth security rules through the user's ID token.
-export const readDocumentDirectlyFromServer = async documentPath => {
+export const readDocumentDirectlyFromServer = async (documentPath, { signal } = {}) => {
     const currentUser = firebase.auth().currentUser
     if (!currentUser) throw new Error('Cannot verify a Firestore document without an authenticated user')
 
     const idToken = await currentUser.getIdToken()
     const target = getDirectReadTarget(documentPath)
     const response = await fetch(target.url, {
+        ...(signal ? { signal } : {}),
         method: 'POST',
         cache: 'no-store',
         headers: {
