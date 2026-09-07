@@ -96,6 +96,7 @@ async function run(overrides = {}) {
             bucket,
             env: overrides.env || ENV,
             fetchImpl: worker.fetchImpl,
+            identityTokenProvider: async () => 'google-cloud-run-id-token',
             deductGold: ledger.deductGold,
             now: () => overrides.now || NOW,
         },

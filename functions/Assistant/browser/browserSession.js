@@ -134,7 +134,17 @@ async function consumeGrant(db, runId, signature, now) {
  * A worker that cannot resolve the element reports `ok: false` and the action is refused — an
  * unresolvable element must never fall through to an unclassified click.
  */
-async function describeTarget({ config, runId, sessionId, projectId, userId, args, fetchImpl, now }) {
+async function describeTarget({
+    config,
+    runId,
+    sessionId,
+    projectId,
+    userId,
+    args,
+    fetchImpl,
+    identityTokenProvider,
+    now,
+}) {
     return callBrowserWorker({
         operation: 'describe',
         payload: { ref: args.ref || '', selector: args.selector || '' },
@@ -144,6 +154,7 @@ async function describeTarget({ config, runId, sessionId, projectId, userId, arg
         projectId,
         userId,
         fetchImpl,
+        identityTokenProvider,
         now,
     })
 }
@@ -177,6 +188,7 @@ async function executeBrowserTool({
     const objectId = resolveThreadObjectId(toolRuntimeContext, requestUserId)
     const objectType = toolRuntimeContext?.objectType || 'tasks'
     const fetchImpl = deps.fetchImpl || globalThis.fetch
+    const identityTokenProvider = deps.identityTokenProvider
 
     const step = await beginBrowserStep(db, {
         projectId,
@@ -198,7 +210,15 @@ async function executeBrowserTool({
         // A run that hit a limit is over: close the worker session so a wedged page is not held for
         // the rest of the idle window.
         if (step.reason === 'limit_exceeded' && step.runId) {
-            await closeBrowserSession({ db, config, runId: step.runId, fetchImpl, reason: 'limit_exceeded', now })
+            await closeBrowserSession({
+                db,
+                config,
+                runId: step.runId,
+                fetchImpl,
+                identityTokenProvider,
+                reason: 'limit_exceeded',
+                now,
+            })
         }
         return failure(step.message, { reason: step.reason, violation: step.violation || undefined })
     }
@@ -221,6 +241,7 @@ async function executeBrowserTool({
                 userId: requestUserId,
                 args: toolArgs,
                 fetchImpl,
+                identityTokenProvider,
                 now,
             })
             if (!described.ok || !described.target) {
@@ -408,6 +429,7 @@ async function executeBrowserTool({
             projectId,
             userId: requestUserId,
             fetchImpl,
+            identityTokenProvider,
             now,
         })
 
@@ -586,7 +608,15 @@ async function readRun(db, runId) {
 }
 
 /** Tear the worker context down and close the run. Best effort on both halves. */
-async function closeBrowserSession({ db, config, runId, fetchImpl, reason = 'finished', now = Date.now() }) {
+async function closeBrowserSession({
+    db,
+    config,
+    runId,
+    fetchImpl,
+    identityTokenProvider,
+    reason = 'finished',
+    now = Date.now(),
+}) {
     try {
         const run = await readRun(db, runId)
         if (run?.workerSessionId && config?.enabled) {
@@ -599,6 +629,7 @@ async function closeBrowserSession({ db, config, runId, fetchImpl, reason = 'fin
                 projectId: run.projectId,
                 userId: run.requestUserId,
                 fetchImpl,
+                identityTokenProvider,
                 now,
             })
         }

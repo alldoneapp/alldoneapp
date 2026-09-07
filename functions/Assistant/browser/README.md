@@ -251,6 +251,10 @@ specific problem; it never accepts an entry the server would silently drop, whic
 5. Allowlist the first hosts, per environment or per project.
 6. Enable the tool on one assistant and try it on a page you own.
 
+The Functions caller sends a Google-issued ID token in `X-Serverless-Authorization` for Cloud Run
+IAM and keeps the short-lived browsing-policy HMAC token in `Authorization` for the worker itself.
+Both layers are required; removing either one makes the request fail closed.
+
 **Before production:** nothing in the code is missing, but two operational decisions are: the first
 allowlist (which sites the assistant may open at all) and whether 1 Gold per step is the price you
 want (see _Gold_).
