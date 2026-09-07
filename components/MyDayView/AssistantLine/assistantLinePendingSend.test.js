@@ -152,8 +152,11 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
         })
 
         it('gives up on a send nobody ever answers', () => {
-            const now = Date.now()
             begin()
+            // Sampled AFTER the entry is stamped, never before: `beginAssistantLineSend` reads its
+            // own `Date.now()`, so a clock that ticks in between makes every probe below one
+            // millisecond too early and the expiry looks like it did not happen.
+            const now = Date.now()
 
             expect(
                 getPendingAssistantLineSend('project-1', null, now + ASSISTANT_PENDING_SEND_TIMEOUT_MS - 1)
@@ -163,9 +166,10 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
         })
 
         it('keeps a failure notice for seconds, not minutes', () => {
-            const now = Date.now()
             const id = begin()
             failAssistantLineSend(id)
+            // After the stamp — see above. This one was observed failing for real.
+            const now = Date.now()
 
             expect(getPendingAssistantLineSend('project-1')).toMatchObject({ status: PENDING_SEND_FAILED })
             expect(getPendingAssistantLineSend('project-1', null, now + ASSISTANT_FAILED_SEND_DISPLAY_MS)).toBeNull()
