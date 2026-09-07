@@ -112,15 +112,15 @@ describe('connectionHealth', () => {
         expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
     })
 
-    it('offers the slow-connection choice after ten seconds', () => {
-        expect(SLOW_CONNECTION_THRESHOLD_MS).toBe(10000)
+    it('offers the slow-loading choice after fifteen seconds', () => {
+        expect(SLOW_CONNECTION_THRESHOLD_MS).toBe(15000)
     })
 
     // Behavioural counterpart to the constant above: an operation that is merely
-    // sluggish must ride out the old five-second mark in silence and only be called
-    // slow at ten. Asserted against literals on purpose — a test written in terms of
+    // sluggish must ride out the old ten-second mark in silence and only be called
+    // slow at fifteen. Asserted against literals on purpose — a test written in terms of
     // SLOW_CONNECTION_THRESHOLD_MS passes at any threshold, including a reverted one.
-    it('stays live through the previous five-second threshold and only turns slow at ten', () => {
+    it('stays live through the previous ten-second threshold and only turns slow at fifteen', () => {
         jest.useFakeTimers()
         let clock = 1000
         const { stop } = install({
@@ -131,12 +131,16 @@ describe('connectionHealth', () => {
 
         const finish = startConnectionLatencySample('write_ack')
 
-        clock += 5000
-        jest.advanceTimersByTime(5000)
+        clock += 10000
+        jest.advanceTimersByTime(10000)
         expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
 
-        clock += 5000
-        jest.advanceTimersByTime(5000)
+        clock += 4999
+        jest.advanceTimersByTime(4999)
+        expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_LIVE)
+
+        clock += 1
+        jest.advanceTimersByTime(1)
         expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_SLOW)
 
         finish()

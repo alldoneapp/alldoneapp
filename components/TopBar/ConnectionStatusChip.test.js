@@ -82,7 +82,7 @@ describe('ConnectionStatusChip', () => {
         const tree = renderChip()
         setHealth('slow')
 
-        expect(treeText(tree)).toContain('Slow connection')
+        expect(treeText(tree)).toContain('Slow loading')
         const chip = tree.root.findByProps({ testID: 'connection-status-chip-slow' })
         act(() => {
             chip.props.onPress()
@@ -104,8 +104,8 @@ describe('ConnectionStatusChip', () => {
         setHealth('slow')
 
         const chip = tree.root.findByProps({ testID: 'connection-status-chip-slow' })
-        expect(chip.props.accessibilityLabel).toBe('Slow connection')
-        expect(treeText(tree)).toContain('Slow connection')
+        expect(chip.props.accessibilityLabel).toBe('Slow loading')
+        expect(treeText(tree)).toContain('Slow loading')
         expect(
             StyleSheet.flatten(tree.root.findByProps({ testID: 'connection-status-below-header' }).props.style)
         ).toMatchObject({ paddingTop: 16, paddingBottom: 4, paddingHorizontal: 16 })
@@ -188,7 +188,7 @@ describe('ConnectionStatusChip', () => {
         const tree = renderChip(props)
         setHealth('slow')
 
-        expect(treeText(tree)).toContain('Slow connection')
+        expect(treeText(tree)).toContain('Slow loading')
         act(() => tree.unmount())
     })
 })

@@ -31,7 +31,7 @@ export const CONNECTION_CHIP_PRESENTATION = {
     [CONNECTION_HEALTH_SLOW]: {
         icon: 'clock',
         color: colors.UtilityYellow200,
-        label: 'Slow connection',
+        label: 'Slow loading',
     },
     [CONNECTION_HEALTH_RECONNECTING]: {
         icon: 'refresh-cw',
