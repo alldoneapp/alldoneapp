@@ -1579,6 +1579,7 @@
     "assistantLineWorkingOnIt": "%{name} arbeitet daran …",
     "assistantLineWorkingOnItGeneric": "Wird bearbeitet …",
     "assistantLineSendFailed": "Senden fehlgeschlagen – Text steht wieder im Feld",
+    "assistantLineOpeningThread": "Thread wird geöffnet …",
     "assistant_progress_preparing_1": "Ich lese unseren Gesprächsverlauf",
     "assistant_progress_preparing_2": "Ich sammle den hilfreichen Kontext",
     "assistant_progress_preparing_3": "Ich filtere heraus, was wirklich wichtig ist",

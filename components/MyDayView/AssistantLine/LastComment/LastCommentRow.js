@@ -19,7 +19,7 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import { PREVIEW_BODY_HEIGHT, PREVIEW_TITLE_HEIGHT, PREVIEW_VERTICAL_PADDING } from './lastCommentLayout'
+import { PREVIEW_BODY_HEIGHT, PREVIEW_TITLE_HEIGHT } from './lastCommentLayout'
 
 /**
  * AT-2511 — one comment, laid out inside the Last comment card. Extracted from
@@ -150,22 +150,9 @@ const LastCommentRow = ({ projectId, commentText, objectName, compact = false })
 
 export default LastCommentRow
 
-// The row's own box, applied by the card to each rolling layer. Exported rather than duplicated so
-// the outgoing and incoming layers can never be laid out differently — a difference of a single
-// pixel of padding would show as the text jogging sideways as the roll lands.
-export const rowStyles = StyleSheet.create({
-    row: {
-        flexDirection: 'row',
-        paddingHorizontal: 4,
-        paddingVertical: PREVIEW_VERTICAL_PADDING,
-    },
-    compactRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingLeft: 6,
-        paddingRight: 10,
-    },
-})
+// Lives in `lastCommentLayout` since AT-2523 so the card shell can lay a row out without importing
+// this module's comment/tag/navigation graph. Re-exported here because this is where it was.
+export { rowStyles } from './lastCommentLayout'
 
 const localStyles = StyleSheet.create({
     textContainer: {

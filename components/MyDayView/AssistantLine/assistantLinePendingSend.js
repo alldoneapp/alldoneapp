@@ -111,6 +111,10 @@ export const beginAssistantLineSend = ({
         assistantName: typeof assistantName === 'string' ? assistantName : '',
         text: typeof text === 'string' ? text : '',
         chatId: null,
+        // AT-2523 — the created thread's title, needed by the popover the card now opens
+        // (`RichCommentModal` names the object it is commenting on). Null until the topic exists,
+        // which is precisely the window the card's "opening" state covers.
+        chatTitle: '',
         status: PENDING_SEND_SENDING,
         startedAt: Date.now(),
         expiresAt: Date.now() + ASSISTANT_PENDING_SEND_TIMEOUT_MS,
@@ -123,10 +127,15 @@ export const beginAssistantLineSend = ({
  * The topic exists and the user's own comment is written. From here the wait is on the assistant,
  * and the entry carries the chat id that resolves it.
  */
-export const markAssistantLineSendCreated = (id, chatId) => {
+export const markAssistantLineSendCreated = (id, chatId, chatTitle = '') => {
     const entry = id ? entries.get(id) : null
     if (!entry || !chatId) return
-    entries.set(id, { ...entry, chatId, status: PENDING_SEND_AWAITING_REPLY })
+    entries.set(id, {
+        ...entry,
+        chatId,
+        chatTitle: typeof chatTitle === 'string' ? chatTitle : '',
+        status: PENDING_SEND_AWAITING_REPLY,
+    })
     notify()
 }
 
