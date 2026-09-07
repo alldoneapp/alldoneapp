@@ -13,6 +13,12 @@
  *   0. the TRIGGER — completing the first of two tasks and dropping nothing changes nothing; a goal
  *      that merely becomes an EMPTY GOAL is not animated (it is not leaving); a section that leaves
  *      WITHOUT its tasks having been completed still leaves instantly.
+ *   0a2. AT-2521 — the goal then leaving THROUGH that empty-goals bucket, which is how the
+ *      departure actually arrives in production (two snapshots, tasks first). This is the case the
+ *      shipped AT-2507 could never see, so the goal still popped. Its A/B is in
+ *      `useGoalSectionExit.test.js`: against the pre-AT-2521 hook the exit run is simply never
+ *      created, and this harness cannot run there at all because the hook returns no
+ *      `emptyGoalsWithExits` — deliberately strict, so an API break cannot read as "no animation".
  *   1. the HOLD    — the board drops the section and it is STILL THERE, wearing an exit.
  *   2. FADE        — its opacity falls.
  *   3. COLLAPSE    — its painted height falls to nothing, and the content below is pulled up with
@@ -139,11 +145,83 @@ async function main() {
         `sections=${JSON.stringify(asEmptyGoal.sections)} exits=${JSON.stringify(asEmptyGoal.exits)}`
     )
 
-    // Back to a full section for the remaining cases.
+    /**
+     * ── 0a2. AT-2521: and then it DOES leave, one snapshot later ─────────────────────────────────
+     *
+     * This is the ordinary production sequence, not an edge case. A goal only ever leaves today's
+     * list because its progress reached 100, that number lives on the goal document, and the goal
+     * write is caused by the task write — so the tasks snapshot lands first and the goal spends the
+     * frame above sitting in the empty-goals bucket. AT-2507 read that frame as "this goal is
+     * staying", forgot the section, and could never see the departure that followed: the goal
+     * popped away exactly as it had before, with every unit test green.
+     *
+     * The row on screen at this point is the EMPTY-GOAL row, so that is the one that has to wear
+     * the exit.
+     */
+    await page.evaluate(() => window.__dropEmptyGoal())
+    await sleep(30)
+    const leftFromBucket = await page.evaluate(() => ({
+        ...window.__measure(),
+        emptyGoals: window.__emptyGoals,
+        exits: window.__exits,
+    }))
+
+    if (reduceMotion) {
+        check(
+            'reduced motion — a goal leaving the empty-goals bucket is dropped instantly',
+            !leftFromBucket.present && leftFromBucket.emptyGoals.length === 0,
+            `present=${leftFromBucket.present}`
+        )
+    } else {
+        check(
+            'AT-2521 — a goal that leaves THROUGH the empty-goals bucket still gets its exit',
+            !!leftFromBucket.exits['goal-1'],
+            `exits=${JSON.stringify(leftFromBucket.exits)}`
+        )
+        check(
+            'and it is held as an empty goal, so the row already on screen is the one that animates',
+            leftFromBucket.present && leftFromBucket.emptyGoals.length === 1,
+            `present=${leftFromBucket.present} emptyGoals=${JSON.stringify(leftFromBucket.emptyGoals)}`
+        )
+
+        const bucketFrames = []
+        for (let i = 0; i < 22; i++) {
+            bucketFrames.push({ t: i * 50, ...(await page.evaluate(() => window.__measure())) })
+            await sleep(50)
+        }
+        const bucketPainted = bucketFrames.filter(f => f.present)
+        const bucketOpacities = bucketPainted.map(f => f.opacity)
+        const bucketHeights = bucketPainted.map(f => f.height)
+        console.log('    empty-goal height  :', bucketHeights.join(' '))
+        console.log('    empty-goal opacity :', bucketOpacities.join(' '))
+        check(
+            'the empty-goal row fades rather than vanishing',
+            bucketOpacities.length > 4 &&
+                Math.max(...bucketOpacities) > 0.9 &&
+                Math.min(...bucketOpacities) < 0.25 &&
+                bucketOpacities.filter(o => o > 0.05 && o < 0.95).length >= 4,
+            `${Math.max(...bucketOpacities)} → ${Math.min(...bucketOpacities)}`
+        )
+        /**
+         * The half that only works because the hold puts the goal back where it already WAS. Held
+         * as a main section instead, this row would be a freshly mounted component with no measured
+         * height — it would fade and still drop its full height in one frame.
+         */
+        check(
+            'and it collapses from a real measured height, so the gap closes',
+            Math.max(...bucketHeights) > 40 && Math.min(...bucketHeights) < Math.max(...bucketHeights) - 20,
+            `${Math.max(...bucketHeights)}px → ${Math.min(...bucketHeights)}px`
+        )
+    }
+
+    // Back to a full section for the remaining cases. The hold is still running, so wait it out
+    // before reusing the same goal id — otherwise the next case starts mid-exit.
     await page.evaluate(() => {
         window.__setEmptyGoals([])
-        window.__setMainTasks([['goal-1', [{ id: 'a1' }, { id: 'a2' }]]])
+        window.__setMainTasks([])
     })
+    await sleep(GOAL_SECTION_EXIT_TOTAL_MS + 300)
+    await page.evaluate(() => window.__setMainTasks([['goal-1', [{ id: 'a1' }, { id: 'a2' }]]]))
     await sleep(120)
 
     // ── 0b. a departure that is not finished work leaves instantly ───────────────────────────────
