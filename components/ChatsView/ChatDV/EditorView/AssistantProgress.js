@@ -130,6 +130,12 @@ export const ACTION_EMOJI = {
     assistant_activity_vm_task_plain: '🤝',
     assistant_activity_ask_assistant: '🤝',
     assistant_activity_ask_assistant_plain: '🤝',
+    assistant_activity_browser_navigate: '🌐',
+    assistant_activity_browser_inspect: '👀',
+    assistant_activity_browser_click: '🖱️',
+    assistant_activity_browser_type: '⌨️',
+    assistant_activity_browser_wait: '⏳',
+    assistant_activity_browser_screenshot: '📸',
 }
 
 // Defensive cap: the server truncates to 48 characters, but a subject that predates the

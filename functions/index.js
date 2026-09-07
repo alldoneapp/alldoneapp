@@ -1407,6 +1407,56 @@ exports.setDefaultVmAgent = onCall(
     }
 )
 
+// --- Browser tool approvals -------------------------------------------------------------------
+// A sensitive browser action (login, upload, booking, payment, submit/publish, delete) is refused
+// until the person who started the run answers here. `respondToBrowserApproval` is the ONLY way a
+// grant is created — nothing on the model's side of the wire can produce one — and the ownership
+// check lives in `respondToBrowserApproval` itself so the callable cannot forget it.
+exports.listBrowserApprovalRequestsSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { listPendingBrowserApprovals } = require('./Assistant/browser/browserApprovals')
+        const admin = require('firebase-admin')
+        const approvals = await listPendingBrowserApprovals(admin.firestore(), {
+            userId: auth.uid,
+            projectId: (data && data.projectId) || null,
+        })
+        return { approvals }
+    }
+)
+
+exports.respondToBrowserApprovalSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { respondToBrowserApproval } = require('./Assistant/browser/browserApprovals')
+        const admin = require('firebase-admin')
+        try {
+            return await respondToBrowserApproval(admin.firestore(), {
+                approvalId: data && data.approvalId,
+                userId: auth.uid,
+                action: data && data.action,
+                scope: data && data.scope,
+            })
+        } catch (error) {
+            throw new HttpsError('failed-precondition', error.message)
+        }
+    }
+)
+
 exports.setDefaultVmAgentReasoningEffort = onCall(
     {
         timeoutSeconds: 30,

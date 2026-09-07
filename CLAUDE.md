@@ -535,6 +535,54 @@ When adding a new assistant tool, wire every layer, not just the backend schema:
 - Check channel-specific allowlists before assuming the tool is available everywhere. Gmail labeling follow-up uses the normal assistant `allowedTools`, while email replies and realtime/WhatsApp flows may have separate safe-tool filters or schema adapters.
 - If prompts mention the tool, ensure the responsible assistant can actually enable it in Tools Access; otherwise the prompt can ask for an action the runtime will block.
 
+### Browsing (`browser_*`) — the classification runs on the PAGE, not on the tool call
+
+`fetch_url` reads a page's HTML; the six `browser_*` tools OPEN one in a real browser
+(`functions/Assistant/browser/` for the policy half, `functions/Assistant/browser-worker/` for the
+Playwright half, deployed as its own Cloud Run service). They exist for the questions a plain read
+cannot answer — a client-rendered event page, a date picker, "are there still tickets" — and they are
+one Tools Access key (`browser_automation`, opt-in only) that `getToolSchemas` fans out into six tool
+names. **Not enabled anywhere as of AT-2518**: with no `BROWSER_WORKER_URL` /
+`BROWSER_WORKER_SIGNING_SECRET` / allowlist, every call is refused with a message naming what is
+missing, and the allowlist is default-deny, so an empty one reaches nothing.
+
+**The bypass this design exists to close is that `click` and `type` can perform a purchase, a login
+or a deletion without naming any of them.** A gate reading the model's own description of what it is
+about to do is therefore worthless — the model would only have to call a Buy button "the green
+button". So `browserSession.js` enforces the ordering **observe → classify → approve → act**: for a
+click or a type the worker is first asked to `describe` the element (resolve it in the live DOM,
+report role, accessible name, input type, the enclosing form's method and action, and the labels of
+that form's submit controls) **without touching it**, and `browserPolicy.js` classifies that. Nothing
+model-authored is an input to the decision, and an element that cannot be resolved is a refusal
+rather than an unclassified click. Categories that always pause: login, file upload, booking,
+payment, submit/publish, delete, external message — matched in en/de/es, and an **unrecognised form
+submission is `submit_publish`, i.e. it pauses too**. The single carve-out is a GET form with
+search-shaped fields (`search_submit`), because without it the feature cannot answer the question it
+was built for; it never applies when a sensitive category also matched.
+
+**An approval answers ONE question.** A grant is keyed on a signature over
+(action, category, host, element shape), is created only by `respondToBrowserApprovalSecondGen`, only
+by the user the request was raised for, defaults to single use, expires in 15 minutes and never
+outlives the run — so "yes, book that table" can never be replayed as "yes, delete the account". A
+denial sticks for the rest of the run, because otherwise the model re-asks in a loop until the user
+clicks the wrong button. **Nothing renders the pending request yet** (the natural home is the VM
+interaction card), so today a sensitive action is simply refused and explained; that is fail-closed
+by design, not an oversight.
+
+Three more things worth knowing. The **budget is charged in the same Firestore transaction that hands
+out the step** and lives on the run document — a budget held in a Functions instance means "per
+instance", and two tool calls racing in one thread would each see the last navigation as free. The
+worker token **carries the allowlist and the limits** (`browserWorkerClient.js`), so the worker
+enforces redirects and page-initiated navigations at the network layer — where Functions cannot see
+them — without ever deciding what the allowlist is. And redaction is **two-sided on purpose**:
+credentials are stripped from what the model sees, credentials *and* PII from what the audit trail
+keeps, and typed text is never persisted at all (`describeTypedValue` keeps a length and a shape).
+Redacting page content on the way to the model would delete the answer the user asked for.
+
+Pinned by the seven suites in `functions/Assistant/browser/`; configuration, enabling steps, the
+threat model and the open items (Gold metering, approval UI, worker egress) are in
+`functions/Assistant/browser/README.md`.
+
 ### App shell scrolling (sidebar vs. main content)
 
 The web shell must keep a **definite** height: `html, body, #root { height: 100% }` in
