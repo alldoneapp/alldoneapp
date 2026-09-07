@@ -181,6 +181,7 @@ async function callBrowserWorker({
     userId,
     fetchImpl = globalThis.fetch,
     identityTokenProvider = getCloudRunIdentityToken,
+    affinityCookie = '',
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     now = Date.now(),
 }) {
@@ -225,13 +226,18 @@ async function callBrowserWorker({
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
+        const headers = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'X-Serverless-Authorization': `Bearer ${cloudRunIdentityToken}`,
+        }
+        // Cloud Run's affinity cookie is an opaque routing hint, not a site cookie. It is kept on
+        // the server-owned run document and never exposed to the app or the page.
+        if (affinityCookie) headers.Cookie = String(affinityCookie).split(';')[0]
+
         const response = await fetchImpl(`${config.workerBaseUrl}/v1/${operation}`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-                'X-Serverless-Authorization': `Bearer ${cloudRunIdentityToken}`,
-            },
+            headers,
             body: JSON.stringify({ runId, sessionId, ...payload }),
             signal: controller.signal,
         })
@@ -243,15 +249,27 @@ async function callBrowserWorker({
             data = null
         }
 
+        const setCookie =
+            (typeof response.headers?.get === 'function' && response.headers.get('set-cookie')) ||
+            response.headers?.['set-cookie'] ||
+            ''
+        const nextAffinityCookie = String(setCookie || '').split(';')[0]
+
         if (!response.ok) {
             return {
                 ok: false,
                 status: response.status,
                 reason: data?.reason || 'worker_error',
                 error: data?.error || `The browser worker answered with HTTP ${response.status}.`,
+                affinityCookie: nextAffinityCookie || undefined,
             }
         }
-        return { ok: true, status: response.status, ...(data || {}) }
+        return {
+            ok: true,
+            status: response.status,
+            ...(data || {}),
+            affinityCookie: nextAffinityCookie || affinityCookie || undefined,
+        }
     } catch (error) {
         const timedOut = error && error.name === 'AbortError'
         return {

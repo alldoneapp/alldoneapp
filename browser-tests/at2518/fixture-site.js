@@ -53,6 +53,16 @@ const PAGES = {
     }, 600)
   </script>
 </body></html>`,
+
+    '/login': `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Sign in</title></head>
+<body>
+  <h1>Sign in</h1>
+  <form action="/account" method="post">
+    <label>Email <input type="email" name="email" /></label>
+    <label>Password <input type="password" name="password" /></label>
+    <button type="submit">Sign in</button>
+  </form>
+</body></html>`,
 }
 
 function renderSearch(query) {
@@ -119,6 +129,17 @@ function startFixtureSite() {
             // Reached only if a booking approval was granted and the click went through.
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
             response.end('<!doctype html><html><body><h1>Buchung bestätigt</h1></body></html>')
+            return
+        }
+
+        if (url.pathname === '/account') {
+            response.writeHead(200, {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Set-Cookie': 'fixture_session=logged-in; HttpOnly; SameSite=Lax',
+            })
+            response.end(
+                '<!doctype html><html><body><h1>Your account</h1><p>Signed in for this session</p></body></html>'
+            )
             return
         }
 
