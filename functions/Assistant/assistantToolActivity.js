@@ -87,6 +87,15 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_search_web',
         plainKey: 'assistant_activity_search_web_plain',
     },
+    // Browsing takes no subject at all. Every parameter these tools have is a URL, a CSS selector,
+    // an opaque element ref or the text being typed — rule 2 at the top of this file rejects the
+    // first three on sight, and the fourth is the one value that must never reach the UI.
+    browser_navigate: { plainKey: 'assistant_activity_browser_navigate' },
+    browser_inspect: { plainKey: 'assistant_activity_browser_inspect' },
+    browser_click: { plainKey: 'assistant_activity_browser_click' },
+    browser_type: { plainKey: 'assistant_activity_browser_type' },
+    browser_wait: { plainKey: 'assistant_activity_browser_wait' },
+    browser_screenshot: { plainKey: 'assistant_activity_browser_screenshot' },
     search_gmail: {
         params: ['query'],
         subjectKey: 'assistant_activity_search_email',

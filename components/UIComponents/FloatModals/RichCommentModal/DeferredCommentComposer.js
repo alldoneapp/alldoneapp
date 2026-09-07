@@ -2,7 +2,6 @@ import React from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import useProgressiveReveal from '../../../../hooks/useProgressiveReveal'
-import { translate } from '../../../../i18n/TranslationService'
 
 /**
  * Keeps the desktop popup shell in the opening paint and mounts the Quill
@@ -22,7 +21,7 @@ export default function DeferredCommentComposer({ children, defer, resetKey, sch
     ) : (
         <View
             testID="comment-composer-placeholder"
-            accessibilityLabel={translate('Loading comment editor')}
+            accessibilityLabel="Loading comment editor"
             style={localStyles.placeholder}
         />
     )
