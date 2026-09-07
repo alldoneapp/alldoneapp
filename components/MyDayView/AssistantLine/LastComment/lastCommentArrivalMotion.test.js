@@ -43,16 +43,16 @@ const withAnimationsEnabled = fn => {
     }
 }
 
-const renderMotion = ({ arrivalId = null, row = FIRST, compact = false } = {}) => {
+const renderMotion = ({ arrivalId = null, row = FIRST, compact = false, previousRow = null } = {}) => {
     const frames = []
     const Probe = props => {
-        const motion = useLastCommentArrivalMotion(props.arrivalId, props.row, props.compact)
+        const motion = useLastCommentArrivalMotion(props.arrivalId, props.row, props.compact, props.previousRow)
         frames.push(motion)
         return <Text>motion</Text>
     }
 
     let tree
-    const props = { arrivalId, row, compact }
+    const props = { arrivalId, row, compact, previousRow }
     act(() => {
         tree = renderer.create(<Probe {...props} />)
     })
@@ -378,6 +378,59 @@ describe('lastCommentArrivalMotion — the ticker roll', () => {
             const probe = renderMotion({ row: FIRST })
             probe.arrive(1, SECOND)
             expect(() => probe.unmount()).not.toThrow()
+        })
+    })
+    /**
+     * AT-2523 — the seed for a card that is BORN showing the arriving comment.
+     *
+     * The pending-send card and the real preview are different components, so one send crosses that
+     * mount boundary twice. A freshly mounted card's own history is empty by construction, which is
+     * why AT-2511 rolled in alone there; the seed is the row the SLOT had on screen, supplied by
+     * `lastCommentSlotRow.js`, which is knowledge no component could hold.
+     */
+    describe('a previous row supplied from outside the mount (AT-2523)', () => {
+        it('rolls it away, instead of rolling in over an empty card', () => {
+            withAnimationsEnabled(() => {
+                // Mounted already showing SECOND, told that FIRST was here a moment ago — exactly
+                // the shape of "the answer replaced the pending card".
+                const probe = renderMotion({ row: SECOND, previousRow: FIRST })
+                probe.arrive(1, SECOND)
+
+                expect(probe.latest().outgoingRow).toEqual(FIRST)
+            })
+        })
+
+        it('is still refused when it carries the very comment arriving', () => {
+            withAnimationsEnabled(() => {
+                // A phantom row identical to the incoming one reads as a rendering glitch — the
+                // equality guard has to survive the seed, not just the component's own history.
+                const probe = renderMotion({ row: SECOND, previousRow: { ...SECOND } })
+                probe.arrive(1, SECOND)
+
+                expect(probe.latest().outgoingRow).toBeNull()
+            })
+        })
+
+        it('is only ever the INITIAL previous row, never a floor under the real history', () => {
+            withAnimationsEnabled(() => {
+                const probe = renderMotion({ row: FIRST, previousRow: THIRD })
+
+                // Once this card has shown two comments of its own, what it replaces is the one it
+                // was actually showing — a stale seed must not outlive the first real change.
+                probe.arriveDeferred(1, SECOND)
+
+                expect(probe.latest().outgoingRow).toEqual(FIRST)
+            })
+        })
+
+        it('changes nothing when no seed is given', () => {
+            withAnimationsEnabled(() => {
+                // The AT-2511 contract for a plain remount, unchanged: roll in alone.
+                const probe = renderMotion({ row: SECOND })
+                probe.arrive(1, SECOND)
+
+                expect(probe.latest().outgoingRow).toBeNull()
+            })
         })
     })
 })

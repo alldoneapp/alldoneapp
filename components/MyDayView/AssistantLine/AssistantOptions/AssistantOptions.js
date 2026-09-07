@@ -246,7 +246,12 @@ export default function AssistantOptions({
 
                 // The thread exists and carries the user's comment. What is left is the assistant's
                 // answer, and the Last comment slot says so until it arrives.
-                markAssistantLineSendCreated(pendingSendId, topicData.chatId)
+                //
+                // AT-2523 — the title travels with the chat id because the Last comment card is now
+                // a door into this thread, and the popover it opens names the object it is
+                // commenting on. It is also what releases a tap the user made while the topic was
+                // still being created.
+                markAssistantLineSendCreated(pendingSendId, topicData.chatId, topicData.title)
             } catch (error) {
                 console.error('❌ [AssistantOptions] Error sending assistant quick message:', error)
                 failAssistantLineSend(pendingSendId)

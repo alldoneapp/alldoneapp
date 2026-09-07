@@ -89,6 +89,7 @@ export default function LastUserOrAssistantCommentContainer({
             setAModalIsOpen={setAModalIsOpen}
             compact={compact}
             arrivalId={arrivalId}
+            scopeKey={scopeKey}
         />
     )
 }

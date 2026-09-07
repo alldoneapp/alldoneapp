@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import { getAssistantLineData, getCommentData } from './AssistantOptions/helper'
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../utils/backends/Chats/chatsComments'
 import LastComment from './LastComment/LastComment'
-import PendingAssistantComment from './LastComment/PendingAssistantComment'
+import PendingAssistantCommentWrapper from './LastComment/PendingAssistantCommentWrapper'
 import { translate } from '../../../i18n/TranslationService'
 import { colors } from '../../styles/global'
 import { LastCommentPreviewSkeleton } from './AssistantLineSkeleton'
@@ -78,7 +78,26 @@ export default function LastCommentArea({
 
     // AT-2504 — a message submitted through the assistant line clears the composer immediately and
     // finishes in the background, so this slot is where the user finds out that it is still going.
-    const pendingSend = useAssistantLinePendingSend(projectKey, scopeToAssistant ? assistantId : null)
+    const livePendingSend = useAssistantLinePendingSend(projectKey, scopeToAssistant ? assistantId : null)
+
+    /**
+     * AT-2523 — the pending card can now be OPEN, and the thing that closes a pending send is the
+     * assistant answering, which is not something the user asked for while they are reading its
+     * thread. Without this the popover would be torn out from under them mid-sentence.
+     *
+     * Same shape as the freeze the two pointers below already get, with one difference that
+     * matters: the live value always wins, so the card still appears in the commit the send starts
+     * in. `heldPendingSend` is a fallback consulted only while this area's own modal is open, and
+     * it is cleared as soon as that modal closes — otherwise a later popover on a REAL comment
+     * would resurrect a pending card whose send finished minutes ago.
+     */
+    const [heldPendingSend, setHeldPendingSend] = useState(null)
+    useEffect(() => {
+        if (livePendingSend) setHeldPendingSend(livePendingSend)
+        else if (!aModalIsOpen) setHeldPendingSend(null)
+    }, [livePendingSend, aModalIsOpen])
+
+    const pendingSend = livePendingSend || (aModalIsOpen ? heldPendingSend : null)
 
     // Ending the wait needs no listener of its own: the two pointers this component already
     // subscribes to both move when the assistant posts. `lastAssistantCommentData` carries
@@ -118,10 +137,12 @@ export default function LastCommentArea({
             >
                 {!compact && <Text style={localStyles.title}>{translate('Last comment')}</Text>}
                 <View style={compact ? null : localStyles.previewInset}>
-                    <PendingAssistantComment
+                    <PendingAssistantCommentWrapper
                         pending={pendingSend}
                         assistantName={pendingSend.assistantName}
                         compact={compact}
+                        scopeKey={scopeKey}
+                        setAModalIsOpen={setAModalIsOpen}
                     />
                 </View>
             </View>

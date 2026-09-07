@@ -30,6 +30,7 @@ export default function LastAssistantCommentWrapper({
     setAModalIsOpen,
     compact = false,
     arrivalId = null,
+    scopeKey = null,
 }) {
     const openModals = useSelector(state => state.openModals)
     const assistantEnabled = useSelector(state => state.assistantEnabled)
@@ -126,6 +127,7 @@ export default function LastAssistantCommentWrapper({
             projectId={projectId}
             compact={compact}
             arrivalId={arrivalId}
+            scopeKey={scopeKey}
         />
     )
 
