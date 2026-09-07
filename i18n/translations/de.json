@@ -2388,12 +2388,5 @@
     "Your summary could not be loaded. Please try again.": "Deine Zusammenfassung konnte nicht geladen werden. Bitte versuche es erneut.",
     "Loading your daily summary...": "Deine Tageszusammenfassung wird geladen...",
     "Your summary could not be loaded. You can start the day and try again later.": "Deine Zusammenfassung konnte nicht geladen werden. Du kannst den Tag starten und es später erneut versuchen.",
-    "The last comment could not be loaded.": "Der letzte Kommentar konnte nicht geladen werden.",
-    "Browse a website": "Webseite besuchen",
-    "assistant_activity_browser_navigate": "Öffne eine Webseite",
-    "assistant_activity_browser_inspect": "Sehe mir die Seite an",
-    "assistant_activity_browser_click": "Interagiere mit der Seite",
-    "assistant_activity_browser_type": "Fülle die Seite aus",
-    "assistant_activity_browser_wait": "Warte auf die Seite",
-    "assistant_activity_browser_screenshot": "Erstelle einen Screenshot"
+    "The last comment could not be loaded.": "Der letzte Kommentar konnte nicht geladen werden."
 }

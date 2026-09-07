@@ -95,7 +95,7 @@ import { prepareSyncedNoteDocument, storageIsMissingLocalState } from './noteCol
 import { createNoteLocalPersistence } from './noteLocalPersistence'
 import { isBrowserOffline } from '../../../../utils/connectionState'
 import { clearPendingNoteUpload, hasPendingNoteUpload } from '../../../../utils/Notes/pendingNoteUploads'
-import { applyPastedDeltaToEditor } from './notePaste'
+import { applyPastedDeltaToEditor, normalizePastedLineEndings } from './notePaste'
 import { unmountEmbedReactRoots } from '../../../Feeds/CommentsTextInput/autoformat/formats/embedReactRoot'
 
 const Delta = ReactQuill.Quill.import('delta')
@@ -735,7 +735,15 @@ const NotesEditorView = ({
 
         editorElement.addEventListener('paste', event => {
             if (!readOnlyRef.current) {
-                const textData = (event.clipboardData || window.clipboardData).getData('text')
+                // AT-2519: a Windows clipboard carries CRLF, and both text branches split on '\n'
+                // alone — so every line kept a stray '\r', which `processPastedTextWithBreakLines`
+                // then turns into a trailing space (it splits words on /\s/). The paste therefore
+                // ended on a line that looks empty but is not, with the caret parked on it: the
+                // same symptom a trailing empty block produces. The HTML branch needs no
+                // equivalent — the HTML parser normalizes line endings before quill sees them.
+                const textData = normalizePastedLineEndings(
+                    (event.clipboardData || window.clipboardData).getData('text')
+                )
                 const htmlData = (event.clipboardData || window.clipboardData).getData('text/html')
 
                 // Check if plain text contains markdown - if so, prioritize markdown conversion

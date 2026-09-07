@@ -2851,12 +2851,5 @@
     "Your summary could not be loaded. Please try again.": "Your summary could not be loaded. Please try again.",
     "Loading your daily summary...": "Loading your daily summary...",
     "Your summary could not be loaded. You can start the day and try again later.": "Your summary could not be loaded. You can start the day and try again later.",
-    "The last comment could not be loaded.": "The last comment could not be loaded.",
-    "Browse a website": "Browse a website",
-    "assistant_activity_browser_navigate": "Opening a web page",
-    "assistant_activity_browser_inspect": "Looking at the page",
-    "assistant_activity_browser_click": "Interacting with the page",
-    "assistant_activity_browser_type": "Filling in the page",
-    "assistant_activity_browser_wait": "Waiting for the page",
-    "assistant_activity_browser_screenshot": "Capturing the page"
+    "The last comment could not be loaded.": "The last comment could not be loaded."
 }

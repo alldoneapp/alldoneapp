@@ -2799,12 +2799,5 @@
     "Your summary could not be loaded. Please try again.": "No se pudo cargar tu resumen. Inténtalo de nuevo.",
     "Loading your daily summary...": "Cargando tu resumen diario...",
     "Your summary could not be loaded. You can start the day and try again later.": "No se pudo cargar tu resumen. Puedes empezar el día e intentarlo de nuevo más tarde.",
-    "The last comment could not be loaded.": "No se pudo cargar el último comentario.",
-    "Browse a website": "Visitar un sitio web",
-    "assistant_activity_browser_navigate": "Abriendo una página web",
-    "assistant_activity_browser_inspect": "Revisando la página",
-    "assistant_activity_browser_click": "Interactuando con la página",
-    "assistant_activity_browser_type": "Rellenando la página",
-    "assistant_activity_browser_wait": "Esperando a la página",
-    "assistant_activity_browser_screenshot": "Capturando la página"
+    "The last comment could not be loaded.": "No se pudo cargar el último comentario."
 }
