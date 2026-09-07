@@ -15,7 +15,7 @@ export const getAssistantTasksCacheKey = ({ userId, projectId, assistantId }) =>
 export const getLastCommentCacheKey = ({ userId, projectId, objectType, objectId }) =>
     buildKey(COMMENT_PREFIX, [userId, projectId, objectType, objectId])
 
-const readEntry = key => {
+const readEntry = (key, { allowStale = false } = {}) => {
     if (!cacheIsAvailable()) return null
 
     try {
@@ -27,7 +27,7 @@ const readEntry = key => {
             localStorage.removeItem(key)
             return null
         }
-        if (!isOffline() && Date.now() - entry.savedAt > ASSISTANT_LINE_CACHE_MAX_AGE_MS) {
+        if (!allowStale && !isOffline() && Date.now() - entry.savedAt > ASSISTANT_LINE_CACHE_MAX_AGE_MS) {
             localStorage.removeItem(key)
             return null
         }
@@ -69,7 +69,7 @@ export const writeAssistantTasksCache = (context, tasks) => {
 
 export const readLastCommentCache = context => {
     if (!context?.userId || !context?.projectId || !context?.objectType || !context?.objectId) return null
-    const entry = readEntry(getLastCommentCacheKey(context))
+    const entry = readEntry(getLastCommentCacheKey(context), { allowStale: true })
     if (typeof entry?.commentText !== 'string' || !entry.chat || typeof entry.chat !== 'object') return null
     return { commentText: entry.commentText, chat: entry.chat }
 }
@@ -96,4 +96,8 @@ export const writeLastCommentCache = (context, { commentText, chat }) => {
             assistantId: typeof chat.assistantId === 'string' ? chat.assistantId : '',
         },
     })
+}
+
+export const removeLastCommentCache = context => {
+    if (cacheIsAvailable()) localStorage.removeItem(getLastCommentCacheKey(context))
 }

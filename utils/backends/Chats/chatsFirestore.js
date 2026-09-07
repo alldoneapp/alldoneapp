@@ -14,14 +14,18 @@ import { updateNotePrivacy, updateNoteTitleWithoutFeed } from '../Notes/notesFir
 import { createGenericTaskWhenMention } from '../Tasks/tasksFirestore'
 import store from '../../../redux/store'
 
-export const watchChat = (projectId, chatId, watcherKey, callback) => {
+export const watchChat = (projectId, chatId, watcherKey, callback, options) => {
     globalWatcherUnsub[watcherKey] = getDb()
         .doc(`chatObjects/${projectId}/chats/${chatId}`)
-        .onSnapshot(doc => {
-            const chat = doc.data()
-            if (chat) chat.id = doc.id
-            callback(chat)
-        })
+        .onSnapshot(
+            ...(options ? [{ includeMetadataChanges: true }] : []),
+            doc => {
+                const chat = doc.data()
+                if (chat) chat.id = doc.id
+                callback(chat, doc.metadata)
+            },
+            ...(options?.onError ? [options.onError] : [])
+        )
 }
 
 export const updateChatEditionData = async (projectId, chatId, editorId) => {

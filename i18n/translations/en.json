@@ -2850,5 +2850,6 @@
     "You are offline. Your summary will load when you reconnect.": "You are offline. Your summary will load when you reconnect.",
     "Your summary could not be loaded. Please try again.": "Your summary could not be loaded. Please try again.",
     "Loading your daily summary...": "Loading your daily summary...",
-    "Your summary could not be loaded. You can start the day and try again later.": "Your summary could not be loaded. You can start the day and try again later."
+    "Your summary could not be loaded. You can start the day and try again later.": "Your summary could not be loaded. You can start the day and try again later.",
+    "The last comment could not be loaded.": "The last comment could not be loaded."
 }
