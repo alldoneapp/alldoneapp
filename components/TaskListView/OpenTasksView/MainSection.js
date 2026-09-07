@@ -41,7 +41,7 @@ import { useIsUserEditing } from '../../../utils/editingGuard'
 import { createSectionRenderBudget } from './sectionRenderBudget'
 import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
 import { holdTaskGrouping } from './taskPlacementHold'
-import useGoalSectionExit from './useGoalSectionExit'
+import useGoalSectionExit, { keepDepartingGoalsSortable } from './useGoalSectionExit'
 
 export default function MainSection({
     projectId,
@@ -104,7 +104,9 @@ export default function MainSection({
     const openMilestones = useSelector(state => state.openMilestonesByProjectInTasks[projectId])
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
-    const emptyGoals = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX])
+    const liveEmptyGoals = useSelector(
+        state => state.filteredOpenTasksStore[instanceKey][dateIndex][EMPTY_SECTION_INDEX]
+    )
     const focusedTaskId = useSelector(state => state.loggedUser.inFocusTaskId)
     // Get optimistic focus task for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
@@ -146,15 +148,18 @@ export default function MainSection({
         !taskFiltersActive &&
         loggedUserId === currentUserId
 
-    const { mainTasksWithExits, exitRunIdByGoalId } = useGoalSectionExit({
+    const { mainTasksWithExits, emptyGoalsWithExits, exitRunIdByGoalId } = useGoalSectionExit({
         projectId,
         mainTasks: heldMainTasks,
-        emptyGoals,
+        emptyGoals: liveEmptyGoals,
         enabled: goalSectionExitEnabled,
     })
     // Everything downstream — the counts, the sort, the render — treats a leaving section as an
-    // ordinary (empty) one, so nothing else in this component needs to know about the hold.
+    // ordinary (empty) one, so nothing else in this component needs to know about the hold. AT-2521
+    // adds the second shape: a goal that left from the empty-goals bucket is held there instead, so
+    // the row already on screen is the one that plays the exit.
     const mainTasks = mainTasksWithExits
+    const emptyGoals = emptyGoalsWithExits
 
     const expandTasks = () => {
         setTimeout(() => {
@@ -327,7 +332,9 @@ export default function MainSection({
         projectId,
         openMilestones,
         doneMilestones,
-        goalsByIdWithTmpGoals,
+        // A goal that is leaving keeps the slot it had a frame ago; see the helper for why a
+        // completed goal would otherwise be refused one and dropped mid-exit.
+        keepDepartingGoalsSortable(goalsByIdWithTmpGoals, exitRunIdByGoalId),
         currentUserId,
         [...mainTasks, ...visibleEmptyGoals.map(goal => [goal.id]), ...tmpGoals.map(goal => [goal.id])]
     )
@@ -452,7 +459,16 @@ export default function MainSection({
                         goal.id,
                         globalAmountToRender > 1 ? 1 : globalAmountToRender
                     )
-                    if (sectionBudget.shouldSkip(goal.id, amountToRenderForEmptyGoal, !showTheFullList)) return null // Adjusted condition for amountToRender
+                    // AT-2521 — a goal playing its departure from this bucket must survive the
+                    // budget for the same reason a leaving section does: it is on its way out, not
+                    // waiting for room.
+                    const emptyGoalExitRunId = exitRunIdByGoalId[goal.id] || 0
+                    if (
+                        sectionBudget.shouldSkip(goal.id, amountToRenderForEmptyGoal, !showTheFullList, {
+                            leaving: !!emptyGoalExitRunId,
+                        })
+                    )
+                        return null // Adjusted condition for amountToRender
                     sectionBudget.remember(goal.id, amountToRenderForEmptyGoal)
                     globalAmountToRender = globalAmountToRender > 1 ? globalAmountToRender - 1 : 0
 
@@ -465,6 +481,7 @@ export default function MainSection({
                             dateIndex={dateIndex}
                             instanceKey={instanceKey}
                             containerStyle={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}
+                            exitRunId={emptyGoalExitRunId}
                         />
                     )
                 } else if (goalId === NOT_PARENT_GOAL_INDEX) {

@@ -95,12 +95,7 @@ import { prepareSyncedNoteDocument, storageIsMissingLocalState } from './noteCol
 import { createNoteLocalPersistence } from './noteLocalPersistence'
 import { isBrowserOffline } from '../../../../utils/connectionState'
 import { clearPendingNoteUpload, hasPendingNoteUpload } from '../../../../utils/Notes/pendingNoteUploads'
-import {
-    applyPastedClipboard,
-    applyPastedDeltaToEditor,
-    noteEditorOwnsPaste,
-    normalizePastedLineEndings,
-} from './notePaste'
+import { applyPastedDeltaToEditor } from './notePaste'
 import { unmountEmbedReactRoots } from '../../../Feeds/CommentsTextInput/autoformat/formats/embedReactRoot'
 
 const Delta = ReactQuill.Quill.import('delta')
@@ -738,83 +733,79 @@ const NotesEditorView = ({
             onCopy(event, exportRef.getEditor(), projectId, !readOnlyRef.current)
         })
 
-        // The three conversion routes a note paste can take, in priority order. Extracted from the
-        // listener so the listener itself is only about OWNING the event (see AT-2519 below).
-        const convertPastedClipboard = (editor, textData, htmlData) => {
-            // Check if plain text contains markdown - if so, prioritize markdown conversion
-            if (textData && containsMarkdown(textData)) {
-                const parsedDelta = markdownToDelta(textData, Delta)
-                if (parsedDelta) return parsedDelta
-            }
+        editorElement.addEventListener('paste', event => {
+            if (!readOnlyRef.current) {
+                const textData = (event.clipboardData || window.clipboardData).getData('text')
+                const htmlData = (event.clipboardData || window.clipboardData).getData('text/html')
 
-            // Fall back to HTML processing if available
-            if (htmlData) {
-                const pastedDelta = editor.clipboard.convert({ html: htmlData })
-                const finalDelta = { ops: [] }
+                // Check if plain text contains markdown - if so, prioritize markdown conversion
+                if (textData && containsMarkdown(textData)) {
+                    const parsedDelta = markdownToDelta(textData, Delta)
 
-                for (let i = 0; i < pastedDelta.ops.length; i++) {
-                    const op = pastedDelta.ops[i]
-                    const { retain, insert, attributes } = op
-                    if (retain || op.delete) {
-                        finalDelta.ops.push(op)
-                    } else if (insert) {
-                        if (typeof insert === 'string' && insert !== '') {
-                            const delta = processPastedTextWithBreakLines(
-                                insert,
-                                Delta,
-                                projectId,
-                                note.id,
-                                null,
-                                false,
-                                '',
-                                editor,
-                                true,
-                                attributes,
-                                true
-                            )
-                            finalDelta.ops = [...finalDelta.ops, ...delta.ops]
-                        } else {
-                            finalDelta.ops.push(op)
-                        }
+                    if (parsedDelta) {
+                        applyPastedDeltaToEditor(exportRef.getEditor(), parsedDelta, Delta)
+
+                        event.preventDefault()
+                        return
                     }
                 }
 
-                return finalDelta
+                // Fall back to HTML processing if available
+                if (htmlData) {
+                    const pastedDelta = exportRef.getEditor().clipboard.convert({ html: htmlData })
+                    const finalDelta = { ops: [] }
+
+                    for (let i = 0; i < pastedDelta.ops.length; i++) {
+                        const op = pastedDelta.ops[i]
+                        const { retain, insert, attributes } = op
+                        if (retain || op.delete) {
+                            finalDelta.ops.push(op)
+                        } else if (insert) {
+                            if (typeof insert === 'string' && insert !== '') {
+                                const delta = processPastedTextWithBreakLines(
+                                    insert,
+                                    Delta,
+                                    projectId,
+                                    note.id,
+                                    null,
+                                    false,
+                                    '',
+                                    exportRef.getEditor(),
+                                    true,
+                                    attributes,
+                                    true
+                                )
+                                finalDelta.ops = [...finalDelta.ops, ...delta.ops]
+                            } else {
+                                finalDelta.ops.push(op)
+                            }
+                        }
+                    }
+
+                    applyPastedDeltaToEditor(exportRef.getEditor(), finalDelta, Delta)
+
+                    event.preventDefault()
+                } else if (textData) {
+                    // Plain text paste without HTML (markdown already handled above)
+                    const parsedDelta = processPastedTextWithBreakLines(
+                        textData,
+                        Delta,
+                        projectId,
+                        note.id,
+                        null,
+                        false,
+                        '',
+                        exportRef.getEditor(),
+                        true,
+                        null,
+                        true
+                    )
+
+                    applyPastedDeltaToEditor(exportRef.getEditor(), parsedDelta, Delta)
+
+                    event.preventDefault()
+                }
             }
-
-            // Plain text paste without HTML (markdown already handled above)
-            return processPastedTextWithBreakLines(
-                textData,
-                Delta,
-                projectId,
-                note.id,
-                null,
-                false,
-                '',
-                editor,
-                true,
-                null,
-                true
-            )
-        }
-
-        editorElement.addEventListener('paste', event => {
-            const editor = exportRef.getEditor()
-
-            // AT-2519: a Windows clipboard carries CRLF, and both text branches split on '\n'
-            // alone — so every line kept a stray '\r', which `processPastedTextWithBreakLines`
-            // then turns into a trailing space (it splits words on /\s/). The paste therefore
-            // ended on a line that looks empty but is not, with the caret parked on it: the
-            // same symptom a trailing empty block produces. The HTML branch needs no
-            // equivalent — the HTML parser normalizes line endings before quill sees them.
-            const textData = normalizePastedLineEndings((event.clipboardData || window.clipboardData).getData('text'))
-            const htmlData = (event.clipboardData || window.clipboardData).getData('text/html')
-
-            if (!noteEditorOwnsPaste({ readOnly: readOnlyRef.current, editor, textData, htmlData })) return
-
-            // AT-2519: claim the event BEFORE doing the work, not after — see applyPastedClipboard.
-            event.preventDefault()
-            applyPastedClipboard(editor, { textData, htmlData }, convertPastedClipboard, Delta)
         })
     }, [])
 
