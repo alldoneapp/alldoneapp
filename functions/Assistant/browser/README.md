@@ -242,9 +242,12 @@ specific problem; it never accepts an entry the server would silently drop, whic
 ## Enabling it
 
 1. `cd functions/Assistant/browser-worker && ./deploy.sh <projectId>` — builds the image and deploys
-   the Cloud Run service with `--no-allow-unauthenticated` and internal ingress. Deliberately **not**
-   in `.gitlab-ci.yml`: this repo's documented automatic deploys cover functions, the web build and
-   the VM runner, and a fourth production deploy target is a decision, not a side effect of a branch.
+   the Cloud Run service with `--no-allow-unauthenticated`. Its HTTPS ingress remains reachable
+   because Gen2 Functions do not automatically route ordinary outbound calls through an internal
+   VPC path; Cloud Run IAM still rejects every caller without an authorized Google ID token.
+   Deliberately **not** in `.gitlab-ci.yml`: this repo's documented automatic deploys cover
+   functions, the web build and the VM runner, and a fourth production deploy target is a decision,
+   not a side effect of a branch.
 2. Set `BROWSER_WORKER_SIGNING_SECRET` on the service.
 3. Put the three keys into the env blob and deploy functions.
 4. Grant the functions service account `roles/run.invoker` on the service.

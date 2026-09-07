@@ -51,10 +51,12 @@ while true; do
     esac
 done
 
-# --no-allow-unauthenticated AND ingress=internal: the signed token is the second lock, not the
-# first. Chromium needs the memory; concurrency stays low because each session is a browser context.
+# Gen2 Functions do not automatically route ordinary outbound HTTPS through an internal VPC path,
+# so `internal` ingress rejects the caller before IAM with a synthetic 404. Keep ingress reachable,
+# but require Cloud Run IAM; the per-call HMAC token remains the independent application lock.
+# Chromium needs the memory; concurrency stays low because each session is a browser context.
 gcloud run deploy "$SERVICE_NAME" --project="$PROJECT" --region="$REGION" --image="$IMAGE" \
-    --service-account="$SA" --no-allow-unauthenticated --ingress=internal-and-cloud-load-balancing \
+    --service-account="$SA" --no-allow-unauthenticated --ingress=all \
     --memory=2Gi --cpu=2 --concurrency=4 --min-instances=0 --max-instances=3 --timeout=120s \
     --set-env-vars="BROWSER_WORKER_MAX_SESSIONS=8"
 
