@@ -71,4 +71,11 @@ describe('assistantLineCache', () => {
         expect(readAssistantTasksCache(tasksContext)).toBeNull()
         expect(localStorage.getItem(getAssistantTasksCacheKey(tasksContext))).toBeNull()
     })
+    it('keeps the last-comment preview after the online cache age limit', () => {
+        writeLastCommentCache(commentContext, { commentText: 'Previous reply', chat: { title: 'Topic' } })
+        Date.now.mockReturnValue(1_000_000 + ASSISTANT_LINE_CACHE_MAX_AGE_MS * 3)
+        expect(readLastCommentCache(commentContext).commentText).toBe('Previous reply')
+        expect(readLastCommentCache({ ...commentContext, userId: 'another-user' })).toBeNull()
+        expect(readLastCommentCache({ ...commentContext, objectId: 'another-chat' })).toBeNull()
+    })
 })

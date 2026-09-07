@@ -115,18 +115,22 @@ const filterActiveProjectUserIds = (projectId, userIds, context) => {
     return validUserIds
 }
 
-export const watchComments = (projectId, chatType, chatId, watcherKey, amountCommentsToGet, callback) => {
+export const watchComments = (projectId, chatType, chatId, watcherKey, amountCommentsToGet, callback, options) => {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`chatComments/${projectId}/${chatType}/${chatId}/comments`)
         .orderBy('created', 'desc')
         .limit(amountCommentsToGet)
-        .onSnapshot(snapshot => {
-            const comments = []
-            snapshot.forEach(doc => {
-                comments.push({ ...doc.data(), id: doc.id })
-            })
-            callback(comments)
-        })
+        .onSnapshot(
+            ...(options ? [{ includeMetadataChanges: true }] : []),
+            snapshot => {
+                const comments = []
+                snapshot.forEach(doc => {
+                    comments.push({ ...doc.data(), id: doc.id })
+                })
+                callback(comments, snapshot.metadata)
+            },
+            ...(options?.onError ? [options.onError] : [])
+        )
 }
 
 export async function getChatCommentsWithLinkedEmails(projectId, chatType, chatId) {
