@@ -58,6 +58,41 @@ jest.mock('./LastComment/LastComment', () => {
     return () => <Text testID="real-last-comment">real preview</Text>
 })
 
+// Only `useReducedMotion` is replaced — it resolves `AccessibilityInfo` asynchronously, which this
+// suite's synchronous `act` cannot flush. The ghost styles stay real: `LastCommentPreviewSkeleton`
+// is one of the things under test here.
+jest.mock('../../UIComponents/Ghosts/ghostAnimation', () => ({
+    ...jest.requireActual('../../UIComponents/Ghosts/ghostAnimation'),
+    useReducedMotion: () => false,
+}))
+
+/**
+ * AT-2523 — the wrapper, not the card.
+ *
+ * `PendingAssistantCommentWrapper` owns the popover, which means `RichCommentModal`,
+ * `AppPopover`, `redux/actions` and `createObjectMessage` — the whole graph this suite mocks
+ * `LastComment` away to avoid. The CARD it renders is deliberately still the real one (it was kept
+ * free of that graph for exactly this reason), so every assertion below about what the slot shows
+ * is unchanged and still exercises real code. The popover half has its own suite,
+ * `LastComment/PendingAssistantCommentWrapper.test.js`.
+ */
+let lastWrapperProps = null
+jest.mock('./LastComment/PendingAssistantCommentWrapper', () => {
+    const React = require('react')
+    const PendingAssistantComment = require('./LastComment/PendingAssistantComment').default
+    return props => {
+        lastWrapperProps = props
+        return (
+            <PendingAssistantComment
+                pending={props.pending}
+                assistantName={props.assistantName}
+                compact={props.compact}
+                scopeKey={props.scopeKey}
+            />
+        )
+    }
+})
+
 const setLastCommentData = data => {
     mockState.loggedUser.lastAssistantCommentData = data ? { 'project-1': data, [ALL_PROJECTS]: data } : {}
 }
@@ -87,6 +122,7 @@ describe('LastCommentArea pending send (AT-2504)', () => {
         resetAssistantLinePendingSends()
         setLastCommentData(null)
         mockState.projectChatLastNotification = {}
+        lastWrapperProps = null
     })
 
     it('takes over the slot the answer will land in, ahead of the loading ghost', () => {
@@ -185,5 +221,63 @@ describe('LastCommentArea pending send (AT-2504)', () => {
         const tree = render()
         expect(has(tree, 'assistant-pending-send')).toBe(false)
         act(() => tree.unmount())
+    })
+    /**
+     * AT-2523 — the card became something the user can open, which put it in direct conflict with
+     * the thing that ends a pending send: the assistant answering. Without the hold, the popover
+     * the user is reading is unmounted mid-sentence by the very answer they were waiting for.
+     */
+    describe('holding the card while its popover is open', () => {
+        const openTheModal = () => act(() => lastWrapperProps.setAModalIsOpen(true))
+        const closeTheModal = () => act(() => lastWrapperProps.setAModalIsOpen(false))
+
+        it('keeps the card while the modal is up, even after the assistant answers', () => {
+            const id = begin()
+            markAssistantLineSendCreated(id, 'chat-1')
+            const tree = render()
+            openTheModal()
+
+            setLastCommentData({ objectId: 'chat-1', objectType: 'topics', creatorType: 'assistant' })
+            act(() => tree.update(<LastCommentArea />))
+
+            expect(has(tree, 'assistant-pending-send')).toBe(true)
+            act(() => tree.unmount())
+        })
+
+        it('hands the slot back once the modal closes', () => {
+            const id = begin()
+            markAssistantLineSendCreated(id, 'chat-1')
+            const tree = render()
+            openTheModal()
+            setLastCommentData({ objectId: 'chat-1', objectType: 'topics', creatorType: 'assistant' })
+            act(() => tree.update(<LastCommentArea />))
+
+            closeTheModal()
+
+            expect(has(tree, 'assistant-pending-send')).toBe(false)
+            expect(has(tree, 'real-last-comment')).toBe(true)
+            act(() => tree.unmount())
+        })
+
+        it('does not resurrect a finished send under a LATER popover on a real comment', () => {
+            // The held copy is a fallback for one modal, not a second store. If it outlived its own
+            // popover, opening the real card minutes later would swap a stale "working on it" card
+            // back in — with no send behind it and nothing left to clear it.
+            const id = begin()
+            markAssistantLineSendCreated(id, 'chat-1')
+            const tree = render()
+            openTheModal()
+            setLastCommentData({ objectId: 'chat-1', objectType: 'topics', creatorType: 'assistant' })
+            act(() => tree.update(<LastCommentArea />))
+            closeTheModal()
+
+            // The real card's own popover opens; nothing is pending any more.
+            const area = tree.root.findByProps({ testID: 'real-last-comment' })
+            expect(area).toBeTruthy()
+            act(() => tree.update(<LastCommentArea />))
+
+            expect(has(tree, 'assistant-pending-send')).toBe(false)
+            act(() => tree.unmount())
+        })
     })
 })

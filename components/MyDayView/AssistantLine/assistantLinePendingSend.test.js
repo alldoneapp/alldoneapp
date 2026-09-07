@@ -235,6 +235,29 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
             }).not.toThrow()
         })
     })
+    /**
+     * AT-2523 — the card became a door into the thread, and the popover it opens names the object
+     * it is commenting on. That title cannot be read from the thread: it was created a moment ago
+     * and nothing in this slot is watching it, so it travels with the chat id or not at all.
+     */
+    describe('the created thread\u2019s title (AT-2523)', () => {
+        it('carries the title alongside the chat id', () => {
+            const id = begin()
+            markAssistantLineSendCreated(id, 'chat-1', 'Anna <> Karsten 07.09.2026 3')
+
+            expect(getPendingAssistantLineSend('project-1')).toMatchObject({
+                chatId: 'chat-1',
+                chatTitle: 'Anna <> Karsten 07.09.2026 3',
+            })
+        })
+
+        it('falls back to an empty string rather than an undefined popover name', () => {
+            const id = begin()
+            markAssistantLineSendCreated(id, 'chat-1')
+
+            expect(getPendingAssistantLineSend('project-1').chatTitle).toBe('')
+        })
+    })
 })
 
 function PendingProbe({ projectKey = 'project-1', assistantId = null }) {

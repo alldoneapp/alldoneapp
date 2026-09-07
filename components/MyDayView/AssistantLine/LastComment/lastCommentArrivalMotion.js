@@ -91,11 +91,17 @@ export const resolveOutgoingRow = (rows, currentRow) => {
 /**
  * @param arrivalId a fresh number per arrival (see `lastCommentArrival.js`), or null for "nothing
  *        has arrived". A number rather than a boolean so two arrivals in a row restart the roll.
+ *        AT-2523: the pending card passes its send id — a stable string, which arms the roll in the
+ *        card's very first commit instead of one behind it.
  * @param row       the comment currently being rendered. A two-entry history of it is kept (see
  *        `rowsRef`) so that, on the render an arrival lands, the previous DISTINCT comment is still
  *        available to roll away — whether the id arrived with the text or one commit behind it.
+ * @param previousRow AT-2523 — the row this SLOT last had on screen, when the caller knows it from
+ *        somewhere that outlives the mount (`lastCommentSlotRow.js`). It only ever seeds the empty
+ *        `previous` slot of a freshly mounted card; a card that stays mounted fills that slot from
+ *        its own history and never consults this. See the note on `rowsRef` below.
  */
-export const useLastCommentArrivalMotion = (arrivalId, row = null, compact = false) => {
+export const useLastCommentArrivalMotion = (arrivalId, row = null, compact = false, previousRow = null) => {
     const reducedMotion = useReducedMotion()
     const animated = !reducedMotion && !animationsAreDisabled()
 
@@ -121,8 +127,16 @@ export const useLastCommentArrivalMotion = (arrivalId, row = null, compact = fal
      * Advancing only when the displayed comment actually changes keeps the previous one available
      * across that one-commit gap. `commentText` is the identity because it is what the roll shows,
      * and it is the same thing `buildLastCommentKey` calls an arrival.
+     *
+     * AT-2523 — `previous` is SEEDED from the caller rather than starting empty. On a remount (a
+     * comment in another chat, or the pending card handing over to the answer and back) this ref is
+     * born with nothing behind it, which is why AT-2511 shipped rolling the new comment in over an
+     * empty card. The seed is the row this slot genuinely had on screen a moment ago, read from
+     * `lastCommentSlotRow.js`, so the departure is recovered rather than invented. It is only ever
+     * the INITIAL value: the effect below overwrites it from this card's own history as soon as the
+     * card shows something new, so a stale seed can never outlive the first real change.
      */
-    const rowsRef = useRef({ shown: row, previous: null })
+    const rowsRef = useRef({ shown: row, previous: previousRow })
     useEffect(() => {
         if (rowsRef.current.shown?.commentText !== row?.commentText) {
             rowsRef.current = { shown: row, previous: rowsRef.current.shown }
