@@ -102,6 +102,7 @@ describe('fetchWebPage', () => {
         expect(result.source).toBe('direct')
         expect(result.title).toBe('Team & People | Example GmbH')
         expect(result.ogImage).toBe('https://example.com/img/anna.jpg')
+        expect(result.browserRecommended).toBeUndefined()
         expect(fetchImpl).toHaveBeenCalledTimes(1)
         expect(fetchImpl.mock.calls[0][1].headers['User-Agent']).toMatch(/AlldoneBot/)
     })
@@ -165,6 +166,37 @@ describe('fetchWebPage', () => {
         })
         expect(result.source).toBe('tavily')
         expect(result.title).toBe('App')
+    })
+
+    test('recommends the real browser for a client-side fragment route even when the base shell is long', async () => {
+        const appShell = `<html><head><title>Events</title></head><body>${'<a>Navigation</a>'.repeat(
+            300
+        )}</body></html>`
+        const fetchImpl = jest.fn(async () =>
+            htmlResponse(appShell, { url: 'https://events.example.com/calendar.html' })
+        )
+
+        const result = await fetchWebPage(
+            'https://events.example.com/calendar.html#/setCard.detail.html/specific-event.html',
+            { fetchImpl }
+        )
+
+        expect(result.success).toBe(true)
+        expect(result.text.length).toBeGreaterThan(THIN_PAGE_TEXT_CHARS)
+        expect(result.browserRecommended).toBe(true)
+        expect(result.browserReason).toBe('client_side_fragment_route')
+        expect(result.note).toMatch(/does not send the fragment/i)
+        expect(result.note).toMatch(/browser_navigate/)
+    })
+
+    test('recommends the real browser when a direct fetch returns only a thin app shell', async () => {
+        const fetchImpl = jest.fn(async () => htmlResponse('<html><body><div id="root"></div></body></html>'))
+        const result = await fetchWebPage('https://spa.example.com/app', { fetchImpl })
+
+        expect(result.success).toBe(true)
+        expect(result.browserRecommended).toBe(true)
+        expect(result.browserReason).toBe('client_rendered_app_shell')
+        expect(result.note).toMatch(/browser_navigate/)
     })
 
     test('refuses binary content types instead of returning garbage text', async () => {

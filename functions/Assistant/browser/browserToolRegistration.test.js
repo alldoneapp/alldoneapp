@@ -46,6 +46,27 @@ describe('browser tool registration', () => {
         expect(toolSchemas.browser_type.function.description).toMatch(/password|credential/i)
     })
 
+    it('routes static fetches and client-rendered pages without search-loop ambiguity', () => {
+        const fetchDescription = toolSchemas.fetch_url.function.description
+        const navigateDescription = toolSchemas.browser_navigate.function.description
+
+        expect(fetchDescription).toMatch(/without running JavaScript/i)
+        expect(fetchDescription).toContain('#/...')
+        expect(fetchDescription).toMatch(/browser_navigate/)
+        expect(fetchDescription).toMatch(/repeated web_search/i)
+        expect(navigateDescription).toMatch(/SPA|#\/\.\.\./i)
+        expect(navigateDescription).toMatch(/fetch_url succeeded technically/i)
+        expect(navigateDescription).toMatch(/project policy/i)
+        expect(navigateDescription).not.toMatch(/Only allowlisted sites/i)
+    })
+
+    it('reuses fresh refs returned by browser actions instead of billing redundant inspections', () => {
+        expect(toolSchemas.browser_inspect.function.description).toMatch(/only when the page may have changed/i)
+        expect(toolSchemas.browser_click.function.description).toMatch(/latest browser result/i)
+        expect(toolSchemas.browser_type.function.description).toMatch(/latest browser result/i)
+        expect(toolSchemas.browser_click.function.description).toMatch(/only when the ref is missing or stale/i)
+    })
+
     it('is offered in Tools Access and is opt-in only', () => {
         const source = readRepoFile('components/AssistantDetailedView/Customizations/ToolsAccess/toolOptions.js')
         expect(source).toContain(`{ key: '${BROWSER_TOOL_KEY}'`)
