@@ -1,7 +1,11 @@
 'use strict'
 
 const {
+    ACCESS_MODE_ALL_PUBLIC,
+    ACCESS_MODE_SELECTED,
+    buildBrowsingPolicy,
     checkUrlAgainstAllowlist,
+    normalizeAccessMode,
     isIpLiteralHostname,
     isPrivateHostname,
     normalizeAllowlist,
@@ -141,6 +145,126 @@ describe('browser allowlist', () => {
             expect(checkUrlAgainstAllowlist('https://www.linkedin.com/in/someone', withLinkedin).reason).toBe(
                 'blocked_host'
             )
+        })
+    })
+})
+
+describe('access modes', () => {
+    const selected = buildBrowsingPolicy({
+        mode: ACCESS_MODE_SELECTED,
+        allowlist: normalizeAllowlist(['tickets.example']).entries,
+    })
+    const allPublic = buildBrowsingPolicy({ mode: ACCESS_MODE_ALL_PUBLIC })
+
+    describe('normalizeAccessMode', () => {
+        it('only ever answers all_public for the exact string', () => {
+            expect(normalizeAccessMode('all_public')).toBe(ACCESS_MODE_ALL_PUBLIC)
+            expect(normalizeAccessMode('selected')).toBe(ACCESS_MODE_SELECTED)
+        })
+
+        it('falls back to selected for anything else, which is the fail-closed direction', () => {
+            // A corrupt document, a typo, an older client, a future mode name: all of them have to
+            // land on "only the hosts somebody listed", never on "the whole internet".
+            for (const value of [undefined, null, '', 'ALL_PUBLIC', 'all public', 'everything', 42, {}, true]) {
+                expect(normalizeAccessMode(value)).toBe(ACCESS_MODE_SELECTED)
+            }
+        })
+    })
+
+    describe('selected (the default)', () => {
+        it('still refuses a host nobody listed', () => {
+            expect(checkUrlAgainstAllowlist('https://elsewhere.example/', selected).allowed).toBe(false)
+            expect(checkUrlAgainstAllowlist('https://tickets.example/', selected).allowed).toBe(true)
+        })
+
+        it('is what an empty policy means', () => {
+            expect(checkUrlAgainstAllowlist('https://example.com/', buildBrowsingPolicy({})).allowed).toBe(false)
+        })
+    })
+
+    describe('all_public', () => {
+        it('opens an ordinary public host that is on no list at all', () => {
+            const result = checkUrlAgainstAllowlist('https://www.eventim.de/city/berlin', allPublic)
+            expect(result.allowed).toBe(true)
+            expect(result.allPublic).toBe(true)
+            expect(result.matchedEntry).toBeNull()
+        })
+
+        it.each([
+            ['http://localhost:3000/', 'private_host'],
+            ['http://127.0.0.1/', 'private_host'],
+            ['http://127.1.2.3/', 'private_host'],
+            ['http://10.1.2.3/admin', 'private_host'],
+            ['http://172.16.4.5/', 'private_host'],
+            ['http://192.168.0.1/', 'private_host'],
+            ['http://100.64.3.2/', 'private_host'],
+            ['http://169.254.169.254/computeMetadata/v1/', 'private_host'],
+            ['http://metadata.google.internal/computeMetadata/v1/', 'private_host'],
+            ['http://metadata/', 'private_host'],
+            ['http://[::1]/', 'private_host'],
+            ['http://[fd00::1]/', 'private_host'],
+            ['http://[fe80::1]/', 'private_host'],
+            ['http://[::ffff:127.0.0.1]/', 'private_host'],
+            ['http://8.8.8.8/', 'private_host'],
+            ['http://intranet/', 'private_host'],
+            ['http://wiki.internal/', 'private_host'],
+            ['http://printer.local/', 'private_host'],
+            ['http://db.home.arpa/', 'private_host'],
+            ['file:///etc/passwd', 'unsupported_scheme'],
+            ['data:text/html,<h1>x', 'unsupported_scheme'],
+            ['javascript:alert(1)', 'unsupported_scheme'],
+            ['ftp://example.com/', 'unsupported_scheme'],
+            ['https://user:pw@example.com/', 'credentials_in_url'],
+        ])('still refuses %s', (url, reason) => {
+            // This is the whole promise of the mode: "all PUBLIC websites", not "all addresses".
+            const result = checkUrlAgainstAllowlist(url, allPublic)
+            expect(result.allowed).toBe(false)
+            expect(result.reason).toBe(reason)
+        })
+
+        it('keeps the LinkedIn block, which is about login walls rather than about the mode', () => {
+            expect(checkUrlAgainstAllowlist('https://www.linkedin.com/in/someone', allPublic).reason).toBe(
+                'blocked_host'
+            )
+        })
+    })
+
+    describe('denylist', () => {
+        const withDenylist = mode =>
+            buildBrowsingPolicy({
+                mode,
+                allowlist: normalizeAllowlist(['tickets.example', 'shop.example']).entries,
+                denylist: normalizeAllowlist(['ads.example', '*.tracker.example', 'shop.example/admin']).entries,
+            })
+
+        it('wins over all_public', () => {
+            const policy = withDenylist(ACCESS_MODE_ALL_PUBLIC)
+            expect(checkUrlAgainstAllowlist('https://ads.example/', policy).allowed).toBe(false)
+            expect(checkUrlAgainstAllowlist('https://sub.ads.example/', policy).allowed).toBe(false)
+            expect(checkUrlAgainstAllowlist('https://beacon.tracker.example/', policy).allowed).toBe(false)
+            expect(checkUrlAgainstAllowlist('https://anything-else.example/', policy).allowed).toBe(true)
+        })
+
+        it('wins over an explicit allowlist entry too', () => {
+            // Checked before the mode, so it means the same thing in both. A denylist that only
+            // worked in one mode would be read as an all_public-only feature.
+            const policy = withDenylist(ACCESS_MODE_SELECTED)
+            expect(checkUrlAgainstAllowlist('https://shop.example/admin/users', policy).allowed).toBe(false)
+            expect(checkUrlAgainstAllowlist('https://shop.example/products', policy).allowed).toBe(true)
+        })
+
+        it('says it was the blocked list, not a missing allowlist entry', () => {
+            const result = checkUrlAgainstAllowlist('https://ads.example/', withDenylist(ACCESS_MODE_ALL_PUBLIC))
+            expect(result.message).toMatch(/blocked list/i)
+            expect(result.deniedByEntry).toBeTruthy()
+        })
+    })
+
+    describe('the legacy call shape', () => {
+        it('reads a bare entry array as selected', () => {
+            const entries = normalizeAllowlist(['tickets.example']).entries
+            expect(checkUrlAgainstAllowlist('https://tickets.example/', entries).allowed).toBe(true)
+            expect(checkUrlAgainstAllowlist('https://elsewhere.example/', entries).allowed).toBe(false)
         })
     })
 })

@@ -19,6 +19,19 @@
  * `example.com/events` (path prefix), or a pasted URL whose scheme is discarded.
  */
 
+// The two access modes, mirrored from `functions/Assistant/browser/browserAllowlist.js` for the same
+// reason the validator is: the editor cannot import Functions code. `browserAllowlistParity.test.js`
+// pins that the strings and the fail-closed default agree.
+export const BROWSER_ACCESS_MODE_SELECTED = 'selected'
+export const BROWSER_ACCESS_MODE_ALL_PUBLIC = 'all_public'
+
+/** Anything that is not exactly `all_public` is `selected`. Never widen on an unknown value. */
+export function normalizeBrowserAccessMode(value) {
+    return String(value || '') === BROWSER_ACCESS_MODE_ALL_PUBLIC
+        ? BROWSER_ACCESS_MODE_ALL_PUBLIC
+        : BROWSER_ACCESS_MODE_SELECTED
+}
+
 const IPV4_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
 const PRIVATE_HOST_PATTERNS = [

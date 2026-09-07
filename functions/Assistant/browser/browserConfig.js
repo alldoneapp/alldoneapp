@@ -13,8 +13,19 @@
 // widening it only ever widens what may be READ — every state-changing action on any host, however
 // it got onto the list, still needs an explicit approval. That keeps the trust question to
 // "which public sites may this project open", which is the decision a project owner should own.
+//
+// The ACCESS MODE is the project's, defaulting to the environment's and finally to `selected`. In
+// `all_public` an empty allowlist is no longer a configuration error — the list simply stops being
+// the gate — but nothing else relaxes: the safety checks in `browserAllowlist` are unconditional,
+// and the DENYLIST (union of env and project, because union is the safe direction for a deny rule)
+// still wins over both modes.
 
-const { normalizeAllowlist } = require('./browserAllowlist')
+const {
+    ACCESS_MODE_ALL_PUBLIC,
+    buildBrowsingPolicy,
+    normalizeAccessMode,
+    normalizeAllowlist,
+} = require('./browserAllowlist')
 const { resolveBrowserLimits } = require('./browserLimits')
 
 const PROJECT_CONFIG_FIELD = 'browserAutomation'
@@ -61,13 +72,27 @@ function resolveBrowserConfig({ env = {}, projectConfig = null } = {}) {
         ...projectAllowlist.entries.map(entry => serializeAllowlistEntry(entry)),
     ])
 
+    const envDenylist = normalizeAllowlist(readEnvValue(env, 'BROWSER_DENIED_DOMAINS'))
+    const projectDenylist = normalizeAllowlist(project.deniedDomains)
+    const combinedDenylist = normalizeAllowlist([
+        ...envDenylist.entries.map(entry => serializeAllowlistEntry(entry)),
+        ...projectDenylist.entries.map(entry => serializeAllowlistEntry(entry)),
+    ])
+
+    // The project chooses; the environment only supplies the default for a project that has not.
+    const accessMode = normalizeAccessMode(project.accessMode || readEnvValue(env, 'BROWSER_ACCESS_MODE') || undefined)
+    const allPublic = accessMode === ACCESS_MODE_ALL_PUBLIC
+
     const limits = resolveBrowserLimits(project.limits)
     const rejectedAllowlistEntries = [...envAllowlist.rejected, ...projectAllowlist.rejected]
+    const rejectedDenylistEntries = [...envDenylist.rejected, ...projectDenylist.rejected]
 
     const missing = []
     if (!workerBaseUrl) missing.push('BROWSER_WORKER_URL')
     if (!signingSecret) missing.push('BROWSER_WORKER_SIGNING_SECRET')
-    if (combined.entries.length === 0) missing.push('allowlist')
+    // In `all_public` the allowlist is not the gate, so an empty one is a choice rather than an
+    // unfinished configuration.
+    if (!allPublic && combined.entries.length === 0) missing.push('allowlist')
 
     const disabledByProject = project.enabled === false
     const enabled = missing.length === 0 && !disabledByProject
@@ -78,8 +103,19 @@ function resolveBrowserConfig({ env = {}, projectConfig = null } = {}) {
         missing,
         workerBaseUrl,
         signingSecret,
+        accessMode,
+        allPublic,
         allowlist: combined.entries,
+        denylist: combinedDenylist.entries,
+        // One object, built once, carried by the worker token and read by both the policy and the
+        // worker's network guard, so "which hosts" cannot be answered twice.
+        policy: buildBrowsingPolicy({
+            mode: accessMode,
+            allowlist: combined.entries,
+            denylist: combinedDenylist.entries,
+        }),
         rejectedAllowlistEntries,
+        rejectedDenylistEntries,
         limits,
         // A GET search form is a read; a project may still require an approval for it.
         allowSearchSubmit: project.allowSearchSubmit !== false,
@@ -95,7 +131,9 @@ function describeMissingConfiguration(config) {
     if (!config || config.enabled) return ''
     if (config.disabledByProject) return 'Browsing is switched off for this project.'
     if (config.missing.includes('allowlist')) {
-        return 'Browsing is not available: no site has been allowlisted for this project yet. Add the sites the assistant may open in the project settings (or BROWSER_ALLOWED_DOMAINS).'
+        // Names both ways out, because "add sites" and "switch the mode" are genuinely different
+        // decisions and an operator who only hears the first one may not know the second exists.
+        return 'Browsing is not available: this project allows only selected websites and none have been added yet. Add the sites the assistant may open in the assistant\'s Tools Access settings, or switch that project to "All public websites".'
     }
     return `Browsing is not available: the browser worker is not configured (${config.missing.join(', ')}).`
 }

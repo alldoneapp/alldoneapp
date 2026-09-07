@@ -117,7 +117,10 @@ describe('executeBrowserTool', () => {
             })
             expect(result.success).toBe(false)
             expect(result.reason).toBe('browser_not_configured')
-            expect(result.error).toMatch(/no site has been allowlisted/i)
+            // Names both ways out — add sites, or switch the mode — because they are different
+            // decisions and an operator who hears only the first may not know the second exists.
+            expect(result.error).toMatch(/only selected websites and none have been added/i)
+            expect(result.error).toMatch(/all public websites/i)
             expect(worker.calls).toHaveLength(0)
             expect(db.listCollection('browserRuns')).toHaveLength(0)
         })
@@ -142,6 +145,101 @@ describe('executeBrowserTool', () => {
             const worker = createWorkerDouble({ navigate: () => pageResult({ url: 'https://kulturhaus.example/' }) })
             const { result } = await run({ db, worker, toolArgs: { url: 'https://kulturhaus.example/' } })
             expect(result.success).toBe(true)
+        })
+    })
+
+    describe('access modes', () => {
+        const allPublicProject = extra => ({
+            'projects/p1': { browserAutomation: { accessMode: 'all_public', ...extra } },
+        })
+
+        it('is "selected" unless the project says otherwise, whatever the stored value looks like', async () => {
+            for (const accessMode of [undefined, 'selected', 'ALL_PUBLIC', 'everything', true]) {
+                const db = new FirestoreDouble({ 'projects/p1': { browserAutomation: { accessMode } } })
+                const worker = createWorkerDouble({ navigate: () => pageResult() })
+                const { result } = await run({ db, worker, toolArgs: { url: 'https://unlisted.example/' } })
+                expect(result.reason).toBe('not_allowlisted')
+            }
+        })
+
+        it('opens an unlisted public host in all_public, and the WORKER is told so in the signed token', async () => {
+            const db = new FirestoreDouble(allPublicProject())
+            const worker = createWorkerDouble({ navigate: () => pageResult({ url: 'https://unlisted.example/' }) })
+            const { result } = await run({ db, worker, toolArgs: { url: 'https://unlisted.example/' } })
+
+            expect(result.success).toBe(true)
+            // Without the mode in the token the worker's own guard would abort the very navigation
+            // Functions just permitted — and a client cannot forge it, because the token is signed.
+            const verified = verifyWorkerToken(worker.calls[0].token, SECRET, NOW)
+            expect(verified.accessMode).toBe('all_public')
+        })
+
+        it('needs no allowlist at all in all_public', async () => {
+            const db = new FirestoreDouble(allPublicProject())
+            const worker = createWorkerDouble({ navigate: () => pageResult({ url: 'https://unlisted.example/' }) })
+            const { result } = await run({
+                db,
+                worker,
+                env: { ...ENV, BROWSER_ALLOWED_DOMAINS: '' },
+                toolArgs: { url: 'https://unlisted.example/' },
+            })
+            expect(result.success).toBe(true)
+        })
+
+        it.each([
+            'http://localhost:8080/',
+            'http://127.0.0.1/',
+            'http://10.0.0.5/',
+            'http://169.254.169.254/computeMetadata/v1/',
+            'http://metadata.google.internal/',
+            'http://[fd00::1]/',
+            'http://intranet/',
+            'http://wiki.internal/',
+            'file:///etc/passwd',
+            'ftp://example.com/',
+        ])('still refuses %s in all_public, before the worker is called', async url => {
+            const db = new FirestoreDouble(allPublicProject())
+            const worker = createWorkerDouble({ navigate: () => pageResult() })
+            const { result } = await run({ db, worker, toolArgs: { url } })
+
+            expect(result.success).toBe(false)
+            expect(worker.calls).toHaveLength(0)
+        })
+
+        it('honours the project denylist in all_public', async () => {
+            const db = new FirestoreDouble(allPublicProject({ deniedDomains: ['ads.example', '*.tracker.example'] }))
+            const worker = createWorkerDouble({ navigate: () => pageResult({ url: 'https://ads.example/' }) })
+
+            const blocked = await run({ db, worker, toolArgs: { url: 'https://ads.example/' } })
+            expect(blocked.result.success).toBe(false)
+            expect(blocked.result.error).toMatch(/blocked list/i)
+            expect(worker.calls).toHaveLength(0)
+
+            const allowed = await run({ db, worker, toolArgs: { url: 'https://unlisted.example/' } })
+            expect(allowed.result.success).toBe(true)
+        })
+
+        it('carries the denylist into the worker token as well', async () => {
+            const db = new FirestoreDouble(allPublicProject({ deniedDomains: ['ads.example'] }))
+            const worker = createWorkerDouble({ navigate: () => pageResult({ url: 'https://unlisted.example/' }) })
+            await run({ db, worker, toolArgs: { url: 'https://unlisted.example/' } })
+
+            const verified = verifyWorkerToken(worker.calls[0].token, SECRET, NOW)
+            expect(verified.denylist.map(entry => entry.host)).toEqual(['ads.example'])
+        })
+
+        it('still charges exactly one Gold per executed step, and nothing for a mode refusal', async () => {
+            const db = new FirestoreDouble(allPublicProject({ deniedDomains: ['ads.example'] }))
+            const worker = createWorkerDouble({ navigate: () => pageResult({ url: 'https://unlisted.example/' }) })
+            const ledger = createLedgerDouble()
+
+            await run({ db, worker, ledger, toolArgs: { url: 'https://unlisted.example/' } })
+            expect(ledger.charges).toHaveLength(1)
+            expect(ledger.charges[0].amount).toBe(1)
+
+            await run({ db, worker, ledger, toolArgs: { url: 'https://ads.example/' } })
+            await run({ db, worker, ledger, toolArgs: { url: 'http://169.254.169.254/' } })
+            expect(ledger.charges).toHaveLength(1)
         })
     })
 

@@ -7,9 +7,10 @@
 //   POST /v1/close      drop the context
 //
 // Authorisation is the signed token minted by Cloud Functions (`browserWorkerClient.mintWorkerToken`),
-// and the ALLOWLIST and LIMITS travel inside it. The worker therefore cannot be talked into a wider
-// allowlist by its caller, and a leaked token is worth two minutes of browsing on the sites that
-// token was already allowed to open.
+// and the whole BROWSING POLICY — access mode, allowlist, denylist — plus the LIMITS travel inside
+// it. The worker therefore cannot be talked into a wider policy by its caller: "all public websites"
+// is a signed claim, not a request parameter, and a leaked token is worth two minutes of browsing
+// under exactly the policy that token was already minted for.
 //
 // The service must be deployed with ingress restricted and `--no-allow-unauthenticated`; the token
 // is the second lock, not the first.
@@ -84,7 +85,12 @@ app.post('/v1/act', async (request, response) => {
             const session = await getOrCreateSession(auth.sessionId, {
                 idleMs: Number(auth.limits?.idleMs) || undefined,
             })
-            await ensureNetworkGuard(session, { allowlist: auth.allowlist, limits: auth.limits })
+            await ensureNetworkGuard(session, {
+                allowlist: auth.allowlist,
+                denylist: auth.denylist,
+                accessMode: auth.accessMode,
+                limits: auth.limits,
+            })
             const result = await performNavigate(session, payload)
             respond(response, result, session)
             return
@@ -97,7 +103,12 @@ app.post('/v1/act', async (request, response) => {
                 .json({ error: 'There is no open page in this browsing session.', reason: 'no_session' })
             return
         }
-        await ensureNetworkGuard(session, { allowlist: auth.allowlist, limits: auth.limits })
+        await ensureNetworkGuard(session, {
+            allowlist: auth.allowlist,
+            denylist: auth.denylist,
+            accessMode: auth.accessMode,
+            limits: auth.limits,
+        })
 
         let result
         switch (action) {
