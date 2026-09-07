@@ -334,5 +334,9 @@ export async function getNextTaskId(projectId) {
  * re-validates every entry on every read, and no entry can widen anything beyond "may be opened".
  */
 export function setProjectBrowserAutomation(projectId, browserAutomation) {
-    return getDb().doc(`/projects/${projectId}`).update({ browserAutomation })
+    if (!projectId) return Promise.reject(new Error('setProjectBrowserAutomation needs a project id'))
+    // `set` with merge rather than `update`: this is a settings write on a document the caller may
+    // be the first to touch, and `update` rejects with `not-found` when the document is missing
+    // while writing nothing. Merge touches only this one field, so it is otherwise identical.
+    return getDb().doc(`projects/${projectId}`).set({ browserAutomation }, { merge: true })
 }

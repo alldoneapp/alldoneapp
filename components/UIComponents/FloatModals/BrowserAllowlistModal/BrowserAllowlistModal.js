@@ -58,7 +58,7 @@ function ModeOption({ label, description, selected, onPress }) {
     )
 }
 
-export default function BrowserAllowlistModal({ projectId, browserAutomation, closeModal }) {
+export default function BrowserAllowlistModal({ projectId, browserAutomation, closeModal, canConfigure = true }) {
     const initial = useMemo(() => {
         const stored = browserAutomation && typeof browserAutomation === 'object' ? browserAutomation : {}
         return {
@@ -84,6 +84,11 @@ export default function BrowserAllowlistModal({ projectId, browserAutomation, cl
     const [saving, setSaving] = useState(false)
 
     const allPublic = accessMode === BROWSER_ACCESS_MODE_ALL_PUBLIC
+    // The allowlist is stored on ONE project document and is read back by the server for the
+    // project a browsing run happens in. A surface with no real project behind it — the global
+    // assistant editor is the one that exists — has nothing to write to, and attempting it anyway
+    // produced a bare "could not be saved" that named neither the reason nor the way out (AT-2518).
+    const canSave = canConfigure && !!projectId
 
     /**
      * Shared by both lists, because a denied entry has exactly the same syntax and the same
@@ -120,6 +125,10 @@ export default function BrowserAllowlistModal({ projectId, browserAutomation, cl
 
     const save = async () => {
         if (saving) return
+        if (!canSave) {
+            setSaveError(translate('browser_allowlist_no_project'))
+            return
+        }
         setSaving(true)
         setSaveError('')
         try {
@@ -131,10 +140,19 @@ export default function BrowserAllowlistModal({ projectId, browserAutomation, cl
                 allowSearchSubmit,
                 limits: initial.limits,
             })
-            closeModal()
+            // Optional by contract: every caller passes it today, but a missing callback must not
+            // turn a write that already succeeded into "could not be saved".
+            if (typeof closeModal === 'function') closeModal()
         } catch (error) {
             setSaving(false)
-            setSaveError(translate('browser_allowlist_save_failed'))
+            // Say WHY. A generic sentence sent the last report round-tripping through a bundle
+            // dump to learn that the answer was one word ("permission-denied").
+            const reason = error?.code || error?.message
+            setSaveError(
+                reason
+                    ? `${translate('browser_allowlist_save_failed')} (${reason})`
+                    : translate('browser_allowlist_save_failed')
+            )
         }
     }
 
@@ -172,6 +190,15 @@ export default function BrowserAllowlistModal({ projectId, browserAutomation, cl
                         setAccessMode(BROWSER_ACCESS_MODE_ALL_PUBLIC)
                     }}
                 />
+
+                {!canSave && (
+                    <View style={localStyles.warning}>
+                        <Icon name={'alert-triangle'} size={16} color={colors.UtilityYellow200} />
+                        <View style={localStyles.warningTextBlock}>
+                            <Text style={localStyles.warningText}>{translate('browser_allowlist_no_project')}</Text>
+                        </View>
+                    </View>
+                )}
 
                 {enabled && allPublic && (
                     <View style={localStyles.warning}>
@@ -273,7 +300,12 @@ export default function BrowserAllowlistModal({ projectId, browserAutomation, cl
                 )}
 
                 <View style={localStyles.switchRow}>
-                    <Switch value={allowSearchSubmit} onValueChange={setAllowSearchSubmit} />
+                    <Switch
+                        active={allowSearchSubmit}
+                        activeSwitch={() => setAllowSearchSubmit(true)}
+                        deactiveSwitch={() => setAllowSearchSubmit(false)}
+                        disabled={!canSave}
+                    />
                     <Text style={localStyles.switchLabel}>{translate('Allow search forms without asking')}</Text>
                 </View>
                 <Text style={localStyles.hint}>{translate('browser_allowlist_search_hint')}</Text>
@@ -290,7 +322,7 @@ export default function BrowserAllowlistModal({ projectId, browserAutomation, cl
                     <Button
                         type="primary"
                         onPress={save}
-                        disabled={saving}
+                        disabled={saving || !canSave}
                         title={translate('Save')}
                         buttonStyle={[localStyles.actionButton, localStyles.saveButton]}
                     />

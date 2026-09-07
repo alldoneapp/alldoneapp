@@ -2948,5 +2948,6 @@
     "browser_mode_all_public_still_blocked": "Still blocked: your own network, internal and private addresses, IP addresses and non-web links. Booking, paying, signing in, uploading, sending and deleting still need your approval every time.",
     "browser_allowlist_unused_in_all_public": "Not used while all public websites are allowed.",
     "Blocked websites": "Blocked websites",
-    "Blocked websites description": "Never opened, whichever setting is chosen above."
+    "Blocked websites description": "Never opened, whichever setting is chosen above.",
+    "browser_allowlist_no_project": "This list belongs to a project. Open the assistant inside the project you want to configure."
 }
