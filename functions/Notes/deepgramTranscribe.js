@@ -63,10 +63,22 @@ function extractDetectedLanguages(result) {
 function formatTranscript(result) {
     const alternative = result?.results?.channels?.[0]?.alternatives?.[0]
     const paragraphs = alternative?.paragraphs?.paragraphs
-    if (paragraphs) {
-        return paragraphs.map(p => p.sentences.map(s => s.text).join(' ')).join('\n\n')
+    if (Array.isArray(paragraphs)) {
+        const text = paragraphs
+            .map(p =>
+                Array.isArray(p?.sentences)
+                    ? p.sentences
+                          .map(s => (typeof s?.text === 'string' ? s.text : ''))
+                          .join(' ')
+                          .trim()
+                    : ''
+            )
+            .filter(Boolean)
+            .join('\n\n')
+        if (text) return text
     }
-    return alternative?.transcript || ''
+    // Paragraph formatting is optional. An empty array must not erase recognized speech.
+    return typeof alternative?.transcript === 'string' ? alternative.transcript : ''
 }
 
 /**
@@ -109,7 +121,10 @@ function isLikelyBadRequestError(error) {
 // Deepgram's own measurement of the decoded audio, so billing cannot be steered by a client-supplied
 // duration hint. `keytermFallback` records that the keyterm retry above fired, so a silently
 // degraded configuration is visible in the logs instead of only in transcript quality.
-async function transcribeAudioBase64(base64Audio, { keyterms = getTranscriptionKeyterms() } = {}) {
+async function transcribeAudioBase64(
+    base64Audio,
+    { keyterms = getTranscriptionKeyterms(), retryEmptyTranscript = false } = {}
+) {
     const env = getEnvFunctions()
     const apiKey = env.DEEPGRAM_API_KEY
     if (!apiKey) {
@@ -137,6 +152,37 @@ async function transcribeAudioBase64(base64Audio, { keyterms = getTranscriptionK
         result = await deepgram.listen.v1.media.transcribeFile(buffer, buildTranscriptionOptions())
     }
 
+    let emptyTranscriptRetried = false
+    if (retryEmptyTranscript && !formatTranscript(result).trim()) {
+        emptyTranscriptRetried = true
+        const diagnostic = {
+            payloadBytes: buffer.length,
+            audioSeconds: Number(result?.metadata?.duration) || 0,
+            providerRequestId: result?.metadata?.request_id || null,
+        }
+        console.warn('[deepgramTranscribe] Empty dictation, retrying saved audio', diagnostic)
+        try {
+            // Only dictation opts in. Reuse the bytes and the accepted vocabulary, before any
+            // cleanup or billing. Bound the extra wait and disable the SDK's own retry loop.
+            result = await deepgram.listen.v1.media.transcribeFile(
+                buffer,
+                buildTranscriptionOptions({ keyterms: keytermFallback ? [] : requestedKeyterms }),
+                { timeoutInSeconds: 15, maxRetries: 0 }
+            )
+        } catch (error) {
+            // Keep the original empty result so a failed rescue still takes the no-charge path.
+            console.warn('[deepgramTranscribe] Empty dictation retry failed', {
+                ...diagnostic,
+                status: error?.statusCode ?? error?.status ?? null,
+            })
+        }
+        console.warn('[deepgramTranscribe] Empty dictation retry completed', {
+            ...diagnostic,
+            retryRequestId: result?.metadata?.request_id || null,
+            recovered: !!formatTranscript(result).trim(),
+        })
+    }
+
     const metadataDuration = Number(result?.metadata?.duration)
     return {
         transcript: formatTranscript(result).trim(),
@@ -144,6 +190,7 @@ async function transcribeAudioBase64(base64Audio, { keyterms = getTranscriptionK
         keytermCount: keytermFallback ? 0 : requestedKeyterms.length,
         keytermFallback,
         detectedLanguages: extractDetectedLanguages(result),
+        emptyTranscriptRetried,
     }
 }
 

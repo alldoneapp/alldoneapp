@@ -166,6 +166,23 @@ describe('processRambleSecondGen', () => {
             message: 'EMPTY_TRANSCRIPT',
         })
         expect(mockDeductGold).not.toHaveBeenCalled()
+        expect(mockCleanupRamble).not.toHaveBeenCalled()
+        expect(mockTranscribeAudioBase64).toHaveBeenCalledWith(
+            BASE_DATA.audio,
+            expect.objectContaining({ retryEmptyTranscript: true })
+        )
+    })
+
+    test('recovered dictation is cleaned and charged only once', async () => {
+        mockTranscribeAudioBase64.mockResolvedValue({
+            transcript: 'recovered speech',
+            durationSeconds: 12,
+            emptyTranscriptRetried: true,
+        })
+        const result = await callHandler()
+        expect(result.transcript).toBe('recovered speech')
+        expect(mockCleanupRamble).toHaveBeenCalledTimes(1)
+        expect(mockDeductGold).toHaveBeenCalledTimes(1)
     })
 
     test('cleanup failure falls back to the raw transcript and bills only transcription', async () => {
