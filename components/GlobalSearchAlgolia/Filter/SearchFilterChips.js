@@ -15,8 +15,7 @@ import {
 import { shrinkTagText } from '../../../functions/Utils/parseTextUtils'
 import { translate } from '../../../i18n/TranslationService'
 
-export const CREATED_BY_ME_CHIP_LABEL = 'Only created by me'
-export const ARCHIVED_CHIP_LABEL = 'Include archived'
+export const CREATED_BY_ME_CHIP_LABEL = 'Created by me'
 
 /**
  * The search popup's filter row as chips, matching the task list's
@@ -29,33 +28,20 @@ export const ARCHIVED_CHIP_LABEL = 'Include archived'
  * the scope.
  *
  * The scope chip is a PICKER (opens SelectProjectModalInSearch, alt+1); the
- * two toggles are "Only created by me" and "Include archived".
+ * only remaining toggle is "Created by me".
  *
- * "Include archived" is back (AT-2524) after AT-2390 removed it, and the two
- * archived controls no longer overlap because they answer DIFFERENT questions:
- * the chip widens the "All projects" group scope to active **and** archived,
- * while the picker's "All archived" scope searches archived **only**. That
- * distinction is what AT-2390 could not express — it accepted "active and
- * archived can no longer be searched together in one query" as a cost, and this
- * is the task that decided the cost was too high. The chip is therefore ON by
- * default: a user searching their whole workspace expects to find what they
- * archived, and having to know about a picker to reach it is the discoverability
- * problem AT-2258 already hit once.
- *
- * The chip only ever ADDS archived projects to a group scope. It is hidden —
- * not merely inert — whenever it could not mean anything: with one specific
- * project as the scope (a picked project is always searched, archived or not)
- * and for a user with no archived projects at all. `showArchivedChip` is
- * resolved by the modal, which owns both facts.
+ * There is deliberately NO archived toggle any more (AT-2390). Archived used to
+ * be a second, independent control that widened an all-projects search, which
+ * left two overlapping ways to express the same thing once the scope picker
+ * grew an "All archived" group. The scope is now the single place archived is
+ * chosen. The cost is real and accepted: active and archived can no longer be
+ * searched together in one query.
  */
 export default function SearchFilterChips({
     selectedProject,
     onOpenScope,
     createdByMeOnly,
     onToggleCreatedByMe,
-    includeArchived,
-    onToggleArchived,
-    showArchivedChip,
     disabled,
 }) {
     return (
@@ -73,15 +59,6 @@ export default function SearchFilterChips({
                     disabled={disabled}
                     testID={'search-filter-created-by-me'}
                 />
-                {showArchivedChip && (
-                    <ToggleChip
-                        label={ARCHIVED_CHIP_LABEL}
-                        selected={includeArchived}
-                        onPress={onToggleArchived}
-                        disabled={disabled}
-                        testID={'search-filter-archived'}
-                    />
-                )}
             </ScrollView>
         </View>
     )
