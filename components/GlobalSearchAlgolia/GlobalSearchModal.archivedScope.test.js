@@ -41,15 +41,16 @@ import { getAllUserProjects } from '../../utils/backends/firestore'
 import { warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
 
 const searchCalls = []
+const mockMultiSearchTypesense = jest.fn(async searches => {
+    searches.forEach(({ collection, query, filterBy }) => {
+        searchCalls.push({ indexName: collection, text: query, filters: filterBy })
+    })
+    return searches.map(() => ({ hits: [] }))
+})
 
 jest.mock('../../utils/typesenseSearch', () => ({
     warmTypesenseSearchCredentials: jest.fn(async () => true),
-    multiSearchTypesense: async searches => {
-        searches.forEach(({ collection, query, filterBy }) => {
-            searchCalls.push({ indexName: collection, text: query, filters: filterBy })
-        })
-        return searches.map(() => ({ hits: [] }))
-    },
+    multiSearchTypesense: (...args) => mockMultiSearchTypesense(...args),
 }))
 
 const ACTIVE_PROJECT = { id: 'project-active', name: 'Alldone Product', color: 'sky', sortIndexByUser: {} }
@@ -180,6 +181,7 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
 
     beforeEach(() => {
         searchCalls.length = 0
+        mockMultiSearchTypesense.mockClear()
         warmTypesenseSearchCredentials.mockClear()
         getAllUserProjects.mockResolvedValue(ALL_PROJECTS)
     })
@@ -200,6 +202,21 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         await mount()
 
         expect(warmTypesenseSearchCredentials).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows a search-unavailable notice instead of presenting a rejected request as no matches', async () => {
+        const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => {})
+        mockMultiSearchTypesense.mockRejectedValueOnce(
+            Object.assign(new Error('Typesense multi_search failed with status 400'), {
+                code: 'search_unavailable',
+            })
+        )
+        await mount()
+
+        await search('roadmap')
+
+        expect(JSON.stringify(component.toJSON())).toContain('Search is temporarily unavailable. Please try again.')
+        consoleLog.mockRestore()
     })
 
     it('falls back to loaded projects without an unhandled rejection when the scope refresh is denied', async () => {

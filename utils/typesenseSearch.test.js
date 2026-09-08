@@ -99,6 +99,22 @@ describe('scoped credentials and bounded payloads', () => {
         expect(exclude_fields).toBe('content,cleanComments')
     })
 
+    it('includes the Typesense error detail instead of reporting a rejected request as empty', async () => {
+        global.fetch.mockResolvedValue({
+            ok: false,
+            status: 400,
+            text: () => Promise.resolve(JSON.stringify({ message: 'Multi search request exceeds limit' })),
+        })
+
+        await expect(
+            multiSearchTypesense([{ collection: 'dev_tasks', query: 'x', filterBy: 'projectId:=p' }])
+        ).rejects.toMatchObject({
+            code: 'search_unavailable',
+            status: 400,
+            message: 'Typesense multi_search failed with status 400: Multi search request exceeds limit',
+        })
+    })
+
     it('reuses one credential during its lifetime', async () => {
         await multiSearchTypesense([{ collection: 'dev_tasks', query: 'one', filterBy: 'projectId:=p' }])
         await multiSearchTypesense([{ collection: 'dev_tasks', query: 'two', filterBy: 'projectId:=p' }])
@@ -380,6 +396,22 @@ describe('identity matches lead the page (AT-2527)', () => {
         expect(searches[1].query_by).toBe('title,content')
         // Two engine searches, still one HTTP request — this is what makes the extra page
         // affordable on a submit-driven surface.
+        expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('expands the five global tabs to the eight engine searches allowed by the scoped key', async () => {
+        respondWith(...Array.from({ length: 8 }, () => ({ hits: [] })))
+
+        await multiSearchTypesense(
+            ['dev_tasks', 'dev_goals', 'dev_notes', 'dev_contacts', 'dev_updates'].map(collection => ({
+                collection,
+                query: 'an',
+                filterBy: 'projectId:=p',
+                identityFirst: true,
+            }))
+        )
+
+        expect(readSentSearches()).toHaveLength(8)
         expect(global.fetch).toHaveBeenCalledTimes(1)
     })
 

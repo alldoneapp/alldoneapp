@@ -189,6 +189,23 @@ export const mergeIdentityFirstHits = (identityHits, fullHits, limit = PER_PAGE)
     return merged
 }
 
+const readTypesenseErrorDetail = async response => {
+    try {
+        const rawBody = await response.text()
+        if (!rawBody) return ''
+        try {
+            const payload = JSON.parse(rawBody)
+            return String(payload.message || payload.error || rawBody)
+                .replace(/\s+/g, ' ')
+                .slice(0, 500)
+        } catch (_) {
+            return rawBody.replace(/\s+/g, ' ').slice(0, 500)
+        }
+    } catch (_) {
+        return ''
+    }
+}
+
 let cachedCredentials = null
 let credentialsPromise = null
 
@@ -347,7 +364,13 @@ export const multiSearchTypesense = async searches => {
     if (response.status === 401) response = await runSearch(true)
 
     if (!response.ok) {
-        throw new Error(`Typesense multi_search failed with status ${response.status}`)
+        const detail = await readTypesenseErrorDetail(response)
+        const error = new Error(
+            `Typesense multi_search failed with status ${response.status}${detail ? `: ${detail}` : ''}`
+        )
+        error.code = 'search_unavailable'
+        error.status = response.status
+        throw error
     }
 
     const payload = await response.json()

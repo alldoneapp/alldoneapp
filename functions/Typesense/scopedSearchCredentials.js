@@ -6,7 +6,10 @@ const DEFAULT_WORKSTREAM_ID = 'ws@default'
 const PUBLIC_FOR_ALL = '0'
 const SCOPED_KEY_TTL_SECONDS = 5 * 60
 const EXCLUDED_RESPONSE_FIELDS = 'content,cleanComments'
-const MAX_MULTI_SEARCHES = 5
+// Global search has five logical tabs. Identity-first ranking expands Notes,
+// Contacts, and Topics into identity + full-text pages, so one request contains
+// eight engine searches. Keep this bound aligned with that client-side plan.
+const MAX_MULTI_SEARCHES = 8
 const MAX_RESULTS_PER_COLLECTION = 20
 
 class TypesenseSearchCredentialsError extends Error {
