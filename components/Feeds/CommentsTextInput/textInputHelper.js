@@ -26,6 +26,7 @@ import { cloneDeep } from 'lodash'
 import Backend from '../../../utils/BackendBridge'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
 import { getAppHistoryAction, HASHTAG_COLOR_HISTORY_TYPE } from './quillHistoryEntries'
+import { resolveCopiedBlockTail } from './quillBlockFormats'
 import {
     getAttachmentData,
     getImageData,
@@ -552,11 +553,16 @@ export const processPastedTextWithBreakLines = (
             }
         })
         if (lineIndex < maxLineIndex) {
-            if (delta.ops.length > 0 && typeof delta.ops[delta.ops.length - 1].insert === 'string') {
-                delta.ops[delta.ops.length - 1].insert = delta.ops[delta.ops.length - 1].insert + '\n'
-            } else {
-                attributes ? delta.insert('\n', attributes) : delta.insert('\n')
-            }
+            // AT-2526: the terminator has to carry THIS line's attributes, never whichever op
+            // happened to be emitted last. Appending '\n' to the last op — as this did — silently
+            // adopted that op's attributes instead, and the email branch above is the one that ends
+            // a line without any: it inserts its trailing space (and any trailing punctuation)
+            // unformatted, while every other token branch honours `isFormatedList`. So a bullet line
+            // ending in an email address lost its `list` and pasted as plain text.
+            //
+            // Delta.push already merges an insert into the previous op when the attributes match, so
+            // an ordinary line produces byte-identical ops to the manual append it replaces.
+            attributes ? delta.insert('\n', attributes) : delta.insert('\n')
         }
     })
 
@@ -741,6 +747,12 @@ export const onCopy = (event, editor, projectId, isCuting) => {
     const { index, length } = editor.getSelection()
     const selectedContent = cloneDeep(editor.getContents(index, length))
 
+    // AT-2526: a block format lives on the line's terminating newline, which a selection that stops
+    // at the end of the last line's text leaves behind — so the last bullet would be copied as a
+    // paragraph. Resolved from the live document HERE, before the cut below deletes the line whose
+    // format we are reading; appended after the loop so `text/plain` is untouched.
+    const copiedBlockTail = resolveCopiedBlockTail(editor, index, length, selectedContent.ops)
+
     let parsedText = ''
 
     for (let i = 0; i < selectedContent.ops.length; i++) {
@@ -814,6 +826,8 @@ export const onCopy = (event, editor, projectId, isCuting) => {
         const selection = document.getSelection()
         selection.deleteFromDocument()
     }
+
+    if (copiedBlockTail) selectedContent.ops.push(copiedBlockTail)
 
     const tempContainer = document.createElement('div')
     const tempQuill = new Quill(tempContainer)
