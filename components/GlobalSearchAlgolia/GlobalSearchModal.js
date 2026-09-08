@@ -78,6 +78,7 @@ export default function GlobalSearchModal() {
     const [activeTab, setActiveTab] = useState(getInitialTab)
     const [localText, setLocalText] = useState(searchText)
     const [searchOfflineNotice, setSearchOfflineNotice] = useState(false)
+    const [searchErrorNotice, setSearchErrorNotice] = useState(false)
     const [processing, setProcessing] = useState({
         [MENTION_MODAL_CONTACTS_TAB]: false,
         [MENTION_MODAL_GOALS_TAB]: false,
@@ -701,6 +702,7 @@ export default function GlobalSearchModal() {
         if (searchableTabs.length === 0) return
 
         setSearchOfflineNotice(false)
+        setSearchErrorNotice(false)
         try {
             const results = await multiSearchTypesense(
                 searchableTabs.map(({ indexPrefix, filterBy }) => ({
@@ -728,6 +730,7 @@ export default function GlobalSearchModal() {
             // Offline fast-fail from multiSearchTypesense (Stage 7): say so
             // instead of silently showing zero results.
             setSearchOfflineNotice(error.code === 'offline')
+            setSearchErrorNotice(error.code !== 'offline')
             setProcessing({
                 [MENTION_MODAL_CONTACTS_TAB]: false,
                 [MENTION_MODAL_GOALS_TAB]: false,
@@ -891,6 +894,11 @@ export default function GlobalSearchModal() {
             {searchOfflineNotice && (
                 <Text style={[styles.body2, localStyles.offlineNotice]}>
                     {translate('Search needs an internet connection')}
+                </Text>
+            )}
+            {searchErrorNotice && (
+                <Text style={[styles.body2, localStyles.offlineNotice]}>
+                    {translate('Search is temporarily unavailable')}
                 </Text>
             )}
             <ResultLists

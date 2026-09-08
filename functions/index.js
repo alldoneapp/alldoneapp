@@ -374,7 +374,7 @@ exports.awardXpSecondGen = onCall(
 exports.getTypesenseScopedSearchCredentialsSecondGen = onCall(
     {
         timeoutSeconds: 60,
-        memory: '256MiB',
+        memory: '512MiB',
         region: 'europe-west1',
         cors: true,
     },

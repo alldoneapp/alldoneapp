@@ -106,7 +106,7 @@ describe('createTypesenseScopedSearchCredentials', () => {
                 'projectId:=[`project-1`,`project-2`,`globalProject`] && ' +
                 'isPublicFor:=[`0`,`user-1`,`ws@default`,`ws@one`,`ws@two`]',
             exclude_fields: 'content,cleanComments',
-            limit_multi_searches: 5,
+            limit_multi_searches: 8,
             per_page: 20,
             expires_at: 1000 + SCOPED_KEY_TTL_SECONDS,
         })

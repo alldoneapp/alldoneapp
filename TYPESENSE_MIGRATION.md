@@ -62,6 +62,11 @@
 > and binds the client cache to the Firebase uid. The parent `documents:search` key is held
 > only in `TYPESENSE_SCOPED_SEARCH_PARENT_API_KEY`; the legacy browser key must be revoked
 > after the new web bundle is verified.
+> **Identity-first request bound (2026-09-08):** global search still has five logical tabs,
+> but identity-first ranking asks for an identity page plus a full-text page for Notes,
+> Contacts, and Topics. That produces eight engine searches in one `multi_search`. Keep
+> `MAX_MULTI_SEARCHES` at eight (or update it together with that plan); a scoped key capped at
+> five rejects the whole request with HTTP 400.
 > **QA gate (run before Phase 4, two accounts A/B):**
 >
 > 1. B's private task/note never appears for A (isPublicFor).
