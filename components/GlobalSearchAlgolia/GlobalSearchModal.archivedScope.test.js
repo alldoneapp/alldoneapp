@@ -29,7 +29,7 @@ import store from '../../redux/store'
 import { overrideStore, showGlobalSearchPopup } from '../../redux/actions'
 import GlobalSearchModal from './GlobalSearchModal'
 import SearchForm from './Form/SearchForm'
-import { ScopeChip, ToggleChip } from './Filter/SearchFilterChips'
+import { ARCHIVED_CHIP_LABEL, ScopeChip, ToggleChip } from './Filter/SearchFilterChips'
 import SelectProjectModalInSearch from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
 import ProjectListModal from '../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
 import {
@@ -375,6 +375,24 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
 
         expect(archivedChip()).toBeTruthy()
         expect(archivedChip().props.selected).toBe(true)
+    })
+
+    it('shows the archived chip in the popup itself, on desktop and on mobile', async () => {
+        // "Directly" is the requirement, and it is the same discoverability
+        // regression AT-2258 was reported for: the control must be readable
+        // without opening the scope picker first. Finding the component by type
+        // would still pass if the label were width-gated out of the tree, so
+        // this asserts the translated LABEL reaches rendered output — and does
+        // it in the mobile branch too, which is where the AT-2258 reports came
+        // from (the popup takes a different width/sheet branch there).
+        await mount()
+        expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
+        expect(JSON.stringify(component.toJSON())).toContain(translate(ARCHIVED_CHIP_LABEL))
+        await act(async () => component.unmount())
+
+        await mount({ smallScreenNavigation: true })
+        expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
+        expect(JSON.stringify(component.toJSON())).toContain(translate(ARCHIVED_CHIP_LABEL))
     })
 
     it('hides the archived chip while a specific project is the scope', async () => {
