@@ -707,10 +707,6 @@ export default function GlobalSearchModal() {
                     collection: indexPrefix,
                     query: localText,
                     filterBy,
-                    // Lead each tab with the objects whose NAME matches, ahead of the ones
-                    // that merely mention the query somewhere in their body (AT-2527).
-                    // Nothing is filtered out — see mergeIdentityFirstHits.
-                    identityFirst: true,
                 }))
             )
             searchableTabs.forEach((config, index) => {
