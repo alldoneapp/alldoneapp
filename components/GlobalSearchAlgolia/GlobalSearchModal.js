@@ -104,14 +104,6 @@ export default function GlobalSearchModal() {
     // resets to off every time Search is opened and the default search
     // behaviour is unchanged.
     const [createdByMeOnly, setCreatedByMeOnly] = useState(false)
-    // AT-2524 — "include archived", ON by default. Component state for the same
-    // reset-on-open reason as createdByMeOnly, which here means every Search
-    // opens back at the default (archived included) rather than remembering the
-    // last narrowing. Unlike createdByMeOnly the default is ON: an all-projects
-    // search that silently omits archived work is the gap this reopens (see the
-    // header comment in SearchFilterChips.js for why it no longer overlaps with
-    // the picker's "All archived" scope).
-    const [includeArchived, setIncludeArchived] = useState(true)
     // Which bucket each project belongs to, from updateTemporaryProjectsAndUsers — the
     // per-user categorization (archived is per-user!) that scope filtering needs.
     const [projectBuckets, setProjectBuckets] = useState({
@@ -541,32 +533,16 @@ export default function GlobalSearchModal() {
     // searched is decided here and nowhere else — unlike the Algolia era, where
     // absence from the index did the filtering.
     //
-    // AT-2524: there are two archived controls again, and they answer different
-    // questions. The "All archived" SCOPE searches archived projects only; the
-    // "Include archived" CHIP widens the all-projects scope to active AND
-    // archived, which is what the scope alone could never express. The chip is
-    // therefore consulted for exactly one scope — the all-projects group — and
-    // deliberately ignored for the other two: a specific picked project is
-    // always searched whether it is archived or not, and an all-archived scope
-    // is already entirely archived. Template/guide projects are never part of a
-    // group scope — picking one explicitly is the only way to search them.
+    // AT-2390: the scope is the ONLY archived control now. "All projects" means
+    // the active ones, exactly as it always did; archived projects are reached by
+    // picking "All archived" or one of them by name. Template/guide projects are
+    // never part of a group scope — picking one explicitly is the only way to
+    // search them.
     const getProjectsInSearchScope = () => {
         if (inSelectedProject) return [selectedProject]
-        if (isAllArchivedScope) {
-            return projects.filter(project => projectBuckets.archivedIds.includes(project.id))
-        }
-        const groupIds = includeArchived
-            ? [...projectBuckets.activeIds, ...projectBuckets.archivedIds]
-            : projectBuckets.activeIds
+        const groupIds = isAllArchivedScope ? projectBuckets.archivedIds : projectBuckets.activeIds
         return projects.filter(project => groupIds.includes(project.id))
     }
-
-    // The chip is hidden rather than disabled whenever it could not mean
-    // anything: with a specific project as the scope (that project is searched
-    // either way) and for a user with no archived projects — the same
-    // `realArchivedProjectsAmount` gate the picker's Archived tab already uses,
-    // so the two cannot disagree about whether archived exists for this user.
-    const showArchivedChip = !inSelectedProject && realArchivedProjectsAmount > 0
 
     // Shared result processing for both engines: groups hits by project, applies the
     // guide-project visibility rules, and publishes the tab's results. Hits arrive in
@@ -791,16 +767,6 @@ export default function GlobalSearchModal() {
         if (localText.trim() !== '') onSearch()
     }, [selectedProject.id])
 
-    // And the same for the archived chip (AT-2524). The ref is seeded with the
-    // ON default, so mounting never fires a search — only a real user toggle
-    // does, exactly like the two effects above.
-    const archivedAppliedRef = useRef(includeArchived)
-    useEffect(() => {
-        if (archivedAppliedRef.current === includeArchived) return
-        archivedAppliedRef.current = includeArchived
-        if (localText.trim() !== '') onSearch()
-    }, [includeArchived])
-
     // Desktop: a window-centered card at the L token width (round-3 centering
     // policy; the old marginLeft sidebar offset pushed it right of center).
     // Phones: the standard BottomSheet, same as every other popup — which
@@ -865,9 +831,6 @@ export default function GlobalSearchModal() {
                 }}
                 createdByMeOnly={createdByMeOnly}
                 onToggleCreatedByMe={() => setCreatedByMeOnly(!createdByMeOnly)}
-                includeArchived={includeArchived}
-                onToggleArchived={() => setIncludeArchived(!includeArchived)}
-                showArchivedChip={showArchivedChip}
                 disabled={projects.length === 0}
             />
 
