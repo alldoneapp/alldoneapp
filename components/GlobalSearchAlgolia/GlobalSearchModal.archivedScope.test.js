@@ -157,6 +157,16 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         })
     }
 
+    const archivedChip = () =>
+        component.root.findAllByType(ToggleChip).find(chip => chip.props.testID === 'search-filter-archived')
+
+    // Presses the chip the way the user does rather than reaching for a state
+    // setter, so the assertions cover the wiring and not just the reducer.
+    const setIncludeArchived = async value => {
+        if (archivedChip().props.selected === value) return
+        await act(async () => archivedChip().props.onPress())
+    }
+
     const searchedProjectIds = () => {
         const filters = searchCalls[0]?.filters || ''
         const match = filters.match(/projectId:=\[(.*?)\]/)
@@ -262,10 +272,27 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         expect(searchedProjectIds()).toEqual(['project-archived', 'project-archived-2'])
     })
 
-    it('still searches only the active projects by default', async () => {
-        // The existing Active behaviour is deliberately unchanged: an all-active
-        // search never covered archived or guide projects, and still does not.
+    it('searches active AND archived projects by default (AT-2524)', async () => {
+        // AT-2390 pinned the opposite here ("still searches only the active
+        // projects by default"). AT-2524 reversed that decision on purpose: the
+        // "Include archived" chip is ON when the popup opens, so the default
+        // all-projects search now spans both. Guide projects are still excluded
+        // — that half of the AT-2390 rule stands.
         await mount()
+        await search('venture')
+
+        expect(searchedProjectIds()).toEqual([
+            'project-active',
+            'project-active-2',
+            'project-archived',
+            'project-archived-2',
+        ])
+        expect(searchedProjectIds()).not.toContain(GUIDE_PROJECT.id)
+    })
+
+    it('searches only the active projects once the archived chip is turned off', async () => {
+        await mount()
+        await setIncludeArchived(false)
         await search('venture')
 
         expect(searchedProjectIds()).toEqual(['project-active', 'project-active-2'])
@@ -316,7 +343,15 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         // only way to reach archived results, so it has to re-run.
         await mount()
         await search('venture')
-        expect(searchedProjectIds()).toEqual(['project-active', 'project-active-2'])
+        // The default group scope is active + archived since AT-2524; picking
+        // "All archived" narrows it to archived ONLY, which is the distinction
+        // the chip and the scope now divide between them.
+        expect(searchedProjectIds()).toEqual([
+            'project-active',
+            'project-active-2',
+            'project-archived',
+            'project-archived-2',
+        ])
 
         searchCalls.length = 0
         await chooseScope(ALL_ARCHIVED_PROJECTS_OPTION)
@@ -332,15 +367,76 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         expect(searchCalls).toHaveLength(0)
     })
 
-    it('offers no archived toggle beside the scope chip', async () => {
-        // Archived is a scope now. Leaving the old toggle in place would be two
-        // controls for one idea, one of which could contradict the other.
+    it('offers the archived chip beside the scope chip, on by default (AT-2524)', async () => {
+        // AT-2390 pinned this chip as absent. It is back, and the two archived
+        // controls no longer overlap: the chip widens a group scope to active
+        // AND archived, the picker's "All archived" searches archived only.
         await mount()
 
-        const archivedToggle = component.root
-            .findAllByType(ToggleChip)
-            .find(toggle => toggle.props.testID === 'search-filter-archived')
-        expect(archivedToggle).toBeUndefined()
+        expect(archivedChip()).toBeTruthy()
+        expect(archivedChip().props.selected).toBe(true)
+    })
+
+    it('hides the archived chip while a specific project is the scope', async () => {
+        // A picked project is searched whether it is archived or not, so the
+        // chip could not mean anything there. Hidden, not merely inert.
+        await mount()
+        await chooseScope(ARCHIVED_PROJECT.id)
+
+        expect(archivedChip()).toBeUndefined()
+    })
+
+    it('keeps the chip for the all-archived scope but lets it change nothing', async () => {
+        // The scope is already entirely archived; widening it is a no-op. The
+        // chip stays visible because the scope is still a GROUP scope and the
+        // user is one press from going back to all-projects.
+        await mount()
+        await chooseScope(ALL_ARCHIVED_PROJECTS_OPTION)
+        expect(archivedChip()).toBeTruthy()
+
+        searchCalls.length = 0
+        await search('venture')
+        expect(searchedProjectIds()).toEqual(['project-archived', 'project-archived-2'])
+
+        searchCalls.length = 0
+        await setIncludeArchived(false)
+        await search('venture')
+        expect(searchedProjectIds()).toEqual(['project-archived', 'project-archived-2'])
+    })
+
+    it('hides the archived chip for a user with no archived projects', async () => {
+        // Same `realArchivedProjectIds` gate the picker's Archived tab uses, so
+        // the two cannot disagree about whether archived exists for this user.
+        await mount({ loggedUser: { ...loggedUser, realArchivedProjectIds: [] } })
+
+        expect(archivedChip()).toBeUndefined()
+    })
+
+    it('re-runs an existing search immediately when the archived chip is toggled', async () => {
+        await mount()
+        await search('venture')
+        expect(searchedProjectIds()).toHaveLength(4)
+
+        searchCalls.length = 0
+        await setIncludeArchived(false)
+
+        expect(searchCalls).toHaveLength(5)
+        expect(searchedProjectIds()).toEqual(['project-active', 'project-active-2'])
+    })
+
+    it('does not fire a search when the archived chip is toggled with an empty term', async () => {
+        await mount()
+        await setIncludeArchived(false)
+
+        expect(searchCalls).toHaveLength(0)
+    })
+
+    it('does not fire a search merely by opening with the chip on', async () => {
+        // The chip defaults to ON, so the re-run effect must be seeded with
+        // that default or every open would fire a search for an empty term.
+        await mount()
+
+        expect(searchCalls).toHaveLength(0)
     })
 
     it('leaves the created-by-me chip working', async () => {
