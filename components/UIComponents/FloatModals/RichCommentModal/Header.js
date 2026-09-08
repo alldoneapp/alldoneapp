@@ -16,6 +16,7 @@ export default function Header({ title }) {
         <View style={localStyles.headingContainer}>
             <ObjectHeaderParser
                 text={text}
+                containerExternalStyle={localStyles.titleParser}
                 entryExternalStyle={[
                     styles.title7,
                     {
@@ -30,8 +31,16 @@ export default function Header({ title }) {
 
 const localStyles = StyleSheet.create({
     headingContainer: {
-        marginBottom: 20,
+        // The title and the explanatory line under it are one block, matching the
+        // "No comments yet" empty-state card in RichCommentModal (AT-2528).
+        marginBottom: 4,
         width: '100%',
+    },
+    titleParser: {
+        // ObjectHeaderParser indents itself by 12 because in a feed row it sits beside an
+        // avatar. The cards that render this header supply their own padding, so that
+        // margin would push the title 12px further right than the text below it (AT-2528).
+        marginLeft: 0,
     },
     titleText: {
         lineHeight: 20,
