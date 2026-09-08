@@ -1,9 +1,8 @@
-import { isolatePasteInHistory } from '../../../Feeds/CommentsTextInput/quillHistoryEntries'
-import { blockAttributesOf } from '../../../Feeds/CommentsTextInput/quillBlockFormats'
+import Quill from 'quill'
 
-// Re-exported because the copy side needs the same rule (AT-2526) and a second copy of it would
-// let the two drift: what counts as a block format has to mean the same thing in both directions.
-export { blockAttributesOf }
+import { isolatePasteInHistory } from '../../../Feeds/CommentsTextInput/quillHistoryEntries'
+
+const Parchment = Quill.import('parchment')
 
 /**
  * AT-2469. "After a paste the caret is at the beginning of the line instead of at the end", and
@@ -58,6 +57,31 @@ export { blockAttributesOf }
  * last line carrying content is handed to the rule above. A clipboard that is nothing but line
  * breaks is still left alone — there, the breaks ARE the content.
  */
+
+/**
+ * The subset of a line terminator's attributes that quill would treat as a LINE format.
+ *
+ * Filtering matters because ops merge: quill emits `insert('one\ntwo\n', { list: 'bullet' })` for a
+ * two-item list, so the attributes reaching this function can describe a text run as much as a
+ * line break. Retaining a `\n` with an inline format such as `bold` asks quill to wrap the block
+ * itself, which is not what the clipboard meant. Anything the editor does not register as a block
+ * format is dropped rather than guessed at.
+ */
+export const blockAttributesOf = (attributes, editor) => {
+    if (!attributes) return null
+    const scroll = editor && editor.scroll
+    if (!scroll || typeof scroll.query !== 'function') return null
+
+    const blockAttributes = {}
+    let found = false
+    Object.keys(attributes).forEach(name => {
+        if (scroll.query(name, Parchment.Scope.BLOCK)) {
+            blockAttributes[name] = attributes[name]
+            found = true
+        }
+    })
+    return found ? blockAttributes : null
+}
 
 /**
  * Clipboard text with line endings normalized to '\n'.
