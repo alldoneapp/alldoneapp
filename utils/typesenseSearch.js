@@ -298,6 +298,8 @@ export const adaptTypesenseHit = hit => {
 //
 // `matchAllWhenEmpty` turns a blank query into the `*` wildcard so the caller gets the
 // collection's most recent records instead of nothing — see TYPESENSE_MATCH_ALL_QUERY.
+// A positive `page` opts a search into pagination and adds `hasMore` to its result.
+// The per-page bound stays unchanged, including when using scoped credentials.
 export const multiSearchTypesense = async searches => {
     // Search has no offline index — fail fast with an identifiable error so the
     // consumers (global search, mentions) can degrade instead of hanging on a
@@ -325,6 +327,7 @@ export const multiSearchTypesense = async searches => {
             sort_by: buildSortBy(config.sort_by, isMatchAll),
             filter_by: filterBy,
             per_page: PER_PAGE,
+            ...(Number.isInteger(search.page) && search.page > 0 ? { page: search.page } : {}),
             highlight_fields: 'none',
             exclude_fields: 'content,cleanComments',
         }
@@ -374,12 +377,23 @@ export const multiSearchTypesense = async searches => {
     }
 
     const payload = await response.json()
-    const engineResults = (payload.results || []).map(result => {
+    const engineResults = (payload.results || []).map((result, index) => {
         if (result.error) {
             console.log('Typesense search error:', result.error)
             return { hits: [], error: result.error }
         }
-        return { hits: (result.hits || []).map(adaptTypesenseHit) }
+        const hits = (result.hits || []).map(adaptTypesenseHit)
+        const page = engineSearches[index]?.page
+        return {
+            hits,
+            ...(page
+                ? {
+                      hasMore: Number.isFinite(result.found)
+                          ? page * PER_PAGE < result.found
+                          : hits.length === PER_PAGE,
+                  }
+                : {}),
+        }
     })
 
     return plan.map(({ identityIndex, fullIndex }) => {
@@ -409,6 +423,7 @@ export const searchTypesenseCollection = async (collection, query, filterBy, opt
             queryBy: options.queryBy,
             matchAllWhenEmpty: options.matchAllWhenEmpty,
             identityFirst: options.identityFirst,
+            page: options.page,
         },
     ])
     return result
