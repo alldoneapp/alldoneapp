@@ -55,7 +55,17 @@ export const readUserStatistics = async (db, path, { preferDirect = false } = {}
         }
     }
 
-    const cached = await boundedRead(() => db.doc(path).get({ source: 'cache' }), 1000)
+    let cached
+    try {
+        cached = await boundedRead(() => db.doc(path).get({ source: 'cache' }), 1000)
+    } catch (cacheError) {
+        // The fallback must not replace the original server failure in diagnostics.
+        if (failure) {
+            failure.cacheError = cacheError
+            throw failure
+        }
+        throw cacheError
+    }
     if (cached.exists) return cached.data() || {}
     throw (
         failure || Object.assign(new Error('Statistics are not available in the local cache'), { code: 'unavailable' })
