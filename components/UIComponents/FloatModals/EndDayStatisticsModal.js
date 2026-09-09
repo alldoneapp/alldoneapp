@@ -36,6 +36,7 @@ import useProjectHappinessEditor from '../../ProjectHappiness/useProjectHappines
 import { getHappinessProjects } from '../../ProjectHappiness/happinessProjects'
 import { getSafeStatisticNumber } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
+import { reportNewDayStatisticsError } from '../../../utils/backends/Users/reportNewDayStatisticsError'
 import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 import {
     CONNECTION_HEALTH_LIVE,
@@ -112,6 +113,7 @@ export default function EndDayStatisticsModal() {
     // callbacks below need to read it synchronously, plus the stage of a manual
     // reconnect attempt (AT-2391).
     const [statisticsUnavailable, setStatisticsUnavailable] = useState(false)
+    const [failedStatisticsProjectIds, setFailedStatisticsProjectIds] = useState([])
     const [reconnectStatus, setReconnectStatus] = useState(RECONNECT_IDLE)
 
     const statisticsUnavailableRef = useRef(false)
@@ -120,6 +122,7 @@ export default function EndDayStatisticsModal() {
     const statisticsResultsRef = useRef({})
     const statisticsFailuresRef = useRef(new Set())
     const statisticsGenerationRef = useRef(0)
+    const statisticsAttemptRef = useRef(0)
     const statisticsScopeRef = useRef(null)
     const statisticsScope = `${loggedUserId}:${statisticsModalDate}:${loggedUserProjects
         .map(project => project.id)
@@ -135,6 +138,12 @@ export default function EndDayStatisticsModal() {
     const statisticsPending = dataLoaded !== null && Object.values(dataLoaded).some(loaded => !loaded)
     const showStatisticsPlaceholder =
         statisticsUnavailable || statisticsPending || reconnectStatus === RECONNECT_RELOADING
+    const hasLoadedStatistics =
+        dataLoaded !== null && (Object.keys(dataLoaded).length === 0 || Object.values(dataLoaded).some(Boolean))
+    const showPartialSummary = hasLoadedStatistics && showStatisticsPlaceholder
+    const failedStatisticsProjects = loggedUserProjects.filter(project =>
+        failedStatisticsProjectIds.includes(project.id)
+    )
     const browserOffline =
         connectionState === 'offline' || (typeof navigator !== 'undefined' && navigator.onLine === false)
     // The button is offered whenever there is something to reconnect: either
@@ -207,10 +216,12 @@ export default function EndDayStatisticsModal() {
      */
     const resetModalState = ({ keepStartNewDayGuard = false } = {}) => {
         statisticsGenerationRef.current++
+        statisticsAttemptRef.current = 0
         statisticsTimersRef.current.forEach(clearTimeout)
         statisticsTimersRef.current.clear()
         statisticsResultsRef.current = {}
         statisticsFailuresRef.current.clear()
+        setFailedStatisticsProjectIds([])
         setDoneTasks(0)
         setXp(0)
         setDonePoints(0)
@@ -290,6 +301,7 @@ export default function EndDayStatisticsModal() {
         // totals. One failed project must not discard all the successful ones.
         statisticsResultsRef.current[projectId] = statistics
         statisticsFailuresRef.current.delete(projectId)
+        setFailedStatisticsProjectIds(ids => ids.filter(id => id !== projectId))
         const results = statisticsResultsRef.current
         let taskTotal = 0,
             pointTotal = 0,
@@ -322,8 +334,21 @@ export default function EndDayStatisticsModal() {
         setDataLoaded(loaded => ({ ...loaded, [projectId]: true }))
     }
 
-    const markStatisticsUnavailable = (projectId, error) => {
-        if (projectId) statisticsFailuresRef.current.add(projectId)
+    const markStatisticsUnavailable = (projectId, error, context = {}) => {
+        if (projectId) {
+            statisticsFailuresRef.current.add(projectId)
+            setFailedStatisticsProjectIds(ids => (ids.includes(projectId) ? ids : [...ids, projectId]))
+            // Reporting owns its deadline and handles failures; never await it in the UI.
+            const { connectionHealth, connectionState } = store.getState()
+            void reportNewDayStatisticsError(error, {
+                userId: loggedUserId,
+                projectId,
+                statisticsDate: moment(statisticsModalDate).format('DDMMYYYY'),
+                connectionHealth,
+                connectionState,
+                ...context,
+            })
+        }
         statisticsUnavailableRef.current = true
         setStatisticsUnavailable(true)
         if (error) console.warn('[NewDay] Statistics could not be loaded', { code: error.code, message: error.message })
@@ -346,9 +371,11 @@ export default function EndDayStatisticsModal() {
         const endDayStatisticsDate = moment(loggedUser.statisticsModalDate)
         const statisticsDate = endDayStatisticsDate.format('DDMMYYYY')
         const generation = ++statisticsGenerationRef.current
+        const attempt = ++statisticsAttemptRef.current
         statisticsTimersRef.current.forEach(clearTimeout)
         statisticsTimersRef.current.clear()
         statisticsFailuresRef.current.clear()
+        setFailedStatisticsProjectIds([])
         statisticsUnavailableRef.current = false
         setStatisticsUnavailable(false)
         const projects = loggedUserProjects.filter(project => !loggedUser.templateProjectIds.includes(project.id))
@@ -362,15 +389,25 @@ export default function EndDayStatisticsModal() {
 
         projects.forEach(project => {
             if (statisticsResultsRef.current[project.id]) return
+            const startedAt = Date.now()
+            let stage = 'day-rate-reconciliation'
             // Includes optional day-rate reconciliation, so even a pending write
             // cannot leave the summary spinning forever. A late success can recover it.
             const timer = setTimeout(() => {
                 statisticsTimersRef.current.delete(timer)
                 if (isCurrent())
-                    markStatisticsUnavailable(project.id, {
-                        code: 'deadline-exceeded',
-                        message: 'Statistics loading timed out',
-                    })
+                    markStatisticsUnavailable(
+                        project.id,
+                        {
+                            code: 'deadline-exceeded',
+                            message: 'Statistics loading timed out',
+                        },
+                        {
+                            stage,
+                            elapsedMs: Date.now() - startedAt,
+                            attempt,
+                        }
+                    )
             }, RECONNECT_STATISTICS_TIMEOUT_MS)
             statisticsTimersRef.current.add(timer)
             const finish =
@@ -382,12 +419,19 @@ export default function EndDayStatisticsModal() {
                 }
             reconcileDayRateTimeLogBeforeStats(project, endDayStatisticsDate.valueOf()).finally(() => {
                 if (!isCurrent()) return
+                stage = 'statistics-read'
                 Backend.getUserStatistics(
                     project.id,
                     loggedUser.uid,
                     statisticsDate,
                     finish(updateStatistics),
-                    finish(error => markStatisticsUnavailable(project.id, error)),
+                    finish(error =>
+                        markStatisticsUnavailable(project.id, error, {
+                            stage,
+                            elapsedMs: Date.now() - startedAt,
+                            attempt,
+                        })
+                    ),
                     { preferDirect: true }
                 )
             })
@@ -591,6 +635,12 @@ export default function EndDayStatisticsModal() {
     }
 
     const getRewardTexts = () => {
+        if (showPartialSummary) {
+            return {
+                rewardTitle: translate('Partial daily summary'),
+                rewardDescription: translate('These totals include only the projects that have loaded.'),
+            }
+        }
         if (showStatisticsPlaceholder) {
             return {
                 rewardTitle: translate('Welcome back!'),
@@ -744,8 +794,28 @@ export default function EndDayStatisticsModal() {
                             <Text style={localStyles.date}>{`${dayName} ${dateFormated}`}</Text>
                         </View>
 
-                        {!showStatisticsPlaceholder && (
-                            <View style={[localStyles.statsGrid, compactModalLayout && localStyles.mobileStatsGrid]}>
+                        {failedStatisticsProjects.length > 0 && (
+                            <View testID="newDayFailedProjects" style={{ marginTop: 12 }}>
+                                <Text style={localStyles.emptyInboxDescription}>
+                                    {translate('Could not load statistics for:')}
+                                </Text>
+                                {failedStatisticsProjects.map(project => (
+                                    <Text key={project.id} style={localStyles.emptyInboxDescription}>
+                                        {project.name}
+                                    </Text>
+                                ))}
+                            </View>
+                        )}
+                        {showPartialSummary && statisticsPending && !statisticsUnavailable && (
+                            <Text style={localStyles.emptyInboxDescription}>
+                                {translate('Loading the remaining projects...')}
+                            </Text>
+                        )}
+                        {hasLoadedStatistics && (
+                            <View
+                                testID="newDayStatistics"
+                                style={[localStyles.statsGrid, compactModalLayout && localStyles.mobileStatsGrid]}
+                            >
                                 {statItems}
                             </View>
                         )}
@@ -762,7 +832,9 @@ export default function EndDayStatisticsModal() {
                                 {translate(
                                     browserOffline
                                         ? 'Still no connection. You can start the day anyway, your data will sync later'
-                                        : 'Your summary could not be loaded. You can start the day and try again later.'
+                                        : hasLoadedStatistics
+                                          ? 'Some projects could not be loaded. You can start the day and try again later.'
+                                          : 'Your summary could not be loaded. You can start the day and try again later.'
                                 )}
                             </Text>
                         )}
