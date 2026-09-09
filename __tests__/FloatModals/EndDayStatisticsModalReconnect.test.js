@@ -31,6 +31,9 @@ import renderer from 'react-test-renderer'
 import moment from 'moment'
 
 jest.mock('lottie-react', () => () => null)
+jest.mock('../../utils/backends/Users/reportNewDayStatisticsError', () => ({
+    reportNewDayStatisticsError: jest.fn(() => Promise.resolve(true)),
+}))
 
 jest.mock('../../utils/BackendBridge', () => ({
     getUserStatistics: jest.fn(),
@@ -82,6 +85,7 @@ import {
 import Backend from '../../utils/BackendBridge'
 import { reconnectNow } from '../../utils/connectionHealth'
 import { setUserStatisticsModalDate } from '../../utils/backends/Users/usersFirestore'
+import { reportNewDayStatisticsError } from '../../utils/backends/Users/reportNewDayStatisticsError'
 
 const YESTERDAY = moment().subtract(1, 'day').startOf('day').add(9, 'hours').valueOf()
 
@@ -439,19 +443,89 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
     it('retains successful projects and retries only the failed project', async () => {
         renderer.act(() => {
             store.dispatch(storeLoggedUser({ ...store.getState().loggedUser, projectIds: ['p1', 'p2'] }))
-            const second = { ...PROJECT, id: 'p2', index: 1 }
+            const second = { ...PROJECT, id: 'p2', name: 'Unavailable project', index: 1 }
             store.dispatch(setProjectsInitialData([PROJECT, second], { p1: PROJECT, p2: second }, {}, {}, {}, {}))
         })
         Backend.getUserStatistics.mockImplementation((projectId, userId, date, callback, onError) => {
             projectId === 'p1' ? callback(projectId, { doneTasks: 4 }) : onError()
         })
         const tree = await render()
+        expect(has(tree, 'newDayStatistics')).toBe(true)
+        expect(text(tree)).toContain('Partial daily summary')
+        expect(text(tree)).toContain('These totals include only the projects that have loaded.')
+        expect(text(tree)).toContain('"4"')
+        const failedProjects = tree.root.findByProps({ testID: 'newDayFailedProjects' })
+        expect(failedProjects.findAll(node => node.children.includes('Unavailable project')).length).toBeGreaterThan(0)
+        expect(failedProjects.findAll(node => node.children.includes(PROJECT.name))).toHaveLength(0)
         Backend.getUserStatistics.mockClear()
-        readsStatistics({ doneTasks: 3 })
+        readsNothing()
         await pressReconnect(tree)
+        expect(has(tree, 'newDayStatistics')).toBe(true)
+        expect(text(tree)).toContain('"4"')
+        expect(text(tree)).toContain('Loading the remaining projects...')
+        // Finish the pending retry using the callback supplied to the reader.
+        await renderer.act(async () => Backend.getUserStatistics.mock.calls[0][3]('p2', { doneTasks: 3 }))
         expect(Backend.getUserStatistics).toHaveBeenCalledTimes(1)
         expect(Backend.getUserStatistics.mock.calls[0][0]).toBe('p2')
         expect(text(tree)).toContain('"7"')
+        expect(text(tree)).not.toContain('Partial daily summary')
+        expect(has(tree, 'newDayFailedProjects')).toBe(false)
+    })
+
+    it('reports the failed project and original error without exposing technical errors in the popup', async () => {
+        const failure = Object.assign(new Error('Missing or insufficient permissions'), { code: 'PERMISSION_DENIED' })
+        Backend.getUserStatistics.mockImplementation((projectId, userId, date, callback, onError) => onError(failure))
+        const tree = await render()
+        expect(has(tree, 'newDayStatistics')).toBe(false)
+        expect(text(tree)).toContain(PROJECT.name)
+        expect(text(tree)).not.toContain('Missing or insufficient permissions')
+        expect(reportNewDayStatisticsError).toHaveBeenCalledWith(
+            failure,
+            expect.objectContaining({
+                userId: 'user-1',
+                projectId: 'p1',
+                statisticsDate: moment(YESTERDAY).format('DDMMYYYY'),
+                stage: 'statistics-read',
+                attempt: 1,
+                elapsedMs: expect.any(Number),
+            })
+        )
+    })
+
+    it('updates the project list when a second project fails later', async () => {
+        const second = { ...PROJECT, id: 'p2', name: 'Second project', index: 1 }
+        renderer.act(() => {
+            store.dispatch(storeLoggedUser({ ...store.getState().loggedUser, projectIds: ['p1', 'p2'] }))
+            store.dispatch(setProjectsInitialData([PROJECT, second], { p1: PROJECT, p2: second }, {}, {}, {}, {}))
+        })
+        let failSecond
+        Backend.getUserStatistics.mockImplementation((projectId, userId, date, callback, onError) => {
+            if (projectId === 'p1') onError({ code: 'PERMISSION_DENIED' })
+            else failSecond = onError
+        })
+        const tree = await render()
+        expect(text(tree)).not.toContain(second.name)
+        await renderer.act(async () => failSecond({ code: 'deadline-exceeded' }))
+        expect(text(tree)).toContain(second.name)
+        expect(text(tree)).toContain(PROJECT.name)
+        expect(reportNewDayStatisticsError).toHaveBeenCalledTimes(2)
+    })
+
+    it('reports a stalled read with its project, stage and elapsed time', async () => {
+        jest.useFakeTimers()
+        readsNothing()
+        const tree = await render()
+        await renderer.act(async () => jest.advanceTimersByTimeAsync(RECONNECT_STATISTICS_TIMEOUT_MS))
+        expect(text(tree)).toContain(PROJECT.name)
+        expect(reportNewDayStatisticsError).toHaveBeenCalledWith(
+            expect.objectContaining({ code: 'deadline-exceeded' }),
+            expect.objectContaining({
+                projectId: 'p1',
+                stage: 'statistics-read',
+                elapsedMs: RECONNECT_STATISTICS_TIMEOUT_MS,
+                attempt: 1,
+            })
+        )
     })
 
     it('does not reload statistics just because the project order changes', async () => {

@@ -52,6 +52,21 @@ it('preserves an authorization error instead of showing cached data', async () =
     expect(readDocumentDirectlyFromServer).toHaveBeenCalledTimes(1)
 })
 
+it('preserves the server failure when the cache fallback also fails', async () => {
+    const serverError = Object.assign(new Error('Backend unavailable'), { code: 'UNAVAILABLE' })
+    const cacheError = Object.assign(new Error('No cached document'), { code: 'unavailable' })
+    readDocumentDirectlyFromServer.mockRejectedValue(serverError)
+    get.mockRejectedValue(cacheError)
+    const result = readUserStatistics(db, path, { preferDirect: true })
+    const assertion = expect(result).rejects.toMatchObject({
+        code: 'UNAVAILABLE',
+        message: 'Backend unavailable',
+        cacheError,
+    })
+    await jest.advanceTimersByTimeAsync(500)
+    await assertion
+})
+
 it.each(['browser', 'manual'])('uses the existing cache when %s offline', async kind => {
     ;(kind === 'browser' ? isBrowserOffline : isManualOfflineMode).mockReturnValue(true)
     get.mockResolvedValue({ exists: true, data: () => ({ doneTasks: 4 }) })
