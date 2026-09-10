@@ -17,9 +17,16 @@
  */
 
 const mockSubscriberCounts = new Map()
+const mockConfirmationListeners = new Map()
 
 jest.mock('./optimisticTaskCreate', () => ({
-    hasOptimisticTaskSubscribers: projectId => (mockSubscriberCounts.get(projectId) || 0) > 0,
+    discardOptimisticTaskSubscribers: jest.fn(),
+    onOptimisticTaskSubscribersConfirmed: (projectId, taskId, listener) => {
+        if ((mockSubscriberCounts.get(projectId) || 0) === 0) return null
+        const key = `${projectId}/${taskId}`
+        mockConfirmationListeners.set(key, listener)
+        return () => mockConfirmationListeners.delete(key)
+    },
     publishOptimisticTaskSettled: (...args) => mockPublish(...args),
 }))
 
@@ -64,7 +71,6 @@ jest.mock('../firestore', () => ({
 
 import {
     SETTLEMENT_WINDOW_TIMEOUT_MS,
-    listsCanSeeTaskThemselves,
     settleOptimisticTaskRow,
     stopAllOptimisticTaskSettlements,
 } from './optimisticTaskSettlement'
@@ -109,6 +115,7 @@ describe('AT-2500 the settlement window of a just-created task', () => {
         mockPublish.mockClear()
         mockSubscriberCounts.clear()
         mockSubscriberCounts.set(PROJECT_ID, 1)
+        mockConfirmationListeners.clear()
         snapshotListeners = []
         snapshotErrorHandlers = []
         listenerUnsubscribes = []
@@ -180,12 +187,23 @@ describe('AT-2500 the settlement window of a just-created task', () => {
         expect(publishedDocuments()).toContainEqual(rawTask({ dueDate: TOMORROW }))
     })
 
-    it('closes the window once the lists can see the task through their own queries', async () => {
-        // Server-confirmed, nothing of ours pending, and the projection the queries filter on is
-        // in place. From here Firestore reports every change to the lists itself.
+    it('does not confuse query eligibility with query delivery', async () => {
+        // AT-2539: the document listener can see the projection before a query listener delivers
+        // its `added`. Closing here recreates the orphaned-row window.
         await settleOptimisticTaskRow(PROJECT_ID, TASK_ID)
 
         emitSnapshot(serverSnapshot(rawTask({ readerIds: ['user-1'] })))
+
+        expect(listenerUnsubscribes[0]).not.toHaveBeenCalled()
+
+        emitSnapshot(localSnapshot(rawTask({ dueDate: TOMORROW, readerIds: ['user-1'] })))
+        expect(publishedDocuments()).toContainEqual(rawTask({ dueDate: TOMORROW, readerIds: ['user-1'] }))
+    })
+
+    it('closes the window when every accepting query subscriber has confirmed the task', async () => {
+        await settleOptimisticTaskRow(PROJECT_ID, TASK_ID)
+
+        mockConfirmationListeners.get(`${PROJECT_ID}/${TASK_ID}`)()
 
         expect(listenerUnsubscribes[0]).toHaveBeenCalledTimes(1)
 
@@ -302,41 +320,5 @@ describe('AT-2500 the settlement window of a just-created task', () => {
 
         // A rolled-back create is removed by its own publication; this one says "no verdict".
         expect(publishedDocuments()).toEqual([rawTask(), null])
-    })
-})
-
-describe('AT-2500 listsCanSeeTaskThemselves', () => {
-    const withProjection = { readerIds: ['user-1'] }
-
-    it('is true only for a server-confirmed document carrying the access projection', () => {
-        expect(
-            listsCanSeeTaskThemselves({ metadata: { fromCache: false, hasPendingWrites: false } }, withProjection)
-        ).toBe(true)
-    })
-
-    it('is false while the snapshot is still local', () => {
-        expect(
-            listsCanSeeTaskThemselves({ metadata: { fromCache: true, hasPendingWrites: false } }, withProjection)
-        ).toBe(false)
-    })
-
-    it('is false while this client still holds an unacknowledged write', () => {
-        expect(
-            listsCanSeeTaskThemselves({ metadata: { fromCache: false, hasPendingWrites: true } }, withProjection)
-        ).toBe(false)
-    })
-
-    it('is false before the projection exists, which is the whole point of the window', () => {
-        // `readerIds` is the field every one of these queries filters on, and the access rules
-        // forbid a client to write it - so until the server has, the task matches nothing anywhere.
-        expect(listsCanSeeTaskThemselves({ metadata: { fromCache: false, hasPendingWrites: false } }, {})).toBe(false)
-        expect(
-            listsCanSeeTaskThemselves({ metadata: { fromCache: false, hasPendingWrites: false } }, { readerIds: [] })
-        ).toBe(false)
-    })
-
-    it('is false for a snapshot with no metadata at all', () => {
-        expect(listsCanSeeTaskThemselves({}, withProjection)).toBe(false)
-        expect(listsCanSeeTaskThemselves(null, withProjection)).toBe(false)
     })
 })

@@ -868,16 +868,44 @@ describe('AT-2342 optimistic task insert in the open board', () => {
             expect(taskIdsOf(published[published.length - 1])).toEqual([])
         })
 
-        it('stops watching the document once the projection makes the query authoritative', async () => {
-            // The window is not open-ended: once the lists can see the task themselves, further
-            // verdicts are redundant and the listener is a cost with no purpose.
+        it('stops watching once the query actually confirms the projected document', async () => {
+            // Projection makes the document eligible, but only the query's own result confirms
+            // that this list has taken ownership of subsequent changes.
             deliverRealSnapshot([])
             writeDocument(todayRaw())
             publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
             await acknowledgeCreate()
 
-            emitDocument({ ...todayRaw(), readerIds: [0, 'user-1'] }, { fromCache: false, hasPendingWrites: false })
+            const projected = { ...todayRaw(), readerIds: [0, 'user-1'] }
+            emitDocument(projected, { fromCache: false, hasPendingWrites: false })
 
+            expect(documentState(TASK_PATH).unsubscribes[0]).not.toHaveBeenCalled()
+
+            deliverRealSnapshot([realAddedChange('task-1', projected)])
+
+            expect(documentState(TASK_PATH).unsubscribes[0]).toHaveBeenCalledTimes(1)
+        })
+
+        it('keeps reconciling until the Today query has actually confirmed the task', async () => {
+            // AT-2539: the document listener can receive the server-side projection before the
+            // query listener receives its matching `added`. Projection alone therefore does not
+            // make the query authoritative for this optimistic row. If the user postpones in
+            // between those callbacks, the task no longer matches the query and no `added` or
+            // `removed` will ever arrive to clean up the create-time copy.
+            deliverRealSnapshot([])
+            published = []
+            writeDocument(todayRaw())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', todayRaw())
+            await acknowledgeCreate()
+
+            emitDocument({ ...todayRaw(), readerIds: [0, 'user-1'] }, { fromCache: false, hasPendingWrites: false })
+            expect(taskIdsOf(published[published.length - 1])).toEqual(['task-1'])
+
+            // The query has not named task-1 yet. This local postpone must still reach the
+            // optimistic row through the settlement listener.
+            emitDocument(postponedRaw())
+
+            expect(taskIdsOf(published[published.length - 1])).toEqual([])
             expect(documentState(TASK_PATH).unsubscribes[0]).toHaveBeenCalledTimes(1)
         })
 

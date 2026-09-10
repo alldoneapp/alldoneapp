@@ -6,6 +6,7 @@ import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConsta
 import { setMyDayAllTodayTasks } from '../../../redux/actions'
 import store from '../../../redux/store'
 import {
+    confirmOptimisticTaskForSubscriber,
     OPTIMISTIC_TASK_REMOVED,
     OPTIMISTIC_TASK_SETTLED,
     subscribeToOptimisticTaskCreates,
@@ -48,7 +49,10 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
     const emit = () => {
         const realIds = new Set(latestDocs.map(doc => doc.id))
         pendingDocsById.forEach((_, taskId) => {
-            if (realIds.has(taskId)) pendingDocsById.delete(taskId)
+            if (realIds.has(taskId)) {
+                pendingDocsById.delete(taskId)
+                confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
+            }
         })
         const docs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
 
@@ -63,7 +67,7 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
         store.dispatch(setMyDayAllTodayTasks(projectId, TO_ATTEND_TASKS_MY_DAY_TYPE, '', tasks, subtasksMap))
     }
 
-    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
+    function handleOptimisticTaskChange(change) {
         // AT-2500 - the server has the document and `change.doc.data()` is what it looks like now,
         // so re-check the pending copy against this list's own query and keep or drop it on that.
         //
@@ -77,26 +81,32 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
         // such race: a still-matching task is refreshed in place and never leaves the list, and one
         // postponed out of `dueDate <= endOfDay` is removed just as promptly as before.
         if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            if (!pendingDocsById.has(change.doc.id)) return
+            if (!pendingDocsById.has(change.doc.id)) return false
             const settledData = change.doc.data()
             // No verdict (the cache could not be read): leave the pending copy in place, the real
             // snapshot still reconciles it.
-            if (!settledData) return
-            matchesTasksToAttendQuery(settledData, userId, endOfDay)
-                ? pendingDocsById.set(change.doc.id, { id: change.doc.id, data: () => settledData })
-                : pendingDocsById.delete(change.doc.id)
+            if (!settledData) return false
+            if (matchesTasksToAttendQuery(settledData, userId, endOfDay)) {
+                pendingDocsById.set(change.doc.id, { id: change.doc.id, data: () => settledData })
+            } else {
+                pendingDocsById.delete(change.doc.id)
+                confirmOptimisticTaskForSubscriber(projectId, change.doc.id, handleOptimisticTaskChange)
+            }
             if (hasRealSnapshot) emit()
-            return
+            return false
         }
 
-        if (!matchesTasksToAttendQuery(change.doc.data(), userId, endOfDay)) return
+        if (!matchesTasksToAttendQuery(change.doc.data(), userId, endOfDay)) return false
         change.type === OPTIMISTIC_TASK_REMOVED
             ? pendingDocsById.delete(change.doc.id)
             : pendingDocsById.set(change.doc.id, change.doc)
         // Same reason as the goal list: publishing before the first snapshot would replace this
         // project's whole My Day contribution with the single new task.
         if (hasRealSnapshot) emit()
-    })
+        return change.type !== OPTIMISTIC_TASK_REMOVED
+    }
+
+    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
 
     const unsub = getDb()
         .collection(`items/${projectId}/tasks`)
