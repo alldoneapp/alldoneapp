@@ -34,11 +34,9 @@ const {
     connectVmSubscription,
     getVmSubscriptionCredentialVersion,
     loadVmSubscriptionAuth,
-    markVmSubscriptionAuthInvalid,
     normalizeClaudeOauthToken,
     parseCodexAuthJson,
     persistRefreshedCodexAuth,
-    __private__: { sanitizeStatus },
 } = require('./vmSubscriptionAuth')
 
 describe('VM subscription credentials', () => {
@@ -77,8 +75,6 @@ describe('VM subscription credentials', () => {
                         auth_mode: 'chatgpt',
                         tokens: { refresh_token: 'refresh-token' },
                     }),
-                    authInvalid: false,
-                    authInvalidAt: null,
                 }),
             }),
             { merge: true }
@@ -104,103 +100,9 @@ describe('VM subscription credentials', () => {
                 'codex',
                 JSON.stringify({ auth_mode: 'chatgpt', tokens: { refresh_token: 'refresh-token' } })
             ),
-            authInvalid: false,
-            authInvalidAt: null,
             mode: 'subscription',
         })
         expect(mockUpdate).not.toHaveBeenCalled()
-    })
-
-    test('exposes rejected subscription state without exposing credentials', () => {
-        const status = sanitizeStatus({
-            credentialModes: { codex: 'subscription' },
-            codex: {
-                authJson: '{"secret":"must-not-leak"}',
-                authInvalid: true,
-                authInvalidAt: 456,
-            },
-        })
-
-        expect(status.codex).toEqual(
-            expect.objectContaining({
-                connected: true,
-                activeMode: 'subscription',
-                authInvalid: true,
-                authInvalidAt: 456,
-            })
-        )
-        expect(JSON.stringify(status)).not.toContain('must-not-leak')
-    })
-
-    test('marks only the exact rejected credential version invalid', async () => {
-        const credential = JSON.stringify({
-            auth_mode: 'chatgpt',
-            tokens: { refresh_token: 'rejected-refresh-token' },
-        })
-        mockGet.mockResolvedValueOnce({
-            exists: true,
-            data: () => ({ codex: { authJson: credential } }),
-        })
-
-        await expect(
-            markVmSubscriptionAuthInvalid('user-1', 'codex', getVmSubscriptionCredentialVersion('codex', credential), {
-                now: () => 789,
-            })
-        ).resolves.toBe(true)
-        expect(mockTransactionUpdate).toHaveBeenCalledWith(expect.any(Object), {
-            'codex.authInvalid': true,
-            'codex.authInvalidAt': 789,
-            updatedAt: 789,
-        })
-    })
-
-    test('does not let a stale VM mark a newer credential invalid', async () => {
-        const staleCredential = JSON.stringify({
-            auth_mode: 'chatgpt',
-            tokens: { refresh_token: 'stale-refresh-token' },
-        })
-        const currentCredential = JSON.stringify({
-            auth_mode: 'chatgpt',
-            tokens: { refresh_token: 'current-refresh-token' },
-        })
-        mockGet.mockResolvedValueOnce({
-            exists: true,
-            data: () => ({ codex: { authJson: currentCredential } }),
-        })
-
-        await expect(
-            markVmSubscriptionAuthInvalid(
-                'user-1',
-                'codex',
-                getVmSubscriptionCredentialVersion('codex', staleCredential)
-            )
-        ).resolves.toBe(false)
-        expect(mockTransactionUpdate).not.toHaveBeenCalled()
-    })
-
-    test('keeps the first rejection timestamp when the same credential fails again', async () => {
-        const credential = JSON.stringify({
-            auth_mode: 'chatgpt',
-            tokens: { refresh_token: 'still-rejected-refresh-token' },
-        })
-        mockGet.mockResolvedValueOnce({
-            exists: true,
-            data: () => ({
-                codex: { authJson: credential, authInvalid: true, authInvalidAt: 123 },
-            }),
-        })
-
-        await markVmSubscriptionAuthInvalid(
-            'user-1',
-            'codex',
-            getVmSubscriptionCredentialVersion('codex', credential),
-            { now: () => 789 }
-        )
-
-        expect(mockTransactionUpdate).toHaveBeenCalledWith(
-            expect.any(Object),
-            expect.objectContaining({ 'codex.authInvalidAt': 123, updatedAt: 789 })
-        )
     })
 
     test('does not write an unchanged Codex auth file back to storage', async () => {
@@ -271,11 +173,7 @@ describe('VM subscription credentials', () => {
         ).resolves.toBe(true)
         expect(mockTransactionUpdate).toHaveBeenCalledWith(
             expect.any(Object),
-            expect.objectContaining({
-                'codex.authJson': refreshedCredential,
-                'codex.authInvalid': false,
-                'codex.authInvalidAt': null,
-            })
+            expect.objectContaining({ 'codex.authJson': refreshedCredential })
         )
     })
 })
