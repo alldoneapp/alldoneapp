@@ -9,6 +9,7 @@ import { ESTIMATION_0_MIN, getEstimationRealValue } from '../../EstimationHelper
 import { setGoalOpenSubtasksByParent, setGoalOpenTasksData } from '../../../redux/actions'
 import { sortTasksByPriority } from '../../TaskPriority'
 import {
+    confirmOptimisticTaskForSubscriber,
     OPTIMISTIC_TASK_REMOVED,
     OPTIMISTIC_TASK_SETTLED,
     subscribeToOptimisticTaskCreates,
@@ -63,31 +64,37 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
     const emit = () => {
         const realIds = new Set(latestDocs.map(doc => doc.id))
         pendingDocsById.forEach((_, taskId) => {
-            if (realIds.has(taskId)) pendingDocsById.delete(taskId)
+            if (realIds.has(taskId)) {
+                pendingDocsById.delete(taskId)
+                confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
+            }
         })
         const docs = pendingDocsById.size > 0 ? [...latestDocs, ...pendingDocsById.values()] : latestDocs
         const { openTasksArray } = processTasks(projectId, docs)
         store.dispatch(setGoalOpenTasksData(openTasksArray))
     }
 
-    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
+    function handleOptimisticTaskChange(change) {
         // AT-2500 - see the same block in myDayTasks.js, including why settlement is a
         // re-evaluation of the pending copy against this query and not a signal that the snapshot
         // has already spoken. This query filters on `readerIds` too, so a just-created task is
         // invisible to it until the server-side projection lands; dropping the copy on the ack
         // alone made every ordinary create blink out and come back.
         if (change.type === OPTIMISTIC_TASK_SETTLED) {
-            if (!pendingDocsById.has(change.doc.id)) return
+            if (!pendingDocsById.has(change.doc.id)) return false
             const settledData = change.doc.data()
-            if (!settledData) return
-            matchesOpenGoalTasksQuery(settledData, goalId, allowUserIds)
-                ? pendingDocsById.set(change.doc.id, { id: change.doc.id, data: () => settledData })
-                : pendingDocsById.delete(change.doc.id)
+            if (!settledData) return false
+            if (matchesOpenGoalTasksQuery(settledData, goalId, allowUserIds)) {
+                pendingDocsById.set(change.doc.id, { id: change.doc.id, data: () => settledData })
+            } else {
+                pendingDocsById.delete(change.doc.id)
+                confirmOptimisticTaskForSubscriber(projectId, change.doc.id, handleOptimisticTaskChange)
+            }
             if (hasRealSnapshot) emit()
-            return
+            return false
         }
 
-        if (!matchesOpenGoalTasksQuery(change.doc.data(), goalId, allowUserIds)) return
+        if (!matchesOpenGoalTasksQuery(change.doc.data(), goalId, allowUserIds)) return false
         change.type === OPTIMISTIC_TASK_REMOVED
             ? pendingDocsById.delete(change.doc.id)
             : pendingDocsById.set(change.doc.id, change.doc)
@@ -95,7 +102,10 @@ export const watchOpenGoalTasks = (projectId, goalId, watcherKey) => {
         // i.e. a goal that appears to have lost everything else. The task is still queued in
         // `pendingDocsById` and the imminent first snapshot renders it together with the rest.
         if (hasRealSnapshot) emit()
-    })
+        return change.type !== OPTIMISTIC_TASK_REMOVED
+    }
+
+    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
 
     const unsub = query.onSnapshot(snapshot => {
         latestDocs = snapshot.docs

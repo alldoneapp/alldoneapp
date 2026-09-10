@@ -484,6 +484,19 @@ describe('AT-2342 optimistic insert in My Day', () => {
             expect(myDayTaskIds()).toEqual([])
         })
 
+        it('still drops it when projection arrives before the My Day query callback', async () => {
+            // AT-2539: receiving readerIds on the document does not mean this query has delivered
+            // the task. A postpone between those two callbacks must still reach the pending copy.
+            writeDocument('task-1', myDayTask())
+            publishOptimisticTaskCreated(PROJECT_ID, 'task-1', myDayTask())
+            await settleOptimisticTaskRow(PROJECT_ID, 'task-1')
+
+            emitDocument('task-1', { ...myDayTask(), readerIds: [0] }, { fromCache: false, hasPendingWrites: false })
+            emitDocument('task-1', myDayTask({ dueDate: Date.now() + 24 * 60 * 60 * 1000 }))
+
+            expect(myDayTaskIds()).toEqual([])
+        })
+
         it('keeps an ordinary create in place across that whole window', async () => {
             mockDispatch.mockClear()
             writeDocument('task-1', myDayTask())

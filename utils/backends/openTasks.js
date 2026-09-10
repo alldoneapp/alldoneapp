@@ -5,6 +5,7 @@ import { getDb, mapTaskData, mapGoalData, mapMilestoneData, globalWatcherUnsub }
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import { getRoleIdsVisibleToField } from './firestoreAccess'
 import {
+    confirmOptimisticTaskForSubscriber,
     OPTIMISTIC_TASK_REMOVED,
     OPTIMISTIC_TASK_SETTLED,
     subscribeToOptimisticTaskCreates,
@@ -714,9 +715,9 @@ const watchUserOpenTasks = (
     let cacheChanges = []
     let initialSnapshotDelivered = false
     // AT-2500 - ids this watcher rendered from an optimistic publication and has NOT yet seen in a
-    // real snapshot. Bounded by construction: an id is added when the row is inserted and removed
-    // the moment the document shows up in any snapshot's result set, so in steady state this is
-    // empty and during a create it holds one id for a few hundred milliseconds. Declared up here
+    // delivered query snapshot. Bounded by construction: an id is added when the row is inserted
+    // and removed when a non-buffered snapshot's result set names it, so in steady state this is
+    // empty and during a create it lives only through the projection round trip. Declared up here
     // rather than beside the subscriber that fills it, because the snapshot handler reads it.
     const unconfirmedOptimisticTaskIds = new Set()
     const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, { trackConnectionHealth })
@@ -735,20 +736,23 @@ const watchUserOpenTasks = (
                 taskBelongsInOpenBoard(change.doc.data(), assistantOwner, areObservedTasks, assistantProfileMode)
             )
 
-        // AT-2500 - a document present in the result set is one Firestore has offered this list,
-        // so the optimistic row for it is confirmed and must never be retired on settlement. Read
-        // from `docs` rather than `docChanges()` deliberately: presence is what confirms, and a
-        // gate flush re-invokes this handler with an empty `docChanges()` but the real `docs`.
-        // Guarded on `size` so an ordinary snapshot pays nothing.
-        if (unconfirmedOptimisticTaskIds.size > 0) {
-            ;(querySnapshot.docs || []).forEach(doc => unconfirmedOptimisticTaskIds.delete(doc.id))
-        }
-
         const buffered = gate.shouldBuffer(querySnapshot)
         snapshotPerformance.observe(querySnapshot, buffered)
         if (buffered) {
             cacheChanges = [...cacheChanges, ...liveChanges]
         } else {
+            // AT-2539 - only a snapshot this handler is actually delivering can take ownership of
+            // an optimistic row. A cached snapshot held behind the gate has not updated the list
+            // yet; confirming it here would stop document-level reconciliation while the UI still
+            // held the create-time copy. Read `docs`, not `docChanges()`, because the gate flush
+            // deliberately has an empty change list but carries the authoritative result set.
+            if (unconfirmedOptimisticTaskIds.size > 0) {
+                ;(querySnapshot.docs || []).forEach(doc => {
+                    unconfirmedOptimisticTaskIds.delete(doc.id)
+                    confirmOptimisticTaskForSubscriber(projectId, doc.id, handleOptimisticTaskChange)
+                })
+            }
+
             const isInitialSnapshot = !initialSnapshotDelivered
             const taskItems = areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById
             const subtaskItems = areObservedTasks ? subtasksMap.observedSubtasksById : subtasksMap.userSubtasksById
@@ -904,6 +908,7 @@ const watchUserOpenTasks = (
         const retainedTask = knownTaskIds()[taskId]
         if (!retainedTask) {
             unconfirmedOptimisticTaskIds.delete(taskId)
+            confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
             return
         }
 
@@ -926,29 +931,35 @@ const watchUserOpenTasks = (
         deliverOpenTasksChanges([{ type: 'removed', doc: { id: taskId, data: () => retainedTask } }], {
             optimistic: true,
         })
+        confirmOptimisticTaskForSubscriber(projectId, taskId, handleOptimisticTaskChange)
     }
 
-    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, change => {
+    function handleOptimisticTaskChange(change) {
         if (change.type === OPTIMISTIC_TASK_SETTLED) {
             settleOptimisticTask(change.doc.id, change.doc.data())
-            return
+            return false
         }
 
         const taskData = change.doc.data()
-        if (!isTaskInThisView(taskData)) return
+        if (!isTaskInThisView(taskData)) return false
 
         // Removal must be idempotent: a rejected write is rolled back twice over - once by the
         // explicit publication and once by Firestore reverting its own local mutation - and
         // `deleteTask` decrements the per-day task count and estimation total every time it runs.
         // A subtask lives in `subtasksMap`, not here, so let the pipeline judge that case itself.
-        if (change.type === OPTIMISTIC_TASK_REMOVED && !taskData.parentId && !knownTaskIds()[change.doc.id]) return
+        if (change.type === OPTIMISTIC_TASK_REMOVED && !taskData.parentId && !knownTaskIds()[change.doc.id]) {
+            return false
+        }
 
         change.type === OPTIMISTIC_TASK_REMOVED
             ? unconfirmedOptimisticTaskIds.delete(change.doc.id)
             : unconfirmedOptimisticTaskIds.add(change.doc.id)
 
         deliverOpenTasksChanges([change], { optimistic: true })
-    })
+        return change.type !== OPTIMISTIC_TASK_REMOVED
+    }
+
+    const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
 
     const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
     let unsubscribed = false
