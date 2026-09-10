@@ -2033,6 +2033,16 @@ one 72px line on a phone. Pinned by `__tests__/ProjectHappiness/*` and
 
 ### Client feed cleanup: concurrent trims race, and a lost race reads as permission-denied
 
+**Interacting with an object acknowledges its existing activity-feed unread entries (AT-2536).**
+`queueObjectActivityFeedUnreadClear` removes that object's nested counter from both
+`feedsCount/{projectId}/{userId}/followed` and `/all`, in the same batch as the interaction. It
+never touches `chatNotifications`, which is independent comment/chat unread state. The central
+`increaseFeedCount` path applies this only when the new feed's `creatorId` is the signed-in user;
+assistant/system-authored feeds therefore leave the user's unread entries intact. `storeComment`
+also applies it for a newly created user comment, but not when `editingCommentId` identifies an
+edit. The decision and writes are pinned by `utils/backends/Feeds/activityFeedReadState.test.js`
+and `__tests__/Feeds/activityFeedReadCallSites.test.js`.
+
 Every write batch trims `feedsStore/{project}/all` and the user's `followed` store to the newest
 200 readable entries (`deleteOldVisibleFeeds`, called from the `feedsCleaned` block of each
 `*Updates.js`). In steady state that is 1-2 overflow documents per run, and a burst of edits used to
