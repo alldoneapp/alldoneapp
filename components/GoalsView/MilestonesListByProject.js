@@ -167,7 +167,7 @@ function MilestonesListByProject({
                 showAddGoal={inOpenTab}
                 showRootSectionNavigation={!inAllProjects}
             />
-            <ProjectSectionBody>
+            <ProjectSectionBody style={inAllProjects && { paddingTop: 26 }}>
                 {loggedUserCanUpdateObject && inOpenTab && !isAnonymous && milestones.length === 0 && (
                     <AddGoals
                         projectId={projectId}

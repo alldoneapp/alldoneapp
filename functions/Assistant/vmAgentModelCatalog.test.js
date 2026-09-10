@@ -18,7 +18,9 @@ const {
     decorateCatalogGoldPricing,
     getOpenRouterUpstreamPrice,
     CATALOG_TTL_MS,
+    CODEX_CATALOG_SCHEMA_VERSION,
 } = require('./vmAgentModelCatalog')
+const { resolveTokensPerGold } = require('./vmTokenPricing')
 
 // Firestore stub: the catalog cache doc.
 function stubCatalogDoc({ exists = false, data = {} } = {}) {
@@ -45,6 +47,7 @@ const ANTHROPIC_LIST = {
 
 const OPENAI_LIST = {
     data: [
+        { id: 'gpt-6-astra' },
         { id: 'gpt-5.6-sol' },
         { id: 'gpt-5.6-terra' },
         { id: 'gpt-5.6-luna' },
@@ -149,12 +152,12 @@ describe('buildFamilies', () => {
         expect(families.find(f => f.id === 'haiku')).toMatchObject({ latestModel: 'claude-haiku-4-5' })
     })
 
-    it('keeps only current-generation Codex tiers, dropping retired ones', () => {
+    it('keeps the active cross-generation Codex lineup while dropping retired tiers', () => {
         const families = buildFamilies(
             'codex',
             OPENAI_LIST.data.map(m => m.id)
         )
-        expect(families.map(f => f.id)).toEqual(['sol', 'terra', 'luna'])
+        expect(families.map(f => f.id)).toEqual(['astra', 'sol', 'terra', 'luna'])
         // mini/nano only exist at the older 5.4 generation — they are retired tiers, not just older.
         expect(families.map(f => f.id)).not.toContain('mini')
         expect(families.map(f => f.id)).not.toContain('nano')
@@ -175,6 +178,43 @@ describe('buildFamilies', () => {
         const families = buildFamilies('codex', ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-nova'])
         expect(families.map(f => f.id)).toEqual(['sol', 'terra', 'nova'])
         expect(families.find(f => f.id === 'nova').label).toBe('Nova')
+    })
+
+    it('never lets a new OpenAI generation erase independently released families', () => {
+        const families = buildFamilies('codex', [
+            'gpt-7-nova',
+            'gpt-6-orbit',
+            'gpt-6-astra',
+            'gpt-5.6-sol',
+            'gpt-5.6-terra',
+            'gpt-5.6-luna',
+        ])
+
+        expect(families.map(family => family.id)).toEqual(['astra', 'sol', 'terra', 'luna', 'nova', 'orbit'])
+    })
+
+    it('discovers a new Anthropic family without disturbing older active tiers', () => {
+        const families = buildFamilies('claude', [...ANTHROPIC_LIST.data, { id: 'claude-verse-6' }])
+
+        expect(families.map(family => family.id)).toEqual(['opus', 'sonnet', 'haiku', 'fable', 'verse'])
+        expect(families.find(family => family.id === 'verse')).toMatchObject({
+            resolvedModel: 'claude-verse-6',
+            isAlias: false,
+        })
+    })
+
+    it('uses provider lifecycle metadata instead of generation guesses to remove shut-down models', () => {
+        const now = Date.parse('2026-09-10T00:00:00Z')
+        const families = buildFamilies(
+            'codex',
+            [
+                { id: 'gpt-7-retired', shutdown_date: '2026-09-01' },
+                { id: 'gpt-6-active', shutdown_date: '2026-10-01' },
+            ],
+            { now }
+        )
+
+        expect(families.map(family => family.id)).toEqual(['active'])
     })
 
     it('follows a new generation forward without a code change', () => {
@@ -227,20 +267,29 @@ describe('catalog Gold pricing', () => {
                 { id: 'opus', resolvedModel: 'opus' },
                 { id: 'sonnet', resolvedModel: 'sonnet' },
                 { id: 'haiku', resolvedModel: 'haiku' },
-                { id: 'fable', resolvedModel: 'claude-fable-5' },
-                { id: 'mythos', resolvedModel: 'claude-mythos-5' },
+                { id: 'fable', resolvedModel: 'claude-fable-5-1' },
+                { id: 'mythos', resolvedModel: 'claude-mythos-5-1' },
             ],
         })
         const codex = decorateCatalogGoldPricing('codex', {
             families: [
+                { id: 'astra', resolvedModel: 'gpt-6-astra' },
                 { id: 'sol', resolvedModel: 'gpt-5.6-sol' },
                 { id: 'terra', resolvedModel: 'gpt-5.6-terra' },
                 { id: 'luna', resolvedModel: 'gpt-5.6-luna' },
             ],
         })
 
-        expect(claude.families.map(model => model.tokensPerGold)).toEqual([100, 250, 500, 50, 50])
-        expect(codex.families.map(model => model.tokensPerGold)).toEqual([100, 250, 2500])
+        expect(claude.families.map(model => model.tokensPerGold)).toEqual([80, 200, 400, 53, 53])
+        expect(codex.families.map(model => model.tokensPerGold)).toEqual([40, 100, 190, 1900])
+    })
+
+    it('prices a newly released Claude alias from its concrete latest model, not a stale alias rate', () => {
+        const catalog = decorateCatalogGoldPricing('claude', {
+            families: [{ id: 'opus', resolvedModel: 'opus', latestModel: 'claude-opus-6', isAlias: true }],
+        })
+
+        expect(catalog.families[0].tokensPerGold).toBeLessThan(resolveTokensPerGold('opus'))
     })
 
     it('uses live OpenRouter prices for both featured choices and the full search index', () => {
@@ -255,8 +304,8 @@ describe('catalog Gold pricing', () => {
             pricing: [{ id: 'x-ai/grok-4.6', input: 2, cachedInput: 0.5, output: 6 }],
         })
 
-        expect(catalog.families[0].tokensPerGold).toBe(170)
-        expect(catalog.searchModels[0].tokensPerGold).toBe(170)
+        expect(catalog.families[0].tokensPerGold).toBe(130)
+        expect(catalog.searchModels[0].tokensPerGold).toBe(130)
         // The decorator derives a safe display value without consuming the raw server-side source.
         expect(catalog.pricing).toHaveLength(1)
     })
@@ -303,7 +352,7 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('claude', { fetchImpl, now })
 
         expect(catalog.source).toBe('cache')
-        expect(catalog.families).toEqual([{ ...cached[0], tokensPerGold: 100 }])
+        expect(catalog.families).toEqual([{ ...cached[0], tokensPerGold: 80 }])
         expect(fetchImpl).not.toHaveBeenCalled()
     })
 
@@ -349,16 +398,62 @@ describe('getModelCatalog', () => {
         expect(set).toHaveBeenCalledWith(expect.objectContaining({ searchModels: expect.any(Array) }), { merge: true })
     })
 
+    it('refreshes the fresh Astra-only cache written by the old Codex family filter', async () => {
+        const now = 1_000_000
+        const { set } = stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra' }],
+                fetchedAt: now - 1000,
+            },
+        })
+        const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(OPENAI_LIST))
+
+        const catalog = await getModelCatalog('codex', { fetchImpl, now })
+
+        expect(catalog.source).toBe('live')
+        expect(catalog.families.map(family => family.id)).toEqual(['astra', 'sol', 'terra', 'luna'])
+        expect(set).toHaveBeenCalledWith(
+            expect.objectContaining({ families: expect.arrayContaining([expect.objectContaining({ id: 'sol' })]) }),
+            { merge: true }
+        )
+    })
+
     it('serves a STALE cache when discovery fails — real-but-old beats hardcoded', async () => {
         const now = 10 * CATALOG_TTL_MS
-        const stale = [{ id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false }]
-        stubCatalogDoc({ exists: true, data: { families: stale, fetchedAt: 1 } })
+        const stale = [
+            { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false },
+            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
+            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false },
+        ]
+        stubCatalogDoc({
+            exists: true,
+            data: { families: stale, fetchedAt: 1, schemaVersion: CODEX_CATALOG_SCHEMA_VERSION },
+        })
         const fetchImpl = jest.fn().mockRejectedValue(new Error('network down'))
 
         const catalog = await getModelCatalog('codex', { fetchImpl, now })
 
         expect(catalog.source).toBe('stale')
-        expect(catalog.families).toEqual([{ ...stale[0], tokensPerGold: 250 }])
+        expect(catalog.families.map(family => family.tokensPerGold)).toEqual([40, 100, 190, 1900])
+    })
+
+    it('uses the complete fallback when live discovery fails behind an obsolete partial Codex cache', async () => {
+        const now = 1_000_000
+        stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra' }],
+                fetchedAt: now - 1000,
+            },
+        })
+        const fetchImpl = jest.fn().mockRejectedValue(new Error('network down'))
+
+        const catalog = await getModelCatalog('codex', { fetchImpl, now })
+
+        expect(catalog.source).toBe('fallback')
+        expect(catalog.families.map(family => family.id)).toEqual(['astra', 'sol', 'terra', 'luna'])
     })
 
     it('falls back to the static catalog when discovery fails and nothing is cached', async () => {
@@ -368,7 +463,7 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('codex', { fetchImpl, now: 5 })
 
         expect(catalog.source).toBe('fallback')
-        expect(catalog.families.map(f => f.id)).toEqual(['sol', 'terra', 'luna'])
+        expect(catalog.families.map(f => f.id)).toEqual(['astra', 'sol', 'terra', 'luna'])
     })
 
     it('falls back rather than caching an empty family list', async () => {
@@ -400,6 +495,17 @@ describe('resolveFamilyToModel', () => {
         const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(OPENAI_LIST))
 
         await expect(resolveFamilyToModel('codex', 'terra', { fetchImpl, now: 5 })).resolves.toBe('gpt-5.6-terra')
+    })
+
+    it('resolves a newly discovered family without adding it to an allowlist', async () => {
+        stubCatalogDoc({ exists: false })
+        const fetchImpl = jest.fn().mockResolvedValue(
+            jsonResponse({
+                data: [...OPENAI_LIST.data, { id: 'gpt-7-nova' }],
+            })
+        )
+
+        await expect(resolveFamilyToModel('codex', 'nova', { fetchImpl, now: 5 })).resolves.toBe('gpt-7-nova')
     })
 
     it('resolves a searched OpenRouter model that is not in the featured list', async () => {

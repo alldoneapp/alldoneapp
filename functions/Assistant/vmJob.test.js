@@ -4,6 +4,16 @@ const mockQueueEnqueue = jest.fn(async () => ({
     operationName: 'projects/test-project/locations/europe-west1/operations/operation-1',
 }))
 const mockResolveVmCredentialMode = jest.fn(async () => 'api')
+const mockGetModelCatalog = jest.fn(async provider => ({
+    families:
+        provider === 'claude'
+            ? [
+                  { id: 'opus', resolvedModel: 'opus', latestModel: 'claude-opus-5' },
+                  { id: 'sonnet', resolvedModel: 'sonnet', latestModel: 'claude-sonnet-5' },
+                  { id: 'haiku', resolvedModel: 'haiku', latestModel: 'claude-haiku-4-5' },
+              ]
+            : [],
+}))
 // A stored personal key, looked up by credential provider slot (AT-2230 BYOK).
 const mockLoadVmApiKey = jest.fn(async () => 'sk-or-v1-0123456789abcdef0123456789abcdef')
 const mockCollectionQuery = {
@@ -69,6 +79,7 @@ jest.mock('./vmAgentModelCatalog', () => ({
     // Live Gold pricing is a network-backed catalog read; stub it so these tests never reach
     // openrouter.ai, and so a test can assert the live price actually wins when there is one.
     getOpenRouterUpstreamPrice: jest.fn(async () => null),
+    getModelCatalog: mockGetModelCatalog,
     resolveFamilyToModel: jest.fn(async (provider, family) => {
         // An OpenRouter selection resolves to itself, prefix intact — see vmAgentModelCatalog.
         if (typeof family === 'string' && family.startsWith('openrouter:')) {
@@ -109,6 +120,13 @@ describe('startVmJob', () => {
         })
         mockResolveVmCredentialMode.mockResolvedValue('api')
         mockLoadVmApiKey.mockResolvedValue('sk-or-v1-0123456789abcdef0123456789abcdef')
+        mockGetModelCatalog.mockResolvedValue({
+            families: [
+                { id: 'opus', resolvedModel: 'opus', latestModel: 'claude-opus-5' },
+                { id: 'sonnet', resolvedModel: 'sonnet', latestModel: 'claude-sonnet-5' },
+                { id: 'haiku', resolvedModel: 'haiku', latestModel: 'claude-haiku-4-5' },
+            ],
+        })
         jest.spyOn(crypto, 'randomUUID').mockReturnValue('correlation-1')
     })
 
@@ -161,18 +179,28 @@ describe('startVmJob', () => {
                 data: () => ({ defaultVmAgent: 'codex', defaultVmAgentModel: { codex: family } }),
             })
 
-        test('a Codex Luna run is priced at 1/25 of the Sol rate on both documents', async () => {
+        test('a Codex Luna run is priced at 1/19 of the Sol rate on both documents', async () => {
             saveCodexDefault('luna')
 
             await launch({})
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 2500 })
+                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 1900 })
             )
             // The proxy reads its rate from the pendingWebhooks mirror, so the two must agree.
             expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 2500 })
+                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 1900 })
             )
+        })
+
+        test('a new model behind a Claude alias gets a conservative release-day rate', async () => {
+            mockGetModelCatalog.mockResolvedValueOnce({
+                families: [{ id: 'opus', resolvedModel: 'opus', latestModel: 'claude-opus-6' }],
+            })
+
+            const rate = await require('./vmJob').__private__.resolveTokensPerGoldForRun('opus')
+
+            expect(rate).toBeLessThan(80)
         })
 
         test('a Sol run keeps the unchanged baseline rate', async () => {
@@ -198,7 +226,7 @@ describe('startVmJob', () => {
 
             expect(getOpenRouterUpstreamPrice).toHaveBeenCalledWith('deepseek/deepseek-brand-new')
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 4900 })
+                expect.objectContaining({ tokensPerGold: 3800 })
             )
         })
 
@@ -214,7 +242,7 @@ describe('startVmJob', () => {
             // A pricing hiccup must never fail the run.
             expect(result.success).toBe(true)
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 1800 })
+                expect.objectContaining({ tokensPerGold: 1400 })
             )
         })
 
@@ -225,7 +253,7 @@ describe('startVmJob', () => {
             await launch({})
 
             const statusText = createInitialStatusMessage.mock.calls[0][4]
-            expect(statusText).toContain('1/25 of the Sol rate')
+            expect(statusText).toContain('1/19 of the Sol rate')
         })
     })
 
@@ -388,7 +416,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (Opus latest; resolving version… · xhigh effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Claude (Opus latest; resolving version… · xhigh effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 1.3x the Sol rate.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -701,7 +729,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 1/2.5 of the Sol rate.',
+            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 1/2 of the Sol rate.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
