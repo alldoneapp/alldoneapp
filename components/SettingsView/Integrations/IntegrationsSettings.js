@@ -454,7 +454,7 @@ function ConnectionsSection({ service, title, connections, projects, healthByCon
     )
 }
 
-export default function IntegrationsSettings({ onVmSubscriptionStatusChanged }) {
+export default function IntegrationsSettings() {
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
 
@@ -483,7 +483,7 @@ export default function IntegrationsSettings({ onVmSubscriptionStatusChanged }) 
                 already-loaded Redux state and stay interactive. */}
             <IntegrationsLoadingRegion>
                 <DefaultVmAgentSection />
-                <AgentSubscriptionsSection onStatusChanged={onVmSubscriptionStatusChanged} />
+                <AgentSubscriptionsSection />
             </IntegrationsLoadingRegion>
             <ConnectionsSection
                 service={CONNECTION_SERVICE_EMAIL}

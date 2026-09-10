@@ -39,7 +39,6 @@ const { getGlobalState } = require('../GlobalState/globalState')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { reconcileObjectFeedPrivacy } = require('./objectFeedPrivacy')
 const { FieldValue } = require('firebase-admin/firestore')
-const { withoutAccessProjection } = require('../shared/objectAccessProjection')
 
 const initialDates = {
     'Initial of Minutes': 'm',
@@ -384,8 +383,8 @@ function globalInnerFeedsGenerator(projectId, objectTypes, feedObjectId, feed, f
 // The per-object "Updates" tab reads projectsInnerFeeds/{projectId}/{objectsType}/{objectId}/feeds, which is
 // project-scoped by path. When an object is moved to another project the object keeps its id but lives under a
 // new project path, so its activity history would otherwise become unreachable. This copies that history into
-// the target project so the moved object's Updates tab keeps showing it. User-authored visibility and ordering
-// fields are preserved; source-project access projections are rebuilt by the destination create trigger.
+// the target project so the moved object's Updates tab keeps showing it. Feed docs are copied verbatim
+// (preserving isPublicFor / lastChangeDate), so visibility and ordering are unchanged.
 async function copyInnerFeedsToOtherProject(adminRef, sourceProjectId, targetProjectId, objectsType, objectId) {
     if (!sourceProjectId || !targetProjectId || !objectsType || !objectId) return 0
     if (sourceProjectId === targetProjectId) return 0
@@ -401,8 +400,7 @@ async function copyInnerFeedsToOtherProject(adminRef, sourceProjectId, targetPro
     feedsSnapshot.forEach(feedDoc => {
         batch.set(
             firestore.doc(`projectsInnerFeeds/${targetProjectId}/${objectsType}/${objectId}/feeds/${feedDoc.id}`),
-            withoutAccessProjection(feedDoc.data()),
-            { merge: true }
+            feedDoc.data()
         )
     })
     await batch.commit()

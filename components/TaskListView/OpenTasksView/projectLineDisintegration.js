@@ -334,8 +334,8 @@ export const DUST_MOTES = buildDustMotes()
  *     celebration is visibly caused by the line coming apart rather than thrown over it;
  *   • they rise and fade; nothing falls, nothing spins, there is no gravity arc;
  *   • they are a 4-point twinkle a few pixels across, not a tumbling rectangle;
- *   • the layer is `position: absolute` and bounded to the measured project card, so it can never
- *     escape to the viewport the way the page fall deliberately does;
+ *   • the layer is `position: absolute` and bounded to the one 56px row, so it can never escape to
+ *     the viewport the way the page fall deliberately does;
  *   • there are nine of them against confetti's forty-six.
  *
  * The colours are the project's own tint plus a neutral highlight (resolved by the component), for
@@ -440,16 +440,14 @@ export const createDissolveStyle = progress => {
 }
 
 /**
- * Everything the leaving project card carries during its exit: the dissolve, the fallback fade,
- * the height and bottom spacing that close the gap, and the lift that sends it upward into that gap.
+ * Everything the leaving project line carries during its exit: the dissolve, the fallback fade, the
+ * height that closes the gap and the lift that sends it upward into that gap.
  *
  * @param {Animated.Value} progress 0 -> 1 across `DISINTEGRATION_DURATION_MS`.
- * @param {number} rowHeight The card's measured height, frozen when the exit began. The caller only
+ * @param {number} rowHeight The line's measured height, frozen when the exit began. The caller only
  *   builds this style once it has one — collapsing from an unknown height would jump.
- * @param {number} bottomSpacing The layout gap after the card. Margins are outside `onLayout`, so
- *   they must be supplied and collapsed explicitly or the final unmount still jumps by that amount.
  */
-export const createProjectLineExitStyle = (progress, rowHeight, bottomSpacing = 0) => ({
+export const createProjectLineExitStyle = (progress, rowHeight) => ({
     ...createDissolveStyle(progress),
     height: progress.interpolate({
         inputRange: [0, COLLAPSE_START, 1],
@@ -461,14 +459,9 @@ export const createProjectLineExitStyle = (progress, rowHeight, bottomSpacing = 
         outputRange: [1, 1, CONTENT_FADE_LEVEL, 0],
         extrapolate: 'clamp',
     }),
-    // Load-bearing during the collapse, and harmless before it: the card is a fixed height for the
+    // Load-bearing during the collapse, and harmless before it: the row is a fixed height for the
     // whole exit, and its content keeps its natural size inside that box.
     overflow: 'hidden',
-    marginBottom: progress.interpolate({
-        inputRange: [0, COLLAPSE_START, 1],
-        outputRange: [bottomSpacing, bottomSpacing, 0],
-        extrapolate: 'clamp',
-    }),
     transform: [
         {
             translateY: progress.interpolate({

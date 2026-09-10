@@ -61,7 +61,6 @@ import { handleOptionalSnapshotError } from './optionalSnapshotError'
 import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDataHelper'
 import { withoutServerAccessProjection } from './accessProjection'
 import { applyVisibleFeedPrivacy, deleteVisibleFollowedFeeds, getFeedPrivacyReaders } from './Feeds/feedPrivacy'
-import { isUserAuthoredFeed, queueObjectActivityFeedUnreadClear } from './Feeds/activityFeedReadState'
 import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
@@ -6625,16 +6624,6 @@ export async function increaseFeedCount(
     notificationData
 ) {
     const loggedUserId = store.getState().loggedUser.uid
-
-    if (isUserAuthoredFeed(feed, loggedUserId)) {
-        queueObjectActivityFeedUnreadClear(db, batch, {
-            projectId,
-            userId: loggedUserId,
-            objectType: objectsType,
-            objectId,
-        })
-    }
-
     const followersIds = await getObjectFollowers(projectId, objectsType, objectId, batch)
 
     const usersWithAccessIds =
