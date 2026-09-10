@@ -1,5 +1,5 @@
 import React from 'react'
-import { useTaskHierarchy, taskHierarchyStyles } from '../TaskHierarchy'
+import { useTaskHierarchy, useProjectSectionBorder, taskHierarchyStyles } from '../TaskHierarchy'
 import { StyleSheet, Text, View } from 'react-native'
 
 import { translate } from '../../../i18n/TranslationService'
@@ -22,6 +22,7 @@ export const GENERAL_TASKS_HEADER_MAX_LINES = 1
 
 export default function GeneralTasksHeader({ projectId }) {
     const taskHierarchy = useTaskHierarchy()
+    const projectBorderColor = useProjectSectionBorder()
     const project = ProjectHelper.getProjectById(projectId)
     if (!project) return null
     const conatinerColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_ITEM_ACTIVE
@@ -43,7 +44,15 @@ export default function GeneralTasksHeader({ projectId }) {
             <Text style={localStyles.text} numberOfLines={GENERAL_TASKS_HEADER_MAX_LINES}>
                 {translate(`General tasks`)}: {project.name}
             </Text>
-            {taskHierarchy && <View pointerEvents="none" style={taskHierarchyStyles.goalRowOutline} />}
+            {taskHierarchy && (
+                <View
+                    pointerEvents="none"
+                    style={[
+                        taskHierarchyStyles.goalRowOutline,
+                        projectBorderColor && { borderColor: projectBorderColor },
+                    ]}
+                />
+            )}
         </View>
     )
 }

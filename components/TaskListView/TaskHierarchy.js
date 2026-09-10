@@ -17,6 +17,8 @@ export const useTaskHierarchy = () => useContext(TaskHierarchyContext)
 
 export function TaskHierarchyGroup({ children, style, pointerEvents, borderColor, bottomSpacing = 8 }) {
     const enabled = useTaskHierarchy()
+    const projectBorderColor = useProjectSectionBorder()
+    const outlineColor = borderColor || projectBorderColor
     return (
         <View
             style={[
@@ -24,12 +26,12 @@ export function TaskHierarchyGroup({ children, style, pointerEvents, borderColor
                 enabled && taskHierarchyStyles.group,
                 enabled && taskHierarchyStyles.goalGroup,
                 enabled && { paddingBottom: bottomSpacing },
-                enabled && borderColor && { borderColor },
+                enabled && outlineColor && { borderColor: outlineColor },
             ]}
             pointerEvents={pointerEvents}
         >
             {children}
-            <TaskHierarchyGoalOutline borderColor={borderColor} />
+            <TaskHierarchyGoalOutline borderColor={outlineColor} />
         </View>
     )
 }
@@ -37,8 +39,13 @@ export function TaskHierarchyGroup({ children, style, pointerEvents, borderColor
 // Draw the edge above row backgrounds without clipping swipe actions or popovers.
 export function TaskHierarchyGoalOutline({ borderColor } = {}) {
     const enabled = useTaskHierarchy()
+    const projectBorderColor = useProjectSectionBorder()
+    const outlineColor = borderColor || projectBorderColor
     return enabled ? (
-        <View pointerEvents="none" style={[taskHierarchyStyles.goalOutline, borderColor && { borderColor }]} />
+        <View
+            pointerEvents="none"
+            style={[taskHierarchyStyles.goalOutline, outlineColor && { borderColor: outlineColor }]}
+        />
     ) : null
 }
 
@@ -124,7 +131,7 @@ export const taskHierarchyStyles = StyleSheet.create({
         bottom: 0,
         left: -1,
         right: -1,
-        borderWidth: 2,
+        borderWidth: 1,
         borderColor: '#DDE4EB',
         borderRadius: 8,
         zIndex: 1,

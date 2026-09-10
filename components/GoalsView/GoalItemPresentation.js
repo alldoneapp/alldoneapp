@@ -37,7 +37,11 @@ import { PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
 import { DYNAMIC_PERCENT } from './GoalsHelper'
 import { DV_TAB_GOAL_LINKED_TASKS } from '../../utils/TabNavigationConstants'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
-import { taskHierarchyStyles, TaskHierarchyBackgroundContext } from '../TaskListView/TaskHierarchy'
+import {
+    taskHierarchyStyles,
+    TaskHierarchyBackgroundContext,
+    ProjectSectionBorderContext,
+} from '../TaskListView/TaskHierarchy'
 
 export default class GoalItemPresentation extends PureComponent {
     static contextType = TaskHierarchyBackgroundContext
@@ -672,14 +676,19 @@ export default class GoalItemPresentation extends PureComponent {
                             />
                         )}
                         {inHierarchyCard && (
-                            <Animated.View
-                                pointerEvents="none"
-                                style={[
-                                    taskHierarchyStyles.goalRowOutline,
-                                    !isInTaskList && { top: 0, left: 0, right: 0 },
-                                    isHighlight && { borderColor },
-                                ]}
-                            />
+                            <ProjectSectionBorderContext.Consumer>
+                                {projectBorderColor => (
+                                    <Animated.View
+                                        pointerEvents="none"
+                                        style={[
+                                            taskHierarchyStyles.goalRowOutline,
+                                            projectBorderColor && { borderColor: projectBorderColor },
+                                            !isInTaskList && { top: 0, left: 0, right: 0 },
+                                            isHighlight && { borderColor },
+                                        ]}
+                                    />
+                                )}
+                            </ProjectSectionBorderContext.Consumer>
                         )}
                     </Swipeable>
                     <GoalSwipeDateRangeWrapper
