@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Animated, StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { colors } from '../../styles/global'
@@ -17,20 +17,24 @@ import store from '../../../redux/store'
 import ProjectAndUserData from './ProjectAndUserData'
 import RootSectionNavigation from '../../RootView/RootSectionNavigation'
 import ProjectCompletedSweep from './ProjectCompletedSweep'
+import ProjectLineDisintegration from './ProjectLineDisintegration'
+import useProjectCompletedSweepMotion, { useProjectLineExit } from '../OpenTasksView/projectCompletedSweepMotion'
 import { useContext } from 'react'
-import {
-    HeaderActionsContext,
-    ProjectSectionContext,
-    taskHierarchyStyles,
-    useProjectSectionMotion,
-} from '../TaskHierarchy'
+import { HeaderActionsContext, ProjectSectionContext, taskHierarchyStyles } from '../TaskHierarchy'
 import { PROJECT_COLOR_SYSTEM, PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
 
 /**
- * AT-2535 — `ProjectSection` owns the completed-sweep run now that the whole rounded card leaves.
- * This header only draws the sweep inside its content band using that shared motion. Keeping the
- * overlay here preserves the original project-line celebration while the parent card masks and
- * collapses the header, its body and its remaining spacing as one object.
+ * AT-2495 (second pass) — the project line owns the completed-sweep RUN, not just the overlay that
+ * draws it.
+ *
+ * The run has two halves that live on two different nodes: the sweep is an absolutely-positioned
+ * overlay INSIDE the row, and the disintegration is a CSS mask ON the row (plus a particle layer
+ * beside it). A child cannot mask its parent, so the hook had to move up here — one sequence, both
+ * halves, no chance of the colour and the erasure drifting apart.
+ *
+ * Every other caller of `ProjectHeader` — chats, contacts, notes, goals, done, pending — passes no
+ * run id and no `lineWillLeave`, so `sweeping` and `exiting` are false for them, the exit style is
+ * `undefined`, and they render exactly the row they always did.
  */
 
 export default function ProjectHeader({
@@ -44,6 +48,8 @@ export default function ProjectHeader({
     setPressedShowMoreMainSection,
     showRootSectionNavigation = false,
     showEmailLabels = false,
+    completedSweepRunId = 0,
+    completedSweepLineWillLeave = false,
 }) {
     const dispatch = useDispatch()
     const inProjectSection = useContext(ProjectSectionContext)
@@ -87,47 +93,71 @@ export default function ProjectHeader({
     const headerBackgroundColor = (PROJECT_COLOR_SYSTEM[projectColor] || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT])
         .PROJECT_ITEM_ACTIVE
     const headerTextColor = colors.Text01
-    const sweepMotion = useProjectSectionMotion()
+    const sweepMotion = useProjectCompletedSweepMotion(completedSweepRunId, completedSweepLineWillLeave)
+    const { exitStyle, exitHeight, onLineLayout } = useProjectLineExit(sweepMotion)
 
     return (
         <>
-            <View testID="project-line">
-                {/* AT-2492 — the "you cleared this project today" sweep. Absolutely positioned and
+            {/* One wrapper so the particle layer below is positioned against THIS row and nothing
+                else. It is rendered unconditionally — mounting it only while a project is being
+                celebrated would remount the whole header in the middle of its own animation — and it
+                is layout-neutral: an unstyled `View` in a column parent is the box its single child
+                already was. */}
+            <View style={localStyles.lineContainer}>
+                <Animated.View style={exitStyle} onLayout={onLineLayout} testID="project-line">
+                    {/* AT-2492 — the "you cleared this project today" sweep. Absolutely positioned and
                     pointer-transparent, so a header that is not celebrating anything renders exactly
-                    what it always did and the row's geometry is untouched either way. AT-2535 keeps
-                    this inside the card's masked subtree, so the colour leaves with the card. */}
-                <View
-                    style={[
-                        localStyles.borderContainer,
-                        taskHierarchyStyles.projectHeader,
-                        inProjectSection && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-                        { backgroundColor: headerBackgroundColor },
-                    ]}
-                >
-                    {sweepMotion && <ProjectCompletedSweep motion={sweepMotion} projectId={projectId} />}
-                    <HeaderActionsContext.Provider value={true}>
-                        <View style={[localStyles.container, taskHierarchyStyles.projectHeaderContent]}>
-                            <ProjectAndUserData
-                                projectIndex={projectIndex}
-                                projectId={projectId}
-                                badge={badge}
-                                userInHeader={userInHeader}
-                                showEmailLabels={showEmailLabels}
-                                headerTextColor={headerTextColor}
-                            />
-                            <TagsArea
-                                projectId={projectId}
-                                mobile={mobile || mobileCollapsed}
-                                onClickWorkflowIndicator={onClickWorkflowIndicator}
-                                showWorkflow={showWorkflow}
-                                showAddTask={showAddTask}
-                                showAddGoal={showAddGoal}
-                                setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                            />
-                            {customRight}
-                        </View>
-                    </HeaderActionsContext.Provider>
-                </View>
+                    what it always did and the row's geometry is untouched either way. Every other
+                    caller of ProjectHeader passes no run id and gets nothing.
+
+                    AT-2495 — the exit style above is what erases this whole subtree, the overlay
+                    included, right to left. It is `undefined` unless the line is genuinely leaving,
+                    so an ordinary header carries no mask (and therefore no compositing layer) and is
+                    never pinned to a measured height. */}
+                    <View
+                        style={[
+                            localStyles.borderContainer,
+                            taskHierarchyStyles.projectHeader,
+                            inProjectSection && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+                            { backgroundColor: headerBackgroundColor },
+                        ]}
+                    >
+                        <ProjectCompletedSweep motion={sweepMotion} projectId={projectId} />
+                        <HeaderActionsContext.Provider value={true}>
+                            <View style={[localStyles.container, taskHierarchyStyles.projectHeaderContent]}>
+                                <ProjectAndUserData
+                                    projectIndex={projectIndex}
+                                    projectId={projectId}
+                                    badge={badge}
+                                    userInHeader={userInHeader}
+                                    showEmailLabels={showEmailLabels}
+                                    headerTextColor={headerTextColor}
+                                />
+                                <TagsArea
+                                    projectId={projectId}
+                                    mobile={mobile || mobileCollapsed}
+                                    onClickWorkflowIndicator={onClickWorkflowIndicator}
+                                    showWorkflow={showWorkflow}
+                                    showAddTask={showAddTask}
+                                    showAddGoal={showAddGoal}
+                                    setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                                />
+                                {customRight}
+                            </View>
+                        </HeaderActionsContext.Provider>
+                    </View>
+                </Animated.View>
+                {/* AT-2495 — the dust and the sparks, and a SIBLING of the masked row rather than a
+                    child of it. A child would be erased by the very mask whose edge it is supposed
+                    to be shedding; these have to outlive the pixels they came off, which is the
+                    whole idea. */}
+                {exitStyle && (
+                    <ProjectLineDisintegration
+                        progress={sweepMotion.disintegrate}
+                        height={exitHeight}
+                        tint={projectColor || colors.Primary100}
+                    />
+                )}
             </View>
             {showRootSectionNavigation && <RootSectionNavigation useOuterMargins={false} />}
         </>
@@ -135,6 +165,12 @@ export default function ProjectHeader({
 }
 
 const localStyles = StyleSheet.create({
+    // Explicit, although react-native-web already gives every View `position: relative`: the
+    // particle layer's absolute placement depends on it, and that dependency should be visible here
+    // rather than inherited from a framework default.
+    lineContainer: {
+        position: 'relative',
+    },
     borderContainer: {
         borderBottomWidth: 1,
         borderBottomColor: colors.Grey400,

@@ -37,10 +37,9 @@ import {
  * KIND, not merely in degree, or the two read as one celebration at two volumes. That is exactly
  * what the first pass of AT-2492 got wrong (a smaller confetti burst) and had to withdraw.
  *
- * So: nothing falls, nothing spins, nothing leaves the card. A spark rises, twinkles once and is
- * gone, inside a `position: absolute` layer bounded to the measured project card. See the
- * celebration section of `projectLineDisintegration.js` for the full list of properties that carry
- * the difference.
+ * So: nothing falls, nothing spins, nothing leaves the row. A spark rises, twinkles once and is
+ * gone, inside a `position: absolute` layer bounded to the 56px line. See the celebration section
+ * of `projectLineDisintegration.js` for the full list of properties that carry the difference.
  *
  * THREE things about where this sits are load-bearing:
  *
@@ -72,10 +71,10 @@ const SPARK_MIN_ARM = 1.4
 
 /**
  * @param {object} props
- * @param {Animated.Value} props.progress 0 -> 1 across the exit, shared with the card's own mask so
+ * @param {Animated.Value} props.progress 0 -> 1 across the exit, shared with the row's own mask so
  *   a particle can never lift off before or after the front that freed it.
- * @param {number} props.height The card's measured height, frozen when the exit began. The layer
- *   keeps it while the card underneath collapses, rather than collapsing with it.
+ * @param {number} props.height The line's measured height, frozen when the exit began. The layer
+ *   keeps it while the row underneath collapses, rather than collapsing with it.
  * @param {string} props.tint The project's colour, the same one the completed sweep has just
  *   crossed the row in.
  */

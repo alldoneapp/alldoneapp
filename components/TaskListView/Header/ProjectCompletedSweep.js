@@ -100,10 +100,11 @@ const PULSE_ALPHA = 0.13
 const ACCENT_PULSE_SCALE = 2
 
 /**
- * @param {object} props.motion The run, from `useProjectCompletedSweepMotion`. It is owned by
- *   `ProjectSection` (AT-2535): the same run drives this header overlay and the disintegration that
- *   erases the whole rounded card. Passing the values through context keeps one sequence driving
- *   both halves.
+ * @param {object} props.motion The run, from `useProjectCompletedSweepMotion`. It is OWNED by
+ *   `ProjectHeader` rather than by this overlay (AT-2495): the same run also drives the
+ *   disintegration that erases the whole line, and a mask cannot be applied by a child to its own
+ *   parent. Passing the values down keeps one sequence driving both halves — the alternative, a
+ *   second hook call up there, would be two sequences racing over one row.
  * @param {string} props.projectId Used only to resolve the project's colour. A primitive is selected
  *   out of `loggedUserProjectsMap` rather than the project object (let alone the map) — the AT-2336
  *   rule: selecting the object would hand every project header a fresh identity on every per-project

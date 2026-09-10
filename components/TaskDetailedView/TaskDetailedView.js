@@ -9,7 +9,6 @@ import {
     setScreenDimensions,
     setSelectedNavItem,
     setSelectedSidebarTab,
-    setSelectedTypeOfProject,
     setTaskInDetailView,
     setShowAccessDeniedPopup,
     stopLoadingData,
@@ -30,7 +29,6 @@ import { useDispatch, useSelector } from 'react-redux'
 import LoadingData from '../UIComponents/LoadingData'
 import RootViewFeedsTask from '../Feeds/RootViewFeedsTask'
 import NavigationService from '../../utils/NavigationService'
-import URLsTasks, { URL_TASK_DETAILS_PROPERTIES } from '../../URLSystem/Tasks/URLsTasks'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import { LINKED_OBJECT_TYPE_TASK } from '../../utils/LinkingHelper'
 import BacklinksView from '../BacklinksView/BacklinksView'
@@ -185,31 +183,6 @@ const TaskDetailedView = ({ navigation }) => {
     }, [projectId, task.id])
 
     const afterTaskChange = task => {
-        if (task?.movingToOtherProjectId) {
-            const targetProjectId = task.movingToOtherProjectId
-            const targetProject = loggedUserProjectsMap[targetProjectId]
-            if (targetProject) {
-                const movedTask = { ...task, projectId: targetProjectId, movingToOtherProjectId: null }
-                NavigationService.navigate('TaskDetailedView', { task: movedTask, projectId: targetProjectId })
-                dispatch([
-                    resetFloatPopup(),
-                    setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-                    switchProject(targetProject.index),
-                    setSelectedTypeOfProject(ProjectHelper.getTypeOfProject(loggedUser, targetProjectId)),
-                    setSelectedNavItem(DV_TAB_TASK_PROPERTIES),
-                ])
-                if (selectedTab === DV_TAB_TASK_PROPERTIES) {
-                    URLsTasks.push(
-                        URL_TASK_DETAILS_PROPERTIES,
-                        { noHistory: true, projectId: targetProjectId, task: task.id },
-                        targetProjectId,
-                        task.id
-                    )
-                }
-                return
-            }
-        }
-
         if (task == null) {
             const { selectedTypeOfProject } = store.getState()
 

@@ -90,7 +90,6 @@ describe('copyChatToOtherProject', () => {
 
         const chatWrite = writes.find(w => w.path === `chatObjects/${TGT}/chats/${TASK}`)
         expect(chatWrite.data).toEqual({ id: TASK, type: 'tasks', title: 'Hello' })
-        expect(chatWrite.params).toEqual({ merge: true })
     })
 
     it('does nothing when the source chat object does not exist', async () => {
