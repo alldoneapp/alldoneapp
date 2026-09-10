@@ -154,6 +154,59 @@ describe('DayRateTimeLogHelper', () => {
         mockDocUpdate.mockResolvedValue(undefined)
     })
 
+    it('does not write corrections or advance the cursor after cancellation during a read', async () => {
+        const completed = Date.UTC(2026, 4, 1, 12)
+        const db = createMockDb([])
+        const query = db.collection()
+        let finishRead
+        query.get.mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    finishRead = resolve
+                })
+        )
+        db.collection.mockClear().mockReturnValue(query)
+        getDb.mockReturnValue(db)
+        const controller = new AbortController()
+        const run = reconcileProjectDayRateTimeLogsBackfill(
+            { id: 'cancel-project', created: completed },
+            'user-1',
+            completed,
+            completed,
+            { signal: controller.signal }
+        )
+        const assertion = expect(run).rejects.toMatchObject({ name: 'AbortError' })
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+        controller.abort()
+        finishRead({ docs: [] })
+        await assertion
+        expect(mockBatchCommit).not.toHaveBeenCalled()
+        expect(mockDocUpdate).not.toHaveBeenCalled()
+    })
+
+    it('serializes project backfills until an already submitted write settles', async () => {
+        const completed = Date.UTC(2026, 4, 1, 12)
+        const db = createMockDb([])
+        getDb.mockReturnValue(db)
+        let finishWrite
+        mockDocUpdate.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    finishWrite = resolve
+                })
+        )
+        const project = { id: 'serialized-project', created: completed }
+        const first = reconcileProjectDayRateTimeLogsBackfill(project, 'user-1', completed, completed)
+        const second = reconcileProjectDayRateTimeLogsBackfill(project, 'user-1', completed, completed)
+        for (let i = 0; i < 10; i++) await Promise.resolve()
+        expect(mockDocUpdate).toHaveBeenCalledTimes(1)
+        expect(db.collection).toHaveBeenCalledTimes(1)
+        finishWrite()
+        await Promise.all([first, second])
+        expect(mockDocUpdate).toHaveBeenCalledTimes(2)
+        expect(db.collection).toHaveBeenCalledTimes(2)
+    })
+
     it('uses the strict-rules reader projection for day task queries', async () => {
         const completed = Date.UTC(2026, 4, 1, 12, 0, 0)
         const db = createMockDb([storedTask(30, { completed })])
