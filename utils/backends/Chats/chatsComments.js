@@ -89,7 +89,6 @@ import {
     getProjectChatLastNotification,
 } from './chatNotificationPriority'
 import { buildCommentNotificationIdentity } from './commentNotificationHelper'
-import { isNewComment, queueObjectActivityFeedUnreadClear } from '../Feeds/activityFeedReadState'
 
 export { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification }
 
@@ -383,14 +382,7 @@ const storeComment = async (
         commentId,
         creatorId,
     })
-    if (isNewComment(editingCommentId)) {
-        queueObjectActivityFeedUnreadClear(getDb(), batch, {
-            projectId,
-            userId: creatorId,
-            objectType,
-            objectId,
-        })
-
+    if (!editingCommentId) {
         const followrsMap = {}
         followerIds.forEach(uid => {
             followrsMap[uid] = true
