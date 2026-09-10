@@ -312,29 +312,29 @@ export default function useProjectCompletedSweepMotion(runId, lineWillLeave = fa
 }
 
 /**
- * AT-2495 — the style the leaving project line wears, and the measurement it needs first.
+ * AT-2495 / AT-2535 — the style the leaving project card wears, and the measurement it needs first.
  *
- * Split out of `ProjectHeader` so the component that draws the row and the browser harness that
- * screenshots it cannot wire the exit differently. Everything fiddly about it is here:
+ * Split out so `ProjectSection` and the browser harness cannot wire the exit differently.
+ * Everything fiddly about it is here:
  *
  *   • the height is FROZEN when the exit begins. The exit style animates `height`, so a live
  *     measurement would feed the collapse back into itself, and the particle layer has to keep the
- *     full height while the row underneath closes — dust that collapsed with the row would be
+ *     full height while the card underneath closes — dust that collapsed with the card would be
  *     clipped off mid-flight.
  *   • the freeze is a render-phase state adjustment (React's documented "adjust state when a prop
  *     changes" shape, guarded so it cannot loop) rather than an effect, because the mask has to be
- *     on the row in the SAME commit that starts the exit or the first frames are simply dropped.
+ *     on the card in the SAME commit that starts the exit or the first frames are simply dropped.
  *   • the style is memoised rather than merely conditional: a project header re-renders on every
  *     task write in its project, and rebuilding the interpolations would detach and reattach live
  *     animated nodes mid-exit.
  *
  * @param {{disintegrate: Animated.Value, exiting: boolean}} motion From the hook above.
+ * @param {number} bottomSpacing The gap after the card, which `onLayout` does not include.
  * @returns {{exitStyle: object|undefined, exitHeight: number, onLineLayout: Function}}
- *   `exitStyle` is `undefined` for every row that is not leaving — which is every row on every
- *   other board, and every row under reduced motion — so an ordinary header carries no mask (and
- *   therefore no compositing layer) and is never pinned to a measured height.
+ *   `exitStyle` is `undefined` for every card that is not leaving and under reduced motion, so an
+ *   ordinary project section carries no mask and is never pinned to a measured height.
  */
-export function useProjectLineExit({ disintegrate, exiting }) {
+export function useProjectLineExit({ disintegrate, exiting }, bottomSpacing = 0) {
     const measuredHeightRef = useRef(0)
     const [exitHeight, setExitHeight] = useState(0)
 
@@ -352,8 +352,9 @@ export function useProjectLineExit({ disintegrate, exiting }) {
     else if (!exiting && exitHeight !== 0) setExitHeight(0)
 
     const exitStyle = useMemo(
-        () => (exiting && exitHeight > 0 ? createProjectLineExitStyle(disintegrate, exitHeight) : undefined),
-        [exiting, exitHeight, disintegrate]
+        () =>
+            exiting && exitHeight > 0 ? createProjectLineExitStyle(disintegrate, exitHeight, bottomSpacing) : undefined,
+        [exiting, exitHeight, disintegrate, bottomSpacing]
     )
 
     return { exitStyle, exitHeight, onLineLayout }
