@@ -82,7 +82,7 @@ export default function RootSectionNavigation({ useOuterMargins = true }) {
     return (
         <View
             style={[
-                useOuterMargins && localStyles.container,
+                useOuterMargins ? localStyles.container : localStyles.containerInProject,
                 useOuterMargins &&
                     (smallScreenNavigation
                         ? localStyles.containerMobile
@@ -95,6 +95,9 @@ export default function RootSectionNavigation({ useOuterMargins = true }) {
 }
 
 const localStyles = StyleSheet.create({
+    containerInProject: {
+        paddingHorizontal: 8,
+    },
     container: {
         marginHorizontal: 104,
     },
