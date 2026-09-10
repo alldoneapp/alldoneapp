@@ -64,10 +64,10 @@ describe('AT-2194: the note branch of the project picker preserves an assistant 
         )
     })
 
-    it('leaves task owner resolution to the background move service', () => {
+    it('leaves the task branch on its own cross-project-aware resolver', () => {
         const { source } = readNoteBranch()
 
-        expect(source).toMatch(/queueTaskProjectMove\(project\.id, newProject\.id, data\.id\)/)
-        expect(source).not.toMatch(/import TasksHelper/)
+        // Regression fence: the task branch was already correct and must stay that way.
+        expect(source).toMatch(/TasksHelper\.getTaskOwner\(task\.userId, project\.id\)/)
     })
 })

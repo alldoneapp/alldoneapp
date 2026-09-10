@@ -1,16 +1,16 @@
 /**
- * AT-2495 / AT-2535 browser-level test — the PROJECT CARD's disintegration and its celebration, actually
+ * AT-2495 browser-level test — the PROJECT LINE's disintegration and its celebration, actually
  * erasing pixels.
  *
- * The cleared project's rounded card comes apart into dust, right to left, over 1.2 seconds, with a
- * small celebration as it goes. Four things about that are unobservable from jest and are checked
- * here instead:
+ * The user asked for the cleared project's line to come apart into dust, right to left, over 1.2
+ * seconds, with a small celebration as it goes. Four things about that are unobservable from jest
+ * and are checked here instead:
  *
  *   1. THE PASSTHROUGH. The whole erasure is a CSS mask, applied through react-native-web's style
  *      pipeline and animated through `Animated`'s per-frame `setNativeProps`. jsdom drops CSS
  *      properties it does not implement without a word, so a jsdom test reports the same empty
  *      string whether the code is right or completely wrong.
- *   2. THE PICTURE. A style object is not a paint. The card is screenshotted every ~50ms and its
+ *   2. THE PICTURE. A style object is not a paint. The row is screenshotted every ~50ms and its
  *      surviving pixels are counted per column, which is the only measurement that can tell
  *      "a mask is applied" apart from "the mask erases the correct half in the correct order".
  *   3. THE CLOCK. `__mocks__/react-native.js` replaces `Animated.timing` with a no-op `{start}`
@@ -49,9 +49,8 @@ const HTML = `<!doctype html>
 // Kept in step with `projectCompletedSweepMotion.js`; asserted against the paint below.
 const SWEEP_LEAD_MS = 820 + 760 + 540
 const DISINTEGRATION_MS = 1200
-const CARD_WIDTH = 900
-const CARD_HEIGHT = 96
-const CARD_BOTTOM_SPACING = 28
+const ROW_WIDTH = 900
+const ROW_HEIGHT = 57
 /**
  * How far past the run to keep sampling, so the abandoned-exit backstop is observed rather than
  * merely trusted. `EXIT_RECOVERY_MS` fires 520ms after the run ends (the board's 120ms hold tail
@@ -165,7 +164,7 @@ async function main() {
             : 'the line leaves'
     console.log(`\n--- mode: ${mode} ---\n`)
 
-    const clip = { x: 0, y: 0, width: CARD_WIDTH, height: CARD_HEIGHT }
+    const clip = { x: 0, y: 0, width: ROW_WIDTH, height: ROW_HEIGHT }
     const shot = async () => {
         const dataUrl = `data:image/png;base64,${(await page.screenshot({ clip })).toString('base64')}`
         return survival(await page.evaluate(url => window.__scan(url), dataUrl))
@@ -173,7 +172,7 @@ async function main() {
 
     const before = await shot()
     check(
-        'the card is fully painted before anything happens',
+        'the line is fully painted before anything happens',
         before.coverage > 0.98,
         `coverage ${before.coverage.toFixed(3)}`
     )
@@ -234,7 +233,7 @@ async function main() {
          */
         const label = reduceMotion ? 'reduced motion' : 'a line that stays'
         check(
-            `${label} — the card is never masked`,
+            `${label} — the row is never masked`,
             frames.every(f => !f.maskImage || f.maskImage === 'none'),
             ''
         )
@@ -244,12 +243,12 @@ async function main() {
             ''
         )
         check(
-            `${label} — the card never collapses`,
-            frames.every(f => f.rowHeight === null || f.rowHeight >= CARD_HEIGHT),
+            `${label} — the row never collapses`,
+            frames.every(f => f.rowHeight === null || f.rowHeight >= ROW_HEIGHT),
             `heights ${[...new Set(frames.map(f => f.rowHeight))].join(',')}`
         )
         check(
-            `${label} — the card is still fully painted at the end`,
+            `${label} — the row is still fully painted at the end`,
             frames[frames.length - 1].coverage > 0.98,
             `coverage ${frames[frames.length - 1].coverage.toFixed(3)}`
         )
@@ -263,7 +262,7 @@ async function main() {
         console.log('    mask-image :', masked[0].maskImage.slice(0, 110), '…')
         console.log('    mask-size  :', masked[0].maskSize)
         check('it is the dissolve gradient', /linear-gradient/.test(masked[0].maskImage), '')
-        check('it is sized to travel across the card', /245%/.test(masked[0].maskSize), masked[0].maskSize)
+        check('it is sized to travel across the row', /245%/.test(masked[0].maskSize), masked[0].maskSize)
         const positions = [...new Set(masked.map(f => f.maskPosition))]
         check(
             'Animated actually drives mask-position frame by frame',
@@ -274,7 +273,7 @@ async function main() {
 
     // ── 2. the picture ──────────────────────────────────────────────────────────────────────────
     const gone = runFrames.find(f => f.coverage < 0.02)
-    check('the card is erased down to nothing', !!gone, gone ? `by ${gone.t}ms` : 'never fell below 2%')
+    check('the line is erased down to nothing', !!gone, gone ? `by ${gone.t}ms` : 'never fell below 2%')
 
     // The direction. Sampled where the erasure is genuinely mid-flight, so a mask that ran the
     // wrong way could not pass by being caught at either end.
@@ -295,12 +294,12 @@ async function main() {
         ''
     )
     check(
-        'the front crosses the whole card',
+        'the front crosses the whole row',
         fronts.length > 1 && Math.max(...fronts) > 800 && Math.min(...fronts) < 100,
         `${Math.max(...fronts)}px → ${Math.min(...fronts)}px`
     )
     check(
-        'the card never comes back once a column has gone',
+        'the line never comes back once a column has gone',
         runFrames.every((f, index) => index === 0 || f.coverage <= runFrames[index - 1].coverage + 0.02),
         ''
     )
@@ -314,11 +313,11 @@ async function main() {
         `${withLayer.length ? withLayer[0].moteCount : 0} motes / ${withLayer.length ? withLayer[0].sparkCount : 0} sparks`
     )
     check(
-        'the layer is bounded to the card — it can never escape to the viewport',
+        'the layer is bounded to the row — it can never escape to the viewport',
         withLayer.length > 0 &&
             withLayer[0].layerPosition === 'absolute' &&
-            withLayer[0].layerBox.w <= CARD_WIDTH + 1 &&
-            withLayer[0].layerBox.h <= CARD_HEIGHT + 1,
+            withLayer[0].layerBox.w <= ROW_WIDTH + 1 &&
+            withLayer[0].layerBox.h <= ROW_HEIGHT + 1,
         withLayer.length ? `${withLayer[0].layerPosition} ${withLayer[0].layerBox.w}x${withLayer[0].layerBox.h}` : ''
     )
     check(
@@ -373,7 +372,7 @@ async function main() {
      */
     const started = runFrames.find(f => f.maskPosition && !/^0%/.test(f.maskPosition))
     const flat = runFrames.find(f => f.rowHeight === 0)
-    check('the card collapses to nothing', !!flat, flat ? `by ${flat.t}ms` : 'never reached 0')
+    check('the line collapses to nothing', !!flat, flat ? `by ${flat.t}ms` : 'never reached 0')
     if (started && flat) {
         const span = flat.t - started.t
         // 1200ms, give or take one sampling interval at either end. Anything outside this is not
@@ -387,12 +386,12 @@ async function main() {
     )
     if (late) {
         check(
-            'THE LATE VERDICT IS STILL HONOURED — the card disintegrates, it does not just settle',
+            'THE LATE VERDICT IS STILL HONOURED — the line disintegrates, it does not just settle',
             !!started && !!flat,
             'the board said "leaving" 900ms into a run that had already started'
         )
     }
-    const collapsed = runFrames.filter(f => f.rowHeight !== null && f.rowHeight < CARD_HEIGHT && f.rowHeight > 0)
+    const collapsed = runFrames.filter(f => f.rowHeight !== null && f.rowHeight < ROW_HEIGHT && f.rowHeight > 0)
     check(
         'the gap closes only at the very end, after the line is already gone',
         collapsed.every(f => f.coverage < 0.05),
@@ -400,15 +399,9 @@ async function main() {
     )
     const nextTops = runFrames.map(f => f.nextRowTop).filter(v => v !== null)
     check(
-        'the board closes the gap the card leaves behind',
+        'the board closes the gap the line leaves behind',
         Math.min(...nextTops) < Math.max(...nextTops) - 40,
         `${Math.max(...nextTops)} → ${Math.min(...nextTops)}`
-    )
-    const collapsedSpacing = runFrames.find(f => f.bottomSpacing === 0)
-    check(
-        'the card spacing collapses with the card',
-        !!collapsedSpacing && runFrames[0].bottomSpacing === CARD_BOTTOM_SPACING,
-        `${runFrames[0].bottomSpacing} → ${collapsedSpacing ? collapsedSpacing.bottomSpacing : 'n/a'}`
     )
 
     /**
@@ -419,9 +412,7 @@ async function main() {
      * user has to reload to clear.
      */
     const afterRun = frames.filter(f => f.t > SWEEP_LEAD_MS + DISINTEGRATION_MS + 200)
-    const recovered = afterRun.find(
-        f => f.rowHeight === CARD_HEIGHT && f.bottomSpacing === CARD_BOTTOM_SPACING && f.coverage > 0.98
-    )
+    const recovered = afterRun.find(f => f.rowHeight === ROW_HEIGHT && f.coverage > 0.98)
     check(
         'an exit the board never finished puts the line back rather than leaving an invisible hole',
         !!recovered,
@@ -444,8 +435,7 @@ async function main() {
         'a line that stops leaving is put back whole — no mask, no particles, full height',
         (!restored.maskImage || restored.maskImage === 'none') &&
             !restored.layerPresent &&
-            restored.rowHeight === CARD_HEIGHT &&
-            restored.bottomSpacing === CARD_BOTTOM_SPACING &&
+            restored.rowHeight === ROW_HEIGHT &&
             after.coverage > 0.98,
         `height ${restored.rowHeight} coverage ${after.coverage.toFixed(3)}`
     )

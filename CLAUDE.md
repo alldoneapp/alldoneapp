@@ -1583,21 +1583,16 @@ plausible-looking animation. The value passed down is `baseHideProjectData`, del
 `hideProjectData`: the second is false for the whole hold — that is what the hold IS — so it could
 never say "this line is leaving".
 
-**Since the rounded project-card redesign, the mask goes on the whole card; the particles go beside
-it (AT-2535).** Masking the old 57px `ProjectHeader` left the new `ProjectSection` surface, body
-padding and rounded corners behind until the block vanished abruptly. `ProjectSection` therefore
-owns `useProjectCompletedSweepMotion` + `useProjectLineExit`, shares the run with the header sweep
-through context, and masks/collapses its complete `Animated.View`. `ProjectLineDisintegration` is a
-SIBLING of that masked card — a child would be erased by the very front it is shedding — inside a
-wrapper `View` so its absolute placement resolves against that card and nothing else. The card's
-resolved `marginBottom` is supplied to the exit separately because `onLayout` excludes margins; it
-interpolates to zero with the height, avoiding a final spacing jump when the hold unmounts. Two
-failure modes are guarded
+**The mask goes on the row; the particles go beside it.** `ProjectHeader` owns the run
+(`useProjectCompletedSweepMotion` + `useProjectLineExit`) because a child cannot mask its parent, and
+`ProjectCompletedSweep` became presentational. `ProjectLineDisintegration` is a SIBLING of the masked
+node — a child would be erased by the very front it is shedding — inside a wrapper `View` so its
+absolute placement resolves against that row and nothing else. Two failure modes are guarded
 explicitly: an exit whose verdict is **withdrawn** mid-run (a task landing back in the project) is
 reset, and an exit the board **never finishes** is put back after `EXIT_RECOVERY_MS`, because an
-erased zero-height card is a hole the user can neither see nor click and has to reload to clear. The
-card's height is frozen when the exit begins, so the collapse cannot overwrite what it is collapsing
-from and the particle layer keeps the full height while the card closes underneath it.
+erased zero-height row is a hole the user can neither see nor click and has to reload to clear. The
+row's height is frozen when the exit begins, so the collapse cannot overwrite what it is collapsing
+from and the particle layer keeps the full height while the row closes underneath it.
 
 **The celebration is nine sparks, and it must never become confetti.** AT-2492's ranking rule
 stands: the all-projects empty inbox owns confetti (46 pieces, gravity, spin, a `position: fixed`
@@ -1606,19 +1601,19 @@ struck OFF the dissolve front on the same `particleLiftOff` derivation the dust 
 celebration is visibly caused by the line leaving rather than thrown over it — they rise and twinkle
 (grow into their peak, where a mote only ever shrinks), nothing falls or spins, they carry the
 project's own colour with every third one gold so a pale project still reads, and the layer is
-`position: absolute` bounded to the project card. Their life is CLAMPED to `COLLAPSE_START` rather than
+`position: absolute` bounded to the 56px row. Their life is CLAMPED to `COLLAPSE_START` rather than
 tuned to fit, so `SPARK_LIFE` can be retuned without leaving a particle drifting while the board
 pulls the content below up through it.
 
 Pinned by `projectLineDisintegration.test.js` (the mask arithmetic re-derived from the CSS spec, the
 grain, the dust and the celebration), `ProjectLineDisintegration.test.js`,
 `projectCompletedSweepMotion.test.js` (the branch, both arrival orders, both recoveries),
-`ProjectHeaderLineExit.test.js` (the wiring — the mask on the complete card, animated spacing, the particles outside it,
+`ProjectHeaderLineExit.test.js` (the wiring — the mask on the right node, the particles outside it,
 and every other board in the app unaffected), and the AT-2495 blocks in
 `ProjectEmptyInboxCelebration.test.js`, which measures the sparks against the real all-projects
 confetti so a future change that quietly promotes them fails the build. Plus `browser-tests/at2495`,
 which is the only place any of this is ever seen: jsdom drops `mask-image` without a word and
-`__mocks__/react-native.js` stubs `Animated.timing`, so it screenshots the card every ~50ms and counts
+`__mocks__/react-native.js` stubs `Animated.timing`, so it screenshots the row every ~50ms and counts
 surviving pixels per column, in four modes (leaving, late verdict, staying, reduced motion).
 
 ### Assistant voice calls survive the background differently on every platform (AT-2496)
@@ -2032,16 +2027,6 @@ one 72px line on a phone. Pinned by `__tests__/ProjectHappiness/*` and
 `__tests__/SettingsView/UserHappiness.test.js`.
 
 ### Client feed cleanup: concurrent trims race, and a lost race reads as permission-denied
-
-**Interacting with an object acknowledges its existing activity-feed unread entries (AT-2536).**
-`queueObjectActivityFeedUnreadClear` removes that object's nested counter from both
-`feedsCount/{projectId}/{userId}/followed` and `/all`, in the same batch as the interaction. It
-never touches `chatNotifications`, which is independent comment/chat unread state. The central
-`increaseFeedCount` path applies this only when the new feed's `creatorId` is the signed-in user;
-assistant/system-authored feeds therefore leave the user's unread entries intact. `storeComment`
-also applies it for a newly created user comment, but not when `editingCommentId` identifies an
-edit. The decision and writes are pinned by `utils/backends/Feeds/activityFeedReadState.test.js`
-and `__tests__/Feeds/activityFeedReadCallSites.test.js`.
 
 Every write batch trims `feedsStore/{project}/all` and the user's `followed` store to the newest
 200 readable entries (`deleteOldVisibleFeeds`, called from the `feedsCleaned` block of each

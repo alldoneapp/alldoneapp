@@ -273,43 +273,6 @@ exports.copyProjectMoveChatSecondGen = onCall(
     }
 )
 
-// Queue manual cross-project task moves so the project picker can close as soon
-// as the server accepts the request. The task worker below owns the long-running
-// task/subtask/chat/feed fan-out and retries independently of the browser.
-exports.moveTaskToProjectSecondGen = onCall(
-    {
-        timeoutSeconds: 30,
-        memory: '256MiB',
-        region: 'europe-west1',
-        cors: true,
-    },
-    async request => {
-        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
-
-        const { sourceProjectId, targetProjectId, taskId } = request.data || {}
-        if (!sourceProjectId || !targetProjectId || !taskId) {
-            throw new HttpsError('invalid-argument', 'sourceProjectId, targetProjectId and taskId are required')
-        }
-        const database = admin.firestore()
-        try {
-            await Promise.all([
-                assertObjectAccess(database, request.auth.uid, sourceProjectId, 'tasks', taskId),
-                assertProjectAccess(request.auth.uid, targetProjectId),
-            ])
-        } catch (error) {
-            throw new HttpsError('permission-denied', error.message)
-        }
-
-        const { enqueueManualTaskProjectMove } = require('./Tasks/manualTaskProjectMove')
-        return enqueueManualTaskProjectMove({
-            sourceProjectId,
-            targetProjectId,
-            taskId,
-            actorId: request.auth.uid,
-        })
-    }
-)
-
 exports.markChatNotificationsReadSecondGen = onCall(
     {
         timeoutSeconds: 60,
@@ -5683,23 +5646,6 @@ exports.runGoldenBuild = onTaskDispatched(
         const { buildId, projectId, requestUserId } = req.data || {}
         const { runGoldenBuild } = require('./Assistant/vmGolden')
         await runGoldenBuild({ buildId, projectId, requestUserId })
-    }
-)
-
-// Manual task moves fan out over both projects and their linked chat/feed data.
-// Running them in Cloud Tasks makes the operation durable after the initiating
-// project picker has closed or the browser navigates away.
-exports.runManualTaskProjectMove = onTaskDispatched(
-    {
-        region: 'europe-west1',
-        timeoutSeconds: 300,
-        memory: '512MiB',
-        retryConfig: { maxAttempts: 3, minBackoffSeconds: 5, maxBackoffSeconds: 60 },
-        rateLimits: { maxConcurrentDispatches: 20, maxDispatchesPerSecond: 20 },
-    },
-    async req => {
-        const { runManualTaskProjectMove } = require('./Tasks/manualTaskProjectMove')
-        await runManualTaskProjectMove(req.data || {})
     }
 )
 
