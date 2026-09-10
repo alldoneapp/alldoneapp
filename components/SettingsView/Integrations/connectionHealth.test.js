@@ -1,6 +1,7 @@
 import {
     brokenForDays,
     countBrokenConnections,
+    countBrokenVmSubscriptions,
     formatBrokenSince,
     getBreakageConsequenceKey,
     isConnectionBroken,
@@ -72,6 +73,26 @@ describe('listBrokenConnections / countBrokenConnections', () => {
         expect(
             countBrokenConnections({
                 apisConnected: { 'project-1': { gmail: true, gmailEmail: 'a@gmail.com' } },
+            })
+        ).toBe(0)
+    })
+})
+
+describe('countBrokenVmSubscriptions', () => {
+    test('counts rejected active subscription routes', () => {
+        expect(
+            countBrokenVmSubscriptions({
+                claude: { connected: true, activeMode: 'subscription', authInvalid: true },
+                codex: { connected: true, activeMode: 'subscription', authInvalid: true },
+            })
+        ).toBe(2)
+    })
+
+    test('does not badge an invalid saved login when another route is active', () => {
+        expect(
+            countBrokenVmSubscriptions({
+                claude: { connected: true, activeMode: 'byok', authInvalid: true },
+                codex: { connected: true, activeMode: 'api', authInvalid: true },
             })
         ).toBe(0)
     })
