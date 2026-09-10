@@ -1,9 +1,10 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { AccessibilityInfo, StyleSheet } from 'react-native'
+import { AccessibilityInfo, StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import ProjectHeader from './ProjectHeader'
+import ProjectSection from '../ProjectSection'
 import { SWEEP_LEAD_MS, SWEEP_TOTAL_MS } from '../OpenTasksView/projectCompletedSweepMotion'
 import { DISSOLVE_MASK_IMAGE, DISSOLVE_MASK_SIZE, SPARK_COUNT } from '../OpenTasksView/projectLineDisintegration'
 
@@ -16,32 +17,32 @@ jest.mock('./TagsArea', () => 'TagsArea')
 jest.mock('../../RootView/RootSectionNavigation', () => 'RootSectionNavigation')
 
 /**
- * AT-2495 (second pass) — the WIRING, which is where this feature can most easily be broken without
- * any of the unit suites noticing.
+ * AT-2495 / AT-2535 — the WIRING, which is where this feature can most easily be broken without any
+ * of the unit suites noticing.
  *
- * `ProjectHeader` owns the run, because the same sequence drives two things on two different nodes:
- * the sweep overlay INSIDE the row, and the mask that erases the row itself. Three ways to get that
- * wrong, all of which look fine in isolation:
+ * `ProjectSection` owns the run, because the same sequence drives two things on two different nodes:
+ * the sweep overlay INSIDE the header, and the mask that erases the whole rounded card. Three ways
+ * to get that wrong, all of which look fine in isolation:
  *
- *   • masking the wrong node, so the overlay survives the dissolve or the bottom rule does;
+ *   • masking the old 57px header, so the new card body survives the dissolve;
  *   • rendering the particle layer INSIDE the masked node, where the mask erases the very dust it
  *     is shedding;
- *   • leaving the mask on for headers that are not celebrating anything — every other board in the
- *     app renders this component, and a permanent compositing layer on each of them is a real cost.
+ *   • leaving the card's bottom spacing static, so the last 28px disappears as a jump.
  *
- * jsdom lays nothing out, so the row's height is handed in through `onLayout` by hand, and
+ * jsdom lays nothing out, so the card's height is handed in through `onLayout` by hand, and
  * `__mocks__/react-native.js` stubs `Animated.timing`, so what is driven here is the schedule.
  */
 
 const PROJECT = 'project-a'
 const PROJECT_COLOR = '#2F80ED'
-const ROW_HEIGHT = 57
+const CARD_HEIGHT = 96
+const CARD_BOTTOM_SPACING = 28
 
 const findAll = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false })
 const countOf = (tree, testID) => findAll(tree, testID).length
 const rawStyle = node => Object.assign({}, ...[].concat(node.props.style).filter(Boolean))
 
-describe('the project line leaving the board (AT-2495)', () => {
+describe('the project card leaving the board (AT-2535)', () => {
     const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled
     const originalAddEventListener = AccessibilityInfo.addEventListener
     const originalNodeEnv = process.env.NODE_ENV
@@ -78,20 +79,31 @@ describe('the project line leaving the board (AT-2495)', () => {
         jest.clearAllMocks()
     })
 
-    const header = props => <ProjectHeader projectIndex={0} projectId={PROJECT} {...props} />
+    const card = (props = {}) => (
+        <ProjectSection
+            projectColor={PROJECT_COLOR}
+            style={{ marginBottom: CARD_BOTTOM_SPACING }}
+            completedSweepRunId={props.completedSweepRunId}
+            completedSweepLineWillLeave={props.completedSweepLineWillLeave}
+        >
+            <ProjectHeader projectIndex={0} projectId={PROJECT} />
+            <View testID="project-card-body" style={{ height: CARD_HEIGHT - 57 }} />
+        </ProjectSection>
+    )
 
     // `deep: false`: react-native-web's Animated.View matches both as the composite element and as
     // the host View it renders, which silently doubles every count.
     const lineNode = tree => findAll(tree, 'project-line')[0]
+    const cardNode = tree => findAll(tree, 'project-section')[0]
 
     const mount = async props => {
         let tree
         await act(async () => {
-            tree = renderer.create(header(props))
+            tree = renderer.create(card(props))
         })
-        // The measurement the row gets from layout in a browser.
+        // The measurement the complete rounded card gets from layout in a browser.
         await act(async () => {
-            lineNode(tree).props.onLayout({ nativeEvent: { layout: { height: ROW_HEIGHT, width: 900 } } })
+            cardNode(tree).props.onLayout({ nativeEvent: { layout: { height: CARD_HEIGHT, width: 900 } } })
         })
         return tree
     }
@@ -105,18 +117,18 @@ describe('the project line leaving the board (AT-2495)', () => {
     it('renders an ordinary header with no mask and no particles', async () => {
         const tree = await mount()
 
-        expect(rawStyle(lineNode(tree)).maskImage).toBeUndefined()
+        expect(rawStyle(cardNode(tree)).maskImage).toBeUndefined()
         expect(countOf(tree, 'project-line-disintegration')).toBe(0)
         expect(countOf(tree, 'project-completed-sweep')).toBe(0)
     })
 
     it('costs every other board in the app nothing — no run id, no exit, ever', async () => {
         // Chats, contacts, notes, goals, done and pending all render this component and pass neither
-        // prop. A mask left on for them would be a permanent compositing layer per project row.
+        // prop. A mask left on for them would be a permanent compositing layer per project card.
         const tree = await mount({ completedSweepLineWillLeave: true })
         await advance(SWEEP_TOTAL_MS + 500)
 
-        expect(rawStyle(lineNode(tree)).maskImage).toBeUndefined()
+        expect(rawStyle(cardNode(tree)).maskImage).toBeUndefined()
         expect(countOf(tree, 'project-line-disintegration')).toBe(0)
     })
 
@@ -126,26 +138,27 @@ describe('the project line leaving the board (AT-2495)', () => {
         expect(countOf(tree, 'project-completed-sweep')).toBe(1)
 
         await advance(SWEEP_LEAD_MS + 50)
-        expect(rawStyle(lineNode(tree)).maskImage).toBeUndefined()
+        expect(rawStyle(cardNode(tree)).maskImage).toBeUndefined()
         expect(countOf(tree, 'project-line-disintegration')).toBe(0)
     })
 
     describe('when the line is leaving', () => {
-        it('masks the row itself — the sweep overlay and the bottom rule go with it', async () => {
+        it('masks the complete card — header, body and sweep overlay go with it', async () => {
             const tree = await mount({ completedSweepRunId: 1, completedSweepLineWillLeave: true })
             await advance(SWEEP_LEAD_MS + 50)
 
-            const line = lineNode(tree)
-            const style = rawStyle(line)
+            const card = cardNode(tree)
+            const style = rawStyle(card)
             expect(style.maskImage).toBe(DISSOLVE_MASK_IMAGE)
             expect(style.WebkitMaskImage).toBe(DISSOLVE_MASK_IMAGE)
             expect(style.maskSize).toBe(DISSOLVE_MASK_SIZE)
-            expect(style.height.__getValue()).toBe(ROW_HEIGHT)
+            expect(style.height.__getValue()).toBe(CARD_HEIGHT)
+            expect(style.marginBottom.__getValue()).toBe(CARD_BOTTOM_SPACING)
 
-            // The whole line is inside the masked node: the sweep's coloured wash, the header
-            // content and the 1px bottom rule. Masking anything inner would leave one of them
-            // hanging in the air after the rest had gone.
-            expect(line.findAllByProps({ testID: 'project-completed-sweep' }).length).toBeGreaterThan(0)
+            // The whole card is inside the masked node: the sweep, header and body. Masking the old
+            // header node would leave the rounded card surface hanging after its content had gone.
+            expect(card.findAllByProps({ testID: 'project-completed-sweep' }).length).toBeGreaterThan(0)
+            expect(card.findAllByProps({ testID: 'project-card-body' })).toHaveLength(1)
         })
 
         it('sheds its dust and sparks OUTSIDE the mask, or they would be erased by it', async () => {
@@ -154,8 +167,8 @@ describe('the project line leaving the board (AT-2495)', () => {
 
             expect(countOf(tree, 'project-line-disintegration')).toBe(1)
             expect(countOf(tree, 'project-line-disintegration-spark')).toBe(SPARK_COUNT)
-            // The particle layer must NOT be a descendant of the masked row.
-            expect(lineNode(tree).findAllByProps({ testID: 'project-line-disintegration' })).toHaveLength(0)
+            // The particle layer must NOT be a descendant of the masked card.
+            expect(cardNode(tree).findAllByProps({ testID: 'project-line-disintegration' })).toHaveLength(0)
         })
 
         it('hands the particles the project colour the sweep has just crossed the row in', async () => {
@@ -168,12 +181,12 @@ describe('the project line leaving the board (AT-2495)', () => {
             expect(armColours).toContain(PROJECT_COLOR)
         })
 
-        it('freezes the particle layer at the height the row had, not at the height it is collapsing to', async () => {
+        it('freezes the particle layer at the full card height, not the height it is collapsing to', async () => {
             const tree = await mount({ completedSweepRunId: 1, completedSweepLineWillLeave: true })
             await advance(SWEEP_LEAD_MS + 50)
 
             const layerStyle = StyleSheet.flatten(findAll(tree, 'project-line-disintegration')[0].props.style)
-            expect(layerStyle.height).toBe(ROW_HEIGHT)
+            expect(layerStyle.height).toBe(CARD_HEIGHT)
             expect(layerStyle.position).toBe('absolute')
         })
 
@@ -190,7 +203,7 @@ describe('the project line leaving the board (AT-2495)', () => {
             const tree = await mount({ completedSweepRunId: 1, completedSweepLineWillLeave: true })
             await advance(SWEEP_LEAD_MS + 500)
 
-            expect(rawStyle(lineNode(tree)).maskImage).toBeUndefined()
+            expect(rawStyle(cardNode(tree)).maskImage).toBeUndefined()
             expect(countOf(tree, 'project-line-disintegration')).toBe(0)
             expect(countOf(tree, 'project-completed-sweep')).toBe(0)
         })
