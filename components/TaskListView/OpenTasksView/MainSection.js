@@ -43,6 +43,7 @@ import { createSectionRenderBudget } from './sectionRenderBudget'
 import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
 import { holdTaskGrouping } from './taskPlacementHold'
 import useGoalSectionExit, { keepDepartingGoalsSortable } from './useGoalSectionExit'
+import GeneralTaskSectionEntry from './GeneralTaskSectionEntry'
 
 export default function MainSection({
     projectId,
@@ -441,6 +442,20 @@ export default function MainSection({
     const loggedUserCanUpdateObject =
         loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
+    // AT-2534 — a held goal section is already absent from the live list, but remains in
+    // `sortedMainTasks` while its exit plays. When EVERY remaining section is one of those held
+    // exits, start revealing the general add-task row now so it replaces the collapsing goal
+    // continuously. A list emptied by moving/deleting work has no exit run and stays unchanged.
+    const onlyDepartingGoalsRemain =
+        sortedMainTasks.length > 0 &&
+        sortedMainTasks.every(([sectionId]) =>
+            sectionId === NOT_PARENT_GOAL_INDEX ? false : !!exitRunIdByGoalId[sectionId]
+        )
+    const generalTaskEntryRunId = onlyDepartingGoalsRemain
+        ? Math.max(...sortedMainTasks.map(([sectionId]) => exitRunIdByGoalId[sectionId]))
+        : 0
+    const showEmptyGeneralTaskSection = sortedMainTasks.length === 0 || onlyDepartingGoalsRemain
+
     // Holds already-mounted sections at their last idle size while the user is
     // typing, so a background task cannot starve one out of the shared budget
     // and unmount an open editor. See sectionRenderBudget.js.
@@ -639,19 +654,26 @@ export default function MainSection({
                 }
             })}
 
-            {/* Render Add Task section if the list is completely empty */}
-            {sortedMainTasks.length === 0 &&
+            {/* Render Add Task section if the live list is empty. During a goal completion exit it
+                enters underneath the collapsing goal instead of popping in after the hold. */}
+            {showEmptyGeneralTaskSection &&
                 accessGranted &&
                 loggedUserCanUpdateObject &&
                 !isTemplateProject &&
                 !isAssistant &&
                 !isActiveOrganizeMode && (
-                    <NewTaskSection
-                        projectId={projectId}
-                        originalParentGoal={null} // Add to general tasks
-                        instanceKey={instanceKey}
-                        dateIndex={dateIndex}
-                    />
+                    <GeneralTaskSectionEntry entryRunId={generalTaskEntryRunId}>
+                        <NewTaskSection
+                            projectId={projectId}
+                            originalParentGoal={null} // Add to general tasks
+                            instanceKey={instanceKey}
+                            dateIndex={dateIndex}
+                            // Both goal and general creators are mounted during the cross-over.
+                            // Only the departing goal may own the document-level "+" shortcut until
+                            // it is gone; pointerEvents on the entry wrapper covers direct taps.
+                            suspendShortcut={!!generalTaskEntryRunId}
+                        />
+                    </GeneralTaskSectionEntry>
                 )}
 
             {/* Only show the down arrow if we have more tasks to show or there are hidden tasks */}
