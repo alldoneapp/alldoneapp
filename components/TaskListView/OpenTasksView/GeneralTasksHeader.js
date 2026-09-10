@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTaskHierarchy, taskHierarchyStyles } from '../TaskHierarchy'
 import { StyleSheet, Text, View } from 'react-native'
 
 import { translate } from '../../../i18n/TranslationService'
@@ -20,19 +21,29 @@ export const GENERAL_TASKS_HEADER_MIN_HEIGHT = 40
 export const GENERAL_TASKS_HEADER_MAX_LINES = 1
 
 export default function GeneralTasksHeader({ projectId }) {
+    const taskHierarchy = useTaskHierarchy()
     const project = ProjectHelper.getProjectById(projectId)
     if (!project) return null
     const conatinerColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_ITEM_ACTIVE
     const blockColor = PROJECT_COLOR_SYSTEM[project.color].PROJECT_ITEM_SECTION_ITEM_ACTIVE
 
     return (
-        <View style={[localStyles.container, { borderColor: conatinerColor }]}>
-            <View style={[localStyles.blockContainer, { backgroundColor: conatinerColor }]}>
+        <View
+            style={[localStyles.container, { borderColor: conatinerColor }, taskHierarchy && localStyles.hierarchyRow]}
+        >
+            <View
+                style={[
+                    localStyles.blockContainer,
+                    { backgroundColor: conatinerColor },
+                    taskHierarchy && { borderTopLeftRadius: 7 },
+                ]}
+            >
                 <View style={[localStyles.block, { borderColor: blockColor }]} />
             </View>
             <Text style={localStyles.text} numberOfLines={GENERAL_TASKS_HEADER_MAX_LINES}>
                 {translate(`General tasks`)}: {project.name}
             </Text>
+            {taskHierarchy && <View pointerEvents="none" style={taskHierarchyStyles.goalRowOutline} />}
         </View>
     )
 }
@@ -52,6 +63,11 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         flexDirection: 'row',
         width: '100%',
+    },
+    hierarchyRow: {
+        marginTop: 0,
+        borderTopLeftRadius: 7,
+        borderTopRightRadius: 7,
     },
     blockContainer: {
         // Full row height, the way GoalProgressBar uses height: '100%'. Paired with the

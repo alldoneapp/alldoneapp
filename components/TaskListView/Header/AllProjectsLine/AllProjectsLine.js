@@ -16,6 +16,7 @@ import { clearStoredWebShareTarget } from '../../../../utils/webShareTarget'
 
 export default function AllProjectsLine({ showActions = true, showEmailLabels = false, customRight }) {
     const dispatch = useDispatch()
+    const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
@@ -28,7 +29,7 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
     }, [dispatch])
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, showActions && inOpenSection && localStyles.hierarchyHeader]}>
             <View style={localStyles.rightContainer}>
                 <Avatar
                     borderSize={0}
@@ -37,11 +38,28 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
                     size={22}
                     externalStyle={localStyles.avatar}
                 />
-                <AllProjectData />
-                <ToggleByTime containerStyle={localStyles.toggleByTimeInline} />
+                <View
+                    style={[
+                        localStyles.titleAndGrouping,
+                        showActions && inOpenSection && mobile && localStyles.mobileTitleAndGrouping,
+                    ]}
+                >
+                    <AllProjectData />
+                    <ToggleByTime
+                        containerStyle={[
+                            localStyles.toggleByTimeInline,
+                            showActions && inOpenSection && mobile && localStyles.mobileGrouping,
+                        ]}
+                    />
+                </View>
                 {showEmailLabels && <AllProjectsEmailLabelChips />}
             </View>
-            <View style={localStyles.leftContainer}>
+            <View
+                style={[
+                    localStyles.leftContainer,
+                    showActions && inOpenSection && { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 },
+                ]}
+            >
                 {customRight}
                 {showActions && inOpenSection && (
                     <>
@@ -56,6 +74,7 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
                             expandTaskListIfNeeded={true}
                             showProjectSelector={true}
                             primary={true}
+                            headerAction={true}
                             initialTaskName={pendingWebShareTarget?.taskName}
                             autoOpenKey={pendingWebShareTarget?.id}
                             onAutoOpen={consumeWebShareTarget}
@@ -63,8 +82,9 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
                         <TaskHeaderMoreButton
                             userId={loggedUserId}
                             wrapperStyle={localStyles.taskMoreWrapper}
-                            buttonStyle={localStyles.taskMoreButton}
+                            buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}
                             iconSize={16}
+                            iconColor={colors.Text02}
                         />
                     </>
                 )}
@@ -86,6 +106,29 @@ const localStyles = StyleSheet.create({
         paddingTop: 25,
         paddingBottom: 6,
     },
+    hierarchyHeader: {
+        paddingTop: 0,
+        paddingBottom: 0,
+        paddingHorizontal: 12,
+        alignItems: 'center',
+        borderBottomWidth: 0,
+        borderRadius: 12,
+        backgroundColor: colors.Grey200,
+    },
+    titleAndGrouping: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+        minWidth: 0,
+    },
+    mobileTitleAndGrouping: {
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+    },
+    mobileGrouping: {
+        marginLeft: 0,
+        height: 18,
+    },
     leftContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -105,14 +148,16 @@ const localStyles = StyleSheet.create({
         marginRight: 10,
     },
     taskMoreWrapper: {
-        marginLeft: 2,
-        marginTop: 3,
+        marginLeft: 6,
+        marginTop: 0,
     },
     taskMoreButton: {
-        width: 18,
-        height: 18,
-        minWidth: 18,
-        minHeight: 18,
+        width: 32,
+        height: 32,
+        minWidth: 32,
+        minHeight: 32,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.85)',
     },
     toggleByTimeInline: {
         marginTop: 0,

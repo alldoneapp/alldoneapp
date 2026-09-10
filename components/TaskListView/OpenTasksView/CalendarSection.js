@@ -1,6 +1,7 @@
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
+import { TaskHierarchyGroup } from '../TaskHierarchy'
 
 import styles, { colors } from '../../styles/global'
 import GoogleCalendar from '../../../assets/svg/GoogleCalendar'
@@ -86,7 +87,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                 const isLastIndex = calendarRuns.length - 1 === index
 
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
-                    <View key={key}>
+                    <TaskHierarchyGroup key={key}>
                         {showGeneralTasksHeader && (
                             <SwipeableGeneralTasksHeader
                                 projectId={projectId}
@@ -105,7 +106,7 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                             goalIndex={goalIndex}
                             instanceKey={instanceKey}
                         />
-                    </View>
+                    </TaskHierarchyGroup>
                 ) : (
                     <ParentGoalSection
                         key={key}

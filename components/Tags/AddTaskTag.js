@@ -32,6 +32,7 @@ function AddTaskTag({
     forceShrink,
     expandTaskListIfNeeded,
     primary,
+    headerAction = false,
     // The empty-inbox call to action (AT-2306) is the same control at a bigger
     // size — sharing the component keeps one popup wiring (popover, float-popup
     // bookkeeping, mention-modal-aware close) instead of a second copy of it.
@@ -101,6 +102,8 @@ function AddTaskTag({
                 // border it overrides, and before `style` so a caller-supplied
                 // override still has the last word (unchanged precedence).
                 primary && large && localStyles.tagLargePrimary,
+                headerAction && localStyles.tagHeaderAction,
+                headerAction && (smallScreenNavigation || forceShrink) && localStyles.tagHeaderActionMobile,
                 style,
             ]}
             onPress={handleOpen}
@@ -110,7 +113,11 @@ function AddTaskTag({
             accessibilityState={{ disabled: !!disabled, expanded: isOpen }}
         >
             <View style={localStyles.icon}>
-                <Icon name={'check-square'} size={large ? 20 : 16} color={primary ? '#ffffff' : colors.Text03} />
+                <Icon
+                    name={headerAction ? 'plus' : 'check-square'}
+                    size={large ? 20 : 16}
+                    color={headerAction || primary ? '#ffffff' : colors.Text03}
+                />
             </View>
             {showLabel && (
                 <Text
@@ -120,6 +127,7 @@ function AddTaskTag({
                         primary && localStyles.textPrimary,
                         large && localStyles.textLarge,
                         windowTagStyle(),
+                        headerAction && localStyles.textHeaderAction,
                     ]}
                 >
                     {translate('Add task')}
@@ -205,6 +213,23 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Text03,
         paddingHorizontal: 4,
+    },
+    tagHeaderAction: {
+        height: 32,
+        borderRadius: 8,
+        borderWidth: 0,
+        backgroundColor: colors.UtilityBlue200,
+        paddingHorizontal: 10,
+        alignSelf: 'center',
+    },
+    tagHeaderActionMobile: {
+        width: 36,
+        height: 36,
+        paddingHorizontal: 0,
+    },
+    textHeaderAction: {
+        color: '#FFFFFF',
+        marginRight: 0,
     },
     tagPrimary: {
         backgroundColor: colors.UtilityBlue200,

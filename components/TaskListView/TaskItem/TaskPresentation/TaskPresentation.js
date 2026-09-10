@@ -47,6 +47,7 @@ import useTaskRoutingActivity from './useTaskRoutingActivity'
 import useTaskCompletionMotion, { rowRemainsAfterCompletion } from './taskCompletionMotion'
 import { publishGoalTaskCompletion } from '../../OpenTasksView/goalCompletionSignal'
 import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
+import { useTaskHierarchy, useTaskHierarchyBackground } from '../../TaskHierarchy'
 
 function TaskPresentation(
     {
@@ -67,6 +68,8 @@ function TaskPresentation(
     },
     ref
 ) {
+    const taskHierarchy = useTaskHierarchy()
+    const hierarchyBackgroundColor = useTaskHierarchyBackground()
     const dispatch = useDispatch()
     const showAllProjectsByTime = useSelector(state => state.loggedUser.showAllProjectsByTime)
     const route = useSelector(state => state.route)
@@ -271,7 +274,13 @@ function TaskPresentation(
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, userProjectIds, projectId, false)
     const anonymousGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, userProjectIds, projectId, true)
 
-    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : task.isSubtask ? colors.Grey200 : '#ffffff'
+    const restingBackgroundColor = inCommentPopup
+        ? colors.Secondary200
+        : task.isSubtask
+          ? colors.Grey200
+          : taskHierarchy
+            ? hierarchyBackgroundColor
+            : '#ffffff'
 
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],

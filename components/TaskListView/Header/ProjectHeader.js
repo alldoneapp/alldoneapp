@@ -19,6 +19,8 @@ import RootSectionNavigation from '../../RootView/RootSectionNavigation'
 import ProjectCompletedSweep from './ProjectCompletedSweep'
 import ProjectLineDisintegration from './ProjectLineDisintegration'
 import useProjectCompletedSweepMotion, { useProjectLineExit } from '../OpenTasksView/projectCompletedSweepMotion'
+import { useTaskHierarchy } from '../TaskHierarchy'
+import { PROJECT_COLOR_SYSTEM, PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
 
 /**
  * AT-2495 (second pass) — the project line owns the completed-sweep RUN, not just the overlay that
@@ -49,6 +51,7 @@ export default function ProjectHeader({
     completedSweepLineWillLeave = false,
 }) {
     const dispatch = useDispatch()
+    const taskHierarchy = useTaskHierarchy()
 
     const currentUser = useSelector(state => state.currentUser)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -85,6 +88,10 @@ export default function ProjectHeader({
     const showWorkflow = showWorkflowTag && haveWorkflow()
 
     const projectColor = useSelector(state => state.loggedUserProjectsMap?.[projectId]?.color)
+    // Match the soft active-project surface used by the sidebar.
+    const headerBackgroundColor = (PROJECT_COLOR_SYSTEM[projectColor] || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT])
+        .PROJECT_ITEM_ACTIVE
+    const headerTextColor = taskHierarchy ? colors.Text01 : undefined
     const sweepMotion = useProjectCompletedSweepMotion(completedSweepRunId, completedSweepLineWillLeave)
     const { exitStyle, exitHeight, onLineLayout } = useProjectLineExit(sweepMotion)
 
@@ -106,15 +113,22 @@ export default function ProjectHeader({
                     included, right to left. It is `undefined` unless the line is genuinely leaving,
                     so an ordinary header carries no mask (and therefore no compositing layer) and is
                     never pinned to a measured height. */}
-                    <View style={localStyles.borderContainer}>
+                    <View
+                        style={[
+                            localStyles.borderContainer,
+                            taskHierarchy && localStyles.hierarchyHeader,
+                            taskHierarchy && { backgroundColor: headerBackgroundColor },
+                        ]}
+                    >
                         <ProjectCompletedSweep motion={sweepMotion} projectId={projectId} />
-                        <View style={localStyles.container}>
+                        <View style={[localStyles.container, taskHierarchy && localStyles.hierarchyHeaderContent]}>
                             <ProjectAndUserData
                                 projectIndex={projectIndex}
                                 projectId={projectId}
                                 badge={badge}
                                 userInHeader={userInHeader}
                                 showEmailLabels={showEmailLabels}
+                                headerTextColor={headerTextColor}
                             />
                             <TagsArea
                                 projectId={projectId}
@@ -147,6 +161,17 @@ export default function ProjectHeader({
 }
 
 const localStyles = StyleSheet.create({
+    hierarchyHeader: {
+        borderBottomWidth: 0,
+        borderTopLeftRadius: 11,
+        borderTopRightRadius: 11,
+    },
+    hierarchyHeaderContent: {
+        paddingTop: 0,
+        paddingBottom: 0,
+        paddingHorizontal: 12,
+        alignItems: 'center',
+    },
     // Explicit, although react-native-web already gives every View `position: relative`: the
     // particle layer's absolute placement depends on it, and that dependency should be visible here
     // rather than inherited from a framework default.

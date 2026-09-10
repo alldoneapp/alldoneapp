@@ -37,6 +37,7 @@ import { PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
 import { DYNAMIC_PERCENT } from './GoalsHelper'
 import { DV_TAB_GOAL_LINKED_TASKS } from '../../utils/TabNavigationConstants'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
+import { taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
 
 export default class GoalItemPresentation extends PureComponent {
     constructor(props) {
@@ -430,6 +431,8 @@ export default class GoalItemPresentation extends PureComponent {
             parentGoaltasks,
             areObservedTask,
             inCommentPopup,
+            inHierarchyCard,
+            hierarchyBackgroundColor,
         } = this.props
         const {
             extendedName,
@@ -446,7 +449,12 @@ export default class GoalItemPresentation extends PureComponent {
         const projectColor = ProjectHelper.getProjectColorById(projectId)
         const highLightColor = isHighlight ? goal.hasStar : PROJECT_COLOR_SYSTEM[projectColor].PROJECT_ITEM_ACTIVE
 
-        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
+        // Match the project surface while keeping the swipe actions underneath hidden at rest.
+        const restingBackgroundColor = inCommentPopup
+            ? colors.Secondary200
+            : inHierarchyCard
+              ? hierarchyBackgroundColor
+              : '#ffffff'
         const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],
@@ -477,7 +485,7 @@ export default class GoalItemPresentation extends PureComponent {
         const amountTags = tagsAmount - assigneesIds.length
 
         return (
-            <View style={localStyles.globalContainer}>
+            <View style={[localStyles.globalContainer, inHierarchyCard && { paddingTop: 0 }]}>
                 <View style={localStyles.container}>
                     <GoalsSwipeBackground needToShowReminderButton={isInTaskList} />
                     <Swipeable
@@ -504,6 +512,7 @@ export default class GoalItemPresentation extends PureComponent {
                             nativeID={`goal_container_${projectId}_${goal.id}`}
                             style={[
                                 localStyles.border,
+                                inHierarchyCard && localStyles.cardHeaderCorners,
                                 { backgroundColor: backColor },
                                 activeDragGoalMode && { paddingRight: 28 },
                             ]}
@@ -511,6 +520,7 @@ export default class GoalItemPresentation extends PureComponent {
                             <Animated.View
                                 style={[
                                     localStyles.borderInside,
+                                    inHierarchyCard && localStyles.cardHeaderCorners,
                                     { backgroundColor: backColor, borderColor: borderColor },
                                     isHighlight && localStyles.highlightBorder,
                                 ]}
@@ -527,6 +537,7 @@ export default class GoalItemPresentation extends PureComponent {
                                 progress={progress}
                                 barColor={highLightColor}
                                 dynamicProgress={dynamicProgress}
+                                style={inHierarchyCard && localStyles.cardHeaderCorners}
                             />
                         )}
 
@@ -657,6 +668,12 @@ export default class GoalItemPresentation extends PureComponent {
                                 inCommentPopup={inCommentPopup}
                             />
                         )}
+                        {inHierarchyCard && (
+                            <Animated.View
+                                pointerEvents="none"
+                                style={[taskHierarchyStyles.goalRowOutline, isHighlight && { borderColor }]}
+                            />
+                        )}
                     </Swipeable>
                     <GoalSwipeDateRangeWrapper
                         goal={goal}
@@ -680,6 +697,10 @@ export default class GoalItemPresentation extends PureComponent {
 const localStyles = StyleSheet.create({
     globalContainer: {
         paddingVertical: 4,
+    },
+    cardHeaderCorners: {
+        borderTopLeftRadius: 7,
+        borderTopRightRadius: 7,
     },
     container: {
         minHeight: 40,
