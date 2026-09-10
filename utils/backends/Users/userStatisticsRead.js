@@ -34,7 +34,7 @@ const isTransient = error =>
 // The new-day summary must not queue behind all the task-board listeners. This
 // authenticated REST read uses the same security rules and existing Auth session;
 // it does not create a second Firestore client or disable the offline cache.
-export const readUserStatistics = async (db, path, { preferDirect = false } = {}) => {
+export const readUserStatistics = async (db, path, { preferDirect = false, allowCached = true } = {}) => {
     if (!preferDirect) return (await db.doc(path).get()).data() || {}
 
     let failure
@@ -54,6 +54,11 @@ export const readUserStatistics = async (db, path, { preferDirect = false } = {}
             }
         }
     }
+
+    // After day-rate corrections we must verify the new totals at the server.
+    // Falling back to the old cache would falsely mark the refresh as complete.
+    if (!allowCached)
+        throw failure || Object.assign(new Error('Updated statistics could not be verified'), { code: 'unavailable' })
 
     let cached
     try {
