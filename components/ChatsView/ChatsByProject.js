@@ -1,3 +1,4 @@
+import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import React, { useEffect, useState } from 'react'
 import v4 from 'uuid/v4'
 import moment from 'moment'
@@ -117,7 +118,12 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
     }, [toRender, totalChats])
 
     return (isInAllProjects ? isThereChats : true) ? (
-        <View style={checkIfSelectedAllProjects(selectedProjectIndex) && { marginBottom: 25 }}>
+        <ProjectSection
+            projectId={project.id}
+            projectColor={project.color}
+            selected={!isInAllProjects}
+            style={checkIfSelectedAllProjects(selectedProjectIndex) && { marginBottom: 25 }}
+        >
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
@@ -155,65 +161,66 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                 }
                 showRootSectionNavigation={!isInAllProjects}
             />
+            <ProjectSectionBody>
+                <StickyChats stickyChats={sortBy(stickyChats, [item => item.stickyData.days])} project={project} />
 
-            <StickyChats stickyChats={sortBy(stickyChats, [item => item.stickyData.days])} project={project} />
+                <ChatsByDate
+                    project={project}
+                    dateString={'TODAY'}
+                    date={moment()}
+                    data={sortBy(todayChats, [item => -item.lastEditionDate])}
+                />
 
-            <ChatsByDate
-                project={project}
-                dateString={'TODAY'}
-                date={moment()}
-                data={sortBy(todayChats, [item => -item.lastEditionDate])}
-            />
-
-            {Object.keys(rest)
-                .sort((a, b) => b - a)
-                .map(date => {
-                    const timestamp = moment(`${date}`)
-                    const dateString = timestamp.format(getDateFormat())
-                    return (
-                        <ChatsByDate
-                            key={date}
-                            project={project}
-                            dateString={dateString}
-                            date={timestamp}
-                            data={sortBy(rest[date], [item => -item.lastEditionDate])}
+                {Object.keys(rest)
+                    .sort((a, b) => b - a)
+                    .map(date => {
+                        const timestamp = moment(`${date}`)
+                        const dateString = timestamp.format(getDateFormat())
+                        return (
+                            <ChatsByDate
+                                key={date}
+                                project={project}
+                                dateString={dateString}
+                                date={timestamp}
+                                data={sortBy(rest[date], [item => -item.lastEditionDate])}
+                            />
+                        )
+                    })}
+                {loadingMoreChats && <ChatsListSkeleton rowCount={resolveGhostRowCount(CHATS_PAGE_SIZE)} />}
+                <View style={localStyles.container}>
+                    {totalVisibleChats > toRender && isThereChats && (
+                        <ShowMoreButton
+                            expanded={false}
+                            expand={expandChat}
+                            style={[localStyles.showMore, { marginRight: 16 }]}
+                            loading={loadingMoreChats}
                         />
-                    )
-                })}
-            {loadingMoreChats && <ChatsListSkeleton rowCount={resolveGhostRowCount(CHATS_PAGE_SIZE)} />}
-            <View style={localStyles.container}>
-                {totalVisibleChats > toRender && isThereChats && (
-                    <ShowMoreButton
-                        expanded={false}
-                        expand={expandChat}
-                        style={[localStyles.showMore, { marginRight: 16 }]}
-                        loading={loadingMoreChats}
-                    />
-                )}
+                    )}
 
-                {(unreadOnly || toRender <= totalVisibleChats) &&
-                    expanded &&
-                    toRender > initialToRender &&
-                    isThereChats && (
+                    {(unreadOnly || toRender <= totalVisibleChats) &&
+                        expanded &&
+                        toRender > initialToRender &&
+                        isThereChats && (
+                            <ShowMoreButton
+                                expanded={true}
+                                contract={contractChat}
+                                style={localStyles.showMore}
+                                check={'toRender'}
+                            />
+                        )}
+
+                    {/* Only offer to collapse when the list actually grew past its first page. */}
+                    {!unreadOnly && atEnd && isThereChats && toRender > initialToRender && (
                         <ShowMoreButton
                             expanded={true}
                             contract={contractChat}
                             style={localStyles.showMore}
-                            check={'toRender'}
+                            check={'atEnd'}
                         />
                     )}
-
-                {/* Only offer to collapse when the list actually grew past its first page. */}
-                {!unreadOnly && atEnd && isThereChats && toRender > initialToRender && (
-                    <ShowMoreButton
-                        expanded={true}
-                        contract={contractChat}
-                        style={localStyles.showMore}
-                        check={'atEnd'}
-                    />
-                )}
-            </View>
-        </View>
+                </View>
+            </ProjectSectionBody>
+        </ProjectSection>
     ) : null
 }
 

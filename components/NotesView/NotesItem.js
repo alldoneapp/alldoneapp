@@ -1,3 +1,4 @@
+import { useTaskHierarchyBackground } from '../TaskListView/TaskHierarchy'
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Icon from '../Icon'
@@ -68,7 +69,8 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
             : null
     const contactPhotoURL = contact ? ContactsHelper.getContactPhotoURL(contact, false) : null
 
-    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
+    const projectBackgroundColor = useTaskHierarchyBackground()
+    const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : projectBackgroundColor
     const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
     const backColor = panColor.interpolate({
         inputRange: [-100, 0, 100],

@@ -1,4 +1,5 @@
 import React from 'react'
+import { useProjectSectionAccent } from '../TaskHierarchy'
 import { StyleSheet, Text, View } from 'react-native'
 import moment from 'moment'
 
@@ -17,6 +18,7 @@ export default function DateHeader({
     amountTasks = 0,
     projectId,
 }) {
+    const accentColor = useProjectSectionAccent()
     const weekdays = [
         translate('Monday'),
         translate('Tuesday'),
@@ -48,7 +50,13 @@ export default function DateHeader({
                 isOverdue && localStyles.overdueContainer,
             ]}
         >
-            <View style={[localStyles.innerContainer, isOverdue && localStyles.overdueIContainer]}>
+            <View
+                style={[
+                    localStyles.innerContainer,
+                    isOverdue && localStyles.overdueIContainer,
+                    accentColor && { backgroundColor: accentColor },
+                ]}
+            >
                 <View style={{ flex: 1, justifyContent: 'flex-start', flexDirection: 'row' }}>
                     <Text style={[styles.overline, isOverdue ? localStyles.overdueText : localStyles.dateText]}>
                         {text}
@@ -88,7 +96,7 @@ const localStyles = StyleSheet.create({
     dateText: {
         color: colors.Text02,
         zIndex: 1,
-        paddingLeft: 12,
+        paddingLeft: 8,
     },
     overdueText: {
         ...styles.body3,

@@ -36,7 +36,7 @@ export default function PendingTasksViewAllProjects({ workflowTasksAmount }) {
                     mobile ? localStyles.containerForMobile : isMiddleScreen && localStyles.containerForTablet,
                 ]}
             >
-                <AllProjectsLine />
+                <AllProjectsLine bottomSpacing={8} />
                 <AllProjectsAssistantLine />
                 {sortedProjects.map(project => (
                     <PendingTasksByProject key={project.id} project={project} />

@@ -50,7 +50,7 @@ export default function GoalItem({
             defaultComponent={
                 <GoalItemPresentation
                     hierarchyBackgroundColor={hierarchyBackgroundColor}
-                    inHierarchyCard={taskHierarchy && (inParentGoal || isEmptyGoal)}
+                    inHierarchyCard={taskHierarchy}
                     projectId={projectId}
                     onPress={openEditionMode}
                     goal={goal}

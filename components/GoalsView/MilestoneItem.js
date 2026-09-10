@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet } from 'react-native'
+import { TaskHierarchyGroup, useProjectSectionBorder } from '../TaskListView/TaskHierarchy'
 
 import DismissibleItem from '../UIComponents/DismissibleItem'
 import EditMilestone from './EditMilestone'
@@ -24,6 +25,7 @@ export default function MilestoneItem({
     previousMilestoneDate,
     isActiveMilestone,
 }) {
+    const borderColor = useProjectSectionBorder()
     const activeDragGoalMode = useSelector(state => state.activeDragGoalMode === milestone.id)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -101,11 +103,17 @@ export default function MilestoneItem({
 
     return (
         (filtersArray.length === 0 || filteredGoals.length > 0) && (
-            <View style={localStyles.container} pointerEvents={activeDragGoalMode ? 'none' : 'auto'}>
+            <TaskHierarchyGroup
+                bottomSpacing={0}
+                style={localStyles.container}
+                pointerEvents={activeDragGoalMode ? 'none' : 'auto'}
+                borderColor={borderColor}
+            >
                 <DismissibleItem
                     ref={setRef}
                     defaultComponent={
                         <MilestonePresentation
+                            inHierarchyCard
                             projectId={projectId}
                             onPress={openEditionMode}
                             milestone={milestone}
@@ -159,7 +167,7 @@ export default function MilestoneItem({
                         inDone={milestone.done}
                     />
                 )}
-            </View>
+            </TaskHierarchyGroup>
         )
     )
 }

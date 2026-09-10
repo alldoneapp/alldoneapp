@@ -187,6 +187,7 @@ const Colors = {
     Marker_PrimaryBlue_03: '#D6EBFF',
     Marker_PrimaryBlue_04: '#EBF5FF',
     Marker_PrimaryBlue_05: '#F5FAFF',
+    Marker_PrimaryBlue_06: '#F8FCFF',
     Marker_PrimaryBlue_Dark: '#002952',
     Marker_PrimaryBlue_Low: '#AFD4F9',
 
@@ -196,6 +197,7 @@ const Colors = {
     Marker_Blue_03: '#DEF3F7',
     Marker_Blue_04: '#EFF9FB',
     Marker_Blue_05: '#F7FCFD',
+    Marker_Blue_06: '#F9FDFE',
     Marker_Blue_Dark: '#103841',
     Marker_Blue_Low: '#AFECF9',
 
@@ -205,6 +207,7 @@ const Colors = {
     Marker_Red_03: '#F7DEE3',
     Marker_Red_04: '#FBEFF1',
     Marker_Red_05: '#FDF7F8',
+    Marker_Red_06: '#FEF9FA',
     Marker_Red_Dark: '#41101A',
     Marker_Red_Low: '#F9B4C1',
 
@@ -214,6 +217,7 @@ const Colors = {
     Marker_Purple_03: '#F2E6F9',
     Marker_Purple_04: '#F6EFFB',
     Marker_Purple_05: '#FBF7FD',
+    Marker_Purple_06: '#FCF9FE',
     Marker_Purple_Dark: '#2F1041',
     Marker_Purple_Low: '#E4C0F9',
 
@@ -223,6 +227,7 @@ const Colors = {
     Marker_Green_03: '#E2F8ED',
     Marker_Green_04: '#EFFBF5',
     Marker_Green_05: '#F7FDFA',
+    Marker_Green_06: '#F9FEFC',
     Marker_Green_Dark: '#003D1E',
     Marker_Green_Low: '#93F5C3',
 
@@ -232,6 +237,7 @@ const Colors = {
     Marker_Pink_03: '#F7DEEA',
     Marker_Pink_04: '#FBEFF4',
     Marker_Pink_05: '#FDF7FA',
+    Marker_Pink_06: '#FEF9FC',
     Marker_Pink_Dark: '#411027',
     Marker_Pink_Low: '#F9C0DB',
 
@@ -241,6 +247,7 @@ const Colors = {
     Marker_Orange_03: '#F7E6DE',
     Marker_Orange_04: '#FBF3EF',
     Marker_Orange_05: '#FDF9F7',
+    Marker_Orange_06: '#FEFBF9',
     Marker_Orange_Dark: '#412110',
     Marker_Orange_Low: '#F9CDB8',
 
@@ -250,6 +257,7 @@ const Colors = {
     Marker_Yellow_03: '#F3F1CD',
     Marker_Yellow_04: '#F9F8E7',
     Marker_Yellow_05: '#FCFBF3',
+    Marker_Yellow_06: '#FDFCF7',
     Marker_Yellow_Dark: '#413E10',
     Marker_Yellow_Low: '#F3ED9D',
 
@@ -259,6 +267,7 @@ const Colors = {
     Marker_Pelorous_03: '#DEF7F1',
     Marker_Pelorous_04: '#EFFBF8',
     Marker_Pelorous_05: '#F7FDFB',
+    Marker_Pelorous_06: '#F9FEFC',
     Marker_Pelorous_Dark: '#104134',
     Marker_Pelorous_Low: '#97F9DF',
 
@@ -268,6 +277,7 @@ const Colors = {
     Marker_Lime_03: '#F1F7DE',
     Marker_Lime_04: '#F8FBEF',
     Marker_Lime_05: '#FBFDF7',
+    Marker_Lime_06: '#FCFEF9',
     Marker_Lime_Dark: '#354110',
     Marker_Lime_Low: '#DFF997',
 
@@ -277,6 +287,7 @@ const Colors = {
     Marker_Violet_03: '#E0DEF7',
     Marker_Violet_04: '#F0EFFB',
     Marker_Violet_05: '#F7F7FD',
+    Marker_Violet_06: '#F9F9FE',
     Marker_Violet_Dark: '#141041',
     Marker_Violet_Low: '#C5C0F9',
 }

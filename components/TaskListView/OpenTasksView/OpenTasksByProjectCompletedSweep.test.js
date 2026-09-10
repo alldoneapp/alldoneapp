@@ -143,16 +143,19 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
 
     it.each([
         [false, false, true],
-        [true, false, false],
-        [false, true, false],
-    ])('scopes hierarchy to All Projects (selected=%s, assistant=%s)', async (selected, assistant, expected) => {
-        mockInSelectedProject = selected
-        const tree = await render(buildState({ todayIsEmpty: false }), { assistantProfileMode: assistant })
-        expect(tree.root.findByType('OpenTasksByDate').props.taskHierarchy).toBe(expected)
-        expect(countOf(tree, 'OKRSection')).toBe(assistant ? 0 : 1)
-        expect(countOf(tree, 'UpcomingMilestoneRow')).toBe(assistant ? 0 : 1)
-        await act(async () => tree.unmount())
-    })
+        [true, false, true],
+        [false, true, true],
+    ])(
+        'shares hierarchy across project and assistant boards (selected=%s, assistant=%s)',
+        async (selected, assistant, expected) => {
+            mockInSelectedProject = selected
+            const tree = await render(buildState({ todayIsEmpty: false }), { assistantProfileMode: assistant })
+            expect(tree.root.findByType('OpenTasksByDate').props.taskHierarchy).toBe(expected)
+            expect(countOf(tree, 'OKRSection')).toBe(assistant ? 0 : 1)
+            expect(countOf(tree, 'UpcomingMilestoneRow')).toBe(assistant ? 0 : 1)
+            await act(async () => tree.unmount())
+        }
+    )
 
     describe('in All Projects', () => {
         /**

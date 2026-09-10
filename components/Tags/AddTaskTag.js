@@ -1,3 +1,4 @@
+import { taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
 import React, { useEffect, useRef } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
@@ -32,7 +33,7 @@ function AddTaskTag({
     forceShrink,
     expandTaskListIfNeeded,
     primary,
-    headerAction = false,
+    headerAction = true,
     // The empty-inbox call to action (AT-2306) is the same control at a bigger
     // size — sharing the component keeps one popup wiring (popover, float-popup
     // bookkeeping, mention-modal-aware close) instead of a second copy of it.
@@ -102,8 +103,11 @@ function AddTaskTag({
                 // border it overrides, and before `style` so a caller-supplied
                 // override still has the last word (unchanged precedence).
                 primary && large && localStyles.tagLargePrimary,
-                headerAction && localStyles.tagHeaderAction,
-                headerAction && (smallScreenNavigation || forceShrink) && localStyles.tagHeaderActionMobile,
+                headerAction && !large && taskHierarchyStyles.headerAddButton,
+                headerAction &&
+                    !large &&
+                    (smallScreenNavigation || forceShrink) &&
+                    taskHierarchyStyles.headerAddButtonMobile,
                 style,
             ]}
             onPress={handleOpen}
@@ -114,9 +118,9 @@ function AddTaskTag({
         >
             <View style={localStyles.icon}>
                 <Icon
-                    name={headerAction ? 'plus' : 'check-square'}
+                    name={headerAction && !large ? 'plus' : 'check-square'}
                     size={large ? 20 : 16}
-                    color={headerAction || primary ? '#ffffff' : colors.Text03}
+                    color={(headerAction && !large) || primary ? '#ffffff' : colors.Text03}
                 />
             </View>
             {showLabel && (
@@ -127,7 +131,7 @@ function AddTaskTag({
                         primary && localStyles.textPrimary,
                         large && localStyles.textLarge,
                         windowTagStyle(),
-                        headerAction && localStyles.textHeaderAction,
+                        headerAction && !large && taskHierarchyStyles.headerAddText,
                     ]}
                 >
                     {translate('Add task')}
@@ -213,23 +217,6 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Text03,
         paddingHorizontal: 4,
-    },
-    tagHeaderAction: {
-        height: 32,
-        borderRadius: 8,
-        borderWidth: 0,
-        backgroundColor: colors.UtilityBlue200,
-        paddingHorizontal: 10,
-        alignSelf: 'center',
-    },
-    tagHeaderActionMobile: {
-        width: 36,
-        height: 36,
-        paddingHorizontal: 0,
-    },
-    textHeaderAction: {
-        color: '#FFFFFF',
-        marginRight: 0,
     },
     tagPrimary: {
         backgroundColor: colors.UtilityBlue200,

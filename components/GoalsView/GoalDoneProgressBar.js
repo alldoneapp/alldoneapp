@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native'
 import { GOAL_HIGHLIGHT_COLORS_LIGHT_VERSIONS_MAP } from '../../utils/ColorConstants'
 import { sortBy } from 'lodash'
 
-export default function GoalDoneProgressBar({ progressByDoneMilestone, milestoneId, barColor }) {
+export default function GoalDoneProgressBar({ progressByDoneMilestone, milestoneId, barColor, style }) {
     const progressInMilestones = Object.entries(progressByDoneMilestone)
 
     const sortedProgress = sortBy(progressInMilestones, [item => item[1].doneDate])
@@ -26,7 +26,7 @@ export default function GoalDoneProgressBar({ progressByDoneMilestone, milestone
             : 0
 
     return (
-        <View style={[localStyles.container, { width: `${progressInCurrentMilestone}%` }]}>
+        <View style={[localStyles.container, style, { width: `${progressInCurrentMilestone}%` }]}>
             {previusProgress > 0 && (
                 <View
                     style={[

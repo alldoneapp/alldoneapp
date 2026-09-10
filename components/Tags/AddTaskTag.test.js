@@ -7,7 +7,7 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-import { colors, PROJECT_LINE_TAG_HEIGHT, PROJECT_LINE_TAG_MOBILE_WIDTH } from '../styles/global'
+import { colors } from '../styles/global'
 import Icon from '../Icon'
 import AddTaskTag from './AddTaskTag'
 
@@ -95,14 +95,14 @@ describe('AddTaskTag', () => {
             borderColor: colors.UtilityBlue150,
         })
         expect(icon.props.color).toBe('#ffffff')
-        expect(StyleSheet.flatten(label.props.style).color).toBe('#ffffff')
+        expect(StyleSheet.flatten(label.props.style).color.toLowerCase()).toBe('#ffffff')
         expect(button.props.accessibilityRole).toBe('button')
         expect(button.props.accessibilityLabel).toBe('Add task')
     })
 
     // AT-2389: the big All Projects / My Day call to action is the primary
     // action of the screen it lives on, so it takes the app's primary blue
-    // rather than the lighter Search-button tint of the small header pills.
+    // rather than the lighter Search-button tint of the small header buttons.
     it('uses the primary blue for the large call to action', () => {
         const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} large={true} />)
         const button = tree.root.findByType(TouchableOpacity)
@@ -119,7 +119,7 @@ describe('AddTaskTag', () => {
         })
         // White on the primary blue, same as before the recolor.
         expect(icon.props.color).toBe('#ffffff')
-        expect(StyleSheet.flatten(label.props.style).color).toBe('#ffffff')
+        expect(StyleSheet.flatten(label.props.style).color.toLowerCase()).toBe('#ffffff')
         // The recolor must not disturb the large variant's geometry.
         expect(StyleSheet.flatten(button.props.style)).toMatchObject({
             height: 44,
@@ -131,9 +131,9 @@ describe('AddTaskTag', () => {
         expect(button.props.accessibilityLabel).toBe('Add task')
     })
 
-    // The small header pills deliberately match the assistant Search button, so
+    // The small header buttons deliberately match the assistant Search button, so
     // the AT-2389 recolor is scoped to `large` and must not reach them.
-    it('leaves the small primary pill on the Search button tint', () => {
+    it('leaves the small primary button on the Search button tint', () => {
         const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
         const button = tree.root.findByType(TouchableOpacity)
 
@@ -157,8 +157,8 @@ describe('AddTaskTag', () => {
         expect(StyleSheet.flatten(button.props.style).backgroundColor).toBe('rebeccapurple')
     })
 
-    it('keeps the existing neutral treatment by default', () => {
-        const tree = renderer.create(<AddTaskTag projectId="project-1" />)
+    it('retains the neutral variant when explicitly requested', () => {
+        const tree = renderer.create(<AddTaskTag projectId="project-1" headerAction={false} />)
         const button = tree.root.findByType(TouchableOpacity)
         const icon = tree.root.findByType(Icon)
         const label = tree.root.find(node => node.type === Text && node.props.children === 'Add task')
@@ -227,26 +227,20 @@ describe('AddTaskTag', () => {
         expect(tree.root.findByType('RichCreateTaskModal').props.initialTaskName).toBe('https://example.com/shared')
     })
 
-    // The icon-only pill on the project lines IS its own tap target - there is no
-    // label and no padding to press - and a 24x24 box around a 16px icon was too
-    // small to hit reliably with a thumb. It is widened, never made taller: the
-    // header row is hard-capped at 24 (`TagsArea.container`,
-    // `AllProjectsLine.leftContainer`), so height is not an axis we own here.
     describe('icon-only tap target on mobile', () => {
-        it('widens the pill past the icon box while keeping the row height', () => {
+        it('uses a square mobile target larger than its icon', () => {
             mockState({ smallScreenNavigation: true })
 
             const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
             const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
 
-            expect(style.width).toBe(PROJECT_LINE_TAG_MOBILE_WIDTH)
-            expect(style.height).toBe(PROJECT_LINE_TAG_HEIGHT)
+            expect(style.width).toBe(36)
+            expect(style.height).toBe(36)
             // Asserted as literals too, so renaming the tokens out of existence
             // cannot leave both sides `undefined` and still pass.
-            expect(style.width).toBe(40)
-            expect(style.height).toBe(24)
-            // Strictly wider than the icon's own box - the point of the change.
-            expect(style.width).toBeGreaterThan(style.height)
+            expect(style.width).toBe(36)
+            expect(style.height).toBe(36)
+            expect(style.width).toBe(style.height)
         })
 
         it('stays icon-only and keeps its accessible name', () => {
@@ -262,41 +256,41 @@ describe('AddTaskTag', () => {
             expect(button.props.accessibilityRole).toBe('button')
         })
 
-        it('preserves the pill shape and colors it had at 24px', () => {
+        it('preserves the rounded rectangle shape and colors it had at 24px', () => {
             mockState({ smallScreenNavigation: true })
 
             const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
             const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
 
-            expect(style.borderRadius).toBe(50)
-            expect(style.borderWidth).toBe(1)
+            expect(style.borderRadius).toBe(8)
+            expect(style.borderWidth).toBe(0)
             expect(style.justifyContent).toBe('center')
             expect(style.alignItems).toBe('center')
             expect(style.backgroundColor).toBe(colors.UtilityBlue200)
             expect(style.borderColor).toBe(colors.UtilityBlue150)
         })
 
-        it('leaves the labelled desktop pill auto-width', () => {
+        it('leaves the labelled desktop button auto-width', () => {
             mockState({ smallScreenNavigation: false })
 
             const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} />)
             const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
 
-            // No fixed width on desktop: the pill hugs its label as before.
+            // No fixed width on desktop: the button hugs its label as before.
             expect(style.width).toBeUndefined()
-            expect(style.height).toBe(24)
-            expect(style.paddingHorizontal).toBe(4)
+            expect(style.height).toBe(32)
+            expect(style.paddingHorizontal).toBe(10)
             expect(findLabel(tree)).toHaveLength(1)
         })
 
-        it('applies the same widened box to forceShrink on a wide screen', () => {
+        it('applies the same square target to forceShrink on a wide screen', () => {
             mockState({ smallScreenNavigation: false })
 
             const tree = renderer.create(<AddTaskTag projectId="project-1" forceShrink={true} />)
             const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
 
             expect(findLabel(tree)).toHaveLength(0)
-            expect(style.width).toBe(PROJECT_LINE_TAG_MOBILE_WIDTH)
+            expect(style.width).toBe(36)
         })
 
         // The empty-inbox call to action is a different control that happens to

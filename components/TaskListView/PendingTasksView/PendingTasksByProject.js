@@ -1,3 +1,4 @@
+import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { cloneDeep } from 'lodash'
@@ -49,39 +50,46 @@ export default function PendingTasksByProject({ project, inSelectedProject }) {
     }, [JSON.stringify(filtersArray), tasksByDateAndStep])
 
     return filteredTasksByDateAndStep.length > 0 || inSelectedProject ? (
-        <View style={localStyles.container}>
+        <ProjectSection
+            projectId={project.id}
+            projectColor={project.color}
+            selected={inSelectedProject}
+            style={localStyles.container}
+        >
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
                 showWorkflowTag={true}
                 showRootSectionNavigation={inSelectedProject}
             />
-            {showAssistantLine && (
-                <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
-                    <AssistantLine {...assistantLineProps} />
-                </View>
-            )}
-            {filteredTasksByDateAndStep.map((item, index) => {
-                const dateFormated = item[0]
-                const tasksByStep = item[1]
-                const firstDateSection = index === 0
-                const estimation = estimationByDate[dateFormated]
-                const amountTasks = amountOfTasksByDate[dateFormated]
-                return (
-                    <View key={dateFormated}>
-                        <PendingTasksByDate
-                            project={project}
-                            dateFormated={dateFormated}
-                            firstDateSection={firstDateSection}
-                            tasksByStep={tasksByStep}
-                            subtaskByTask={subtaskByTask}
-                            estimation={estimation}
-                            amountTasks={amountTasks}
-                        />
+            <ProjectSectionBody>
+                {showAssistantLine && (
+                    <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
+                        <AssistantLine {...assistantLineProps} />
                     </View>
-                )
-            })}
-        </View>
+                )}
+                {filteredTasksByDateAndStep.map((item, index) => {
+                    const dateFormated = item[0]
+                    const tasksByStep = item[1]
+                    const firstDateSection = index === 0
+                    const estimation = estimationByDate[dateFormated]
+                    const amountTasks = amountOfTasksByDate[dateFormated]
+                    return (
+                        <View key={dateFormated}>
+                            <PendingTasksByDate
+                                project={project}
+                                dateFormated={dateFormated}
+                                firstDateSection={firstDateSection}
+                                tasksByStep={tasksByStep}
+                                subtaskByTask={subtaskByTask}
+                                estimation={estimation}
+                                amountTasks={amountTasks}
+                            />
+                        </View>
+                    )
+                })}
+            </ProjectSectionBody>
+        </ProjectSection>
     ) : null
 }
 
