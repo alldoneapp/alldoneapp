@@ -21,6 +21,7 @@ function MoreButtonWrapper(
         onCloseModal,
         disabled,
         iconSize,
+        iconColor,
         popupAlign,
         popupPosition,
         shortcut = 'M',
@@ -101,6 +102,7 @@ function MoreButtonWrapper(
                         disabled={disabled}
                         shortcut={shortcut}
                         iconSize={iconSize}
+                        iconColor={iconColor}
                     />
                 </AppPopover>
             ) : (
@@ -110,6 +112,7 @@ function MoreButtonWrapper(
                     disabled={disabled}
                     shortcut={shortcut}
                     iconSize={iconSize}
+                    iconColor={iconColor}
                 />
             )}
         </View>

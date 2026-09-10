@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTaskHierarchy } from '../TaskHierarchy'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
@@ -22,6 +23,7 @@ export default function TagsArea({
     showAddGoal,
     setPressedShowMoreMainSection,
 }) {
+    const taskHierarchy = useTaskHierarchy()
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
@@ -37,7 +39,9 @@ export default function TagsArea({
     const isSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
     return (
-        <View style={localStyles.container}>
+        <View
+            style={[localStyles.container, taskHierarchy && { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}
+        >
             {showWorkflow && (
                 <TouchableOpacity
                     style={localStyles.workflowIndicator}
@@ -63,14 +67,23 @@ export default function TagsArea({
                         sourceType={FEED_TASK_OBJECT_TYPE}
                         expandTaskListIfNeeded={true}
                         primary={true}
+                        headerAction={taskHierarchy}
                     />
                     {taskViewToggleSection === 'Open' && (
                         <TaskHeaderMoreButton
                             projectIdOverride={projectId}
                             userId={currentUserId}
-                            wrapperStyle={localStyles.taskMoreWrapper}
-                            buttonStyle={localStyles.taskMoreButton}
+                            wrapperStyle={[
+                                localStyles.taskMoreWrapper,
+                                taskHierarchy && { marginLeft: 6, marginTop: 0 },
+                            ]}
+                            buttonStyle={[
+                                localStyles.taskMoreButton,
+                                taskHierarchy && localStyles.headerMoreButton,
+                                taskHierarchy && mobile && { width: 36, height: 36 },
+                            ]}
                             iconSize={16}
+                            iconColor={taskHierarchy ? colors.Text02 : undefined}
                         />
                     )}
                 </>
@@ -114,6 +127,12 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginLeft: 2,
         marginRight: 4,
+    },
+    headerMoreButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.85)',
     },
     taskMoreWrapper: {
         marginLeft: 2,

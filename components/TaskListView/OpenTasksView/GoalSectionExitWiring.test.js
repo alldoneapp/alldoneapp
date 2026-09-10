@@ -116,6 +116,7 @@ jest.mock('../../../utils/BackendBridge', () => ({
 
 import { AccessibilityInfo, Animated } from 'react-native'
 import ParentGoalSection from './ParentGoalSection'
+import { TaskHierarchyContext } from '../TaskHierarchy'
 import EmptyGoal from './EmptyGoal'
 
 const PROJECT = 'project-1'
@@ -155,22 +156,24 @@ const wrapperOf = tree => tree.root.findAll(node => node.type === Animated.View 
 
 const flatStyleOf = node => Object.assign({}, ...[].concat(node.props.style).filter(Boolean))
 
-const renderSection = async ({ exitRunId = 0, measure = true } = {}) => {
+const renderSection = async ({ exitRunId = 0, measure = true, hierarchy = false } = {}) => {
     let tree
     await act(async () => {
         tree = renderer.create(
-            <ParentGoalSection
-                projectId={PROJECT}
-                dateIndex={0}
-                goalId={GOAL}
-                taskList={[]}
-                taskListIndex={3}
-                instanceKey={'instance-1'}
-                inMainSection={true}
-                goalIndex={0}
-                amountToRender={0}
-                exitRunId={exitRunId}
-            />
+            <TaskHierarchyContext.Provider value={hierarchy}>
+                <ParentGoalSection
+                    projectId={PROJECT}
+                    dateIndex={0}
+                    goalId={GOAL}
+                    taskList={[]}
+                    taskListIndex={3}
+                    instanceKey={'instance-1'}
+                    inMainSection={true}
+                    goalIndex={0}
+                    amountToRender={0}
+                    exitRunId={exitRunId}
+                />
+            </TaskHierarchyContext.Provider>
         )
         await Promise.resolve()
     })
@@ -189,21 +192,23 @@ const renderSection = async ({ exitRunId = 0, measure = true } = {}) => {
     return tree
 }
 
-const startExit = async tree => {
+const startExit = async (tree, hierarchy = false) => {
     await act(async () => {
         tree.update(
-            <ParentGoalSection
-                projectId={PROJECT}
-                dateIndex={0}
-                goalId={GOAL}
-                taskList={[]}
-                taskListIndex={3}
-                instanceKey={'instance-1'}
-                inMainSection={true}
-                goalIndex={0}
-                amountToRender={0}
-                exitRunId={1}
-            />
+            <TaskHierarchyContext.Provider value={hierarchy}>
+                <ParentGoalSection
+                    projectId={PROJECT}
+                    dateIndex={0}
+                    goalId={GOAL}
+                    taskList={[]}
+                    taskListIndex={3}
+                    instanceKey={'instance-1'}
+                    inMainSection={true}
+                    goalIndex={0}
+                    amountToRender={0}
+                    exitRunId={1}
+                />
+            </TaskHierarchyContext.Provider>
         )
         await Promise.resolve()
     })
@@ -244,6 +249,28 @@ describe('a goal section wearing its exit (AT-2507)', () => {
      * interpolations once through `toString()` and then never updates — the section would take the
      * first frame of the exit and freeze there, with every other assertion in this file still green.
      */
+    it('preserves goal progress, tags, and collapse controls inside the hierarchy', async () => {
+        const tree = await renderSection({ hierarchy: true })
+        expect(tree.root.findByType('GoalProgressBar').props.progress).toBe(goalDoc.progress)
+        expect(tree.root.findByType('GoalItemTagsArea').props.goal.id).toBe(GOAL)
+        expect(tree.root.findByType('TasksList').props.projectId).toBe(PROJECT)
+        await act(async () => tree.root.findByType('GoalIndicator').props.toggleTasksList())
+        expect(tree.root.findAllByType('TasksList')).toHaveLength(0)
+        expect(tree.root.findByType('GoalProgressBar').props.progress).toBe(goalDoc.progress)
+        await act(async () => tree.root.findByType('GoalIndicator').props.toggleTasksList())
+        expect(tree.root.findAllByType('TasksList')).toHaveLength(1)
+        await act(async () => tree.unmount())
+    })
+
+    it('keeps hierarchy sections animatable and non-interactive during exit', async () => {
+        const tree = await renderSection({ hierarchy: true })
+        await startExit(tree, true)
+        expect(flatStyleOf(wrapperOf(tree)).pointerEvents).toBe('none')
+        const styles = [].concat(wrapperOf(tree).props.style).filter(Boolean)
+        expect(styles[styles.length - 1].height).toBeDefined()
+        await act(async () => tree.unmount())
+    })
+
     it('is animatable, not a plain View', async () => {
         const tree = await renderSection()
 

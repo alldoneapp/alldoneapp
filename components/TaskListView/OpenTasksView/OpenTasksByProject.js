@@ -29,6 +29,8 @@ import AssistantScheduleDateSection from './OpenTaskViewForAssistants/AssistantS
 import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSchedule'
 import TaskListSkeleton from '../TaskListSkeleton'
 import useProjectCompletedSweep from './useProjectCompletedSweep'
+import { TaskHierarchyContext, TaskHierarchyBackgroundContext, taskHierarchyStyles } from '../TaskHierarchy'
+import { PROJECT_COLOR_DEFAULT, PROJECT_COLOR_SYSTEM } from '../../../Themes/Modern/ProjectColors'
 
 function OpenTasksByProject({
     firstProject,
@@ -42,6 +44,9 @@ function OpenTasksByProject({
     taskWatchersEnabled = true,
 }) {
     const dispatch = useDispatch()
+    const projectColor = useSelector(state => state.loggedUserProjectsMap[projectId]?.color)
+    const projectBackgroundColor = (PROJECT_COLOR_SYSTEM[projectColor] || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT])
+        .PROJECT_ITEM_SECTION
     const projectIndex = useSelector(state => state.loggedUserProjectsMap[projectId]?.index)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -180,83 +185,102 @@ function OpenTasksByProject({
                 taskWatchersEnabled={taskWatchersEnabled}
             />
             {!hideProjectData && (
-                <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
-                    {inSelectedProject && <NeedShowMoreOpenTasksButton projectId={projectId} />}
-                    {!assistantProfileMode && (
-                        <ProjectHeader
-                            projectIndex={projectIndex}
-                            projectId={projectId}
-                            showWorkflowTag={!isAssistant}
-                            showAddTask={!isAssistant}
-                            setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                            showRootSectionNavigation={inSelectedProject}
-                            showEmailLabels={!isAssistant}
-                            completedSweepRunId={celebrationRunId}
-                            /**
-                             * AT-2495 — `baseHideProjectData`, deliberately NOT `hideProjectData`.
-                             * The second one is already false for the whole hold (that is what the
-                             * hold IS), so it can never say "this line is on its way out". The first
-                             * is the board's own verdict, and it is what decides whether the run
-                             * ends by settling in place or by the line disintegrating off the board.
-                             */
-                            completedSweepLineWillLeave={baseHideProjectData}
-                        />
-                    )}
-                    {showAssistantLine && (
-                        <View style={{ marginTop: 0 }}>
-                            <AssistantLine {...assistantLineProps} />
-                        </View>
-                    )}
-                    {inSelectedProject && !isAssistant && <TaskFiltersLine projectId={projectId} />}
-                    {!assistantProfileMode && <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />}
-                    {/* Start the milestone exit while the project is held for its sweep. Its open
+                <TaskHierarchyContext.Provider value={!inSelectedProject && !assistantProfileMode}>
+                    <TaskHierarchyBackgroundContext.Provider value={projectBackgroundColor}>
+                        <View
+                            style={[
+                                { marginBottom: inSelectedProject ? 32 : assistantProfileMode ? 25 : 28 },
+                                !inSelectedProject &&
+                                    !assistantProfileMode && [
+                                        taskHierarchyStyles.project,
+                                        { backgroundColor: projectBackgroundColor },
+                                    ],
+                            ]}
+                        >
+                            {inSelectedProject && <NeedShowMoreOpenTasksButton projectId={projectId} />}
+                            {!assistantProfileMode && (
+                                <ProjectHeader
+                                    projectIndex={projectIndex}
+                                    projectId={projectId}
+                                    showWorkflowTag={!isAssistant}
+                                    showAddTask={!isAssistant}
+                                    setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                                    showRootSectionNavigation={inSelectedProject}
+                                    showEmailLabels={!isAssistant}
+                                    completedSweepRunId={celebrationRunId}
+                                    /**
+                                     * AT-2495 — `baseHideProjectData`, deliberately NOT `hideProjectData`.
+                                     * The second one is already false for the whole hold (that is what the
+                                     * hold IS), so it can never say "this line is on its way out". The first
+                                     * is the board's own verdict, and it is what decides whether the run
+                                     * ends by settling in place or by the line disintegrating off the board.
+                                     */
+                                    completedSweepLineWillLeave={baseHideProjectData}
+                                />
+                            )}
+                            <View
+                                style={!inSelectedProject && !assistantProfileMode && [taskHierarchyStyles.projectBody]}
+                            >
+                                {showAssistantLine && (
+                                    <View style={{ marginTop: 0 }}>
+                                        <AssistantLine {...assistantLineProps} />
+                                    </View>
+                                )}
+                                {inSelectedProject && !isAssistant && <TaskFiltersLine projectId={projectId} />}
+                                {!assistantProfileMode && (
+                                    <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
+                                )}
+                                {/* Start the milestone exit while the project is held for its sweep. Its open
                         data may stay unchanged when only today's tasks have been cleared. */}
-                    {!assistantProfileMode && (
-                        <UpcomingMilestoneRow projectId={projectId} hidden={baseHideProjectData} />
-                    )}
-                    {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
-                    {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
-                    {assistantProfileTimelineDates.map((timelineDate, timelineIndex) => {
-                        return timelineDate.dateIndex !== null ? (
-                            <OpenTasksByDate
-                                key={timelineDate.dateKey}
-                                projectId={projectId}
-                                projectIndex={projectIndex}
-                                dateIndex={timelineDate.dateIndex}
-                                instanceKey={instanceKey}
-                                sortedLoggedUserProjectIds={sortedLoggedUserProjectIds}
-                                setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
-                                pressedShowMoreMainSection={pressedShowMoreMainSection}
-                                setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                                assistantProfileMode={assistantProfileMode}
-                                assistantScheduleOccurrences={timelineDate.occurrences}
-                                assistantScheduleContext={assistantScheduleContext}
-                                projectCelebrationRunId={celebrationRunId}
-                                assistantTaskCreatorContext={
-                                    assistantProfileMode && timelineDate.dateKey === TODAY_DATE
-                                        ? assistantTaskCreatorContext
-                                        : null
-                                }
-                            />
-                        ) : (
-                            <AssistantScheduleDateSection
-                                key={timelineDate.dateKey}
-                                projectId={projectId}
-                                dateKey={timelineDate.dateKey}
-                                occurrences={timelineDate.occurrences}
-                                firstDateSection={timelineIndex === 0}
-                                {...assistantScheduleContext}
-                            />
-                        )
-                    })}
-                    {inSelectedProject && (
-                        <BottomShowMoreButtonContainer
-                            instanceKey={instanceKey}
-                            projectIndex={projectIndex}
-                            setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
-                        />
-                    )}
-                </View>
+                                {!assistantProfileMode && (
+                                    <UpcomingMilestoneRow projectId={projectId} hidden={baseHideProjectData} />
+                                )}
+                                {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
+                                {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
+                                {assistantProfileTimelineDates.map((timelineDate, timelineIndex) => {
+                                    return timelineDate.dateIndex !== null ? (
+                                        <OpenTasksByDate
+                                            key={timelineDate.dateKey}
+                                            projectId={projectId}
+                                            projectIndex={projectIndex}
+                                            dateIndex={timelineDate.dateIndex}
+                                            instanceKey={instanceKey}
+                                            sortedLoggedUserProjectIds={sortedLoggedUserProjectIds}
+                                            setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
+                                            pressedShowMoreMainSection={pressedShowMoreMainSection}
+                                            setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                                            assistantProfileMode={assistantProfileMode}
+                                            assistantScheduleOccurrences={timelineDate.occurrences}
+                                            assistantScheduleContext={assistantScheduleContext}
+                                            projectCelebrationRunId={celebrationRunId}
+                                            assistantTaskCreatorContext={
+                                                assistantProfileMode && timelineDate.dateKey === TODAY_DATE
+                                                    ? assistantTaskCreatorContext
+                                                    : null
+                                            }
+                                        />
+                                    ) : (
+                                        <AssistantScheduleDateSection
+                                            key={timelineDate.dateKey}
+                                            projectId={projectId}
+                                            dateKey={timelineDate.dateKey}
+                                            occurrences={timelineDate.occurrences}
+                                            firstDateSection={timelineIndex === 0}
+                                            {...assistantScheduleContext}
+                                        />
+                                    )
+                                })}
+                                {inSelectedProject && (
+                                    <BottomShowMoreButtonContainer
+                                        instanceKey={instanceKey}
+                                        projectIndex={projectIndex}
+                                        setProjectsHaveTasksInFirstDay={setProjectsHaveTasksInFirstDay}
+                                    />
+                                )}
+                            </View>
+                        </View>
+                    </TaskHierarchyBackgroundContext.Provider>
+                </TaskHierarchyContext.Provider>
             )}
         </>
     )

@@ -1,6 +1,7 @@
 import React from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
+import { TaskHierarchyGroup } from '../TaskHierarchy'
 
 import styles, { colors } from '../../styles/global'
 import Avatar from '../../Avatar'
@@ -142,7 +143,7 @@ export default function ObservedFromSection({
                 const isLastIndex = sortedObservedTasks.length - 1 === index
                 const goalIndex = taskByGoalsList.findIndex(data => data[0] === goalId)
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
-                    <View>
+                    <TaskHierarchyGroup>
                         {showGneralTasksHeader && (
                             <SwipeableGeneralTasksHeader
                                 projectId={projectId}
@@ -163,7 +164,7 @@ export default function ObservedFromSection({
                             goalIndex={goalIndex}
                             instanceKey={instanceKey}
                         />
-                    </View>
+                    </TaskHierarchyGroup>
                 ) : (
                     <ParentGoalSection
                         key={goalId}

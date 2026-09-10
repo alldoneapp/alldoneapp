@@ -13,6 +13,7 @@ import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/Lock
 import GoalIndicator from '../GoalIndicator'
 import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
 import useGoalSectionExitMotion from './goalSectionExitMotion'
+import { useTaskHierarchy, taskHierarchyStyles, TaskHierarchyGoalOutline } from '../TaskHierarchy'
 
 export default function ParentGoalSection({
     projectId,
@@ -35,6 +36,7 @@ export default function ParentGoalSection({
     focusedTaskId,
     exitRunId = 0,
 }) {
+    const taskHierarchy = useTaskHierarchy()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -112,6 +114,8 @@ export default function ParentGoalSection({
             onLayout={onSectionLayout}
             style={[
                 containerStyle,
+                taskHierarchy && taskHierarchyStyles.group,
+                taskHierarchy && taskHierarchyStyles.goalGroup,
                 isLocked &&
                     showingTasks &&
                     !isAnonymous && { minHeight: (smallScreenNavigation ? 332 : 258) + (editing ? 168 : 86) },
@@ -203,6 +207,7 @@ export default function ParentGoalSection({
                     date={goal.assigneesReminderDate[currentUserId]}
                 />
             ) : null}
+            <TaskHierarchyGoalOutline />
         </Animated.View>
     )
 }

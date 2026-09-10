@@ -1,3 +1,4 @@
+import { useTaskHierarchy } from '../TaskHierarchy'
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import moment from 'moment'
@@ -19,6 +20,7 @@ import {
 } from '../../../utils/backends/openTasks'
 
 export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex, additionalTasksAmount = 0 }) {
+    const taskHierarchy = useTaskHierarchy()
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const amountTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][AMOUNT_TASKS_INDEX])
     const estimation = useSelector(
@@ -80,7 +82,14 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex,
                             <Icon name={'layers'} size={16} color={colors.Text02} />
                         </View>
                     )}
-                    <Text style={[styles.overline, localStyles.dateText, inBacklog && localStyles.textBacklog]}>
+                    <Text
+                        style={[
+                            styles.overline,
+                            localStyles.dateText,
+                            taskHierarchy && { paddingLeft: 8 },
+                            inBacklog && localStyles.textBacklog,
+                        ]}
+                    >
                         {text}
                     </Text>
                 </View>

@@ -27,7 +27,7 @@ import { getSafeAreaViewportHeightCap } from '../../../utils/modalSafeArea'
 import { pinPopoverInsideWindow } from '../../../utils/popoverPositioning'
 import { HEADER_POPOVER_HEIGHT_FRACTION, HEADER_POPOVER_OFFSET } from '../../styles/modals'
 
-function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isOpen }) {
+function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isOpen, textColor }) {
     const [, windowHeight] = useWindowSize()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const project = useSelector(state => state.loggedUserProjects[projectIndex])
@@ -109,10 +109,16 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
                     size={16}
                     color={project.color}
                     isGuide={!!project.parentTemplateId}
-                    containerStyle={{ marginHorizontal: 4 }}
+                    containerStyle={{
+                        marginHorizontal: 4,
+                        ...(textColor && { backgroundColor: '#FFFFFF', borderRadius: 10 }),
+                    }}
                     projectId={project.id}
                 />
-                <Text style={[styles.subtitle1, localStyles.projectName]} numberOfLines={1}>
+                <Text
+                    style={[styles.subtitle1, localStyles.projectName, textColor && { color: textColor }]}
+                    numberOfLines={1}
+                >
                     {project.name}
                 </Text>
                 {badge}

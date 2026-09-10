@@ -31,6 +31,7 @@ export default function TaskHeaderMoreButton({
     disabled,
     shortcut = 'M',
     iconSize,
+    iconColor,
 }) {
     const selectedProjectId = useSelector(state => {
         const { selectedProjectIndex, loggedUserProjects } = state
@@ -291,6 +292,7 @@ export default function TaskHeaderMoreButton({
             shortcut={shortcut}
             wrapperStyle={wrapperStyle}
             iconSize={iconSize}
+            iconColor={iconColor}
             onCloseModal={onCloseMainModal}
             customModal={
                 showAddOKR ? (

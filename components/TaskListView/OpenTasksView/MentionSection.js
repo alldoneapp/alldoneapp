@@ -1,6 +1,7 @@
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSelector } from 'react-redux'
+import { TaskHierarchyGroup } from '../TaskHierarchy'
 
 import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
@@ -53,7 +54,7 @@ export default function MentionSection({ projectId, dateIndex, instanceKey, isAc
                 const isLastIndex = sortedMentionTasks.length - 1 === index
                 const goalIndex = mentionTasks.findIndex(data => data[0] === goalId)
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
-                    <View key={goalId}>
+                    <TaskHierarchyGroup key={goalId}>
                         {showGneralTasksHeader && (
                             <SwipeableGeneralTasksHeader
                                 projectId={projectId}
@@ -73,7 +74,7 @@ export default function MentionSection({ projectId, dateIndex, instanceKey, isAc
                             goalIndex={goalIndex}
                             instanceKey={instanceKey}
                         />
-                    </View>
+                    </TaskHierarchyGroup>
                 ) : (
                     <ParentGoalSection
                         key={goalId}

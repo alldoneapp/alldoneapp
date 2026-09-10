@@ -8,6 +8,7 @@ import TasksList from './TasksList'
 import { translate } from '../../../i18n/TranslationService'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
+import { TaskHierarchyGroup } from '../TaskHierarchy'
 
 export default function OriginallyFromSection({
     projectId,
@@ -63,7 +64,7 @@ export default function OriginallyFromSection({
                 const isLastIndex = sortedWorkflowTasks.length - 1 === index
                 const goalIndex = taskByGoalsList.findIndex(data => data[0] === goalId)
                 return goalId === NOT_PARENT_GOAL_INDEX ? (
-                    <View key={goalId}>
+                    <TaskHierarchyGroup key={goalId}>
                         {showGneralTasksHeader && (
                             <SwipeableGeneralTasksHeader
                                 projectId={projectId}
@@ -83,7 +84,7 @@ export default function OriginallyFromSection({
                             goalIndex={goalIndex}
                             instanceKey={instanceKey}
                         />
-                    </View>
+                    </TaskHierarchyGroup>
                 ) : (
                     <ParentGoalSection
                         key={goalId}
