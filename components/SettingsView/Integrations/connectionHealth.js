@@ -32,6 +32,17 @@ export function countBrokenConnections(loggedUser = {}) {
     return listBrokenConnections(loggedUser).length
 }
 
+// Subscription credentials live in the user's private settings document, so they arrive
+// through getVmSubscriptionStatus rather than loggedUser. Only count a rejected login when
+// subscription mode is active; a saved but inactive login must not badge a user who chose
+// BYOK or Alldone Gold instead.
+export function countBrokenVmSubscriptions(status = {}) {
+    return ['claude', 'codex'].filter(provider => {
+        const connection = status?.[provider]
+        return connection?.connected && connection?.activeMode === 'subscription' && connection?.authInvalid === true
+    }).length
+}
+
 // What actually stopped working, so the card explains the consequence rather than just
 // naming the failure. Returns a translation key.
 export function getBreakageConsequenceKey(service) {
