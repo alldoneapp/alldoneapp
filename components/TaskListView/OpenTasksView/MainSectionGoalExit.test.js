@@ -2,6 +2,10 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { AccessibilityInfo } from 'react-native'
 
+jest.mock('../TaskHierarchy', () => ({
+    TaskHierarchyGroup: ({ children }) => children,
+}))
+
 /**
  * AT-2521 — the rule for WHEN a goal leaves today's list, and the exit it plays when it does,
  * asserted on the board rather than on a hook.
@@ -31,6 +35,7 @@ jest.mock('./ParentGoalSection', () => 'ParentGoalSection')
 jest.mock('./EmptyGoal', () => 'EmptyGoal')
 jest.mock('./TasksList', () => 'TasksList')
 jest.mock('./NewTaskSection', () => 'NewTaskSection')
+jest.mock('./GeneralTaskSectionEntry', () => 'GeneralTaskSectionEntry')
 jest.mock('./GeneralTasksHeader', () => 'GeneralTasksHeader')
 jest.mock('./SwipeableGeneralTasksHeader', () => 'SwipeableGeneralTasksHeader')
 jest.mock('../../GoalsView/SortModeActiveInfo', () => 'SortModeActiveInfo')
@@ -53,6 +58,15 @@ jest.mock('../../../utils/SharedHelper', () => ({
 }))
 jest.mock('../../../utils/backends/Goals/goalsFirestore', () => ({ getGoalData: jest.fn(), watchGoal: jest.fn() }))
 jest.mock('../../../utils/backends/firestore', () => ({ unwatch: jest.fn() }))
+jest.mock('../../../utils/BackendBridge', () => ({ __esModule: true, default: {} }))
+jest.mock('../../Workstreams/WorkstreamHelper', () => ({
+    DEFAULT_WORKSTREAM_ID: 'default',
+    WORKSTREAM_ID_PREFIX: 'ws:',
+}))
+jest.mock('../../../utils/EstimationHelper', () => ({
+    ESTIMATION_0_MIN: 0,
+    getEstimationRealValue: () => 0,
+}))
 jest.mock('../Utils/TasksHelper', () => ({
     __esModule: true,
     default: {},
@@ -214,6 +228,7 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
 
     const sectionsOf = tree => tree.root.findAllByType('ParentGoalSection').map(node => node.props)
     const emptyGoalsOf = tree => tree.root.findAllByType('EmptyGoal').map(node => node.props)
+    const generalEntriesOf = tree => tree.root.findAllByType('GeneralTaskSectionEntry').map(node => node.props)
 
     describe('a goal shown ONLY because one of its tasks is due today', () => {
         const withTask = { mainTasks: [[TASK_ONLY_GOAL, [task('t1')]]], emptyGoals: [] }
@@ -243,6 +258,40 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
             expect(held[0].taskList).toEqual([])
         })
 
+        it('starts revealing the general add-task row while that final goal is collapsing', async () => {
+            const tree = await mount(withTask)
+
+            await complete('t1', TASK_ONLY_GOAL)
+            await update(tree, { mainTasks: [], emptyGoals: [] })
+
+            const entries = generalEntriesOf(tree)
+            expect(entries).toHaveLength(1)
+            expect(entries[0].entryRunId).toBeGreaterThan(0)
+            const creators = tree.root.findAllByType('NewTaskSection')
+            expect(creators).toHaveLength(1)
+            expect(creators[0].props.suspendShortcut).toBe(true)
+        })
+
+        it('does not reveal a general creator while another goal section remains', async () => {
+            const tree = await mount({
+                mainTasks: [
+                    [TASK_ONLY_GOAL, [task('t1')]],
+                    [REMINDER_GOAL, [task('t2')]],
+                ],
+                emptyGoals: [],
+            })
+
+            await complete('t1', TASK_ONLY_GOAL)
+            await update(tree, { mainTasks: [[REMINDER_GOAL, [task('t2')]]], emptyGoals: [] })
+
+            expect(
+                sectionsOf(tree)
+                    .map(props => props.goalId)
+                    .sort()
+            ).toEqual([TASK_ONLY_GOAL, REMINDER_GOAL].sort())
+            expect(generalEntriesOf(tree)).toHaveLength(0)
+        })
+
         it('is finally gone once the exit has played', async () => {
             const tree = await mount(withTask)
             await complete('t1', TASK_ONLY_GOAL)
@@ -261,6 +310,8 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
             await update(tree, { mainTasks: [], emptyGoals: [] })
 
             expect(sectionsOf(tree)).toHaveLength(0)
+            expect(generalEntriesOf(tree)).toHaveLength(1)
+            expect(generalEntriesOf(tree)[0].entryRunId).toBe(0)
         })
     })
 
@@ -304,6 +355,8 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
             expect(rows[0].exitRunId).toBeGreaterThan(0)
             // Held where it already was, so the mounted and measured row is the one that animates.
             expect(sectionsOf(tree)).toHaveLength(0)
+            expect(generalEntriesOf(tree)).toHaveLength(1)
+            expect(generalEntriesOf(tree)[0].entryRunId).toBeGreaterThan(0)
         })
 
         it('is finally gone once that exit has played', async () => {
