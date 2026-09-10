@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react'
 import { View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import { setDomAttributes } from '../../../utils/setDomAttributes'
+import { useTaskHierarchy, taskHierarchyStyles } from '../TaskHierarchy'
 
 import DismissibleItem from '../../UIComponents/DismissibleItem'
 import TaskPresentation from '../TaskItem/TaskPresentation/TaskPresentation'
@@ -27,6 +28,7 @@ export default function SubTasksView({
     isPending,
     createSubtaskRequest,
 }) {
+    const taskHierarchy = useTaskHierarchy()
     const dispatch = useDispatch()
     const checkTaskItem = useSelector(state => state.checkTaskItem)
     const focusedTaskItem = useSelector(state => state.focusedTaskItem)
@@ -119,7 +121,7 @@ export default function SubTasksView({
         loggedUserIsParentTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
     return (
-        <View style={{ marginLeft: 34 }}>
+        <View style={taskHierarchy ? taskHierarchyStyles.subtasks : { marginLeft: 34 }}>
             {renderedSubtaskList.length > 0
                 ? isActiveOrganizeMode
                     ? renderedSubtaskList.map(subTask => {

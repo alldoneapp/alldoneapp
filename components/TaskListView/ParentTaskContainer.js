@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { setDomAttributes } from '../../utils/setDomAttributes'
 
 import SubTasksView from './Subtask/SubTasksView'
+import { useTaskHierarchy, taskHierarchyStyles } from './TaskHierarchy'
 import { setFocusedTaskItem, unsetUploadedNewSubtask } from '../../redux/actions'
 import TaskIndicator from './TaskIndicator'
 import TaskItem from './TaskItem'
@@ -28,6 +29,7 @@ export default function ParentTaskContainer({
     isPending,
 }) {
     const dispatch = useDispatch()
+    const taskHierarchy = useTaskHierarchy()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const isFocusedTaskItem = useSelector(state => state.focusedTaskItem.id === task.id)
@@ -110,7 +112,10 @@ export default function ParentTaskContainer({
         loggedUserIsTaskOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
     return (
-        <View ref={parentRef} style={containerStyle}>
+        <View
+            ref={parentRef}
+            style={[containerStyle, taskHierarchy && showSubTaskList && taskHierarchyStyles.taskFamily]}
+        >
             {(loggedUserCanUpdateObject || subtaskList.length > 0) &&
             !isMiddleScreen &&
             (subtaskList.length > 0 || showSubTaskIndicator) &&

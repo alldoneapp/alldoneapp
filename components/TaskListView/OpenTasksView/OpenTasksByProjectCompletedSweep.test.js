@@ -22,7 +22,11 @@ jest.mock('react-redux', () => ({
 }))
 jest.mock('uuid/v4', () => () => 'watcher-key')
 jest.mock('../Header/ProjectHeader', () => 'ProjectHeader')
-jest.mock('./OpenTasksByDate', () => 'OpenTasksByDate')
+jest.mock('./OpenTasksByDate', () => {
+    const React = require('react')
+    const { useTaskHierarchy } = require('../TaskHierarchy')
+    return props => React.createElement('OpenTasksByDate', { ...props, taskHierarchy: useTaskHierarchy() })
+})
 jest.mock('./OpenTasksByProjectHandler', () => 'OpenTasksByProjectHandler')
 jest.mock('./NeedShowMoreOpenTasksButton', () => 'NeedShowMoreOpenTasksButton')
 jest.mock('./BottomShowMoreButtonContainer', () => 'BottomShowMoreButtonContainer')
@@ -119,11 +123,13 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
         process.env.NODE_ENV = originalNodeEnv
     })
 
-    const render = async state => {
+    const render = async (state, props = {}) => {
         mockState = state
         let tree
         await act(async () => {
-            tree = renderer.create(<OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} />)
+            tree = renderer.create(
+                <OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} {...props} />
+            )
         })
         return tree
     }
@@ -134,6 +140,19 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
             tree.update(<OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} />)
         })
     }
+
+    it.each([
+        [false, false, true],
+        [true, false, false],
+        [false, true, false],
+    ])('scopes hierarchy to All Projects (selected=%s, assistant=%s)', async (selected, assistant, expected) => {
+        mockInSelectedProject = selected
+        const tree = await render(buildState({ todayIsEmpty: false }), { assistantProfileMode: assistant })
+        expect(tree.root.findByType('OpenTasksByDate').props.taskHierarchy).toBe(expected)
+        expect(countOf(tree, 'OKRSection')).toBe(assistant ? 0 : 1)
+        expect(countOf(tree, 'UpcomingMilestoneRow')).toBe(assistant ? 0 : 1)
+        await act(async () => tree.unmount())
+    })
 
     describe('in All Projects', () => {
         /**

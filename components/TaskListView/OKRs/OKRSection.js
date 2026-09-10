@@ -12,8 +12,10 @@ import { translate } from '../../../i18n/TranslationService'
 import { clearUserOKRsHiddenInAllProjectsToday } from '../../../utils/backends/Users/usersFirestore'
 import OKRItem, { OKREmptyItem } from './OKRItem'
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from './okrHelper'
+import { useTaskHierarchy } from '../TaskHierarchy'
 
 export default function OKRSection({ projectId, inAllProjects }) {
+    const taskHierarchy = useTaskHierarchy()
     const okrs = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -44,7 +46,7 @@ export default function OKRSection({ projectId, inAllProjects }) {
     if (okrs.length === 0 || okrsToShow.length === 0) return null
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, taskHierarchy && localStyles.hierarchyContainer]}>
             <View style={localStyles.header}>
                 <View style={localStyles.headerLeft}>
                     <Text style={[styles.caption1, localStyles.headerText]}>{translate('OKRs')}</Text>
@@ -95,6 +97,9 @@ export default function OKRSection({ projectId, inAllProjects }) {
 const localStyles = StyleSheet.create({
     container: {
         paddingTop: 12,
+    },
+    hierarchyContainer: {
+        paddingHorizontal: 8,
     },
     header: {
         height: 24,

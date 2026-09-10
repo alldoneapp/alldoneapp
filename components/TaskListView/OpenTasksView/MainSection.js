@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
+import { TaskHierarchyGroup } from '../TaskHierarchy'
 
 import {
     DATE_TASK_INDEX,
@@ -515,7 +516,10 @@ export default function MainSection({
                     const goalIndex = mainTasks.findIndex(data => data[0] === NOT_PARENT_GOAL_INDEX)
 
                     return (
-                        <View key={goalId} style={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}>
+                        <TaskHierarchyGroup
+                            key={goalId}
+                            style={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}
+                        >
                             {/* Render header only if other goals exist */}
                             {hasGoals && (
                                 <SwipeableGeneralTasksHeader
@@ -574,7 +578,7 @@ export default function MainSection({
                                         focusedTaskId={effectiveFocusTaskId}
                                     />
                                 ))}
-                        </View>
+                        </TaskHierarchyGroup>
                     )
                 } else {
                     // --- Render Parent Goal Section ---

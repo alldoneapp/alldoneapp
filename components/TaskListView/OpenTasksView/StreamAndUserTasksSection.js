@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { TaskHierarchyGroup } from '../TaskHierarchy'
 
 import TasksHelper from '../Utils/TasksHelper'
 import {
@@ -158,7 +159,7 @@ export default function StreamAndUserTasksSection({
                 const goalIndex = taskByGoalsList.findIndex(data => data[0] === goalId)
                 return needToRender ? (
                     goalId === NOT_PARENT_GOAL_INDEX ? (
-                        <View key={goalId}>
+                        <TaskHierarchyGroup key={goalId}>
                             {showGneralTasksHeader && (
                                 <SwipeableGeneralTasksHeader
                                     projectId={projectId}
@@ -178,7 +179,7 @@ export default function StreamAndUserTasksSection({
                                 amountToRender={amountToRender}
                                 instanceKey={instanceKey}
                             />
-                        </View>
+                        </TaskHierarchyGroup>
                     ) : (
                         <ParentGoalSection
                             key={goalId}

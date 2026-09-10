@@ -1,3 +1,4 @@
+import { useTaskHierarchy } from '../TaskHierarchy'
 import React, { useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
@@ -48,6 +49,7 @@ function getPaceColor(status) {
 }
 
 export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hiddenInAllProjectsToday }) {
+    const taskHierarchy = useTaskHierarchy()
     const [isOpen, setIsOpen] = useState(false)
     const [incrementing, setIncrementing] = useState(false)
     const celebration = useRef(new Animated.Value(0)).current
@@ -119,7 +121,12 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
 
     const trigger = (
         <TouchableOpacity
-            style={[localStyles.container, mobile && localStyles.containerMobile, !canUpdate && localStyles.disabled]}
+            style={[
+                localStyles.container,
+                mobile && localStyles.containerMobile,
+                taskHierarchy && { paddingLeft: 8 },
+                !canUpdate && localStyles.disabled,
+            ]}
             onPress={() => canUpdate && setIsOpen(true)}
             disabled={!canUpdate}
         >

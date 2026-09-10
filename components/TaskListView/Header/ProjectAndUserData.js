@@ -10,7 +10,14 @@ import NotificationBubble from './NotificationBubble'
 import ProjectEmailLabelChips from '../EmailLine/ProjectEmailLabelChips'
 import useShowNewCommentsBubbleInBoard from '../../../hooks/Chats/useShowNewCommentsBubbleInBoard'
 
-export default function ProjectAndUserData({ projectIndex, projectId, badge, userInHeader, showEmailLabels = false }) {
+export default function ProjectAndUserData({
+    projectIndex,
+    projectId,
+    badge,
+    userInHeader,
+    showEmailLabels = false,
+    headerTextColor,
+}) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const { showFollowedBubble, showUnfollowedBubble, totalFollowed, totalUnfollowed } =
         useShowNewCommentsBubbleInBoard(projectId)
@@ -25,13 +32,23 @@ export default function ProjectAndUserData({ projectIndex, projectId, badge, use
     return (
         <View ref={subContainer} onLayout={calcTitleWidth} style={localStyles.subContainer}>
             <View style={[localStyles.titleSubContainer, { maxWidth: titleWidth }]}>
-                <ProjectLine badge={badge} projectIndex={projectIndex} user={userInHeader} />
+                <ProjectLine
+                    badge={badge}
+                    projectIndex={projectIndex}
+                    user={userInHeader}
+                    textColor={headerTextColor}
+                />
 
                 {(userInHeader.displayName !== undefined || userInHeader.photoURL !== undefined) && (
-                    <View style={localStyles.dotSeparator} />
+                    <View style={[localStyles.dotSeparator, headerTextColor && { backgroundColor: headerTextColor }]} />
                 )}
 
-                <UserLine projectIndex={projectIndex} projectId={projectId} user={userInHeader} />
+                <UserLine
+                    projectIndex={projectIndex}
+                    projectId={projectId}
+                    user={userInHeader}
+                    textColor={headerTextColor}
+                />
                 {showFollowedBubble && (
                     <NotificationBubble
                         amount={totalFollowed}
