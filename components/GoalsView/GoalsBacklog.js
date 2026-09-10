@@ -79,7 +79,7 @@ export default function GoalsBacklog({
         (filtersArray.length === 0 || filteredGoals.length > 0) && (
             <View style={{ marginBottom: 24 }}>
                 <AutomaticMilestonesNote projectId={projectId} projectIndex={projectIndex} />
-                <TaskHierarchyGroup borderColor={borderColor} bottomSpacing={0}>
+                <TaskHierarchyGroup borderColor={borderColor}>
                     <GoalsBacklogHeader
                         projectId={projectId}
                         previousMilestoneDate={previousMilestoneDate}

@@ -34,17 +34,18 @@ jest.mock('../../../utils/backends/firestore', () => ({
 const CATALOGS = {
     claude: {
         families: [
-            { id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true, tokensPerGold: 100 },
-            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true, tokensPerGold: 250 },
-            { id: 'haiku', label: 'Haiku', resolvedModel: 'haiku', isAlias: true, tokensPerGold: 500 },
+            { id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true, tokensPerGold: 80 },
+            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true, tokensPerGold: 200 },
+            { id: 'haiku', label: 'Haiku', resolvedModel: 'haiku', isAlias: true, tokensPerGold: 400 },
         ],
         source: 'live',
     },
     codex: {
         families: [
+            { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false, tokensPerGold: 40 },
             { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false, tokensPerGold: 100 },
-            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false, tokensPerGold: 250 },
-            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false, tokensPerGold: 2500 },
+            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false, tokensPerGold: 190 },
+            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false, tokensPerGold: 1900 },
         ],
         source: 'live',
     },
@@ -98,12 +99,13 @@ describe('DefaultVmAgentSection model family picker', () => {
         const labels = optionLabels(tree)
 
         // Default agent is codex → Codex tiers are offered, Claude tiers are not.
-        expect(labels).toEqual(expect.arrayContaining(['Sol', 'Terra', 'Luna']))
+        expect(labels).toEqual(expect.arrayContaining(['Astra', 'Sol', 'Terra', 'Luna']))
         expect(labels).not.toEqual(expect.arrayContaining(['Opus']))
         const rendered = JSON.stringify(tree.toJSON())
+        expect(rendered).toContain('1 Gold = 40 tokens')
         expect(rendered).toContain('1 Gold = 100 tokens')
-        expect(rendered).toContain('1 Gold = 250 tokens')
-        expect(rendered).toContain('1 Gold = 2,500 tokens')
+        expect(rendered).toContain('1 Gold = 190 tokens')
+        expect(rendered).toContain('1 Gold = 1,900 tokens')
     })
 
     it('swaps the family list when the agent changes', async () => {
@@ -117,10 +119,53 @@ describe('DefaultVmAgentSection model family picker', () => {
         expect(labels).toEqual(expect.arrayContaining(['Opus', 'Sonnet', 'Haiku']))
         expect(labels).not.toEqual(expect.arrayContaining(['Sol']))
         const rendered = JSON.stringify(tree.toJSON())
-        expect(rendered).toContain('1 Gold = 100 tokens')
-        expect(rendered).toContain('1 Gold = 250 tokens')
-        expect(rendered).toContain('1 Gold = 500 tokens')
+        expect(rendered).toContain('1 Gold = 80 tokens')
+        expect(rendered).toContain('1 Gold = 200 tokens')
+        expect(rendered).toContain('1 Gold = 400 tokens')
         expect(setDefaultVmAgent).toHaveBeenCalledWith('claude')
+    })
+
+    it('renders newly discovered provider families without a frontend allowlist', async () => {
+        getVmAgentSettings.mockResolvedValue(
+            settingsPayload({
+                modelCatalogs: {
+                    ...CATALOGS,
+                    codex: {
+                        ...CATALOGS.codex,
+                        families: [
+                            ...CATALOGS.codex.families,
+                            {
+                                id: 'nova',
+                                label: 'Nova',
+                                resolvedModel: 'gpt-7-nova',
+                                isAlias: false,
+                                tokensPerGold: 40,
+                            },
+                        ],
+                    },
+                    claude: {
+                        ...CATALOGS.claude,
+                        families: [
+                            ...CATALOGS.claude.families,
+                            {
+                                id: 'verse',
+                                label: 'Verse',
+                                resolvedModel: 'claude-verse-6',
+                                isAlias: false,
+                                tokensPerGold: 26,
+                            },
+                        ],
+                    },
+                },
+            })
+        )
+        const tree = await renderSection()
+
+        expect(optionLabels(tree)).toContain('Nova')
+        await act(async () => {
+            await pressOption(tree, 'Claude')()
+        })
+        expect(optionLabels(tree)).toContain('Verse')
     })
 
     it('saves the family against the agent it belongs to', async () => {
@@ -211,7 +256,7 @@ describe('DefaultVmAgentSection model family picker', () => {
         )
         const tree = await renderSection()
 
-        expect(optionLabels(tree)).toEqual(expect.arrayContaining(['Sol', 'Terra', 'Luna']))
+        expect(optionLabels(tree)).toEqual(expect.arrayContaining(['Astra', 'Sol', 'Terra', 'Luna']))
         const rendered = JSON.stringify(tree.toJSON())
         expect(rendered).toContain('Could not reach the model provider')
     })
@@ -294,7 +339,7 @@ describe('DefaultVmAgentSection OpenRouter source (AT-2230)', () => {
         const labels = optionLabels(tree)
 
         expect(labels).toEqual(expect.arrayContaining(['OpenAI', 'OpenRouter']))
-        expect(labels).toEqual(expect.arrayContaining(['Sol', 'Terra', 'Luna']))
+        expect(labels).toEqual(expect.arrayContaining(['Astra', 'Sol', 'Terra', 'Luna']))
         expect(labels).not.toEqual(expect.arrayContaining(['DeepSeek Chat']))
     })
 

@@ -104,7 +104,6 @@ export default function MilestoneItem({
     return (
         (filtersArray.length === 0 || filteredGoals.length > 0) && (
             <TaskHierarchyGroup
-                bottomSpacing={0}
                 style={localStyles.container}
                 pointerEvents={activeDragGoalMode ? 'none' : 'auto'}
                 borderColor={borderColor}

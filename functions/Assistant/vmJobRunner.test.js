@@ -1354,12 +1354,12 @@ describe('VM runner runtime Gold monitor', () => {
         })
 
         expect(sol.tokensPerGold).toBe(100)
-        expect(luna.tokensPerGold).toBe(2500)
-        expect(deepSeekPro.tokensPerGold).toBe(1800)
+        expect(luna.tokensPerGold).toBe(1900)
+        expect(deepSeekPro.tokensPerGold).toBe(1400)
 
         expect(sol.tokenGoldTotal).toBe(2500)
-        expect(luna.tokenGoldTotal).toBe(100)
-        expect(deepSeekPro.tokenGoldTotal).toBe(139)
+        expect(luna.tokenGoldTotal).toBe(132)
+        expect(deepSeekPro.tokenGoldTotal).toBe(179)
 
         // Same sandbox, same compute cost, whichever model the agent talked to.
         for (const charges of [luna, deepSeekPro]) {
@@ -1407,8 +1407,8 @@ describe('VM runner runtime Gold monitor', () => {
             agentModel: 'openrouter:qwen/qwen3-coder',
         })
 
-        expect(charges.tokensPerGold).toBe(960)
-        expect(charges.tokenGoldTotal).toBe(260)
+        expect(charges.tokensPerGold).toBe(750)
+        expect(charges.tokenGoldTotal).toBe(333)
     })
 
     // Existing jobs carry no agentModel on their doc; they must settle exactly as before.

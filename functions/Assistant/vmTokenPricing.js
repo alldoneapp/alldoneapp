@@ -65,9 +65,10 @@
  *      official pricing pages. Covers the native OpenAI and Anthropic models (whose model-list
  *      endpoints do not publish prices) and keeps the realistic OpenRouter picks correct through a
  *      discovery outage.
- *   3. **The Sol base rate** — the fail-safe for a model we have no price for at all. Deliberately
- *      *not* "assume it is cheap": an unpriced model must never be cheaper by accident, because
- *      under-billing is a silent revenue hole while over-billing is visible and correctable.
+ *   3. **A conservative native-provider rate** — a newly discovered OpenAI/Anthropic model whose
+ *      official price has not been added yet temporarily uses that provider's most expensive known
+ *      rate. A completely unknown selection uses the Sol base rate. Neither path assumes a new model
+ *      is cheap: under-billing is a silent revenue hole while over-billing is visible and correctable.
  *
  * The resolved rate is persisted on the job docs and preferred by both charge sites, so a run's
  * price is fixed at launch. A mid-run upstream price change cannot move what the user is charged,
@@ -126,37 +127,35 @@ const OBSERVED_TOKEN_MIX = Object.freeze({
 })
 
 /**
- * Official OpenAI list prices in USD per 1M tokens (developers.openai.com/api/docs/pricing,
- * retrieved 2026-08-10), after the 2026-07-30 cut that dropped Luna 80% and Terra 20%.
- *
- * The convenient part: every Terra rate is exactly 0.4x the matching Sol rate and every Luna rate
- * exactly 0.04x — input, cached input and output alike. So the Terra (2.5x) and Luna (25x) multiples
- * are independent of the token mix *and* of how cache reads are treated. Those two numbers are
- * exact, not estimates, and `vmTokenPricing.test.js` pins them as ratios for that reason.
+ * Official OpenAI list prices in USD per 1M tokens (developers.openai.com/api/docs/models,
+ * retrieved 2026-09-10). Sol remains the fixed 100-token Gold baseline; the other OpenAI families
+ * are derived from their current blended cost just like every non-OpenAI model.
  */
 const CODEX_REFERENCE_PRICES = Object.freeze({
-    sol: Object.freeze({ input: 5, cachedInput: 0.5, output: 30 }),
+    astra: Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
+    sol: Object.freeze({ input: 4, cachedInput: 0.4, output: 20 }),
     terra: Object.freeze({ input: 2, cachedInput: 0.2, output: 12 }),
     luna: Object.freeze({ input: 0.2, cachedInput: 0.02, output: 1.2 }),
 })
 
 /**
  * Anthropic list prices, USD per 1M tokens (platform.claude.com/docs/en/about-claude/pricing,
- * retrieved 2026-08-13). Bare names are Claude Code's moving aliases, so they use the current model
- * for that family: Opus 5, Sonnet 5 and Haiku 4.5. Fable and Mythos have no CLI aliases but keeping
- * their family prices here makes the policy obvious and gives callers a safe answer if those names
- * are ever accepted upstream.
+ * retrieved 2026-09-10). Bare names use the current model for that family. Fable/Mythos 5.1 have
+ * unusually cheap cache reads (0.025x base input), so they cannot inherit the older 5.0 price.
  *
- * Anthropic prices cache hits at 0.1x base input. Cache writes are not represented because the VM
- * meter folds them into input tokens; see the modelling caveat in the module header.
+ * Most Anthropic families price cache hits at 0.1x base input; Fable/Mythos 5.1 use 0.025x. Cache
+ * writes are not represented because the VM meter folds them into input tokens; see the modelling
+ * caveat in the module header.
  */
 const CLAUDE_REFERENCE_PRICES = Object.freeze({
-    fable: Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
-    mythos: Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
+    fable: Object.freeze({ input: 10, cachedInput: 0.25, output: 50 }),
+    mythos: Object.freeze({ input: 10, cachedInput: 0.25, output: 50 }),
     opus: Object.freeze({ input: 5, cachedInput: 0.5, output: 25 }),
     sonnet: Object.freeze({ input: 2, cachedInput: 0.2, output: 10 }),
     haiku: Object.freeze({ input: 1, cachedInput: 0.1, output: 5 }),
 })
+
+const CLAUDE_FABLE_5_REFERENCE_PRICE = Object.freeze({ input: 10, cachedInput: 1, output: 50 })
 
 /**
  * Version-specific Anthropic prices. The model API returns concrete ids but no price metadata, and
@@ -165,8 +164,10 @@ const CLAUDE_REFERENCE_PRICES = Object.freeze({
  * the current alias price. A trailing snapshot date is stripped before lookup.
  */
 const CLAUDE_MODEL_REFERENCE_PRICES = Object.freeze({
-    'claude-fable-5': CLAUDE_REFERENCE_PRICES.fable,
-    'claude-mythos-5': CLAUDE_REFERENCE_PRICES.mythos,
+    'claude-fable-5-1': CLAUDE_REFERENCE_PRICES.fable,
+    'claude-mythos-5-1': CLAUDE_REFERENCE_PRICES.mythos,
+    'claude-fable-5': CLAUDE_FABLE_5_REFERENCE_PRICE,
+    'claude-mythos-5': CLAUDE_FABLE_5_REFERENCE_PRICE,
     'claude-opus-5': CLAUDE_REFERENCE_PRICES.opus,
     'claude-opus-4-8': CLAUDE_REFERENCE_PRICES.opus,
     'claude-opus-4-7': CLAUDE_REFERENCE_PRICES.opus,
@@ -289,9 +290,11 @@ function deriveTokensPerGold(price, baseTokensPerGold = BASE_VM_TOKENS_PER_GOLD)
 // Model selection → price
 // ---------------------------------------------------------------------------
 
-// gpt-<major>[.<minor>]-<family>; the family is the durable tier (sol/terra/luna), the number is the
+// gpt-<major>[.<minor>]-<family>; the family is the durable tier (astra/sol/terra/luna), the number is the
 // generation, so the rate follows the tier across generations without an edit here.
 const CODEX_MODEL_PATTERN = /^gpt-\d+(?:\.\d+)?-([a-z][a-z0-9]*)$/
+const CLAUDE_MODERN_MODEL_PATTERN = /^claude-[a-z][a-z0-9]*-\d+(?:-\d+)?(?:-\d{8})?$/
+const CLAUDE_LEGACY_MODEL_PATTERN = /^claude-\d+(?:-\d+)?-[a-z][a-z0-9]*(?:-\d{8})?$/
 
 /** The researched price for an OpenRouter model id, matching the longest configured prefix. */
 function lookupOpenRouterReferencePrice(modelId) {
@@ -346,8 +349,33 @@ function resolveUpstreamPrice(agentModel, options = {}) {
     const codexFamily = CODEX_MODEL_PATTERN.exec(normalized)
     if (codexFamily) return CODEX_REFERENCE_PRICES[codexFamily[1]] || null
 
-    // Anything else intentionally has no entry here: no price → the Sol base rate.
+    // Anything else intentionally has no researched entry; the rate resolver applies the safe
+    // provider-specific fallback below before considering the Sol base rate.
     return null
+}
+
+/**
+ * Safe temporary rate for a native model released before its official price reaches this table.
+ * Provider model-list endpoints do not expose prices, so automatic exact pricing is impossible;
+ * using the lowest tokens-per-Gold value already known for that provider avoids silently
+ * under-billing an unfamiliar flagship. OpenRouter is excluded because its live catalog does carry
+ * prices and its established final fallback remains Sol.
+ */
+function resolveConservativeNativeRate(agentModel, baseTokensPerGold) {
+    if (typeof agentModel !== 'string') return null
+    const normalized = agentModel.trim().toLowerCase()
+
+    let prices
+    if (CODEX_MODEL_PATTERN.test(normalized)) {
+        prices = Object.values(CODEX_REFERENCE_PRICES)
+    } else if (CLAUDE_MODERN_MODEL_PATTERN.test(normalized) || CLAUDE_LEGACY_MODEL_PATTERN.test(normalized)) {
+        prices = [...Object.values(CLAUDE_REFERENCE_PRICES), ...Object.values(CLAUDE_MODEL_REFERENCE_PRICES)]
+    } else {
+        return null
+    }
+
+    const rates = prices.map(price => deriveTokensPerGold(price, baseTokensPerGold)).filter(rate => rate !== null)
+    return rates.length ? Math.min(...rates) : null
 }
 
 /**
@@ -355,13 +383,15 @@ function resolveUpstreamPrice(agentModel, options = {}) {
  *
  * `baseTokensPerGold` is injectable only so a caller can price against a non-standard base; it is
  * validated the same way as everything else, so a bad value can never produce a zero or negative
- * divisor. An unpriced model resolves to the base rate — never to free.
+ * divisor. An unpriced native model uses its provider's conservative rate; a completely unknown
+ * selection resolves to the base rate — never to free.
  */
 function resolveTokensPerGold(agentModel, baseTokensPerGold = BASE_VM_TOKENS_PER_GOLD, options = {}) {
     const base = normalizeBase(baseTokensPerGold)
     const price = resolveUpstreamPrice(agentModel, options)
     const derived = deriveTokensPerGold(price, base)
-    return derived === null ? base : derived
+    if (derived !== null) return derived
+    return resolveConservativeNativeRate(agentModel, base) || base
 }
 
 /**
@@ -456,6 +486,7 @@ module.exports = {
     deriveTokensPerGold,
     lookupClaudeReferencePrice,
     resolveUpstreamPrice,
+    resolveConservativeNativeRate,
     resolveTokensPerGold,
     resolveEffectiveTokensPerGold,
     resolveSolRelativeGoldFactor,
