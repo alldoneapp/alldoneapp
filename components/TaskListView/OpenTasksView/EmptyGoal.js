@@ -13,7 +13,12 @@ import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/Lock
 import GoalIndicator from '../GoalIndicator'
 import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
 import useGoalSectionExitMotion from './goalSectionExitMotion'
-import { useTaskHierarchy, taskHierarchyStyles, TaskHierarchyGoalOutline } from '../TaskHierarchy'
+import {
+    useTaskHierarchy,
+    useProjectSectionBorder,
+    taskHierarchyStyles,
+    TaskHierarchyGoalOutline,
+} from '../TaskHierarchy'
 
 export default function EmptyGoal({
     goal,
@@ -25,6 +30,7 @@ export default function EmptyGoal({
     exitRunId = 0,
 }) {
     const taskHierarchy = useTaskHierarchy()
+    const projectBorderColor = useProjectSectionBorder()
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -94,6 +100,7 @@ export default function EmptyGoal({
                 containerStyle,
                 taskHierarchy && taskHierarchyStyles.group,
                 taskHierarchy && taskHierarchyStyles.goalGroup,
+                taskHierarchy && projectBorderColor && { borderColor: projectBorderColor },
                 isLocked &&
                     showingTasks &&
                     !isAnonymous && { minHeight: (smallScreenNavigation ? 332 : 258) + (editing ? 168 : 86) },
