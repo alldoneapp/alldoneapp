@@ -166,6 +166,8 @@ describe('cleanupRamble', () => {
         const request = mockCreate.mock.calls[0][0]
         expect(request.model).toBe('gpt-5.6-terra')
         expect(request.prompt_cache_key).toBe('cache-key-1')
+        expect(request.prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
+        expect(JSON.stringify(request.messages)).not.toContain('prompt_cache_breakpoint')
         expect(request.messages[0]).toEqual({ role: 'system', content: RAMBLER_SYSTEM_PROMPT })
         expect(result).toEqual({ text: 'cleaned text', totalTokens: 321, modelKey: 'MODEL_GPT5_6_TERRA' })
     })
@@ -185,6 +187,7 @@ describe('cleanupRamble', () => {
         const request = mockCreate.mock.calls[0][0]
         expect(request.model).toBe('deepseek/deepseek-v4-flash-0731')
         expect(request).not.toHaveProperty('prompt_cache_key')
+        expect(request).not.toHaveProperty('prompt_cache_options')
         expect(mockBuildOpenAiPromptCacheKey).not.toHaveBeenCalled()
         expect(result.modelKey).toBe('MODEL_DEEPSEEK_V4_FLASH')
     })

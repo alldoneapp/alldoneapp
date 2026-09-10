@@ -2068,13 +2068,21 @@ function emitToolSchemasCacheMetric(eventName, contextVersion, details = {}) {
 }
 
 function normalizeDynamicToolSchemasCacheData(data) {
-    if (!data || !Array.isArray(data.delegationToolSchemas) || !Array.isArray(data.externalToolSchemas)) {
+    // Older persisted entries omitted MCP tools. Rebuild those entries instead of treating
+    // an incomplete tool list as a valid cache hit (including after a cold start).
+    if (
+        !data ||
+        !Array.isArray(data.delegationToolSchemas) ||
+        !Array.isArray(data.externalToolSchemas) ||
+        !Array.isArray(data.mcpToolSchemas)
+    ) {
         return null
     }
 
     return {
         delegationToolSchemas: data.delegationToolSchemas,
         externalToolSchemas: data.externalToolSchemas,
+        mcpToolSchemas: data.mcpToolSchemas,
     }
 }
 
@@ -2863,7 +2871,9 @@ async function interactWithChatStream(
             : formattedPrompt
         console.log(`📊 [TIMING] Message formatting: ${Date.now() - formatStart}ms`)
 
-        const includePromptCacheBreakpoints = modelSupportsExplicitPromptCaching(modelKey)
+        const supportsExplicitPromptCaching = modelSupportsExplicitPromptCaching(modelKey)
+        const disablePromptCaching = toolRuntimeContext?.disablePromptCaching === true
+        const includePromptCacheBreakpoints = supportsExplicitPromptCaching && !disablePromptCaching
         const responsesInput = convertMessagesToResponsesInput(messages, {
             includePromptCacheBreakpoints,
         })
@@ -2885,9 +2895,14 @@ async function interactWithChatStream(
         if (promptCacheKey && modelSupportsToolSearch(modelKey)) {
             requestParams.prompt_cache_key = promptCacheKey
         }
-        if (includePromptCacheBreakpoints && responsesInputHasPromptCacheBreakpoint(responsesInput)) {
+        if (supportsExplicitPromptCaching && disablePromptCaching) {
+            // Explicit mode without breakpoints avoids paying to cache one-off summaries.
+            requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
+        } else if (includePromptCacheBreakpoints && responsesInputHasPromptCacheBreakpoint(responsesInput)) {
             requestParams.prompt_cache_options = {
-                mode: 'explicit',
+                // Keep the reusable instructions breakpoint and also cache the growing
+                // conversation when tool calls can produce another round in this run.
+                mode: runtimeAllowedTools.length > 0 ? 'implicit' : 'explicit',
                 ttl: '30m',
             }
         }
@@ -3102,7 +3117,10 @@ async function interactWithChatStream(
                 'assistant',
             model,
             cacheKey: requestParams.prompt_cache_key || '',
-            cacheMode: requestParams.prompt_cache_options?.mode || 'automatic',
+            cacheMode:
+                disablePromptCaching && supportsExplicitPromptCaching
+                    ? 'explicit-no-breakpoint'
+                    : requestParams.prompt_cache_options?.mode || 'automatic',
         }
         return convertResponsesStreamWithEmptyRetry(
             stream,
