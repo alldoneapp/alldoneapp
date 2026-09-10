@@ -160,9 +160,8 @@ export default function ProjectListModal({
         else scrollRef.current?.scrollTo({ y: 0, animated: false })
     }
 
-    // Awaits the handler on purpose: the move-object flow must finish its
-    // backend work before the picker reports itself closed (the old tabbed
-    // modal awaited the move before calling closePopover).
+    // Await the caller's commit contract. Background operations (such as a task
+    // project move) deliberately return as soon as they have been dispatched.
     const commit = async index => {
         if (index === -1 && leadingOptionVisible) {
             await onSelectProject({ id: leadingOptionId }, -1)
