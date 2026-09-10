@@ -4,6 +4,7 @@ import moment from 'moment'
 import { AccessibilityInfo } from 'react-native'
 
 import OpenTasksByProject from './OpenTasksByProject'
+import ProjectSection from '../ProjectSection'
 import { PROJECT_LINE_EXIT_HOLD_MS, SWEEP_LEAD_MS } from './projectCompletedSweepMotion'
 import { MILESTONE_EXIT_MS } from '../Header/MilestoneRowTransition'
 import { PROJECT_SWEEP_PROBE_MS } from './useProjectCompletedSweep'
@@ -80,6 +81,7 @@ const todayKey = moment(PINNED_NOW).format('YYYY-MM-DD')
 
 const countOf = (tree, type) => tree.root.findAllByType(type).length
 const headerOf = tree => tree.root.findAllByType('ProjectHeader')[0]
+const sectionOf = tree => tree.root.findAllByType(ProjectSection)[0]
 
 const buildState = ({ todayIsEmpty, todayCount, filters = [] } = {}) => ({
     loggedUserProjectsMap: { [PROJECT]: { index: 0, id: PROJECT, color: '#2F80ED' } },
@@ -174,7 +176,7 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
 
             // The line is still there, and it is sweeping.
             expect(countOf(tree, 'ProjectHeader')).toBe(1)
-            expect(headerOf(tree).props.completedSweepRunId).toBe(1)
+            expect(sectionOf(tree).props.completedSweepRunId).toBe(1)
             /**
              * AT-2495 — and the header is told the line is on its way out, which is what turns the
              * sweep's last stage from a settle into the disintegration.
@@ -184,7 +186,7 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
              * so it could never say "this line is leaving" and the row would settle in place and
              * then vanish.
              */
-            expect(headerOf(tree).props.completedSweepLineWillLeave).toBe(true)
+            expect(sectionOf(tree).props.completedSweepLineWillLeave).toBe(true)
             expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(true)
             // The milestone completes its exit before the project's dissolve starts.
             expect(MILESTONE_EXIT_MS).toBeLessThan(SWEEP_LEAD_MS)
@@ -227,7 +229,7 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
             const tree = await render(buildState({ todayIsEmpty: false, todayCount: 1 }))
 
             expect(countOf(tree, 'ProjectHeader')).toBe(1)
-            expect(headerOf(tree).props.completedSweepLineWillLeave).toBe(false)
+            expect(sectionOf(tree).props.completedSweepLineWillLeave).toBe(false)
             expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(false)
         })
 
@@ -251,7 +253,7 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
             const tree = await render(buildState({ todayIsEmpty: true, todayCount: 0 }))
 
             expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(false)
-            const runId = headerOf(tree).props.completedSweepRunId
+            const runId = sectionOf(tree).props.completedSweepRunId
             expect(runId).toBe(1)
             // The same run id reaches the date section, which forwards it to the Anna picture — so
             // the sweep and the pop are visibly one celebration rather than two that overlap.
@@ -284,7 +286,7 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
 
             const tree = await render(buildState({ todayIsEmpty: true, todayCount: 0, filters: ['high'] }))
 
-            expect(headerOf(tree).props.completedSweepRunId).toBe(0)
+            expect(sectionOf(tree).props.completedSweepRunId).toBe(0)
         })
 
         it("does not celebrate on somebody else's board", async () => {
@@ -294,7 +296,7 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
 
             const tree = await render(state)
 
-            expect(headerOf(tree).props.completedSweepRunId).toBe(0)
+            expect(sectionOf(tree).props.completedSweepRunId).toBe(0)
         })
     })
 })

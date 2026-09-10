@@ -188,6 +188,14 @@ function OpenTasksByProject({
                     embedded={assistantProfileMode}
                     selected={inSelectedProject}
                     style={{ marginBottom: inSelectedProject ? 32 : 28 }}
+                    completedSweepRunId={celebrationRunId}
+                    /**
+                     * AT-2535 — `baseHideProjectData`, deliberately NOT `hideProjectData`. The
+                     * second one is false for the whole hold, so it can never say the card is on
+                     * its way out. The board's own verdict lets the full ProjectSection replace the
+                     * sweep's settle with the Thanos exit, including its remaining spacing.
+                     */
+                    completedSweepLineWillLeave={baseHideProjectData}
                 >
                     {inSelectedProject && <NeedShowMoreOpenTasksButton projectId={projectId} />}
                     {!assistantProfileMode && (
@@ -199,15 +207,6 @@ function OpenTasksByProject({
                             setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                             showRootSectionNavigation={inSelectedProject}
                             showEmailLabels={!isAssistant}
-                            completedSweepRunId={celebrationRunId}
-                            /**
-                             * AT-2495 — `baseHideProjectData`, deliberately NOT `hideProjectData`.
-                             * The second one is already false for the whole hold (that is what the
-                             * hold IS), so it can never say "this line is on its way out". The first
-                             * is the board's own verdict, and it is what decides whether the run
-                             * ends by settling in place or by the line disintegrating off the board.
-                             */
-                            completedSweepLineWillLeave={baseHideProjectData}
                         />
                     )}
                     <ProjectSectionBody style={assistantProfileMode && { paddingHorizontal: 0, paddingBottom: 0 }}>

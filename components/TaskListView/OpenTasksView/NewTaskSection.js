@@ -24,7 +24,6 @@ export default function NewTaskSection({
     dateIndex,
     expandTasksList,
     isLocked,
-    suspendShortcut = false,
 }) {
     const dispatch = useDispatch()
     const dateFormated = useSelector(
@@ -39,7 +38,7 @@ export default function NewTaskSection({
     const date = dateIsToday ? moment() : moment(dateFormated, 'YYYYMMDD')
 
     const onKeyDown = e => {
-        if (store.getState().blockShortcuts || isLocked || suspendShortcut) {
+        if (store.getState().blockShortcuts || isLocked) {
             return
         }
         const { lastAddNewTaskDate } = store.getState()

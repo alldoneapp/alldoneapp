@@ -1910,6 +1910,7 @@ function isVmSubscriptionAuthError(error, provider) {
     if (provider === 'codex') {
         return [
             'refresh_token_reused',
+            'invalid_refresh_token',
             'refresh token has already been used',
             'refresh token was already used',
             'access token could not be refreshed',
@@ -2004,6 +2005,21 @@ function buildVmSubscriptionAuthWaitingText(agentLabel) {
 
 function buildVmSubscriptionAuthFailureText(agentLabel) {
     return `❌ The VM task could not continue because the ${agentLabel} subscription login needs to be refreshed. Reconnect it in Settings → Integrations, then try again.`
+}
+
+async function markRejectedVmSubscriptionAuth(userId, subscriptionAuth, correlationId, { markInvalid } = {}) {
+    if (!userId || !subscriptionAuth?.provider || !subscriptionAuth?.credentialVersion) return false
+    const persistInvalid = markInvalid || require('./vmSubscriptionAuth').markVmSubscriptionAuthInvalid
+    try {
+        return await persistInvalid(userId, subscriptionAuth.provider, subscriptionAuth.credentialVersion)
+    } catch (error) {
+        console.warn('🖥️ VM JOB RUNNER: could not mark rejected subscription login', {
+            correlationId,
+            provider: subscriptionAuth.provider,
+            error: error.message,
+        })
+        return false
+    }
 }
 
 function renderAgentCliCheckStatus(agentLabel, isResume) {
@@ -4426,6 +4442,7 @@ async function runVmJobByCorrelationId(correlationId) {
               vmJob.agent || DEFAULT_AGENT
           )
         : null
+    const subscriptionAuthRejected = wantsSubscription && subscriptionAuth?.authInvalid === true
     const byokStatus = wantsByok
         ? await require('./vmApiKeyAuth')
               .getVmApiKeyStatus(vmJob.requestUserId)
@@ -4437,13 +4454,15 @@ async function runVmJobByCorrelationId(correlationId) {
     // fail later inside the proxy, mid-run, after Gold had been spent.
     const apiKey = credentialProvider === 'openrouter' ? env.OPENROUTER_API_KEY : env[config.apiKeyField]
     if (
-        (wantsSubscription && !subscriptionAuth) ||
+        (wantsSubscription && (!subscriptionAuth || subscriptionAuthRejected)) ||
         (wantsByok && !byokAvailable) ||
         (!wantsSubscription && !wantsByok && !apiKey) ||
         !e2bApiKey
     ) {
         const message = wantsSubscription
-            ? `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
+            ? subscriptionAuthRejected
+                ? `VM task could not run: your ${agentLabel} subscription login needs to be refreshed. Reconnect it in Settings → Integrations.`
+                : `VM task could not run: your ${agentLabel} subscription connection is missing. Reconnect it in Settings → Integrations.`
             : wantsByok
               ? `VM task could not run: your personal ${credentialProviderLabel} API key is missing. Add or replace it in Settings → Integrations.`
               : credentialProvider === 'openrouter' && !apiKey
@@ -4548,6 +4567,10 @@ async function runVmJobByCorrelationId(correlationId) {
             })
             let retryStarted = false
             try {
+                // Surface the reconnect state while this job is waiting, not only after its
+                // recovery deadline. The marker is credential-version guarded, so a concurrent
+                // VM that already rotated the token cannot poison the newer stored login.
+                await markRejectedVmSubscriptionAuth(vmJob.requestUserId, subscriptionAuth, correlationId)
                 const waitingText = buildVmSubscriptionAuthWaitingText(agentLabel)
                 await pendingRef
                     .set(
@@ -4830,6 +4853,9 @@ async function runVmJobByCorrelationId(correlationId) {
         const subscriptionAuthFailure =
             error.failureReason === VM_SUBSCRIPTION_AUTH_FAILURE_REASON ||
             (wantsSubscription && isVmSubscriptionAuthError(error, vmJob.agent || DEFAULT_AGENT))
+        if (subscriptionAuthFailure) {
+            await markRejectedVmSubscriptionAuth(vmJob.requestUserId, subscriptionAuth, correlationId)
+        }
         if (error.vmExecutionInterrupted && !subscriptionAuthFailure) {
             const interruptedText = buildVmExecutionInterruptedText(agentLabel)
             await writeStatusComment(pendingWebhook, interruptedText, {
@@ -4936,6 +4962,7 @@ module.exports = {
         waitForVmSubscriptionAuthChange,
         buildVmSubscriptionAuthWaitingText,
         buildVmSubscriptionAuthFailureText,
+        markRejectedVmSubscriptionAuth,
         ensureAgentCliAvailable,
         renderAgentCliCheckStatus,
         parseAgentCliInstallingMarker,
