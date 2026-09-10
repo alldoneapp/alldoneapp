@@ -32,6 +32,7 @@ const { resolveTokensPerGold } = require('./vmTokenPricing')
 const CATALOG_COLLECTION = 'vmAgentModelCatalog'
 const CATALOG_TTL_MS = 12 * 60 * 60 * 1000
 const DISCOVERY_TIMEOUT_MS = 8000
+const CODEX_CATALOG_SCHEMA_VERSION = 2
 
 const VALID_PROVIDERS = ['claude', 'codex']
 
@@ -75,7 +76,12 @@ const CLAUDE_CLI_ALIAS_FAMILIES = ['opus', 'sonnet', 'haiku']
 // Display order for known families; anything discovered but unlisted is appended in
 // version order, so a brand-new tier still shows up without a code change.
 const CLAUDE_FAMILY_ORDER = ['opus', 'sonnet', 'haiku', 'fable', 'mythos']
-const CODEX_FAMILY_ORDER = ['sol', 'terra', 'luna']
+const CODEX_FAMILY_ORDER = ['astra', 'sol', 'terra', 'luna']
+
+// These exact releases are no longer valid Codex choices. Keep retirement scoped to concrete ids:
+// if OpenAI later ships a new Mini or Nano generation, discovery will surface it automatically.
+// Future retirements should normally arrive through the provider's `shutdown_date` metadata.
+const CODEX_RETIRED_MODEL_IDS = new Set(['gpt-5.4-mini', 'gpt-5.4-nano'])
 
 /**
  * Last-resort catalogs. Only used when discovery fails AND no cached catalog exists, so the
@@ -92,6 +98,7 @@ const FALLBACK_CATALOGS = {
     },
     codex: {
         families: [
+            { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false },
             { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false },
             { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
             { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false },
@@ -178,16 +185,29 @@ function titleCase(value) {
 }
 
 /**
- * Group parsed models into families, each pointing at its newest member.
+ * Group parsed models into families, each pointing at its newest active member. `modelEntries`
+ * accepts both raw provider objects and plain ids for backwards-compatible callers/tests.
  *
- * Codex-only rule: keep families that exist in the newest generation. OpenAI's suffix is the
- * capability tier and the number is the generation, so a tier that stopped shipping (the
- * gpt-5.4-era `mini`/`nano`) is genuinely retired rather than merely older, while Sol/Terra/Luna
- * all appear at the current generation. Claude does NOT get this rule: Haiku 4.5 sits a whole
- * major behind Opus 5 and is still a current, offered tier.
+ * There is deliberately no provider-wide "newest generation" filter: model families advance on
+ * independent schedules, and a new flagship must not erase active value/latency tiers. Unknown
+ * families are included automatically and sorted after the familiar choices.
  */
-function buildFamilies(provider, modelIds) {
-    const parsed = (modelIds || []).map(id => parseModelId(provider, id)).filter(Boolean)
+function buildFamilies(provider, modelEntries, options = {}) {
+    const now = typeof options.now === 'number' ? options.now : Date.now()
+    const parsed = (modelEntries || [])
+        .map(entry => {
+            const rawEntry = typeof entry === 'string' ? { id: entry } : entry
+            if (!rawEntry || typeof rawEntry.id !== 'string') return null
+
+            if (provider === 'codex') {
+                if (CODEX_RETIRED_MODEL_IDS.has(rawEntry.id.trim().toLowerCase())) return null
+                const shutdownAt = rawEntry.shutdown_date ? Date.parse(rawEntry.shutdown_date) : NaN
+                if (Number.isFinite(shutdownAt) && shutdownAt <= now) return null
+            }
+
+            return parseModelId(provider, rawEntry.id)
+        })
+        .filter(Boolean)
     if (!parsed.length) return []
 
     const newestByFamily = new Map()
@@ -196,17 +216,7 @@ function buildFamilies(provider, modelIds) {
         if (!current || compareVersions(model, current) > 0) newestByFamily.set(model.family, model)
     }
 
-    let entries = Array.from(newestByFamily.values())
-
-    if (provider === 'codex') {
-        // Generation is major.minor for OpenAI ("5.6"), so compare both — matching on the major
-        // alone would keep the retired gpt-5.4 `mini`/`nano` tiers alive next to gpt-5.6.
-        const newestGeneration = entries.reduce(
-            (best, entry) => (compareVersions(entry, best) > 0 ? entry : best),
-            entries[0]
-        )
-        entries = entries.filter(entry => compareVersions(entry, newestGeneration) === 0)
-    }
+    const entries = Array.from(newestByFamily.values())
 
     const order = provider === 'claude' ? CLAUDE_FAMILY_ORDER : CODEX_FAMILY_ORDER
     entries.sort((a, b) => {
@@ -554,6 +564,7 @@ async function readCachedCatalog(provider) {
             // rate — i.e. the live pricing path would only ever work on the one request that
             // refreshed the catalog, which is the majority of runs mispriced and nothing to show it.
             ...(Array.isArray(data.pricing) ? { pricing: data.pricing } : {}),
+            ...(typeof data.schemaVersion === 'number' ? { schemaVersion: data.schemaVersion } : {}),
         }
     } catch (error) {
         console.warn('🖥️ VM MODELS: Failed reading cached model catalog', { provider, error: error.message })
@@ -563,7 +574,16 @@ async function readCachedCatalog(provider) {
 
 async function writeCachedCatalog(provider, families, fetchedAt, extra = {}) {
     try {
-        await catalogRef(provider).set({ families, fetchedAt, provider, ...extra }, { merge: true })
+        await catalogRef(provider).set(
+            {
+                families,
+                fetchedAt,
+                provider,
+                ...(provider === 'codex' ? { schemaVersion: CODEX_CATALOG_SCHEMA_VERSION } : {}),
+                ...extra,
+            },
+            { merge: true }
+        )
     } catch (error) {
         console.warn('🖥️ VM MODELS: Failed writing model catalog cache', { provider, error: error.message })
     }
@@ -589,7 +609,7 @@ function decorateCatalogGoldPricing(provider, catalog) {
     )
     const decorateModel = model => {
         const selection =
-            provider === OPENROUTER_PROVIDER ? model.id : model.resolvedModel || model.latestModel || model.id
+            provider === OPENROUTER_PROVIDER ? model.id : model.latestModel || model.resolvedModel || model.id
         const livePrice =
             provider === OPENROUTER_PROVIDER
                 ? pricingByModelId.get(String(model.modelId || '').toLowerCase()) || model.upstreamPrice
@@ -635,10 +655,13 @@ async function getModelCatalog(provider, options = {}) {
 
     const now = typeof options.now === 'number' ? options.now : Date.now()
     const cached = options.forceRefresh ? null : await readCachedCatalog(provider)
-    // Refresh the first old-shape OpenRouter cache after this search index shipped instead of
-    // making users wait up to 12 hours for search to appear after deployment.
+    // Refresh old cache shapes immediately after a catalog policy change instead of making users
+    // wait up to 12 hours. A schema version is deliberately better than checking for today's known
+    // families: new families remain valid without another code edit.
     const hasCurrentOpenRouterShape = !isOpenRouter || Array.isArray(cached?.searchModels)
-    if (isFresh(cached, now) && hasCurrentOpenRouterShape) return decorate({ ...cached, source: 'cache' })
+    const hasCurrentCodexShape = provider !== 'codex' || cached?.schemaVersion === CODEX_CATALOG_SCHEMA_VERSION
+    const hasCurrentCacheShape = hasCurrentOpenRouterShape && hasCurrentCodexShape
+    if (isFresh(cached, now) && hasCurrentCacheShape) return decorate({ ...cached, source: 'cache' })
 
     try {
         const entries = await fetchProviderModelEntries(provider, options)
@@ -661,10 +684,7 @@ async function getModelCatalog(provider, options = {}) {
                 count: entries.length,
             })
         } else {
-            const families = buildFamilies(
-                provider,
-                entries.map(entry => entry.id)
-            )
+            const families = buildFamilies(provider, entries, { now })
             if (families.length) {
                 await writeCachedCatalog(provider, families, now)
                 return decorate({ families, fetchedAt: now, source: 'live' })
@@ -675,8 +695,10 @@ async function getModelCatalog(provider, options = {}) {
         console.warn('🖥️ VM MODELS: Live model discovery failed', { provider, error: error.message })
     }
 
-    // Stale beats static: a 3-day-old real catalog is closer to the truth than our hardcoded one.
-    if (cached) return decorate({ ...cached, source: 'stale' })
+    // A stale catalog beats static unless its Codex schema predates the current family policy.
+    // OpenRouter deliberately keeps accepting its pre-search shape here because old entries may
+    // still carry a live upstream price that is more useful to billing than the static fallback.
+    if (cached && hasCurrentCodexShape) return decorate({ ...cached, source: 'stale' })
     return decorate({ families: FALLBACK_CATALOGS[provider].families, fetchedAt: 0, source: 'fallback' })
 }
 
@@ -735,6 +757,7 @@ async function resolveFamilyToModel(provider, familyId, options = {}) {
 module.exports = {
     CATALOG_TTL_MS,
     CATALOG_COLLECTION,
+    CODEX_CATALOG_SCHEMA_VERSION,
     VALID_PROVIDERS,
     CATALOG_PROVIDERS,
     OPENROUTER_PROVIDER,

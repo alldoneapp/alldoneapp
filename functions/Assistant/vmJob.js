@@ -13,7 +13,12 @@ const {
     resolveVmApprovalPolicy,
 } = require('./vmAgentSettings')
 const { resolveVmRunOverrides } = require('./vmRunOverrideGuard')
-const { resolveFamilyToModel, isOpenRouterConfigured, getOpenRouterUpstreamPrice } = require('./vmAgentModelCatalog')
+const {
+    resolveFamilyToModel,
+    isOpenRouterConfigured,
+    getOpenRouterUpstreamPrice,
+    getModelCatalog,
+} = require('./vmAgentModelCatalog')
 const {
     isOpenRouterSelection,
     parseOpenRouterSelection,
@@ -170,11 +175,13 @@ function formatVmBillingStatus(agentLabel, credentialMode, agentModel = '', toke
  * nor the runner's settlement can afford (or should risk) a network read. Persisting the result also
  * freezes the run's price at launch, so a catalog refresh mid-run cannot move what the user pays.
  *
- * Never throws and never returns a bad rate: any failure falls through to `resolveTokensPerGold`'s
- * researched static table and then to the Sol base rate, because a pricing hiccup must not fail a run.
+ * Never throws and never returns a bad rate: failures fall through to `resolveTokensPerGold`'s
+ * researched table, conservative native-provider rate, and finally the Sol base rate. A pricing
+ * lookup hiccup must not fail a run.
  */
 async function resolveTokensPerGoldForRun(agentModel) {
     let upstreamPrice = null
+    let pricingModel = agentModel
     const openRouterModel = parseOpenRouterSelection(agentModel)
     if (openRouterModel) {
         try {
@@ -185,8 +192,22 @@ async function resolveTokensPerGoldForRun(agentModel) {
                 error: error.message,
             })
         }
+    } else if (agentModel === 'opus' || agentModel === 'sonnet' || agentModel === 'haiku') {
+        // Claude Code aliases are ideal for execution, but pricing must follow the concrete model
+        // currently behind the alias. If Anthropic ships Opus 6 at a new price, the newly discovered
+        // id takes the conservative unpriced-model path instead of silently retaining Opus 5's rate.
+        try {
+            const catalog = await getModelCatalog('claude')
+            const family = (catalog.families || []).find(entry => entry.id === agentModel)
+            if (family?.latestModel) pricingModel = family.latestModel
+        } catch (error) {
+            console.warn('🖥️ VM GOLD: Failed resolving Claude alias for pricing, using alias fallback', {
+                agentModel,
+                error: error.message,
+            })
+        }
     }
-    return resolveTokensPerGold(agentModel, VM_TOKENS_PER_GOLD, { upstreamPrice })
+    return resolveTokensPerGold(pricingModel, VM_TOKENS_PER_GOLD, { upstreamPrice })
 }
 
 function isClaudeModelId(model) {
@@ -1355,5 +1376,5 @@ module.exports = {
     DEFAULT_CLAUDE_EFFORT_LEVEL,
     DEFAULT_CODEX_REASONING_EFFORT,
     resolveAgentModelForRun,
-    __private__: { packageContextObjects, normalizeAgentModel },
+    __private__: { packageContextObjects, normalizeAgentModel, resolveTokensPerGoldForRun },
 }

@@ -504,14 +504,14 @@ describe('vmLlmProxy token Gold charging', () => {
             applyGoldChangeInTransactionFn,
         })
 
-        // 100,000 / 5000 = 20, not the 104 the researched qwen rate (960) would give.
+        // 100,000 / 5000 = 20, not the 133 the researched qwen rate (750) would give.
         expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -20 }))
     })
 
     // A job doc carrying only a model id (no frozen rate) must still price per model.
     test('falls back to the researched per-model rate when no rate was persisted', async () => {
         const { db } = buildFakeDb({ userGold: 100000, pendingData: { agentModel: 'openrouter:qwen/qwen3-coder' } })
-        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 104 }))
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 133 }))
 
         await chargeProxyTokenGold({
             correlationId: 'cid-1',
@@ -522,13 +522,13 @@ describe('vmLlmProxy token Gold charging', () => {
             applyGoldChangeInTransactionFn,
         })
 
-        // round(100000 / 960) = 104
-        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -104 }))
+        // round(100000 / 750) = 133
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -133 }))
     })
 
-    test('charges a Luna run at 1/25 of the Sol rate', async () => {
+    test('charges a Luna run at 1/19 of the Sol rate', async () => {
         const { db } = buildFakeDb({ userGold: 100000, pendingData: { agentModel: 'gpt-5.6-luna' } })
-        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 40 }))
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 53 }))
 
         await chargeProxyTokenGold({
             correlationId: 'cid-1',
@@ -539,8 +539,8 @@ describe('vmLlmProxy token Gold charging', () => {
             applyGoldChangeInTransactionFn,
         })
 
-        // 100,000 / 2500 = 40 Gold, against 1000 on Sol.
-        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -40 }))
+        // round(100,000 / 1900) = 53 Gold, against 1000 on Sol.
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -53 }))
     })
 
     // A job doc written before agentModel was persisted must bill exactly as it did before.
