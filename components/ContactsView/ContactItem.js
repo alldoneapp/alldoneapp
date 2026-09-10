@@ -1,3 +1,4 @@
+import { TaskHierarchyBackgroundContext } from '../TaskListView/TaskHierarchy'
 import React, { Component } from 'react'
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
@@ -38,6 +39,8 @@ import {
 export const CONTACT_BACKLINKS_ROOT_MARGIN = '600px 0px'
 
 export default class ContactItem extends Component {
+    static contextType = TaskHierarchyBackgroundContext
+
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -209,7 +212,7 @@ export default class ContactItem extends Component {
         const showContact = isMember || !ContactsHelper.isPrivateContact(contact)
         const contactHighlightColor = ProjectHelper.getUserHighlightInProject(projectIndex, contact)
 
-        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : '#ffffff'
+        const restingBackgroundColor = inCommentPopup ? colors.Secondary200 : this.context
         const outputColors = [colors.UtilityYellow125, restingBackgroundColor, colors.UtilityGreen125]
         const backColor = panColor.interpolate({
             inputRange: [-100, 0, 100],

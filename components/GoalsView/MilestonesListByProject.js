@@ -1,5 +1,5 @@
+import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import React, { useEffect, useRef } from 'react'
-import { View } from 'react-native'
 import { useDispatch, useSelector, shallowEqual } from 'react-redux'
 
 import GoalsBacklog from './GoalsBacklog'
@@ -160,79 +160,85 @@ function MilestonesListByProject({
     const inOpenTab = goalsActiveTab === GOALS_OPEN_TAB_INDEX
 
     return canShowProject ? (
-        <View>
+        <ProjectSection projectId={projectId} projectColor={project.color} selected={!inAllProjects}>
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
                 showAddGoal={inOpenTab}
                 showRootSectionNavigation={!inAllProjects}
             />
-            {loggedUserCanUpdateObject && inOpenTab && !isAnonymous && milestones.length === 0 && (
-                <AddGoals
-                    projectId={projectId}
-                    setDismissibleRefs={setDismissibleRefs}
-                    openEdition={openEdition}
-                    closeEdition={closeEdition}
-                    milestoneId={backlogId}
-                    milestoneDate={BACKLOG_DATE_NUMERIC}
-                    refId={`MainAdd${backlogId}_backlog`}
-                />
-            )}
-            {milestones.map((milestone, index) => {
-                let previousMilestoneDate
-                if (inOpenTab) {
-                    // Task statistics use the real milestone range, including milestones filtered out of this board.
-                    previousMilestoneDate = getPreviousOpenMilestoneDate(milestone.id, openMilestones || [], backlogId)
-                } else {
-                    const lastIndex = milestones.length - 1
-                    previousMilestoneDate = index === lastIndex ? 0 : milestones[index + 1].date
-                }
-                const isActiveMilestone = index === 0 && inOpenTab
-                return milestone.date === BACKLOG_DATE_NUMERIC ? (
-                    <GoalsBacklog
-                        key={'milestone_backlog'}
+            <ProjectSectionBody>
+                {loggedUserCanUpdateObject && inOpenTab && !isAnonymous && milestones.length === 0 && (
+                    <AddGoals
                         projectId={projectId}
-                        projectIndex={projectIndex}
                         setDismissibleRefs={setDismissibleRefs}
                         openEdition={openEdition}
                         closeEdition={closeEdition}
                         milestoneId={backlogId}
-                        previousMilestoneDate={previousMilestoneDate}
+                        milestoneDate={BACKLOG_DATE_NUMERIC}
+                        refId={`MainAdd${backlogId}_backlog`}
                     />
-                ) : (
-                    <MilestoneItem
-                        key={milestone.id}
-                        projectId={projectId}
-                        milestone={milestone}
-                        setDismissibleRefs={setDismissibleRefs}
-                        unsetDismissibleRefs={unsetDismissibleRefs}
-                        openEdition={openEdition}
-                        closeEdition={closeEdition}
-                        firstMilestoneId={firstMilestoneId}
-                        previousMilestoneDate={previousMilestoneDate}
-                        isActiveMilestone={isActiveMilestone}
-                    />
-                )
-            })}
+                )}
+                {milestones.map((milestone, index) => {
+                    let previousMilestoneDate
+                    if (inOpenTab) {
+                        // Task statistics use the real milestone range, including milestones filtered out of this board.
+                        previousMilestoneDate = getPreviousOpenMilestoneDate(
+                            milestone.id,
+                            openMilestones || [],
+                            backlogId
+                        )
+                    } else {
+                        const lastIndex = milestones.length - 1
+                        previousMilestoneDate = index === lastIndex ? 0 : milestones[index + 1].date
+                    }
+                    const isActiveMilestone = index === 0 && inOpenTab
+                    return milestone.date === BACKLOG_DATE_NUMERIC ? (
+                        <GoalsBacklog
+                            key={'milestone_backlog'}
+                            projectId={projectId}
+                            projectIndex={projectIndex}
+                            setDismissibleRefs={setDismissibleRefs}
+                            openEdition={openEdition}
+                            closeEdition={closeEdition}
+                            milestoneId={backlogId}
+                            previousMilestoneDate={previousMilestoneDate}
+                        />
+                    ) : (
+                        <MilestoneItem
+                            key={milestone.id}
+                            projectId={projectId}
+                            milestone={milestone}
+                            setDismissibleRefs={setDismissibleRefs}
+                            unsetDismissibleRefs={unsetDismissibleRefs}
+                            openEdition={openEdition}
+                            closeEdition={closeEdition}
+                            firstMilestoneId={firstMilestoneId}
+                            previousMilestoneDate={previousMilestoneDate}
+                            isActiveMilestone={isActiveMilestone}
+                        />
+                    )
+                })}
 
-            {boardNeedShowMore && (
-                <ShowMoreButton
-                    expandText="later goals"
-                    contractText="hide later goals"
-                    expanded={goalsShowMoreExpanded}
-                    contract={contractMilestones}
-                    expand={expandMilestones}
-                    style={{
-                        marginTop:
-                            milestones.length > 0 && milestones[milestones.length - 1].date === BACKLOG_DATE_NUMERIC
-                                ? 0
-                                : -24,
-                        marginBottom: 24,
-                    }}
-                />
-            )}
-            {!inAllProjects && milestones.length === 0 && <EmptyGoalsSelectedProject />}
-        </View>
+                {boardNeedShowMore && (
+                    <ShowMoreButton
+                        expandText="later goals"
+                        contractText="hide later goals"
+                        expanded={goalsShowMoreExpanded}
+                        contract={contractMilestones}
+                        expand={expandMilestones}
+                        style={{
+                            marginTop:
+                                milestones.length > 0 && milestones[milestones.length - 1].date === BACKLOG_DATE_NUMERIC
+                                    ? 0
+                                    : -24,
+                            marginBottom: 24,
+                        }}
+                    />
+                )}
+                {!inAllProjects && milestones.length === 0 && <EmptyGoalsSelectedProject />}
+            </ProjectSectionBody>
+        </ProjectSection>
     ) : null
 }
 

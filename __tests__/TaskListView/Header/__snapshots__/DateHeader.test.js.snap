@@ -21,7 +21,7 @@ exports[`DateHeader component DateHeader with text snapshot test should render c
       }
     >
       <div
-        className="css-text-146c3p1 r-color-1gpwqf8 r-paddingLeft-f727ji r-zIndex-184en5c"
+        className="css-text-146c3p1 r-color-1gpwqf8 r-paddingLeft-1m04atk r-zIndex-184en5c"
         dir="auto"
         style={
           {

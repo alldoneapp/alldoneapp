@@ -1,4 +1,5 @@
 import React from 'react'
+import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
 import { StyleSheet, Text, View } from 'react-native'
 
 import { colors } from '../../styles/global'
@@ -7,6 +8,7 @@ import { getDateFormat } from '../../UIComponents/FloatModals/DateFormatPickerMo
 import { translate } from '../../../i18n/TranslationService'
 
 export default function DateLine({ date }) {
+    const accentColor = useProjectSectionAccent()
     let toShowDate = parseDate(date, getDateFormat())
     toShowDate =
         toShowDate.toLowerCase() === 'today' || toShowDate.toLowerCase() === 'tomorrow'
@@ -14,7 +16,7 @@ export default function DateLine({ date }) {
             : toShowDate
     const dayName = translate(getDayName(date, false)).toUpperCase()
     return (
-        <View style={[localStyles.container]}>
+        <View style={[localStyles.container, accentColor && { backgroundColor: accentColor }]}>
             <Text style={localStyles.text}>{`${toShowDate} • ${dayName}`}</Text>
         </View>
     )

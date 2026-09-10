@@ -126,7 +126,10 @@ export default function EmptyGoal({
                 />
             )}
             {showingTasks && (
-                <View style={isLocked && localStyles.blurry} pointerEvents={isLocked ? 'none' : 'auto'}>
+                <View
+                    style={[isLocked && localStyles.blurry, taskHierarchy && { paddingBottom: 8 }]}
+                    pointerEvents={isLocked ? 'none' : 'auto'}
+                >
                     {accessGranted &&
                         loggedUserCanUpdateObject &&
                         (isActiveOrganizeMode ? (

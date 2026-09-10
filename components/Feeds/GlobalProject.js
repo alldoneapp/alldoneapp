@@ -1,3 +1,4 @@
+import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import moment from 'moment'
@@ -153,10 +154,10 @@ function GlobalProject({
     }
 
     return (
-        <View>
+        <ProjectSection projectId={projectId} projectColor={project.color} style={{ marginBottom: 24 }}>
             <ProjectLabelFeed project={project} amountNewFeeds={amountNewFeeds} feedActiveTab={feedActiveTab} />
             {!switchingBetweenUsers && feedsUserId === activeUser && activeProjectId === projectId && (
-                <View>
+                <ProjectSectionBody>
                     <FeedsGlobalList
                         projectId={projectId}
                         currentDateFormated={currentDateFormated}
@@ -169,9 +170,9 @@ function GlobalProject({
                         followedFeeds={followedFeeds}
                         onRequestAllFeeds={requestAllFeeds}
                     />
-                </View>
+                </ProjectSectionBody>
             )}
-        </View>
+        </ProjectSection>
     )
 }
 

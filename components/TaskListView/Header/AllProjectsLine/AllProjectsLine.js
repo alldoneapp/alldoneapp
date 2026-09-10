@@ -2,6 +2,7 @@ import React, { useCallback } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
+import { HeaderActionsContext } from '../../TaskHierarchy'
 import { colors } from '../../../styles/global'
 import AllProjectData from './AllProjectData'
 import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
@@ -14,7 +15,12 @@ import { AUTOMATIC_PROJECT_OPTION } from '../../../UIComponents/FloatModals/Sele
 import { clearPendingWebShareTarget } from '../../../../redux/actions'
 import { clearStoredWebShareTarget } from '../../../../utils/webShareTarget'
 
-export default function AllProjectsLine({ showActions = true, showEmailLabels = false, customRight }) {
+export default function AllProjectsLine({
+    showActions = true,
+    showEmailLabels = false,
+    customRight,
+    bottomSpacing = 16,
+}) {
     const dispatch = useDispatch()
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
@@ -29,67 +35,56 @@ export default function AllProjectsLine({ showActions = true, showEmailLabels = 
     }, [dispatch])
 
     return (
-        <View style={[localStyles.container, showActions && inOpenSection && localStyles.hierarchyHeader]}>
-            <View style={localStyles.rightContainer}>
-                <Avatar
-                    borderSize={0}
-                    avatarId={loggedUserId}
-                    reviewerPhotoURL={photoURL}
-                    size={22}
-                    externalStyle={localStyles.avatar}
-                />
-                <View
-                    style={[
-                        localStyles.titleAndGrouping,
-                        showActions && inOpenSection && mobile && localStyles.mobileTitleAndGrouping,
-                    ]}
-                >
-                    <AllProjectData />
-                    <ToggleByTime
-                        containerStyle={[
-                            localStyles.toggleByTimeInline,
-                            showActions && inOpenSection && mobile && localStyles.mobileGrouping,
-                        ]}
+        <HeaderActionsContext.Provider value={true}>
+            <View style={[localStyles.container, localStyles.hierarchyHeader, { marginBottom: bottomSpacing }]}>
+                <View style={localStyles.rightContainer}>
+                    <Avatar
+                        borderSize={0}
+                        avatarId={loggedUserId}
+                        reviewerPhotoURL={photoURL}
+                        size={22}
+                        externalStyle={localStyles.avatar}
                     />
+                    <View style={[localStyles.titleAndGrouping, mobile && localStyles.mobileTitleAndGrouping]}>
+                        <AllProjectData />
+                        <ToggleByTime
+                            containerStyle={[localStyles.toggleByTimeInline, mobile && localStyles.mobileGrouping]}
+                        />
+                    </View>
+                    {showEmailLabels && <AllProjectsEmailLabelChips />}
                 </View>
-                {showEmailLabels && <AllProjectsEmailLabelChips />}
-            </View>
-            <View
-                style={[
-                    localStyles.leftContainer,
-                    showActions && inOpenSection && { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 },
-                ]}
-            >
-                {customRight}
-                {showActions && inOpenSection && (
-                    <>
-                        {/* In All Projects there is no project in context, so the picker
+                <View style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}>
+                    {customRight}
+                    {showActions && inOpenSection && (
+                        <>
+                            {/* In All Projects there is no project in context, so the picker
                             opens on "Automatic" and the server routes the task (AT-2306).
                             The user's default project is still where it is created, and
                             picking a project by hand overrides the routing entirely. */}
-                        <AddTaskTag
-                            projectId={AUTOMATIC_PROJECT_OPTION}
-                            style={{ marginLeft: 8 }}
-                            sourceType={FEED_TASK_OBJECT_TYPE}
-                            expandTaskListIfNeeded={true}
-                            showProjectSelector={true}
-                            primary={true}
-                            headerAction={true}
-                            initialTaskName={pendingWebShareTarget?.taskName}
-                            autoOpenKey={pendingWebShareTarget?.id}
-                            onAutoOpen={consumeWebShareTarget}
-                        />
-                        <TaskHeaderMoreButton
-                            userId={loggedUserId}
-                            wrapperStyle={localStyles.taskMoreWrapper}
-                            buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}
-                            iconSize={16}
-                            iconColor={colors.Text02}
-                        />
-                    </>
-                )}
+                            <AddTaskTag
+                                projectId={AUTOMATIC_PROJECT_OPTION}
+                                style={{ marginLeft: 8 }}
+                                sourceType={FEED_TASK_OBJECT_TYPE}
+                                expandTaskListIfNeeded={true}
+                                showProjectSelector={true}
+                                primary={true}
+                                headerAction={true}
+                                initialTaskName={pendingWebShareTarget?.taskName}
+                                autoOpenKey={pendingWebShareTarget?.id}
+                                onAutoOpen={consumeWebShareTarget}
+                            />
+                            <TaskHeaderMoreButton
+                                userId={loggedUserId}
+                                wrapperStyle={localStyles.taskMoreWrapper}
+                                buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}
+                                iconSize={16}
+                                iconColor={colors.Text02}
+                            />
+                        </>
+                    )}
+                </View>
             </View>
-        </View>
+        </HeaderActionsContext.Provider>
     )
 }
 
