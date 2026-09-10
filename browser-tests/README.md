@@ -356,21 +356,26 @@ fails while every other check passes.
 `--reduce-motion` runs the second contract: nothing is rendered, and (checked in the Jest suites)
 the once-per-day marker is not spent either.
 
-### `at2495/` — a cleared project's line must come apart, right to left, in 1.2s
+### `at2495/` — a cleared project's card must come apart, right to left, in 1.2s
 
-The line's exit is a CSS **mask** sliding across it, and jest cannot see one thing about that.
+The card's exit is a CSS **mask** sliding across it, and jest cannot see one thing about that.
 jsdom's `CSSStyleDeclaration` silently drops properties it does not implement, so `mask-image`
 reads back as `''` there whether the code is right or completely wrong; `__mocks__/react-native.js`
 stubs `Animated.timing`, so nothing advances; and a style object is not a paint in any case.
 
 So the harness renders the real `useProjectCompletedSweepMotion` driving the real
-`useProjectLineExit` on a row node with the real `ProjectLineDisintegration` beside it, then
-**screenshots the row every ~50ms and counts surviving pixels per column**. That is the only
+`useProjectLineExit` on a rounded card node with the real `ProjectLineDisintegration` beside it,
+then **screenshots the card every ~50ms and counts surviving pixels per column**. That is the only
 measurement that can tell "a mask is applied" from "the mask erases the correct half, in the correct
 order, over the right amount of time". The screenshot is decoded back inside the page through a
 canvas, so no PNG dependency is needed. A row pixel is identified by its signature — pure red
 thinning toward white, so green and blue stay equal — because the particle layer paints over the
 same scanline and a gold spark would otherwise be counted as surviving row.
+
+AT-2535 moved the mask and collapse from the 57px header to the complete rounded `ProjectSection`.
+The harness therefore uses the card's full height and separately verifies that its 28px bottom
+spacing reaches zero; `onLayout` excludes margins, so height-only coverage would miss the final
+layout jump this follow-up fixes.
 
 **The first pass of this aimed at the wrong row.** The disintegration originally replaced the
 completed TASK row's 320ms collapse, and the ask turned out to be about the project line: a task is

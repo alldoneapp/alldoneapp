@@ -462,6 +462,17 @@ describe('the styles handed to the row (AT-2495)', () => {
         expect(style.transform[0].translateY.__getValue()).toBeLessThan(0)
     })
 
+    it('closes the card spacing with its height', () => {
+        const value = progress()
+        const style = createProjectLineExitStyle(value, ROW_HEIGHT, 28)
+
+        expect(style.marginBottom.__getValue()).toBe(28)
+        value.setValue(COLLAPSE_START)
+        expect(style.marginBottom.__getValue()).toBe(28)
+        value.setValue(1)
+        expect(style.marginBottom.__getValue()).toBe(0)
+    })
+
     it('still removes the row if the mask is ignored', () => {
         // The one thing that must survive a browser without mask support: the row leaves. It just
         // leaves as a fade.
