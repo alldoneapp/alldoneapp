@@ -1,11 +1,9 @@
 import { useDispatch, useSelector } from 'react-redux'
 
-import URLsTasks, { URL_TASK_DETAILS_PROPERTIES } from '../../../../URLSystem/Tasks/URLsTasks'
 import URLsChats, { URL_CHAT_DETAILS_PROPERTIES } from '../../../../URLSystem/Chats/URLsChats'
 import Backend from '../../../../utils/BackendBridge'
 import {
     hideProjectPicker,
-    setAssignee,
     setSelectedNavItem,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
@@ -13,18 +11,15 @@ import {
     stopLoadingData,
     switchProject,
 } from '../../../../redux/actions'
-import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import {
     DV_TAB_CHAT_PROPERTIES,
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_SKILL_PROPERTIES,
-    DV_TAB_TASK_PROPERTIES,
 } from '../../../../utils/TabNavigationConstants'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../../utils/NavigationService'
-import { DEFAULT_WORKSTREAM_ID } from '../../../Workstreams/WorkstreamHelper'
-import { setTaskAssignee, setTaskProject } from '../../../../utils/backends/Tasks/tasksFirestore'
+import { queueTaskProjectMove } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { setNoteProject } from '../../../../utils/backends/Notes/notesFirestore'
 import { findNoteOwnerInProject, resolveMovedNoteOwnerId } from '../../../NotesView/NoteFilters/noteOwnerFilterHelper'
 import { moveChatOnMoveObjectFromProject } from '../../../../utils/backends/Chats/chatsFirestore'
@@ -54,13 +49,7 @@ export default function useMoveObjectToProject() {
     const dispatch = useDispatch()
 
     const writeBrowserUrl = (item, newProject) => {
-        if (item.type === 'task') {
-            const task = item.data
-            if (selectedTab === DV_TAB_TASK_PROPERTIES) {
-                const data = { noHistory: true, projectId: newProject.id, task: task.id }
-                URLsTasks.push(URL_TASK_DETAILS_PROPERTIES, data, newProject.id, task.id)
-            }
-        } else if (item.type === 'chat' && selectedTab === DV_TAB_CHAT_PROPERTIES) {
+        if (item.type === 'chat' && selectedTab === DV_TAB_CHAT_PROPERTIES) {
             const chat = item.data
             const data = { noHistory: true, projectId: newProject.id, chatId: chat.id }
             URLsChats.push(URL_CHAT_DETAILS_PROPERTIES, data, newProject.id, chat.id)
@@ -113,6 +102,16 @@ export default function useMoveObjectToProject() {
                 throw reportMoveFailure(`move ${type}`, error)
             }
         }
+
+        if (type === 'task') {
+            // The callable only enqueues the durable Cloud Tasks worker. Do not
+            // await even that short round trip: selection should close the
+            // picker immediately, while the server owns the complete move.
+            completeMove(queueTaskProjectMove(project.id, newProject.id, data.id)).catch(() => {})
+            dispatch(hideProjectPicker())
+            return
+        }
+
         const objectType = type === 'chat' ? 'topics' : type + 's'
         const beforeDeleteSource =
             type === 'chat'
@@ -147,33 +146,6 @@ export default function useMoveObjectToProject() {
         if (type === 'chat') {
             dispatch(stopLoadingData())
             performanceTrace.end('move_complete', { outcome: 'success' })
-        } else if (type === 'task') {
-            const task = data
-            const taskOwner = TasksHelper.getTaskOwner(task.userId, project.id)
-            dispatch(startLoadingData())
-            try {
-                if (!newProject.userIds.includes(taskOwner.uid) && task.userId !== DEFAULT_WORKSTREAM_ID) {
-                    await completeMove(
-                        (async () => {
-                            const updatedTask = await setTaskAssignee(
-                                project.id,
-                                task.id,
-                                loggedUser.uid,
-                                taskOwner,
-                                loggedUser,
-                                task
-                            )
-                            return setTaskProject(project, newProject, updatedTask, taskOwner, loggedUser)
-                        })()
-                    )
-                    dispatch(setAssignee(loggedUser))
-                } else {
-                    await completeMove(setTaskProject(project, newProject, task))
-                }
-                dispatch(hideProjectPicker())
-            } finally {
-                dispatch(stopLoadingData())
-            }
         } else if (type === 'note') {
             const note = data
             // A note can be owned by an assistant since AT-2194, and an assistant is not a

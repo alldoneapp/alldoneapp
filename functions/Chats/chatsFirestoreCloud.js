@@ -71,7 +71,8 @@ const copyChatToOtherProject = async (admin, sourceProjectId, targetProjectId, o
     const batch = new BatchWrapper(firestore)
     batch.set(
         firestore.doc(`chatObjects/${targetProjectId}/chats/${chatId}`),
-        withoutAccessProjection(options.chatData || chatDoc.data())
+        withoutAccessProjection(options.chatData || chatDoc.data()),
+        { merge: true }
     )
     commentsSnapshot.forEach(commentDoc => {
         batch.set(
