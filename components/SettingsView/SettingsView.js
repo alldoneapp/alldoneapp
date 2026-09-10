@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
@@ -52,8 +52,7 @@ import UserProfileSettings from './Profile/UserProfileSettings'
 import DragModalsContainer from '../UIComponents/FloatModals/DragModalsContainer'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
-import { countBrokenConnections, countBrokenVmSubscriptions } from './Integrations/connectionHealth'
-import { getVmSubscriptionStatus } from '../../utils/backends/firestore'
+import { countBrokenConnections } from './Integrations/connectionHealth'
 
 const SettingsView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -69,26 +68,6 @@ const SettingsView = ({ navigation }) => {
     // not as the connection objects, so an unrelated write to the user document cannot
     // re-render the whole settings shell (AT-2336's rule).
     const brokenConnectionsAmount = useSelector(state => countBrokenConnections(state.loggedUser))
-    const [brokenVmSubscriptionsAmount, setBrokenVmSubscriptionsAmount] = useState(0)
-    const updateVmSubscriptionAlerts = useCallback(
-        status => setBrokenVmSubscriptionsAmount(countBrokenVmSubscriptions(status)),
-        []
-    )
-
-    // VM subscription state is private and therefore is not part of loggedUser's live snapshot.
-    // Load its small, sanitized status when Settings opens so the Integrations tab can warn before
-    // the user opens it; the section reports later reconnects back through the same callback.
-    useEffect(() => {
-        let cancelled = false
-        getVmSubscriptionStatus()
-            .then(status => {
-                if (!cancelled) updateVmSubscriptionAlerts(status)
-            })
-            .catch(() => {})
-        return () => {
-            cancelled = true
-        }
-    }, [updateVmSubscriptionAlerts])
 
     const { overlay } = useCollapsibleSidebar()
 
@@ -164,7 +143,7 @@ const SettingsView = ({ navigation }) => {
                                 isSecondary
                                 tabs={navigationTabs}
                                 invitationsAmount={amountProjectInvitations}
-                                integrationsAlertAmount={brokenConnectionsAmount + brokenVmSubscriptionsAmount}
+                                integrationsAlertAmount={brokenConnectionsAmount}
                             />
                         </View>
                         {(() => {
@@ -196,11 +175,7 @@ const SettingsView = ({ navigation }) => {
                                 case DV_TAB_SETTINGS_MCP:
                                     return <MCPSettings />
                                 case DV_TAB_SETTINGS_INTEGRATIONS:
-                                    return (
-                                        <IntegrationsSettings
-                                            onVmSubscriptionStatusChanged={updateVmSubscriptionAlerts}
-                                        />
-                                    )
+                                    return <IntegrationsSettings />
                             }
                         })()}
                     </View>
