@@ -48,6 +48,7 @@ async function generateRollingThreadSummary(prompt, model, toolRuntimeContext) {
         ...toolRuntimeContext,
         sourceChannel: 'automatic_thread_compaction',
         promptCacheScope: 'automatic_thread_compaction',
+        disablePromptCaching: true,
         disableToolSearch: true,
     })
     let summary = ''

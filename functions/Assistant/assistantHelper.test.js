@@ -18,6 +18,9 @@ const mockCreateAndPersistTask = jest.fn()
 const mockCreateAndPersistNote = jest.fn()
 const mockFindCalendarAvailabilityForAssistantRequest = jest.fn()
 const mockFetchMentionedNotesContext = jest.fn(async () => '')
+const mockListMcpTools = jest.fn()
+jest.mock('./mcpClient', () => ({ listTools: (...args) => mockListMcpTools(...args) }))
+jest.mock('../MCP/mcpAssistantConnect', () => ({ getValidMcpSecret: jest.fn() }))
 const mockFetchNoteContentAsMarkdown = jest.fn(async (projectId, noteId) => ({
     noteId,
     title: 'Launch notes',
@@ -345,6 +348,7 @@ const {
     getHeartbeatSettingsContextMessage,
     getAssistantThreadStateContextMessage,
     getOptimizedContextMessages,
+    getDynamicToolSchemasWithCache,
     buildCurrentObjectContextMessage,
     buildVmThreadContext,
     buildConversationAfterToolExecution,
@@ -541,6 +545,51 @@ describe('Current task context', () => {
                 'Task title: Independent task\n' +
                 'Task description: (empty)'
         )
+    })
+})
+
+describe('persisted dynamic tool cache', () => {
+    test.each([false, true])('preserves MCP tools across memory expiry (legacy entry: %s)', async legacy => {
+        const context = { projectId: `mcp-cache-${legacy}`, assistantId: 'assistant', requestUserId: 'user' }
+        let now = Date.now()
+        const clock = jest.spyOn(Date, 'now').mockImplementation(() => now)
+        const key = JSON.stringify({ ...context, allowedTools: ['mcp_servers'], contextVersion: 'p0:g0:x0' })
+        let persisted = legacy
+            ? { key, timestamp: now, data: { delegationToolSchemas: [], externalToolSchemas: [] } }
+            : null
+        mockListMcpTools
+            .mockReset()
+            .mockResolvedValue([
+                { name: 'find_records', description: 'Find records', inputSchema: { type: 'object', properties: {} } },
+            ])
+        mockDocGet.mockImplementation(function () {
+            if (this.path.startsWith('runtimeCaches/dynamicToolSchemas/')) {
+                return Promise.resolve({ exists: !!persisted, data: () => persisted })
+            }
+            if (this.path.startsWith('assistants/')) {
+                return Promise.resolve({
+                    exists: true,
+                    data: () => ({ mcpServers: [{ id: 'server', label: 'Records', url: 'https://example.com/mcp' }] }),
+                })
+            }
+            return Promise.resolve({ exists: false })
+        })
+        mockDocSet.mockImplementation(async function (data) {
+            if (this.path.startsWith('runtimeCaches/dynamicToolSchemas/')) persisted = JSON.parse(JSON.stringify(data))
+        })
+        try {
+            const built = await getDynamicToolSchemasWithCache(['mcp_servers'], context)
+            expect(built.mcpToolSchemas).toHaveLength(1)
+            expect(persisted.data.mcpToolSchemas).toEqual(built.mcpToolSchemas)
+            now += 6 * 60 * 1000
+            const restored = await getDynamicToolSchemasWithCache(['mcp_servers'], context)
+            expect(restored).toEqual(built)
+            expect(mockListMcpTools).toHaveBeenCalledTimes(1)
+        } finally {
+            clock.mockRestore()
+            mockDocGet.mockReset()
+            mockDocSet.mockReset().mockResolvedValue(undefined)
+        }
     })
 })
 
@@ -883,6 +932,59 @@ describe('Responses API compatibility helpers', () => {
             })
         )
     })
+
+    test('caches growing tool conversations while preserving the original prefix and breakpoint', async () => {
+        mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Ok' }])
+        const prompt = [
+            ['system', 'Stable instructions', { promptCacheBreakpoint: true }],
+            ['system', 'Current time at run start'],
+            ['user', 'Find my tasks'],
+        ]
+        await interactWithChatStream(prompt, 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'])
+        const firstRequest = mockResponsesCreate.mock.calls[0][0]
+        const continued = buildConversationAfterToolExecution({
+            currentConversation: prompt,
+            responseText: '',
+            toolName: 'get_tasks',
+            toolArgs: {},
+            toolCallId: 'call-tasks',
+            conversationSafeToolResult: { tasks: [{ title: 'Ship release' }] },
+        })
+        await interactWithChatStream(continued, 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'])
+        const nextRequest = mockResponsesCreate.mock.calls[1][0]
+        for (const request of [firstRequest, nextRequest]) {
+            expect(request.prompt_cache_options).toEqual({ mode: 'implicit', ttl: '30m' })
+            expect(request.input[0].content[0].prompt_cache_breakpoint).toEqual({ mode: 'explicit' })
+        }
+        expect(nextRequest.input.slice(0, firstRequest.input.length)).toEqual(firstRequest.input)
+        expect(nextRequest.input).toContainEqual({
+            type: 'function_call_output',
+            call_id: 'call-tasks',
+            output: JSON.stringify({ tasks: [{ title: 'Ship release' }] }),
+        })
+        expect(nextRequest.tools).toEqual(firstRequest.tools)
+    })
+
+    test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA', 'MODEL_GPT5_5'])(
+        'disables one-off prompt caching only on supported models: %s',
+        async model => {
+            mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Summary' }])
+            await interactWithChatStream(
+                [
+                    ['system', 'Instructions', { promptCacheBreakpoint: true }],
+                    ['user', 'Summarize this thread'],
+                ],
+                model,
+                'TEMPERATURE_NORMAL',
+                [],
+                { disablePromptCaching: true }
+            )
+            const request = mockResponsesCreate.mock.calls[0][0]
+            expect(JSON.stringify(request.input)).not.toContain('prompt_cache_breakpoint')
+            if (model === 'MODEL_GPT5_5') expect(request).not.toHaveProperty('prompt_cache_options')
+            else expect(request.prompt_cache_options).toEqual({ mode: 'explicit', ttl: '30m' })
+        }
+    )
 
     test('retries one empty response with full tool schemas and returns the retry text', async () => {
         const emptyCompletion = {
