@@ -1,10 +1,11 @@
 /**
- * AT-2495 browser harness — the PROJECT LINE's disintegration, actually erasing pixels.
+ * AT-2495 / AT-2535 browser harness — the PROJECT CARD's disintegration, actually erasing pixels.
  *
- * Renders the REAL `useProjectCompletedSweepMotion` driving the REAL `useProjectLineExit` on a row
- * node and the REAL `ProjectLineDisintegration` particle layer beside it, wired exactly as
- * `ProjectHeader` wires them: the mask on the collapsing row, the dust and the sparks as its
- * SIBLING.
+ * Renders the REAL `useProjectCompletedSweepMotion` driving the REAL `useProjectLineExit` on a
+ * rounded card node and the REAL `ProjectLineDisintegration` particle layer beside it, wired
+ * exactly as `ProjectSection` wires them: the mask on the collapsing card, the dust and the sparks
+ * as its SIBLING. The card's bottom spacing is animated independently because margins are outside
+ * the measured box.
  *
  * Jest can answer none of the questions this exists for, and there are four of them:
  *
@@ -13,8 +14,8 @@
  *      whole effect is that passthrough. A jsdom test cannot see it — jsdom's CSSStyleDeclaration
  *      silently drops properties it does not implement, so `mask-image` reads back as `''` there
  *      whether or not the code is right.
- *   2. Does the row's PAINT actually come apart, right to left? A style object is not a picture.
- *      The runner screenshots the row and counts surviving pixels, which is the only measurement
+ *   2. Does the card's PAINT actually come apart, right to left? A style object is not a picture.
+ *      The runner screenshots the card and counts surviving pixels, which is the only measurement
  *      that can tell "the mask is applied" from "the mask erases the correct half".
  *   3. Does the exit take 1.2 seconds, and does it wait for the sweep's three stages first?
  *      `__mocks__/react-native.js` stubs `Animated.timing` to a no-op, so no jest suite in this
@@ -23,8 +24,8 @@
  *      through a different Firestore listener from the one that starts the celebration, and it is
  *      routinely the second to arrive. `--stay` and `--late` drive both orders.
  *
- * The row's CONTENT is a stand-in — a solid block of one saturated colour — precisely so the
- * screenshot can be measured: on a real project header the surviving-pixel count would be dominated
+ * The card's CONTENT is a stand-in — a solid block of one saturated colour — precisely so the
+ * screenshot can be measured: on a real project card the surviving-pixel count would be dominated
  * by whatever glyph happened to be under the front. The real `ProjectCompletedSweep` overlay is not
  * mounted either, because it reads the project colour out of redux; it is a CHILD of the masked
  * node, so the mask erases it exactly as it erases this stand-in (`browser-tests/at2492` is where
@@ -39,27 +40,32 @@ import useProjectCompletedSweepMotion, {
     useProjectLineExit,
 } from '../../components/TaskListView/OpenTasksView/projectCompletedSweepMotion'
 
-const ROW_WIDTH = 900
-// The real header is a 56px content box plus its 1px bottom rule.
-const ROW_HEIGHT = 57
+const CARD_WIDTH = 900
+const CARD_HEIGHT = 96
+const CARD_BOTTOM_SPACING = 28
 // Pure red on white: every channel is unambiguous, so "how much of the row survives" is a
 // threshold on one number rather than a colour-distance heuristic.
 const ROW_COLOR = 'rgb(255, 0, 0)'
 const PROJECT_TINT = 'rgb(47, 128, 237)'
 
 const localStyles = StyleSheet.create({
-    page: { width: ROW_WIDTH, backgroundColor: 'white' },
+    page: { width: CARD_WIDTH, backgroundColor: 'white' },
     lineContainer: { position: 'relative' },
-    body: { height: ROW_HEIGHT, backgroundColor: ROW_COLOR, flexDirection: 'row', alignItems: 'center' },
+    card: {
+        height: CARD_HEIGHT,
+        marginBottom: CARD_BOTTOM_SPACING,
+        borderRadius: 12,
+        backgroundColor: ROW_COLOR,
+    },
     // A row below it, so a collapse that fails to close the gap is visible as well as measurable.
-    next: { height: ROW_HEIGHT, backgroundColor: 'rgb(0, 0, 255)' },
+    next: { height: CARD_HEIGHT, backgroundColor: 'rgb(0, 0, 255)' },
 })
 
 function Line() {
     const [runId, setRunId] = useState(0)
     const [lineWillLeave, setLineWillLeave] = useState(false)
     const motion = useProjectCompletedSweepMotion(runId, lineWillLeave)
-    const { exitStyle, exitHeight, onLineLayout } = useProjectLineExit(motion)
+    const { exitStyle, exitHeight, onLineLayout } = useProjectLineExit(motion, CARD_BOTTOM_SPACING)
 
     // `leaving` is set separately from the run so the runner can reproduce BOTH arrival orders: the
     // board's verdict landing before the celebration, and landing a second after it.
@@ -71,7 +77,7 @@ function Line() {
 
     return (
         <View style={localStyles.page}>
-            {/* Exactly `ProjectHeader`'s shape: the mask and the collapse ride on this node, and the
+            {/* Exactly `ProjectSection`'s shape: the mask and the collapse ride on this node, and the
                 particles are a sibling of it — a child would be erased by the same mask.
 
                 It MUST be an `Animated.View`. A plain `View` handed the same style renders the
@@ -81,9 +87,7 @@ function Line() {
                 half-working effect, and the first run of this harness (against the task row it was
                 originally written for) reproduced it exactly. */}
             <View style={localStyles.lineContainer} nativeID="line-wrapper">
-                <Animated.View style={exitStyle} onLayout={onLineLayout} nativeID="project-line">
-                    <View style={localStyles.body} nativeID="line-body" />
-                </Animated.View>
+                <Animated.View style={[localStyles.card, exitStyle]} onLayout={onLineLayout} nativeID="project-card" />
                 {exitStyle ? (
                     <ProjectLineDisintegration progress={motion.disintegrate} height={exitHeight} tint={PROJECT_TINT} />
                 ) : null}
@@ -99,7 +103,7 @@ const boxOf = node => {
 }
 
 window.__measure = () => {
-    const node = document.getElementById('project-line')
+    const node = document.getElementById('project-card')
     const style = node ? window.getComputedStyle(node) : null
     const layer = document.querySelector('[data-testid="project-line-disintegration"]')
     const motes = Array.from(document.querySelectorAll('[data-testid="project-line-disintegration-mote"]'))
@@ -116,6 +120,7 @@ window.__measure = () => {
     return {
         t: Math.round(performance.now() - (window.__t0 || 0)),
         rowHeight: node ? Math.round(node.getBoundingClientRect().height * 10) / 10 : null,
+        bottomSpacing: style ? Math.round(Number.parseFloat(style.marginBottom || 0) * 10) / 10 : null,
         // `maskImage` reads back from the shorthand-free longhand in Chromium; the WebKit alias is
         // reported separately and either one being present proves the passthrough.
         maskImage: style ? style.maskImage || style.webkitMaskImage || '' : '',

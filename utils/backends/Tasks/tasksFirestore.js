@@ -2291,14 +2291,6 @@ const removeMovedSourceTask = async (sourceProjectId, taskId) => {
     }
 }
 
-export function queueTaskProjectMove(sourceProjectId, targetProjectId, taskId) {
-    return runHttpsCallableFunction('moveTaskToProjectSecondGen', {
-        sourceProjectId,
-        targetProjectId,
-        taskId,
-    })
-}
-
 export async function setTaskProject(currentProject, newProject, task, oldAssignee, newAssignee) {
     const performanceTrace = startPerformanceTrace('move_task_project', {
         object_type: 'task',

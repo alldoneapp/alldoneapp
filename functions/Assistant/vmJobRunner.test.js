@@ -886,6 +886,12 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
             )
         ).toBe(true)
         expect(
+            __private__.isVmSubscriptionAuthError(
+                new Error('401 Unauthorized: {"code":"invalid_refresh_token"}'),
+                'codex'
+            )
+        ).toBe(true)
+        expect(
             __private__.isVmSubscriptionAuthError(new Error('OAuth token has expired. Please log in again.'), 'claude')
         ).toBe(true)
         expect(
@@ -929,6 +935,20 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
         expect(warningOnlyError.vmAuthRetrySafe).toBe(true)
         expect(afterWorkError.vmAuthRetrySafe).toBe(false)
         expect(afterUsageError.vmAuthRetrySafe).toBe(false)
+    })
+
+    test('marks the exact failed subscription credential version for Settings', async () => {
+        const markInvalid = jest.fn(async () => true)
+
+        await expect(
+            __private__.markRejectedVmSubscriptionAuth(
+                'user-1',
+                { provider: 'codex', credentialVersion: 'credential-version-1' },
+                'correlation-1',
+                { markInvalid }
+            )
+        ).resolves.toBe(true)
+        expect(markInvalid).toHaveBeenCalledWith('user-1', 'codex', 'credential-version-1')
     })
 
     test('marks a zero-exit no-output subscription auth failure as safe to retry', () => {

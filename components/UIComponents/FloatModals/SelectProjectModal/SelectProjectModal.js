@@ -18,7 +18,7 @@ import useMoveObjectToProject from './useMoveObjectToProject'
  * - the PLAIN id-set semantics (ProjectHelper.getProjectsByType + the
  *   projectIds membership filter — deliberately NOT merged with
  *   SelectProjectModalInSearch's real* sets; callers own filtering),
- * - the move engine (useMoveObjectToProject) and its ordering: dispatch, then
+ * - the move engine (useMoveObjectToProject) and its ordering: move, then
  *   dismissAllPopups, then closePopover(newProject) — some hosts
  *   (NoteMoreButton) read the argument to know a move actually happened,
  * - picking the CURRENT project just closes without moving.
@@ -75,9 +75,14 @@ export default function SelectProjectModal({
             description={subheader}
             selectedProjectId={project.id}
             onSelectProject={handleSelect}
-            // Non-task object moves still complete synchronously. Task moves
-            // return immediately after dispatching their background worker, so
-            // this fallback busy label is only visible for the legacy branches.
+            // The move is the one commit in this picker that takes real time —
+            // a conversation copy through a Cloud Function, then writes across
+            // both projects. Naming the destination is what tells the user the
+            // pick registered and is being carried out, rather than leaving a
+            // picker that looks like it ignored the click. The object type is
+            // deliberately not repeated here; the title above already carries it,
+            // and `translate(item.type)` is an empty string for several types in
+            // the German and Spanish files.
             getBusyDescription={destination =>
                 translate('Moving to projectName', { projectName: destination?.name || '' })
             }
