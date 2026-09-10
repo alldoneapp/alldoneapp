@@ -36,11 +36,10 @@ const {
     getAttachmentData,
     extractMediaContextFromText,
 } = require('../Utils/parseTextUtils')
-const { getObjectFollowersIds } = require('../Feeds/globalFeedsHelper')
+const { getObjectFollowersIds, copyInnerFeedsToOtherProject } = require('../Feeds/globalFeedsHelper')
 const { getProject } = require('../Firestore/generalFirestoreCloud')
-const { getChat } = require('../Chats/chatsFirestoreCloud')
+const { getChat, copyChatToOtherProject } = require('../Chats/chatsFirestoreCloud')
 const { moveNoteToDifferentProject } = require('../shared/moveNoteToDifferentProject')
-const { moveTaskToDifferentProject } = require('../shared/moveTaskToDifferentProject')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { DEFAULT_EMAIL_SIGNATURE } = require('../Email/emailChannelHelpers')
@@ -4478,6 +4477,164 @@ async function resolveTargetAssistantForSettingsUpdate({
         return buildResult(fallbackSnap.data() || {}, fallbackRef, candidateProjectIds[0])
     }
     throw new Error(`Current assistant "${contextAssistantId}" not found in project "${candidateProjectIds[0]}".`)
+}
+
+async function collectTaskTreeForMove(database, sourceProjectId, rootTaskId) {
+    const taskTree = new Map()
+    const queue = [rootTaskId]
+
+    while (queue.length > 0) {
+        const taskId = queue.shift()
+        if (!taskId || taskTree.has(taskId)) continue
+
+        const taskDoc = await database.doc(`items/${sourceProjectId}/tasks/${taskId}`).get()
+        if (!taskDoc.exists) {
+            if (taskId === rootTaskId) {
+                throw new Error(`Task ${rootTaskId} not found in source project ${sourceProjectId}`)
+            }
+            continue
+        }
+
+        const taskData = taskDoc.data() || {}
+        taskTree.set(taskId, taskData)
+
+        const subtaskIds = Array.isArray(taskData.subtaskIds) ? taskData.subtaskIds : []
+        subtaskIds.forEach(subtaskId => {
+            if (typeof subtaskId === 'string' && subtaskId.trim() && !taskTree.has(subtaskId)) {
+                queue.push(subtaskId)
+            }
+        })
+    }
+
+    return taskTree
+}
+
+async function moveTaskToDifferentProject(params) {
+    const { database, sourceProjectId, targetProjectId, taskId, editorId, editorName } = params
+
+    if (!sourceProjectId || !targetProjectId || !taskId) {
+        throw new Error('sourceProjectId, targetProjectId and taskId are required for task move')
+    }
+    if (sourceProjectId === targetProjectId) {
+        return {
+            moved: false,
+            reason: 'already_in_target_project',
+            sourceProjectId,
+            targetProjectId,
+            taskId,
+            movedTaskCount: 1,
+        }
+    }
+
+    const taskTree = await collectTaskTreeForMove(database, sourceProjectId, taskId)
+    const taskIdsToMove = Array.from(taskTree.keys())
+    const timestamp = Date.now()
+
+    // Protect against accidental overwrite in the target project.
+    for (const id of taskIdsToMove) {
+        const targetTaskDoc = await database.doc(`items/${targetProjectId}/tasks/${id}`).get()
+        if (targetTaskDoc.exists) {
+            throw new Error(
+                `Cannot move task ${taskId}: task ID ${id} already exists in target project ${targetProjectId}.`
+            )
+        }
+    }
+
+    for (const [id, sourceTask] of taskTree.entries()) {
+        const isRootTask = id === taskId
+        const movedTask = {
+            ...sourceTask,
+            lastEditionDate: timestamp,
+        }
+
+        if (editorId) movedTask.lastEditorId = editorId
+        if (editorName) movedTask.lastEditorName = editorName
+
+        // Remove move marker/internal path hints from the copied task.
+        delete movedTask.movingToOtherProjectId
+        delete movedTask.projectId
+
+        // Goals are project-local, so the moved task should no longer point to an old project goal.
+        movedTask.parentGoalId = null
+        movedTask.parentGoalIsPublicFor = null
+        movedTask.lockKey = ''
+
+        // Root subtasks become root tasks after moving project, matching app move behavior.
+        if (isRootTask && movedTask.parentId) {
+            movedTask.parentId = null
+            movedTask.isSubtask = false
+            movedTask.parentDone = false
+            movedTask.inDone = !!movedTask.done
+            if (movedTask.done && !movedTask.completed) movedTask.completed = timestamp
+        }
+
+        if (movedTask.calendarData && typeof movedTask.calendarData === 'object') {
+            movedTask.calendarData = {
+                ...movedTask.calendarData,
+                pinnedToProjectId: targetProjectId,
+            }
+        }
+
+        await database.doc(`items/${targetProjectId}/tasks/${id}`).set(movedTask)
+    }
+
+    const sourceMoveMarkerUpdate = {
+        movingToOtherProjectId: targetProjectId,
+        lastEditionDate: timestamp,
+    }
+    if (editorId) sourceMoveMarkerUpdate.lastEditorId = editorId
+    if (editorName) sourceMoveMarkerUpdate.lastEditorName = editorName
+
+    // Mark all source tasks as moved so delete triggers can preserve linked content (notes/backlinks).
+    for (const id of taskIdsToMove) {
+        try {
+            await database.doc(`items/${sourceProjectId}/tasks/${id}`).update(sourceMoveMarkerUpdate)
+        } catch (error) {
+            console.warn('Task move: failed to set move marker on source task', {
+                taskId: id,
+                sourceProjectId,
+                error: error.message,
+            })
+        }
+    }
+
+    // Copy each moved task's chat (conversation + comments) and Updates feed (activity history) into the
+    // target project BEFORE deleting the source. Both live in project-scoped paths keyed by the old project,
+    // so without this the moved task would show up with an empty Chat and Updates tab and the original
+    // history would be lost (the source chat is also wiped by the delete cascade).
+    for (const id of taskIdsToMove) {
+        try {
+            await copyChatToOtherProject(admin, sourceProjectId, targetProjectId, 'tasks', id)
+        } catch (error) {
+            console.warn('Task move: failed to copy chat to target project', {
+                taskId: id,
+                sourceProjectId,
+                targetProjectId,
+                error: error.message,
+            })
+        }
+        try {
+            await copyInnerFeedsToOtherProject(admin, sourceProjectId, targetProjectId, 'tasks', id)
+        } catch (error) {
+            console.warn('Task move: failed to copy updates feed to target project', {
+                taskId: id,
+                sourceProjectId,
+                targetProjectId,
+                error: error.message,
+            })
+        }
+    }
+
+    // Delete only root task; existing delete triggers cascade source subtasks cleanup.
+    await database.doc(`items/${sourceProjectId}/tasks/${taskId}`).delete()
+
+    return {
+        moved: true,
+        sourceProjectId,
+        targetProjectId,
+        taskId,
+        movedTaskCount: taskIdsToMove.length,
+    }
 }
 
 async function executeDelegatedAssistantRequest({
