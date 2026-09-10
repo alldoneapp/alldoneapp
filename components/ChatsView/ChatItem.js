@@ -1,3 +1,4 @@
+import { useTaskHierarchyBackground } from '../TaskListView/TaskHierarchy'
 import React, { useMemo } from 'react'
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
@@ -53,7 +54,8 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
 
     const isSticky = chat.stickyData.days > 0
     const theme = getTheme(Themes, loggedUser.themeName, 'RootView.StickyItem')
-    const backgroundColor = getChatItemBackgroundColor(chat.hasStar, inCommentPopup)
+    const projectBackgroundColor = useTaskHierarchyBackground()
+    const backgroundColor = getChatItemBackgroundColor(chat.hasStar, inCommentPopup, projectBackgroundColor)
     const usesCommentPopupBackground = inCommentPopup
 
     const onOpenEditModal = () => {

@@ -7,7 +7,7 @@ import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import renderer from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-import { colors, PROJECT_LINE_TAG_HEIGHT, PROJECT_LINE_TAG_MOBILE_WIDTH } from '../styles/global'
+import { colors } from '../styles/global'
 import Icon from '../Icon'
 import AddGoalTag from './AddGoalTag'
 import AddTaskTag from './AddTaskTag'
@@ -59,18 +59,18 @@ describe('AddGoalTag', () => {
     })
 
     describe('icon-only tap target on mobile', () => {
-        it('widens the pill past the icon box while keeping the row height', () => {
+        it('uses a square mobile target larger than its icon', () => {
             mockState({ smallScreenNavigation: true })
 
             const style = buttonStyleOf(<AddGoalTag projectId="project-1" />)
 
-            expect(style.width).toBe(PROJECT_LINE_TAG_MOBILE_WIDTH)
-            expect(style.height).toBe(PROJECT_LINE_TAG_HEIGHT)
-            expect(style.width).toBe(40)
-            expect(style.height).toBe(24)
+            expect(style.width).toBe(36)
+            expect(style.height).toBe(36)
+            expect(style.width).toBe(36)
+            expect(style.height).toBe(36)
         })
 
-        it('stays icon-only and preserves the pill shape', () => {
+        it('stays icon-only and preserves the rounded rectangle shape', () => {
             mockState({ smallScreenNavigation: true })
 
             const tree = renderer.create(<AddGoalTag projectId="project-1" />)
@@ -78,28 +78,28 @@ describe('AddGoalTag', () => {
 
             expect(tree.root.findAll(node => node.type === Text && node.props.children === 'Add goal')).toHaveLength(0)
             expect(tree.root.findByType(Icon).props.size).toBe(16)
-            expect(style.borderRadius).toBe(50)
-            expect(style.borderWidth).toBe(1)
-            expect(style.borderColor).toBe(colors.Text03)
+            expect(style.borderRadius).toBe(8)
+            expect(style.borderWidth).toBe(0)
+            expect(style.backgroundColor).toBe(colors.UtilityBlue200)
         })
 
-        it('leaves the labelled desktop pill auto-width', () => {
+        it('leaves the labelled desktop button auto-width', () => {
             mockState({ smallScreenNavigation: false })
 
             const tree = renderer.create(<AddGoalTag projectId="project-1" />)
             const style = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
 
             expect(style.width).toBeUndefined()
-            expect(style.height).toBe(24)
+            expect(style.height).toBe(32)
             expect(tree.root.findAll(node => node.type === Text && node.props.children === 'Add goal')).toHaveLength(1)
         })
     })
 
-    // The two pills sit side by side on the same project header rows (`TagsArea`),
+    // The two buttons sit side by side on the same project header rows (`TagsArea`),
     // so a mismatched tap target is immediately visible as one being smaller than
     // its neighbour. They share the token precisely so this cannot drift; this
     // test is the ratchet that keeps a future edit to one of them honest.
-    it('matches the AddTaskTag pill it sits beside', () => {
+    it('matches the AddTaskTag button it sits beside', () => {
         mockState({ smallScreenNavigation: true })
 
         const goal = buttonStyleOf(<AddGoalTag projectId="project-1" />)

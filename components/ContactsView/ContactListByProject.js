@@ -1,3 +1,4 @@
+import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import React, { memo, useEffect, useMemo, useRef } from 'react'
 import { View } from 'react-native'
 
@@ -119,7 +120,12 @@ function ContactListByProject({
     }
 
     return contactsList.length > 0 || inSelectedProject ? (
-        <View style={{ marginBottom: inSelectedProject ? 32 : 25 }}>
+        <ProjectSection
+            projectId={project.id}
+            projectColor={project.color}
+            selected={inSelectedProject}
+            style={{ marginBottom: inSelectedProject ? 32 : 25 }}
+        >
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
@@ -136,75 +142,81 @@ function ContactListByProject({
                 }
                 showRootSectionNavigation={inSelectedProject}
             />
-            {inSelectedProject && <ContactsHeader contactAmount={contactsList.length} />}
-            {inSelectedProject && <ContactStatusFiltersView projectContacts={projectContacts} />}
+            <ProjectSectionBody>
+                {inSelectedProject && <ContactsHeader contactAmount={contactsList.length} />}
+                {inSelectedProject && <ContactStatusFiltersView projectContacts={projectContacts} />}
 
-            <NewContactSection projectIndex={projectIndex} newItemRef={newItemRef} dismissibleRefs={dismissibleRefs} />
-
-            {contactsList.length > 0 &&
-                contactsList.map((contact, index) => {
-                    return (
-                        contact &&
-                        index < visibleAmount &&
-                        // AT-2508 - a contact that is still being written has no document to
-                        // open, swipe or edit, so it gets an inert row that says it is on its
-                        // way instead of the interactive one. It is replaced by the real row in
-                        // the same snapshot delivery that retires it, so nothing moves.
-                        (isPendingContact(contact) ? (
-                            <PendingContactItem key={contact.uid} contact={contact} />
-                        ) : (
-                            <DismissibleItem
-                                key={contact.uid}
-                                ref={ref => {
-                                    if (ref) {
-                                        dismissibleRefs[`${contact.uid}`] = ref
-                                    }
-                                }}
-                                defaultComponent={
-                                    <ContactItem
-                                        projectIndex={projectIndex}
-                                        key={contact.uid}
-                                        contact={contact}
-                                        isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
-                                        onPress={() => {
-                                            if (!isSomeContactEditOpen()) {
-                                                for (let key in dismissibleRefs) {
-                                                    dismissibleRefs[key].closeModal()
-                                                }
-                                                newItemRef.current?.closeModal()
-                                                dismissibleRefs[`${contact.uid}`].openModal()
-                                            } else {
-                                                dismissAllPopups()
-                                            }
-                                        }}
-                                    />
-                                }
-                                modalComponent={
-                                    <EditContact
-                                        isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
-                                        projectId={project.id}
-                                        projectIndex={projectIndex}
-                                        onCancelAction={() => dismissibleRefs[`${contact.uid}`].toggleModal()}
-                                        contact={contact}
-                                        dismissibleRef={dismissibleRefs[`${contact.uid}`]}
-                                    />
-                                }
-                            />
-                        ))
-                    )
-                })}
-
-            {loadingMore && (
-                <ContactsListSkeleton
-                    rowCount={resolveGhostRowCount(incomingCount)}
-                    contactKeys={contactsList.slice(visibleAmount, visibleAmount + incomingCount).map(c => c.uid)}
+                <NewContactSection
+                    projectIndex={projectIndex}
+                    newItemRef={newItemRef}
+                    dismissibleRefs={dismissibleRefs}
                 />
-            )}
 
-            {(canExpand || expanded) && (
-                <ShowMoreButton expanded={expanded} contract={collapse} expand={expand} loading={loadingMore} />
-            )}
-        </View>
+                {contactsList.length > 0 &&
+                    contactsList.map((contact, index) => {
+                        return (
+                            contact &&
+                            index < visibleAmount &&
+                            // AT-2508 - a contact that is still being written has no document to
+                            // open, swipe or edit, so it gets an inert row that says it is on its
+                            // way instead of the interactive one. It is replaced by the real row in
+                            // the same snapshot delivery that retires it, so nothing moves.
+                            (isPendingContact(contact) ? (
+                                <PendingContactItem key={contact.uid} contact={contact} />
+                            ) : (
+                                <DismissibleItem
+                                    key={contact.uid}
+                                    ref={ref => {
+                                        if (ref) {
+                                            dismissibleRefs[`${contact.uid}`] = ref
+                                        }
+                                    }}
+                                    defaultComponent={
+                                        <ContactItem
+                                            projectIndex={projectIndex}
+                                            key={contact.uid}
+                                            contact={contact}
+                                            isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
+                                            onPress={() => {
+                                                if (!isSomeContactEditOpen()) {
+                                                    for (let key in dismissibleRefs) {
+                                                        dismissibleRefs[key].closeModal()
+                                                    }
+                                                    newItemRef.current?.closeModal()
+                                                    dismissibleRefs[`${contact.uid}`].openModal()
+                                                } else {
+                                                    dismissAllPopups()
+                                                }
+                                            }}
+                                        />
+                                    }
+                                    modalComponent={
+                                        <EditContact
+                                            isMember={!contact.hasOwnProperty('recorderUserId')} // Distinctive property of contacts
+                                            projectId={project.id}
+                                            projectIndex={projectIndex}
+                                            onCancelAction={() => dismissibleRefs[`${contact.uid}`].toggleModal()}
+                                            contact={contact}
+                                            dismissibleRef={dismissibleRefs[`${contact.uid}`]}
+                                        />
+                                    }
+                                />
+                            ))
+                        )
+                    })}
+
+                {loadingMore && (
+                    <ContactsListSkeleton
+                        rowCount={resolveGhostRowCount(incomingCount)}
+                        contactKeys={contactsList.slice(visibleAmount, visibleAmount + incomingCount).map(c => c.uid)}
+                    />
+                )}
+
+                {(canExpand || expanded) && (
+                    <ShowMoreButton expanded={expanded} contract={collapse} expand={expand} loading={loadingMore} />
+                )}
+            </ProjectSectionBody>
+        </ProjectSection>
     ) : null
 }
 

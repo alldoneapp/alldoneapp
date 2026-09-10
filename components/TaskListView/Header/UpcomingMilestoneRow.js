@@ -66,6 +66,7 @@ export default function UpcomingMilestoneRow({ projectId, hidden = false }) {
             {!hidden && nextUpcoming && (
                 <View style={{ paddingTop: 20, paddingBottom: 8 }}>
                     <MilestonePresentation
+                        outlined
                         onPress={goToGoalsTab}
                         milestone={nextUpcoming}
                         projectId={projectId}

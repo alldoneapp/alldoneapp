@@ -4,9 +4,10 @@ import { useSelector } from 'react-redux'
 
 import Icon from '../Icon'
 import global, { colors } from '../styles/global'
+import { taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
 
 /**
- * The outlined pill used by the bulk actions that sit on the right of a project line ("Archive
+ * The neutral button used by the bulk actions that sit on the right of a project line ("Archive
  * emails", "mark as read") - the All Projects line and every per-project line.
  *
  * Both buttons rendered their label unconditionally, with `flexShrink: 0` on the text, while the
@@ -15,7 +16,7 @@ import global, { colors } from '../styles/global'
  * actions container was squeezed while its text refused to shrink - the labels overflowed their
  * own container and drew straight over the project title (AT-2263).
  *
- * On `smallScreenNavigation` the pill therefore drops its label and keeps just the icon, which is
+ * On `smallScreenNavigation` the button therefore drops its label and keeps just the icon, which is
  * what the neighbours on the very same row already do (`AddTaskTag`, `EmailLabelChip`). The wording
  * survives as the accessible name through `accessibilityLabel`, which react-native-web maps to a
  * real `aria-label` attribute.
@@ -45,6 +46,8 @@ export default function ProjectLineActionButton({
             accessibilityState={{ busy: loading, disabled }}
             style={[
                 localStyles.container,
+                taskHierarchyStyles.headerSecondaryButton,
+                mobile && taskHierarchyStyles.headerAddButtonMobile,
                 mobile && localStyles.containerIconOnly,
                 disabled && localStyles.disabled,
                 error && localStyles.errorContainer,
@@ -54,9 +57,9 @@ export default function ProjectLineActionButton({
             disabled={disabled}
         >
             {loading ? (
-                <ActivityIndicator size="small" color={colors.Text03} />
+                <ActivityIndicator size="small" color={colors.Text02} />
             ) : (
-                <Icon name={icon} size={16} color={error ? colors.UtilityRed200 : colors.Text03} />
+                <Icon name={icon} size={16} color={error ? colors.UtilityRed200 : colors.Text02} />
             )}
             {!mobile && (
                 <Text style={[localStyles.text, error && localStyles.errorText]} numberOfLines={1}>
@@ -71,26 +74,19 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: 4,
-        borderColor: colors.Text03,
-        borderWidth: 1,
-        height: 28,
         paddingVertical: 0,
-        paddingLeft: 6,
-        paddingRight: 10,
         // The row's left side is the part that gives way: these actions keep their intrinsic
         // width so a long project name truncates instead of the buttons being squashed.
         flexShrink: 0,
     },
     containerIconOnly: {
-        width: 28,
         justifyContent: 'center',
         paddingLeft: 0,
         paddingRight: 0,
     },
     text: {
         ...global.caption1,
-        color: colors.Text03,
+        color: colors.Text02,
         marginLeft: 6,
         flexShrink: 0,
     },
@@ -98,6 +94,7 @@ const localStyles = StyleSheet.create({
         opacity: 0.6,
     },
     errorContainer: {
+        borderWidth: 1,
         borderColor: colors.UtilityRed200,
     },
     errorText: {

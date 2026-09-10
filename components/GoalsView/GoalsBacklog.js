@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { View } from 'react-native'
+import { TaskHierarchyGroup, useProjectSectionBorder } from '../TaskListView/TaskHierarchy'
 import { useSelector } from 'react-redux'
 
 import GoalsBacklogHeader from './GoalsBacklogHeader'
@@ -21,6 +22,7 @@ export default function GoalsBacklog({
     closeEdition,
     previousMilestoneDate,
 }) {
+    const borderColor = useProjectSectionBorder()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const userWorkstreamsIdsInProject = useSelector(state =>
@@ -77,47 +79,49 @@ export default function GoalsBacklog({
         (filtersArray.length === 0 || filteredGoals.length > 0) && (
             <View style={{ marginBottom: 24 }}>
                 <AutomaticMilestonesNote projectId={projectId} projectIndex={projectIndex} />
-                <GoalsBacklogHeader
-                    projectId={projectId}
-                    previousMilestoneDate={previousMilestoneDate}
-                    milestoneId={milestoneId}
-                    goals={filteredGoals}
-                />
-                {loggedUserCanUpdateObject && !isTemplateProject && (
-                    <AddGoals
-                        activeDragGoalMode={activeDragGoalMode}
+                <TaskHierarchyGroup borderColor={borderColor} bottomSpacing={0}>
+                    <GoalsBacklogHeader
                         projectId={projectId}
+                        previousMilestoneDate={previousMilestoneDate}
+                        milestoneId={milestoneId}
+                        goals={filteredGoals}
+                    />
+                    {loggedUserCanUpdateObject && !isTemplateProject && (
+                        <AddGoals
+                            activeDragGoalMode={activeDragGoalMode}
+                            projectId={projectId}
+                            setDismissibleRefs={setDismissibleRefs}
+                            openEdition={openEdition}
+                            closeEdition={closeEdition}
+                            milestoneId={milestoneId}
+                            milestoneDate={BACKLOG_DATE_NUMERIC}
+                            refId={`Add${milestoneId}_backlog`}
+                        />
+                    )}
+                    <GoalsByAssignee
+                        projectId={projectId}
+                        milestoneId={milestoneId}
                         setDismissibleRefs={setDismissibleRefs}
                         openEdition={openEdition}
                         closeEdition={closeEdition}
-                        milestoneId={milestoneId}
-                        milestoneDate={BACKLOG_DATE_NUMERIC}
-                        refId={`Add${milestoneId}_backlog`}
-                    />
-                )}
-                <GoalsByAssignee
-                    projectId={projectId}
-                    milestoneId={milestoneId}
-                    setDismissibleRefs={setDismissibleRefs}
-                    openEdition={openEdition}
-                    closeEdition={closeEdition}
-                    inDoneMilestone={false}
-                    activeDragGoalMode={activeDragGoalMode}
-                    goalsByAssigneeArray={goalsByAssigneeArray}
-                    milestoneGoals={boardGoals}
-                />
-                {loggedUserCanUpdateObject && isTemplateProject && (
-                    <AddGoals
+                        inDoneMilestone={false}
                         activeDragGoalMode={activeDragGoalMode}
-                        projectId={projectId}
-                        setDismissibleRefs={setDismissibleRefs}
-                        openEdition={openEdition}
-                        closeEdition={closeEdition}
-                        milestoneId={milestoneId}
-                        milestoneDate={BACKLOG_DATE_NUMERIC}
-                        refId={`Add${milestoneId}_backlog`}
+                        goalsByAssigneeArray={goalsByAssigneeArray}
+                        milestoneGoals={boardGoals}
                     />
-                )}
+                    {loggedUserCanUpdateObject && isTemplateProject && (
+                        <AddGoals
+                            activeDragGoalMode={activeDragGoalMode}
+                            projectId={projectId}
+                            setDismissibleRefs={setDismissibleRefs}
+                            openEdition={openEdition}
+                            closeEdition={closeEdition}
+                            milestoneId={milestoneId}
+                            milestoneDate={BACKLOG_DATE_NUMERIC}
+                            refId={`Add${milestoneId}_backlog`}
+                        />
+                    )}
+                </TaskHierarchyGroup>
             </View>
         )
     )

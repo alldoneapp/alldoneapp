@@ -1,14 +1,10 @@
+import { taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
-import styles, {
-    colors,
-    PROJECT_LINE_TAG_HEIGHT,
-    PROJECT_LINE_TAG_MOBILE_WIDTH,
-    windowTagStyle,
-} from '../styles/global'
+import styles, { colors, windowTagStyle } from '../styles/global'
 import Icon from '../Icon'
 import { hideFloatPopup, showFloatPopup } from '../../redux/actions'
 import RichCreateGoalModal from '../UIComponents/FloatModals/RichCreateGoalModal/RichCreateGoalModal'
@@ -45,14 +41,28 @@ export default function AddGoalTag({ projectId, style }) {
             contentLocation={smallScreenNavigation ? null : undefined}
         >
             <TouchableOpacity
-                style={[localStyles.tag, smallScreenNavigation && localStyles.tagMobile, style]}
+                style={[
+                    localStyles.tag,
+                    taskHierarchyStyles.headerAddButton,
+                    smallScreenNavigation && taskHierarchyStyles.headerAddButtonMobile,
+                    style,
+                ]}
                 onPress={openModal}
             >
                 <View style={localStyles.icon}>
-                    <Icon name={'target'} size={16} color={colors.Text03} />
+                    <Icon name={'plus'} size={16} color={'#FFFFFF'} />
                 </View>
                 {!smallScreenNavigation && (
-                    <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{translate('Add goal')}</Text>
+                    <Text
+                        style={[
+                            styles.subtitle2,
+                            localStyles.text,
+                            windowTagStyle(),
+                            taskHierarchyStyles.headerAddText,
+                        ]}
+                    >
+                        {translate('Add goal')}
+                    </Text>
                 )}
             </TouchableOpacity>
         </AppPopover>
@@ -70,12 +80,6 @@ const localStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.Text03,
         paddingHorizontal: 4,
-    },
-    // Same tap target as the `AddTaskTag` pill it sits beside on the project
-    // lines - the two share the token so widening one cannot desync the pair.
-    tagMobile: {
-        width: PROJECT_LINE_TAG_MOBILE_WIDTH,
-        height: PROJECT_LINE_TAG_HEIGHT,
     },
     text: {
         color: colors.Text03,

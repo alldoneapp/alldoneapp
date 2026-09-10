@@ -37,9 +37,11 @@ import { PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
 import { DYNAMIC_PERCENT } from './GoalsHelper'
 import { DV_TAB_GOAL_LINKED_TASKS } from '../../utils/TabNavigationConstants'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
-import { taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
+import { taskHierarchyStyles, TaskHierarchyBackgroundContext } from '../TaskListView/TaskHierarchy'
 
 export default class GoalItemPresentation extends PureComponent {
+    static contextType = TaskHierarchyBackgroundContext
+
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -431,8 +433,8 @@ export default class GoalItemPresentation extends PureComponent {
             parentGoaltasks,
             areObservedTask,
             inCommentPopup,
-            inHierarchyCard,
-            hierarchyBackgroundColor,
+            inHierarchyCard = !inCommentPopup,
+            hierarchyBackgroundColor = this.context,
         } = this.props
         const {
             extendedName,
@@ -485,7 +487,7 @@ export default class GoalItemPresentation extends PureComponent {
         const amountTags = tagsAmount - assigneesIds.length
 
         return (
-            <View style={[localStyles.globalContainer, inHierarchyCard && { paddingTop: 0 }]}>
+            <View style={[localStyles.globalContainer, inHierarchyCard && isInTaskList && { paddingTop: 0 }]}>
                 <View style={localStyles.container}>
                     <GoalsSwipeBackground needToShowReminderButton={isInTaskList} />
                     <Swipeable
@@ -531,6 +533,7 @@ export default class GoalItemPresentation extends PureComponent {
                                 progressByDoneMilestone={progressByDoneMilestone}
                                 milestoneId={milestoneId}
                                 barColor={highLightColor}
+                                style={inHierarchyCard && [localStyles.cardHeaderCorners, { overflow: 'hidden' }]}
                             />
                         ) : (
                             <GoalProgressBar
@@ -671,7 +674,11 @@ export default class GoalItemPresentation extends PureComponent {
                         {inHierarchyCard && (
                             <Animated.View
                                 pointerEvents="none"
-                                style={[taskHierarchyStyles.goalRowOutline, isHighlight && { borderColor }]}
+                                style={[
+                                    taskHierarchyStyles.goalRowOutline,
+                                    !isInTaskList && { top: 0, left: 0, right: 0 },
+                                    isHighlight && { borderColor },
+                                ]}
                             />
                         )}
                     </Swipeable>

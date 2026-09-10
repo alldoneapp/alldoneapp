@@ -150,7 +150,10 @@ export default function ParentGoalSection({
                 />
             )}
             {goal && showingTasks && (
-                <View style={isLocked && localStyles.blurry} pointerEvents={isLocked ? 'none' : 'auto'}>
+                <View
+                    style={[isLocked && localStyles.blurry, taskHierarchy && { paddingBottom: 8 }]}
+                    pointerEvents={isLocked ? 'none' : 'auto'}
+                >
                     {loggedUserCanUpdateObject && inMainSection && !isTemplateProject ? (
                         isActiveOrganizeMode ? (
                             <SortModeActiveInfo containerStyle={{ paddingLeft: 8 }} />

@@ -1,4 +1,4 @@
-import { useTaskHierarchy } from '../TaskHierarchy'
+import { useTaskHierarchy, useProjectSectionAccent } from '../TaskHierarchy'
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import moment from 'moment'
@@ -21,6 +21,7 @@ import {
 
 export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex, additionalTasksAmount = 0 }) {
     const taskHierarchy = useTaskHierarchy()
+    const accentColor = useProjectSectionAccent()
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const amountTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][AMOUNT_TASKS_INDEX])
     const estimation = useSelector(
@@ -75,7 +76,13 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex,
 
     return (
         <View style={[localStyles.container, isMainDay ? localStyles.containerToday : undefined]}>
-            <View style={[localStyles.innerContainer, inBacklog && localStyles.inBacklogIContainer]}>
+            <View
+                style={[
+                    localStyles.innerContainer,
+                    inBacklog && localStyles.inBacklogIContainer,
+                    accentColor && { backgroundColor: accentColor },
+                ]}
+            >
                 <View style={{ flex: 1, justifyContent: 'flex-start', flexDirection: 'row' }}>
                     {inBacklog && (
                         <View style={localStyles.backlogIcon}>

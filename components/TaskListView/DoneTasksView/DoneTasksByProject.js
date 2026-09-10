@@ -1,3 +1,4 @@
+import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
 import React, { useState, useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { cloneDeep } from 'lodash'
@@ -67,51 +68,58 @@ export default function DoneTasksByProject({ project, inSelectedProject }) {
     }, [JSON.stringify(filtersArray), tasksByDate])
 
     return filteredTasksByDate.length > 0 || inSelectedProject ? (
-        <View style={localStyles.container}>
+        <ProjectSection
+            projectId={project.id}
+            projectColor={project.color}
+            selected={inSelectedProject}
+            style={localStyles.container}
+        >
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
                 showWorkflowTag={true}
                 showRootSectionNavigation={inSelectedProject}
             />
-            {showAssistantLine && (
-                <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
-                    <AssistantLine {...assistantLineProps} />
-                </View>
-            )}
-            {filteredTasksByDate.map((item, index) => {
-                const dateFormated = item[0]
-                const taskList = item[1]
-                const firstDateSection = index === 0
+            <ProjectSectionBody>
+                {showAssistantLine && (
+                    <View style={[localStyles.lastCommentContainer, localStyles.lastCommentContainerNoTopMargin]}>
+                        <AssistantLine {...assistantLineProps} />
+                    </View>
+                )}
+                {filteredTasksByDate.map((item, index) => {
+                    const dateFormated = item[0]
+                    const taskList = item[1]
+                    const firstDateSection = index === 0
 
-                return (
-                    <DoneTasksByDate
-                        key={dateFormated}
-                        projectId={project.id}
-                        taskList={taskList}
-                        dateFormated={dateFormated}
-                        firstDateSection={firstDateSection}
-                        subtaskByTask={subtaskByTask}
-                        estimation={estimationByDate[dateFormated]}
+                    return (
+                        <DoneTasksByDate
+                            key={dateFormated}
+                            projectId={project.id}
+                            taskList={taskList}
+                            dateFormated={dateFormated}
+                            firstDateSection={firstDateSection}
+                            subtaskByTask={subtaskByTask}
+                            estimation={estimationByDate[dateFormated]}
+                        />
+                    )
+                })}
+
+                {showEarlierTasksGhosts && (
+                    <TaskListSkeleton
+                        rowCount={resolveGhostRowCount(AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON)}
+                        showDateHeader={filteredTasksByDate.length === 0}
                     />
-                )
-            })}
+                )}
 
-            {showEarlierTasksGhosts && (
-                <TaskListSkeleton
-                    rowCount={resolveGhostRowCount(AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON)}
-                    showDateHeader={filteredTasksByDate.length === 0}
+                <ShowMoreButtonsArea
+                    filteredTasksByDateAmount={filteredTasksByDate.length}
+                    projectId={project.id}
+                    projectIndex={project.index}
+                    completedDateToCheck={completedDateToCheck}
+                    loading={showEarlierTasksGhosts}
                 />
-            )}
-
-            <ShowMoreButtonsArea
-                filteredTasksByDateAmount={filteredTasksByDate.length}
-                projectId={project.id}
-                projectIndex={project.index}
-                completedDateToCheck={completedDateToCheck}
-                loading={showEarlierTasksGhosts}
-            />
-        </View>
+            </ProjectSectionBody>
+        </ProjectSection>
     ) : null
 }
 

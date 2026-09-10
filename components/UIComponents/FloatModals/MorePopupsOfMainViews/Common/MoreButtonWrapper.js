@@ -1,9 +1,11 @@
-import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect } from 'react'
+import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect, useContext } from 'react'
 import { View } from 'react-native'
 import AppPopover from '../../../ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import MoreButton from './MoreButton'
+import { HeaderActionsContext, taskHierarchyStyles } from '../../../../TaskListView/TaskHierarchy'
+import { colors } from '../../../../styles/global'
 import { MORE_BUTTON_MAIN_VIEWS_MODAL_ID, removeModal, storeModal } from '../../../../ModalsManager/modalsManager'
 import MoreButtonModal from '../../MorePopupsOfEditModals/Common/MoreButtonModal'
 import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
@@ -28,6 +30,7 @@ function MoreButtonWrapper(
     },
     ref
 ) {
+    const inHeader = useContext(HeaderActionsContext)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [isOpen, setIsOpen] = useState(false)
     const dispatch = useDispatch()
@@ -73,7 +76,7 @@ function MoreButtonWrapper(
     }
 
     return (
-        <View style={wrapperStyle}>
+        <View style={[wrapperStyle, inHeader && taskHierarchyStyles.headerMoreWrapper]}>
             {isOpen ? (
                 <AppPopover
                     key={contentKey}
@@ -98,21 +101,29 @@ function MoreButtonWrapper(
                 >
                     <MoreButton
                         onPress={delayCloseModal}
-                        buttonStyle={buttonStyle}
+                        buttonStyle={[
+                            buttonStyle,
+                            inHeader && taskHierarchyStyles.headerMoreButton,
+                            inHeader && mobile && taskHierarchyStyles.headerMoreButtonMobile,
+                        ]}
                         disabled={disabled}
                         shortcut={shortcut}
                         iconSize={iconSize}
-                        iconColor={iconColor}
+                        iconColor={inHeader ? colors.Text02 : iconColor}
                     />
                 </AppPopover>
             ) : (
                 <MoreButton
                     onPress={openModal}
-                    buttonStyle={buttonStyle}
+                    buttonStyle={[
+                        buttonStyle,
+                        inHeader && taskHierarchyStyles.headerMoreButton,
+                        inHeader && mobile && taskHierarchyStyles.headerMoreButtonMobile,
+                    ]}
                     disabled={disabled}
                     shortcut={shortcut}
                     iconSize={iconSize}
-                    iconColor={iconColor}
+                    iconColor={inHeader ? colors.Text02 : iconColor}
                 />
             )}
         </View>

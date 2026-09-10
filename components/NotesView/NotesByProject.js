@@ -1,3 +1,4 @@
+import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import React, { PureComponent } from 'react'
 import { View } from 'react-native'
 import Backend from '../../utils/BackendBridge'
@@ -632,7 +633,12 @@ export default class NotesByProject extends PureComponent {
         const showShowMoreButton = needShowMoreButton && notesAmount > 0
 
         return (
-            <View style={{ marginBottom: inAllProjects ? 25 : 32 }}>
+            <ProjectSection
+                projectId={project.id}
+                projectColor={project.color}
+                selected={inSelectedProject}
+                style={{ marginBottom: inAllProjects ? 25 : 32 }}
+            >
                 <ProjectHeader
                     projectIndex={project.index}
                     projectId={project.id}
@@ -649,51 +655,55 @@ export default class NotesByProject extends PureComponent {
                     }
                     showRootSectionNavigation={inSelectedProject}
                 />
-                {inSelectedProject && <NotesHeader />}
-                {inSelectedProject && (
-                    <NoteOwnerFiltersLine
-                        projectId={project.id}
-                        notes={hashtagFilteredNotes}
-                        stickyNotes={hashtagFilteredStickyNotes}
+                <ProjectSectionBody>
+                    {inSelectedProject && <NotesHeader />}
+                    {inSelectedProject && (
+                        <NoteOwnerFiltersLine
+                            projectId={project.id}
+                            notes={hashtagFilteredNotes}
+                            stickyNotes={hashtagFilteredStickyNotes}
+                        />
+                    )}
+                    <NotesSticky
+                        fStickyNotes={filteredStickyNotes}
+                        inAllProjects={inAllProjects}
+                        dismissibleRefs={this.dismissibleRefs}
+                        project={project}
                     />
-                )}
-                <NotesSticky
-                    fStickyNotes={filteredStickyNotes}
-                    inAllProjects={inAllProjects}
-                    dismissibleRefs={this.dismissibleRefs}
-                    project={project}
-                />
-                <NotesByDate notes={todayNotes} project={project} dateString={'TODAY'} date={todayDate} />
-                {notesArr.map((entry, index) => {
-                    const noteList = entry[1]
-                    const dateKey = entry[0]
-                    const isNotToday = todayDateKey !== dateKey
-                    if (isNotToday) {
-                        const isFirstDateSection = index === 0
-                        const timestamp = moment(noteList[0].lastEditionDate)
-                        const dateString = timestamp.format(getDateFormat())
-                        return (
-                            <NotesByDate
-                                key={dateKey}
-                                notes={noteList}
-                                project={project}
-                                dateString={dateString}
-                                date={timestamp}
-                                firstDateSection={isFirstDateSection}
-                            />
-                        )
-                    }
-                })}
-                {loadingMoreNotes && <NotesListSkeleton rowCount={resolveGhostRowCount(this.props.maxNotesToRender)} />}
-                {showShowMoreButton && (
-                    <ShowMoreButton
-                        expanded={pressedShowMore}
-                        contract={this.contractShowMore}
-                        expand={this.expandShowMore}
-                        loading={loadingMoreNotes}
-                    />
-                )}
-            </View>
+                    <NotesByDate notes={todayNotes} project={project} dateString={'TODAY'} date={todayDate} />
+                    {notesArr.map((entry, index) => {
+                        const noteList = entry[1]
+                        const dateKey = entry[0]
+                        const isNotToday = todayDateKey !== dateKey
+                        if (isNotToday) {
+                            const isFirstDateSection = index === 0
+                            const timestamp = moment(noteList[0].lastEditionDate)
+                            const dateString = timestamp.format(getDateFormat())
+                            return (
+                                <NotesByDate
+                                    key={dateKey}
+                                    notes={noteList}
+                                    project={project}
+                                    dateString={dateString}
+                                    date={timestamp}
+                                    firstDateSection={isFirstDateSection}
+                                />
+                            )
+                        }
+                    })}
+                    {loadingMoreNotes && (
+                        <NotesListSkeleton rowCount={resolveGhostRowCount(this.props.maxNotesToRender)} />
+                    )}
+                    {showShowMoreButton && (
+                        <ShowMoreButton
+                            expanded={pressedShowMore}
+                            contract={this.contractShowMore}
+                            expand={this.expandShowMore}
+                            loading={loadingMoreNotes}
+                        />
+                    )}
+                </ProjectSectionBody>
+            </ProjectSection>
         )
     }
 }

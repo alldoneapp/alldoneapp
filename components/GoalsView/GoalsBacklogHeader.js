@@ -1,4 +1,5 @@
 import React from 'react'
+import { useProjectSectionAccent, useProjectSectionBorder, taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
 import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import MilestoneStatistics from './MilestoneStatistics'
@@ -10,6 +11,8 @@ import { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 
 export default function GoalsBacklogHeader({ projectId, previousMilestoneDate, milestoneId, goals }) {
+    const accentColor = useProjectSectionAccent()
+    const borderColor = useProjectSectionBorder()
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUserId = useSelector(state => state.currentUser.uid)
     const backlogLikeMilestone = {
@@ -23,7 +26,7 @@ export default function GoalsBacklogHeader({ projectId, previousMilestoneDate, m
         loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, accentColor && { backgroundColor: accentColor }]}>
             <Text style={localStyles.title}>{translate('Someday')}</Text>
             <MilestoneStatistics
                 projectId={projectId}
@@ -38,6 +41,10 @@ export default function GoalsBacklogHeader({ projectId, previousMilestoneDate, m
                     <MilestoneMoreButton projectId={projectId} milestone={backlogLikeMilestone} goals={goals} />
                 </View>
             )}
+            <View
+                pointerEvents="none"
+                style={[taskHierarchyStyles.goalRowOutline, { borderWidth: 1 }, borderColor && { borderColor }]}
+            />
         </View>
     )
 }
@@ -48,7 +55,7 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 8,
         paddingBottom: 2,
         backgroundColor: colors.Grey100,
-        borderRadius: 4,
+        borderRadius: 7,
     },
     title: {
         ...styles.title7,
