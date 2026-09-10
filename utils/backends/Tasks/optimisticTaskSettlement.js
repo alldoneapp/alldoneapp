@@ -1,7 +1,11 @@
 import { isEqual } from 'lodash'
 
 import { getDb } from '../firestore'
-import { hasOptimisticTaskSubscribers, publishOptimisticTaskSettled } from './optimisticTaskCreate'
+import {
+    discardOptimisticTaskSubscribers,
+    onOptimisticTaskSubscribersConfirmed,
+    publishOptimisticTaskSettled,
+} from './optimisticTaskCreate'
 
 /**
  * AT-2500, second follow-up - a task created and postponed a moment later was STILL left in
@@ -42,11 +46,11 @@ import { hasOptimisticTaskSubscribers, publishOptimisticTaskSettled } from './op
  *      compensation, so a local edit through any write path at all - `setTaskDueDate`, a batch, a
  *      drag, done, an assignee change - reaches it the instant the mutation is applied, with no
  *      hook in any of those call sites that a future one could forget;
- *   3. it stops at `listsCanSeeTaskThemselves`: the server has the document, this client has no
- *      unacknowledged writes for it, and the access projection is in place. From that point every
- *      change arrives through the lists' own queries, so a further verdict from here would be
- *      redundant at best. `SETTLEMENT_WINDOW_TIMEOUT_MS` is the backstop for a projection that
- *      never lands at all.
+ *   3. it stops only after every list which accepted the optimistic create has actually seen the
+ *      task in its own query (or has removed its pending copy). The document receiving its access
+ *      projection is not sufficient: AT-2539 reproduced a postpone between that document-listener
+ *      callback and the query listener's later `added` callback. `SETTLEMENT_WINDOW_TIMEOUT_MS` is
+ *      the backstop for a query that never confirms at all.
  *
  * Three properties keep this cheap. It never starts when no list subscribed to the create (nothing
  * is holding an optimistic row, so there is nothing to reconcile). It publishes only when the
@@ -60,30 +64,14 @@ import { hasOptimisticTaskSubscribers, publishOptimisticTaskSettled } from './op
  */
 
 /**
- * How long a single create's settlement window may stay open. Only reached when the access
- * projection never lands (a failed `onCreateTask`, a very long outage); in the ordinary case the
- * run ends within a second or two of the projection arriving.
+ * How long a single create's settlement window may stay open. Only reached when an accepting query
+ * never confirms or removes its pending row (a failed projection, a very long outage); ordinarily
+ * every subscriber confirms shortly after the projection arrives.
  */
 export const SETTLEMENT_WINDOW_TIMEOUT_MS = 30000
 
 /** Runs keyed `projectId/taskId`, so a re-created id restarts its window rather than doubling it. */
 const activeSettlements = new Map()
-
-/**
- * True once a change to this task can no longer escape the lists' own queries.
- *
- * All three clauses are needed. `fromCache === false` says the server has answered; no pending
- * writes says this client is not sitting on a mutation the server has yet to see; and a non-empty
- * `readerIds` is the projection the queries actually filter on (`SERVER_ACCESS_PROJECTION_FIELDS`
- * in `accessProjection.js` - a client may not write it, which is the whole reason the row spends
- * seconds unconfirmed). Stopping on the first two alone would end the window at the create's own
- * ack, i.e. exactly where the defect starts.
- */
-export const listsCanSeeTaskThemselves = (snapshot, taskData) => {
-    const metadata = snapshot && snapshot.metadata
-    if (!metadata || metadata.fromCache !== false || metadata.hasPendingWrites === true) return false
-    return Array.isArray(taskData && taskData.readerIds) && taskData.readerIds.length > 0
-}
 
 const settlementKey = (projectId, taskId) => `${projectId}/${taskId}`
 
@@ -122,14 +110,12 @@ export const stopAllOptimisticTaskSettlements = () => {
 export const settleOptimisticTaskRow = async (projectId, taskId, { timeoutMs = SETTLEMENT_WINDOW_TIMEOUT_MS } = {}) => {
     if (!projectId || !taskId) return
 
-    // No list subscribed to this create, so no optimistic row exists to reconcile anywhere.
-    if (!hasOptimisticTaskSubscribers(projectId)) return
-
     const key = settlementKey(projectId, taskId)
     stopOptimisticTaskSettlement(projectId, taskId)
 
     let stopped = false
     let unsubscribe = null
+    let unsubscribeConfirmation = null
     let timer = null
     let lastPublished
     let hasPublished = false
@@ -140,6 +126,10 @@ export const settleOptimisticTaskRow = async (projectId, taskId, { timeoutMs = S
         if (activeSettlements.get(key) === stop) activeSettlements.delete(key)
         if (timer) clearTimeout(timer)
         timer = null
+        if (unsubscribeConfirmation) {
+            unsubscribeConfirmation()
+            unsubscribeConfirmation = null
+        }
         if (unsubscribe) {
             try {
                 unsubscribe()
@@ -164,7 +154,19 @@ export const settleOptimisticTaskRow = async (projectId, taskId, { timeoutMs = S
     }
 
     activeSettlements.set(key, stop)
-    if (Number.isFinite(timeoutMs) && timeoutMs > 0) timer = setTimeout(stop, timeoutMs)
+    unsubscribeConfirmation = onOptimisticTaskSubscribersConfirmed(projectId, taskId, stop)
+    // No list accepted this task's optimistic create, or every such list already confirmed it
+    // before the create ack arrived. There is no pending row for this listener to reconcile.
+    if (!unsubscribeConfirmation) {
+        stop()
+        return
+    }
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        timer = setTimeout(() => {
+            discardOptimisticTaskSubscribers(projectId, taskId)
+            stop()
+        }, timeoutMs)
+    }
 
     // The verdict available right now, from the local cache: no network, no billed read, and it
     // already reflects every local edit made since the create - which answers the common case
@@ -181,12 +183,14 @@ export const settleOptimisticTaskRow = async (projectId, taskId, { timeoutMs = S
                     if (stopped) return
                     const taskData = snapshot && snapshot.exists ? snapshot.data() : null
                     publishIfChanged(taskData)
-                    if (taskData && listsCanSeeTaskThemselves(snapshot, taskData)) stop()
                 },
                 // A listen that fails (a transport restart reported as `permission-denied` - see
                 // AT-2484 - or a genuine denial) reports no verdict and simply closes the window.
                 // Without this handler the SDK would raise the error as an unhandled one.
-                () => stop()
+                () => {
+                    discardOptimisticTaskSubscribers(projectId, taskId)
+                    stop()
+                }
             )
 
         // `onSnapshot` may deliver a cached snapshot synchronously, and that snapshot may already
@@ -204,6 +208,7 @@ export const settleOptimisticTaskRow = async (projectId, taskId, { timeoutMs = S
     } catch (error) {
         // No listener available (a stubbed client, a transport that refused). The immediate cache
         // verdict above still stands, which is precisely the behaviour before this module existed.
+        discardOptimisticTaskSubscribers(projectId, taskId)
         stop()
     }
 }

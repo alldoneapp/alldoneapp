@@ -7,6 +7,8 @@ import {
     OPTIMISTIC_TASK_REMOVED,
     OPTIMISTIC_TASK_SETTLED,
     buildOptimisticTaskChange,
+    confirmOptimisticTaskForSubscriber,
+    onOptimisticTaskSubscribersConfirmed,
     publishOptimisticTaskCreateFailed,
     publishOptimisticTaskCreated,
     publishOptimisticTaskSettled,
@@ -102,6 +104,55 @@ describe('optimistic task create bus', () => {
         publishOptimisticTaskCreated('', 'task-1', { name: 'x' })
 
         expect(received).toHaveLength(0)
+    })
+
+    describe('query confirmation', () => {
+        it('waits for every subscriber which accepted the optimistic row', () => {
+            const first = jest.fn(() => true)
+            const second = jest.fn(() => true)
+            subscribeToOptimisticTaskCreates('project-1', first)
+            subscribeToOptimisticTaskCreates('project-1', second)
+            publishOptimisticTaskCreated('project-1', 'task-1', { name: 'buy milk' })
+            const confirmed = jest.fn()
+
+            expect(onOptimisticTaskSubscribersConfirmed('project-1', 'task-1', confirmed)).not.toBeNull()
+
+            confirmOptimisticTaskForSubscriber('project-1', 'task-1', first)
+            expect(confirmed).not.toHaveBeenCalled()
+
+            confirmOptimisticTaskForSubscriber('project-1', 'task-1', second)
+            expect(confirmed).toHaveBeenCalledTimes(1)
+        })
+
+        it('does not wait for a subscriber which rejected the task for its query', () => {
+            subscribeToOptimisticTaskCreates('project-1', () => false)
+            publishOptimisticTaskCreated('project-1', 'task-1', { name: 'buy milk' })
+
+            expect(onOptimisticTaskSubscribersConfirmed('project-1', 'task-1', jest.fn())).toBeNull()
+        })
+
+        it('releases a pending row when its subscriber unmounts', () => {
+            const handler = jest.fn(() => true)
+            const unsubscribe = subscribeToOptimisticTaskCreates('project-1', handler)
+            publishOptimisticTaskCreated('project-1', 'task-1', { name: 'buy milk' })
+            const confirmed = jest.fn()
+            onOptimisticTaskSubscribersConfirmed('project-1', 'task-1', confirmed)
+
+            unsubscribe()
+
+            expect(confirmed).toHaveBeenCalledTimes(1)
+        })
+
+        it('releases every pending subscriber when the create is rolled back', () => {
+            subscribeToOptimisticTaskCreates('project-1', () => true)
+            publishOptimisticTaskCreated('project-1', 'task-1', { name: 'buy milk' })
+            const confirmed = jest.fn()
+            onOptimisticTaskSubscribersConfirmed('project-1', 'task-1', confirmed)
+
+            publishOptimisticTaskCreateFailed('project-1', 'task-1', { name: 'buy milk' })
+
+            expect(confirmed).toHaveBeenCalledTimes(1)
+        })
     })
 
     /**

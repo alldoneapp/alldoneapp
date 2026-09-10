@@ -88,6 +88,8 @@
  */
 
 const subscribersByProject = new Map()
+const pendingSubscribersByProject = new Map()
+const confirmationListenersByProject = new Map()
 
 export const OPTIMISTIC_TASK_ADDED = 'added'
 export const OPTIMISTIC_TASK_REMOVED = 'removed'
@@ -118,6 +120,8 @@ export const buildOptimisticTaskChange = (type, taskId, taskData) => ({
 
 /**
  * @param handler receives a change shaped like a Firestore `docChanges()` entry.
+ *                It must return `true` when it accepts an `added` row; that keeps the short-lived
+ *                settlement listener open until this subscriber confirms the real query result.
  * @returns an unsubscribe function. Watchers must call it from their own unsubscribe so a
  *          publication can never reach a list nobody is watching any more.
  */
@@ -136,18 +140,86 @@ export const subscribeToOptimisticTaskCreates = (projectId, handler) => {
         if (!current) return
         current.delete(handler)
         if (current.size === 0) subscribersByProject.delete(projectId)
+
+        const pendingByTask = pendingSubscribersByProject.get(projectId)
+        if (!pendingByTask) return
+        pendingByTask.forEach((pendingSubscribers, taskId) => {
+            if (!pendingSubscribers.delete(handler) || pendingSubscribers.size > 0) return
+            pendingByTask.delete(taskId)
+            notifyOptimisticTaskConfirmed(projectId, taskId)
+        })
+        if (pendingByTask.size === 0) pendingSubscribersByProject.delete(projectId)
     }
 }
 
+const notifyOptimisticTaskConfirmed = (projectId, taskId) => {
+    const listenersByTask = confirmationListenersByProject.get(projectId)
+    const listeners = listenersByTask?.get(taskId)
+    if (!listeners) return
+    listenersByTask.delete(taskId)
+    if (listenersByTask.size === 0) confirmationListenersByProject.delete(projectId)
+    Array.from(listeners).forEach(listener => listener())
+}
+
+const trackOptimisticTaskSubscriber = (projectId, taskId, handler) => {
+    let pendingByTask = pendingSubscribersByProject.get(projectId)
+    if (!pendingByTask) {
+        pendingByTask = new Map()
+        pendingSubscribersByProject.set(projectId, pendingByTask)
+    }
+    let pendingSubscribers = pendingByTask.get(taskId)
+    if (!pendingSubscribers) {
+        pendingSubscribers = new Set()
+        pendingByTask.set(taskId, pendingSubscribers)
+    }
+    pendingSubscribers.add(handler)
+}
+
 /**
- * Whether any list is currently holding rows for this project.
- *
- * `optimisticTaskSettlement` asks before it opens a settlement window: with no subscriber there is
- * no optimistic row anywhere, so there is nothing to reconcile and no reason to watch the document.
+ * A real query has now named this task (or the subscriber has deliberately removed its pending
+ * copy), so this particular list no longer needs the document-level settlement safety net.
  */
-export const hasOptimisticTaskSubscribers = projectId => {
-    const subscribers = subscribersByProject.get(projectId)
-    return !!subscribers && subscribers.size > 0
+export const confirmOptimisticTaskForSubscriber = (projectId, taskId, handler) => {
+    const pendingByTask = pendingSubscribersByProject.get(projectId)
+    const pendingSubscribers = pendingByTask?.get(taskId)
+    if (!pendingSubscribers?.delete(handler)) return
+    if (pendingSubscribers.size > 0) return
+    pendingByTask.delete(taskId)
+    if (pendingByTask.size === 0) pendingSubscribersByProject.delete(projectId)
+    notifyOptimisticTaskConfirmed(projectId, taskId)
+}
+
+/** Drop confirmation bookkeeping when the bounded settlement window can no longer reconcile it. */
+export const discardOptimisticTaskSubscribers = (projectId, taskId) => {
+    const pendingByTask = pendingSubscribersByProject.get(projectId)
+    if (!pendingByTask?.delete(taskId)) return
+    if (pendingByTask.size === 0) pendingSubscribersByProject.delete(projectId)
+    notifyOptimisticTaskConfirmed(projectId, taskId)
+}
+
+/**
+ * Listen until every list which accepted the optimistic create has confirmed or removed it.
+ * Returns `null` when no list is holding the task, so the writer need not open a document listener.
+ */
+export const onOptimisticTaskSubscribersConfirmed = (projectId, taskId, listener) => {
+    if (!pendingSubscribersByProject.get(projectId)?.get(taskId)?.size) return null
+    let listenersByTask = confirmationListenersByProject.get(projectId)
+    if (!listenersByTask) {
+        listenersByTask = new Map()
+        confirmationListenersByProject.set(projectId, listenersByTask)
+    }
+    let listeners = listenersByTask.get(taskId)
+    if (!listeners) {
+        listeners = new Set()
+        listenersByTask.set(taskId, listeners)
+    }
+    listeners.add(listener)
+    return () => {
+        listeners.delete(listener)
+        if (listeners.size > 0) return
+        listenersByTask.delete(taskId)
+        if (listenersByTask.size === 0) confirmationListenersByProject.delete(projectId)
+    }
 }
 
 const publish = (projectId, change) => {
@@ -157,13 +229,24 @@ const publish = (projectId, change) => {
     // Snapshot the set first: a subscriber is free to unsubscribe (or subscribe) while handling.
     Array.from(subscribers).forEach(handler => {
         try {
-            handler(change)
+            const accepted = handler(change)
+            if (
+                change.type === OPTIMISTIC_TASK_ADDED &&
+                accepted === true &&
+                subscribersByProject.get(projectId)?.has(handler)
+            ) {
+                trackOptimisticTaskSubscriber(projectId, change.doc.id, handler)
+            }
         } catch (error) {
             // One broken list must never take down task creation itself - the write is already
             // on its way and the real snapshot will render the task regardless.
             console.warn('[AT-2342] optimistic task subscriber failed', error)
         }
     })
+
+    if (change.type === OPTIMISTIC_TASK_REMOVED) {
+        discardOptimisticTaskSubscribers(projectId, change.doc.id)
+    }
 }
 
 export const publishOptimisticTaskCreated = (projectId, taskId, taskData) => {
@@ -186,10 +269,10 @@ export const publishOptimisticTaskCreateFailed = (projectId, taskId, taskData) =
  * see the module header for why removal is never the safe default here.
  *
  * This is published MORE THAN ONCE per create - see `optimisticTaskSettlement.js`. The ack is only
- * the start of the window in which a row can be orphaned; it stays open until the access projection
- * lands and the lists' own queries take over, which production measures in seconds, not
- * milliseconds. Subscribers must therefore treat every settlement as an idempotent re-evaluation of
- * the current row, never as a one-shot "the create is done" signal.
+ * the start of the window in which a row can be orphaned; it stays open until every accepting list
+ * confirms that its own query has taken over, which can occur after the access projection lands.
+ * Subscribers must therefore treat every settlement as an idempotent re-evaluation of the current
+ * row, never as a one-shot "the create is done" signal.
  */
 export const publishOptimisticTaskSettled = (projectId, taskId, taskData = null) => {
     if (!projectId || !taskId) return
@@ -205,4 +288,8 @@ export const publishOptimisticTaskSettled = (projectId, taskId, taskData = null)
 }
 
 /** Test-only: the bus is module state, so suites must be able to start from a clean one. */
-export const resetOptimisticTaskCreates = () => subscribersByProject.clear()
+export const resetOptimisticTaskCreates = () => {
+    subscribersByProject.clear()
+    pendingSubscribersByProject.clear()
+    confirmationListenersByProject.clear()
+}
