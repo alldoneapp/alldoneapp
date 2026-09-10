@@ -67,6 +67,16 @@ it('preserves the server failure when the cache fallback also fails', async () =
     await assertion
 })
 
+it('does not report an authoritative refresh as successful using stale cached totals', async () => {
+    readDocumentDirectlyFromServer.mockRejectedValue({ code: 'UNAVAILABLE' })
+    get.mockResolvedValue({ exists: true, data: () => ({ doneTime: 20 }) })
+    const result = readUserStatistics(db, path, { preferDirect: true, allowCached: false })
+    const assertion = expect(result).rejects.toMatchObject({ code: 'UNAVAILABLE' })
+    await jest.advanceTimersByTimeAsync(500)
+    await assertion
+    expect(get).not.toHaveBeenCalled()
+})
+
 it.each(['browser', 'manual'])('uses the existing cache when %s offline', async kind => {
     ;(kind === 'browser' ? isBrowserOffline : isManualOfflineMode).mockReturnValue(true)
     get.mockResolvedValue({ exists: true, data: () => ({ doneTasks: 4 }) })

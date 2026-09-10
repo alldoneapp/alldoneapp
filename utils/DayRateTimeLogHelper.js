@@ -19,6 +19,12 @@ export const DAY_RATE_BACKFILL_VERSION = 2
 const DAY_RATE_BACKFILL_CURSOR_FIELD = 'backfilledUntilByUser'
 const DAY_RATE_BACKFILL_VERSION_FIELD = 'backfillVersionByUser'
 const DAY_RATE_LOG_PREFIX = '[day-rate-time-log]'
+const projectBackfills = new Map()
+
+const checkBackfillCancelled = (signal, userId) => {
+    if (signal?.aborted || (signal && store.getState().loggedUser?.uid !== userId))
+        throw Object.assign(new Error('Day-rate update cancelled'), { name: 'AbortError' })
+}
 
 function logDayRateTimeLog(event, data = {}) {
     // Tracing only, and it serializes the whole day's task list — keep it out of production
@@ -485,8 +491,11 @@ async function reconcileDayRateDay({
     timezone,
     source,
     requireExistingTask,
+    signal,
 }) {
+    checkBackfillCancelled(signal, userId)
     const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
+    checkBackfillCancelled(signal, userId)
     const existingTask = tasks.find(isDayRateTimeLogTask)
     const existingManual = existingTask?.genericData?.manual === true
     const taskAdjustment = calculateDayRateTimeLogAdjustment(tasks, config, manual || existingManual)
@@ -516,6 +525,7 @@ async function reconcileDayRateDay({
     }
 
     const statistics = await getDayRateStatisticsForDay(projectId, userId, timestamp, timezone)
+    checkBackfillCancelled(signal, userId)
     const oldGeneratedEstimation = existingTask ? getDayRateTaskEstimation(existingTask) : 0
     const oldGeneratedIncludedInStats = !!existingTask && statistics.doneTime >= oldGeneratedEstimation
     const oldEstimationForStats = oldGeneratedIncludedInStats ? oldGeneratedEstimation : 0
@@ -608,6 +618,7 @@ async function reconcileDayRateDay({
 }
 
 export async function reconcileDayRateTimeLog(projectId, userId, timestamp, options = {}) {
+    checkBackfillCancelled(options.signal, userId)
     const project = ProjectHelper.getProjectById(projectId)
     const config = normalizeDayRateTimeLogConfig(options.config || project?.dayRateTimeLog)
     const manual = options.manual === true
@@ -642,6 +653,7 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
         timezone,
         source,
         requireExistingTask: false,
+        signal: options.signal,
     })
 }
 
@@ -676,6 +688,7 @@ export async function reconcileDayRateTimeLogsForPastDays(
     endTimestamp,
     options = {}
 ) {
+    checkBackfillCancelled(options.signal, userId)
     if (!projectId || !userId || !startTimestamp || !endTimestamp) return []
 
     const timezone = getDayRateTimezone(options.timezone)
@@ -695,6 +708,7 @@ export async function reconcileDayRateTimeLogsForPastDays(
     }
 
     const tasks = await getDoneTasksForRange(projectId, userId, start, end)
+    checkBackfillCancelled(options.signal, userId)
     const dayTimestamps = [
         ...new Set(
             tasks.filter(task => task.completed).map(task => getDayRateTimeLogRange(task.completed, timezone).start)
@@ -713,11 +727,13 @@ export async function reconcileDayRateTimeLogsForPastDays(
 
     const results = []
     for (let i = 0; i < dayTimestamps.length; i++) {
+        checkBackfillCancelled(options.signal, userId)
         try {
             results.push(
                 await reconcileDayRateTimeLog(projectId, userId, dayTimestamps[i], {
                     timezone,
                     source,
+                    signal: options.signal,
                 })
             )
         } catch (error) {
@@ -742,13 +758,26 @@ export async function reconcileDayRateTimeLogsForPastDays(
     return results
 }
 
-export async function reconcileProjectDayRateTimeLogsBackfill(
-    project,
-    userId,
-    fallbackStartTimestamp,
-    endTimestamp,
-    options = {}
-) {
+// Serialize project backfills even across popup remounts. An SDK write already
+// submitted cannot be cancelled; its operation must settle before another run
+// can calculate corrections from the same statistics. Cancellation stops all
+// subsequent reads/writes, including the cursor advancement.
+export function reconcileProjectDayRateTimeLogsBackfill(project, userId, start, end, options = {}) {
+    const key = `${project?.id}:${userId}`
+    const previous = projectBackfills.get(key) || Promise.resolve()
+    const run = previous
+        .catch(() => {})
+        .then(() => runProjectDayRateTimeLogsBackfill(project, userId, start, end, options))
+    projectBackfills.set(key, run)
+    const release = () => {
+        if (projectBackfills.get(key) === run) projectBackfills.delete(key)
+    }
+    run.then(release, release)
+    return run
+}
+
+async function runProjectDayRateTimeLogsBackfill(project, userId, fallbackStartTimestamp, endTimestamp, options = {}) {
+    checkBackfillCancelled(options.signal, userId)
     const source =
         options.source || (options.forceFromProjectStart ? 'project-backfill-reset' : 'project-backfill-incremental')
     if (!project?.id || !userId || !endTimestamp) {
@@ -803,7 +832,9 @@ export async function reconcileProjectDayRateTimeLogsBackfill(
     const results = await reconcileDayRateTimeLogsForPastDays(project.id, userId, startTimestamp, end, {
         timezone,
         source,
+        signal: options.signal,
     })
+    checkBackfillCancelled(options.signal, userId)
     await getDb()
         .doc(`/projects/${project.id}`)
         .update({

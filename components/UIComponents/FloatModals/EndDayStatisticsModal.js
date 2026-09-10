@@ -36,6 +36,7 @@ import useProjectHappinessEditor from '../../ProjectHappiness/useProjectHappines
 import { getHappinessProjects } from '../../ProjectHappiness/happinessProjects'
 import { getSafeStatisticNumber } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
+import { createNewDayProjectLoader } from '../../../utils/newDayProjectLoader'
 import { reportNewDayStatisticsError } from '../../../utils/backends/Users/reportNewDayStatisticsError'
 import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
 import {
@@ -98,6 +99,7 @@ export default function EndDayStatisticsModal() {
     // online. Primitives, so this cannot amplify renders (AT-2336).
     const connectionState = useSelector(state => state.connectionState)
     const connectionHealth = useSelector(state => state.connectionHealth)
+    const lastConnectionRef = useRef({ connectionState, connectionHealth })
 
     const [doneTasks, setDoneTasks] = useState(0)
     const [xp, setXp] = useState(0)
@@ -114,6 +116,7 @@ export default function EndDayStatisticsModal() {
     // reconnect attempt (AT-2391).
     const [statisticsUnavailable, setStatisticsUnavailable] = useState(false)
     const [failedStatisticsProjectIds, setFailedStatisticsProjectIds] = useState([])
+    const [dayRateStates, setDayRateStates] = useState({})
     const [reconnectStatus, setReconnectStatus] = useState(RECONNECT_IDLE)
 
     const statisticsUnavailableRef = useRef(false)
@@ -122,13 +125,13 @@ export default function EndDayStatisticsModal() {
     const statisticsResultsRef = useRef({})
     const statisticsFailuresRef = useRef(new Set())
     const statisticsGenerationRef = useRef(0)
-    const statisticsAttemptRef = useRef(0)
+    const projectLoadersRef = useRef(new Map())
+    const reconnectOperationRef = useRef(null)
     const statisticsScopeRef = useRef(null)
     const statisticsScope = `${loggedUserId}:${statisticsModalDate}:${loggedUserProjects
         .map(project => project.id)
         .sort()
         .join(',')}`
-    const statisticsTimersRef = useRef(new Set())
     const isSavingStartNewDay = useRef(false)
     const happinessWatcherKeyRef = useRef(`new_day_happiness_${loggedUserId}`)
 
@@ -136,8 +139,7 @@ export default function EndDayStatisticsModal() {
     // Loading and failed statistics are distinct from device connectivity.
     // Keep the popup startable while its summary is being fetched.
     const statisticsPending = dataLoaded !== null && Object.values(dataLoaded).some(loaded => !loaded)
-    const showStatisticsPlaceholder =
-        statisticsUnavailable || statisticsPending || reconnectStatus === RECONNECT_RELOADING
+    const showStatisticsPlaceholder = statisticsUnavailable || statisticsPending
     const hasLoadedStatistics =
         dataLoaded !== null && (Object.keys(dataLoaded).length === 0 || Object.values(dataLoaded).some(Boolean))
     const showPartialSummary = hasLoadedStatistics && showStatisticsPlaceholder
@@ -156,7 +158,11 @@ export default function EndDayStatisticsModal() {
         connectionHealth === CONNECTION_HEALTH_OFFLINE ||
         connectionHealth === CONNECTION_HEALTH_STALE ||
         connectionHealth === CONNECTION_HEALTH_RECONNECTING
-    const showReconnectButton = statisticsUnavailable || connectionNeedsAttention || isReconnecting
+    const dayRateNeedsAttention = Object.values(dayRateStates).some(
+        status => status === 'failed' || status === 'delayed'
+    )
+    const showReconnectButton =
+        statisticsUnavailable || dayRateNeedsAttention || connectionNeedsAttention || isReconnecting
     // Also disabled while the app-wide monitor is mid-probe, so the popup and
     // the top-bar chip can never disagree about whether a reconnect is running.
     const reconnectDisabled = isReconnecting || connectionHealth === CONNECTION_HEALTH_RECONNECTING
@@ -216,9 +222,11 @@ export default function EndDayStatisticsModal() {
      */
     const resetModalState = ({ keepStartNewDayGuard = false } = {}) => {
         statisticsGenerationRef.current++
-        statisticsAttemptRef.current = 0
-        statisticsTimersRef.current.forEach(clearTimeout)
-        statisticsTimersRef.current.clear()
+        projectLoadersRef.current.forEach(loader => loader.dispose())
+        projectLoadersRef.current.clear()
+        reconnectOperationRef.current?.cancel?.()
+        reconnectOperationRef.current = null
+        setDayRateStates({})
         statisticsResultsRef.current = {}
         statisticsFailuresRef.current.clear()
         setFailedStatisticsProjectIds([])
@@ -368,16 +376,8 @@ export default function EndDayStatisticsModal() {
      */
     const loadYesterdayStatistics = () => {
         const { loggedUserProjects, loggedUser } = store.getState()
-        const endDayStatisticsDate = moment(loggedUser.statisticsModalDate)
-        const statisticsDate = endDayStatisticsDate.format('DDMMYYYY')
-        const generation = ++statisticsGenerationRef.current
-        const attempt = ++statisticsAttemptRef.current
-        statisticsTimersRef.current.forEach(clearTimeout)
-        statisticsTimersRef.current.clear()
-        statisticsFailuresRef.current.clear()
-        setFailedStatisticsProjectIds([])
-        statisticsUnavailableRef.current = false
-        setStatisticsUnavailable(false)
+        const statisticsDate = moment(loggedUser.statisticsModalDate).format('DDMMYYYY')
+        const generation = statisticsGenerationRef.current
         const projects = loggedUserProjects.filter(project => !loggedUser.templateProjectIds.includes(project.id))
         setDataLoaded(
             Object.fromEntries(projects.map(project => [project.id, !!statisticsResultsRef.current[project.id]]))
@@ -388,93 +388,83 @@ export default function EndDayStatisticsModal() {
             store.getState().loggedUser.statisticsModalDate === loggedUser.statisticsModalDate
 
         projects.forEach(project => {
-            if (statisticsResultsRef.current[project.id]) return
-            const startedAt = Date.now()
-            let stage = 'day-rate-reconciliation'
-            // Includes optional day-rate reconciliation, so even a pending write
-            // cannot leave the summary spinning forever. A late success can recover it.
-            const timer = setTimeout(() => {
-                statisticsTimersRef.current.delete(timer)
-                if (isCurrent())
-                    markStatisticsUnavailable(
-                        project.id,
-                        {
-                            code: 'deadline-exceeded',
-                            message: 'Statistics loading timed out',
-                        },
-                        {
-                            stage,
-                            elapsedMs: Date.now() - startedAt,
-                            attempt,
-                        }
-                    )
-            }, RECONNECT_STATISTICS_TIMEOUT_MS)
-            statisticsTimersRef.current.add(timer)
-            const finish =
-                callback =>
-                (...args) => {
-                    clearTimeout(timer)
-                    statisticsTimersRef.current.delete(timer)
-                    if (isCurrent()) callback(...args)
-                }
-            reconcileDayRateTimeLogBeforeStats(project, endDayStatisticsDate.valueOf()).finally(() => {
-                if (!isCurrent()) return
-                stage = 'statistics-read'
-                Backend.getUserStatistics(
-                    project.id,
-                    loggedUser.uid,
-                    statisticsDate,
-                    finish(updateStatistics),
-                    finish(error =>
-                        markStatisticsUnavailable(project.id, error, {
-                            stage,
-                            elapsedMs: Date.now() - startedAt,
-                            attempt,
+            if (!projectLoadersRef.current.has(project.id)) {
+                const end = moment().subtract(1, 'day').endOf('day').valueOf()
+                const loader = createNewDayProjectLoader({
+                    isCurrent,
+                    timeoutMs: RECONNECT_STATISTICS_TIMEOUT_MS,
+                    read: (onSuccess, onError, { refresh }) =>
+                        Backend.getUserStatistics(
+                            project.id,
+                            loggedUser.uid,
+                            statisticsDate,
+                            (id, statistics) => onSuccess(statistics),
+                            onError,
+                            { preferDirect: true, ...(refresh ? { allowCached: false } : {}) }
+                        ),
+                    reconcile: normalizeDayRateTimeLogConfig(project.dayRateTimeLog).enabled
+                        ? signal =>
+                              reconcileProjectDayRateTimeLogsBackfill(
+                                  project,
+                                  loggedUser.uid,
+                                  loggedUser.statisticsModalDate,
+                                  end,
+                                  {
+                                      source: 'new-day-modal',
+                                      signal,
+                                  }
+                              )
+                        : null,
+                    onStatistics: statistics => updateStatistics(project.id, statistics),
+                    onReadStart: () => {
+                        statisticsFailuresRef.current.delete(project.id)
+                        setFailedStatisticsProjectIds(ids => ids.filter(id => id !== project.id))
+                        statisticsUnavailableRef.current = statisticsFailuresRef.current.size > 0
+                        setStatisticsUnavailable(statisticsUnavailableRef.current)
+                    },
+                    onReadError: (error, context) => markStatisticsUnavailable(project.id, error, context),
+                    onDayRateState: status => setDayRateStates(states => ({ ...states, [project.id]: status })),
+                    onMaintenanceError: (error, context) => {
+                        const { connectionHealth, connectionState } = store.getState()
+                        void reportNewDayStatisticsError(error, {
+                            userId: loggedUser.uid,
+                            projectId: project.id,
+                            statisticsDate,
+                            connectionHealth,
+                            connectionState,
+                            ...context,
                         })
-                    ),
-                    { preferDirect: true }
-                )
-            })
+                    },
+                })
+                projectLoadersRef.current.set(project.id, loader)
+            }
+            projectLoadersRef.current.get(project.id).load()
         })
     }
 
-    /**
-     * "Reconnect now" (AT-2391).
-     *
-     * The popup used to be a dead end while offline: it said it could not read
-     * yesterday's numbers and offered no way to ask again, so the only route to
-     * the summary was to reload the whole app (losing the session) or to start
-     * the day blind.
-     *
-     * It runs through the app's single manual-reconnect path
-     * (`reconnectNow`, PT-4660) rather than just re-issuing the read, because
-     * the read is not what is broken: offline the Firestore transport has been
-     * parked by the network gate, and after a suspend/captive portal it can be
-     * dead while the browser still claims to be online. `reconnectNow` rebuilds
-     * the transport and *proves* the server is reachable before we re-read —
-     * which is what keeps this button bounded instead of hanging on a read that
-     * can never answer.
-     *
-     * Only a popup that is MISSING the statistics re-reads them. With a summary
-     * already on screen the button restores the connection and nothing else:
-     * yesterday's statistics are a closed day and do not change, so re-reading
-     * them would buy nothing and would flash the card through zeroes — and a
-     * re-read that then failed would replace a perfectly good summary with the
-     * offline card, which is a worse popup than the one the user started with.
-     */
+    // Read missing summaries immediately. Transport recovery runs alongside them;
+    // neither a stalled SDK restart nor background day-rate writes gate REST reads.
     const onPressReconnect = async e => {
         e?.preventDefault?.()
         e?.stopPropagation?.()
-        if (reconnectDisabled) return
+        if (reconnectDisabled || reconnectOperationRef.current) return
 
-        const statisticsAreMissing = statisticsUnavailableRef.current
         clearReconnectTimeout()
-        if (statisticsAreMissing && !connectionNeedsAttention) {
+        if (!connectionNeedsAttention) {
             setReconnectStatus(RECONNECT_RELOADING)
             loadYesterdayStatistics()
             return
         }
+        const operation = {}
+        const generation = statisticsGenerationRef.current
+        reconnectOperationRef.current = operation
+        const isCurrent = () =>
+            reconnectOperationRef.current === operation &&
+            generation === statisticsGenerationRef.current &&
+            store.getState().loggedUser.uid === loggedUserId &&
+            store.getState().loggedUser.statisticsModalDate === statisticsModalDate
         setReconnectStatus(RECONNECT_PROBING)
+        loadYesterdayStatistics()
 
         const reconnectAttempt = Promise.resolve()
             .then(() => reconnectNow())
@@ -483,54 +473,26 @@ export default function EndDayStatisticsModal() {
                 return undefined
             })
         const reconnectDeadline = new Promise(resolve => {
+            operation.cancel = () => resolve(undefined)
             reconnectTimeoutRef.current = setTimeout(() => {
                 reconnectTimeoutRef.current = undefined
                 resolve(undefined)
             }, RECONNECT_ATTEMPT_TIMEOUT_MS)
         })
         const outcome = await Promise.race([reconnectAttempt, reconnectDeadline])
+        if (!isCurrent()) return
+        reconnectOperationRef.current = null
         clearReconnectTimeout()
 
         if (outcome !== CONNECTION_HEALTH_LIVE) {
-            // Still unreachable. Say so and leave the day startable — the
-            // acknowledgement works offline (AT-2340), so a failed reconnect
-            // must never look like a blocked popup.
             setReconnectStatus(RECONNECT_FAILED)
             return
         }
 
-        if (!statisticsAreMissing) {
-            setReconnectStatus(RECONNECT_IDLE)
-            return
-        }
-
-        // Proven alive: drop the offline latch so the statistics callbacks are
-        // accepted again, and read once more. The card keeps rendering while
-        // the reconnect is in flight, so the popup cannot flicker out between
-        // the reset and the fresh data.
-        statisticsUnavailableRef.current = false
-        setStatisticsUnavailable(false)
         setReconnectStatus(RECONNECT_RELOADING)
+        // A read attempted during transport recovery may itself have failed.
+        // Retry only missing/stale figures and reuse any running maintenance.
         loadYesterdayStatistics()
-        reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectTimeoutRef.current = undefined
-            markStatisticsUnavailable()
-            setReconnectStatus(RECONNECT_FAILED)
-        }, RECONNECT_STATISTICS_TIMEOUT_MS)
-    }
-
-    const reconcileDayRateTimeLogBeforeStats = async (project, startTimestamp) => {
-        const dayRateTimeLog = normalizeDayRateTimeLogConfig(project.dayRateTimeLog)
-        if (!dayRateTimeLog.enabled) return
-
-        try {
-            const yesterday = moment().subtract(1, 'day').endOf('day').valueOf()
-            await reconcileProjectDayRateTimeLogsBackfill(project, loggedUserId, startTimestamp, yesterday, {
-                source: 'new-day-modal',
-            })
-        } catch (error) {
-            console.log(error)
-        }
     }
 
     useEffect(() => {
@@ -607,6 +569,9 @@ export default function EndDayStatisticsModal() {
     // A real connectivity recovery retries missing projects without throwing
     // away the successful results or restarting the entire Firestore transport.
     useEffect(() => {
+        const previous = lastConnectionRef.current
+        lastConnectionRef.current = { connectionState, connectionHealth }
+        if (previous.connectionState === connectionState && previous.connectionHealth === connectionHealth) return
         if (
             statisticsUnavailableRef.current &&
             !isReconnecting &&
@@ -621,8 +586,10 @@ export default function EndDayStatisticsModal() {
         () => () => {
             clearReconnectTimeout()
             statisticsGenerationRef.current++
-            statisticsTimersRef.current.forEach(clearTimeout)
-            statisticsTimersRef.current.clear()
+            reconnectOperationRef.current?.cancel?.()
+            reconnectOperationRef.current = null
+            projectLoadersRef.current.forEach(loader => loader.dispose())
+            projectLoadersRef.current.clear()
         },
         []
     )
@@ -794,6 +761,26 @@ export default function EndDayStatisticsModal() {
                             <Text style={localStyles.date}>{`${dayName} ${dateFormated}`}</Text>
                         </View>
 
+                        {hasLoadedStatistics && Object.values(dayRateStates).some(status => status !== 'complete') && (
+                            <View testID="newDayDayRateStatus" style={{ marginTop: 12 }}>
+                                <Text style={localStyles.emptyInboxDescription}>
+                                    {translate(
+                                        dayRateNeedsAttention
+                                            ? 'Saved summary shown. Day-rate figures could not be updated for:'
+                                            : 'Saved summary shown. Updating day-rate figures for:'
+                                    )}
+                                </Text>
+                                {loggedUserProjects
+                                    .filter(
+                                        project => dayRateStates[project.id] && dayRateStates[project.id] !== 'complete'
+                                    )
+                                    .map(project => (
+                                        <Text key={project.id} style={localStyles.emptyInboxDescription}>
+                                            {project.name}
+                                        </Text>
+                                    ))}
+                            </View>
+                        )}
                         {failedStatisticsProjects.length > 0 && (
                             <View testID="newDayFailedProjects" style={{ marginTop: 12 }}>
                                 <Text style={localStyles.emptyInboxDescription}>
@@ -832,9 +819,11 @@ export default function EndDayStatisticsModal() {
                                 {translate(
                                     browserOffline
                                         ? 'Still no connection. You can start the day anyway, your data will sync later'
-                                        : hasLoadedStatistics
-                                          ? 'Some projects could not be loaded. You can start the day and try again later.'
-                                          : 'Your summary could not be loaded. You can start the day and try again later.'
+                                        : hasLoadedStatistics && !statisticsUnavailable && !statisticsPending
+                                          ? 'The connection could not be restored. Your saved summary is still available.'
+                                          : hasLoadedStatistics
+                                            ? 'Some projects could not be loaded. You can start the day and try again later.'
+                                            : 'Your summary could not be loaded. You can start the day and try again later.'
                                 )}
                             </Text>
                         )}

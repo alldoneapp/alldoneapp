@@ -57,7 +57,7 @@ jest.mock('../../utils/UserDataCache', () => ({
 // The day-rate backfill is a write path of its own with its own coverage; here
 // it would only add Firestore edges to a test about the reconnect decision.
 jest.mock('../../utils/DayRateTimeLogHelper', () => ({
-    normalizeDayRateTimeLogConfig: () => ({ enabled: false }),
+    normalizeDayRateTimeLogConfig: config => ({ enabled: config?.enabled === true }),
     reconcileProjectDayRateTimeLogsBackfill: jest.fn(() => Promise.resolve()),
 }))
 
@@ -86,6 +86,7 @@ import Backend from '../../utils/BackendBridge'
 import { reconnectNow } from '../../utils/connectionHealth'
 import { setUserStatisticsModalDate } from '../../utils/backends/Users/usersFirestore'
 import { reportNewDayStatisticsError } from '../../utils/backends/Users/reportNewDayStatisticsError'
+import { reconcileProjectDayRateTimeLogsBackfill } from '../../utils/DayRateTimeLogHelper'
 
 const YESTERDAY = moment().subtract(1, 'day').startOf('day').add(9, 'hours').valueOf()
 
@@ -166,6 +167,7 @@ const pressReconnect = async tree => {
 describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        reconcileProjectDayRateTimeLogsBackfill.mockResolvedValue([])
         setUserStatisticsModalDate.mockResolvedValue(undefined)
         reconnectNow.mockResolvedValue('live')
         readsOffline()
@@ -192,6 +194,62 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         // the acknowledgement is queued locally (AT-2340).
         expect(has(tree, 'startNewDayButton')).toBe(true)
         expect(text(tree)).toContain('Try again')
+    })
+
+    it('shows the saved summary while day-rate maintenance is stuck and refreshes when it finally completes', async () => {
+        jest.useFakeTimers()
+        const project = { ...PROJECT, dayRateTimeLog: { enabled: true } }
+        renderer.act(() => store.dispatch(setProjectsInitialData([project], { p1: project }, {}, {}, {}, {})))
+        let completeMaintenance
+        reconcileProjectDayRateTimeLogsBackfill.mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    completeMaintenance = resolve
+                })
+        )
+        readsStatistics({ doneTasks: 24, gold: 35 })
+        const tree = await render()
+        expect(has(tree, 'newDayStatistics')).toBe(true)
+        expect(text(tree)).toContain('"24"')
+        expect(text(tree)).toContain('Updating day-rate figures')
+        await renderer.act(async () => jest.advanceTimersByTimeAsync(RECONNECT_STATISTICS_TIMEOUT_MS))
+        expect(has(tree, 'newDayStatistics')).toBe(true)
+        expect(text(tree)).not.toContain('Your summary could not be loaded')
+        expect(text(tree)).toContain('Day-rate figures could not be updated')
+        await pressReconnect(tree)
+        expect(reconcileProjectDayRateTimeLogsBackfill).toHaveBeenCalledTimes(1)
+        readsStatistics({ doneTasks: 24, gold: 40 })
+        await renderer.act(async () => completeMaintenance([]))
+        await flush()
+        expect(text(tree)).toContain('"40"')
+        expect(has(tree, 'newDayDayRateStatus')).toBe(false)
+    })
+
+    it('loads missing statistics while transport recovery is still stuck, and ignores its completion after closing', async () => {
+        renderer.act(() => store.dispatch(setConnectionHealth('stale')))
+        let completeReconnect
+        reconnectNow.mockImplementation(
+            () =>
+                new Promise(resolve => {
+                    completeReconnect = resolve
+                })
+        )
+        const tree = await render()
+        readsStatistics({ doneTasks: 24 })
+        let reconnect
+        await renderer.act(async () => {
+            reconnect = tree.root.findByProps({ testID: 'newDayReconnectButton' }).props.onPress()
+        })
+        expect(has(tree, 'newDayStatistics')).toBe(true)
+        expect(text(tree)).toContain('"24"')
+        renderer.act(() => tree.root.findByProps({ testID: 'startNewDayButton' }).props.onPress())
+        const calls = Backend.getUserStatistics.mock.calls.length
+        await renderer.act(async () => {
+            completeReconnect('live')
+            await reconnect
+        })
+        expect(tree.toJSON()).toBeNull()
+        expect(Backend.getUserStatistics).toHaveBeenCalledTimes(calls)
     })
 
     it('does not offer it when the statistics loaded and the connection is live', async () => {
@@ -237,7 +295,7 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
 
         await pressReconnect(tree)
 
-        expect(Backend.getUserStatistics).toHaveBeenCalledTimes(1) // no pointless re-read
+        expect(Backend.getUserStatistics).toHaveBeenCalledTimes(2) // saved summary retries independently of the probe
         expect(has(tree, 'newDayReconnectButton')).toBe(true)
         expect(has(tree, 'startNewDayButton')).toBe(true)
         expect(text(tree)).toContain('Your summary could not be loaded')
