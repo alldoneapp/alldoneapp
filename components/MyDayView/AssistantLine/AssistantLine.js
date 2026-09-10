@@ -10,7 +10,6 @@ import AssistantAvatar from '../../AdminPanel/Assistants/AssistantAvatar'
 import Icon from '../../Icon'
 import AssistantSwitchControl from './AssistantSwitchControl'
 import AssistantLineSkeleton from './AssistantLineSkeleton'
-import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
 
 export default function AssistantLine({
     showLastComment = true,
@@ -38,7 +37,6 @@ export default function AssistantLine({
     const loggedUser = useSelector(state => state.loggedUser)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProjectFromStore = useSelector(state => state.loggedUserProjects?.[selectedProjectIndex])
-    const projectAccentColor = useProjectSectionAccent()
     const [amountOfButtonOptions, setAmountOfButtonOptions] = useState(0)
     const [isCollapsed, setIsCollapsed] = useState(startCollapsed)
     const selectedProject = projectOverride || selectedProjectFromStore
@@ -73,11 +71,7 @@ export default function AssistantLine({
 
     if (!hasRequiredData) {
         return (
-            <View
-                style={[localStyles.container, projectAccentColor && { backgroundColor: projectAccentColor }]}
-                onLayout={onLayout}
-                testID="assistant-line"
-            >
+            <View style={localStyles.container} onLayout={onLayout}>
                 <AssistantLineSkeleton showLastComment={showLastComment} />
             </View>
         )
@@ -87,12 +81,10 @@ export default function AssistantLine({
         <View
             style={[
                 localStyles.container,
-                projectAccentColor && { backgroundColor: projectAccentColor },
                 isCollapsed && localStyles.containerCollapsed,
                 removeBottomSpace && localStyles.containerWithoutBottomSpace,
             ]}
             onLayout={onLayout}
-            testID="assistant-line"
         >
             {isCollapsed ? (
                 <CollapsedAssistantRow

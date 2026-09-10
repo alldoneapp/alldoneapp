@@ -1,10 +1,8 @@
 import React from 'react'
-import { StyleSheet, TouchableOpacity } from 'react-native'
+import { TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import AssistantLine from './AssistantLine'
-import { ProjectSectionAccentContext } from '../../TaskListView/TaskHierarchy'
-import { colors } from '../../styles/global'
 
 const mockAssistant = { uid: 'assistant-1', displayName: 'Assistant' }
 const mockProject = { id: 'project-1', assistantId: 'assistant-1' }
@@ -127,40 +125,5 @@ describe('AssistantLine switch control (AT-2430)', () => {
         const collapsed = tree.root.findByType('AssistantSwitchControl')
         expect(collapsed.props.collapsed).toBe(true)
         expect(collapsed.props.groups).toBe(assistantSwitch.groups)
-    })
-})
-
-describe('AssistantLine project context background (AT-2537)', () => {
-    beforeEach(() => {
-        mockState = {
-            isMiddleScreen: false,
-            smallScreenNavigation: false,
-            defaultAssistant: mockAssistant,
-            loggedUser: { defaultProjectId: mockProject.id },
-            selectedProjectIndex: 0,
-            loggedUserProjects: [mockProject],
-        }
-    })
-
-    const backgroundColorOf = tree =>
-        StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-line' }).props.style).backgroundColor
-
-    it('uses the milestone accent when rendered below a project line', () => {
-        const projectAccentColor = '#FAEBEE'
-        const tree = renderer.create(
-            <ProjectSectionAccentContext.Provider value={projectAccentColor}>
-                <AssistantLine projectOverride={mockProject} />
-            </ProjectSectionAccentContext.Provider>
-        )
-
-        expect(backgroundColorOf(tree)).toBe(projectAccentColor)
-        act(() => tree.unmount())
-    })
-
-    it('keeps the neutral background outside project context', () => {
-        const tree = renderer.create(<AssistantLine projectOverride={mockProject} />)
-
-        expect(backgroundColorOf(tree)).toBe(colors.Grey200)
-        act(() => tree.unmount())
     })
 })
