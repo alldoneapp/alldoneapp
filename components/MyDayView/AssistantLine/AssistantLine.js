@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 
 import { colors } from '../../styles/global'
 import AssistantOptions from './AssistantOptions/AssistantOptions'
-import { calculateAmountOfOptionButtons, getAssistantLineData } from './AssistantOptions/helper'
+import { getAssistantLineData } from './AssistantOptions/helper'
 import LastCommentArea from './LastCommentArea'
 import AssistantAvatar from '../../AdminPanel/Assistants/AssistantAvatar'
 import Icon from '../../Icon'
@@ -32,14 +32,11 @@ export default function AssistantLine({
     onEditAssistant = null,
     deferQuickActions = false,
 }) {
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
-    const isMobile = useSelector(state => state.smallScreenNavigation)
     const defaultAssistant = useSelector(state => state.defaultAssistant)
     const loggedUser = useSelector(state => state.loggedUser)
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProjectFromStore = useSelector(state => state.loggedUserProjects?.[selectedProjectIndex])
     const projectAccentColor = useProjectSectionAccent()
-    const [amountOfButtonOptions, setAmountOfButtonOptions] = useState(0)
     const [isCollapsed, setIsCollapsed] = useState(startCollapsed)
     const selectedProject = projectOverride || selectedProjectFromStore
     const assistantId = assistantIdOverride || defaultAssistant?.uid
@@ -51,15 +48,6 @@ export default function AssistantLine({
         preferAssistantIdOverride
     )
     const selectedAssistant = selectedLineAssistant || defaultAssistant
-
-    const onLayout = data => {
-        const amountOfButtonOptions = calculateAmountOfOptionButtons(
-            data.nativeEvent.layout.width,
-            isMiddleScreen,
-            isMobile
-        )
-        setAmountOfButtonOptions(amountOfButtonOptions)
-    }
 
     const hasRequiredData =
         defaultAssistant?.uid &&
@@ -75,7 +63,6 @@ export default function AssistantLine({
         return (
             <View
                 style={[localStyles.container, projectAccentColor && { backgroundColor: projectAccentColor }]}
-                onLayout={onLayout}
                 testID="assistant-line"
             >
                 <AssistantLineSkeleton showLastComment={showLastComment} />
@@ -91,7 +78,6 @@ export default function AssistantLine({
                 isCollapsed && localStyles.containerCollapsed,
                 removeBottomSpace && localStyles.containerWithoutBottomSpace,
             ]}
-            onLayout={onLayout}
             testID="assistant-line"
         >
             {isCollapsed ? (
@@ -114,7 +100,6 @@ export default function AssistantLine({
                     {showEditAssistantButton && <EditAssistantButton onPress={onEditAssistant} />}
                     {!!assistantSwitch && <AssistantSwitchControl {...assistantSwitch} />}
                     <AssistantOptions
-                        amountOfButtonOptions={amountOfButtonOptions}
                         onCollapse={() => setIsCollapsed(true)}
                         projectOverride={selectedProject}
                         assistantIdOverride={assistantId}

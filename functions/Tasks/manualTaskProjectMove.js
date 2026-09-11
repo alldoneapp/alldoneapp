@@ -3,7 +3,6 @@
 const crypto = require('crypto')
 const admin = require('firebase-admin')
 const { getFunctions } = require('firebase-admin/functions')
-const { HttpsError } = require('firebase-functions/v2/https')
 
 const { assertObjectAccess, assertProjectAccess } = require('../shared/privacyAccess')
 const { moveTaskToDifferentProject } = require('../shared/moveTaskToDifferentProject')
@@ -35,26 +34,10 @@ async function enqueueManualTaskProjectMove({ sourceProjectId, targetProjectId, 
 
     const requestId = crypto.randomUUID().replace(/-/g, '')
     const queue = getFunctions().taskQueue(getManualTaskMoveQueueResource())
-    try {
-        await queue.enqueue(
-            { requestId, sourceProjectId, targetProjectId, taskId, actorId },
-            { id: `manual-task-move-${requestId}`, dispatchDeadlineSeconds: 300 }
-        )
-    } catch (error) {
-        console.error('Manual task project move: Failed to enqueue worker', {
-            requestId,
-            sourceProjectId,
-            targetProjectId,
-            taskId,
-            actorId,
-            code: error?.code || '',
-            message: error?.message || '',
-        })
-        throw new HttpsError('unavailable', 'The task move could not be queued. Please try again.', {
-            requestId,
-            causeCode: error?.code || '',
-        })
-    }
+    await queue.enqueue(
+        { requestId, sourceProjectId, targetProjectId, taskId, actorId },
+        { id: `manual-task-move-${requestId}`, dispatchDeadlineSeconds: 300 }
+    )
     return { queued: true, requestId, sourceProjectId, targetProjectId, taskId }
 }
 

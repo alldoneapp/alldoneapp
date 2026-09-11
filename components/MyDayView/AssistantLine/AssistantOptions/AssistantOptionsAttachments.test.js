@@ -73,7 +73,6 @@ jest.mock('../../../../redux/actions', () => ({
 }))
 
 jest.mock('./helper', () => ({
-    calculateAmountOfOptionButtons: () => 1,
     getAssistantLineData: () => ({
         assistant: { uid: 'assistant-1', displayName: 'Assistant' },
         assistantProject: { id: 'default-project', index: 1, name: 'Default project' },
@@ -85,6 +84,7 @@ jest.mock('./helper', () => ({
         showSubmenu: false,
         hasAdditionalOptions: false,
     }),
+    getCollapsedQuickActionCount: () => 0,
 }))
 
 jest.mock('../../../UIComponents/ModalShell/AppPopover', () => {
