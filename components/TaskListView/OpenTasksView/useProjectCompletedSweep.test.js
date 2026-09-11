@@ -9,6 +9,7 @@ import useProjectCompletedSweep, {
     PROJECT_SWEEP_PROBE_MS,
 } from './useProjectCompletedSweep'
 import { PROJECT_LINE_EXIT_HOLD_MS, SWEEP_TOTAL_MS } from './projectCompletedSweepMotion'
+import { publishProjectTaskCompletion, resetProjectTaskCompletionListeners } from './projectTaskCompletionSignal'
 import {
     hasCelebratedProjectEmptyInboxDay,
     hasReachedProjectEmptyInboxDay,
@@ -61,6 +62,7 @@ describe('useProjectCompletedSweep (AT-2492)', () => {
         jest.setSystemTime(PINNED_NOW)
         localStorage.clear()
         resetProjectEmptyInboxCelebrationSessionMarkers()
+        resetProjectTaskCompletionListeners()
         latest = undefined
         setTodayCount(0)
         matchMediaReducedMotion = false
@@ -272,6 +274,50 @@ describe('useProjectCompletedSweep (AT-2492)', () => {
 
             expect(latest.celebrationRunId).toBe(1)
             expect(latest.holdProjectLine).toBe(true)
+        })
+
+        /**
+         * AT-2550 — the only visible item is a suggested task, completed through the popup's
+         * workflow bypass. Its open-task snapshot can remove the entire project while the
+         * independent sidebar counter still says one, which used to make the card pop away.
+         */
+        it('sweeps a leaving project after the suggested-task bypass even when its count stays stale', async () => {
+            setTodayCount(1)
+            const tree = await render({ lineWouldLeave: false })
+
+            await act(async () => {
+                publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'suggested-task' })
+            })
+            await update(tree, { lineWouldLeave: true })
+
+            expect(latest.celebrationRunId).toBe(1)
+            expect(latest.holdProjectLine).toBe(true)
+            expect(hasReachedProjectEmptyInboxDay(USER, PROJECT, todayKey)).toBe(true)
+
+            // A late counter snapshot describes the same clearing and must not restart the sweep.
+            setTodayCount(0)
+            await update(tree, { lineWouldLeave: true })
+            expect(latest.celebrationRunId).toBe(1)
+
+            await act(async () => {
+                jest.advanceTimersByTime(PROJECT_LINE_EXIT_HOLD_MS + 10)
+            })
+            expect(latest.holdProjectLine).toBe(false)
+        })
+
+        it('refunds a suggested-bypass sweep that unmounts before it can be seen', async () => {
+            setTodayCount(1)
+            const tree = await render({ lineWouldLeave: false })
+
+            await act(async () => {
+                publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'suggested-task' })
+            })
+            await update(tree, { lineWouldLeave: true })
+            expect(hasCelebratedProjectEmptyInboxDay(USER, PROJECT, todayKey)).toBe(true)
+
+            await act(async () => tree.unmount())
+
+            expect(hasCelebratedProjectEmptyInboxDay(USER, PROJECT, todayKey)).toBe(false)
         })
 
         it('releases the line promptly when nothing comes of the probe', async () => {
