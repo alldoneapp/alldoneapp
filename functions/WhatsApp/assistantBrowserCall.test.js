@@ -353,4 +353,38 @@ describe('cancel abandoned Live startup', () => {
             expect.objectContaining({ id: 'browser-owned', openAiSessionId: 'live_owned' })
         )
     })
+    test('records sanitized diagnostics even after provider completion without closing the session again', async () => {
+        admin.firestore.mockReturnValue({
+            doc: () => ({
+                update,
+                get: async () => ({
+                    exists: true,
+                    data: () => ({ userId: 'owner', status: 'completed', voiceProvider: 'gpt-live' }),
+                }),
+            }),
+        })
+        await endAssistantBrowserCall(
+            {
+                sessionId: 'browser-owned',
+                diagnostics: {
+                    reason: 'component_unmounted',
+                    width: 844,
+                    peerState: 'connected',
+                    sdp: 'secret',
+                    events: [{ event: 'resize', width: 844, height: 390, authorization: 'secret' }],
+                },
+            },
+            { uid: 'owner' }
+        )
+        expect(update).toHaveBeenCalledWith({
+            clientDisconnect: expect.objectContaining({
+                reason: 'component_unmounted',
+                receivedAt: expect.any(Number),
+                events: [{ event: 'resize', width: 844, height: 390 }],
+            }),
+        })
+        expect(JSON.stringify(update.mock.calls)).not.toContain('secret')
+        expect(closeLiveSession).not.toHaveBeenCalled()
+        expect(update.mock.calls.some(([data]) => data.cancelRequestedAt)).toBe(false)
+    })
 })

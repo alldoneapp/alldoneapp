@@ -555,6 +555,45 @@ describe('GPT-Live lifecycle', () => {
 })
 
 describe('voice connection recovery', () => {
+    test('reports orientation history and the original peer failure before stopping media', async () => {
+        runHttpsCallableFunction.mockClear()
+        FakePeerConnection.liveStartupEvents = true
+        runHttpsCallableFunction.mockImplementation(async name =>
+            name === 'startAssistantBrowserCallSecondGen'
+                ? { answerSdp: 'answer', sessionId: 'browser-diagnostics', voiceProvider: 'gpt-live' }
+                : { closed: true, settled: true }
+        )
+        const tree = render()
+        const pc = await startCall(tree)
+        const oldWidth = window.innerWidth
+        const oldHeight = window.innerHeight
+        try {
+            await act(async () => {
+                window.innerWidth = 844
+                window.innerHeight = 390
+                window.dispatchEvent(new Event('orientationchange'))
+                pc.setConnectionState('failed')
+            })
+            const report = runHttpsCallableFunction.mock.calls.find(
+                ([name]) => name === 'endAssistantBrowserCallSecondGen'
+            )[1]
+            expect(report.diagnostics).toMatchObject({
+                reason: 'peer_failed',
+                peerState: 'failed',
+                micReadyState: 'live',
+                width: 844,
+                height: 390,
+            })
+            expect(report.diagnostics.events).toContainEqual(
+                expect.objectContaining({ event: 'orientation_change', orientation: 'landscape' })
+            )
+            expect(report.diagnostics.events.at(-1).event).toBe('cleanup')
+            expect(pc.closed).toBe(true)
+        } finally {
+            window.innerWidth = oldWidth
+            window.innerHeight = oldHeight
+        }
+    })
     test.each([
         { compact: true },
         { compact: false },
@@ -613,6 +652,11 @@ describe('voice connection recovery', () => {
         expect(pc.closed).toBe(true)
         expect(runHttpsCallableFunction).toHaveBeenCalledWith('endAssistantBrowserCallSecondGen', {
             sessionId: 'browser-disconnected',
+            diagnostics: expect.objectContaining({
+                reason: 'data_channel_error',
+                peerState: 'new',
+                dataChannelState: 'open',
+            }),
         })
     })
     test('can become ready when the server acknowledgement was missed', async () => {

@@ -19,6 +19,7 @@ const helper = require('../Assistant/assistantHelper')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant, isUnambiguousApproval } = require('./assistantLiveBackend')
 let sessionData
+let savedBackendAnswers
 const session = { id: 's', userId: 'u', projectId: 'p', assistantId: 'a', chatId: 'c' }
 const request = overrides => ({
     session,
@@ -31,6 +32,7 @@ const request = overrides => ({
 beforeEach(() => {
     jest.clearAllMocks()
     sessionData = {}
+    savedBackendAnswers = []
     admin.firestore.mockReturnValue({
         doc: path => ({
             get: async () => ({
@@ -38,8 +40,18 @@ beforeEach(() => {
                 data: () => (path === 'users/u' ? { gold: 100, language: 'English' } : sessionData),
             }),
             update: async data => Object.assign(sessionData, data),
-            collection: () => ({
-                orderBy: () => ({ limit: () => ({ get: async () => ({ empty: true, docs: [] }) }) }),
+            collection: name => ({
+                orderBy: () => ({
+                    limit: () => ({
+                        get: async () => ({
+                            empty: name !== 'liveDelegations' || !savedBackendAnswers.length,
+                            docs:
+                                name === 'liveDelegations'
+                                    ? savedBackendAnswers.map(data => ({ data: () => data }))
+                                    : [],
+                        }),
+                    }),
+                }),
                 doc: () => ({ set: jest.fn(), update: jest.fn() }),
             }),
         }),
@@ -170,4 +182,17 @@ test('consumes exact spoken confirmation once and executes the original argument
 test('delivers the fully paid final answer when its charge exhausts Gold', async () => {
     reconcileLiveUsage.mockResolvedValueOnce({ currentGold: 0, insufficientBalance: false })
     await expect(runLiveAssistant(request())).resolves.toBe('Done')
+})
+
+test('gives a follow-up request the saved answer and delivery state without assuming it was spoken', async () => {
+    savedBackendAnswers = [
+        { status: 'completed', result: 'The existing verified answer.', deliveryStatus: 'context_sent' },
+    ]
+    await runLiveAssistant(request({ lastUserTurn: { text: 'Are you still there?', createdAt: Date.now() } }))
+    const messages = helper.interactWithChatStream.mock.calls[0][0]
+    const savedContext = messages.find(message => message[1].startsWith('Saved backend answers'))[1]
+    expect(savedContext).toContain('The existing verified answer.')
+    expect(savedContext).toContain('context_sent')
+    expect(savedContext).toContain('does not mean it was spoken')
+    expect(helper.executeToolNatively).not.toHaveBeenCalled()
 })
