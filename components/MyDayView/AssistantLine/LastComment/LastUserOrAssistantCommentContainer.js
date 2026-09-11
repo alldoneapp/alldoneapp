@@ -48,11 +48,17 @@ export default function LastUserOrAssistantCommentContainer({
     // them. The cached preview has no comment object at all, which is correct — it is a first paint,
     // never an arrival.
     const displayedComment = recentComments[0]
+    // Browser-call speech grows through transcript deltas, without the assistant-run flags.
+    // Give it the same in-place rendering as chat streaming, including the final fragment.
+    // This is only an animation rule: stored transcripts remain complete/readable comments,
+    // and backend results/recaps (isCallTranscript: false) still announce a new reply.
+    const isSpokenTranscript =
+        displayedComment?.source === 'browser_call' && displayedComment?.isCallTranscript === true
     const arrivalId = useLastCommentArrival({
         scopeKey,
         commentKey: buildLastCommentKey({ objectType, objectId, commentText }),
         commentId: displayedComment?.id ?? null,
-        isStreaming: isLiveComment(displayedComment),
+        isStreaming: isLiveComment(displayedComment) || isSpokenTranscript,
     })
 
     if (commentText === null || commentText === undefined || !chat) {

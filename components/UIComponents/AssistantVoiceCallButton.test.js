@@ -9,6 +9,7 @@
  * media-session hangup action.
  */
 import React from 'react'
+import { TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import {
@@ -491,6 +492,49 @@ describe('GPT-Live lifecycle', () => {
 })
 
 describe('voice connection recovery', () => {
+    test.each([
+        { compact: true },
+        { compact: false },
+        { compact: true, variant: 'link' },
+        { compact: false, variant: 'link' },
+    ])('keeps one cancelable control while connecting (%j)', async props => {
+        let respond
+        runHttpsCallableFunction.mockImplementation(name =>
+            name === 'startAssistantBrowserCallSecondGen'
+                ? new Promise(resolve => {
+                      respond = resolve
+                  })
+                : Promise.resolve({ closed: true })
+        )
+        const tree = render(props)
+        const controls = () => [...tree.root.findAllByType('Button'), ...tree.root.findAllByType(TouchableOpacity)]
+        let starting
+        await act(async () => {
+            starting = controls()[0].props.onPress()
+            for (let i = 0; i < 30; i++) await Promise.resolve()
+        })
+        expect(respond).toBeDefined()
+        expect(controls()).toHaveLength(1)
+        expect(controls()[0].props.accessibilityLabel).toBe('Cancel assistant call')
+        expect(controls()[0].props.disabled).not.toBe(true)
+        // With the SDP answer still pending, the real data channel is not open yet.
+        FakePeerConnection.instances[0].channel.readyState = 'connecting'
+        await act(async () => {
+            await controls()[0].props.onPress()
+        })
+        expect(tracks[0].stop).toHaveBeenCalled()
+        expect(controls()).toHaveLength(1)
+        expect(controls()[0].props.accessibilityLabel).toContain('Start voice call')
+        await act(async () => {
+            respond({ answerSdp: 'answer', sessionId: 'browser-cancelled', voiceProvider: 'gpt-live' })
+            await starting
+        })
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith('endAssistantBrowserCallSecondGen', {
+            sessionId: 'browser-cancelled',
+        })
+        expect(findEndCallButton(tree)).toBeUndefined()
+    })
+
     test('closes the server session when an established data channel fails', async () => {
         FakePeerConnection.liveStartupEvents = true
         runHttpsCallableFunction.mockImplementation(async name =>
