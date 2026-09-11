@@ -1,31 +1,28 @@
 const { ACTION_PRESENTATION, buildToolActivityDescriptor } = require('../Assistant/assistantProgressStatus')
 
-const REVIEWING = 'I am working through the information returned so far. The answer is not ready yet.'
+const { voiceOperationOutcome, statusUpdate, formatLiveStatus } = require('./assistantLiveStatus')
 
 const BACKGROUND_STATES = {
-    queued: ['The background task is queued and waiting for the previous work to finish.', false],
-    pending: ['The background task is starting. Its result is not ready yet.', false],
-    running: ['The background task is still running. I am waiting for its result.', false],
-    waiting_for_auth_refresh: ['The background task is waiting for its connection to be restored.', false],
-    awaiting_user: [
-        'The background task needs your input. Please check its question or approval request in the chat.',
-        false,
-    ],
-    cancel_requested: ['Cancellation of the background task has been requested, but is not confirmed yet.', false],
-    completed: ['The background run has finished. Please check the result in its chat for the outcome.', true],
-    failed: ['The background task could not finish. Details are in its chat.', true],
-    cancelled: ['The background task has been cancelled.', true],
-    interrupted: ['The background task was interrupted. Please check its chat before continuing.', true],
+    queued: ['queued', 'Background task', false],
+    pending: ['starting', 'Background task', false],
+    running: ['running', 'Background task', false],
+    waiting_for_auth_refresh: ['requires_auth', 'Background task', false],
+    awaiting_user: ['awaiting_user', 'Background task', false],
+    cancel_requested: ['cancel_requested', 'Background task', false],
+    completed: ['completed', 'Background run', true],
+    failed: ['failed', 'Background task', true],
+    cancelled: ['cancelled', 'Background task', true],
+    interrupted: ['failed', 'Background task interrupted', true],
 }
 
 function backgroundProgress(data) {
     const state = BACKGROUND_STATES[data?.status]
     if (!state) return null
-    const detail =
-        ['failed', 'interrupted'].includes(data.status) && (data.error || data.failureReason)
-            ? voiceToolFailure({ success: false, error: data.error || data.failureReason })
-            : null
-    return { content: detail ? `${state[0]} Reported error: “${detail}”.` : state[0], terminal: state[1] }
+    const outcome =
+        state[0] === 'failed'
+            ? voiceOperationOutcome({ success: false, error: data.error, failureReason: data.failureReason })
+            : { status: state[0], cause: null }
+    return { ...statusUpdate({ ...outcome, step: state[1] }), terminal: state[2] }
 }
 
 function toolProgress(name, args) {
@@ -38,56 +35,43 @@ function toolProgress(name, args) {
 }
 
 function voiceToolFailure(result, error) {
-    const failed =
-        error ||
-        result?.success === false ||
-        ['failed', 'error', 'blocked', 'permission_denied', 'requires_auth', 'confirmation_required'].includes(
-            result?.status
-        )
-    if (!failed) return null
-    const raw =
-        error?.message ||
-        (typeof result?.error === 'string' ? result.error : result?.error?.message) ||
-        result?.message ||
-        result?.status ||
-        'The tool returned no successful result'
-    // Surface the actual actionable error, never credentials, URLs, addresses or
-    // opaque payloads. Quoted error text remains untrusted data for the voice model.
-    return String(raw)
-        .replace(/Bearer\s+\S+|\b(?:sk-|ghp_|glpat-|ya29\.)[A-Za-z0-9._-]+/gi, '[credential omitted]')
-        .replace(/https?:\/\/\S+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[address omitted]')
-        .replace(/[A-Za-z0-9+/_=-]{40,}/g, '[identifier omitted]')
-        .replace(/[\x00-\x1f\x7f]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 180)
+    return voiceOperationOutcome(result, error).cause
 }
+
+const operationKey = (name, args) =>
+    JSON.stringify([name, args || {}], (key, value) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+        return Object.fromEntries(
+            Object.keys(value)
+                .sort()
+                .map(key => [key, value[key]])
+        )
+    })
 
 function createLiveToolProgress({ publish }) {
     let nextId = 0
     const active = new Map()
-    const failures = new Map()
+    const issues = new Map()
+    const latestOutcome = new Map()
     let lastFinished = null
     const report = () => {
-        const details = []
-        if (failures.size) details.push([...failures.values()].at(-1))
         const operations = [...active.values()]
-        if (operations.length) {
-            details.push(
-                `Currently: ${operations
-                    .slice(0, 2)
-                    .map(operation => operation.label)
-                    .join('; ')}${operations.length > 2 ? '; plus one other lookup' : ''}.`
-            )
-        } else if (lastFinished && !failures.size) {
-            details.push(`The step “${lastFinished}” returned a result. I am checking that result before answering.`)
-        }
-        if (details.length) publish({ content: details.join(' '), urgent: failures.size > 0 })
+        const issue =
+            [...issues.values()].findLast(outcome => outcome.status === 'failed') || [...issues.values()].at(-1)
+        const outcome = issue || (operations.length ? { status: 'running' } : lastFinished)
+        if (!outcome) return
+        publish(
+            statusUpdate({
+                ...outcome,
+                active: operations.slice(0, 2).map(operation => operation.label),
+                activeCount: operations.length,
+            })
+        )
     }
     return {
         start(name, args) {
             const id = ++nextId
-            active.set(id, { key: JSON.stringify([name, args || {}]), label: toolProgress(name, args) })
+            active.set(id, { key: operationKey(name, args), label: toolProgress(name, args) })
             report()
             return id
         },
@@ -95,33 +79,56 @@ function createLiveToolProgress({ publish }) {
             const operation = active.get(id)
             if (!operation) return
             active.delete(id)
-            lastFinished = operation.label
-            const failure = voiceToolFailure(result, error)
-            if (failure) failures.set(operation.key, `The step “${operation.label}” could not complete: “${failure}”.`)
-            else failures.delete(operation.key)
+            if (id < (latestOutcome.get(operation.key) || 0)) {
+                report()
+                return
+            }
+            latestOutcome.set(operation.key, id)
+            lastFinished = { ...voiceOperationOutcome(result, error), step: operation.label }
+            if (
+                ['failed', 'outcome_unconfirmed', 'waiting', 'requires_auth', 'awaiting_user'].includes(
+                    lastFinished.status
+                )
+            )
+                issues.set(operation.key, lastFinished)
+            else issues.delete(operation.key)
             report()
         },
     }
 }
 
-function createLiveProgress({ publish }) {
+function createLiveProgress({ publish, publishContext = () => {}, scope = 'request' }) {
     const startedAt = Date.now()
     let lastSentAt = startedAt
     let lastContent = null
-    let content = null
-    let urgent = false
+    let update = null
+    let lastErrorContext = null
     let stopped = false
+    const flushContext = () => {
+        if (stopped) return
+        const context = formatLiveStatus(update || { status: 'running', scope }, { errorContextOnly: true })
+        if (context !== lastErrorContext) {
+            publishContext(context)
+            lastErrorContext = context
+        }
+    }
     return {
+        flushContext,
         update: value => {
-            content = typeof value === 'string' ? value : value?.content || null
-            urgent = value?.urgent === true
+            update = value && typeof value === 'object' ? statusUpdate({ ...value, scope }) : null
         },
         stop: () => {
             stopped = true
         },
         tick: ({ active, lastSpeechAt }) => {
             const now = Date.now()
-            if (stopped || !content || !active || now - lastSpeechAt < 4000) return false
+            if (stopped || !active) return false
+            // Quiet context contains ONLY evidence about errors, never an answer
+            // or a second instruction to speak. Clear an old error on recovery.
+            flushContext()
+            if (!update || now - lastSpeechAt < 4000) return false
+            const content = formatLiveStatus(update)
+            const urgent = update.urgent
             // Fast work stays quiet. Coalesce changing stages, and leave more space
             // before repeating an unchanged wait. Time alone never implies progress.
             const delay =
@@ -133,7 +140,7 @@ function createLiveProgress({ publish }) {
                         ? 45000
                         : 20000
             if (now - lastSentAt < delay) return false
-            publish(content)
+            publish(update)
             lastSentAt = now
             lastContent = content
             return true
@@ -147,5 +154,4 @@ module.exports = {
     toolProgress,
     voiceToolFailure,
     backgroundProgress,
-    REVIEWING,
 }

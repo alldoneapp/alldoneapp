@@ -23,7 +23,7 @@ const PARALLEL_READ_TOOLS = new Set([
     'find_calendar_availability',
     'search_calendar_events',
 ])
-const MAX_PARALLEL_TOOL_CALLS = 3
+const MAX_PARALLEL_TOOL_CALLS = 5
 const canRunToolInParallel = call => PARALLEL_READ_TOOLS.has(call?.function?.name)
 
 async function executeToolCallBatch(

@@ -19,6 +19,7 @@ const helper = require('../Assistant/assistantHelper')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant } = require('./assistantLiveBackend')
 let sessionData
+let savedOperations
 let savedBackendAnswers
 const session = { id: 's', userId: 'u', projectId: 'p', assistantId: 'a', chatId: 'c' }
 const request = overrides => ({
@@ -32,6 +33,7 @@ const request = overrides => ({
 beforeEach(() => {
     jest.clearAllMocks()
     sessionData = {}
+    savedOperations = []
     savedBackendAnswers = []
     admin.firestore.mockReturnValue({
         doc: path => ({
@@ -52,7 +54,14 @@ beforeEach(() => {
                         }),
                     }),
                 }),
-                doc: () => ({ set: jest.fn(), update: jest.fn() }),
+                doc: () => {
+                    const operation = {}
+                    savedOperations.push(operation)
+                    return {
+                        set: async value => Object.assign(operation, value),
+                        update: async value => Object.assign(operation, value),
+                    }
+                },
             }),
         }),
     })
@@ -175,10 +184,14 @@ test('reports the actual calendar error with its subject instead of overwriting 
     })
     helper.executeToolNatively.mockResolvedValueOnce({ success: false, error: 'Calendar write permission missing' })
     await runLiveAssistant(request({ onProgress }))
-    expect(onProgress).toHaveBeenLastCalledWith({
-        content: expect.stringContaining('Calendar write permission missing'),
-        urgent: true,
-    })
+    expect(onProgress).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+            content: expect.stringContaining('Calendar write permission missing'),
+            urgent: true,
+            status: 'failed',
+            cause: 'Calendar write permission missing',
+        })
+    )
     expect(onProgress.mock.calls.at(-1)[0].content).toContain('Riesendrachen')
 })
 
@@ -226,4 +239,56 @@ test('gives a follow-up request the saved answer and delivery state without assu
     expect(savedContext).toContain('context_sent')
     expect(savedContext).toContain('does not mean it was spoken')
     expect(helper.executeToolNatively).not.toHaveBeenCalled()
+})
+
+test('gives the configured backend the current page as reference while retaining the original call thread', async () => {
+    const path = '/projects/another-project/notes/visible-note/editor'
+    await runLiveAssistant(
+        request({
+            session: { ...session, pageContext: { path, title: 'Visible note' } },
+            liveConversation: [{ role: 'user', text: 'Summarize this note' }],
+        })
+    )
+    const [messages, , , , runtime] = helper.interactWithChatStream.mock.calls[0]
+    expect(messages).toContainEqual(['system', expect.stringContaining(path)])
+    expect(messages).toContainEqual(['system', expect.stringContaining('Navigation alone does not request any action')])
+    expect(messages.at(-1)).toEqual(['user', 'Summarize this note'])
+    expect(runtime).toMatchObject({ projectId: 'p', objectType: 'topics', objectId: 'c', requestUserId: 'u' })
+})
+
+test.each([
+    [{ success: true, results: [], message: 'A page about errors' }, 'result_received', null],
+    [{ success: false, error: 'Calendar write permission missing' }, 'failed', 'Calendar write permission missing'],
+    [{ success: false }, 'outcome_unconfirmed', null],
+])('persists the actual tool outcome separately from execution completion: %j', async (nativeResult, status, cause) => {
+    helper.executeToolNatively.mockResolvedValueOnce(nativeResult)
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
+        await options.toolExecutor('web_search', { query: 'Sunday' })
+        expect(savedOperations[0]).toMatchObject({ status: 'completed', outcome: { status, cause } })
+        return { finalResponseText: 'Verified result' }
+    })
+    await runLiveAssistant(request())
+})
+
+test('persists a thrown cause and instructs the backend not to turn spoken error claims into a diagnosis', async () => {
+    helper.executeToolNatively.mockRejectedValueOnce(new Error('Calendar write permission missing'))
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
+        await options.toolExecutor('create_calendar_event', { summary: 'Sunday' })
+        return { finalResponseText: 'Unreachable' }
+    })
+    const liveConversation = [
+        { role: 'user', text: 'What error?' },
+        { role: 'assistant', text: 'An error came in' },
+    ]
+    await expect(runLiveAssistant(request({ liveConversation }))).rejects.toThrow('Calendar write permission missing')
+    expect(savedOperations[0]).toMatchObject({
+        status: 'outcome_unconfirmed',
+        outcome: { status: 'failed', cause: 'Calendar write permission missing' },
+    })
+    const messages = helper.interactWithChatStream.mock.calls[0][0]
+    expect(messages).toContainEqual(['system', expect.stringContaining('both a failure status and a specific cause')])
+    expect(messages).toContainEqual([
+        'system',
+        expect.stringContaining('never invent an explanation such as a display bug'),
+    ])
 })

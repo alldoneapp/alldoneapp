@@ -282,17 +282,17 @@ test('slow work speaks occasional factual updates and completion stops them', as
     await emit(state.socket, delegation)
     await jest.advanceTimersByTimeAsync(1200)
     const active = runLiveAssistant.mock.calls[0][0]
-    active.onProgress('Searching the workspace; no result yet.')
+    active.onProgress({ status: 'running', step: 'Searching the workspace; no result yet.' })
     await jest.advanceTimersByTimeAsync(7000)
     expect(progressMessages(state.socket)).toHaveLength(0)
     await jest.advanceTimersByTimeAsync(1200)
     expect(progressMessages(state.socket)).toEqual([
         expect.objectContaining({
             delegation_id: 'd1',
-            content: 'Searching the workspace; no result yet.',
+            content: expect.stringContaining('Searching the workspace; no result yet.'),
         }),
     ])
-    active.onProgress('Working through the results.')
+    active.onProgress({ status: 'running', step: 'Working through the results.' })
     await jest.advanceTimersByTimeAsync(19000)
     expect(progressMessages(state.socket)).toHaveLength(1)
     await jest.advanceTimersByTimeAsync(1200)
@@ -360,13 +360,19 @@ test('observes authoritative background status after dispatch and releases the l
     expect(progressMessages(state.socket)).toHaveLength(0)
     await jest.advanceTimersByTimeAsync(3000)
     expect(progressMessages(state.socket)).toHaveLength(1)
-    expect(progressMessages(state.socket)[0].content).toContain('still running')
+    expect(JSON.parse(progressMessages(state.socket)[0].content)).toMatchObject({ status: 'running', error: null })
     update('awaiting_user')
     await jest.advanceTimersByTimeAsync(21000)
-    expect(progressMessages(state.socket).at(-1).content).toContain('needs your input')
+    expect(JSON.parse(progressMessages(state.socket).at(-1).content)).toMatchObject({
+        status: 'awaiting_user',
+        error: null,
+    })
     update('completed')
     await jest.advanceTimersByTimeAsync(21000)
-    expect(progressMessages(state.socket).at(-1).content).toContain('run has finished')
+    expect(JSON.parse(progressMessages(state.socket).at(-1).content)).toMatchObject({
+        status: 'completed',
+        error: null,
+    })
     expect(JSON.stringify(state.socket.sent)).not.toContain('Private output')
     expect(watcher.unsubscribe).toHaveBeenCalledTimes(1)
     await finish(state)
@@ -393,7 +399,7 @@ test('keeps dispatched jobs across speech, checks ownership and releases observa
     expect(progressMessages(state.socket)).toHaveLength(0)
     // The fallback also handles the new utterance before background speech resumes.
     await jest.advanceTimersByTimeAsync(15000)
-    expect(progressMessages(state.socket).at(-1).content).toContain('still running')
+    expect(JSON.parse(progressMessages(state.socket).at(-1).content)).toMatchObject({ status: 'running', error: null })
     await finish(state)
     expect(watcher.unsubscribe).toHaveBeenCalledTimes(1)
 })
@@ -426,5 +432,164 @@ test('a correction extends the fallback settling window before starting backend 
     await jest.advanceTimersByTimeAsync(900)
     expect(runLiveAssistant).toHaveBeenCalledTimes(1)
     expect(runLiveAssistant.mock.calls[0][0].lastUserTurn.text).toContain('von elf bis zwanzig Uhr')
+    await finish(state)
+})
+
+test('shares current page quietly, deduplicates it and freezes context for each running request', async () => {
+    const first = { path: '/projects/p/tasks/one/properties', title: 'First task' }
+    const second = { path: '/projects/p/notes/two/editor', title: 'Second note' }
+    docs.get('whatsAppCallSessions/s').pageContext = first
+    let complete
+    runLiveAssistant.mockImplementationOnce(
+        () =>
+            new Promise(resolve => {
+                complete = resolve
+            })
+    )
+    const state = await start()
+    const pages = () => state.socket.sent.filter(event => event.event_id?.startsWith('alldone_live_page_'))
+    expect(pages()).toHaveLength(1)
+    expect(pages()[0]).toMatchObject({
+        type: 'session.thinking.append',
+        delegation_id: null,
+        content: expect.stringContaining(first.path),
+    })
+    await jest.advanceTimersByTimeAsync(4500)
+    expect(pages()).toHaveLength(1)
+    expect(runLiveAssistant).not.toHaveBeenCalled()
+    await emit(state.socket, user('task-request', 'Update this task'))
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(1200)
+    expect(runLiveAssistant.mock.calls[0][0].session.pageContext).toEqual(first)
+    docs.get('whatsAppCallSessions/s').pageContext = second
+    await jest.advanceTimersByTimeAsync(2400)
+    expect(pages()).toHaveLength(2)
+    expect(pages()[1].content).toContain(second.path)
+    expect(runLiveAssistant).toHaveBeenCalledTimes(1)
+    expect(runLiveAssistant.mock.calls[0][0].session.pageContext).toEqual(first)
+    expect(state.socket.sent.filter(event => event.type === 'session.commentary.append')).toHaveLength(0)
+    complete('Task updated')
+    await flush()
+    await emit(state.socket, { ...user('note-request', 'Summarize this note'), start_ms: 5000, end_ms: 6000 })
+    await emit(state.socket, { ...delegation, delegation: { id: 'd2', target: 'client' } })
+    await jest.advanceTimersByTimeAsync(1200)
+    expect(runLiveAssistant).toHaveBeenCalledTimes(2)
+    expect(runLiveAssistant.mock.calls[1][0].session.pageContext).toEqual(second)
+    await finish(state)
+})
+
+const applicationStatuses = socket =>
+    socket.sent
+        .filter(event => event.type === 'session.commentary.append' && event.content.startsWith('{'))
+        .map(event => JSON.parse(event.content))
+const errorContexts = socket =>
+    socket.sent
+        .filter(event => event.type === 'session.thinking.append' && event.content.startsWith('{'))
+        .map(event => JSON.parse(event.content))
+        .filter(value => value.type === 'application_error_state')
+
+test('does not promote a free-form error claim into an announced status', async () => {
+    let complete
+    runLiveAssistant.mockImplementationOnce(
+        () =>
+            new Promise(resolve => {
+                complete = resolve
+            })
+    )
+    const state = await start()
+    await emit(state.socket, user())
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(1200)
+    const { onProgress } = runLiveAssistant.mock.calls[0][0]
+    onProgress('An error came in')
+    await jest.advanceTimersByTimeAsync(10000)
+    expect(applicationStatuses(state.socket)).toEqual([])
+    onProgress({
+        status: 'running',
+        step: 'Searching Sunday events',
+        content: 'Made-up permission error',
+        urgent: true,
+    })
+    await jest.advanceTimersByTimeAsync(9000)
+    expect(applicationStatuses(state.socket)).toContainEqual(
+        expect.objectContaining({ status: 'running', error: null, step: 'Searching Sunday events' })
+    )
+    expect(JSON.stringify(state.socket.sent)).not.toMatch(/An error came in|Made-up permission/)
+    complete('Verified result')
+    await flush()
+    await finish(state)
+})
+
+test('emits a verified cause and clears it before delivering a fast retry result', async () => {
+    let complete
+    runLiveAssistant.mockImplementationOnce(
+        () =>
+            new Promise(resolve => {
+                complete = resolve
+            })
+    )
+    const state = await start()
+    await emit(state.socket, user())
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(1200)
+    const { onProgress } = runLiveAssistant.mock.calls[0][0]
+    onProgress({ status: 'failed', cause: 'Calendar write permission missing', step: 'Creating the calendar entry' })
+    await jest.advanceTimersByTimeAsync(4200)
+    expect(applicationStatuses(state.socket)).toContainEqual(
+        expect.objectContaining({
+            error: {
+                status: 'failed',
+                cause: 'Calendar write permission missing',
+                step: 'Creating the calendar entry',
+            },
+        })
+    )
+    // Recovery and completion between ticks must still clear the old error.
+    onProgress({ status: 'result_received', step: 'Creating the calendar entry' })
+    complete('Verified result')
+    await flush()
+    expect(errorContexts(state.socket).at(-1).error).toBeNull()
+    await jest.advanceTimersByTimeAsync(45000)
+    expect(applicationStatuses(state.socket).filter(value => value.error)).toHaveLength(1)
+    expect(
+        state.socket.sent.filter(
+            event => event.type === 'session.commentary.append' && event.content === 'Verified result'
+        )
+    ).toHaveLength(1)
+    await finish(state)
+})
+
+test.each([
+    ['Specific HTTP 429 rate limit', 'failed'],
+    ['', 'outcome_unconfirmed'],
+])('backend failure uses actual cause or a neutral unknown outcome: %s', async (message, status) => {
+    runLiveAssistant.mockRejectedValueOnce(new Error(message))
+    const state = await start()
+    await emit(state.socket, user())
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(1500)
+    const update = applicationStatuses(state.socket).at(-1)
+    expect(update.status).toBe(status)
+    expect(update.error?.cause || null).toBe(message || null)
+    await finish(state)
+})
+
+test('does not announce a delayed failure from the request replaced by newer speech', async () => {
+    let fail
+    runLiveAssistant.mockImplementationOnce(
+        () =>
+            new Promise((resolve, reject) => {
+                fail = reject
+            })
+    )
+    const state = await start()
+    await emit(state.socket, user())
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(1200)
+    await emit(state.socket, { ...user('correction', 'Actually check the other day'), start_ms: 4000, end_ms: 5000 })
+    fail(new Error('Old lookup timed out'))
+    await flush()
+    expect(applicationStatuses(state.socket).some(value => value.error)).toBe(false)
+    expect(errorContexts(state.socket).some(value => value.error)).toBe(false)
     await finish(state)
 })
