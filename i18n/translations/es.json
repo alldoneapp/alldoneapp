@@ -2940,8 +2940,8 @@
     "Assistant phone call": "Llamada telefónica al asistente",
     "Call cost: %{voice} Gold voice + %{assistant} Gold assistant": "Coste: %{voice} Gold de voz + %{assistant} Gold del asistente",
     "Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant": "Uso hasta ahora: %{voice} Gold de voz + %{assistant} Gold del asistente",
-    "Checking microphones — please say a few words": "Comprobando micrófonos: di unas palabras",
     "Enable call audio": "Activar audio de la llamada",
     "Microphone: %{name}": "Micrófono: %{name}",
-    "Cancel assistant call": "Cancelar llamada"
+    "Cancel assistant call": "Cancelar llamada",
+    "Hello, I am %{name}. How can I help you?": "Hola, soy %{name}. ¿Cómo puedo ayudarte?"
 }

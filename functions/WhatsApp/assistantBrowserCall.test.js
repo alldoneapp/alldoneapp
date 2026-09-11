@@ -120,7 +120,7 @@ describe('assistant browser calls', () => {
 
     test('requires auth', async () => {
         await expect(
-            startAssistantBrowserCall({ voiceProtocol: 'gpt-live-v1', offerSdp: 'offer-sdp' }, null)
+            startAssistantBrowserCall({ voiceProtocol: 'gpt-live-v2', offerSdp: 'offer-sdp' }, null)
         ).rejects.toMatchObject({
             code: 'unauthenticated',
         })
@@ -129,7 +129,7 @@ describe('assistant browser calls', () => {
     test('creates a browser call session and queues the sideband controller', async () => {
         const result = await startAssistantBrowserCall(
             {
-                voiceProtocol: 'gpt-live-v1',
+                voiceProtocol: 'gpt-live-v2',
                 offerSdp: 'offer-sdp',
                 projectId: 'project-1',
                 chatId: 'chat-1',
@@ -177,7 +177,7 @@ describe('assistant browser calls', () => {
 
         await startAssistantBrowserCall(
             {
-                voiceProtocol: 'gpt-live-v1',
+                voiceProtocol: 'gpt-live-v2',
                 offerSdp,
                 projectId: 'project-1',
                 chatId: 'chat-1',
@@ -191,7 +191,7 @@ describe('assistant browser calls', () => {
 
     test('requires an explicit browser call topic', async () => {
         await expect(
-            startAssistantBrowserCall({ voiceProtocol: 'gpt-live-v1', offerSdp: 'offer-sdp' }, { uid: 'user-1' })
+            startAssistantBrowserCall({ voiceProtocol: 'gpt-live-v2', offerSdp: 'offer-sdp' }, { uid: 'user-1' })
         ).rejects.toMatchObject({
             code: 'failed-precondition',
         })
@@ -230,7 +230,7 @@ const { closeLiveSession } = require('./assistantLiveController')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 describe('Live startup failures and usage privacy', () => {
     const request = {
-        voiceProtocol: 'gpt-live-v1',
+        voiceProtocol: 'gpt-live-v2',
         offerSdp: 'offer',
         projectId: 'project-1',
         chatId: 'chat-1',
@@ -271,13 +271,16 @@ describe('Live startup failures and usage privacy', () => {
             }),
         })
     })
-    test('rejects old clients before opening a paid session', async () => {
-        await expect(
-            startAssistantBrowserCall({ ...request, voiceProtocol: undefined }, { uid: 'user-1' })
-        ).rejects.toMatchObject({ code: 'failed-precondition' })
-        expect(createDirectCallSessionWithLease).not.toHaveBeenCalled()
-        expect(reconcileLiveUsage).not.toHaveBeenCalled()
-    })
+    test.each([undefined, 'gpt-live-v1'])(
+        'rejects old client protocol %s before opening a paid session',
+        async voiceProtocol => {
+            await expect(
+                startAssistantBrowserCall({ ...request, voiceProtocol }, { uid: 'user-1' })
+            ).rejects.toMatchObject({ code: 'failed-precondition' })
+            expect(createDirectCallSessionWithLease).not.toHaveBeenCalled()
+            expect(reconcileLiveUsage).not.toHaveBeenCalled()
+        }
+    )
     test.each(['missing SDP', 'queue failure'])('closes a created provider session after %s', async kind => {
         global.fetch = jest.fn(async () => ({
             ok: true,

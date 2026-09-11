@@ -182,3 +182,13 @@ test('honors browser cancellation while idle and does not execute another delega
     expect(runLiveAssistant).not.toHaveBeenCalled()
     await finish(state)
 })
+
+test('controller connection does not request a greeting and records its later browser acknowledgement', async () => {
+    const { updateCallSession } = require('./whatsAppCallSessions')
+    const state = await start()
+    expect(state.socket.sent.find(e => e.event_id === 'alldone_live_ready').content).toContain('Remain silent')
+    expect(state.socket.sent.some(e => e.type === 'session.commentary.append')).toBe(false)
+    await emit(state.socket, { type: 'session.commentary.appended', client_event_id: 'alldone_live_greeting' })
+    expect(updateCallSession).toHaveBeenCalledWith('s', { greetingAcknowledgedAt: expect.any(Number) })
+    await finish(state)
+})

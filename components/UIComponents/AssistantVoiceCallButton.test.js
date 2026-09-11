@@ -166,6 +166,7 @@ const findEndCallButton = tree => tree.root.findAllByType('Button').find(b => b.
 
 beforeEach(() => {
     jest.useFakeTimers()
+    jest.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     jest.spyOn(console, 'warn').mockImplementation(() => {})
     jest.spyOn(console, 'log').mockImplementation(() => {})
     FakePeerConnection.instances = []
@@ -483,7 +484,7 @@ describe('GPT-Live lifecycle', () => {
         expect(createBotQuickTopic).not.toHaveBeenCalled()
         expect(runHttpsCallableFunction).toHaveBeenCalledWith(
             'startAssistantBrowserCallSecondGen',
-            expect.objectContaining({ chatId: 'existing-topic', voiceProtocol: 'gpt-live-v1' }),
+            expect.objectContaining({ chatId: 'existing-topic', voiceProtocol: 'gpt-live-v2' }),
             expect.anything()
         )
     })
@@ -525,6 +526,7 @@ describe('voice connection recovery', () => {
     test('offers a user gesture to recover blocked Chrome audio playback', async () => {
         const play = jest
             .spyOn(window.HTMLMediaElement.prototype, 'play')
+            .mockResolvedValueOnce(undefined)
             .mockRejectedValueOnce(Object.assign(new Error('Blocked'), { name: 'NotAllowedError' }))
             .mockResolvedValue(undefined)
         try {
@@ -588,4 +590,56 @@ describe('voice connection recovery', () => {
         })
         expect(tracks[0].stop).toHaveBeenCalled()
     })
+})
+
+test('waits for successful remote playback before requesting Annas greeting', async () => {
+    FakePeerConnection.liveStartupEvents = true
+    runHttpsCallableFunction.mockImplementation(async name =>
+        name === 'startAssistantBrowserCallSecondGen'
+            ? { answerSdp: 'answer', sessionId: 'browser-greeting', voiceProvider: 'gpt-live' }
+            : { settled: false, controllerConnected: true }
+    )
+    let playing
+    jest.spyOn(window.HTMLMediaElement.prototype, 'play')
+        .mockResolvedValueOnce(undefined) // user-gesture priming
+        .mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    playing = resolve
+                })
+        )
+        .mockResolvedValue(undefined)
+    const tree = render()
+    const pc = await startCall(tree)
+    const greetings = () =>
+        pc.channel.send.mock.calls.map(([json]) => JSON.parse(json)).filter(e => e.event_id === 'alldone_live_greeting')
+    expect(greetings()).toHaveLength(0)
+    await act(async () => {
+        pc.ontrack({ streams: [makeStream(makeTrack())] })
+    })
+    expect(greetings()).toHaveLength(0)
+    await act(async () => {
+        playing()
+        await Promise.resolve()
+    })
+    expect(greetings()).toHaveLength(1)
+    await setVisibility('hidden')
+    await setVisibility('visible')
+    expect(greetings()).toHaveLength(1)
+})
+
+test('an unused previous microphone cannot trigger another recovery', async () => {
+    const tree = render()
+    await startCall(tree)
+    const old = tracks[0]
+    await act(async () => {
+        old.onended()
+        for (let i = 0; i < 20; i++) await Promise.resolve()
+    })
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+    await act(async () => {
+        old.onended()
+        for (let i = 0; i < 20; i++) await Promise.resolve()
+    })
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
 })
