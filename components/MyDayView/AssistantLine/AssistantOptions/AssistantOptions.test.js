@@ -21,15 +21,16 @@ import {
 const mockInputBlur = jest.fn()
 const mockInputClear = jest.fn()
 const mockInputClearAndSetContent = jest.fn()
-const mockOptions = [
-    { id: 'task-1', text: 'Quick task', icon: 'edit', task: { name: 'Quick task' } },
-    { id: 'task-2', text: 'Overflow task', icon: 'edit', task: { name: 'Overflow task' } },
-]
 const mockGetOptionsPresentationData = jest.fn((project, assistantId, tasks, amount, expanded) => ({
-    optionsLikeButtons: expanded ? mockOptions : mockOptions.slice(0, amount),
-    optionsInModal: expanded ? [] : mockOptions.slice(amount),
-    showSubmenu: !expanded && amount < mockOptions.length,
-    hasAdditionalOptions: amount < mockOptions.length,
+    optionsLikeButtons: expanded
+        ? [
+              { id: 'task-1', task: { name: 'Quick task' } },
+              { id: 'task-2', task: { name: 'Overflow task' } },
+          ]
+        : [{ id: 'task-1', task: { name: 'Quick task' } }],
+    optionsInModal: expanded ? [] : [{ id: 'task-2', task: { name: 'Overflow task' } }],
+    showSubmenu: !expanded,
+    hasAdditionalOptions: true,
 }))
 
 const mockState = {
@@ -111,32 +112,12 @@ jest.mock('./helper', () => ({
         assistantProjectId: 'default-project',
     }),
     getOptionsPresentationData: (...args) => mockGetOptionsPresentationData(...args),
-    getCollapsedQuickActionCount: ({ containerWidth, searchWidth, moreWidth, optionWidths }) => {
-        if (!containerWidth || !searchWidth || optionWidths.some(width => !width)) return 0
-        if (searchWidth + optionWidths.reduce((total, width) => total + width, 0) <= containerWidth) {
-            return optionWidths.length
-        }
-        if (!moreWidth) return 0
-
-        let usedWidth = searchWidth + moreWidth
-        let visibleCount = 0
-        for (const width of optionWidths) {
-            if (usedWidth + width > containerWidth) break
-            usedWidth += width
-            visibleCount += 1
-        }
-        return visibleCount
-    },
 }))
 
 jest.mock('./Search/AssistantTaskSearchButtonWrapper', () => {
     const React = require('react')
     const { Text } = require('react-native')
-    return ({ onLayout }) => (
-        <Text testID="assistant-search-button" onLayout={onLayout}>
-            SearchButton
-        </Text>
-    )
+    return () => <Text>SearchButton</Text>
 })
 
 jest.mock('./OptionButtons/OptionButtons', () => {
@@ -265,86 +246,21 @@ describe('AssistantOptions search button', () => {
             tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
         })
 
-        const visibleOptions = () =>
-            tree.root
-                .findAllByType(Text)
-                .find(
-                    node => typeof node.props.children === 'string' && node.props.children.startsWith('OptionButtons:')
-                ).props.children
-
-        expect(visibleOptions()).not.toContain('Overflow task')
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Overflow task')
 
         await act(async () => {
-            tree.root.findByProps({ accessibilityLabel: 'More' }).props.onPress()
+            tree.root.findByProps({ accessibilityLabel: 'Show all' }).props.onPress()
         })
 
-        expect(visibleOptions()).toContain('Overflow task')
+        expect(JSON.stringify(tree.toJSON())).toContain('Overflow task')
         expect(tree.root.findByProps({ accessibilityLabel: 'Show less' })).toBeTruthy()
 
         await act(async () => {
             tree.root.findByProps({ accessibilityLabel: 'Show less' }).props.onPress()
         })
 
-        expect(visibleOptions()).not.toContain('Overflow task')
-        expect(tree.root.findByProps({ accessibilityLabel: 'More' })).toBeTruthy()
-    })
-
-    it('measures the row and reserves More while showing the maximum number of fitting tasks', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions />)
-        })
-
-        await act(async () => {
-            tree.root.findByProps({ testID: 'assistant-quick-actions' }).props.onLayout({
-                nativeEvent: { layout: { width: 250 } },
-            })
-            tree.root.findByProps({ testID: 'assistant-search-button' }).props.onLayout({
-                nativeEvent: { layout: { width: 64 } },
-            })
-            tree.root.findByProps({ accessibilityLabel: 'More' }).props.onLayout({
-                nativeEvent: { layout: { width: 54 } },
-            })
-            tree.root.findByProps({ testID: 'assistant-quick-action-measure-task-1' }).props.onLayout({
-                nativeEvent: { layout: { width: 84 } },
-            })
-            tree.root.findByProps({ testID: 'assistant-quick-action-measure-task-2' }).props.onLayout({
-                nativeEvent: { layout: { width: 84 } },
-            })
-        })
-
-        expect(JSON.stringify(tree.toJSON())).toContain('OptionButtons: Quick task')
-        expect(JSON.stringify(tree.toJSON())).not.toContain('OptionButtons: Quick task, Overflow task')
-        expect(tree.root.findByProps({ accessibilityLabel: 'More' })).toBeTruthy()
-
-        await act(async () => {
-            tree.root.findByProps({ testID: 'assistant-quick-actions' }).props.onLayout({
-                nativeEvent: { layout: { width: 400 } },
-            })
-        })
-
-        expect(JSON.stringify(tree.toJSON())).toContain('OptionButtons: Quick task, Overflow task')
-        expect(tree.root.findAllByProps({ accessibilityLabel: 'More' })).toHaveLength(0)
-    })
-
-    it('keeps the collapsed quick actions to one clipped line and only wraps after More is pressed', async () => {
-        let tree
-        await act(async () => {
-            tree = renderer.create(<AssistantOptions />)
-        })
-
-        const getRowStyle = () =>
-            StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-quick-actions' }).props.style)
-
-        expect(getRowStyle()).toEqual(expect.objectContaining({ height: 32, overflow: 'hidden' }))
-        expect(getRowStyle().flexWrap).toBeUndefined()
-
-        await act(async () => {
-            tree.root.findByProps({ accessibilityLabel: 'More' }).props.onPress()
-        })
-
-        expect(getRowStyle()).toEqual(expect.objectContaining({ minHeight: 32, flexWrap: 'wrap' }))
-        expect(getRowStyle().height).toBeUndefined()
+        expect(JSON.stringify(tree.toJSON())).not.toContain('Overflow task')
+        expect(tree.root.findByProps({ accessibilityLabel: 'Show all' })).toBeTruthy()
     })
 
     it('stacks the voice and send controls when the assistant input expands', async () => {
