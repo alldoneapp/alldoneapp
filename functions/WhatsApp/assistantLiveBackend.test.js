@@ -17,7 +17,7 @@ jest.mock('./assistantLiveGold', () => ({ reconcileLiveUsage: jest.fn(async () =
 const admin = require('firebase-admin')
 const helper = require('../Assistant/assistantHelper')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
-const { runLiveAssistant, isUnambiguousApproval } = require('./assistantLiveBackend')
+const { runLiveAssistant } = require('./assistantLiveBackend')
 let sessionData
 let savedBackendAnswers
 const session = { id: 's', userId: 'u', projectId: 'p', assistantId: 'a', chatId: 'c' }
@@ -110,58 +110,59 @@ test('never falls back to a free unpriced model', async () => {
     await expect(runLiveAssistant(request())).rejects.toThrow('Gold rate')
     expect(helper.interactWithChatStream).not.toHaveBeenCalled()
 })
-test('holds sensitive actions for exact confirmation and rejects qualified approval', async () => {
+test('executes both requested calendar entries without a voice-only confirmation, using corrected arguments', async () => {
+    sessionData.livePendingAction = {
+        toolName: 'create_calendar_event',
+        toolArgs: { title: 'Old all-day draft' },
+        requestedAt: 1,
+    }
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
+        expect(options.localTools.resolve_voice_confirmation).toBeUndefined()
+        for (const args of [
+            { summary: 'Riesendrachen', start: '2026-09-12T11:00:00+02:00' },
+            { summary: 'Mitmachfest', start: '2026-09-13T12:00:00+02:00' },
+        ])
+            await options.toolExecutor('create_calendar_event', args)
+        return { finalResponseText: 'Both entries created' }
+    })
+    await runLiveAssistant(request())
+    expect(helper.executeToolNatively.mock.calls.map(call => call.slice(0, 2))).toEqual([
+        ['create_calendar_event', { summary: 'Riesendrachen', start: '2026-09-12T11:00:00+02:00' }],
+        ['create_calendar_event', { summary: 'Mitmachfest', start: '2026-09-13T12:00:00+02:00' }],
+    ])
+    const messages = helper.interactWithChatStream.mock.calls[0][0]
+    expect(messages.at(-1)[1]).toContain('Do not add a separate voice confirmation')
+    expect(messages.at(-1)[1]).toContain('look them up before booking')
+})
+
+test('reports the actual calendar error with its subject instead of overwriting it with generic reviewing', async () => {
     const onProgress = jest.fn()
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
+        await options.toolExecutor('create_calendar_event', { summary: 'Riesendrachen' })
+        return { finalResponseText: 'Could not create the event' }
+    })
+    helper.executeToolNatively.mockResolvedValueOnce({ success: false, error: 'Calendar write permission missing' })
     await runLiveAssistant(request({ onProgress }))
+    expect(onProgress).toHaveBeenLastCalledWith({
+        content: expect.stringContaining('Calendar write permission missing'),
+        urgent: true,
+    })
+    expect(onProgress.mock.calls.at(-1)[0].content).toContain('Riesendrachen')
+})
+
+test('keeps existing tool permissions authoritative even without the extra voice confirmation', async () => {
+    helper.isToolAllowedForExecution.mockResolvedValueOnce(false)
+    await runLiveAssistant(request())
     const options = helper.collectAssistantTextWithToolCalls.mock.calls[0][0]
-    expect(await options.toolExecutor('create_calendar_event', { title: 'Dinner' })).toMatchObject({
-        status: 'confirmation_required',
-    })
+    await expect(options.toolExecutor('create_calendar_event', {})).rejects.toThrow('Tool no longer permitted')
     expect(helper.executeToolNatively).not.toHaveBeenCalled()
-    expect(onProgress).not.toHaveBeenCalled()
-    expect(await options.localTools.resolve_voice_confirmation.execute({ approved: true })).toMatchObject({
-        status: 'explicit_spoken_approval_required',
-    })
-    expect(isUnambiguousApproval('Yes, but tomorrow')).toBe(false)
-    expect(isUnambiguousApproval('Ja bitte.')).toBe(true)
-})
-
-test('reports only actual tool execution and returns to reviewing without claiming success', async () => {
-    const onProgress = jest.fn()
-    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
-        await options.toolExecutor('create_task', { title: 'Private title' })
-        return { finalResponseText: 'Not completed' }
-    })
-    helper.executeToolNatively.mockImplementationOnce(async () => {
-        expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('Creating a task'))
-        return { success: false }
-    })
-    await runLiveAssistant(request({ onProgress }))
-    expect(onProgress.mock.calls.flat().join(' ')).not.toContain('Private title')
-    expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('answer is not ready'))
-})
-
-test('coalesces parallel progress instead of claiming to review while other calls are running', async () => {
-    const onProgress = jest.fn()
-    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
-        options.onToolBatchState({ total: 5, completed: 0, active: [0, 1, 2] })
-        await options.toolExecutor('create_task', { title: 'Private title' })
-        expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('0 of 5 steps; 3 are running'))
-        options.onToolBatchState({ total: 5, completed: 2, active: [0, 3, 4] })
-        expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('2 of 5 steps; 3 are running'))
-        options.onToolBatchState({ total: 5, completed: 5, active: [] })
-        return { finalResponseText: 'Done' }
-    })
-    await runLiveAssistant(request({ onProgress }))
-    expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('answer is not ready'))
-    expect(onProgress.mock.calls.flat().join(' ')).not.toContain('Private title')
 })
 
 test.each([true, false])('observes a background job only after successful dispatch: %s', async success => {
     const onBackgroundJob = jest.fn()
     sessionData.livePendingAction = { toolName: 'execute_task_in_vm', toolArgs: {}, requestedAt: Date.now() - 1000 }
     helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
-        await options.localTools.resolve_voice_confirmation.execute({ approved: true })
+        await options.toolExecutor('execute_task_in_vm', {})
         return { finalResponseText: 'Dispatch result' }
     })
     helper.executeToolNatively.mockResolvedValueOnce({ success, correlationId: 'job-1', status: 'started' })
@@ -177,24 +178,6 @@ test('checks for newer speech immediately before any tool execution', async () =
     expect(helper.executeToolNatively).not.toHaveBeenCalled()
 })
 
-test('consumes exact spoken confirmation once and executes the original arguments', async () => {
-    sessionData.livePendingAction = {
-        toolName: 'create_calendar_event',
-        toolArgs: { title: 'Dinner' },
-        requestedAt: Date.now() - 1000,
-    }
-    await runLiveAssistant(request({ lastUserTurn: { text: 'Yes please.', createdAt: Date.now() } }))
-    const options = helper.collectAssistantTextWithToolCalls.mock.calls[0][0]
-    await expect(options.localTools.resolve_voice_confirmation.execute({ approved: true })).resolves.toMatchObject({
-        success: true,
-    })
-    expect(helper.executeToolNatively).toHaveBeenCalledTimes(1)
-    expect(helper.executeToolNatively.mock.calls[0].slice(0, 2)).toEqual(['create_calendar_event', { title: 'Dinner' }])
-    await expect(options.localTools.resolve_voice_confirmation.execute({ approved: true })).resolves.toMatchObject({
-        status: 'no_pending_action',
-    })
-    expect(helper.executeToolNatively).toHaveBeenCalledTimes(1)
-})
 test('delivers the fully paid final answer when its charge exhausts Gold', async () => {
     reconcileLiveUsage.mockResolvedValueOnce({ currentGold: 0, insufficientBalance: false })
     await expect(runLiveAssistant(request())).resolves.toBe('Done')
