@@ -4,3 +4,6 @@
 # has to redeploy them too.
 ^functions/
 ^firebase\.json$
+# Recheck the deployment when its completion guard changes, even if a previous
+# partial deploy incorrectly advanced the marker to the current function sources.
+^ci/assertFirebaseFunctionsDeployed\.js$

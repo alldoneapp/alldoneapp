@@ -23,6 +23,27 @@ function findMissingFunctions(source, functionsList) {
     return exportedFunctionNames(source).filter(name => !deployed.has(name))
 }
 
+function assertCompletedDeployment(source, log) {
+    // firebase-tools 13.29.3 can exit zero with work still missing after quota
+    // retries. An existing function is not evidence that this deploy updated it.
+    // Require a terminal result for every export, including hash-verified no-ops.
+    const plainLog = log.replace(/\x1b\[[0-9;]*m/g, '')
+    const completed = new Set(
+        [
+            ...plainLog.matchAll(
+                /functions\[([\w$-]+)\([^)]+\)\]\s+(?:Successful (?:create|update) operation\.|Skipped \(No changes detected\))/g
+            ),
+        ].map(match => match[1])
+    )
+    const missing = exportedFunctionNames(source).filter(name => !completed.has(name))
+    if (missing.length) {
+        throw new Error(`No completed deployment result for: ${missing.join(', ')}`)
+    }
+    if (!plainLog.includes('Deploy complete!')) {
+        throw new Error('Firebase exited without confirming that the deploy completed')
+    }
+}
+
 async function readStdin() {
     let input = ''
     for await (const chunk of process.stdin) input += chunk
@@ -31,16 +52,21 @@ async function readStdin() {
 
 async function main() {
     const sourcePath = process.argv[2]
-    if (!sourcePath) throw new Error('Usage: assertFirebaseFunctionsDeployed.js <functions/index.js>')
+    const logPath = process.argv[3]
+    if (!sourcePath || !logPath)
+        throw new Error('Usage: assertFirebaseFunctionsDeployed.js <functions/index.js> <deploy.log>')
 
     const source = fs.readFileSync(sourcePath, 'utf8')
+    assertCompletedDeployment(source, fs.readFileSync(logPath, 'utf8'))
     const functionsList = JSON.parse(await readStdin())
     const missing = findMissingFunctions(source, functionsList)
     if (missing.length > 0) {
         throw new Error(`Firebase reported a successful deploy but these functions are missing: ${missing.join(', ')}`)
     }
 
-    process.stdout.write(`Verified ${exportedFunctionNames(source).length} deployed Firebase Functions.\n`)
+    process.stdout.write(
+        `Verified completed deployment and presence of ${exportedFunctionNames(source).length} Firebase Functions.\n`
+    )
 }
 
 if (require.main === module) {
@@ -50,4 +76,4 @@ if (require.main === module) {
     })
 }
 
-module.exports = { deployedFunctionNames, exportedFunctionNames, findMissingFunctions }
+module.exports = { assertCompletedDeployment, deployedFunctionNames, exportedFunctionNames, findMissingFunctions }
