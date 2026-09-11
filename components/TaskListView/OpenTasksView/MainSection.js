@@ -44,6 +44,7 @@ import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
 import { holdTaskGrouping } from './taskPlacementHold'
 import useGoalSectionExit, { keepDepartingGoalsSortable } from './useGoalSectionExit'
 import GeneralTaskSectionEntry from './GeneralTaskSectionEntry'
+import { subscribeToGoalPostponeMotion } from './goalPostponeMotion'
 
 export default function MainSection({
     projectId,
@@ -117,6 +118,7 @@ export default function MainSection({
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const [tmpGoalsById, setTmpGoalsById] = useState({})
     const tmpGoalsByIdRef = React.useRef({})
+    const [directGoalPostponeRuns, setDirectGoalPostponeRuns] = useState({})
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
 
@@ -149,6 +151,21 @@ export default function MainSection({
         !isAnonymous &&
         !taskFiltersActive &&
         loggedUserId === currentUserId
+
+    useEffect(() => {
+        setDirectGoalPostponeRuns({})
+        if (!goalSectionExitEnabled) return undefined
+        return subscribeToGoalPostponeMotion(event => {
+            if (event.projectId !== projectId) return
+            setDirectGoalPostponeRuns(current => {
+                if (event.active) return { ...current, [event.goalId]: event.runId }
+                if (!current[event.goalId] || current[event.goalId] !== event.runId) return current
+                const next = { ...current }
+                delete next[event.goalId]
+                return next
+            })
+        })
+    }, [goalSectionExitEnabled, projectId])
 
     const { mainTasksWithExits, emptyGoalsWithExits, exitRunIdByGoalId, exitKindByGoalId } = useGoalSectionExit({
         projectId,
@@ -449,15 +466,24 @@ export default function MainSection({
     const onlyDepartingGoalsRemain =
         sortedMainTasks.length > 0 &&
         sortedMainTasks.every(([sectionId]) =>
-            sectionId === NOT_PARENT_GOAL_INDEX ? false : !!exitRunIdByGoalId[sectionId]
+            sectionId === NOT_PARENT_GOAL_INDEX
+                ? false
+                : !!exitRunIdByGoalId[sectionId] || !!directGoalPostponeRuns[sectionId]
         )
     const generalTaskEntryRunId = onlyDepartingGoalsRemain
-        ? Math.max(...sortedMainTasks.map(([sectionId]) => exitRunIdByGoalId[sectionId]))
+        ? Math.max(
+              ...sortedMainTasks.map(
+                  ([sectionId]) => exitRunIdByGoalId[sectionId] || directGoalPostponeRuns[sectionId] || 0
+              )
+          )
         : 0
     const generalTaskEntryExitKind =
-        onlyDepartingGoalsRemain && sortedMainTasks.every(([sectionId]) => exitKindByGoalId[sectionId] === 'postpone')
-            ? 'postpone'
-            : 'completion'
+        onlyDepartingGoalsRemain && sortedMainTasks.every(([sectionId]) => !!directGoalPostponeRuns[sectionId])
+            ? 'goalPostpone'
+            : onlyDepartingGoalsRemain &&
+                sortedMainTasks.every(([sectionId]) => exitKindByGoalId[sectionId] === 'postpone')
+              ? 'postpone'
+              : 'completion'
     const showEmptyGeneralTaskSection = sortedMainTasks.length === 0 || onlyDepartingGoalsRemain
 
     // Holds already-mounted sections at their last idle size while the user is
@@ -503,6 +529,7 @@ export default function MainSection({
                             containerStyle={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}
                             exitRunId={emptyGoalExitRunId}
                             exitKind={exitKindByGoalId[goal.id] || 'completion'}
+                            postponeMotionEnabled={goalSectionExitEnabled}
                         />
                     )
                 } else if (goalId === NOT_PARENT_GOAL_INDEX) {
@@ -655,6 +682,7 @@ export default function MainSection({
                             focusedTaskId={effectiveFocusTaskId}
                             exitRunId={exitRunId}
                             exitKind={exitKindByGoalId[goalId] || 'completion'}
+                            postponeMotionEnabled={goalSectionExitEnabled}
                         />
                     )
                 }
