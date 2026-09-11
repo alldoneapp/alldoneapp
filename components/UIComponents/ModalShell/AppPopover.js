@@ -18,27 +18,26 @@ import useModalSizing from '../../../hooks/useModalSizing'
 export default function AppPopover({ content, children, isOpen, onClickOutside, modalId, ...popoverProps }) {
     const { isSheet } = useModalSizing()
 
-    // A few legacy dialogs render an AppPopover with content={null} and
-    // position their card themselves (TaskSuggestedComment; historically the
-    // GoogleMeet dialogs, deleted 2026-08-12). Never turn that into an EMPTY
-    // bottom sheet: its scrim paints over the self-positioned card and makes
-    // it unusable on phones.
-    if (isSheet && !content) return children || null
-
-    if (!isSheet) {
-        return (
-            <Popover content={content} isOpen={isOpen} onClickOutside={onClickOutside} {...popoverProps}>
-                {children}
-            </Popover>
-        )
-    }
-
+    // Keep the trigger under the same React ancestors across the breakpoint.
+    // Replacing Popover with a Fragment on rotation unmounted its children,
+    // stopping an active voice call (and discarding other trigger-local state).
     return (
         <>
-            {children}
-            <BottomSheet isOpen={!!isOpen} onRequestClose={onClickOutside} modalId={modalId}>
-                {typeof content === 'function' ? content({ position: 'bottom', align: 'center' }) : content}
-            </BottomSheet>
+            <Popover
+                {...popoverProps}
+                content={isSheet ? null : content}
+                isOpen={!isSheet && isOpen}
+                onClickOutside={onClickOutside}
+            >
+                {children}
+            </Popover>
+            {/* Legacy content={null} dialogs position their own card. Never
+                cover that card with an empty mobile sheet and backdrop. */}
+            {isSheet && !!content && (
+                <BottomSheet isOpen={!!isOpen} onRequestClose={onClickOutside} modalId={modalId}>
+                    {typeof content === 'function' ? content({ position: 'bottom', align: 'center' }) : content}
+                </BottomSheet>
+            )}
         </>
     )
 }
