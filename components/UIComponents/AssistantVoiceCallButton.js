@@ -736,6 +736,13 @@ export default function AssistantVoiceCallButton({
 
     const idleTitle = title || translate('Start voice call') || translate('Call Anna')
     const isConnecting = status === STATUS_CONNECTING
+    // Keep cancellation inside the same 40px control so connecting never adds a second row.
+    const connectingIcon = (
+        <View style={localStyles.connectingIcon}>
+            <Spinner containerSize={24} spinnerSize={24} containerColor="transparent" />
+            <Icon name="x" size={12} color={colors.Text03} style={localStyles.cancelIcon} />
+        </View>
+    )
 
     const priceText = translate('Voice costs %{gold} Gold/min plus normal assistant usage', {
         gold: LIVE_GOLD_PER_MINUTE,
@@ -804,13 +811,14 @@ export default function AssistantVoiceCallButton({
             <View style={localStyles.container}>
                 <TouchableOpacity
                     style={[localStyles.linkRow, buttonStyle]}
-                    disabled={isConnecting}
-                    onPress={startCall}
+                    onPress={isConnecting ? endCall : startCall}
                     accessible
-                    accessibilityLabel={`${idleTitle}. ${priceText}`}
+                    accessibilityLabel={
+                        isConnecting ? translate('Cancel assistant call') : `${idleTitle}. ${priceText}`
+                    }
                 >
                     {isConnecting ? (
-                        <Spinner containerSize={24} spinnerSize={18} />
+                        connectingIcon
                     ) : (
                         <Icon name="phone-call" size={24} color={colors.Text03} style={iconStyle} />
                     )}
@@ -827,15 +835,6 @@ export default function AssistantVoiceCallButton({
                         })}
                     </Text>
                 )}
-                {isConnecting && (
-                    <Button
-                        type="ghost"
-                        icon="x"
-                        onPress={endCall}
-                        accessibilityLabel={translate('Cancel assistant call')}
-                        accessible
-                    />
-                )}
                 {hint}
             </View>
         )
@@ -845,15 +844,12 @@ export default function AssistantVoiceCallButton({
         <View style={localStyles.container}>
             <Button
                 type="ghost"
-                icon={compact && isConnecting ? <Spinner containerSize={24} spinnerSize={18} /> : 'phone-call'}
-                title={compact ? null : idleTitle}
-                processing={!compact && isConnecting}
-                processingTitle={translate('Calling')}
-                disabled={isConnecting}
-                onPress={startCall}
+                icon={isConnecting ? connectingIcon : 'phone-call'}
+                title={compact ? null : isConnecting ? translate('Calling') : idleTitle}
+                onPress={isConnecting ? endCall : startCall}
                 buttonStyle={[compact ? localStyles.iconButton : localStyles.callButton, buttonStyle]}
                 titleStyle={[localStyles.callTitle, titleStyle]}
-                accessibilityLabel={`${idleTitle}. ${priceText}`}
+                accessibilityLabel={isConnecting ? translate('Cancel assistant call') : `${idleTitle}. ${priceText}`}
                 accessible
             />
             {!compact && <Text style={localStyles.foregroundHint}>{priceText}</Text>}
@@ -865,15 +861,6 @@ export default function AssistantVoiceCallButton({
                     })}
                 </Text>
             )}
-            {isConnecting && (
-                <Button
-                    type="ghost"
-                    icon="x"
-                    onPress={endCall}
-                    accessibilityLabel={translate('Cancel assistant call')}
-                    accessible
-                />
-            )}
             {hint}
         </View>
     )
@@ -882,6 +869,15 @@ export default function AssistantVoiceCallButton({
 const localStyles = StyleSheet.create({
     container: {
         alignItems: 'flex-start',
+    },
+    connectingIcon: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelIcon: {
+        position: 'absolute',
     },
     connectedContainer: {
         flexDirection: 'row',

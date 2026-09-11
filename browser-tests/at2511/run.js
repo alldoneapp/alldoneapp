@@ -36,6 +36,7 @@
  *   node browser-tests/at2511/run.js --compact
  *   node browser-tests/at2511/run.js --real-chain
  *   node browser-tests/at2511/run.js --streaming
+ *   node browser-tests/at2511/run.js --voice-streaming
  *
  * `--real-chain` is the mode that matters most and the one this harness originally lacked. The
  * three modes above render `LastAssistantComment` DIRECTLY with a hand-written `arrivalId`, which
@@ -284,6 +285,11 @@ async function realChainMain() {
  * A/B against master: `outgoing rows during stream: 4` and the first two checks fail.
  */
 async function streamingMain() {
+    const voice = process.argv.includes('--voice-streaming')
+    const liveMetadata = voice
+        ? { source: 'browser_call', isCallTranscript: true }
+        : { isLoading: true, assistantRun: { status: 'running' } }
+    const finalMetadata = voice ? liveMetadata : { isLoading: false, assistantRun: { status: 'completed' } }
     const OUT = path.join(__dirname, '.build-realchain')
     build({
         entry: path.join(__dirname, 'realChain.entry.js'),
@@ -322,16 +328,15 @@ async function streamingMain() {
     const streamFrames = []
     for (const text of CHUNKS) {
         const frame = await page.evaluate(
-            chunk =>
+            ({ chunk, metadata }) =>
                 new Promise(resolve => {
                     window.__emitComment(chunk, {
                         id: 'answer-1',
-                        isLoading: true,
-                        assistantRun: { status: 'running' },
+                        ...metadata,
                     })
                     requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__measure())))
                 }),
-            text
+            { chunk: text, metadata: liveMetadata }
         )
         streamFrames.push(frame)
         // Sample through the window a roll would have occupied, so a roll cannot hide between chunks.
@@ -378,14 +383,15 @@ async function streamingMain() {
      * the shape batching plus the final flush actually produce.
      */
     const settlePaint = await page.evaluate(
-        () =>
+        metadata =>
             new Promise(resolve => {
                 window.__emitComment(
                     'Sure — let me check the three overdue tasks and move them to today. All three are moved.',
-                    { id: 'answer-1', isLoading: false, assistantRun: { status: 'completed' } }
+                    { id: 'answer-1', ...metadata }
                 )
                 requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__measure())))
-            })
+            }),
+        finalMetadata
     )
     const settleFrames = [settlePaint]
     for (let i = 0; i < 20; i++) {
@@ -447,7 +453,7 @@ async function streamingMain() {
 }
 
 async function main() {
-    if (process.argv.includes('--streaming')) return streamingMain()
+    if (process.argv.includes('--streaming') || process.argv.includes('--voice-streaming')) return streamingMain()
     if (process.argv.includes('--real-chain')) return realChainMain()
     const reduceMotion = process.argv.includes('--reduce-motion')
     const compact = process.argv.includes('--compact')

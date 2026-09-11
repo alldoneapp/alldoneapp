@@ -64,10 +64,10 @@ jest.mock('./ProjectTagIndicator', () => () => null)
 
 const project = { id: 'project-1', assistantId: 'assistant-project' }
 
-const emitComment = (commentText, id = commentText) => {
+const emitComment = (commentText, id = commentText, metadata = {}) => {
     const handler = watchComments.mock.calls[watchComments.mock.calls.length - 1][5]
     act(() => {
-        handler([{ id, commentText }])
+        handler([{ id, commentText, ...metadata }])
     })
 }
 
@@ -123,6 +123,36 @@ describe('AT-2511 — the arrival signal reaches the card', () => {
 
         emitComment('Second')
         expect(container.arrivalId()).toBe(announced)
+        container.unmount()
+    })
+
+    it('updates spoken fragments in place, then announces a separate backend answer', () => {
+        const container = renderContainer()
+        emitComment('Previous answer')
+        const spoken = { source: 'browser_call', isCallTranscript: true, fromAssistant: true }
+        for (const text of ['Hello', 'Hello there', 'Hello there, how can I help?']) {
+            emitComment(text, 'spoken-1', spoken)
+            expect(container.arrivalId()).toBeNull()
+            expect(container.tree.root.findByType(LastAssistantCommentWrapper).props.commentText).toBe(text)
+        }
+        // The next speaker/turn also grows in place rather than rolling every few words.
+        emitComment('Please help', 'spoken-2', { ...spoken, fromAssistant: false })
+        emitComment('Please help plan tomorrow.', 'spoken-2', { ...spoken, fromAssistant: false })
+        expect(container.arrivalId()).toBeNull()
+        emitComment('Here is your plan.', 'backend-result', { ...spoken, isCallTranscript: false })
+        expect(container.arrivalId()).toEqual(expect.any(Number))
+        container.unmount()
+    })
+
+    it('continues to suppress chat streaming and its final write', () => {
+        const container = renderContainer()
+        emitComment('Previous answer')
+        emitComment('Let me', 'chat-stream', { isLoading: true })
+        emitComment('Let me check', 'chat-stream', { assistantRun: { status: 'running' } })
+        emitComment('Let me check your tasks.', 'chat-stream', { isLoading: false })
+        expect(container.arrivalId()).toBeNull()
+        emitComment('A new reply', 'new-reply')
+        expect(container.arrivalId()).toEqual(expect.any(Number))
         container.unmount()
     })
 
