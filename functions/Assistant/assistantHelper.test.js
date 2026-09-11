@@ -7325,3 +7325,252 @@ test('includes voice controls for the configured OpenRouter model even without o
         mockStream.mockRestore()
     }
 })
+
+describe('parallel tool execution in both assistant paths', () => {
+    const { collectAssistantTextWithToolCalls, storeChunks } = require('./assistantHelper')
+    const calls = Array.from({ length: 5 }, (_, index) => ({
+        id: `parallel-${index}`,
+        type: 'function',
+        function: { name: 'find_calendar_availability', arguments: JSON.stringify({ durationMinutes: 30 + index }) },
+    }))
+    const flush = async () => {
+        for (let i = 0; i < 150; i++) await Promise.resolve()
+    }
+    beforeEach(() => {
+        mockResponsesCreate.mockReset().mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'All five results checked.' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+        mockFindCalendarAvailabilityForAssistantRequest.mockReset()
+        mockDocGet.mockResolvedValue({ exists: true, data: () => ({}) })
+        mockFirestoreGetAll.mockResolvedValue([
+            { exists: true, id: 'parallel-assistant', data: () => ({ allowedTools: ['find_calendar_availability'] }) },
+            { exists: false },
+        ])
+        mockDocUpdate.mockClear()
+    })
+    test.each(['voice', 'chat'])(
+        '%s overlaps reads and gives the model every result with its original call id',
+        async channel => {
+            if (channel === 'chat') jest.useFakeTimers()
+            const gates = calls.map(() => {
+                let resolve
+                const promise = new Promise(done => {
+                    resolve = done
+                })
+                return { resolve, promise }
+            })
+            mockFindCalendarAvailabilityForAssistantRequest.mockImplementation(
+                ({ durationMinutes }) => gates[durationMinutes - 30].promise
+            )
+            const stream = [{ additional_kwargs: { tool_calls: calls } }]
+            const runtime = {
+                projectId: 'parallel-project',
+                assistantId: 'parallel-assistant',
+                requestUserId: 'parallel-user',
+            }
+            const running =
+                channel === 'voice'
+                    ? collectAssistantTextWithToolCalls({
+                          stream,
+                          conversationHistory: [['user', 'Check five alternatives']],
+                          modelKey: 'MODEL_GPT5_6_SOL',
+                          temperatureKey: 'TEMPERATURE_NORMAL',
+                          allowedTools: ['find_calendar_availability'],
+                          toolRuntimeContext: runtime,
+                      })
+                    : storeChunks(
+                          'parallel-project',
+                          'topics',
+                          'parallel-chat',
+                          [],
+                          stream,
+                          null,
+                          'parallel-assistant',
+                          [],
+                          [],
+                          'Chat',
+                          'Assistant',
+                          'Project',
+                          '',
+                          'parallel-user',
+                          null,
+                          [['user', 'Check five alternatives']],
+                          'MODEL_GPT5_6_SOL',
+                          'TEMPERATURE_NORMAL',
+                          ['find_calendar_availability'],
+                          runtime,
+                          null,
+                          null,
+                          { kind: 'workflow', runId: 'parallel-progress-test' }
+                      )
+            try {
+                await flush()
+                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(3)
+                expect(mockResponsesCreate).not.toHaveBeenCalled()
+                gates[2].resolve({ success: true, options: [], message: 'result-2' })
+                await flush()
+                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(4)
+                gates[3].resolve({ success: false, options: [], message: 'result-3 unavailable' })
+                await flush()
+                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(5)
+                if (channel === 'chat') {
+                    await jest.advanceTimersByTimeAsync(7000)
+                    expect(mockDocUpdate).toHaveBeenCalledWith(
+                        expect.objectContaining({
+                            assistantRun: expect.objectContaining({
+                                activity: expect.objectContaining({
+                                    actionKey: 'assistant_activity_multiple_steps',
+                                    subject: '2/5',
+                                    total: 5,
+                                    completed: 2,
+                                    active: 3,
+                                }),
+                            }),
+                        })
+                    )
+                }
+            } finally {
+                gates.forEach((gate, i) => gate.resolve({ success: true, options: [], message: `result-${i}` }))
+                try {
+                    await running
+                } finally {
+                    if (channel === 'chat') jest.useRealTimers()
+                }
+            }
+            expect(mockResponsesCreate).toHaveBeenCalledTimes(1)
+            const outputs = mockResponsesCreate.mock.calls[0][0].input.filter(
+                item => item.type === 'function_call_output'
+            )
+            expect(outputs.map(item => item.call_id)).toEqual(calls.map(call => call.id))
+            expect(outputs.map(item => JSON.parse(item.output).message)).toEqual([
+                'result-0',
+                'result-1',
+                'result-2',
+                'result-3 unavailable',
+                'result-4',
+            ])
+        }
+    )
+})
+
+test('a multi-call round keeps attachment handoff ordered and strips binary data from model context', async () => {
+    const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
+    mockResponsesCreate.mockReset().mockResolvedValue([
+        { type: 'response.output_text.delta', delta: 'Done.' },
+        { type: 'response.completed', response: { output: [] } },
+    ])
+    const useFile = jest.fn(async () => ({ success: true }))
+    await collectAssistantTextWithToolCalls({
+        stream: [
+            {
+                additional_kwargs: {
+                    tool_calls: [
+                        { id: 'attachment', function: { name: 'get_chat_attachment', arguments: '{}' } },
+                        { id: 'use-file', function: { name: 'external_tool_upload', arguments: '{}' } },
+                    ],
+                },
+            },
+        ],
+        conversationHistory: [['user', 'Use my file']],
+        modelKey: 'MODEL_GPT5_6_SOL',
+        temperatureKey: 'TEMPERATURE_NORMAL',
+        allowedTools: [],
+        localTools: {
+            get_chat_attachment: {
+                execute: async () => ({
+                    success: true,
+                    fileName: 'report.pdf',
+                    fileBase64: 'UFJJVkFURV9CSU5BUllfUEFZTE9BRA==',
+                }),
+            },
+            external_tool_upload: { execute: useFile },
+        },
+    })
+    expect(useFile).toHaveBeenCalledWith(
+        expect.objectContaining({ fileName: 'report.pdf', fileBase64: 'UFJJVkFURV9CSU5BUllfUEFZTE9BRA==' })
+    )
+    const input = mockResponsesCreate.mock.calls[0][0].input
+    expect(JSON.stringify(input)).not.toContain('UFJJVkFURV9CSU5BUllfUEFZTE9BRA==')
+    expect(input.filter(item => item.type === 'function_call_output').map(item => item.call_id)).toEqual([
+        'attachment',
+        'use-file',
+    ])
+})
+
+test('compaction within a batch preserves every current result while removing obsolete context', () => {
+    const result = buildConversationAfterToolExecutions({
+        currentConversation: [
+            ['system', 'Keep the base rules'],
+            ['user', 'Current request'],
+            ['assistant', 'Obsolete details'],
+        ],
+        responseText: 'Checking',
+        toolExecutions: [
+            {
+                toolName: 'web_search',
+                toolArgs: {},
+                toolCallId: 'search',
+                conversationSafeToolResult: { success: true, answer: 'Fresh result' },
+            },
+            {
+                toolName: 'compact_thread_context',
+                toolArgs: {},
+                toolCallId: 'compact',
+                conversationSafeToolResult: {
+                    compactedContextMessage: 'Compacted thread state for this ongoing workflow:\nCurrent summary',
+                },
+            },
+        ],
+    })
+    expect(JSON.stringify(result)).not.toContain('Obsolete details')
+    expect(JSON.stringify(result)).toContain('Keep the base rules')
+    expect(JSON.stringify(result)).toContain('Current request')
+    expect(result.filter(item => item.role === 'tool').map(item => item.tool_call_id)).toEqual(['search', 'compact'])
+})
+
+test('a corrected voice request drains active reads and prevents queued reads, writes and model continuation', async () => {
+    const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
+    mockResponsesCreate.mockClear()
+    let cancelled = false
+    const gates = Array.from({ length: 3 }, () => {
+        let resolve
+        const promise = new Promise(done => {
+            resolve = done
+        })
+        return { resolve, promise }
+    })
+    let index = 0
+    const execute = jest.fn(() => gates[index++].promise)
+    const calls = [0, 1, 2, 3].map(i => ({ id: `read-${i}`, function: { name: 'web_search', arguments: '{}' } }))
+    calls.push({ id: 'write', function: { name: 'create_task', arguments: '{}' } })
+    const running = collectAssistantTextWithToolCalls({
+        stream: [{ additional_kwargs: { tool_calls: calls } }],
+        conversationHistory: [],
+        modelKey: 'MODEL_GPT5_6_SOL',
+        allowedTools: ['web_search', 'create_task'],
+        toolExecutor: execute,
+        assertActive: async () => {
+            if (cancelled) throw new Error('voice_request_superseded')
+        },
+    })
+    let finished = false
+    const outcome = running.catch(error => {
+        finished = true
+        return error
+    })
+    const flush = async () => {
+        for (let i = 0; i < 60; i++) await Promise.resolve()
+    }
+    await flush()
+    expect(execute).toHaveBeenCalledTimes(3)
+    cancelled = true
+    gates[0].resolve({ success: true })
+    await flush()
+    expect(finished).toBe(false)
+    gates[1].resolve({ success: true })
+    gates[2].resolve({ success: true })
+    expect((await outcome).message).toBe('voice_request_superseded')
+    expect(execute).toHaveBeenCalledTimes(3)
+    expect(mockResponsesCreate).not.toHaveBeenCalled()
+})

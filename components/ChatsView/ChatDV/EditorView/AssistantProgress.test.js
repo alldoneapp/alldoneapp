@@ -186,6 +186,28 @@ describe('AssistantProgress', () => {
             expect(renderedText(tree)).not.toContain('|')
         })
 
+        test('updates one combined progress line for a batch of tool calls', () => {
+            let tree
+            const activity = {
+                phase: 'tool',
+                toolName: 'parallel_reads',
+                startedAt: 1,
+                actionKey: 'assistant_activity_multiple_steps',
+                subject: '0/5',
+            }
+            act(() => {
+                tree = renderer.create(<AssistantProgress activity={activity} />)
+            })
+            expect(renderedText(tree)).toContain('assistant_activity_multiple_steps|0/5')
+            act(() => {
+                tree.update(<AssistantProgress activity={{ ...activity, subject: '2/5' }} />)
+            })
+            expect(renderedText(tree)).toContain('assistant_activity_multiple_steps|2/5')
+            expect(renderedText(tree)).not.toContain('0/5')
+            expect(tree.root.findAllByProps({ testID: 'assistant-progress-step-text' })).toHaveLength(1)
+            act(() => tree.unmount())
+        })
+
         test.each([
             ['an unknown key', { actionKey: 'assistant_activity_not_shipped_yet', subject: 'x' }],
             ['no key at all', { actionKey: null, subject: null }],

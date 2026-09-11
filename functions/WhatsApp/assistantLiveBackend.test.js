@@ -141,6 +141,22 @@ test('reports only actual tool execution and returns to reviewing without claimi
     expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('answer is not ready'))
 })
 
+test('coalesces parallel progress instead of claiming to review while other calls are running', async () => {
+    const onProgress = jest.fn()
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
+        options.onToolBatchState({ total: 5, completed: 0, active: [0, 1, 2] })
+        await options.toolExecutor('create_task', { title: 'Private title' })
+        expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('0 of 5 steps; 3 are running'))
+        options.onToolBatchState({ total: 5, completed: 2, active: [0, 3, 4] })
+        expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('2 of 5 steps; 3 are running'))
+        options.onToolBatchState({ total: 5, completed: 5, active: [] })
+        return { finalResponseText: 'Done' }
+    })
+    await runLiveAssistant(request({ onProgress }))
+    expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('answer is not ready'))
+    expect(onProgress.mock.calls.flat().join(' ')).not.toContain('Private title')
+})
+
 test.each([true, false])('observes a background job only after successful dispatch: %s', async success => {
     const onBackgroundJob = jest.fn()
     sessionData.livePendingAction = { toolName: 'execute_task_in_vm', toolArgs: {}, requestedAt: Date.now() - 1000 }
