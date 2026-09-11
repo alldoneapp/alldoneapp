@@ -3,8 +3,6 @@ import { Animated, Easing } from 'react-native'
 
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
 import { GOAL_EXIT_COLLAPSE_DELAY_MS, GOAL_EXIT_FADE_MS } from './goalSectionExitMotion'
-import { POSTPONE_GOAL_EXIT_COLLAPSE_MS } from './goalSectionExitMotion'
-import { POSTPONE_COLLAPSE_MS, POSTPONE_SLIDE_FADE_MS } from '../TaskItem/TaskPresentation/taskPostponeMotion'
 
 /**
  * AT-2534 — how the general "add task" row replaces the final goal section.
@@ -31,13 +29,6 @@ export const GENERAL_TASK_ENTRY_TOTAL_MS = Math.max(
     GENERAL_TASK_ENTRY_EXPAND_DELAY_MS + GENERAL_TASK_ENTRY_EXPAND_MS,
     GENERAL_TASK_ENTRY_FADE_DELAY_MS + GENERAL_TASK_ENTRY_FADE_MS
 )
-export const POSTPONE_GENERAL_TASK_ENTRY_FADE_DELAY_MS = 40
-export const POSTPONE_GENERAL_TASK_ENTRY_FADE_MS = 140
-export const GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS = POSTPONE_SLIDE_FADE_MS
-export const GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS = POSTPONE_COLLAPSE_MS
-export const GOAL_POSTPONE_GENERAL_TASK_ENTRY_TOTAL_MS =
-    GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS + GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS
-
 const SETTLE_PX = 6
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 
@@ -46,7 +37,7 @@ const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
  * @returns {{onContentLayout: Function, sectionStyle: object|undefined, contentStyle: object|undefined,
  *   entering: boolean}}
  */
-export const useGeneralTaskSectionEntry = (entryRunId, exitKind = 'completion') => {
+export const useGeneralTaskSectionEntry = entryRunId => {
     const reducedMotion = useReducedMotion()
     const animated = !reducedMotion && !animationsAreDisabled()
     const [activeRunId, setActiveRunId] = useState(0)
@@ -92,48 +83,21 @@ export const useGeneralTaskSectionEntry = (entryRunId, exitKind = 'completion') 
         height.setValue(0)
         opacity.setValue(0)
 
-        const isPostpone = exitKind === 'postpone'
-        const isWholeGoalPostpone = exitKind === 'goalPostpone'
-        const expandDelay = isWholeGoalPostpone
-            ? GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS
-            : isPostpone
-              ? 0
-              : GENERAL_TASK_ENTRY_EXPAND_DELAY_MS
-        const expandDuration = isWholeGoalPostpone
-            ? GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS
-            : isPostpone
-              ? POSTPONE_GOAL_EXIT_COLLAPSE_MS
-              : GENERAL_TASK_ENTRY_EXPAND_MS
-        const fadeDelay = isWholeGoalPostpone
-            ? GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS
-            : isPostpone
-              ? POSTPONE_GENERAL_TASK_ENTRY_FADE_DELAY_MS
-              : GENERAL_TASK_ENTRY_FADE_DELAY_MS
-        const fadeDuration = isWholeGoalPostpone
-            ? GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS
-            : isPostpone
-              ? POSTPONE_GENERAL_TASK_ENTRY_FADE_MS
-              : GENERAL_TASK_ENTRY_FADE_MS
-        const totalDuration =
-            isPostpone || isWholeGoalPostpone
-                ? Math.max(expandDelay + expandDuration, fadeDelay + fadeDuration)
-                : GENERAL_TASK_ENTRY_TOTAL_MS
-
         const animation = Animated.parallel([
             Animated.sequence([
-                Animated.delay(expandDelay),
+                Animated.delay(GENERAL_TASK_ENTRY_EXPAND_DELAY_MS),
                 Animated.timing(height, {
                     toValue: contentHeight,
-                    duration: expandDuration,
+                    duration: GENERAL_TASK_ENTRY_EXPAND_MS,
                     easing: Easing.inOut(Easing.cubic),
                     useNativeDriver: false,
                 }),
             ]),
             Animated.sequence([
-                Animated.delay(fadeDelay),
+                Animated.delay(GENERAL_TASK_ENTRY_FADE_DELAY_MS),
                 Animated.timing(opacity, {
                     toValue: 1,
-                    duration: fadeDuration,
+                    duration: GENERAL_TASK_ENTRY_FADE_MS,
                     easing: Easing.out(Easing.quad),
                     useNativeDriver: false,
                 }),
@@ -149,13 +113,13 @@ export const useGeneralTaskSectionEntry = (entryRunId, exitKind = 'completion') 
             height.setValue(contentHeight)
             opacity.setValue(1)
             setActiveRunId(0)
-        }, totalDuration)
+        }, GENERAL_TASK_ENTRY_TOTAL_MS)
 
         return () => {
             clearTimeout(settleTimerRef.current)
             animation.stop()
         }
-    }, [activeRunId, contentHeight, exitKind, height, opacity])
+    }, [activeRunId, contentHeight, height, opacity])
 
     const sectionStyle = useMemo(
         () =>
@@ -189,8 +153,8 @@ export const useGeneralTaskSectionEntry = (entryRunId, exitKind = 'completion') 
     return { onContentLayout, sectionStyle, contentStyle, entering: !!activeRunId }
 }
 
-export default function GeneralTaskSectionEntry({ entryRunId = 0, exitKind = 'completion', children }) {
-    const { onContentLayout, sectionStyle, contentStyle } = useGeneralTaskSectionEntry(entryRunId, exitKind)
+export default function GeneralTaskSectionEntry({ entryRunId = 0, children }) {
+    const { onContentLayout, sectionStyle, contentStyle } = useGeneralTaskSectionEntry(entryRunId)
 
     return (
         <Animated.View style={sectionStyle} testID="general-task-section-entry">

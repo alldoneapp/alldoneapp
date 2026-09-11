@@ -44,7 +44,6 @@ import { pinSectionToTop, resolvePinnedSectionId } from './focusSectionPin'
 import { holdTaskGrouping } from './taskPlacementHold'
 import useGoalSectionExit, { keepDepartingGoalsSortable } from './useGoalSectionExit'
 import GeneralTaskSectionEntry from './GeneralTaskSectionEntry'
-import { subscribeToGoalPostponeMotion } from './goalPostponeMotion'
 
 export default function MainSection({
     projectId,
@@ -118,7 +117,6 @@ export default function MainSection({
     const optimisticFocusActive = useSelector(state => state.optimisticFocusActive)
     const [tmpGoalsById, setTmpGoalsById] = useState({})
     const tmpGoalsByIdRef = React.useRef({})
-    const [directGoalPostponeRuns, setDirectGoalPostponeRuns] = useState({})
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
 
@@ -152,22 +150,7 @@ export default function MainSection({
         !taskFiltersActive &&
         loggedUserId === currentUserId
 
-    useEffect(() => {
-        setDirectGoalPostponeRuns({})
-        if (!goalSectionExitEnabled) return undefined
-        return subscribeToGoalPostponeMotion(event => {
-            if (event.projectId !== projectId) return
-            setDirectGoalPostponeRuns(current => {
-                if (event.active) return { ...current, [event.goalId]: event.runId }
-                if (!current[event.goalId] || current[event.goalId] !== event.runId) return current
-                const next = { ...current }
-                delete next[event.goalId]
-                return next
-            })
-        })
-    }, [goalSectionExitEnabled, projectId])
-
-    const { mainTasksWithExits, emptyGoalsWithExits, exitRunIdByGoalId, exitKindByGoalId } = useGoalSectionExit({
+    const { mainTasksWithExits, emptyGoalsWithExits, exitRunIdByGoalId } = useGoalSectionExit({
         projectId,
         mainTasks: heldMainTasks,
         emptyGoals: liveEmptyGoals,
@@ -466,24 +449,11 @@ export default function MainSection({
     const onlyDepartingGoalsRemain =
         sortedMainTasks.length > 0 &&
         sortedMainTasks.every(([sectionId]) =>
-            sectionId === NOT_PARENT_GOAL_INDEX
-                ? false
-                : !!exitRunIdByGoalId[sectionId] || !!directGoalPostponeRuns[sectionId]
+            sectionId === NOT_PARENT_GOAL_INDEX ? false : !!exitRunIdByGoalId[sectionId]
         )
     const generalTaskEntryRunId = onlyDepartingGoalsRemain
-        ? Math.max(
-              ...sortedMainTasks.map(
-                  ([sectionId]) => exitRunIdByGoalId[sectionId] || directGoalPostponeRuns[sectionId] || 0
-              )
-          )
+        ? Math.max(...sortedMainTasks.map(([sectionId]) => exitRunIdByGoalId[sectionId]))
         : 0
-    const generalTaskEntryExitKind =
-        onlyDepartingGoalsRemain && sortedMainTasks.every(([sectionId]) => !!directGoalPostponeRuns[sectionId])
-            ? 'goalPostpone'
-            : onlyDepartingGoalsRemain &&
-                sortedMainTasks.every(([sectionId]) => exitKindByGoalId[sectionId] === 'postpone')
-              ? 'postpone'
-              : 'completion'
     const showEmptyGeneralTaskSection = sortedMainTasks.length === 0 || onlyDepartingGoalsRemain
 
     // Holds already-mounted sections at their last idle size while the user is
@@ -528,7 +498,6 @@ export default function MainSection({
                             instanceKey={instanceKey}
                             containerStyle={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}
                             exitRunId={emptyGoalExitRunId}
-                            exitKind={exitKindByGoalId[goal.id] || 'completion'}
                             postponeMotionEnabled={goalSectionExitEnabled}
                         />
                     )
@@ -681,7 +650,6 @@ export default function MainSection({
                             isTemplateProject={isTemplateProject}
                             focusedTaskId={effectiveFocusTaskId}
                             exitRunId={exitRunId}
-                            exitKind={exitKindByGoalId[goalId] || 'completion'}
                             postponeMotionEnabled={goalSectionExitEnabled}
                         />
                     )
@@ -696,7 +664,7 @@ export default function MainSection({
                 !isTemplateProject &&
                 !isAssistant &&
                 !isActiveOrganizeMode && (
-                    <GeneralTaskSectionEntry entryRunId={generalTaskEntryRunId} exitKind={generalTaskEntryExitKind}>
+                    <GeneralTaskSectionEntry entryRunId={generalTaskEntryRunId}>
                         <NewTaskSection
                             projectId={projectId}
                             originalParentGoal={null} // Add to general tasks
