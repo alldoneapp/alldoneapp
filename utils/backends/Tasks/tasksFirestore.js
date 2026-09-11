@@ -280,14 +280,20 @@ async function updateLinkedContactsEditionData(projectId, task, editionDate) {
     )
 }
 
-export async function watchTask(projectId, taskId, watcherKey, callback) {
+export async function watchTask(projectId, taskId, watcherKey, callback, onError) {
     globalWatcherUnsub[watcherKey] = getDb()
         .doc(`items/${projectId}/tasks/${taskId}`)
-        .onSnapshot(doc => {
-            const taskData = doc.data()
-            const task = taskData ? mapTaskData(doc.id, taskData) : null
-            callback(task)
-        })
+        .onSnapshot(
+            doc => {
+                const taskData = doc.data()
+                const task = taskData ? mapTaskData(doc.id, taskData) : null
+                callback(task)
+            },
+            error => {
+                if (onError) onError(error)
+                else console.error(`[watchTask] Listener failed for ${projectId}/${taskId}`, error)
+            }
+        )
 }
 
 export const updateTaskEditionData = async (projectId, taskId, editorId) => {

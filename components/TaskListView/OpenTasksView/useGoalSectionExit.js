@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
 import { subscribeToGoalTaskCompletions } from './goalCompletionSignal'
-import { subscribeToGoalTaskPostpones } from './goalPostponeSignal'
-import { GOAL_SECTION_EXIT_TOTAL_MS, POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
+import { GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
 
 /**
  * AT-2507 — decides which goal sections are LEAVING today's list because their work is finished,
@@ -62,15 +61,14 @@ import { GOAL_SECTION_EXIT_TOTAL_MS, POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS } from 
  * block fades and still drops its full height in a single frame when the hold ends, which is the
  * jump this task is about.
  *
- * ── AND IT MUST HAVE AN EXPLICIT ROW SIGNAL ──────────────────────────────────────────────────────
+ * ── AND IT MUST BE A COMPLETION ──────────────────────────────────────────────────────────────────
  *
- * A goal also leaves today's list when its last task is dragged, deleted, reassigned or re-goaled.
- * Watching the list alone cannot tell those apart — the AT-2492 lesson that "the list is empty" is
- * not an action — so departures are cross-checked against a row signal. Completion keeps its
- * existing long, quiet exit. AT-2541 adds exactly one second reason: the single final Today task was
- * explicitly postponed through its row, in which case the already-measured group gets a much
- * shorter collapse immediately after the task. Bulk goal postpones publish nothing, and a goal that
- * remains as an empty Today goal clears the signal without animating.
+ * A goal also leaves today's list when its last task is dragged to tomorrow, deleted, reassigned or
+ * re-goaled, and when the goal itself is postponed. None of those is finished work. Watching the
+ * list alone cannot tell them apart — the AT-2492 lesson that "the list is empty" is not "the work
+ * was done" — so departures are cross-checked against `goalCompletionSignal`, which only ever
+ * carries genuine completions of list-leaving rows. Every other way of leaving keeps today's
+ * behaviour exactly, including its instant removal.
  *
  * ── THE HOLD, AND WHY IT IS UNAVOIDABLE ──────────────────────────────────────────────────────────
  *
@@ -99,7 +97,6 @@ import { GOAL_SECTION_EXIT_TOTAL_MS, POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS } from 
 
 /** A little longer than the run, so the last frame cannot be cut off by the hold expiring first. */
 export const GOAL_SECTION_HOLD_MS = GOAL_SECTION_EXIT_TOTAL_MS + 120
-export const POSTPONE_GOAL_SECTION_HOLD_MS = POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS + 120
 
 /**
  * How long a completed task id is remembered as a reason for its goal to leave.
@@ -110,7 +107,6 @@ export const POSTPONE_GOAL_SECTION_HOLD_MS = POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS
  * two orders of magnitude clear of the first and three of the second.
  */
 export const COMPLETION_MEMORY_MS = 10000
-export const POSTPONE_MEMORY_MS = 5000
 
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 
@@ -187,10 +183,6 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
     const [exits, setExits] = useState(EMPTY_EXITS)
     // goalId -> Map(taskId -> completedAt). Pruned lazily, only when a departure is being judged.
     const completionsRef = useRef(new Map())
-    // goalId -> Map(taskId -> postponedAt). Unlike a completion, exactly one final task can explain
-    // a postpone departure; a goal that remains in the empty-goals bucket clears this record.
-    const postponesRef = useRef(new Map())
-    const exitKindsRef = useRef(new Map())
     /**
      * goalId -> `{ taskIds, emptyGoal }`. The record of what "cleared" has to mean for this
      * particular goal: `taskIds` are the ids the section last rendered, and `emptyGoal` is the goal
@@ -223,30 +215,9 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
         })
     }, [active, projectId])
 
-    useEffect(() => {
-        if (!active) return undefined
-        return subscribeToGoalTaskPostpones(event => {
-            if (event.projectId !== projectId) return
-            if (event.cancelled) {
-                const byTask = postponesRef.current.get(event.goalId)
-                byTask?.delete(event.taskId)
-                if (byTask?.size === 0) postponesRef.current.delete(event.goalId)
-                return
-            }
-            let byTask = postponesRef.current.get(event.goalId)
-            if (!byTask) {
-                byTask = new Map()
-                postponesRef.current.set(event.goalId, byTask)
-            }
-            byTask.set(event.taskId, Date.now())
-        })
-    }, [active, projectId])
-
     const endExit = useCallback(goalId => {
         timersRef.current.delete(goalId)
         completionsRef.current.delete(goalId)
-        postponesRef.current.delete(goalId)
-        exitKindsRef.current.delete(goalId)
         setExits(current => {
             if (!current[goalId]) return current
             const next = { ...current }
@@ -276,20 +247,14 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
         lastSectionsRef.current.forEach((record, goalId) => {
             if (presentGoalIds.has(goalId) || exits[goalId] || timersRef.current.has(goalId)) return
             const byTask = completionsRef.current.get(goalId)
+            if (!byTask) return
             const freshEnough = Date.now() - COMPLETION_MEMORY_MS
             const taskIds = record.taskIds
             // EVERY task the section last held has to have been completed. One of them merely moved
             // or deleted means the goal did not leave because its work was finished.
             const clearedByCompletion =
-                byTask && taskIds.length > 0 && taskIds.every(taskId => (byTask.get(taskId) || 0) >= freshEnough)
-            const postponedTasks = postponesRef.current.get(goalId)
-            const postponedFinalTask =
-                postponedTasks &&
-                taskIds.length === 1 &&
-                (postponedTasks.get(taskIds[0]) || 0) >= Date.now() - POSTPONE_MEMORY_MS
-            if (clearedByCompletion || postponedFinalTask) {
-                departing.push({ goalId, kind: postponedFinalTask ? 'postpone' : 'completion' })
-            }
+                taskIds.length > 0 && taskIds.every(taskId => (byTask.get(taskId) || 0) >= freshEnough)
+            if (clearedByCompletion) departing.push(goalId)
         })
     }
 
@@ -297,16 +262,12 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
     // goal that has an exit is skipped, and one that is departing is given a timer in the same pass.
     if (departing.length > 0) {
         const next = { ...exits }
-        departing.forEach(({ goalId, kind }) => {
+        departing.forEach(goalId => {
             runIdRef.current += 1
             next[goalId] = runIdRef.current
-            exitKindsRef.current.set(goalId, kind)
             timersRef.current.set(
                 goalId,
-                setTimeout(
-                    () => endExit(goalId),
-                    kind === 'postpone' ? POSTPONE_GOAL_SECTION_HOLD_MS : GOAL_SECTION_HOLD_MS
-                )
+                setTimeout(() => endExit(goalId), GOAL_SECTION_HOLD_MS)
             )
         })
         setExits(next)
@@ -337,9 +298,6 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
         if (!goal || !goal.id || seen.has(goal.id)) return
         const previous = lastSectionsRef.current.get(goal.id)
         if (previous) seen.set(goal.id, { taskIds: previous.taskIds, emptyGoal: goal })
-        // A postponed final task can leave its goal mounted as an ordinary empty Today goal. Once
-        // that outcome is visible, a later unrelated goal change must not reuse the postpone.
-        postponesRef.current.delete(goal.id)
     })
     // A goal that is neither on screen nor leaving is forgotten, so this cannot grow with the day.
     lastSectionsRef.current.forEach((record, goalId) => {
@@ -370,12 +328,7 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
     return useMemo(() => {
         const exitingIds = Object.keys(exits)
         if (exitingIds.length === 0) {
-            return {
-                mainTasksWithExits: mainTasks,
-                emptyGoalsWithExits: emptyGoals,
-                exitRunIdByGoalId: EMPTY_EXITS,
-                exitKindByGoalId: EMPTY_EXITS,
-            }
+            return { mainTasksWithExits: mainTasks, emptyGoalsWithExits: emptyGoals, exitRunIdByGoalId: EMPTY_EXITS }
         }
 
         // Put back exactly the row that was on screen — see the header for why the shape matters.
@@ -394,7 +347,6 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
             mainTasksWithExits: heldSections.length > 0 ? live.concat(heldSections) : mainTasks,
             emptyGoalsWithExits: heldEmptyGoals.length > 0 ? liveEmpty.concat(heldEmptyGoals) : emptyGoals,
             exitRunIdByGoalId: exits,
-            exitKindByGoalId: Object.fromEntries(exitingIds.map(goalId => [goalId, exitKindsRef.current.get(goalId)])),
         }
     }, [mainTasks, emptyGoals, exits])
 }

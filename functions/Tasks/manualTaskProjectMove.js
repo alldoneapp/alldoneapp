@@ -10,6 +10,7 @@ const { moveTaskToDifferentProject } = require('../shared/moveTaskToDifferentPro
 
 const REGION = 'europe-west1'
 const WORKER_NAME = 'runManualTaskProjectMove'
+const MAX_ATTEMPTS = 3
 
 function getManualTaskMoveQueueResource() {
     const projectId =
@@ -100,9 +101,68 @@ async function runManualTaskProjectMove({ requestId, sourceProjectId, targetProj
     })
 }
 
+async function recordManualTaskMoveFailure({ requestId, sourceProjectId, targetProjectId, taskId, actorId }, error) {
+    const database = admin.firestore()
+    const sourceRef = database.doc(`items/${sourceProjectId}/tasks/${taskId}`)
+    const targetRef = database.doc(`items/${targetProjectId}/tasks/${taskId}`)
+    const [sourceSnapshot, targetSnapshot] = await Promise.all([sourceRef.get(), targetRef.get()])
+    const failedMove = {
+        requestId,
+        sourceProjectId,
+        targetProjectId,
+        requestedByUserId: actorId,
+        status: 'failed',
+        failedAt: Date.now(),
+        failureCode: String(error?.code || 'internal').slice(0, 80),
+    }
+    if (!sourceSnapshot.exists && targetSnapshot.exists) {
+        await targetRef.update({
+            projectMove: {
+                ...failedMove,
+                status: 'completed',
+                completedAt: Date.now(),
+            },
+        })
+        return { recovered: true }
+    }
+    const updates = []
+    if (sourceSnapshot.exists) updates.push(sourceRef.update({ projectMove: failedMove }))
+    if (targetSnapshot.exists) updates.push(targetRef.update({ projectMove: failedMove }))
+    await Promise.all(updates)
+    return { recovered: false }
+}
+
+async function handleManualTaskProjectMoveDispatch(request) {
+    try {
+        return await runManualTaskProjectMove(request.data || {})
+    } catch (error) {
+        if ((request.retryCount || 0) >= MAX_ATTEMPTS - 1) {
+            try {
+                const status = await recordManualTaskMoveFailure(request.data || {}, error)
+                if (status.recovered) {
+                    return { moved: true, reason: 'destination_recovered_after_terminal_error' }
+                }
+            } catch (statusError) {
+                console.error('Manual task project move: Failed to record terminal failure', {
+                    requestId: request.data?.requestId,
+                    sourceProjectId: request.data?.sourceProjectId,
+                    targetProjectId: request.data?.targetProjectId,
+                    taskId: request.data?.taskId,
+                    code: statusError?.code || '',
+                    message: statusError?.message || '',
+                })
+            }
+        }
+        throw error
+    }
+}
+
 module.exports = {
+    MAX_ATTEMPTS,
     WORKER_NAME,
     enqueueManualTaskProjectMove,
     getManualTaskMoveQueueResource,
+    handleManualTaskProjectMoveDispatch,
+    recordManualTaskMoveFailure,
     runManualTaskProjectMove,
 }

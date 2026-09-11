@@ -3,7 +3,6 @@ import renderer from 'react-test-renderer'
 
 import DueDateSinglePopup from './DueDateSinglePopup'
 import { popoverToCenter, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
-import { setTaskDueDate } from '../../utils/backends/Tasks/tasksFirestore'
 
 const mockState = {
     loggedUser: { showAllProjectsByTime: false },
@@ -37,13 +36,6 @@ jest.mock('../../utils/BackendBridge', () => ({
 jest.mock('../../utils/backends/Tasks/tasksFirestore', () => ({
     setTaskDueDate: jest.fn(),
     setTaskToBacklog: jest.fn(),
-}))
-const mockPostponeTaskWithMotion = jest.fn((context, write) => write())
-jest.mock('../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion', () => ({
-    postponeTaskWithMotion: (...args) => mockPostponeTaskWithMotion(...args),
-}))
-jest.mock('../TaskListView/OpenTasksView/goalPostponeMotion', () => ({
-    postponeGoalWithMotion: (context, write) => write(),
 }))
 jest.mock('../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper', () => ({
     checkIfInMyDayOpenTab: jest.fn(() => false),
@@ -86,71 +78,6 @@ describe('DueDateSinglePopup positioning', () => {
 
         expect(popoverToCenter).toHaveBeenCalledWith(positioningData, true)
 
-        tree.unmount()
-    })
-})
-
-describe('DueDateSinglePopup task postpone handoff (AT-2541)', () => {
-    beforeEach(() => {
-        jest.clearAllMocks()
-        mockState.showSwipeDueDatePopup.data = {
-            projectId: 'project-1',
-            task: { id: 'task-1' },
-        }
-    })
-
-    const dueDateModal = tree => tree.root.findByType('Popover').props.content.props.children
-
-    it('hands a single swipe postpone to the mounted Today row before writing', async () => {
-        const tree = renderer.create(<DueDateSinglePopup />)
-        const task = mockState.showSwipeDueDatePopup.data.task
-
-        await dueDateModal(tree).props.saveDueDateBeforeSaveTask(task, 4242, false)
-
-        expect(mockPostponeTaskWithMotion).toHaveBeenCalledWith(
-            expect.objectContaining({
-                projectId: 'project-1',
-                task,
-                targetDate: 4242,
-                updatesDueDate: true,
-                updatesObservedDate: false,
-            }),
-            expect.any(Function)
-        )
-        expect(setTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', 4242, task, false, null)
-        tree.unmount()
-    })
-
-    it('does not animate a bulk goal postpone', async () => {
-        const task = { id: 'task-1' }
-        mockState.showSwipeDueDatePopup.data = {
-            projectId: 'project-1',
-            task,
-            multipleTasks: true,
-            parentGoaltasks: [task],
-        }
-        const tree = renderer.create(<DueDateSinglePopup />)
-
-        await dueDateModal(tree).props.saveDueDateBeforeSaveTask(task, 4242, false)
-
-        expect(mockPostponeTaskWithMotion).not.toHaveBeenCalled()
-        expect(setTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', 4242, task, false, null)
-        tree.unmount()
-    })
-
-    it('marks a goal swipe popup as the source of a whole-section postpone', () => {
-        const goal = { id: 'goal-1', assigneesReminderDate: { 'user-1': 1 } }
-        mockState.showSwipeDueDatePopup.data = {
-            projectId: 'project-1',
-            task: { id: 'task-1' },
-            goal,
-            multipleTasks: true,
-            parentGoaltasks: [{ id: 'task-1' }],
-        }
-
-        const tree = renderer.create(<DueDateSinglePopup />)
-
-        expect(dueDateModal(tree).props.animateGoalPostpone).toBe(true)
         tree.unmount()
     })
 })

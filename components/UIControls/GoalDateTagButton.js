@@ -44,7 +44,7 @@ export default function GoalDateTagButton({
     const updateReminder = date => {
         // The goal is already rendered here. Hand it through so the backend can compare the
         // previous reminder locally instead of doing a server get before it queues the write.
-        return Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
+        Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
     }
 
     const firstTask = isEmptyGoal ? { dueDate: assigneesReminderDate[currentUserId] } : parentGoaltasks[0]

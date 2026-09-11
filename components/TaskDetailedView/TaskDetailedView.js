@@ -9,13 +9,11 @@ import {
     setScreenDimensions,
     setSelectedNavItem,
     setSelectedSidebarTab,
-    setSelectedTypeOfProject,
     setTaskInDetailView,
     setShowAccessDeniedPopup,
     stopLoadingData,
     storeCurrentUser,
     unsetSharedMode,
-    switchProject,
     navigateToAllProjectsTasks,
 } from '../../redux/actions'
 import store from '../../redux/store'
@@ -30,7 +28,6 @@ import { useDispatch, useSelector } from 'react-redux'
 import LoadingData from '../UIComponents/LoadingData'
 import RootViewFeedsTask from '../Feeds/RootViewFeedsTask'
 import NavigationService from '../../utils/NavigationService'
-import URLsTasks, { URL_TASK_DETAILS_PROPERTIES } from '../../URLSystem/Tasks/URLsTasks'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import { LINKED_OBJECT_TYPE_TASK } from '../../utils/LinkingHelper'
 import BacklinksView from '../BacklinksView/BacklinksView'
@@ -57,6 +54,7 @@ import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 import TaskChatWorkflowControls from './TaskChatWorkflowControls'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
+import useTaskProjectMoveHandoff from './useTaskProjectMoveHandoff'
 
 const TaskDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -76,6 +74,23 @@ const TaskDetailedView = ({ navigation }) => {
     const scrollRef = useRef()
     const isAssistant = task?.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
     useResetDetailedViewScroll(selectedTab, scrollRef)
+
+    const {
+        handoff: taskProjectMoveHandoff,
+        isHandoffActive: taskProjectMoveHandoffActive,
+        isMovePending: taskProjectMovePending,
+        startTaskProjectMove,
+        taskProjectMoveEnqueued,
+        taskProjectMoveEnqueueFailed,
+        handleSourceTaskChange,
+    } = useTaskProjectMoveHandoff({
+        sourceProjectId: projectId,
+        taskId: task.id,
+        selectedTab,
+        loggedUser,
+        loggedUserProjectsMap,
+        dispatch,
+    })
 
     const { overlay } = useCollapsibleSidebar()
 
@@ -185,30 +200,7 @@ const TaskDetailedView = ({ navigation }) => {
     }, [projectId, task.id])
 
     const afterTaskChange = task => {
-        if (task?.movingToOtherProjectId) {
-            const targetProjectId = task.movingToOtherProjectId
-            const targetProject = loggedUserProjectsMap[targetProjectId]
-            if (targetProject) {
-                const movedTask = { ...task, projectId: targetProjectId, movingToOtherProjectId: null }
-                NavigationService.navigate('TaskDetailedView', { task: movedTask, projectId: targetProjectId })
-                dispatch([
-                    resetFloatPopup(),
-                    setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-                    switchProject(targetProject.index),
-                    setSelectedTypeOfProject(ProjectHelper.getTypeOfProject(loggedUser, targetProjectId)),
-                    setSelectedNavItem(DV_TAB_TASK_PROPERTIES),
-                ])
-                if (selectedTab === DV_TAB_TASK_PROPERTIES) {
-                    URLsTasks.push(
-                        URL_TASK_DETAILS_PROPERTIES,
-                        { noHistory: true, projectId: targetProjectId, task: task.id },
-                        targetProjectId,
-                        task.id
-                    )
-                }
-                return
-            }
-        }
+        if (handleSourceTaskChange(task)) return
 
         if (task == null) {
             const { selectedTypeOfProject } = store.getState()
@@ -315,7 +307,17 @@ const TaskDetailedView = ({ navigation }) => {
                                     </View>
                                 )}
                                 {selectedTab === DV_TAB_TASK_PROPERTIES && (
-                                    <PropertiesView project={projectCopy} task={task} loggedUser={loggedUser} />
+                                    <PropertiesView
+                                        project={projectCopy}
+                                        task={task}
+                                        loggedUser={loggedUser}
+                                        taskProjectMoveHandoff={taskProjectMoveHandoff}
+                                        taskProjectMoveHandoffActive={taskProjectMoveHandoffActive}
+                                        taskProjectMovePending={taskProjectMovePending}
+                                        onTaskProjectMoveStarted={startTaskProjectMove}
+                                        onTaskProjectMoveEnqueued={taskProjectMoveEnqueued}
+                                        onTaskProjectMoveEnqueueFailed={taskProjectMoveEnqueueFailed}
+                                    />
                                 )}
                                 {selectedTab === DV_TAB_TASK_ESTIMATIONS && (
                                     <WorkflowEstimation projectId={projectId} task={task} />

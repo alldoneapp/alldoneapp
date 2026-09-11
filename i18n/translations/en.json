@@ -894,6 +894,11 @@
     "C": "C",
     "Move": "Move",
     "Task could not be moved": "Task could not be moved",
+    "Moving task to projectName": "Moving task to %{projectName}",
+    "Task move failed": "Task move failed",
+    "The task is still in its current project. Please try again.": "The task is still in its current project. Please try again.",
+    "Task move is taking longer than expected": "Task move is taking longer than expected",
+    "We are still checking the move. This view will switch projects automatically when it completes.": "We are still checking the move. This view will switch projects automatically when it completes.",
     "No changes were made. Please try again.": "No changes were made. Please try again.",
     "Select the project this itemType will move to": "Select the project this %{itemType} will move to",
     "Task status": "Task status",
@@ -2978,13 +2983,5 @@
     "browser_allowlist_unused_in_all_public": "Not used while all public websites are allowed.",
     "Blocked websites": "Blocked websites",
     "Blocked websites description": "Never opened, whichever setting is chosen above.",
-    "browser_allowlist_no_project": "This list belongs to a project. Open the assistant inside the project you want to configure.",
-    "Voice costs %{gold} Gold/min plus normal assistant usage": "Voice costs %{gold} Gold/min plus normal assistant usage",
-    "Voice has a %{seconds}-second minimum; connected time includes silence": "Voice has a %{seconds}-second minimum; connected time includes silence",
-    "Voice usage: %{gold} Gold": "Voice usage: %{gold} Gold",
-    "Assistant voice duration": "Assistant voice duration",
-    "Assistant voice call": "Assistant voice call",
-    "Assistant phone call": "Assistant phone call",
-    "Call cost: %{voice} Gold voice + %{assistant} Gold assistant": "Call cost: %{voice} Gold voice + %{assistant} Gold assistant",
-    "Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant": "Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant"
+    "browser_allowlist_no_project": "This list belongs to a project. Open the assistant inside the project you want to configure."
 }

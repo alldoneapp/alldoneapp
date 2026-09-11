@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
 import { shallowEqual, useSelector } from 'react-redux'
 
@@ -13,7 +13,6 @@ import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/Lock
 import GoalIndicator from '../GoalIndicator'
 import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
 import useGoalSectionExitMotion from './goalSectionExitMotion'
-import useGoalPostponeMotion from './goalPostponeMotion'
 import {
     useTaskHierarchy,
     useProjectSectionBorder,
@@ -29,8 +28,6 @@ export default function EmptyGoal({
     dateIndex,
     containerStyle,
     exitRunId = 0,
-    exitKind = 'completion',
-    postponeMotionEnabled = false,
 }) {
     const taskHierarchy = useTaskHierarchy()
     const projectBorderColor = useProjectSectionBorder()
@@ -54,21 +51,7 @@ export default function EmptyGoal({
      * animated wrapper at all. `MainSection` decides WHETHER the goal is leaving and keeps it
      * mounted for the run; this only draws it.
      */
-    const sectionExitMotion = useGoalSectionExitMotion(exitRunId, exitKind)
-    const goalPostponeMotion = useGoalPostponeMotion({
-        enabled: postponeMotionEnabled,
-        projectId,
-        goalId: goal?.id,
-        sectionGap: containerStyle?.marginBottom || 0,
-    })
-    const onSectionLayout = useCallback(
-        event => {
-            sectionExitMotion.onSectionLayout(event)
-            goalPostponeMotion.onSectionLayout(event)
-        },
-        [goalPostponeMotion.onSectionLayout, sectionExitMotion.onSectionLayout]
-    )
-    const sectionStyle = goalPostponeMotion.sectionStyle || sectionExitMotion.sectionStyle
+    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
 
