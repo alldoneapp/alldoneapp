@@ -22,9 +22,10 @@ export function createLiveCallConnection(channel, { onClosed, onError, onUsage, 
             readyResolve?.()
         }
     }
-    const fail = error => {
+    const fail = (error, reason = 'data_channel_error') => {
         if (disposed || closed || failure) return
         failure = error
+        error.voiceReason = reason
         clearTimeout(readyTimer)
         clearTimeout(pollTimer)
         readyReject?.(error)
@@ -36,7 +37,7 @@ export function createLiveCallConnection(channel, { onClosed, onError, onUsage, 
             const status = await getControllerStatus()
             if (disposed || closed || failure) return
             if (status?.settled) {
-                fail(new Error('Voice call ended before it was ready'))
+                fail(new Error('Voice call ended before it was ready'), 'session_ended_before_ready')
                 return
             }
             if (status?.controllerConnected) {
@@ -72,12 +73,13 @@ export function createLiveCallConnection(channel, { onClosed, onError, onUsage, 
             onClosed?.(event)
         }
         if (event.type === 'error') {
-            fail(new Error('Voice connection failed'))
+            fail(new Error('Voice connection failed'), 'provider_error')
         }
     }
-    channel.onclose = () => fail(new Error('Voice connection closed'))
+    channel.onclose = () => fail(new Error('Voice connection closed'), 'data_channel_closed')
     channel.onerror = () => fail(new Error('Voice connection failed'))
     return {
+        getChannelState: () => channel.readyState,
         isClosed: () => closed,
         greet(content) {
             if (
@@ -112,7 +114,7 @@ export function createLiveCallConnection(channel, { onClosed, onError, onUsage, 
             readyPromise = new Promise((resolve, reject) => {
                 readyResolve = resolve
                 readyReject = reject
-                readyTimer = setTimeout(() => fail(new Error('Voice connection timed out')), 45000)
+                readyTimer = setTimeout(() => fail(new Error('Voice connection timed out'), 'startup_timeout'), 45000)
             })
             pollController()
             return readyPromise

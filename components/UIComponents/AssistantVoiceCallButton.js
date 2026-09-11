@@ -9,6 +9,7 @@ import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import Spinner from './Spinner'
 import { createLiveCallConnection } from './assistantLiveConnection'
+import { sanitizeCallDiagnostics } from '../../functions/WhatsApp/assistantCallDiagnostics'
 import { beginMobileCallAudioSession, primeCallAudio } from './assistantCallAudio'
 import { acquireVoiceMicrophone, createVoiceMicrophoneSelector } from './assistantVoiceMicrophone'
 import { createInputLevelMonitor } from '../../hooks/rambleMicCapture'
@@ -128,6 +129,50 @@ export default function AssistantVoiceCallButton({
     // useCallback dependencies.
     const attemptMicRecoveryRef = useRef(null)
     const cleanupRef = useRef(null)
+    const diagnosticsRef = useRef({ startedAt: Date.now(), events: [] })
+    const endReasonRef = useRef(null)
+    const captureDiagnostics = useCallback((event, reason) => {
+        const pc = peerConnectionRef.current
+        const audio = audioElementRef.current
+        const mic = localStreamRef.current?.getAudioTracks()?.[0]
+        const row = {
+            atMs: Date.now() - diagnosticsRef.current.startedAt,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            orientation: window.innerWidth > window.innerHeight ? 'landscape' : 'portrait',
+            visibility: document.visibilityState,
+            online: navigator.onLine,
+            peerState: pc?.connectionState,
+            iceState: pc?.iceConnectionState,
+            dataChannelState: liveConnectionRef.current?.getChannelState(),
+            audioPaused: audio?.paused,
+            audioReadyState: audio?.readyState,
+            audioPlaybackReady: playbackReadyRef.current,
+            micMuted: mic?.muted,
+            micEnabled: mic?.enabled,
+            micReadyState: mic?.readyState,
+            inputBytesSent: prevBytesSentRef.current,
+        }
+        diagnosticsRef.current.events.push({ event, ...row })
+        diagnosticsRef.current.events = diagnosticsRef.current.events.slice(-24)
+        return sanitizeCallDiagnostics({ reason, ...row, events: diagnosticsRef.current.events })
+    }, [])
+    useEffect(() => {
+        const events = {
+            resize: 'resize',
+            orientationchange: 'orientation_change',
+            online: 'online',
+            offline: 'offline',
+        }
+        const handlers = Object.entries(events).map(([type, event]) => {
+            const handler = () => {
+                if (peerConnectionRef.current) captureDiagnostics(event)
+            }
+            window.addEventListener(type, handler)
+            return [type, handler]
+        })
+        return () => handlers.forEach(([type, handler]) => window.removeEventListener(type, handler))
+    }, [captureDiagnostics])
 
     const playCallAudio = useCallback(async () => {
         const audio = audioElementRef.current
@@ -189,7 +234,7 @@ export default function AssistantVoiceCallButton({
             const graceMs = resolveDisconnectGraceMs({ hidden: isDocumentHidden() })
             disconnectTimerRef.current = setTimeout(() => {
                 disconnectTimerRef.current = null
-                if (pc.connectionState !== 'connected') cleanupRef.current?.()
+                if (pc.connectionState !== 'connected') cleanupRef.current?.(true, 'disconnect_grace_expired')
             }, graceMs)
         },
         [clearDisconnectTimer]
@@ -381,7 +426,8 @@ export default function AssistantVoiceCallButton({
     }, [stopMicHealthMonitor])
 
     const cleanup = useCallback(
-        (resetState = true) => {
+        (resetState = true, reason = 'cleanup') => {
+            const diagnostics = captureDiagnostics('cleanup', endReasonRef.current || reason)
             callReadyRef.current = false
             startingRef.current = false
             microphoneSelectorRef.current?.stop()
@@ -392,8 +438,8 @@ export default function AssistantVoiceCallButton({
             const generation = callGenerationRef.current
             const sessionId = callSessionIdRef.current
             callSessionIdRef.current = null
-            if (sessionId && liveConnectionRef.current && !liveConnectionRef.current.isClosed())
-                runHttpsCallableFunction('endAssistantBrowserCallSecondGen', { sessionId }).catch(() => {})
+            if (sessionId)
+                runHttpsCallableFunction('endAssistantBrowserCallSecondGen', { sessionId, diagnostics }).catch(() => {})
             if (sessionId && mountedRef.current) {
                 const readSummary = async attempt => {
                     try {
@@ -455,11 +501,12 @@ export default function AssistantVoiceCallButton({
                 setNeedsAudioPlayback(false)
             }
         },
-        [clearDisconnectTimer, releaseWakeLock, stopMicHealthMonitor]
+        [clearDisconnectTimer, releaseWakeLock, stopMicHealthMonitor, captureDiagnostics]
     )
     cleanupRef.current = cleanup
     const endCall = useCallback(async () => {
         if (endingRef.current) return
+        endReasonRef.current = 'user_hangup'
         endingRef.current = true
         setStatus(STATUS_ENDING)
         // Stop sending speech immediately, but retain transport until final usage.
@@ -482,6 +529,7 @@ export default function AssistantVoiceCallButton({
         function handleVisibilityChange() {
             const pc = peerConnectionRef.current
             if (!pc) return
+            captureDiagnostics('visibility_change')
 
             if (document.visibilityState === 'hidden') {
                 if (disconnectTimerRef.current) armDisconnectTimer(pc)
@@ -527,13 +575,13 @@ export default function AssistantVoiceCallButton({
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange)
         }
-    }, [acquireWakeLock, armDisconnectTimer, playCallAudio])
+    }, [acquireWakeLock, armDisconnectTimer, playCallAudio, captureDiagnostics])
 
     useEffect(
         () => () => {
             clearTimeout(summaryTimerRef.current)
             mountedRef.current = false
-            cleanup(false)
+            cleanup(false, 'component_unmounted')
         },
         [cleanup]
     )
@@ -549,6 +597,9 @@ export default function AssistantVoiceCallButton({
         }
 
         startingRef.current = true
+        endReasonRef.current = null
+        diagnosticsRef.current = { startedAt: Date.now(), events: [] }
+        captureDiagnostics('start')
         const generation = ++callGenerationRef.current
         callReadyRef.current = false
         playbackReadyRef.current = false
@@ -567,6 +618,9 @@ export default function AssistantVoiceCallButton({
             peerConnectionRef.current = pc
 
             const audio = document.createElement('audio')
+            audio.onplaying = () => captureDiagnostics('audio_playing')
+            audio.onwaiting = () => captureDiagnostics('audio_waiting')
+            audio.onstalled = () => captureDiagnostics('audio_stalled')
             primeCallAudio(audio)
             audio.style.display = 'none'
             document.body.appendChild(audio)
@@ -586,14 +640,16 @@ export default function AssistantVoiceCallButton({
             pc.onconnectionstatechange = () => {
                 if (peerConnectionRef.current !== pc) return
                 const state = pc.connectionState
+                captureDiagnostics('peer_state')
                 if (state === 'connected') {
                     clearDisconnectTimer()
                 } else if (state === 'disconnected') {
                     if (!disconnectTimerRef.current) armDisconnectTimer(pc)
                 } else if (state === 'failed' || state === 'closed') {
-                    cleanup()
+                    cleanup(true, state === 'failed' ? 'peer_failed' : 'peer_closed')
                 }
             }
+            pc.oniceconnectionstatechange = () => captureDiagnostics('ice_state')
 
             // On the iOS shell the host app's audio session has to be a voice
             // chat BEFORE the web view opens the mic; the plugin also tells us
@@ -625,12 +681,12 @@ export default function AssistantVoiceCallButton({
                         sessionId: callSessionIdRef.current,
                     }),
                 onClosed: () => {
-                    if (peerConnectionRef.current === pc) cleanupRef.current?.()
+                    if (peerConnectionRef.current === pc) cleanupRef.current?.(true, 'provider_closed')
                 },
-                onError: () => {
+                onError: error => {
                     if (peerConnectionRef.current !== pc) return
                     setError(translate('Could not start assistant call'))
-                    cleanupRef.current?.()
+                    cleanupRef.current?.(true, error.voiceReason || 'data_channel_error')
                 },
                 onUsage: usage => {
                     if (mountedRef.current && Number.isFinite(usage?.seconds)) setVoiceSeconds(usage.seconds)
@@ -717,7 +773,7 @@ export default function AssistantVoiceCallButton({
                     () => {}
                 )
             if (!mountedRef.current || generation !== callGenerationRef.current) return
-            cleanup()
+            cleanup(true, 'startup_failed')
             if (e?.message !== 'voice_start_cancelled')
                 setError(e?.message || translate('Could not start assistant call'))
         }
@@ -730,6 +786,7 @@ export default function AssistantVoiceCallButton({
         playCallAudio,
         attachTrackListeners,
         startMicHealthMonitor,
+        captureDiagnostics,
         projectId,
         chatId,
         endCall,

@@ -272,6 +272,11 @@ async function endAssistantBrowserCall(data, auth) {
     const doc = await ref.get()
     const session = doc.data()
     if (!doc.exists || session?.userId !== auth.uid) throw new HttpsError('not-found', 'Call not found.')
+    const diagnostics = require('./assistantCallDiagnostics').sanitizeCallDiagnostics(data.diagnostics)
+    if (diagnostics) {
+        console.info('Live Call: Browser disconnected', { sessionId, ...diagnostics })
+        await ref.update({ clientDisconnect: { ...diagnostics, receivedAt: Date.now() } }).catch(() => {})
+    }
     if (['completed', 'failed', 'cancelled', 'stale'].includes(session.status)) return { closed: true }
     if (session.voiceProvider !== 'gpt-live') throw new HttpsError('failed-precondition', 'Unsupported call.')
     await ref.update({ cancelRequestedAt: Date.now(), controllerConnected: false })

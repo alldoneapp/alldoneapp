@@ -8,6 +8,7 @@ const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant } = require('./assistantLiveBackend')
 const { createLiveTranscript, LIVE_READY_EVENT } = require('./assistantLiveProtocol')
 const { createLiveProgress, backgroundProgress } = require('./assistantLiveProgress')
+const { createLiveAnswerDelivery } = require('./assistantLiveAnswerDelivery')
 
 const keyFor = value => crypto.createHash('sha256').update(value).digest('hex')
 const attachUrl = id => `wss://api.openai.com/v1/live/sessions/${encodeURIComponent(id)}/attach`
@@ -80,6 +81,9 @@ async function runAssistantLiveCall(sessionId) {
     let events = Promise.resolve()
     let backend = null
     let progress = null
+    let answerDelivery = null
+    let answerRevision = 0
+    let deliveryWrites = Promise.resolve()
     let ready = false
     let ending = false
     let finalized = false
@@ -97,12 +101,16 @@ async function runAssistantLiveCall(sessionId) {
     const outbox = new Map()
 
     const send = payload => {
-        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload))
+        if (socket?.readyState !== WebSocket.OPEN) return false
+        socket.send(JSON.stringify(payload))
+        return true
     }
     const append = (type, content, delegationId = null, eventId = crypto.randomUUID()) => {
         const payload = { type, content: appendText(content), delegation_id: delegationId, event_id: eventId }
         outbox.set(eventId, payload)
-        send(payload)
+        const sent = send(payload)
+        if (eventId.startsWith('alldone_live_answer_'))
+            console.info('Live Call: Answer append', { sessionId, eventId, delegationId, type, sent, at: Date.now() })
     }
     const publishProgress = (content, delegationId) => {
         // Wait messages must never be replayed after completion or reconnection.
@@ -171,8 +179,16 @@ async function runAssistantLiveCall(sessionId) {
     const close = (why, message = '') => {
         if (ending) return
         ending = true
+        answerDelivery?.close()
         clearBackgroundJobs()
-        updateCallSession(sessionId, { controllerConnected: false }).catch(() => {})
+        const diagnostic = {
+            trigger: why,
+            at: Date.now(),
+            lastUserEventAgoMs: lastUserChangeAt ? Date.now() - lastUserChangeAt : null,
+            lastSpeechEventAgoMs: lastSpeechAt ? Date.now() - lastSpeechAt : null,
+        }
+        console.info('Live Call: Controller closing', { sessionId, ...diagnostic })
+        updateCallSession(sessionId, { controllerConnected: false, serverDisconnect: diagnostic }).catch(() => {})
         reason = why
         if (message) append('session.instructions.append', message)
         closeTimer = setTimeout(() => send({ type: 'session.close' }), message ? 3500 : 0)
@@ -197,6 +213,12 @@ async function runAssistantLiveCall(sessionId) {
             await updateCallSession(sessionId, { greetingAcknowledgedAt: Date.now() })
         if (event.client_event_id && event.type.endsWith('.appended')) outbox.delete(event.client_event_id)
         if (event.type === 'error') {
+            await updateCallSession(sessionId, {
+                providerError: {
+                    code: /^[a-z_]{1,80}$/.test(event.error?.code || '') ? event.error.code : 'unknown',
+                    at: Date.now(),
+                },
+            }).catch(() => {})
             console.warn('Live Call: Provider rejected event', {
                 sessionId,
                 code: event.error?.code,
@@ -239,6 +261,11 @@ async function runAssistantLiveCall(sessionId) {
                     close('insufficient_gold', 'Tell the user their Gold balance is exhausted and the call is ending.')
             }
             if (event.type === 'session.closed') {
+                console.info('Live Call: Provider session closed', { sessionId, reason: event.reason, at: Date.now() })
+                await updateCallSession(sessionId, {
+                    providerClosedAt: Date.now(),
+                    providerCloseReason: event.reason || 'unknown',
+                }).catch(() => {})
                 finalized = true
                 ending = true
                 stopped = true
@@ -259,11 +286,25 @@ async function runAssistantLiveCall(sessionId) {
                 if ((await ref.get()).data()?.cancelRequestedAt) close('client_cancelled')
             }
             await flushTranscript()
+            answerDelivery?.tick({ active: ready && !ending && !stopped, lastSpeechAt })
+            if (answerDelivery?.pending) return
             progress?.tick({
-                active: ready && !ending && !stopped && progress.revision === transcript.revision,
+                active:
+                    ready &&
+                    !ending &&
+                    !stopped &&
+                    !answerDelivery?.awaitingSpeech &&
+                    progress.revision === transcript.revision,
                 lastSpeechAt,
             })
-            if (ready && !ending && !stopped && !backend && Date.now() - lastProgressAt >= 20000) {
+            if (
+                ready &&
+                !ending &&
+                !stopped &&
+                !backend &&
+                !answerDelivery?.awaitingSpeech &&
+                Date.now() - lastProgressAt >= 20000
+            ) {
                 for (const [id, job] of backgroundJobs) {
                     // Dispatched jobs have their own authoritative lifecycle. A
                     // new utterance pauses updates but does not cancel that work.
@@ -339,17 +380,36 @@ async function runAssistantLiveCall(sessionId) {
                         source: 'browser_call_backend',
                         isCallTranscript: false,
                     })
-                    if (ending) return
+                    if (ending) {
+                        await runRef.update({ deliveryStatus: 'call_ended_before_delivery' })
+                        return
+                    }
                     if (revision !== transcript.revision) {
+                        await runRef.update({ deliveryStatus: 'superseded_before_delivery' })
                         pending.set(delegationId, { ...notice, receivedAt: Date.now() })
                         return
                     }
-                    append('session.commentary.append', result, delegationId)
-                    if (requestedEnd)
-                        close(
-                            'assistant_ended_call',
-                            "Give a short warm goodbye in the user's language. The call is ending."
-                        )
+                    answerRevision = revision
+                    answerDelivery = createLiveAnswerDelivery({
+                        result,
+                        delegationId,
+                        append,
+                        record: data => {
+                            console.info('Live Call: Answer delivery', { sessionId, runId, ...data })
+                            deliveryWrites = deliveryWrites
+                                .then(() => runRef.update(data))
+                                .catch(() =>
+                                    console.warn('Live Call: Delivery diagnostics write failed', { sessionId, runId })
+                                )
+                        },
+                        supersede: () => pending.set(delegationId, { ...notice, receivedAt: Date.now() }),
+                        finish: () =>
+                            requestedEnd &&
+                            close(
+                                'assistant_ended_call',
+                                "Give a short warm goodbye in the user's language. The call is ending."
+                            ),
+                    })
                 })
                 .catch(async error => {
                     runProgress.stop()
@@ -416,15 +476,36 @@ async function runAssistantLiveCall(sessionId) {
                 socket.on('message', data => {
                     try {
                         const event = JSON.parse(data.toString())
+                        if (
+                            typeof event.client_event_id === 'string' &&
+                            event.client_event_id.startsWith('alldone_live_answer_') &&
+                            event.type.endsWith('.appended')
+                        )
+                            console.info('Live Call: Answer append acknowledged', {
+                                sessionId,
+                                eventId: event.client_event_id,
+                                type: event.type,
+                                at: Date.now(),
+                            })
                         // Invalidate in-flight work at receipt, before any queued
                         // Firestore write can delay processing this correction.
                         const transcriptChanged = transcript.append(event)
+                        // Delivery acknowledgments must not wait behind transcript
+                        // persistence and look like a transport timeout.
+                        answerDelivery?.acknowledge(event)
+                        if (transcriptChanged && event.type === 'session.output_transcript.delta')
+                            answerDelivery?.observeOutput()
                         if (transcriptChanged) lastSpeechAt = Date.now()
                         if (transcriptChanged && event.type === 'session.input_transcript.delta') {
                             lastUserChangeAt = Date.now()
+                            if (answerDelivery && answerRevision !== transcript.revision) {
+                                answerDelivery.cancel()
+                                answerDelivery = null
+                            }
                         }
                         if (event.type === 'session.closed') {
                             ending = true
+                            answerDelivery?.close()
                             clearBackgroundJobs()
                         }
                         events = events
@@ -434,13 +515,34 @@ async function runAssistantLiveCall(sessionId) {
                         close('event_processing_error')
                     }
                 })
-                socket.on('error', () => {
+                socket.on('error', error => {
+                    const code = [
+                        'ECONNRESET',
+                        'ETIMEDOUT',
+                        'ECONNREFUSED',
+                        'ENOTFOUND',
+                        'EAI_AGAIN',
+                        'EPIPE',
+                    ].includes(error?.code)
+                        ? error.code
+                        : 'unknown'
+                    console.warn('Live Call: Sideband error', { sessionId, code, attempt })
+                    updateCallSession(sessionId, { sidebandError: { code, at: Date.now() } }).catch(() => {})
                     ready = false
                     close('connection_lost')
                     socket.terminate()
                     resolve()
                 })
-                socket.on('close', () => {
+                socket.on('close', (code, closeReason) => {
+                    const diagnostic = {
+                        code: Number.isFinite(code) ? code : null,
+                        reasonBytes: closeReason?.length || 0,
+                        at: Date.now(),
+                        attempt,
+                        ending,
+                    }
+                    console.info('Live Call: Sideband closed', { sessionId, ...diagnostic })
+                    updateCallSession(sessionId, { sidebandClose: diagnostic }).catch(() => {})
                     ready = false
                     // Sideband reconnect has no transcript replay guarantee. Reattach
                     // only to close and settle, never execute against missing speech.
@@ -454,6 +556,7 @@ async function runAssistantLiveCall(sessionId) {
     } finally {
         ending = true
         stopped = true
+        answerDelivery?.close()
         clearBackgroundJobs()
         clearInterval(interval)
         clearTimeout(deadline)
@@ -464,6 +567,7 @@ async function runAssistantLiveCall(sessionId) {
         await events
         // Existing tool calls may complete, but assertActive prevents further actions.
         if (backend) await backend
+        await deliveryWrites
         await flushTranscript()
         await updateCallSession(sessionId, {
             livePendingAction: null,
