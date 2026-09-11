@@ -65,9 +65,13 @@ class FakePeerConnection {
     async setRemoteDescription() {
         if (FakePeerConnection.liveStartupEvents) {
             this.channel.onmessage({ data: JSON.stringify({ type: 'session.started' }) })
-            this.channel.onmessage({
-                data: JSON.stringify({ type: 'session.instructions.appended', client_event_id: 'alldone_live_ready' }),
-            })
+            if (FakePeerConnection.liveStartupEvents !== 'started-only')
+                this.channel.onmessage({
+                    data: JSON.stringify({
+                        type: 'session.instructions.appended',
+                        client_event_id: 'alldone_live_ready',
+                    }),
+                })
         }
     }
     async getStats() {
@@ -482,5 +486,106 @@ describe('GPT-Live lifecycle', () => {
             expect.objectContaining({ chatId: 'existing-topic', voiceProtocol: 'gpt-live-v1' }),
             expect.anything()
         )
+    })
+})
+
+describe('voice connection recovery', () => {
+    test('closes the server session when an established data channel fails', async () => {
+        FakePeerConnection.liveStartupEvents = true
+        runHttpsCallableFunction.mockImplementation(async name =>
+            name === 'startAssistantBrowserCallSecondGen'
+                ? { answerSdp: 'answer', sessionId: 'browser-disconnected', voiceProvider: 'gpt-live' }
+                : { closed: true, settled: true }
+        )
+        const tree = render()
+        const pc = await startCall(tree)
+        await act(async () => {
+            pc.channel.onerror()
+        })
+        expect(pc.closed).toBe(true)
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith('endAssistantBrowserCallSecondGen', {
+            sessionId: 'browser-disconnected',
+        })
+    })
+    test('can become ready when the server acknowledgement was missed', async () => {
+        FakePeerConnection.liveStartupEvents = 'started-only'
+        runHttpsCallableFunction.mockImplementation(async name =>
+            name === 'startAssistantBrowserCallSecondGen'
+                ? { answerSdp: 'answer', sessionId: 'browser-late-ack', voiceProvider: 'gpt-live' }
+                : { controllerConnected: true, settled: false }
+        )
+        const tree = render()
+        await startCall(tree)
+        expect(findEndCallButton(tree)).toBeDefined()
+        expect(tracks[0].enabled).toBe(true)
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith('getAssistantBrowserCallSummarySecondGen', {
+            sessionId: 'browser-late-ack',
+        })
+    })
+    test('offers a user gesture to recover blocked Chrome audio playback', async () => {
+        const play = jest
+            .spyOn(window.HTMLMediaElement.prototype, 'play')
+            .mockRejectedValueOnce(Object.assign(new Error('Blocked'), { name: 'NotAllowedError' }))
+            .mockResolvedValue(undefined)
+        try {
+            const tree = render({ compact: true })
+            const pc = await startCall(tree)
+            await act(async () => {
+                pc.ontrack({ streams: [makeStream(makeTrack())] })
+            })
+            const enable = tree.root
+                .findAllByType('Button')
+                .find(button => button.props.accessibilityLabel === 'Enable call audio')
+            expect(enable).toBeDefined()
+            await act(async () => {
+                await enable.props.onPress()
+            })
+            expect(
+                tree.root
+                    .findAllByType('Button')
+                    .some(button => button.props.accessibilityLabel === 'Enable call audio')
+            ).toBe(false)
+        } finally {
+            play.mockRestore()
+        }
+    })
+    test('double clicks cannot create two paid calls', async () => {
+        runHttpsCallableFunction.mockClear()
+        const tree = render()
+        const onPress = tree.root.findByType('Button').props.onPress
+        await act(async () => {
+            await Promise.all([onPress(), onPress()])
+        })
+        expect(
+            runHttpsCallableFunction.mock.calls.filter(([name]) => name === 'startAssistantBrowserCallSecondGen')
+        ).toHaveLength(1)
+    })
+    test('closes a provider session if its answer arrives after the caller left', async () => {
+        let respond
+        runHttpsCallableFunction.mockImplementation(name =>
+            name === 'startAssistantBrowserCallSecondGen'
+                ? new Promise(resolve => {
+                      respond = resolve
+                  })
+                : Promise.resolve({ closed: true })
+        )
+        const tree = render()
+        let starting
+        await act(async () => {
+            starting = tree.root.findByType('Button').props.onPress()
+            for (let i = 0; i < 30; i++) await Promise.resolve()
+        })
+        expect(respond).toBeDefined()
+        act(() => {
+            tree.unmount()
+        })
+        await act(async () => {
+            respond({ answerSdp: 'answer', sessionId: 'browser-left', voiceProvider: 'gpt-live' })
+            await starting
+        })
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith('endAssistantBrowserCallSecondGen', {
+            sessionId: 'browser-left',
+        })
+        expect(tracks[0].stop).toHaveBeenCalled()
     })
 })
