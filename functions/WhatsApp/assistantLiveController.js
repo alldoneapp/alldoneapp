@@ -138,9 +138,15 @@ async function runAssistantLiveCall(sessionId) {
             event_id: crypto.randomUUID(),
             content,
         })
+    const announcedErrors = new Set()
     const publishProgress = (update, delegationId) => {
         const content = formatLiveStatus(update)
         if (!content) return
+        const error = JSON.parse(content).error
+        // The tool and the run's catch handler can report the same failure.
+        // Key by request/job and cause, not by the changing presentation label.
+        const errorKey = error && JSON.stringify([update.scope || 'request', error.cause])
+        if (errorKey && announcedErrors.has(errorKey)) return
         console.info('Live Call: Verified progress status', {
             sessionId,
             delegationId,
@@ -150,12 +156,16 @@ async function runAssistantLiveCall(sessionId) {
             cause: update.cause || null,
         })
         // Wait messages must never be replayed after completion or reconnection.
-        send({
+        const sent = send({
             type: 'session.commentary.append',
             delegation_id: delegationId,
             event_id: crypto.randomUUID(),
             content,
         })
+        if (sent && errorKey) {
+            announcedErrors.add(errorKey)
+            if (announcedErrors.size > 128) announcedErrors.delete(announcedErrors.values().next().value)
+        }
         lastProgressAt = Date.now()
     }
     const clearBackgroundJobs = () => {
@@ -419,7 +429,9 @@ async function runAssistantLiveCall(sessionId) {
             if (!runClaimed) return
             handledRevision = revision
             let requestedEnd = false
+            const progressScope = `request:${keyFor(runId).slice(0, 24)}`
             const runProgress = createLiveProgress({
+                scope: progressScope,
                 // Progress is ephemeral: never replay an obsolete wait after a
                 // reconnect. Only actual spoken transcript fragments enter chat.
                 publish: update => publishProgress(update, delegationId),
@@ -500,7 +512,11 @@ async function runAssistantLiveCall(sessionId) {
                         )
                     else if (!ending && !superseded && revision === transcript.revision) {
                         console.warn('Live Call: Backend stopped', { sessionId, runId, ...outcome })
-                        const update = statusUpdate({ ...outcome, step: 'Processing the current request' })
+                        const update = statusUpdate({
+                            ...outcome,
+                            scope: progressScope,
+                            step: 'Processing the current request',
+                        })
                         publishErrorContext(formatLiveStatus(update, { errorContextOnly: true }), delegationId)
                         publishProgress(update, delegationId)
                     }

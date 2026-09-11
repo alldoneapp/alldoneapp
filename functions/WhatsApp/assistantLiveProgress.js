@@ -75,6 +75,10 @@ function createLiveToolProgress({ publish }) {
             report()
             return id
         },
+        retarget(id, name, args) {
+            if (!active.has(id)) return
+            active.set(id, { key: operationKey(name, args), label: toolProgress(name, args) })
+        },
         finish(id, result, error) {
             const operation = active.get(id)
             if (!operation) return
@@ -154,4 +158,5 @@ module.exports = {
     toolProgress,
     voiceToolFailure,
     backgroundProgress,
+    operationKey,
 }

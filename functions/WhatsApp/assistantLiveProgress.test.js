@@ -193,3 +193,14 @@ test('a late older result cannot clear or resurrect a newer attempt error', () =
     tools.finish(retry, { success: true })
     expect(publish.mock.calls.at(-1)[0].cause).toBeNull()
 })
+
+test('a retry using the canonical note ID clears the failure from its contact alias', () => {
+    const publish = jest.fn()
+    const progress = createLiveToolProgress({ publish })
+    const first = progress.start('get_notes', { projectId: 'p', noteId: 'contact-1' })
+    progress.retarget(first, 'get_notes', { projectId: 'p', noteId: 'note-1' })
+    progress.finish(first, { success: false, error: 'Storage temporarily unavailable' })
+    const retry = progress.start('get_notes', { projectId: 'p', noteId: 'note-1' })
+    progress.finish(retry, { success: true, note: { id: 'note-1' } })
+    expect(publish.mock.calls.at(-1)[0]).toMatchObject({ status: 'result_received', cause: null })
+})

@@ -14,6 +14,11 @@ jest.mock('../Assistant/assistantHelper', () => ({
     buildConversationSafeToolResult: (name, result) => result,
 }))
 jest.mock('./assistantLiveGold', () => ({ reconcileLiveUsage: jest.fn(async () => ({ currentGold: 99 })) }))
+jest.mock('./assistantLiveNoteTarget', () => ({
+    ...jest.requireActual('./assistantLiveNoteTarget'),
+    resolveCallContactNote: jest.fn(async () => null),
+}))
+const { resolveCallContactNote } = require('./assistantLiveNoteTarget')
 const admin = require('firebase-admin')
 const helper = require('../Assistant/assistantHelper')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
@@ -32,6 +37,8 @@ const request = overrides => ({
 })
 beforeEach(() => {
     jest.clearAllMocks()
+    resolveCallContactNote.mockResolvedValue(null)
+    helper.executeToolNatively.mockResolvedValue({ success: true })
     sessionData = {}
     savedOperations = []
     savedBackendAnswers = []
@@ -75,6 +82,175 @@ beforeEach(() => {
         await options.onRoundComplete({ assistantText: 'Done', conversation: [], round: 0 })
         return { finalResponseText: 'Done' }
     })
+})
+
+test('uses contact.noteId instead of the contact ID and persists the exact resolution', async () => {
+    const target = { projectId: 'other-project', contactId: 'contact-1', noteId: 'note-1' }
+    resolveCallContactNote.mockResolvedValue(target)
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        await toolExecutor('get_notes', { noteId: 'contact-1', projectId: 'other-project' })
+        return { finalResponseText: 'Verified note content' }
+    })
+    await runLiveAssistant(
+        request({ session: { ...session, pageContext: { path: '/projects/other-project/contacts/contact-1/note' } } })
+    )
+    expect(helper.executeToolNatively).toHaveBeenCalledWith(
+        'get_notes',
+        { noteId: 'note-1', projectId: 'other-project' },
+        'p',
+        'a',
+        'u',
+        null,
+        expect.any(Object)
+    )
+    expect(savedOperations[0]).toMatchObject({
+        targetResolution: 'contact.noteId',
+        arguments: JSON.stringify({ noteId: 'note-1', projectId: 'other-project' }),
+        requestedArguments: JSON.stringify({ noteId: 'contact-1', projectId: 'other-project' }),
+    })
+    expect(helper.interactWithChatStream.mock.calls[0][0]).toContainEqual([
+        'system',
+        expect.stringContaining(JSON.stringify(target)),
+    ])
+})
+
+test.each([
+    { noteId: 'explicit-other-note', projectId: 'other-project' },
+    { noteId: 'contact-1', projectId: 'different-project' },
+])('does not overwrite another explicit note target: %j', async args => {
+    resolveCallContactNote.mockResolvedValue({ projectId: 'other-project', contactId: 'contact-1', noteId: 'note-1' })
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        await toolExecutor('get_notes', args)
+        return { finalResponseText: 'Done' }
+    })
+    await runLiveAssistant(
+        request({ session: { ...session, pageContext: { path: '/projects/other-project/contacts/contact-1/note' } } })
+    )
+    expect(helper.executeToolNatively.mock.calls[0][1]).toEqual(args)
+})
+
+test('returns a failed read to the model so it can correct the ID in the same delegation', async () => {
+    helper.executeToolNatively
+        .mockRejectedValueOnce(new Error('Note not found (exact ID and case-insensitive fallback checked)'))
+        .mockResolvedValueOnce({ success: true, note: { id: 'verified-note', content: 'Actual note text' } })
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        const failed = await toolExecutor('get_notes', { projectId: 'p', noteId: 'wrong-id' })
+        expect(failed).toMatchObject({
+            success: false,
+            retryAllowed: true,
+            error: expect.stringContaining('Note not found'),
+        })
+        const corrected = await toolExecutor('get_notes', { projectId: 'p', noteId: 'verified-note' })
+        return { finalResponseText: corrected.note.content }
+    })
+    await expect(runLiveAssistant(request())).resolves.toBe('Actual note text')
+    expect(savedOperations[0]).toMatchObject({
+        status: 'completed',
+        outcome: { status: 'failed', cause: expect.stringContaining('Note not found') },
+    })
+    expect(savedOperations[1].outcome.status).toBe('result_received')
+})
+
+test('caps unchanged failed reads at two executions while permitting corrected arguments', async () => {
+    helper.executeToolNatively.mockRejectedValue(new Error('Note not found'))
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        for (let i = 0; i < 4; i++) {
+            const result = await toolExecutor('get_notes', { projectId: 'p', noteId: 'wrong-id' })
+            expect(result.retryAllowed).toBe(i === 0)
+        }
+        helper.executeToolNatively.mockResolvedValueOnce({ success: true })
+        await toolExecutor('get_notes', { projectId: 'p', noteId: 'correct-id' })
+        return { finalResponseText: 'Done' }
+    })
+    await runLiveAssistant(request())
+    expect(helper.executeToolNatively).toHaveBeenCalledTimes(3)
+})
+
+test('parallel duplicates cannot exceed the retry budget for the same failed read', async () => {
+    helper.executeToolNatively.mockRejectedValue(new Error('Note not found'))
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        const results = await Promise.all(
+            Array.from({ length: 5 }, () => toolExecutor('get_notes', { projectId: 'p', noteId: 'wrong-id' }))
+        )
+        expect(results.map(result => result.retryAllowed)).toEqual([true, false, false, false, false])
+        return { finalResponseText: 'The note was not found' }
+    })
+    await runLiveAssistant(request())
+    expect(helper.executeToolNatively).toHaveBeenCalledTimes(2)
+})
+
+test.each(['voice_request_superseded', 'insufficient_gold'])(
+    'does not recover from a run control signal: %s',
+    async message => {
+        helper.executeToolNatively.mockRejectedValueOnce(new Error(message))
+        helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+            await toolExecutor('get_notes', { projectId: 'p', noteId: 'n' })
+            return { finalResponseText: 'Unreachable' }
+        })
+        await expect(runLiveAssistant(request())).rejects.toThrow(message)
+    }
+)
+
+test('rechecks access to the linked note immediately before execution', async () => {
+    resolveCallContactNote
+        .mockResolvedValueOnce({ projectId: 'p', contactId: 'contact-1', noteId: 'note-1' })
+        .mockRejectedValueOnce(new Error('User does not have access to this note'))
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        const result = await toolExecutor('get_notes', { projectId: 'p', noteId: 'contact-1' })
+        expect(result).toMatchObject({ success: false, error: 'User does not have access to this note' })
+        return { finalResponseText: 'Cannot access the note' }
+    })
+    await runLiveAssistant(
+        request({ session: { ...session, pageContext: { path: '/projects/p/contacts/contact-1/note' } } })
+    )
+    expect(helper.executeToolNatively).not.toHaveBeenCalled()
+})
+
+test('clears a failed contact-note read when the retry uses its canonical note ID', async () => {
+    resolveCallContactNote.mockResolvedValue({ projectId: 'p', contactId: 'contact-1', noteId: 'note-1' })
+    helper.executeToolNatively
+        .mockRejectedValueOnce(new Error('Storage temporarily unavailable'))
+        .mockResolvedValueOnce({ success: true, note: { id: 'note-1', content: 'Loaded' } })
+    const onProgress = jest.fn()
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        await toolExecutor('get_notes', { projectId: 'p', noteId: 'contact-1' })
+        await toolExecutor('get_notes', { projectId: 'p', noteId: 'note-1' })
+        return { finalResponseText: 'Loaded' }
+    })
+    await runLiveAssistant(
+        request({ onProgress, session: { ...session, pageContext: { path: '/projects/p/contacts/contact-1/note' } } })
+    )
+    expect(onProgress.mock.calls.at(-1)[0]).toMatchObject({ status: 'result_received', cause: null })
+})
+
+test('one failed read does not discard the other four concurrent lookup results', async () => {
+    const { executeToolCallBatch } = require('../Assistant/toolCallBatch')
+    const complete = []
+    helper.executeToolNatively.mockImplementation(
+        (name, args) =>
+            new Promise((resolve, reject) => {
+                complete.push(() =>
+                    args.noteId === 'n0'
+                        ? reject(new Error('Note not found'))
+                        : resolve({ success: true, note: { id: args.noteId } })
+                )
+            })
+    )
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        const calls = Array.from({ length: 5 }, (_, i) => ({
+            function: { name: 'get_notes', arguments: { projectId: 'p', noteId: `n${i}` } },
+        }))
+        const batch = executeToolCallBatch(calls, call => toolExecutor(call.function.name, call.function.arguments))
+        for (let i = 0; i < 40; i++) await Promise.resolve()
+        expect(complete).toHaveLength(5)
+        complete.forEach(finish => finish())
+        const results = await batch
+        expect(results[0]).toMatchObject({ success: false, error: 'Note not found' })
+        expect(results.slice(1).map(result => result.note.id)).toEqual(['n1', 'n2', 'n3', 'n4'])
+        return { finalResponseText: 'Four notes loaded; one lookup needs correction' }
+    })
+    await expect(runLiveAssistant(request())).resolves.toContain('Four notes loaded')
+    expect(savedOperations).toHaveLength(5)
 })
 test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_DEEPSEEK_V4_FLASH'])(
     'uses configured %s for routing and billing',

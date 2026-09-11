@@ -574,6 +574,61 @@ test.each([
     await finish(state)
 })
 
+test('announces one failure once even when progress repeats and the backend then throws it', async () => {
+    let fail
+    runLiveAssistant.mockImplementationOnce(
+        () =>
+            new Promise((resolve, reject) => {
+                fail = reject
+            })
+    )
+    const state = await start()
+    await emit(state.socket, user())
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(1200)
+    const { onProgress } = runLiveAssistant.mock.calls[0][0]
+    onProgress({ status: 'failed', cause: 'Note not found', step: 'Loading the note' })
+    await jest.advanceTimersByTimeAsync(4200)
+    onProgress({ status: 'failed', cause: 'Note not found', step: 'Reviewing the lookup' })
+    await jest.advanceTimersByTimeAsync(46000)
+    fail(new Error('Note not found'))
+    await flush()
+    expect(applicationStatuses(state.socket).filter(value => value.error)).toHaveLength(1)
+    expect(applicationStatuses(state.socket).find(value => value.error).error.cause).toBe('Note not found')
+    const failedRun = [...docs.values()].find(value => value.status === 'failed' && value.error === 'backend_failed')
+    expect(failedRun.outcome).toEqual({ status: 'failed', cause: 'Note not found' })
+    await finish(state)
+})
+
+test('does not suppress a new cause or the same cause in a new user request', async () => {
+    let fail
+    runLiveAssistant.mockImplementationOnce(
+        () =>
+            new Promise((resolve, reject) => {
+                fail = reject
+            })
+    )
+    const state = await start()
+    await emit(state.socket, user())
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(1200)
+    const { onProgress } = runLiveAssistant.mock.calls[0][0]
+    onProgress({ status: 'failed', cause: 'Note not found', step: 'Loading a note' })
+    await jest.advanceTimersByTimeAsync(4200)
+    fail(new Error('Calendar write permission missing'))
+    await flush()
+    runLiveAssistant.mockRejectedValueOnce(new Error('Note not found'))
+    await emit(state.socket, { ...user('next', 'Check another note'), start_ms: 10000, end_ms: 11000 })
+    await emit(state.socket, { ...delegation, delegation: { id: 'd2', target: 'client' } })
+    await jest.advanceTimersByTimeAsync(1500)
+    expect(
+        applicationStatuses(state.socket)
+            .filter(value => value.error)
+            .map(value => value.error.cause)
+    ).toEqual(['Note not found', 'Calendar write permission missing', 'Note not found'])
+    await finish(state)
+})
+
 test('does not announce a delayed failure from the request replaced by newer speech', async () => {
     let fail
     runLiveAssistant.mockImplementationOnce(
