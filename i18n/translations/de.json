@@ -2544,9 +2544,5 @@
     "Assistant voice call": "Sprachanruf mit Assistent",
     "Assistant phone call": "Telefonanruf mit Assistent",
     "Call cost: %{voice} Gold voice + %{assistant} Gold assistant": "Anrufkosten: %{voice} Gold Sprache + %{assistant} Gold Assistent",
-    "Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant": "Bisherige Anrufkosten: %{voice} Gold Sprache + %{assistant} Gold Assistent",
-    "Checking microphones — please say a few words": "Mikrofone werden geprüft – bitte kurz etwas sagen",
-    "Enable call audio": "Gesprächston einschalten",
-    "Microphone: %{name}": "Mikrofon: %{name}",
-    "Cancel assistant call": "Anruf abbrechen"
+    "Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant": "Bisherige Anrufkosten: %{voice} Gold Sprache + %{assistant} Gold Assistent"
 }

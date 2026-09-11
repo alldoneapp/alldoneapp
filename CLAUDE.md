@@ -1586,13 +1586,18 @@ never say "this line is leaving".
 **Since the rounded project-card redesign, the mask goes on the whole card; the particles go beside
 it (AT-2535).** Masking the old 57px `ProjectHeader` left the new `ProjectSection` surface, body
 padding and rounded corners behind until the block vanished abruptly. `ProjectSection` therefore
-owns `useProjectCompletedSweepMotion` + `useProjectLineExit`, shares the run with the header sweep
-through context, and masks/collapses its complete `Animated.View`. `ProjectLineDisintegration` is a
-SIBLING of that masked card — a child would be erased by the very front it is shedding — inside a
-wrapper `View` so its absolute placement resolves against that card and nothing else. The card's
-resolved `marginBottom` is supplied to the exit separately because `onLayout` excludes margins; it
-interpolates to zero with the height, avoiding a final spacing jump when the hold unmounts. Two
-failure modes are guarded
+owns `useProjectCompletedSweepMotion` + `useProjectLineExit` and masks/collapses its complete
+`Animated.View`. The sweep itself must live in `ProjectSection` as
+an absolute-fill CHILD of that node: leaving it in `ProjectHeader` keeps its old `top: 20` /
+`bottom: 1` content-band geometry, so only ~35px of a potentially much taller card is coloured even
+though the mask correctly erases the whole card. Its tint is the resolved
+`palette.PROJECT_ITEM_ACTIVE`, the exact colour `ProjectHeader` paints, not the raw marker colour;
+the latter has the same hue but is a visibly brighter shade. The same resolved tint feeds the
+sparks. `ProjectLineDisintegration` is a SIBLING of that masked card — a child would be erased by the
+very front it is shedding — inside a wrapper `View` so its absolute placement resolves against that
+card and nothing else. The card's resolved `marginBottom` is supplied to the exit separately because
+`onLayout` excludes margins; it interpolates to zero with the height, avoiding a final spacing jump
+when the hold unmounts. Two failure modes are guarded
 explicitly: an exit whose verdict is **withdrawn** mid-run (a task landing back in the project) is
 reset, and an exit the board **never finishes** is put back after `EXIT_RECOVERY_MS`, because an
 erased zero-height card is a hole the user can neither see nor click and has to reload to clear. The

@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
-import { useSelector } from 'react-redux'
 
 import { colors, hexColorToRGBa } from '../../styles/global'
 
@@ -48,11 +47,11 @@ import { colors, hexColorToRGBa } from '../../styles/global'
  *
  * ── GEOMETRY ─────────────────────────────────────────────────────────────────────────────────────
  *
- * The overlay is inset to the row's CONTENT band rather than covering the full 56px box, because
- * `ProjectHeader`'s container carries `paddingTop: 25` — a sweep across the whole box would spend
- * its first half washing empty space above the project name. It is absolutely positioned and
- * pointer-transparent, so it adds nothing to layout and can never intercept a tap on the project
- * name, the add-task button or the tags underneath it.
+ * The overlay fills the complete rounded project section. Since AT-2535 the visible project line is
+ * no longer a standalone 56px header: it is the header plus every row inside one tinted card. The
+ * sweep therefore belongs to that card and covers its content from the top rounded edge to the
+ * bottom rounded edge. It is absolutely positioned and pointer-transparent, so it adds nothing to
+ * layout and can never intercept a tap on the project name, the add-task button or the rows below.
  *
  * Three things are load-bearing and easy to break:
  *
@@ -101,24 +100,17 @@ const ACCENT_PULSE_SCALE = 2
 
 /**
  * @param {object} props.motion The run, from `useProjectCompletedSweepMotion`. It is owned by
- *   `ProjectSection` (AT-2535): the same run drives this header overlay and the disintegration that
- *   erases the whole rounded card. Passing the values through context keeps one sequence driving
- *   both halves.
- * @param {string} props.projectId Used only to resolve the project's colour. A primitive is selected
- *   out of `loggedUserProjectsMap` rather than the project object (let alone the map) — the AT-2336
- *   rule: selecting the object would hand every project header a fresh identity on every per-project
- *   write, and this component is mounted once per project on a board that can hold 78 of them.
+ *   `ProjectSection` (AT-2535): the same run drives this full-card overlay and the disintegration
+ *   that erases the rounded card, so one sequence drives both halves.
+ * @param {string} props.tint The exact colour painted behind the project header. `ProjectSection`
+ *   resolves this from the same palette entry as `ProjectHeader`; accepting that resolved colour is
+ *   what prevents the old mismatch between the raw marker colour and the actual line colour.
  */
-export default function ProjectCompletedSweep({ motion, projectId }) {
-    const projectColor = useSelector(state => state.loggedUserProjectsMap?.[projectId]?.color)
+export default function ProjectCompletedSweep({ motion, tint = colors.Primary100 }) {
     const { progress, shimmer, pulse, fade, sweeping } = motion
     const [rowWidth, setRowWidth] = useState(0)
 
     if (!sweeping) return null
-
-    // A project with no colour yet (mid-load, or a malformed document) still gets a legible sweep
-    // rather than a crash inside `hexColorToRGBa`.
-    const tint = projectColor || colors.Primary100
 
     // From fully off the left edge to fully past the right one, so the row is never left with a
     // stray bright line parked at either end — and so each travelling layer is clipped out of sight
@@ -228,15 +220,9 @@ export default function ProjectCompletedSweep({ motion, projectId }) {
 
 const localStyles = StyleSheet.create({
     overlay: {
-        position: 'absolute',
+        ...StyleSheet.absoluteFillObject,
         pointerEvents: 'none',
-        left: 0,
-        right: 0,
-        // Hugs the 24px content row inside the header's `paddingTop: 25` / `paddingBottom: 6`,
-        // leaving the bottom rule visible underneath.
-        top: 20,
-        bottom: 1,
-        borderRadius: 8,
+        borderRadius: 12,
         // Keeps the travelling layers from painting outside the row, and is what parks the edge and
         // the shimmer band out of sight outside their own stages.
         overflow: 'hidden',

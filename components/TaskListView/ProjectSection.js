@@ -2,6 +2,7 @@ import React from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
 
 import { PROJECT_COLOR_DEFAULT, PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
+import ProjectCompletedSweep from './Header/ProjectCompletedSweep'
 import ProjectLineDisintegration from './Header/ProjectLineDisintegration'
 import useProjectCompletedSweepMotion, { useProjectLineExit } from './OpenTasksView/projectCompletedSweepMotion'
 import {
@@ -9,7 +10,6 @@ import {
     ProjectSectionAccentContext,
     ProjectSectionLastCommentTintContext,
     ProjectSectionBorderContext,
-    ProjectSectionMotionContext,
     TaskHierarchyBackgroundContext,
     taskHierarchyStyles,
 } from './TaskHierarchy'
@@ -30,6 +30,9 @@ export default function ProjectSection({
     const palette = getProjectPalette(projectColor)
     const backgroundColor = palette.PROJECT_ITEM_SECTION
     const accentColor = palette.PROJECT_ITEM_SECTION_HEADER
+    // This is the colour the user actually sees on the project line. Keep every coloured part of
+    // the completion effect on this resolved palette value rather than the brighter raw marker.
+    const lineColor = palette.PROJECT_ITEM_ACTIVE
     // Mirrors Grey200 -> Grey300 in All Projects: keep the assistant surface light and give its
     // last-comment card the adjacent darker project tint.
     const lastCommentTint = palette.PROJECT_ITEM_ACTIVE
@@ -44,7 +47,7 @@ export default function ProjectSection({
             lastCommentTint={lastCommentTint}
             backgroundColor={backgroundColor}
             borderColor={borderColor}
-            projectColor={projectColor}
+            lineColor={lineColor}
             selected={selected}
             style={style}
             completedSweepRunId={completedSweepRunId}
@@ -60,7 +63,7 @@ function ProjectSectionSurface({
     lastCommentTint,
     backgroundColor,
     borderColor,
-    projectColor,
+    lineColor,
     selected,
     style,
     children,
@@ -92,24 +95,23 @@ function ProjectSectionSurface({
                 <ProjectSectionAccentContext.Provider value={accentColor}>
                     <ProjectSectionLastCommentTintContext.Provider value={lastCommentTint}>
                         <ProjectSectionBorderContext.Provider value={borderColor}>
-                            <ProjectSectionMotionContext.Provider value={motion}>
-                                <View style={localStyles.exitContainer}>
-                                    <Animated.View
-                                        style={[baseStyle, exitStyle]}
-                                        onLayout={onLineLayout}
-                                        testID="project-section"
-                                    >
-                                        {children}
-                                    </Animated.View>
-                                    {exitStyle && (
-                                        <ProjectLineDisintegration
-                                            progress={motion.disintegrate}
-                                            height={exitHeight}
-                                            tint={projectColor || PROJECT_COLOR_DEFAULT}
-                                        />
-                                    )}
-                                </View>
-                            </ProjectSectionMotionContext.Provider>
+                            <View style={localStyles.exitContainer}>
+                                <Animated.View
+                                    style={[baseStyle, exitStyle]}
+                                    onLayout={onLineLayout}
+                                    testID="project-section"
+                                >
+                                    {children}
+                                    <ProjectCompletedSweep motion={motion} tint={lineColor} />
+                                </Animated.View>
+                                {exitStyle && (
+                                    <ProjectLineDisintegration
+                                        progress={motion.disintegrate}
+                                        height={exitHeight}
+                                        tint={lineColor}
+                                    />
+                                )}
+                            </View>
                         </ProjectSectionBorderContext.Provider>
                     </ProjectSectionLastCommentTintContext.Provider>
                 </ProjectSectionAccentContext.Provider>

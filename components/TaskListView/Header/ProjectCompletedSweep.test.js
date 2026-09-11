@@ -1,7 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { AccessibilityInfo, StyleSheet } from 'react-native'
-import { useSelector } from 'react-redux'
 
 import ProjectCompletedSweep from './ProjectCompletedSweep'
 import useProjectCompletedSweepMotion from '../OpenTasksView/projectCompletedSweepMotion'
@@ -13,8 +12,6 @@ import {
     SWEEP_TOTAL_MS,
 } from '../OpenTasksView/projectCompletedSweepMotion'
 
-jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
-
 /**
  * AT-2492 (second pass) — the visual contract of the completed sweep.
  *
@@ -25,17 +22,15 @@ jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
  */
 
 /**
- * AT-2495 moved the RUN up into `ProjectHeader`, because the same sequence now also drives the mask
- * that erases the whole line and a child cannot mask its parent. The overlay is handed the values
- * instead of calling the hook itself, so the suite calls the hook here — everything below still
- * drives the real sequence through the real component, exactly as before.
+ * AT-2535 moved the run and overlay into `ProjectSection`, because the same sequence now drives the
+ * full-card sweep and the mask that erases its parent. The overlay is handed the values instead of
+ * calling the hook itself, so the suite calls the hook here and drives the real sequence.
  */
-const SweepHarness = ({ runId, projectId, lineWillLeave = false }) => (
-    <ProjectCompletedSweep motion={useProjectCompletedSweepMotion(runId, lineWillLeave)} projectId={projectId} />
+const SweepHarness = ({ runId, tint, lineWillLeave = false }) => (
+    <ProjectCompletedSweep motion={useProjectCompletedSweepMotion(runId, lineWillLeave)} tint={tint} />
 )
 
-const PROJECT = 'project-a'
-const PROJECT_COLOR = '#2F80ED'
+const PROJECT_LINE_COLOR = '#F7DEE3'
 const ROW_WIDTH = 640
 
 let matchMediaReducedMotion = false
@@ -86,9 +81,6 @@ describe('the project completed sweep (AT-2492)', () => {
         }))
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
-        useSelector.mockImplementation(selector =>
-            selector({ loggedUserProjectsMap: { [PROJECT]: { color: PROJECT_COLOR } } })
-        )
         process.env.NODE_ENV = 'development'
     })
 
@@ -102,7 +94,7 @@ describe('the project completed sweep (AT-2492)', () => {
     const renderSweep = async (runId, { measure = true } = {}) => {
         let tree
         await act(async () => {
-            tree = renderer.create(<SweepHarness runId={runId} projectId={PROJECT} />)
+            tree = renderer.create(<SweepHarness runId={runId} tint={PROJECT_LINE_COLOR} />)
         })
         if (measure && countOf(tree, 'project-completed-sweep') > 0) {
             await act(async () => {
@@ -139,6 +131,9 @@ describe('the project completed sweep (AT-2492)', () => {
         const style = StyleSheet.flatten(overlay.props.style)
 
         expect(style.position).toBe('absolute')
+        // The project line is the complete rounded section now, not the old 24px header-content
+        // band. Every edge must be pinned or task/goal content below the header is left unswept.
+        expect(style).toMatchObject({ top: 0, right: 0, bottom: 0, left: 0, borderRadius: 12 })
         // In `style`, not as a prop — react-native-web 0.21 deprecates the prop form.
         expect(style.pointerEvents).toBe('none')
         // Keeps the travelling edge from painting outside the row once it reaches the end.
@@ -162,30 +157,31 @@ describe('the project completed sweep (AT-2492)', () => {
     })
 
     /**
-     * Karsten chose the project's own colour over the app's green "done". The point of the choice is
-     * lost if the sweep quietly falls back to a constant, so this pins that the tint actually comes
-     * from the project.
+     * Karsten chose the project's own line colour over the app's green "done". The point of the
+     * choice is lost if the sweep uses the brighter raw marker shade, so this pins the exact colour
+     * that is visibly painted behind the project header.
      */
-    it("is tinted with the project's own colour", async () => {
+    it("is tinted with the project's exact visible line colour", async () => {
         const tree = await renderSweep(1)
         const washStyle = StyleSheet.flatten(findOne(tree, 'project-completed-sweep-wash').props.style)
         const edgeLine = findOne(tree, 'project-completed-sweep-edge-line')
 
-        // 47,128,237 is #2F80ED — the wash is that colour at low alpha...
-        expect(washStyle.backgroundColor).toBe('rgba(47,128,237,0.2)')
+        // 247,222,227 is the exact PROJECT_ITEM_ACTIVE colour painted behind the project line.
+        expect(washStyle.backgroundColor).toBe('rgba(247,222,227,0.2)')
         // ...and the leading edge is the same colour at FULL strength, which is what keeps a pale
         // project colour visible when 16% of it is nearly invisible.
-        expect(StyleSheet.flatten(edgeLine.props.style).backgroundColor).toBe(PROJECT_COLOR)
+        expect(StyleSheet.flatten(edgeLine.props.style).backgroundColor).toBe(PROJECT_LINE_COLOR)
         // The accent bar is the second full-strength element, and it is the one that SURVIVES the
         // fill: the edge leaves the row at the end of stage 1, so without this a pale project would
         // spend the shimmer and the breath as an almost invisible tint.
-        expect(styleOf(tree, 'project-completed-sweep-accent').backgroundColor).toBe(PROJECT_COLOR)
+        expect(styleOf(tree, 'project-completed-sweep-accent').backgroundColor).toBe(PROJECT_LINE_COLOR)
     })
 
-    it('still sweeps for a project whose colour has not loaded', async () => {
-        useSelector.mockImplementation(selector => selector({ loggedUserProjectsMap: { [PROJECT]: {} } }))
-
-        const tree = await renderSweep(1)
+    it('still sweeps with a legible fallback when no tint is supplied', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<SweepHarness runId={1} />)
+        })
         const washStyle = StyleSheet.flatten(findOne(tree, 'project-completed-sweep-wash').props.style)
 
         expect(countOf(tree, 'project-completed-sweep')).toBe(1)
@@ -254,14 +250,14 @@ describe('the project completed sweep (AT-2492)', () => {
         // The project row re-renders on every task write in the project; that must not rewind a
         // sweep already halfway across.
         await act(async () => {
-            tree.update(<SweepHarness runId={1} projectId={PROJECT} />)
+            tree.update(<SweepHarness runId={1} tint={PROJECT_LINE_COLOR} />)
         })
 
         expect(progress.__getValue()).toBe(0.5)
 
         // A NEW run does start from the beginning, so clearing a second project still sweeps.
         await act(async () => {
-            tree.update(<SweepHarness runId={2} projectId={PROJECT} />)
+            tree.update(<SweepHarness runId={2} tint={PROJECT_LINE_COLOR} />)
         })
         expect(progressValueOf(tree).__getValue()).toBe(0)
     })
