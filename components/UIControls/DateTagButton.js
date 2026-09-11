@@ -16,6 +16,7 @@ export default function DateTagButton({
     disabled,
     style,
     saveDueDateBeforeSaveTask,
+    setToBacklogBeforeSaveTask,
     outline = false,
 }) {
     const smallScreen = useSelector(state => state.smallScreen)
@@ -77,6 +78,7 @@ export default function DateTagButton({
                     delayClosePopover={delayHidePopover}
                     isObservedTask={isObservedTask}
                     saveDueDateBeforeSaveTask={saveDueDateBeforeSaveTask}
+                    setToBacklogBeforeSaveTask={setToBacklogBeforeSaveTask}
                 />
             }
             onClickOutside={delayHidePopover}

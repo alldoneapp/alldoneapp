@@ -10,6 +10,7 @@ import Backend from '../../utils/BackendBridge'
 import { setTaskDueDate, setTaskToBacklog } from '../../utils/backends/Tasks/tasksFirestore'
 import { checkIfInMyDayOpenTab } from '../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { popoverToCenter, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
+import { postponeTaskWithMotion } from '../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion'
 
 // This popup is mounted from inside a swipe RELEASE handler (Swipeable's
 // onSwipeableRightWillOpen, see TaskPresentation/GoalItemPresentation/
@@ -95,31 +96,70 @@ export default function DueDateSinglePopup() {
         // AT-2160: hand over the goal we already hold. Without it the backend does a full
         // getGoalData() read before it can write, so every goal postpone from this popup paid for
         // a round trip before the row could move.
-        Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
+        return Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
     }
 
     const handleSaveTaskDate = async (taskToUpdate, dateTimestamp, isObservedTabActive) => {
         if (__DEV__) console.log(`[DueDateSinglePopup] handleSaveTaskDate called for task ${taskToUpdate.id}`)
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        if (moveObservedDateAndDueDate) {
-            await setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, false, null)
-            await setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, true, null)
-        } else {
-            setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, isObservedTabActive, null)
+        const write = async () => {
+            if (moveObservedDateAndDueDate) {
+                await setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, false, null)
+                await setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, true, null)
+            } else {
+                return setTaskDueDate(
+                    projectId,
+                    taskToUpdate.id,
+                    dateTimestamp,
+                    taskToUpdate,
+                    isObservedTabActive,
+                    null
+                )
+            }
         }
+
+        // A goal postpone intentionally updates several rows as one bulk operation. AT-2541 is a
+        // single-row acknowledgement and must not turn that operation into a train of exits.
+        if (multipleTasks || goal) return write()
+
+        return postponeTaskWithMotion(
+            {
+                projectId,
+                task: taskToUpdate,
+                targetDate: dateTimestamp,
+                updatesDueDate: moveObservedDateAndDueDate || !isObservedTabActive,
+                updatesObservedDate: moveObservedDateAndDueDate || isObservedTabActive,
+            },
+            write
+        )
     }
 
     const handleSetTaskToBacklog = async (taskToUpdate, isObservedTabActive) => {
         if (__DEV__) console.log(`[DueDateSinglePopup] handleSetTaskToBacklog called for task ${taskToUpdate.id}`)
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        if (moveObservedDateAndDueDate) {
-            await setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, false, null)
-            await setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, true, null)
-        } else {
-            setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, isObservedTabActive, null)
+        const write = async () => {
+            if (moveObservedDateAndDueDate) {
+                await setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, false, null)
+                await setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, true, null)
+            } else {
+                return setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, isObservedTabActive, null)
+            }
         }
+
+        if (multipleTasks || goal) return write()
+
+        return postponeTaskWithMotion(
+            {
+                projectId,
+                task: taskToUpdate,
+                targetDate: Number.MAX_SAFE_INTEGER,
+                updatesDueDate: moveObservedDateAndDueDate || !isObservedTabActive,
+                updatesObservedDate: moveObservedDateAndDueDate || isObservedTabActive,
+            },
+            write
+        )
     }
 
     return (
@@ -153,6 +193,7 @@ export default function DueDateSinglePopup() {
                                 goalCompletionDate={goal ? goal.completionMilestoneDate : undefined}
                                 goalStartingDate={goal ? goal.startingMilestoneDate : undefined}
                                 goal={goal}
+                                animateGoalPostpone={!!goal}
                             />
                         </>
                     }

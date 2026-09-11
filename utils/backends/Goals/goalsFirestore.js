@@ -1213,11 +1213,13 @@ export async function updateGoalAssigneeReminderDate(
         logEvent('goal_postponed')
     }
 
-    updateGoalData(projectId, goalId, updates, null)
+    const goalWrite = updateGoalData(projectId, goalId, updates, null)
 
     // Cascade to child tasks if requested
     if (cascadeToTasks) {
-        await updateChildTasksDueDate(projectId, goalId, date)
+        await Promise.all([goalWrite, updateChildTasksDueDate(projectId, goalId, date)])
+    } else {
+        await goalWrite
     }
 }
 
