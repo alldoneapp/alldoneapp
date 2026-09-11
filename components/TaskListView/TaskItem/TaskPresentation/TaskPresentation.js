@@ -46,6 +46,7 @@ import TaskRoutingActivityOverlay from './TaskRoutingActivityOverlay'
 import useTaskRoutingActivity from './useTaskRoutingActivity'
 import useTaskCompletionMotion, { rowRemainsAfterCompletion } from './taskCompletionMotion'
 import { publishGoalTaskCompletion } from '../../OpenTasksView/goalCompletionSignal'
+import { publishProjectTaskCompletion } from '../../OpenTasksView/projectTaskCompletionSignal'
 import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
 import { useTaskHierarchy, useTaskHierarchyBackground } from '../../TaskHierarchy'
 
@@ -157,10 +158,18 @@ function TaskPresentation(
      * one condition left here is the one the hook cannot know: whether the task belongs to a goal
      * at all. A task with no `parentGoalId` renders in the general-tasks block, which has no goal
      * row to celebrate on.
+     *
+     * AT-2550 uses the same fact one level higher only for the suggested-task workflow bypass. The
+     * project block still requires its own `lineWouldLeave` verdict before it animates, so this hint
+     * can never remove or celebrate a project with other content left.
      */
-    const announceGoalTaskCompletion = useCallback(() => {
-        publishGoalTaskCompletion({ projectId, goalId: task.parentGoalId, taskId: task.id })
-    }, [projectId, task.parentGoalId, task.id])
+    const announceTaskCompletion = useCallback(
+        ({ projectExitCandidate } = {}) => {
+            publishGoalTaskCompletion({ projectId, goalId: task.parentGoalId, taskId: task.id })
+            if (projectExitCandidate) publishProjectTaskCompletion({ projectId, taskId: task.id })
+        },
+        [projectId, task.parentGoalId, task.id]
+    )
     const {
         onRowLayout: onCompletionRowLayout,
         rowStyle: completionRowStyle,
@@ -171,7 +180,7 @@ function TaskPresentation(
         completionCelebration,
         completionMotion,
         isCompleting,
-    } = useTaskCompletionMotion({ retainRow, isDone: task.done, onCompletionStart: announceGoalTaskCompletion })
+    } = useTaskCompletionMotion({ retainRow, isDone: task.done, onCompletionStart: announceTaskCompletion })
 
     const inMyDayOpenTab = checkIfInMyDayOpenTab(
         selectedProjectIndex,
