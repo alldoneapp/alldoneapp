@@ -85,7 +85,6 @@ async function runAssistantLiveCall(sessionId) {
     let lastUserChangeAt = 0
     let handledRevision = 0
     let tickBusy = false
-    let lastControlCheck = 0
     let closeTimer
     let deadlineTimer
     let stopped = false
@@ -121,7 +120,6 @@ async function runAssistantLiveCall(sessionId) {
     const close = (why, message = '') => {
         if (ending) return
         ending = true
-        updateCallSession(sessionId, { controllerConnected: false }).catch(() => {})
         reason = why
         if (message) append('session.instructions.append', message)
         closeTimer = setTimeout(() => send({ type: 'session.close' }), message ? 3500 : 0)
@@ -134,11 +132,6 @@ async function runAssistantLiveCall(sessionId) {
         )
     }
     const assertRevision = async revision => {
-        if (ending || stopped || !ready || revision !== transcript.revision) throw new Error('voice_request_superseded')
-        if ((await ref.get()).data()?.cancelRequestedAt) {
-            close('client_cancelled')
-            throw new Error('voice_request_superseded')
-        }
         if (ending || stopped || !ready || revision !== transcript.revision) throw new Error('voice_request_superseded')
     }
     const handleEvent = async (event, transcriptChanged) => {
@@ -201,10 +194,6 @@ async function runAssistantLiveCall(sessionId) {
         tickBusy = true
         try {
             await events
-            if (Date.now() - lastControlCheck >= 2000) {
-                lastControlCheck = Date.now()
-                if ((await ref.get()).data()?.cancelRequestedAt) close('client_cancelled')
-            }
             await flushTranscript()
             if (!ready || ending || backend || !pending.size || Date.now() - lastUserChangeAt < 900) return
             const [delegationId, notice] = pending.entries().next().value
@@ -318,11 +307,9 @@ async function runAssistantLiveCall(sessionId) {
                         send({ type: 'session.close' })
                         return
                     }
-                    updateCallSession(sessionId, {
-                        status: 'controller_running',
-                        controllerConnected: true,
-                        lastConnectedAt: Date.now(),
-                    }).catch(() => close('controller_error'))
+                    updateCallSession(sessionId, { status: 'controller_running', lastConnectedAt: Date.now() }).catch(
+                        () => close('controller_error')
+                    )
                     for (const payload of outbox.values()) send(payload)
                     if (attempt === 0)
                         append(
@@ -378,11 +365,7 @@ async function runAssistantLiveCall(sessionId) {
         // Existing tool calls may complete, but assertActive prevents further actions.
         if (backend) await backend
         await flushTranscript()
-        await updateCallSession(sessionId, {
-            livePendingAction: null,
-            recapStatus: 'skipped',
-            controllerConnected: false,
-        })
+        await updateCallSession(sessionId, { livePendingAction: null, recapStatus: 'skipped' })
         await finalizeCallSession(sessionId, reason, finalized ? 'completed' : 'failed')
     }
 }

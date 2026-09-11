@@ -343,10 +343,10 @@ leading edge — gated on a measured row width — never renders at all. Both ar
 under test.
 
 The harness renders the real `ProjectCompletedSweep` driven by the real `useProjectCompletedSweep`
-inside a row reproducing `ProjectHeader`'s own box, and reads the wash's **painted width** frame by
-frame. That is what separated the two candidate diagnoses: the animation was never broken (96 →
-900px across the row, edge travelling with it, correct colour and geometry), the trigger simply
-never fired.
+and `useProjectCompletedSweepMotion` inside the complete rounded project-card box, and reads the
+wash's **painted width** frame by frame. That is what separated the two candidate diagnoses: the
+animation was never broken (96 → 900px across the row, edge travelling with it, correct colour and
+geometry), the trigger simply never fired.
 
 It then reproduces the actual defect end to end — All Projects drops a cleared project's block, and
 the count proving it was cleared arrives from a _different_ Firestore listener, so it routinely
@@ -363,19 +363,22 @@ jsdom's `CSSStyleDeclaration` silently drops properties it does not implement, s
 reads back as `''` there whether the code is right or completely wrong; `__mocks__/react-native.js`
 stubs `Animated.timing`, so nothing advances; and a style object is not a paint in any case.
 
-So the harness renders the real `useProjectCompletedSweepMotion` driving the real
-`useProjectLineExit` on a rounded card node with the real `ProjectLineDisintegration` beside it,
-then **screenshots the card every ~50ms and counts surviving pixels per column**. That is the only
-measurement that can tell "a mask is applied" from "the mask erases the correct half, in the correct
-order, over the right amount of time". The screenshot is decoded back inside the page through a
-canvas, so no PNG dependency is needed. A row pixel is identified by its signature — pure red
-thinning toward white, so green and blue stay equal — because the particle layer paints over the
-same scanline and a gold spark would otherwise be counted as surviving row.
+So the harness renders the real `useProjectCompletedSweepMotion` driving the real full-card
+`ProjectCompletedSweep` and `useProjectLineExit` on a rounded card node with the real
+`ProjectLineDisintegration` beside it, then **screenshots the card every ~50ms and counts surviving
+pixels per column**. It also reads the sweep's painted DOM rectangle and computed accent colour.
+Together those checks distinguish "the mask is applied" from "the sweep and mask cover the complete
+card in the exact line colour, then erase it in the correct order and amount of time". The screenshot
+is decoded back inside the page through a canvas, so no PNG dependency is needed. A row pixel is
+identified by its signature — pure red thinning toward white, so green and blue stay equal — because
+the particle layer paints over the same scanline and a gold spark would otherwise be counted as
+surviving row.
 
 AT-2535 moved the mask and collapse from the 57px header to the complete rounded `ProjectSection`.
-The harness therefore uses the card's full height and separately verifies that its 28px bottom
-spacing reaches zero; `onLayout` excludes margins, so height-only coverage would miss the final
-layout jump this follow-up fixes.
+This follow-up moves the coloured sweep there too and feeds both the sweep and sparks the resolved
+project-line palette colour instead of the raw marker colour. The harness therefore verifies the
+full card height, exact tint, and that its 28px bottom spacing reaches zero; `onLayout` excludes
+margins, so height-only coverage would miss the final layout jump.
 
 **The first pass of this aimed at the wrong row.** The disintegration originally replaced the
 completed TASK row's 320ms collapse, and the ask turned out to be about the project line: a task is

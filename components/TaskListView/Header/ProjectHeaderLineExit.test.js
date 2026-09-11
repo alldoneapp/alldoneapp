@@ -7,6 +7,7 @@ import ProjectHeader from './ProjectHeader'
 import ProjectSection from '../ProjectSection'
 import { SWEEP_LEAD_MS, SWEEP_TOTAL_MS } from '../OpenTasksView/projectCompletedSweepMotion'
 import { DISSOLVE_MASK_IMAGE, DISSOLVE_MASK_SIZE, SPARK_COUNT } from '../OpenTasksView/projectLineDisintegration'
+import { PROJECT_COLOR_RED, PROJECT_COLOR_SYSTEM } from '../../../Themes/Modern/ProjectColors'
 
 jest.mock('react-redux', () => ({ useDispatch: () => jest.fn(), useSelector: jest.fn() }))
 jest.mock('../../../redux/store', () => ({ getState: () => ({ loggedUserProjectsMap: {} }) }))
@@ -21,7 +22,7 @@ jest.mock('../../RootView/RootSectionNavigation', () => 'RootSectionNavigation')
  * of the unit suites noticing.
  *
  * `ProjectSection` owns the run, because the same sequence drives two things on two different nodes:
- * the sweep overlay INSIDE the header, and the mask that erases the whole rounded card. Three ways
+ * the sweep overlay across the full card, and the mask that erases that rounded card. Three ways
  * to get that wrong, all of which look fine in isolation:
  *
  *   • masking the old 57px header, so the new card body survives the dissolve;
@@ -34,7 +35,8 @@ jest.mock('../../RootView/RootSectionNavigation', () => 'RootSectionNavigation')
  */
 
 const PROJECT = 'project-a'
-const PROJECT_COLOR = '#2F80ED'
+const PROJECT_COLOR = PROJECT_COLOR_RED
+const PROJECT_LINE_COLOR = PROJECT_COLOR_SYSTEM[PROJECT_COLOR].PROJECT_ITEM_ACTIVE
 const CARD_HEIGHT = 96
 const CARD_BOTTOM_SPACING = 28
 
@@ -136,6 +138,9 @@ describe('the project card leaving the board (AT-2535)', () => {
         const tree = await mount({ completedSweepRunId: 1, completedSweepLineWillLeave: false })
 
         expect(countOf(tree, 'project-completed-sweep')).toBe(1)
+        const overlayStyle = rawStyle(findAll(tree, 'project-completed-sweep')[0])
+        expect(overlayStyle).toMatchObject({ top: 0, right: 0, bottom: 0, left: 0, borderRadius: 12 })
+        expect(rawStyle(findAll(tree, 'project-completed-sweep-accent')[0]).backgroundColor).toBe(PROJECT_LINE_COLOR)
 
         await advance(SWEEP_LEAD_MS + 50)
         expect(rawStyle(cardNode(tree)).maskImage).toBeUndefined()
@@ -171,14 +176,21 @@ describe('the project card leaving the board (AT-2535)', () => {
             expect(cardNode(tree).findAllByProps({ testID: 'project-line-disintegration' })).toHaveLength(0)
         })
 
-        it('hands the particles the project colour the sweep has just crossed the row in', async () => {
+        it('uses the exact visible project-line colour for the sweep and particles', async () => {
             const tree = await mount({ completedSweepRunId: 1, completedSweepLineWillLeave: true })
             await advance(SWEEP_LEAD_MS + 50)
 
+            const lineSurface = lineNode(tree).findAll(node => rawStyle(node).backgroundColor)[0]
+            const lineStyle = rawStyle(lineSurface)
+            const accentColor = rawStyle(findAll(tree, 'project-completed-sweep-accent')[0]).backgroundColor
             const armColours = findAll(tree, 'project-line-disintegration-spark-arm').map(
                 arm => rawStyle(arm).backgroundColor
             )
-            expect(armColours).toContain(PROJECT_COLOR)
+
+            expect(lineStyle.backgroundColor).toBe(PROJECT_LINE_COLOR)
+            expect(accentColor).toBe(lineStyle.backgroundColor)
+            expect(armColours).toContain(lineStyle.backgroundColor)
+            expect(lineStyle.backgroundColor).not.toBe(PROJECT_COLOR)
         })
 
         it('freezes the particle layer at the full card height, not the height it is collapsing to', async () => {

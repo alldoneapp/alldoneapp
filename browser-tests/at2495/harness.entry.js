@@ -2,10 +2,10 @@
  * AT-2495 / AT-2535 browser harness — the PROJECT CARD's disintegration, actually erasing pixels.
  *
  * Renders the REAL `useProjectCompletedSweepMotion` driving the REAL `useProjectLineExit` on a
- * rounded card node and the REAL `ProjectLineDisintegration` particle layer beside it, wired
- * exactly as `ProjectSection` wires them: the mask on the collapsing card, the dust and the sparks
- * as its SIBLING. The card's bottom spacing is animated independently because margins are outside
- * the measured box.
+ * rounded card node, the REAL full-card `ProjectCompletedSweep`, and the REAL
+ * `ProjectLineDisintegration` particle layer beside it, wired exactly as `ProjectSection` wires
+ * them: sweep inside the card, mask on the collapsing card, and dust/sparks as its SIBLING. The
+ * card's bottom spacing is animated independently because margins are outside the measured box.
  *
  * Jest can answer none of the questions this exists for, and there are four of them:
  *
@@ -26,15 +26,14 @@
  *
  * The card's CONTENT is a stand-in — a solid block of one saturated colour — precisely so the
  * screenshot can be measured: on a real project card the surviving-pixel count would be dominated
- * by whatever glyph happened to be under the front. The real `ProjectCompletedSweep` overlay is not
- * mounted either, because it reads the project colour out of redux; it is a CHILD of the masked
- * node, so the mask erases it exactly as it erases this stand-in (`browser-tests/at2492` is where
- * the sweep's own paint is checked). Everything AT-2495 changed is the real module.
+ * by whatever glyph happened to be under the front. The sweep uses that same saturated colour, so
+ * it cannot invalidate the scan while its DOM box still proves that it covers the full card.
  */
 import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Animated, StyleSheet, View } from 'react-native'
 
+import ProjectCompletedSweep from '../../components/TaskListView/Header/ProjectCompletedSweep'
 import ProjectLineDisintegration from '../../components/TaskListView/Header/ProjectLineDisintegration'
 import useProjectCompletedSweepMotion, {
     useProjectLineExit,
@@ -46,7 +45,7 @@ const CARD_BOTTOM_SPACING = 28
 // Pure red on white: every channel is unambiguous, so "how much of the row survives" is a
 // threshold on one number rather than a colour-distance heuristic.
 const ROW_COLOR = 'rgb(255, 0, 0)'
-const PROJECT_TINT = 'rgb(47, 128, 237)'
+const PROJECT_TINT = ROW_COLOR
 
 const localStyles = StyleSheet.create({
     page: { width: CARD_WIDTH, backgroundColor: 'white' },
@@ -87,7 +86,9 @@ function Line() {
                 half-working effect, and the first run of this harness (against the task row it was
                 originally written for) reproduced it exactly. */}
             <View style={localStyles.lineContainer} nativeID="line-wrapper">
-                <Animated.View style={[localStyles.card, exitStyle]} onLayout={onLineLayout} nativeID="project-card" />
+                <Animated.View style={[localStyles.card, exitStyle]} onLayout={onLineLayout} nativeID="project-card">
+                    <ProjectCompletedSweep motion={motion} tint={PROJECT_TINT} />
+                </Animated.View>
                 {exitStyle ? (
                     <ProjectLineDisintegration progress={motion.disintegrate} height={exitHeight} tint={PROJECT_TINT} />
                 ) : null}
@@ -106,6 +107,8 @@ window.__measure = () => {
     const node = document.getElementById('project-card')
     const style = node ? window.getComputedStyle(node) : null
     const layer = document.querySelector('[data-testid="project-line-disintegration"]')
+    const sweep = document.querySelector('[data-testid="project-completed-sweep"]')
+    const sweepAccent = document.querySelector('[data-testid="project-completed-sweep-accent"]')
     const motes = Array.from(document.querySelectorAll('[data-testid="project-line-disintegration-mote"]'))
     const sparks = Array.from(document.querySelectorAll('[data-testid="project-line-disintegration-spark"]'))
     const next = document.getElementById('next-row')
@@ -130,6 +133,9 @@ window.__measure = () => {
         layerPresent: !!layer,
         layerPosition: layer ? window.getComputedStyle(layer).position : null,
         layerBox: layer ? boxOf(layer) : null,
+        sweepPresent: !!sweep,
+        sweepBox: sweep ? boxOf(sweep) : null,
+        sweepAccentColor: sweepAccent ? window.getComputedStyle(sweepAccent).backgroundColor : null,
         moteCount: motes.length,
         sparkCount: sparks.length,
         // Colours prove the two layers are what they claim to be: neutral grey dust, tinted sparks.

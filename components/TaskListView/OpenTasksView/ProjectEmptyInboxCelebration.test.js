@@ -18,6 +18,7 @@ import useProjectCompletedSweepMotion, {
 } from './projectCompletedSweepMotion'
 import { SPARK_COUNT } from './projectLineDisintegration'
 import { resetEmptyInboxCelebrationSessionMarkers } from '../../SettingsView/Profile/Achievements/emptyInboxCelebrationMarker'
+import { PROJECT_COLOR_RED, PROJECT_COLOR_SYSTEM } from '../../../Themes/Modern/ProjectColors'
 
 jest.mock('react-redux', () => ({ useDispatch: () => jest.fn(), useSelector: jest.fn() }))
 jest.mock('../../../utils/NavigationService', () => ({ navigate: jest.fn() }))
@@ -41,9 +42,9 @@ jest.mock('../../SettingsView/Profile/Achievements/AchievementsArea', () => ({
  *
  * The SECOND PASS moved the per-project celebration off the Anna picture and onto the project line,
  * and dropped confetti from it entirely. That makes the ranking a difference in KIND rather than in
- * degree — one is a coloured sweep across a 56px row, the other is a headline plus a burst plus a
- * fall across the whole viewport — and it is what lets the same celebration work in All Projects,
- * where there is no picture at all. The exclusivity assertion below is therefore now absolute:
+ * degree — one is a coloured sweep across a rounded project card, the other is a headline plus a
+ * burst plus a fall across the whole viewport — and it is what lets the same celebration work in
+ * All Projects, where there is no picture at all. The exclusivity assertion below is therefore now absolute:
  * the small celebration renders NO confetti of any kind, not merely less of it.
  *
  * Motion is inert under jest by convention here and stands down under reduced motion, so a suite
@@ -53,8 +54,9 @@ jest.mock('../../SettingsView/Profile/Achievements/AchievementsArea', () => ({
 
 const VIEWPORT = { width: 1280, height: 800, scale: 1, fontScale: 1 }
 const PROJECT = 'project-a'
-const PROJECT_COLOR = '#2F80ED'
-const ROW_HEIGHT = 57
+const PROJECT_COLOR = PROJECT_COLOR_RED
+const PROJECT_LINE_COLOR = PROJECT_COLOR_SYSTEM[PROJECT_COLOR].PROJECT_ITEM_ACTIVE
+const ROW_HEIGHT = 96
 
 const countOf = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false }).length
 const findOne = (tree, testID) => tree.root.findAllByProps({ testID }, { deep: false })[0]
@@ -95,8 +97,8 @@ describe('the per-project celebration, measured against the all-projects one (AT
     })
 
     /**
-     * The whole per-project celebration as `ProjectHeader` assembles it: one run driving the sweep
-     * overlay INSIDE the row and the disintegration particles BESIDE it. Rendering only the overlay
+     * The whole per-project celebration as `ProjectSection` assembles it: one run driving the sweep
+     * overlay INSIDE the card and the disintegration particles BESIDE it. Rendering only the overlay
      * — which is what this suite did before AT-2495 — would have left the new spark layer outside
      * every comparative assertion here, i.e. outside the one place the ranking is actually enforced.
      */
@@ -105,12 +107,12 @@ describe('the per-project celebration, measured against the all-projects one (AT
         const { exitStyle, exitHeight, onLineLayout } = useProjectLineExit(motion)
         return (
             <>
-                <ProjectCompletedSweep motion={motion} projectId={PROJECT} />
+                <ProjectCompletedSweep motion={motion} tint={PROJECT_LINE_COLOR} />
                 {exitStyle ? (
                     <ProjectLineDisintegration
                         progress={motion.disintegrate}
                         height={exitHeight}
-                        tint={PROJECT_COLOR}
+                        tint={PROJECT_LINE_COLOR}
                     />
                 ) : null}
                 <MeasureHook onLineLayout={onLineLayout} />
@@ -251,21 +253,21 @@ describe('the per-project celebration, measured against the all-projects one (AT
          * The structural difference behind the ranking, and the reason it cannot be undone by
          * retuning a duration: the all-projects fall is `position: fixed`, so it ESCAPES whatever it
          * is rendered inside and covers the viewport — that is what makes it visible from across a
-         * room. The sweep is `position: absolute`, so it is bounded by the 56px row it belongs to and
-         * cannot spread however it is styled.
+         * room. The sweep is `position: absolute`, so it is bounded by the rounded project card it
+         * belongs to and cannot spread however it is styled.
          */
-        it('stays inside one row while the big one escapes to the viewport', async () => {
+        it('stays inside one project card while the big one escapes to the viewport', async () => {
             const sweep = await renderSweep(1)
             const overlayStyle = StyleSheet.flatten(findOne(sweep, 'project-completed-sweep').props.style)
 
             expect(overlayStyle.position).toBe('absolute')
-            // Pinned to its parent row's edges, with no viewport-derived dimension anywhere.
+            // Pinned to every edge of its parent card, with no viewport-derived dimension anywhere.
             expect(overlayStyle.left).toBe(0)
             expect(overlayStyle.right).toBe(0)
+            expect(overlayStyle.top).toBe(0)
+            expect(overlayStyle.bottom).toBe(0)
             expect(overlayStyle.height).toBeUndefined()
             expect(overlayStyle.width).toBeUndefined()
-            // Bounded vertically to the row's content band rather than filling it.
-            expect(overlayStyle.top).toBeGreaterThan(0)
 
             // The celebration that rides on the line's departure is bounded the same way: absolute,
             // and exactly as tall as the row it came off. It cannot spread however it is styled.
