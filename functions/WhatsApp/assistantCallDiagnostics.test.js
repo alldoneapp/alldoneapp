@@ -17,3 +17,16 @@ test('keeps bounded lifecycle data and strips content, credentials and network a
         sanitizeCallDiagnostics({ reason: 'Bearer secret', peerState: 'secret', events: [null, { event: 'secret' }] })
     ).toEqual({ reason: 'cleanup', events: [] })
 })
+
+test('retains bounded microphone startup timing and levels without saving device names or audio', () => {
+    const data = sanitizeCallDiagnostics({
+        inputLevelPermille: 1800,
+        inputMonitorReady: true,
+        inputSending: false,
+        microphoneLabel: 'Private headset name',
+        events: [{ event: 'microphone_first_signal', atMs: 420, inputLevelPermille: 80, audio: 'private samples' }],
+    })
+    expect(data).toMatchObject({ inputLevelPermille: 1000, inputMonitorReady: true, inputSending: false })
+    expect(data.events).toEqual([{ event: 'microphone_first_signal', atMs: 420, inputLevelPermille: 80 }])
+    expect(JSON.stringify(data)).not.toMatch(/headset|samples/)
+})

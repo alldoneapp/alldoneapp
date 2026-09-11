@@ -449,6 +449,7 @@ export function createInputLevelMonitor(stream) {
         sample,
         getPeak: () => peak,
         getLevel: () => windowPeak,
+        isRunning: () => !closed && audioContext.state === 'running',
         hasSignal: () => peak > 0,
         close: () => {
             if (closed) return

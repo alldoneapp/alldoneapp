@@ -38,7 +38,7 @@ async function main() {
         browser = await chromium.launch({
             args: ['--no-sandbox', '--disable-dev-shm-usage', '--autoplay-policy=user-gesture-required'],
         })
-        for (const scenario of ['normal', 'reverse', 'compatibility', 'playback']) {
+        for (const scenario of ['normal', 'reverse', 'compatibility', 'playback', 'warmup']) {
             const page = await browser.newPage()
             page.on('pageerror', error => console.error('Browser error:', error.message))
             await page.goto(`http://127.0.0.1:${server.address().port}/?scenario=${scenario}`)
@@ -52,6 +52,7 @@ async function main() {
                 assert.equal(result.first, scenario === 'reverse' ? 'builtin' : 'usb', JSON.stringify(result))
                 assert.equal(result.selected, scenario === 'normal' ? 'builtin' : result.first, JSON.stringify(result))
                 assert.equal(result.activeTracks, 0)
+                if (scenario === 'warmup') assert.equal(result.warmedBeforeSending, true)
             }
             console.log('PASS', scenario, JSON.stringify(result))
             await page.close()

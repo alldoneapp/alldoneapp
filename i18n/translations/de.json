@@ -2549,5 +2549,9 @@
     "Enable call audio": "Gesprächston einschalten",
     "Microphone: %{name}": "Mikrofon: %{name}",
     "Cancel assistant call": "Anruf abbrechen",
-    "Hello, how can I help?": "Hallo, wie kann ich dir helfen?"
+    "Hello, how can I help?": "Hallo, wie kann ich dir helfen?",
+    "Microphone level": "Mikrofonpegel",
+    "Microphone preview": "Lokaler Pegel · Verbindungsaufbau",
+    "Microphone paused": "Mikrofon pausiert",
+    "Microphone meter unavailable": "Mikrofonpegel nicht verfügbar"
 }
