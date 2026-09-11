@@ -10,7 +10,16 @@ jest.mock('ws', () => {
             Socket.instances.push(this)
         }
         send(value) {
-            this.sent.push(JSON.parse(value))
+            const event = JSON.parse(value)
+            this.sent.push(event)
+            if (Socket.autoAcknowledge && ['session.thinking.append', 'session.commentary.append'].includes(event.type))
+                Promise.resolve().then(() => {
+                    if (this.readyState === 1)
+                        this.emit(
+                            'message',
+                            Buffer.from(JSON.stringify({ type: `${event.type}ed`, client_event_id: event.event_id }))
+                        )
+                })
         }
         close() {
             this.readyState = 3
@@ -22,6 +31,7 @@ jest.mock('ws', () => {
     }
     Socket.OPEN = 1
     Socket.instances = []
+    Socket.autoAcknowledge = true
     return Socket
 })
 jest.mock('./whatsAppCallConfig', () => ({ getWhatsAppCallConfig: () => ({ openAiApiKey: 'key' }) }))
@@ -124,7 +134,7 @@ test('attaches to the Live session, waits for transcript context and deduplicate
     expect(runLiveAssistant).not.toHaveBeenCalled()
     await emit(state.socket, user())
     await emit(state.socket, delegation)
-    await jest.advanceTimersByTimeAsync(1200)
+    await jest.advanceTimersByTimeAsync(2100)
     expect(runLiveAssistant).toHaveBeenCalledTimes(1)
     expect(state.socket.sent).toEqual(
         expect.arrayContaining([
@@ -136,6 +146,12 @@ test('attaches to the Live session, waits for transcript context and deduplicate
         ])
     )
     await finish(state)
+    const run = [...docs.entries()].find(([path]) => path.includes('/liveDelegations/'))[1]
+    expect(run).toMatchObject({
+        deliveryStatus: 'answer_acknowledged',
+        contextAcknowledgedAt: expect.any(Number),
+        answerAcknowledgedAt: expect.any(Number),
+    })
     expect(reconcileLiveUsage).toHaveBeenLastCalledWith({ sessionId: 's', seconds: 20, final: true })
     expect(finalizeCallSession).toHaveBeenCalledWith('s', 'close_requested', 'completed')
 })
@@ -178,6 +194,26 @@ test('after losing sideband speech, reattaches only to close and settle', async 
     await jest.advanceTimersByTimeAsync(1200)
     expect(runLiveAssistant).not.toHaveBeenCalled()
     expect(reattached.sent).toContainEqual({ type: 'session.close' })
+    await finish({ running: state.running, socket: reattached })
+})
+
+test('records the sideband close code and controller trigger separately from provider completion', async () => {
+    const { updateCallSession } = require('./whatsAppCallSessions')
+    const state = await start()
+    state.socket.readyState = 3
+    state.socket.emit('close', 1006, Buffer.from('unlogged provider detail'))
+    await flush()
+    expect(updateCallSession).toHaveBeenCalledWith('s', {
+        sidebandClose: expect.objectContaining({ code: 1006, ending: false }),
+    })
+    expect(updateCallSession).toHaveBeenCalledWith(
+        's',
+        expect.objectContaining({ serverDisconnect: expect.objectContaining({ trigger: 'connection_lost' }) })
+    )
+    expect(JSON.stringify(updateCallSession.mock.calls)).not.toContain('unlogged provider detail')
+    await jest.advanceTimersByTimeAsync(1200)
+    const reattached = Socket.instances[1]
+    reattached.emit('open')
     await finish({ running: state.running, socket: reattached })
 })
 
@@ -290,6 +326,9 @@ test('observes authoritative background status after dispatch and releases the l
         watcher.next({ data: () => ({ kind: 'vm_job', userId: 'u', status, output: 'Private output' }) })
     update('running')
     await jest.advanceTimersByTimeAsync(9000)
+    // An acknowledged answer gets a chance to speak before background updates.
+    expect(progressMessages(state.socket)).toHaveLength(0)
+    await jest.advanceTimersByTimeAsync(3000)
     expect(progressMessages(state.socket)).toHaveLength(1)
     expect(progressMessages(state.socket)[0].content).toContain('still running')
     update('awaiting_user')
