@@ -3940,6 +3940,12 @@ export function mapTaskData(taskId, task) {
         // the router settles this map BEFORE moving the task — to recognise a task that has just
         // arrived in a new project.
         projectRouting: task.projectRouting ? task.projectRouting : null,
+        // AT-2533 — background project moves are completed by a worker after the picker closes.
+        // The open task DV watches the destination through mapTaskData and must see this metadata
+        // to distinguish the intermediate copy from the completed move. Keep the legacy marker too:
+        // it lets a DV discover moves initiated outside its own project picker.
+        projectMove: task.projectMove ? task.projectMove : null,
+        movingToOtherProjectId: task.movingToOtherProjectId || null,
         noteId: task.noteId ? task.noteId : null,
         containerNotesIds: task.containerNotesIds ? task.containerNotesIds : [],
         calendarData: task.calendarData ? task.calendarData : null,
