@@ -774,6 +774,7 @@ test('waits for successful remote playback before requesting Annas greeting', as
         await Promise.resolve()
     })
     expect(greetings()).toHaveLength(1)
+    expect(greetings()[0].content).toBe('Hello, how can I help?')
     await setVisibility('hidden')
     await setVisibility('visible')
     expect(greetings()).toHaveLength(1)

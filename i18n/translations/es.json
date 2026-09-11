@@ -2944,5 +2944,5 @@
     "Enable call audio": "Activar audio de la llamada",
     "Microphone: %{name}": "Micrófono: %{name}",
     "Cancel assistant call": "Cancelar llamada",
-    "Hello, I am %{name}. How can I help you?": "Hola, soy %{name}. ¿Cómo puedo ayudarte?"
+    "Hello, how can I help?": "Hola, ¿cómo puedo ayudarte?"
 }
