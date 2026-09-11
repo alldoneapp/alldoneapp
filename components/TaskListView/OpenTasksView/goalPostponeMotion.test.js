@@ -2,11 +2,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { AccessibilityInfo, View } from 'react-native'
 
-import useGoalPostponeMotion, {
-    postponeGoalWithMotion,
-    resetGoalPostponeMotionRegistry,
-    subscribeToGoalPostponeMotion,
-} from './goalPostponeMotion'
+import useGoalPostponeMotion, { postponeGoalWithMotion, resetGoalPostponeMotionRegistry } from './goalPostponeMotion'
 import {
     POSTPONE_EXIT_TOTAL_MS,
     POSTPONE_REDUCED_FADE_MS,
@@ -16,13 +12,22 @@ import {
 let motion
 const PROJECT = 'project-1'
 const GOAL = { id: 'goal-1' }
+const pageStyle = { flex: 1 }
+const headerStyle = { paddingTop: 8 }
+const siblingStyle = { marginTop: 12 }
+const entryStyle = { paddingBottom: 8 }
 
-const Harness = ({ enabled = true, sectionGap = 0 }) => {
-    motion = useGoalPostponeMotion({ enabled, projectId: PROJECT, goalId: GOAL.id, sectionGap })
-    return <View onLayout={motion.onSectionLayout} style={motion.sectionStyle} />
+const Harness = ({ enabled = true }) => {
+    motion = useGoalPostponeMotion({ enabled, projectId: PROJECT, goalId: GOAL.id })
+    return (
+        <View testID="page" style={pageStyle}>
+            <View testID="header" style={headerStyle} />
+            <View testID="goal" style={motion.sectionStyle} />
+            <View testID="sibling-goal-section" style={siblingStyle} />
+            <View testID="entry-row" style={entryStyle} />
+        </View>
+    )
 }
-
-const layout = height => ({ nativeEvent: { layout: { height } } })
 
 describe('whole goal postpone motion (AT-2541)', () => {
     const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled
@@ -46,13 +51,12 @@ describe('whole goal postpone motion (AT-2541)', () => {
         process.env.NODE_ENV = originalNodeEnv
     })
 
-    const mount = async (enabled = true, sectionGap = 0) => {
+    const mount = async (enabled = true) => {
         let tree
         await act(async () => {
-            tree = renderer.create(<Harness enabled={enabled} sectionGap={sectionGap} />)
+            tree = renderer.create(<Harness enabled={enabled} />)
             await Promise.resolve()
         })
-        act(() => motion.onSectionLayout(layout(184)))
         return tree
     }
 
@@ -67,8 +71,8 @@ describe('whole goal postpone motion (AT-2541)', () => {
         return promise
     }
 
-    it('slides the complete measured section left, fades, then collapses before writing', async () => {
-        await mount(true, 32)
+    it('animates only the complete goal section with compositor styles before writing', async () => {
+        const tree = await mount(true)
         const write = jest.fn()
         const promise = postpone(write)
 
@@ -76,14 +80,19 @@ describe('whole goal postpone motion (AT-2541)', () => {
         expect(motion.sectionStyle).toEqual(
             expect.objectContaining({
                 opacity: expect.anything(),
-                height: expect.anything(),
-                minHeight: 0,
-                overflow: 'hidden',
                 pointerEvents: 'none',
-                marginBottom: expect.anything(),
             })
         )
         expect(motion.sectionStyle.transform[0].translateX).toBeDefined()
+        expect(motion.sectionStyle.transform[1].scaleY).toBeDefined()
+        expect(motion.sectionStyle.height).toBeUndefined()
+        expect(motion.sectionStyle.minHeight).toBeUndefined()
+        expect(motion.sectionStyle.marginBottom).toBeUndefined()
+        expect(motion.sectionStyle.overflow).toBeUndefined()
+        expect(tree.root.findByProps({ testID: 'page' }).props.style).toBe(pageStyle)
+        expect(tree.root.findByProps({ testID: 'header' }).props.style).toBe(headerStyle)
+        expect(tree.root.findByProps({ testID: 'sibling-goal-section' }).props.style).toBe(siblingStyle)
+        expect(tree.root.findByProps({ testID: 'entry-row' }).props.style).toBe(entryStyle)
         expect(write).not.toHaveBeenCalled()
 
         await act(async () => {
@@ -91,28 +100,6 @@ describe('whole goal postpone motion (AT-2541)', () => {
             await promise
         })
         expect(write).toHaveBeenCalledTimes(1)
-    })
-
-    it('announces the direct run so the final goal can reveal the general task entry continuously', async () => {
-        await mount()
-        const listener = jest.fn()
-        subscribeToGoalPostponeMotion(listener)
-        const promise = postpone(jest.fn())
-
-        expect(listener).toHaveBeenCalledWith({
-            projectId: PROJECT,
-            goalId: GOAL.id,
-            runId: expect.any(Number),
-            active: true,
-        })
-
-        await act(async () => {
-            jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
-            await promise
-        })
-        expect(listener).toHaveBeenLastCalledWith(
-            expect.objectContaining({ projectId: PROJECT, goalId: GOAL.id, active: false })
-        )
     })
 
     it('does not animate a goal date change that stays in Today', async () => {
@@ -129,16 +116,18 @@ describe('whole goal postpone motion (AT-2541)', () => {
 
     it('uses only a brief fade under reduced motion', async () => {
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
-        await mount()
+        const tree = await mount()
         const write = jest.fn()
-        const listener = jest.fn()
-        subscribeToGoalPostponeMotion(listener)
         const promise = postpone(write)
 
         expect(motion.sectionStyle.opacity).toBeDefined()
         expect(motion.sectionStyle.transform).toBeUndefined()
         expect(motion.sectionStyle.height).toBeUndefined()
-        expect(listener).not.toHaveBeenCalled()
+        expect(motion.sectionStyle.marginBottom).toBeUndefined()
+        expect(tree.root.findByProps({ testID: 'page' }).props.style).toBe(pageStyle)
+        expect(tree.root.findByProps({ testID: 'header' }).props.style).toBe(headerStyle)
+        expect(tree.root.findByProps({ testID: 'sibling-goal-section' }).props.style).toBe(siblingStyle)
+        expect(tree.root.findByProps({ testID: 'entry-row' }).props.style).toBe(entryStyle)
 
         await act(async () => {
             jest.advanceTimersByTime(POSTPONE_REDUCED_FADE_MS)

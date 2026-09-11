@@ -38,11 +38,10 @@ export default function TaskItem({
     )
     const showSwipeDueDatePopup = useSelector(state => state.showSwipeDueDatePopup)
     const postponeMotionEnabled = inTodayOpenList && !task.isSubtask && !task.parentId && !isActiveOrganizeMode
-    const { onRowLayout, rowStyle } = useTaskPostponeMotion({
+    const { rowStyle } = useTaskPostponeMotion({
         enabled: postponeMotionEnabled,
         projectId,
         taskId: task.id,
-        goalId: task.parentGoalId,
         isObservedTask,
         isToReviewTask,
     })
@@ -134,7 +133,7 @@ export default function TaskItem({
     )
 
     return postponeMotionEnabled ? (
-        <Animated.View onLayout={onRowLayout} style={rowStyle} testID="task-postpone-row">
+        <Animated.View style={rowStyle} testID="task-postpone-row">
             {item}
         </Animated.View>
     ) : (

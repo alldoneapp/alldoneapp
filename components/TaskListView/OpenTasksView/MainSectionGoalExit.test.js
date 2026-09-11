@@ -36,15 +36,6 @@ jest.mock('./EmptyGoal', () => 'EmptyGoal')
 jest.mock('./TasksList', () => 'TasksList')
 jest.mock('./NewTaskSection', () => 'NewTaskSection')
 jest.mock('./GeneralTaskSectionEntry', () => 'GeneralTaskSectionEntry')
-let mockGoalPostponeMotionListener
-jest.mock('./goalPostponeMotion', () => ({
-    subscribeToGoalPostponeMotion: listener => {
-        mockGoalPostponeMotionListener = listener
-        return () => {
-            if (mockGoalPostponeMotionListener === listener) mockGoalPostponeMotionListener = null
-        }
-    },
-}))
 jest.mock('./GeneralTasksHeader', () => 'GeneralTasksHeader')
 jest.mock('./SwipeableGeneralTasksHeader', () => 'SwipeableGeneralTasksHeader')
 jest.mock('../../GoalsView/SortModeActiveInfo', () => 'SortModeActiveInfo')
@@ -101,7 +92,6 @@ jest.mock('react-redux', () => ({
 
 import MainSection from './MainSection'
 import { publishGoalTaskCompletion, resetGoalTaskCompletionListeners } from './goalCompletionSignal'
-import { publishGoalTaskPostpone, resetGoalTaskPostponeListeners } from './goalPostponeSignal'
 import { TODAY_DATE } from '../../../utils/backends/openTasks'
 
 const PROJECT = 'project-1'
@@ -196,9 +186,7 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
 
     beforeEach(() => {
         jest.useFakeTimers()
-        mockGoalPostponeMotionListener = null
         resetGoalTaskCompletionListeners()
-        resetGoalTaskPostponeListeners()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         // The exit stands down under jest's inert-animation convention and under reduced motion, so
@@ -238,12 +226,6 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
         })
     }
 
-    const postpone = async (taskId, goalId) => {
-        await act(async () => {
-            publishGoalTaskPostpone({ projectId: PROJECT, goalId, taskId })
-        })
-    }
-
     const sectionsOf = tree => tree.root.findAllByType('ParentGoalSection').map(node => node.props)
     const emptyGoalsOf = tree => tree.root.findAllByType('EmptyGoal').map(node => node.props)
     const generalEntriesOf = tree => tree.root.findAllByType('GeneralTaskSectionEntry').map(node => node.props)
@@ -256,24 +238,6 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
 
             expect(sectionsOf(tree).map(props => props.goalId)).toEqual([TASK_ONLY_GOAL])
             expect(sectionsOf(tree)[0].postponeMotionEnabled).toBe(true)
-        })
-
-        it('reveals the general task entry while the final whole-goal swipe is collapsing', async () => {
-            const tree = await mount(withTask)
-
-            await act(async () => {
-                mockGoalPostponeMotionListener({
-                    projectId: PROJECT,
-                    goalId: TASK_ONLY_GOAL,
-                    runId: 1000001,
-                    active: true,
-                })
-            })
-
-            const entries = generalEntriesOf(tree)
-            expect(entries).toHaveLength(1)
-            expect(entries[0].entryRunId).toBe(1000001)
-            expect(entries[0].exitKind).toBe('goalPostpone')
         })
 
         /**
@@ -309,17 +273,14 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
             expect(creators[0].props.suspendShortcut).toBe(true)
         })
 
-        it('uses the short group collapse after its final task is postponed', async () => {
+        it('does not animate the parent section or entry row after its final task is postponed', async () => {
             const tree = await mount(withTask)
 
-            await postpone('t1', TASK_ONLY_GOAL)
             await update(tree, { mainTasks: [], emptyGoals: [] })
 
-            const held = sectionsOf(tree)
-            expect(held).toHaveLength(1)
-            expect(held[0].taskList).toEqual([])
-            expect(held[0].exitKind).toBe('postpone')
-            expect(generalEntriesOf(tree)[0].exitKind).toBe('postpone')
+            expect(sectionsOf(tree)).toHaveLength(0)
+            expect(generalEntriesOf(tree)).toHaveLength(1)
+            expect(generalEntriesOf(tree)[0].entryRunId).toBe(0)
         })
 
         it('does not reveal a general creator while another goal section remains', async () => {
