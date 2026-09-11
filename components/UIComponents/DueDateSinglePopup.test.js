@@ -42,6 +42,9 @@ const mockPostponeTaskWithMotion = jest.fn((context, write) => write())
 jest.mock('../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion', () => ({
     postponeTaskWithMotion: (...args) => mockPostponeTaskWithMotion(...args),
 }))
+jest.mock('../TaskListView/OpenTasksView/goalPostponeMotion', () => ({
+    postponeGoalWithMotion: (context, write) => write(),
+}))
 jest.mock('../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper', () => ({
     checkIfInMyDayOpenTab: jest.fn(() => false),
 }))
@@ -132,6 +135,22 @@ describe('DueDateSinglePopup task postpone handoff (AT-2541)', () => {
 
         expect(mockPostponeTaskWithMotion).not.toHaveBeenCalled()
         expect(setTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', 4242, task, false, null)
+        tree.unmount()
+    })
+
+    it('marks a goal swipe popup as the source of a whole-section postpone', () => {
+        const goal = { id: 'goal-1', assigneesReminderDate: { 'user-1': 1 } }
+        mockState.showSwipeDueDatePopup.data = {
+            projectId: 'project-1',
+            task: { id: 'task-1' },
+            goal,
+            multipleTasks: true,
+            parentGoaltasks: [{ id: 'task-1' }],
+        }
+
+        const tree = renderer.create(<DueDateSinglePopup />)
+
+        expect(dueDateModal(tree).props.animateGoalPostpone).toBe(true)
         tree.unmount()
     })
 })

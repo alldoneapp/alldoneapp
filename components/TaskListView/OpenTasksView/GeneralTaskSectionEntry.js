@@ -4,6 +4,7 @@ import { Animated, Easing } from 'react-native'
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
 import { GOAL_EXIT_COLLAPSE_DELAY_MS, GOAL_EXIT_FADE_MS } from './goalSectionExitMotion'
 import { POSTPONE_GOAL_EXIT_COLLAPSE_MS } from './goalSectionExitMotion'
+import { POSTPONE_COLLAPSE_MS, POSTPONE_SLIDE_FADE_MS } from '../TaskItem/TaskPresentation/taskPostponeMotion'
 
 /**
  * AT-2534 — how the general "add task" row replaces the final goal section.
@@ -32,6 +33,10 @@ export const GENERAL_TASK_ENTRY_TOTAL_MS = Math.max(
 )
 export const POSTPONE_GENERAL_TASK_ENTRY_FADE_DELAY_MS = 40
 export const POSTPONE_GENERAL_TASK_ENTRY_FADE_MS = 140
+export const GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS = POSTPONE_SLIDE_FADE_MS
+export const GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS = POSTPONE_COLLAPSE_MS
+export const GOAL_POSTPONE_GENERAL_TASK_ENTRY_TOTAL_MS =
+    GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS + GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS
 
 const SETTLE_PX = 6
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
@@ -88,13 +93,31 @@ export const useGeneralTaskSectionEntry = (entryRunId, exitKind = 'completion') 
         opacity.setValue(0)
 
         const isPostpone = exitKind === 'postpone'
-        const expandDelay = isPostpone ? 0 : GENERAL_TASK_ENTRY_EXPAND_DELAY_MS
-        const expandDuration = isPostpone ? POSTPONE_GOAL_EXIT_COLLAPSE_MS : GENERAL_TASK_ENTRY_EXPAND_MS
-        const fadeDelay = isPostpone ? POSTPONE_GENERAL_TASK_ENTRY_FADE_DELAY_MS : GENERAL_TASK_ENTRY_FADE_DELAY_MS
-        const fadeDuration = isPostpone ? POSTPONE_GENERAL_TASK_ENTRY_FADE_MS : GENERAL_TASK_ENTRY_FADE_MS
-        const totalDuration = isPostpone
-            ? Math.max(expandDelay + expandDuration, fadeDelay + fadeDuration)
-            : GENERAL_TASK_ENTRY_TOTAL_MS
+        const isWholeGoalPostpone = exitKind === 'goalPostpone'
+        const expandDelay = isWholeGoalPostpone
+            ? GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS
+            : isPostpone
+              ? 0
+              : GENERAL_TASK_ENTRY_EXPAND_DELAY_MS
+        const expandDuration = isWholeGoalPostpone
+            ? GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS
+            : isPostpone
+              ? POSTPONE_GOAL_EXIT_COLLAPSE_MS
+              : GENERAL_TASK_ENTRY_EXPAND_MS
+        const fadeDelay = isWholeGoalPostpone
+            ? GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS
+            : isPostpone
+              ? POSTPONE_GENERAL_TASK_ENTRY_FADE_DELAY_MS
+              : GENERAL_TASK_ENTRY_FADE_DELAY_MS
+        const fadeDuration = isWholeGoalPostpone
+            ? GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS
+            : isPostpone
+              ? POSTPONE_GENERAL_TASK_ENTRY_FADE_MS
+              : GENERAL_TASK_ENTRY_FADE_MS
+        const totalDuration =
+            isPostpone || isWholeGoalPostpone
+                ? Math.max(expandDelay + expandDuration, fadeDelay + fadeDuration)
+                : GENERAL_TASK_ENTRY_TOTAL_MS
 
         const animation = Animated.parallel([
             Animated.sequence([
