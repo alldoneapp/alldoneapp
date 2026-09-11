@@ -8,12 +8,6 @@ import Button from '../UIControls/Button'
 import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import Spinner from './Spinner'
-import { createLiveCallConnection } from './assistantLiveConnection'
-import {
-    LIVE_GOLD_PER_MINUTE,
-    LIVE_INITIALIZATION_SECONDS,
-    calculateLiveVoiceGold,
-} from '../../functions/WhatsApp/assistantLivePricing'
 import {
     BACKGROUND_SUPPORT_FOREGROUND_ONLY,
     RETURN_MIC_SETTLE_MS,
@@ -32,7 +26,6 @@ import {
 const STATUS_IDLE = 'idle'
 const STATUS_CONNECTING = 'connecting'
 const STATUS_CONNECTED = 'connected'
-const STATUS_ENDING = 'ending'
 const ICE_GATHERING_TIMEOUT_MS = 5000
 
 // How often (ms) to poll RTCPeerConnection.getStats() looking for a stalled
@@ -80,21 +73,12 @@ export default function AssistantVoiceCallButton({
     iconStyle,
     assistant = null,
     projectId = null,
-    chatId = null,
     variant = 'button',
     title = null,
     skipNavigationOnThreadCreate = true,
 }) {
     const [status, setStatus] = useState(STATUS_IDLE)
     const [error, setError] = useState('')
-    const [voiceSeconds, setVoiceSeconds] = useState(0)
-    const [callSummary, setCallSummary] = useState(null)
-    const callSessionIdRef = useRef(null)
-    const summaryTimerRef = useRef(null)
-    const liveConnectionRef = useRef(null)
-    const endingRef = useRef(false)
-    const callReadyRef = useRef(false)
-    const callGenerationRef = useRef(0)
     const peerConnectionRef = useRef(null)
     const localStreamRef = useRef(null)
     const audioElementRef = useRef(null)
@@ -200,7 +184,7 @@ export default function AssistantVoiceCallButton({
     // ------------------------------------------------------------------
     const attemptMicRecovery = useCallback(async () => {
         const pc = peerConnectionRef.current
-        if (!pc || micRecoveringRef.current || endingRef.current || !callReadyRef.current) return
+        if (!pc || micRecoveringRef.current) return
         if (isDocumentHidden()) {
             micCheckPendingRef.current = true
             return
@@ -211,10 +195,6 @@ export default function AssistantVoiceCallButton({
             const newStream = await navigator.mediaDevices.getUserMedia({ audio: true })
             const newTrack = newStream.getAudioTracks()[0]
             if (!newTrack) return
-            if (peerConnectionRef.current !== pc || endingRef.current || !callReadyRef.current) {
-                newStream.getTracks().forEach(track => track.stop())
-                return
-            }
 
             // Replace the dead track on the RTCPeerConnection sender — no
             // renegotiation needed.
@@ -296,27 +276,6 @@ export default function AssistantVoiceCallButton({
 
     const cleanup = useCallback(
         (resetState = true) => {
-            callReadyRef.current = false
-            const generation = callGenerationRef.current
-            const sessionId = callSessionIdRef.current
-            callSessionIdRef.current = null
-            if (sessionId && mountedRef.current) {
-                const readSummary = async attempt => {
-                    try {
-                        const summary = await runHttpsCallableFunction('getAssistantBrowserCallSummarySecondGen', {
-                            sessionId,
-                        })
-                        if (!mountedRef.current || callSessionIdRef.current || callGenerationRef.current !== generation)
-                            return
-                        setCallSummary(summary)
-                        if (!summary.settled && attempt < 10)
-                            summaryTimerRef.current = setTimeout(() => readSummary(attempt + 1), 2000)
-                    } catch (_) {
-                        /* Gold history remains available if the summary cannot load. */
-                    }
-                }
-                readSummary(0)
-            }
             clearDisconnectTimer()
             if (returnMicCheckTimerRef.current) {
                 clearTimeout(returnMicCheckTimerRef.current)
@@ -334,9 +293,6 @@ export default function AssistantVoiceCallButton({
             localStreamRef.current = null
 
             const pc = peerConnectionRef.current
-            liveConnectionRef.current?.dispose()
-            liveConnectionRef.current = null
-            endingRef.current = false
             if (pc) pc.close()
             peerConnectionRef.current = null
 
@@ -361,17 +317,6 @@ export default function AssistantVoiceCallButton({
         [clearDisconnectTimer, releaseWakeLock, stopMicHealthMonitor]
     )
     cleanupRef.current = cleanup
-    const endCall = useCallback(async () => {
-        if (endingRef.current) return
-        endingRef.current = true
-        setStatus(STATUS_ENDING)
-        // Stop sending speech immediately, but retain transport until final usage.
-        localStreamRef.current?.getAudioTracks().forEach(track => {
-            track.enabled = false
-        })
-        await liveConnectionRef.current?.close()
-        cleanup()
-    }, [cleanup])
 
     // Visibility transitions. Hidden: nothing is torn down — the peer connection,
     // the capture and the keepalive all stay up, and a pending disconnect grace
@@ -432,7 +377,6 @@ export default function AssistantVoiceCallButton({
 
     useEffect(
         () => () => {
-            clearTimeout(summaryTimerRef.current)
             mountedRef.current = false
             cleanup(false)
         },
@@ -448,12 +392,7 @@ export default function AssistantVoiceCallButton({
             return
         }
 
-        callGenerationRef.current++
-        callReadyRef.current = false
         setError('')
-        setVoiceSeconds(0)
-        setCallSummary(null)
-        clearTimeout(summaryTimerRef.current)
         setStatus(STATUS_CONNECTING)
         try {
             const pc = new window.RTCPeerConnection()
@@ -495,32 +434,18 @@ export default function AssistantVoiceCallButton({
             const localStream = await navigator.mediaDevices.getUserMedia({ audio: true })
             localStreamRef.current = localStream
             localStream.getTracks().forEach(track => {
-                track.enabled = false
                 pc.addTrack(track, localStream)
                 attachTrackListeners(track)
             })
-            const channel = pc.createDataChannel('oai-events')
-            const connection = createLiveCallConnection(channel, {
-                onClosed: () => cleanupRef.current?.(),
-                onError: () => {
-                    setError(translate('Could not start assistant call'))
-                    cleanupRef.current?.()
-                },
-                onUsage: usage => {
-                    if (mountedRef.current && Number.isFinite(usage?.seconds)) setVoiceSeconds(usage.seconds)
-                },
-            })
-            liveConnectionRef.current = connection
+            pc.createDataChannel('oai-events')
 
             const topicData =
                 assistant?.uid &&
-                (chatId
-                    ? { chatId, projectId, assistantId: assistant.uid }
-                    : await createBotQuickTopic(assistant, '', {
-                          skipNavigation: skipNavigationOnThreadCreate,
-                          enableAssistant: true,
-                          projectId,
-                      }))
+                (await createBotQuickTopic(assistant, '', {
+                    skipNavigation: skipNavigationOnThreadCreate,
+                    enableAssistant: true,
+                    projectId,
+                }))
             if (!topicData?.chatId || !topicData?.projectId || !topicData?.assistantId) {
                 throw new Error(
                     translate('Could not create assistant call topic') || 'Could not create assistant call topic'
@@ -535,7 +460,6 @@ export default function AssistantVoiceCallButton({
             const result = await runHttpsCallableFunction(
                 'startAssistantBrowserCallSecondGen',
                 {
-                    voiceProtocol: 'gpt-live-v1',
                     offerSdp,
                     projectId: topicData.projectId,
                     chatId: topicData.chatId,
@@ -544,19 +468,8 @@ export default function AssistantVoiceCallButton({
                 { timeout: 60000 }
             )
             if (!result?.answerSdp) throw new Error('Missing WebRTC answer')
-            callSessionIdRef.current = result.sessionId || null
 
             await pc.setRemoteDescription({ type: 'answer', sdp: result.answerSdp })
-            if (result.voiceProvider === 'gpt-live') await connection.waitUntilReady()
-            else {
-                connection.dispose()
-                liveConnectionRef.current = null
-            }
-            if (!mountedRef.current || peerConnectionRef.current !== pc) return
-            callReadyRef.current = true
-            localStreamRef.current?.getAudioTracks().forEach(track => {
-                track.enabled = true
-            })
 
             // Activate background-keepalive mechanisms.
             acquireWakeLock()
@@ -565,7 +478,7 @@ export default function AssistantVoiceCallButton({
                 title: assistantName
                     ? translate('Call with Assistant', { name: assistantName }) || `Call with ${assistantName}`
                     : translate('Voice call') || 'Voice call',
-                onHangup: endCall,
+                onHangup: () => cleanupRef.current?.(),
             })
             silentKeepaliveRef.current = createSilentAudioKeepalive()
             startMicHealthMonitor()
@@ -585,8 +498,6 @@ export default function AssistantVoiceCallButton({
         attachTrackListeners,
         startMicHealthMonitor,
         projectId,
-        chatId,
-        endCall,
         skipNavigationOnThreadCreate,
     ])
 
@@ -595,18 +506,7 @@ export default function AssistantVoiceCallButton({
     const idleTitle = title || translate('Start voice call') || translate('Call Anna')
     const isConnecting = status === STATUS_CONNECTING
 
-    const priceText = translate('Voice costs %{gold} Gold/min plus normal assistant usage', {
-        gold: LIVE_GOLD_PER_MINUTE,
-    })
-    const summaryText =
-        callSummary &&
-        translate(
-            callSummary.settled && callSummary.finalVoiceUsage
-                ? 'Call cost: %{voice} Gold voice + %{assistant} Gold assistant'
-                : 'Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant',
-            { voice: callSummary.voiceGold, assistant: callSummary.assistantGold }
-        )
-    if (status === STATUS_CONNECTED || status === STATUS_ENDING) {
+    if (status === STATUS_CONNECTED) {
         const backgroundSupport = describeBackgroundCallSupport()
         const showForegroundHint = !compact && backgroundSupport.level === BACKGROUND_SUPPORT_FOREGROUND_ONLY
         return (
@@ -614,17 +514,11 @@ export default function AssistantVoiceCallButton({
                 <Button
                     type="danger"
                     icon="phone-call"
-                    onPress={endCall}
-                    disabled={status === STATUS_ENDING}
+                    onPress={cleanup}
                     buttonStyle={[localStyles.iconButton, buttonStyle]}
                     accessibilityLabel={translate('End assistant call')}
                     accessible
                 />
-                {!compact && (
-                    <Text style={localStyles.foregroundHint}>
-                        {translate('Voice usage: %{gold} Gold', { gold: calculateLiveVoiceGold(voiceSeconds) })}
-                    </Text>
-                )}
                 {showForegroundHint && (
                     <Text style={localStyles.foregroundHint} numberOfLines={2}>
                         {translate(
@@ -644,7 +538,7 @@ export default function AssistantVoiceCallButton({
                     disabled={isConnecting}
                     onPress={startCall}
                     accessible
-                    accessibilityLabel={`${idleTitle}. ${priceText}`}
+                    accessibilityLabel={idleTitle}
                 >
                     {isConnecting ? (
                         <Spinner containerSize={24} spinnerSize={18} />
@@ -655,15 +549,6 @@ export default function AssistantVoiceCallButton({
                         {isConnecting ? translate('Calling') : idleTitle}
                     </Text>
                 </TouchableOpacity>
-                {!compact && <Text style={localStyles.foregroundHint}>{priceText}</Text>}
-                {!compact && summaryText && <Text style={localStyles.foregroundHint}>{summaryText}</Text>}
-                {!compact && (
-                    <Text style={localStyles.foregroundHint}>
-                        {translate('Voice has a %{seconds}-second minimum; connected time includes silence', {
-                            seconds: LIVE_INITIALIZATION_SECONDS,
-                        })}
-                    </Text>
-                )}
                 {!!error && <Text style={localStyles.error}>{error}</Text>}
             </View>
         )
@@ -681,18 +566,9 @@ export default function AssistantVoiceCallButton({
                 onPress={startCall}
                 buttonStyle={[compact ? localStyles.iconButton : localStyles.callButton, buttonStyle]}
                 titleStyle={[localStyles.callTitle, titleStyle]}
-                accessibilityLabel={`${idleTitle}. ${priceText}`}
+                accessibilityLabel={idleTitle}
                 accessible
             />
-            {!compact && <Text style={localStyles.foregroundHint}>{priceText}</Text>}
-            {!compact && summaryText && <Text style={localStyles.foregroundHint}>{summaryText}</Text>}
-            {!compact && (
-                <Text style={localStyles.foregroundHint}>
-                    {translate('Voice has a %{seconds}-second minimum; connected time includes silence', {
-                        seconds: LIVE_INITIALIZATION_SECONDS,
-                    })}
-                </Text>
-            )}
             {!!error && !compact && <Text style={localStyles.error}>{error}</Text>}
         </View>
     )

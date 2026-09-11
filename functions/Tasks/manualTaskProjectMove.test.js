@@ -37,6 +37,8 @@ const admin = require('firebase-admin')
 const {
     enqueueManualTaskProjectMove,
     getManualTaskMoveQueueResource,
+    handleManualTaskProjectMoveDispatch,
+    recordManualTaskMoveFailure,
     runManualTaskProjectMove,
 } = require('./manualTaskProjectMove')
 
@@ -167,4 +169,80 @@ it('declares the callable runtime identity as the task worker invoker', () => {
 
     expect(workerExport).toBeTruthy()
     expect(workerExport).toMatch(/invoker: adminSdkRuntimeServiceAccount/)
+})
+
+it('publishes a terminal background failure to both task locations', async () => {
+    const sourceRef = { get: jest.fn(async () => snapshot({ id: 'task-1' })), update: jest.fn(async () => {}) }
+    const targetRef = {
+        get: jest.fn(async () => snapshot({ id: 'task-1', projectMove: { status: 'moving' } })),
+        update: jest.fn(async () => {}),
+    }
+    const database = { doc: jest.fn(path => (path.includes('project-a') ? sourceRef : targetRef)) }
+    admin.firestore.mockReturnValue(database)
+
+    await recordManualTaskMoveFailure(
+        {
+            requestId: 'request-1',
+            sourceProjectId: 'project-a',
+            targetProjectId: 'project-b',
+            taskId: 'task-1',
+            actorId: 'user-1',
+        },
+        Object.assign(new Error('boom'), { code: 'internal' })
+    )
+
+    expect(sourceRef.update).toHaveBeenCalledWith({
+        projectMove: expect.objectContaining({ requestId: 'request-1', status: 'failed', failureCode: 'internal' }),
+    })
+    expect(targetRef.update).toHaveBeenCalledWith({
+        projectMove: expect.objectContaining({ requestId: 'request-1', status: 'failed' }),
+    })
+})
+
+it('records a failure only after the final configured worker attempt', async () => {
+    const sourceRef = { get: jest.fn(async () => snapshot({ id: 'task-1' })), update: jest.fn(async () => {}) }
+    const targetRef = { get: jest.fn(async () => snapshot(undefined)), update: jest.fn(async () => {}) }
+    const database = { doc: jest.fn(path => (path.includes('project-a') ? sourceRef : targetRef)) }
+    admin.firestore.mockReturnValue(database)
+    mockAssertProjectAccess.mockRejectedValue(new Error('worker failed'))
+    const data = {
+        requestId: 'request-1',
+        sourceProjectId: 'project-a',
+        targetProjectId: 'project-b',
+        taskId: 'task-1',
+        actorId: 'user-1',
+    }
+
+    await expect(handleManualTaskProjectMoveDispatch({ data, retryCount: 1 })).rejects.toThrow('worker failed')
+    expect(sourceRef.update).not.toHaveBeenCalled()
+
+    await expect(handleManualTaskProjectMoveDispatch({ data, retryCount: 2 })).rejects.toThrow('worker failed')
+    expect(sourceRef.update).toHaveBeenCalledWith({ projectMove: expect.objectContaining({ status: 'failed' }) })
+})
+
+it('finishes the target handoff when the source disappeared before a terminal error', async () => {
+    const sourceRef = { get: jest.fn(async () => snapshot(undefined)), update: jest.fn(async () => {}) }
+    const targetRef = {
+        get: jest.fn(async () => snapshot({ id: 'task-1', projectMove: { status: 'moving' } })),
+        update: jest.fn(async () => {}),
+    }
+    const database = { doc: jest.fn(path => (path.includes('project-a') ? sourceRef : targetRef)) }
+    admin.firestore.mockReturnValue(database)
+    mockAssertProjectAccess.mockRejectedValue(new Error('completion write failed'))
+
+    await expect(
+        handleManualTaskProjectMoveDispatch({
+            retryCount: 2,
+            data: {
+                requestId: 'request-1',
+                sourceProjectId: 'project-a',
+                targetProjectId: 'project-b',
+                taskId: 'task-1',
+                actorId: 'user-1',
+            },
+        })
+    ).resolves.toMatchObject({ moved: true, reason: 'destination_recovered_after_terminal_error' })
+    expect(targetRef.update).toHaveBeenCalledWith({
+        projectMove: expect.objectContaining({ status: 'completed' }),
+    })
 })

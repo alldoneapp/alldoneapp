@@ -5703,8 +5703,8 @@ exports.runManualTaskProjectMove = onTaskDispatched(
         rateLimits: { maxConcurrentDispatches: 20, maxDispatchesPerSecond: 20 },
     },
     async req => {
-        const { runManualTaskProjectMove } = require('./Tasks/manualTaskProjectMove')
-        await runManualTaskProjectMove(req.data || {})
+        const { handleManualTaskProjectMoveDispatch } = require('./Tasks/manualTaskProjectMove')
+        await handleManualTaskProjectMoveDispatch(req)
     }
 )
 
@@ -6664,12 +6664,6 @@ exports.phoneCallStatusCallback = onRequest(
         const { handlePhoneCallStatus } = require('./WhatsApp/whatsAppCallTwilioWebhook')
         await handlePhoneCallStatus(req, res)
     }
-)
-
-exports.getAssistantBrowserCallSummarySecondGen = onCall(
-    { region: 'europe-west1', timeoutSeconds: 30, memory: '256MiB' },
-    async request =>
-        require('./WhatsApp/assistantBrowserCall').getAssistantBrowserCallSummary(request.data, request.auth)
 )
 
 exports.startAssistantBrowserCallSecondGen = onCall(
