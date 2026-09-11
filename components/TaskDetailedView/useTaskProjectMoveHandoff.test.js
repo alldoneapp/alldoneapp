@@ -47,6 +47,22 @@ jest.mock('../UIComponents/ConfirmPopup', () => ({
 import useTaskProjectMoveHandoff, { TASK_PROJECT_MOVE_HANDOFF_TIMEOUT_MS } from './useTaskProjectMoveHandoff'
 import { DV_TAB_TASK_CHAT, DV_TAB_TASK_PROPERTIES } from '../../utils/TabNavigationConstants'
 
+describe('task project move mapping contract', () => {
+    it('keeps worker completion metadata on the task shape observed by the handoff', () => {
+        // watchTask and getTaskData both pass Firestore documents through mapTaskData. The hook
+        // fixtures below contain projectMove directly, so without this contract they can pass even
+        // though production silently drops the marker and waits until the 90-second timeout.
+        const source = require('fs').readFileSync(
+            require('path').join(__dirname, '../../utils/backends/firestore.js'),
+            'utf8'
+        )
+        const mapTaskDataBody = source.slice(source.indexOf('export function mapTaskData'))
+
+        expect(mapTaskDataBody).toMatch(/projectMove: task\.projectMove/)
+        expect(mapTaskDataBody).toMatch(/movingToOtherProjectId: task\.movingToOtherProjectId/)
+    })
+})
+
 describe('useTaskProjectMoveHandoff', () => {
     let latest
     let targetListener
