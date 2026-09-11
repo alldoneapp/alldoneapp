@@ -7,7 +7,6 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
-    showConfirmPopup,
     startLoadingData,
     stopLoadingData,
     switchProject,
@@ -29,7 +28,6 @@ import { updateGoalProject } from '../../../../utils/backends/Goals/goalsFiresto
 import { setContactProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import store from '../../../../redux/store'
 import { startPerformanceTrace } from '../../../../utils/performance/performanceLogger'
-import { CONFIRM_POPUP_TRIGGER_INFO } from '../../ConfirmPopup'
 
 /**
  * The cross-entity "move this object to another project" engine, extracted
@@ -108,21 +106,8 @@ export default function useMoveObjectToProject() {
         if (type === 'task') {
             // The callable only enqueues the durable Cloud Tasks worker. Do not
             // await even that short round trip: selection should close the
-            // picker immediately, while the server owns the complete move. A
-            // rejected enqueue still needs to reach the user: at that point no
-            // task write has happened and silently swallowing the rejection
-            // makes a broken worker look like a successful background action.
-            completeMove(queueTaskProjectMove(project.id, newProject.id, data.id)).catch(() => {
-                dispatch(
-                    showConfirmPopup({
-                        trigger: CONFIRM_POPUP_TRIGGER_INFO,
-                        object: {
-                            headerText: 'Task could not be moved',
-                            headerQuestion: 'No changes were made. Please try again.',
-                        },
-                    })
-                )
-            })
+            // picker immediately, while the server owns the complete move.
+            completeMove(queueTaskProjectMove(project.id, newProject.id, data.id)).catch(() => {})
             dispatch(hideProjectPicker())
             return
         }

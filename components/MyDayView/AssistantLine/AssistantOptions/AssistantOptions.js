@@ -8,8 +8,9 @@ import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assis
 import { unwatch } from '../../../../utils/backends/firestore'
 import { stopLoadingData } from '../../../../redux/actions'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
-import { getAssistantLineData, getOptionsPresentationData } from './helper'
+import { getAssistantLineData, getCollapsedQuickActionCount, getOptionsPresentationData } from './helper'
 import OptionButtons from './OptionButtons/OptionButtons'
+import OptionButton from './OptionButtons/OptionButton'
 import QuickActionsToggle from './QuickActionsToggle'
 import AssistantAvatarButton from './AssistantAvatarButton'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
@@ -40,11 +41,7 @@ import {
     INITIAL_ASSISTANT_INPUT_LAYOUT,
 } from '../assistantInputLayout'
 import { assistantComposerHasMedia, getAssistantComposerMaxHeight } from '../assistantComposerMedia'
-import {
-    ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
-    ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT,
-    AssistantOptionButtonsSkeleton,
-} from '../AssistantLineSkeleton'
+import { ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT, AssistantOptionButtonsSkeleton } from '../AssistantLineSkeleton'
 import { readAssistantTasksCache, writeAssistantTasksCache } from '../assistantLineCache'
 
 // The formats an attachment-capable input must declare. `CustomTextInput3.supportsAttachments`
@@ -53,9 +50,9 @@ import { readAssistantTasksCache, writeAssistantTasksCache } from '../assistantL
 // as an unserializable base64 embed that vanishes on submit (AT-2441), and a paste does the same.
 const ASSISTANT_INPUT_ATTACHMENT_FORMATS = ['image', 'attachment', 'customImageFormat', 'videoFormat']
 export const DEFERRED_QUICK_ACTION_REFRESH_MS = 1000
+const QUICK_ACTION_HORIZONTAL_MARGIN = 16
 
 export default function AssistantOptions({
-    amountOfButtonOptions,
     onCollapse,
     projectOverride = null,
     assistantIdOverride = null,
@@ -78,6 +75,10 @@ export default function AssistantOptions({
     const [controlsStacked, setControlsStacked] = useState(false)
     const [mentionsModalActive, setMentionsModalActive] = useState(false)
     const [quickActionsExpanded, setQuickActionsExpanded] = useState(showAllQuickActions)
+    const [quickActionsWidth, setQuickActionsWidth] = useState(0)
+    const [searchButtonWidth, setSearchButtonWidth] = useState(0)
+    const [moreButtonWidth, setMoreButtonWidth] = useState(0)
+    const [quickActionWidths, setQuickActionWidths] = useState({})
     // AT-2444: the live Quill instance and caret the drop zone inserts at. The zone stays disabled
     // until `setEditor` has handed the editor over, so an early drop can never be half-applied.
     const [editor, setEditor] = useState(null)
@@ -85,6 +86,18 @@ export default function AssistantOptions({
     const isSendingRef = useRef(false)
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
+
+    const storeMeasuredWidth = useCallback((setter, width) => {
+        const outerWidth = width + QUICK_ACTION_HORIZONTAL_MARGIN
+        setter(currentWidth => (currentWidth === outerWidth ? currentWidth : outerWidth))
+    }, [])
+
+    const storeOptionWidth = useCallback((optionId, width) => {
+        const outerWidth = width + QUICK_ACTION_HORIZONTAL_MARGIN
+        setQuickActionWidths(currentWidths =>
+            currentWidths[optionId] === outerWidth ? currentWidths : { ...currentWidths, [optionId]: outerWidth }
+        )
+    }, [])
 
     const assistantId = assistantIdOverride || defaultAssistantId
 
@@ -329,15 +342,25 @@ export default function AssistantOptions({
     }
 
     const tasksLoaded = Array.isArray(tasks)
-    const { optionsLikeButtons, hasAdditionalOptions } = tasksLoaded
-        ? getOptionsPresentationData(
-              conversationProject,
-              assistant.uid,
-              tasks,
-              amountOfButtonOptions,
-              quickActionsExpanded
-          )
-        : { optionsLikeButtons: [], hasAdditionalOptions: false }
+    // AT-2538: measure the real rendered labels instead of guessing an average button width.
+    // The hidden measuring copies use the exact same button component and margins as the visible
+    // row, so font, translation, and viewport changes all feed into the collapsed count.
+    const collapsedOptions = tasksLoaded
+        ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, Number.MAX_SAFE_INTEGER)
+              .optionsLikeButtons
+        : []
+    const collapsedVisibleCount = getCollapsedQuickActionCount({
+        containerWidth: quickActionsWidth,
+        searchWidth: searchButtonWidth,
+        moreWidth: moreButtonWidth,
+        optionWidths: collapsedOptions.map(option => quickActionWidths[option.id] || 0),
+    })
+    const hasAdditionalOptions = collapsedVisibleCount < collapsedOptions.length
+    const optionsLikeButtons = !tasksLoaded
+        ? []
+        : quickActionsExpanded
+          ? getOptionsPresentationData(conversationProject, assistant.uid, tasks, 0, true).optionsLikeButtons
+          : collapsedOptions.slice(0, collapsedVisibleCount)
 
     const hasQuickActions = true
     // An image on its own is a complete message — the serialized embed token IS the text, so this
@@ -455,8 +478,17 @@ export default function AssistantOptions({
                 </AppPopover>
             </View>
             {hasQuickActions && (
-                <View style={[localStyles.quickActions, isMobile && localStyles.quickActionsMobile]}>
-                    <AssistantTaskSearchButtonWrapper />
+                <View
+                    testID="assistant-quick-actions"
+                    style={[
+                        localStyles.quickActions,
+                        quickActionsExpanded ? localStyles.quickActionsExpanded : localStyles.quickActionsCollapsed,
+                    ]}
+                    onLayout={event => setQuickActionsWidth(event.nativeEvent.layout.width)}
+                >
+                    <AssistantTaskSearchButtonWrapper
+                        onLayout={event => storeMeasuredWidth(setSearchButtonWidth, event.nativeEvent.layout.width)}
+                    />
                     {tasksLoaded ? (
                         <>
                             <OptionButtons
@@ -468,8 +500,31 @@ export default function AssistantOptions({
                                 <QuickActionsToggle
                                     expanded={quickActionsExpanded}
                                     onPress={() => setQuickActionsExpanded(expanded => !expanded)}
+                                    onLayout={
+                                        quickActionsExpanded
+                                            ? undefined
+                                            : event =>
+                                                  storeMeasuredWidth(setMoreButtonWidth, event.nativeEvent.layout.width)
+                                    }
                                 />
                             )}
+                            <View
+                                style={localStyles.quickActionsMeasurer}
+                                pointerEvents="none"
+                                accessibilityElementsHidden={true}
+                                importantForAccessibility="no-hide-descendants"
+                            >
+                                {collapsedOptions.map(option => (
+                                    <OptionButton
+                                        key={option.id}
+                                        text={option.text}
+                                        icon={option.icon}
+                                        disabled={true}
+                                        testID={`assistant-quick-action-measure-${option.id}`}
+                                        onLayout={event => storeOptionWidth(option.id, event.nativeEvent.layout.width)}
+                                    />
+                                ))}
+                            </View>
                         </>
                     ) : (
                         <AssistantOptionButtonsSkeleton />
@@ -578,14 +633,22 @@ const localStyles = StyleSheet.create({
         fontSize: 14,
     },
     quickActions: {
-        minHeight: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
         flexDirection: 'row',
         alignItems: 'center',
-        flexWrap: 'wrap',
         justifyContent: 'center',
         width: '100%',
     },
-    quickActionsMobile: {
-        minHeight: ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT,
+    quickActionsCollapsed: {
+        height: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
+        overflow: 'hidden',
+    },
+    quickActionsExpanded: {
+        minHeight: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
+        flexWrap: 'wrap',
+    },
+    quickActionsMeasurer: {
+        position: 'absolute',
+        opacity: 0,
+        flexDirection: 'row',
     },
 })
