@@ -2996,5 +2996,5 @@
     "Enable call audio": "Enable call audio",
     "Microphone: %{name}": "Microphone: %{name}",
     "Cancel assistant call": "Cancel assistant call",
-    "Hello, I am %{name}. How can I help you?": "Hello, I am %{name}. How can I help you?"
+    "Hello, how can I help?": "Hello, how can I help?"
 }
