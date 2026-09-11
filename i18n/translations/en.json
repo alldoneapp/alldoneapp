@@ -893,6 +893,8 @@
     "A": "A",
     "C": "C",
     "Move": "Move",
+    "Task could not be moved": "Task could not be moved",
+    "No changes were made. Please try again.": "No changes were made. Please try again.",
     "Select the project this itemType will move to": "Select the project this %{itemType} will move to",
     "Task status": "Task status",
     "Choose a workflow step to move this task": "Choose a workflow step to move this task",

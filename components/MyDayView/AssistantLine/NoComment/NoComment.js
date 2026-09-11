@@ -9,11 +9,11 @@ import { createBotQuickTopic } from '../../../../utils/assistantHelper'
 import { checkIfSelectedAllProjects } from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ProjectTagIndicator from '../LastComment/ProjectTagIndicator'
 import { LAST_COMMENT_PREVIEW_HEIGHT } from '../LastComment/lastCommentLayout'
-import { useProjectSectionLastCommentTint } from '../../../TaskListView/TaskHierarchy'
+import { useProjectSectionAccent } from '../../../TaskListView/TaskHierarchy'
 
 export default function NoComment({ projectId, assistant }) {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const projectLastCommentTint = useProjectSectionLastCommentTint()
+    const projectAccentColor = useProjectSectionAccent()
 
     const createNewChat = () => {
         createBotQuickTopic(assistant)
@@ -25,7 +25,7 @@ export default function NoComment({ projectId, assistant }) {
         <View style={localStyles.container}>
             <TouchableOpacity
                 onPress={createNewChat}
-                style={[localStyles.container2, projectLastCommentTint && { backgroundColor: projectLastCommentTint }]}
+                style={[localStyles.container2, projectAccentColor && { backgroundColor: projectAccentColor }]}
             >
                 <Icon name={'message-circle'} color={colors.Text03} size={16} style={localStyles.icon} />
                 <View style={localStyles.textContainer}>
