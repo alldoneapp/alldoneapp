@@ -2,13 +2,25 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
 import ProjectSection, { getProjectPalette } from './ProjectSection'
-import { useTaskHierarchy, useTaskHierarchyBackground } from './TaskHierarchy'
+import {
+    useProjectSectionAccent,
+    useProjectSectionLastCommentTint,
+    useTaskHierarchy,
+    useTaskHierarchyBackground,
+} from './TaskHierarchy'
 import { PROJECT_COLOR_BLUE, PROJECT_COLOR_RED, PROJECT_COLOR_DEFAULT } from '../../Themes/Modern/ProjectColors'
 
 function SurfaceProbe() {
     return <Surface hierarchy={useTaskHierarchy()} color={useTaskHierarchyBackground()} />
 }
 function Surface() {
+    return null
+}
+
+function ProjectTintProbe() {
+    return <ProjectTint accent={useProjectSectionAccent()} lastComment={useProjectSectionLastCommentTint()} />
+}
+function ProjectTint() {
     return null
 }
 
@@ -33,6 +45,32 @@ it('updates descendant row surfaces when the project color changes', () => {
         )
     )
     expect(tree.root.findByType(Surface).props.color).toBe(getProjectPalette(PROJECT_COLOR_RED).PROJECT_ITEM_SECTION)
+    act(() => tree.unmount())
+})
+
+it('supplies the adjacent darker palette tint for last comments', () => {
+    const tree = renderer.create(
+        <ProjectSection projectColor={PROJECT_COLOR_BLUE}>
+            <ProjectTintProbe />
+        </ProjectSection>
+    )
+
+    expect(tree.root.findByType(ProjectTint).props).toEqual({
+        accent: getProjectPalette(PROJECT_COLOR_BLUE).PROJECT_ITEM_SECTION_HEADER,
+        lastComment: getProjectPalette(PROJECT_COLOR_BLUE).PROJECT_ITEM_ACTIVE,
+    })
+
+    act(() =>
+        tree.update(
+            <ProjectSection projectColor={PROJECT_COLOR_RED}>
+                <ProjectTintProbe />
+            </ProjectSection>
+        )
+    )
+    expect(tree.root.findByType(ProjectTint).props).toEqual({
+        accent: getProjectPalette(PROJECT_COLOR_RED).PROJECT_ITEM_SECTION_HEADER,
+        lastComment: getProjectPalette(PROJECT_COLOR_RED).PROJECT_ITEM_ACTIVE,
+    })
     act(() => tree.unmount())
 })
 

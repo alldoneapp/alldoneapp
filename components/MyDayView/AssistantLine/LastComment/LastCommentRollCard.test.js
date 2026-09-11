@@ -8,14 +8,14 @@ import renderer, { act } from 'react-test-renderer'
 
 import LastCommentRollCard from './LastCommentRollCard'
 import { resetLastCommentSlotRows } from './lastCommentSlotRow'
-import { ProjectSectionAccentContext } from '../../../TaskListView/TaskHierarchy'
+import { ProjectSectionLastCommentTintContext } from '../../../TaskListView/TaskHierarchy'
 import { colors } from '../../../styles/global'
 
 jest.mock('../../../UIComponents/Ghosts/ghostAnimation', () => ({
     useReducedMotion: () => true,
 }))
 
-const renderCard = ({ compact = false, projectAccentColor } = {}) => {
+const renderCard = ({ compact = false, projectLastCommentTint } = {}) => {
     const card = (
         <LastCommentRollCard
             projectId="project-1"
@@ -29,10 +29,10 @@ const renderCard = ({ compact = false, projectAccentColor } = {}) => {
     )
 
     return renderer.create(
-        projectAccentColor ? (
-            <ProjectSectionAccentContext.Provider value={projectAccentColor}>
+        projectLastCommentTint ? (
+            <ProjectSectionLastCommentTintContext.Provider value={projectLastCommentTint}>
                 {card}
-            </ProjectSectionAccentContext.Provider>
+            </ProjectSectionLastCommentTintContext.Provider>
         ) : (
             card
         )
@@ -44,11 +44,11 @@ const backgroundColorOf = tree => StyleSheet.flatten(tree.root.findByType(Toucha
 describe('LastCommentRollCard project context background (AT-2537)', () => {
     beforeEach(() => resetLastCommentSlotRows())
 
-    it('uses the milestone accent when rendered below a project line', () => {
-        const projectAccentColor = '#FAEBEE'
-        const tree = renderCard({ projectAccentColor })
+    it('uses the darker project tint when rendered below a project line', () => {
+        const projectLastCommentTint = '#F7DEE3'
+        const tree = renderCard({ projectLastCommentTint })
 
-        expect(backgroundColorOf(tree)).toBe(projectAccentColor)
+        expect(backgroundColorOf(tree)).toBe(projectLastCommentTint)
         act(() => tree.unmount())
     })
 
@@ -59,11 +59,11 @@ describe('LastCommentRollCard project context background (AT-2537)', () => {
         act(() => tree.unmount())
     })
 
-    it('also applies the project accent to the compact latest-comment line', () => {
-        const projectAccentColor = '#FAEBEE'
-        const tree = renderCard({ compact: true, projectAccentColor })
+    it('also applies the darker project tint to the compact latest-comment line', () => {
+        const projectLastCommentTint = '#F7DEE3'
+        const tree = renderCard({ compact: true, projectLastCommentTint })
 
-        expect(backgroundColorOf(tree)).toBe(projectAccentColor)
+        expect(backgroundColorOf(tree)).toBe(projectLastCommentTint)
         act(() => tree.unmount())
     })
 })

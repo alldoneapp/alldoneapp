@@ -884,8 +884,6 @@
     "A": "A",
     "C": "P",
     "Move": "Mover",
-    "Task could not be moved": "No se pudo mover la tarea",
-    "No changes were made. Please try again.": "No se hicieron cambios. Inténtalo de nuevo.",
     "Select the project this itemType will move to": "Seleccione el proyecto al cual mover esta %{itemType}",
     "Task status": "Estado de la tarea",
     "Choose a workflow step to move this task": "Escoja un paso del flujo de trabajo para mover la tarea",

@@ -6,7 +6,7 @@ import GhostBlock from '../../UIComponents/Ghosts/GhostBlock'
 import { useGhostPulse } from '../../UIComponents/Ghosts/ghostAnimation'
 import { LAST_COMMENT_PREVIEW_HEIGHT } from './LastComment/lastCommentLayout'
 import { colors } from '../../styles/global'
-import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
+import { useProjectSectionLastCommentTint } from '../../TaskListView/TaskHierarchy'
 
 export const ASSISTANT_OPTIONS_HEADER_HEIGHT = 19
 export const ASSISTANT_OPTIONS_FIRST_ROW_HEIGHT = 56
@@ -33,13 +33,16 @@ export function AssistantOptionButtonsSkeleton() {
 
 export function LastCommentPreviewSkeleton({ compact = false }) {
     const { pulse, reducedMotion } = useGhostPulse()
-    const projectAccentColor = useProjectSectionAccent()
+    const projectLastCommentTint = useProjectSectionLastCommentTint()
 
     if (compact) {
         return (
             <GhostBlock
                 testID="assistant-last-comment-loading-skeleton"
-                style={[localStyles.compactComment, projectAccentColor && { backgroundColor: projectAccentColor }]}
+                style={[
+                    localStyles.compactComment,
+                    projectLastCommentTint && { backgroundColor: projectLastCommentTint },
+                ]}
                 pulse={pulse}
                 reducedMotion={reducedMotion}
             />
@@ -49,7 +52,7 @@ export function LastCommentPreviewSkeleton({ compact = false }) {
     return (
         <View
             testID="assistant-last-comment-loading-skeleton"
-            style={[localStyles.commentCard, projectAccentColor && { backgroundColor: projectAccentColor }]}
+            style={[localStyles.commentCard, projectLastCommentTint && { backgroundColor: projectLastCommentTint }]}
         >
             <GhostBlock style={localStyles.commentIcon} pulse={pulse} reducedMotion={reducedMotion} />
             <View style={localStyles.commentText}>
