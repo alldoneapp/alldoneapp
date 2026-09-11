@@ -16,21 +16,13 @@ import {
 import store from '../../../redux/store'
 import ProjectAndUserData from './ProjectAndUserData'
 import RootSectionNavigation from '../../RootView/RootSectionNavigation'
-import ProjectCompletedSweep from './ProjectCompletedSweep'
 import { useContext } from 'react'
-import {
-    HeaderActionsContext,
-    ProjectSectionContext,
-    taskHierarchyStyles,
-    useProjectSectionMotion,
-} from '../TaskHierarchy'
+import { HeaderActionsContext, ProjectSectionContext, taskHierarchyStyles } from '../TaskHierarchy'
 import { PROJECT_COLOR_SYSTEM, PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
 
 /**
  * AT-2535 — `ProjectSection` owns the completed-sweep run now that the whole rounded card leaves.
- * This header only draws the sweep inside its content band using that shared motion. Keeping the
- * overlay here preserves the original project-line celebration while the parent card masks and
- * collapses the header, its body and its remaining spacing as one object.
+ * The full-card sweep is rendered by `ProjectSection`; this header only renders the line itself.
  */
 
 export default function ProjectHeader({
@@ -87,15 +79,9 @@ export default function ProjectHeader({
     const headerBackgroundColor = (PROJECT_COLOR_SYSTEM[projectColor] || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT])
         .PROJECT_ITEM_ACTIVE
     const headerTextColor = colors.Text01
-    const sweepMotion = useProjectSectionMotion()
-
     return (
         <>
             <View testID="project-line">
-                {/* AT-2492 — the "you cleared this project today" sweep. Absolutely positioned and
-                    pointer-transparent, so a header that is not celebrating anything renders exactly
-                    what it always did and the row's geometry is untouched either way. AT-2535 keeps
-                    this inside the card's masked subtree, so the colour leaves with the card. */}
                 <View
                     style={[
                         localStyles.borderContainer,
@@ -104,7 +90,6 @@ export default function ProjectHeader({
                         { backgroundColor: headerBackgroundColor },
                     ]}
                 >
-                    {sweepMotion && <ProjectCompletedSweep motion={sweepMotion} projectId={projectId} />}
                     <HeaderActionsContext.Provider value={true}>
                         <View style={[localStyles.container, taskHierarchyStyles.projectHeaderContent]}>
                             <ProjectAndUserData

@@ -224,6 +224,25 @@ async function main() {
     console.log('    mask pos   :', spark(exitFrames.map(f => (f.maskPosition || '').split(' ')[0] || '-')))
     console.log('    motes/sparks:', spark(exitFrames.map(f => `${f.moteCount}/${f.sparkCount}`)))
 
+    if (!reduceMotion) {
+        const withSweep = frames.filter(f => f.sweepPresent)
+        check('the completion sweep is mounted for the run', withSweep.length > 0, `${withSweep.length} frames`)
+        check(
+            'the sweep fills the complete rounded card height',
+            withSweep.length > 0 &&
+                withSweep.some(f => f.sweepBox.h === CARD_HEIGHT) &&
+                withSweep.every(f => f.sweepBox.w === CARD_WIDTH && Math.abs(f.sweepBox.h - (f.rowHeight || 0)) <= 1),
+            withSweep.length
+                ? `${withSweep[0].sweepBox.w}x${withSweep[0].sweepBox.h}, then tracks the collapsing card`
+                : ''
+        )
+        check(
+            'the sweep uses the exact colour painted by the project line',
+            withSweep.length > 0 && withSweep.every(f => f.sweepAccentColor === 'rgb(255, 0, 0)'),
+            withSweep.length ? withSweep[0].sweepAccentColor : ''
+        )
+    }
+
     if (reduceMotion || stay) {
         /**
          * Both of these assert the same inverted contract, for different reasons. Under reduced

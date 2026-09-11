@@ -16,6 +16,7 @@ import { Provider } from 'react-redux'
 import { legacy_createStore as createStore } from 'redux'
 
 import ProjectCompletedSweep from '../../components/TaskListView/Header/ProjectCompletedSweep'
+import useProjectCompletedSweepMotion from '../../components/TaskListView/OpenTasksView/projectCompletedSweepMotion'
 import useProjectCompletedSweep from '../../components/TaskListView/OpenTasksView/useProjectCompletedSweep'
 import {
     hasCelebratedProjectEmptyInboxDay,
@@ -33,10 +34,11 @@ const initialState = {
 const reducer = (state = initialState, action) => (action.type === 'SET' ? { ...state, ...action.payload } : state)
 const store = createStore(reducer)
 
-// Exactly ProjectHeader's own styles, so the overlay's `top: 20 / bottom: 1` inset is
-// measured against the real box it ships against.
+const PROJECT_LINE_COLOR = '#F7DEE3'
+
+// The completed sweep now belongs to the complete rounded project card, not the old header band.
 const headerStyles = StyleSheet.create({
-    borderContainer: { borderBottomWidth: 1, borderBottomColor: '#E5E5E5' },
+    card: { height: 96, borderRadius: 12, backgroundColor: '#FEF9FA' },
     container: {
         flex: 1,
         height: 56,
@@ -56,13 +58,14 @@ function Row({ lineWouldLeave }) {
         enabled: true,
         lineWouldLeave,
     })
+    const motion = useProjectCompletedSweepMotion(celebrationRunId, lineWouldLeave)
     window.__runId = celebrationRunId
     window.__hold = holdProjectLine
     if (lineWouldLeave && !holdProjectLine) return null
     return (
-        <View style={headerStyles.borderContainer} nativeID="header-row">
-            <ProjectCompletedSweep runId={celebrationRunId} projectId={PROJECT} />
+        <View style={headerStyles.card} nativeID="header-row">
             <View style={headerStyles.container} />
+            <ProjectCompletedSweep motion={motion} tint={PROJECT_LINE_COLOR} />
         </View>
     )
 }
