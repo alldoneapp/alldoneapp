@@ -13,8 +13,6 @@ export default function OptionButton({
     buttonStyle,
     iconColor = colors.Text03,
     textStyle,
-    onLayout,
-    testID,
 }) {
     return (
         <TouchableOpacity
@@ -22,8 +20,6 @@ export default function OptionButton({
             onPress={disabled ? undefined : onPress}
             disabled={disabled}
             activeOpacity={disabled ? 1 : 0.2}
-            onLayout={onLayout}
-            testID={testID}
         >
             <View style={localStyles.icon}>
                 <Icon name={icon} size={16} color={iconColor} />

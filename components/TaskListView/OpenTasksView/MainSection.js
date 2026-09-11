@@ -150,7 +150,7 @@ export default function MainSection({
         !taskFiltersActive &&
         loggedUserId === currentUserId
 
-    const { mainTasksWithExits, emptyGoalsWithExits, exitRunIdByGoalId } = useGoalSectionExit({
+    const { mainTasksWithExits, emptyGoalsWithExits, exitRunIdByGoalId, exitKindByGoalId } = useGoalSectionExit({
         projectId,
         mainTasks: heldMainTasks,
         emptyGoals: liveEmptyGoals,
@@ -454,6 +454,10 @@ export default function MainSection({
     const generalTaskEntryRunId = onlyDepartingGoalsRemain
         ? Math.max(...sortedMainTasks.map(([sectionId]) => exitRunIdByGoalId[sectionId]))
         : 0
+    const generalTaskEntryExitKind =
+        onlyDepartingGoalsRemain && sortedMainTasks.every(([sectionId]) => exitKindByGoalId[sectionId] === 'postpone')
+            ? 'postpone'
+            : 'completion'
     const showEmptyGeneralTaskSection = sortedMainTasks.length === 0 || onlyDepartingGoalsRemain
 
     // Holds already-mounted sections at their last idle size while the user is
@@ -498,6 +502,7 @@ export default function MainSection({
                             instanceKey={instanceKey}
                             containerStyle={{ marginBottom: lastItem || globalAmountToRender === 0 ? 0 : 32 }}
                             exitRunId={emptyGoalExitRunId}
+                            exitKind={exitKindByGoalId[goal.id] || 'completion'}
                         />
                     )
                 } else if (goalId === NOT_PARENT_GOAL_INDEX) {
@@ -649,6 +654,7 @@ export default function MainSection({
                             isTemplateProject={isTemplateProject}
                             focusedTaskId={effectiveFocusTaskId}
                             exitRunId={exitRunId}
+                            exitKind={exitKindByGoalId[goalId] || 'completion'}
                         />
                     )
                 }
@@ -662,7 +668,7 @@ export default function MainSection({
                 !isTemplateProject &&
                 !isAssistant &&
                 !isActiveOrganizeMode && (
-                    <GeneralTaskSectionEntry entryRunId={generalTaskEntryRunId}>
+                    <GeneralTaskSectionEntry entryRunId={generalTaskEntryRunId} exitKind={generalTaskEntryExitKind}>
                         <NewTaskSection
                             projectId={projectId}
                             originalParentGoal={null} // Add to general tasks

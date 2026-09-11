@@ -10,7 +10,7 @@ import { useProjectSectionLastCommentTint } from '../../TaskListView/TaskHierarc
 
 export const ASSISTANT_OPTIONS_HEADER_HEIGHT = 19
 export const ASSISTANT_OPTIONS_FIRST_ROW_HEIGHT = 56
-export const ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT = 32
+export const ASSISTANT_QUICK_ACTIONS_MOBILE_HEIGHT = 64
 export const ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT = 32
 
 export function AssistantOptionButtonsSkeleton() {
@@ -144,6 +144,7 @@ const localStyles = StyleSheet.create({
     quickActions: {
         width: '100%',
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'flex-start',
         justifyContent: 'center',
         overflow: 'hidden',
@@ -160,6 +161,7 @@ const localStyles = StyleSheet.create({
         minWidth: 220,
         maxWidth: 260,
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'flex-start',
         justifyContent: 'center',
         overflow: 'hidden',

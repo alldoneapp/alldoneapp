@@ -1,4 +1,4 @@
-import { getCollapsedQuickActionCount, getOptionsPresentationData } from './helper'
+import { getOptionsPresentationData } from './helper'
 
 jest.mock('../../../../functions/Utils/parseTextUtils', () => ({
     shrinkTagText: text => text,
@@ -81,48 +81,5 @@ describe('getOptionsPresentationData', () => {
         const expanded = getOptionsPresentationData({ id: 'project-1' }, 'assistant-1', tasksWithSchedules, 1, true)
         expect(expanded.optionsLikeButtons.map(option => option.id)).toEqual(['task-1', 'task-2'])
         expect(expanded.optionsInModal).toEqual([])
-    })
-})
-
-describe('getCollapsedQuickActionCount', () => {
-    it('shows every task when they fit without a More button', () => {
-        expect(
-            getCollapsedQuickActionCount({
-                containerWidth: 400,
-                searchWidth: 80,
-                moreWidth: 70,
-                optionWidths: [100, 110, 90],
-            })
-        ).toBe(3)
-    })
-
-    it('reserves space for More whenever some tasks are hidden', () => {
-        expect(
-            getCollapsedQuickActionCount({
-                containerWidth: 350,
-                searchWidth: 80,
-                moreWidth: 70,
-                optionWidths: [100, 110, 90],
-            })
-        ).toBe(1)
-    })
-
-    it('keeps tasks hidden until every width needed for an exact fit is measured', () => {
-        expect(
-            getCollapsedQuickActionCount({
-                containerWidth: 350,
-                searchWidth: 80,
-                moreWidth: 70,
-                optionWidths: [100, 0],
-            })
-        ).toBe(0)
-        expect(
-            getCollapsedQuickActionCount({
-                containerWidth: 350,
-                searchWidth: 80,
-                moreWidth: 0,
-                optionWidths: [200, 200],
-            })
-        ).toBe(0)
     })
 })
