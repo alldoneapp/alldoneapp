@@ -304,6 +304,41 @@ async function runWidthMatrix(server, chromium) {
     await browser.close()
 }
 
+async function runRotation(server, chromium) {
+    const browser = await chromium.launch()
+    try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true })
+        await page.goto(`http://127.0.0.1:${server.address().port}/`)
+        await page.waitForFunction(() => window.__ready === true)
+        await page.evaluate(() => {
+            window.__rotationTrigger = document.querySelector('[data-testid="open-outer"]')
+        })
+        for (const isOpen of [false, true]) {
+            if (isOpen) await page.tap('[data-testid="open-outer"]')
+            for (const [width, height] of [
+                [844, 390],
+                [390, 844],
+            ]) {
+                await page.setViewportSize({ width, height })
+                await page.waitForTimeout(SETTLE_MS)
+                check(
+                    `rotation ${width}px (open=${isOpen}): original trigger survives`,
+                    await page.evaluate(
+                        () => document.querySelector('[data-testid="open-outer"]') === window.__rotationTrigger
+                    )
+                )
+                const s = await state(page)
+                check(
+                    `rotation ${width}px (open=${isOpen}): correct popup presentation`,
+                    s.outerOpen === isOpen && s.sheets === (isOpen && width < 640 ? 1 : 0)
+                )
+            }
+        }
+    } finally {
+        await browser.close()
+    }
+}
+
 async function main() {
     build()
     const server = await serve()
@@ -311,6 +346,7 @@ async function main() {
     await runMobile(server, chromium)
     await runDesktop(server, chromium)
     await runWidthMatrix(server, chromium)
+    await runRotation(server, chromium)
     server.close()
 
     console.log('')
