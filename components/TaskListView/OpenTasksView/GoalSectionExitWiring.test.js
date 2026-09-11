@@ -322,7 +322,10 @@ describe('a goal section wearing its exit (AT-2507)', () => {
 
         const style = flatStyleOf(wrapperOf(tree))
         expect(style.transform[0].translateX).toBeDefined()
-        expect(style.height).toBeDefined()
+        expect(style.transform[1].scaleY).toBeDefined()
+        expect(style.height).toBeUndefined()
+        expect(style.marginBottom).toBeUndefined()
+        expect(style.overflow).toBeUndefined()
         expect(style.pointerEvents).toBe('none')
         // The same outer wrapper still contains both the goal row and its linked-task list.
         expect(wrapperOf(tree).findAllByType('GoalProgressBar')).toHaveLength(1)
