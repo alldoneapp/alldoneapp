@@ -99,17 +99,46 @@ test('never falls back to a free unpriced model', async () => {
     expect(helper.interactWithChatStream).not.toHaveBeenCalled()
 })
 test('holds sensitive actions for exact confirmation and rejects qualified approval', async () => {
-    await runLiveAssistant(request())
+    const onProgress = jest.fn()
+    await runLiveAssistant(request({ onProgress }))
     const options = helper.collectAssistantTextWithToolCalls.mock.calls[0][0]
     expect(await options.toolExecutor('create_calendar_event', { title: 'Dinner' })).toMatchObject({
         status: 'confirmation_required',
     })
     expect(helper.executeToolNatively).not.toHaveBeenCalled()
+    expect(onProgress).not.toHaveBeenCalled()
     expect(await options.localTools.resolve_voice_confirmation.execute({ approved: true })).toMatchObject({
         status: 'explicit_spoken_approval_required',
     })
     expect(isUnambiguousApproval('Yes, but tomorrow')).toBe(false)
     expect(isUnambiguousApproval('Ja bitte.')).toBe(true)
+})
+
+test('reports only actual tool execution and returns to reviewing without claiming success', async () => {
+    const onProgress = jest.fn()
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
+        await options.toolExecutor('create_task', { title: 'Private title' })
+        return { finalResponseText: 'Not completed' }
+    })
+    helper.executeToolNatively.mockImplementationOnce(async () => {
+        expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('Creating a task'))
+        return { success: false }
+    })
+    await runLiveAssistant(request({ onProgress }))
+    expect(onProgress.mock.calls.flat().join(' ')).not.toContain('Private title')
+    expect(onProgress).toHaveBeenLastCalledWith(expect.stringContaining('answer is not ready'))
+})
+
+test.each([true, false])('observes a background job only after successful dispatch: %s', async success => {
+    const onBackgroundJob = jest.fn()
+    sessionData.livePendingAction = { toolName: 'execute_task_in_vm', toolArgs: {}, requestedAt: Date.now() - 1000 }
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async options => {
+        await options.localTools.resolve_voice_confirmation.execute({ approved: true })
+        return { finalResponseText: 'Dispatch result' }
+    })
+    helper.executeToolNatively.mockResolvedValueOnce({ success, correlationId: 'job-1', status: 'started' })
+    await runLiveAssistant(request({ onBackgroundJob, lastUserTurn: { text: 'Yes', createdAt: Date.now() } }))
+    expect(onBackgroundJob.mock.calls).toEqual(success ? [['job-1']] : [])
 })
 test('checks for newer speech immediately before any tool execution', async () => {
     const assertActive = jest.fn(async () => {})

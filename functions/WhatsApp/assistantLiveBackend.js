@@ -21,6 +21,7 @@ const {
     canApprovePendingAction,
 } = require('./whatsAppCallTools')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
+const { toolProgress, REVIEWING } = require('./assistantLiveProgress')
 
 const asChatSchema = schema => ({
     type: 'function',
@@ -33,7 +34,15 @@ const isUnambiguousApproval = text =>
 
 // The transport is new; model routing, context, tool implementations and the Gold
 // divisor are the same ones used by chat. No separate voice backend model exists.
-async function runLiveAssistant({ session, delegationId, assertActive, lastUserTurn, requestEnd }) {
+async function runLiveAssistant({
+    session,
+    delegationId,
+    assertActive,
+    lastUserTurn,
+    requestEnd,
+    onProgress = () => {},
+    onBackgroundJob = () => {},
+}) {
     const db = admin.firestore()
     const sessionRef = db.doc(`whatsAppCallSessions/${session.id}`)
     const [assistant, userDoc] = await Promise.all([
@@ -78,6 +87,7 @@ async function runLiveAssistant({ session, delegationId, assertActive, lastUserT
         // network call. The next delegation must know which actions already ran.
         try {
             await assertActive()
+            onProgress(toolProgress(name))
             const result = await executeToolNatively(
                 name,
                 args,
@@ -91,12 +101,18 @@ async function runLiveAssistant({ session, delegationId, assertActive, lastUserT
                 status: 'completed',
                 result: JSON.stringify(buildConversationSafeToolResult(name, result) ?? null),
             })
+            if (name === 'execute_task_in_vm' && result?.success === true && result.correlationId)
+                onBackgroundJob(result.correlationId)
             return result
         } catch (error) {
             await operation.update({
                 status: error.message === 'voice_request_superseded' ? 'not_executed' : 'outcome_unconfirmed',
             })
             throw error
+        } finally {
+            // A returned tool result can be a failure or a queued job; it is not
+            // evidence that the user's task has finished successfully.
+            onProgress(REVIEWING)
         }
     }
     const localTools = {
