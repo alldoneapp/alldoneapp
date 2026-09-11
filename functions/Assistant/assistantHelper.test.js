@@ -5696,6 +5696,61 @@ describe('assistant thread compaction tool', () => {
         ).rejects.toThrow('summary is required for compact_thread_context.')
     })
 
+    test('excludes only the current live call display copy when its transcript is supplied directly', async () => {
+        mockDocGet.mockResolvedValue({ exists: false, data: () => ({}) })
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'spoken',
+                    data: () => ({
+                        commentText: 'Current spoken reply',
+                        fromAssistant: true,
+                        callSessionId: 'live-current',
+                        created: 400,
+                    }),
+                },
+                {
+                    id: 'backend',
+                    data: () => ({
+                        commentText: 'Current backend copy',
+                        fromAssistant: true,
+                        callSessionId: 'live-current',
+                        created: 300,
+                    }),
+                },
+                {
+                    id: 'previous-call',
+                    data: () => ({
+                        commentText: 'Earlier call answer',
+                        fromAssistant: true,
+                        callSessionId: 'live-previous',
+                        created: 200,
+                    }),
+                },
+                { id: 'chat', data: () => ({ commentText: 'Earlier chat answer', fromAssistant: true, created: 100 }) },
+            ],
+        })
+        const messages = await getOptimizedContextMessages(
+            null,
+            'project-1',
+            'topics',
+            'chat-1',
+            'en',
+            'Bot',
+            '',
+            [],
+            null,
+            null,
+            null,
+            {
+                includeAllRecent: true,
+                excludeCallSessionId: 'live-current',
+            }
+        )
+        const answers = messages.filter(([role]) => role === 'assistant').map(([, text]) => text)
+        expect(answers).toEqual(['Earlier chat answer', 'Earlier call answer'])
+    })
+
     test('injects hidden compacted state and excludes older comments in future context loads', async () => {
         mockDocGet.mockImplementation(function () {
             const path = this?.path || ''

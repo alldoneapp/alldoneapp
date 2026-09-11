@@ -50,6 +50,7 @@ const { getCallSession, finalizeCallSession } = require('./whatsAppCallSessions'
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant } = require('./assistantLiveBackend')
 const { runAssistantLiveCall, appendText } = require('./assistantLiveController')
+const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
 let docs
 let watchers
 const flush = async () => {
@@ -153,6 +154,36 @@ test('attaches to the Live session, waits for transcript context and deduplicate
     })
     expect(reconcileLiveUsage).toHaveBeenLastCalledWith({ sessionId: 's', seconds: 20, final: true })
     expect(finalizeCallSession).toHaveBeenCalledWith('s', 'close_requested', 'completed')
+})
+
+test('passes the latest transcript snapshot when new speech arrives during a slow chat write', async () => {
+    const state = await start()
+    let finishWrite
+    storeCallTranscriptTurn.mockImplementationOnce(
+        () =>
+            new Promise(resolve => {
+                finishWrite = resolve
+            })
+    )
+    await emit(state.socket, user('audio-check', 'Hallo, hörst du mich?'))
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(300)
+    expect(finishWrite).toBeDefined()
+    await emit(state.socket, { ...user('sunday', 'Okay, was ist denn am Sonntag?'), start_ms: 3000, end_ms: 4200 })
+    await jest.advanceTimersByTimeAsync(1200)
+    expect(runLiveAssistant).not.toHaveBeenCalled()
+    finishWrite({})
+    await flush()
+    expect(runLiveAssistant).toHaveBeenCalledWith(
+        expect.objectContaining({
+            lastUserTurn: expect.objectContaining({ text: 'Okay, was ist denn am Sonntag?' }),
+            liveConversation: [
+                { role: 'user', text: 'Hallo, hörst du mich?' },
+                { role: 'user', text: 'Okay, was ist denn am Sonntag?' },
+            ],
+        })
+    )
+    await finish(state)
 })
 
 test('keeps receiving speech while backend work runs and rejects stale side effects', async () => {

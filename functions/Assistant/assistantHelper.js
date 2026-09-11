@@ -13679,6 +13679,9 @@ async function getOptimizedContextMessages(
     for (let i = 0; i < commentDocs.length; i++) {
         if (options.includeAllRecent === true || amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
             const messageData = commentDocs[i].data()
+            // Live calls supply their revision-bound transcript directly. Its
+            // asynchronously stored copy can lag behind or duplicate spoken answers.
+            if (options.excludeCallSessionId && messageData.callSessionId === options.excludeCallSessionId) continue
             const { commentText, fromAssistant } = messageData
 
             if (commentText) {
