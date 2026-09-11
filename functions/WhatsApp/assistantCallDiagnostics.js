@@ -12,6 +12,15 @@ const EVENTS = new Set([
     'audio_stalled',
     'cleanup',
     'page_context_update_failed',
+    'microphone_acquired',
+    'microphone_prepared',
+    'microphone_changed',
+    'microphone_first_signal',
+    'microphone_sent',
+    'microphone_muted',
+    'microphone_unmuted',
+    'microphone_ended',
+    'microphone_recovering',
 ])
 const REASONS = new Set([
     'cleanup',
@@ -62,7 +71,17 @@ function sanitizeCallDiagnostics(value) {
                 )
         for (const key of ['peerState', 'iceState', 'dataChannelState', 'visibility', 'orientation', 'micReadyState'])
             if (STATES.has(row?.[key])) result[key] = row[key]
-        for (const key of ['online', 'audioPaused', 'audioPlaybackReady', 'micMuted', 'micEnabled'])
+        if (Number.isFinite(row?.inputLevelPermille))
+            result.inputLevelPermille = Math.max(0, Math.min(1000, Math.round(row.inputLevelPermille)))
+        for (const key of [
+            'online',
+            'audioPaused',
+            'audioPlaybackReady',
+            'micMuted',
+            'micEnabled',
+            'inputMonitorReady',
+            'inputSending',
+        ])
             if (typeof row?.[key] === 'boolean') result[key] = row[key]
         return result
     }

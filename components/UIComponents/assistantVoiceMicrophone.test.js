@@ -22,6 +22,7 @@ const makeInput = (id, level) => {
 }
 beforeEach(() => {
     jest.useFakeTimers()
+    window.localStorage.clear()
     jest.clearAllMocks()
     inputs = { builtin: makeInput('builtin', 0.02), usb: makeInput('usb', 0.3) }
     monitors = []
@@ -80,7 +81,7 @@ test.each(['iPhone', 'Android'])('retains the system headset/speaker route on %s
         navigator.mediaDevices.getUserMedia.mockResolvedValue(headset)
         const change = await start()
         await jest.advanceTimersByTimeAsync(15000)
-        expect(selector).toBeNull()
+        expect(selector.getSnapshot()).toMatchObject({ label: 'bluetooth-headset', available: true })
         expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
         expect(navigator.mediaDevices.getUserMedia.mock.calls[0][0].audio.deviceId).toBeUndefined()
         expect(listAudioInputDevices).not.toHaveBeenCalled()
@@ -154,8 +155,85 @@ test('recovers digital silence during the call with fresh unprocessed capture', 
     await jest.advanceTimersByTimeAsync(3500)
     expect(change).toHaveBeenLastCalledWith(raw)
     expect(inputs.builtin.getTracks()[0].stop).toHaveBeenCalledTimes(1)
+    await jest.advanceTimersByTimeAsync(100)
+    expect((await acquireVoiceMicrophone()).raw).toBe(true)
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+            audio: expect.objectContaining({ echoCancellation: false, deviceId: { exact: 'builtin' } }),
+        })
+    )
 })
 test('stops a microphone whose permission resolves after cancellation', async () => {
     await expect(acquireVoiceMicrophone({ isCancelled: () => true })).rejects.toThrow('voice_start_cancelled')
     expect(inputs.builtin.getTracks()[0].stop).toHaveBeenCalledTimes(1)
+})
+
+test('meters the selected input while comparison is paused and follows silence immediately', async () => {
+    let paused = false
+    const change = await start({ isPaused: () => paused })
+    expect(selector.getSnapshot()).toMatchObject({ label: 'usb', level: 0.3, available: true })
+    paused = true
+    inputs.usb.level = 0
+    inputs.builtin.level = 0.8
+    await jest.advanceTimersByTimeAsync(1500)
+    expect(selector.getSnapshot().level).toBe(0)
+    expect(change).toHaveBeenCalledTimes(1)
+})
+
+test('reuses the last working desktop input on the next call and falls back when it is unplugged', async () => {
+    await start()
+    expect((await acquireVoiceMicrophone()).deviceLabel).toBe('usb')
+    navigator.mediaDevices.getUserMedia.mockImplementation(async ({ audio }) => {
+        if (audio.deviceId?.exact) throw Object.assign(new Error('Device removed'), { name: 'NotFoundError' })
+        return inputs.builtin
+    })
+    expect((await acquireVoiceMicrophone()).deviceLabel).toBe('builtin')
+})
+
+test('does not mistake a suspended analyser for a digitally silent microphone', async () => {
+    listAudioInputDevices.mockResolvedValue([])
+    const monitor = {
+        ready: Promise.resolve(),
+        isRunning: () => false,
+        sample: jest.fn(),
+        getLevel: () => 0,
+        getPeak: () => 0,
+        close: jest.fn(),
+    }
+    createInputLevelMonitor.mockReturnValue(monitor)
+    const change = await start()
+    await jest.advanceTimersByTimeAsync(10000)
+    expect(selector.getSnapshot().available).toBe(false)
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
+    expect(change).not.toHaveBeenCalled()
+})
+
+test('prepares a working input before releasing startup and bounds warmup when metering is suspended', async () => {
+    const capture = await acquireVoiceMicrophone()
+    const onSwitch = jest.fn(async () => {})
+    selector = createVoiceMicrophoneSelector({ stream: capture.stream, onSwitch })
+    let prepared = false
+    const preparation = selector.whenPrepared().then(result => {
+        prepared = result
+    })
+    await jest.advanceTimersByTimeAsync(500)
+    expect(prepared).toBe(false)
+    await jest.advanceTimersByTimeAsync(1000)
+    await preparation
+    expect(prepared).toBe(true)
+    expect(onSwitch).toHaveBeenLastCalledWith(inputs.usb)
+    selector.stop()
+    const suspended = makeInput('suspended', 0)
+    createInputLevelMonitor.mockReturnValue({
+        ready: new Promise(() => {}),
+        sample: jest.fn(),
+        getLevel: () => 0,
+        getPeak: () => 0,
+        close: jest.fn(),
+    })
+    listAudioInputDevices.mockResolvedValue([])
+    selector = createVoiceMicrophoneSelector({ stream: suspended, onSwitch })
+    const timeout = selector.whenPrepared()
+    await jest.advanceTimersByTimeAsync(4500)
+    await expect(timeout).resolves.toBe(false)
 })

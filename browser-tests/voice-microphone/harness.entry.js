@@ -1,4 +1,5 @@
 import { primeCallAudio } from '../../components/UIComponents/assistantCallAudio'
+import { createInputLevelMonitor } from '../../hooks/rambleMicCapture'
 import {
     acquireVoiceMicrophone,
     createVoiceMicrophoneSelector,
@@ -40,6 +41,7 @@ button.onclick = async () => {
         gains = {},
         switches = []
     let selector
+    let senderTrack, senderMonitor
     Object.defineProperty(navigator, 'mediaDevices', {
         configurable: true,
         value: {
@@ -71,6 +73,15 @@ button.onclick = async () => {
     })
     try {
         const result = await acquireVoiceMicrophone()
+        const bindMutedSender = stream => {
+            senderMonitor?.close()
+            senderTrack?.stop()
+            senderTrack = stream.getAudioTracks()[0].clone()
+            senderTrack.enabled = false
+            opened.push(senderTrack)
+            senderMonitor = createInputLevelMonitor(new MediaStream([senderTrack]))
+        }
+        if (scenario === 'warmup') bindMutedSender(result.stream)
         let selected = result.deviceLabel
         let paused = false
         selector = createVoiceMicrophoneSelector({
@@ -79,6 +90,7 @@ button.onclick = async () => {
             onSwitch: async stream => {
                 selected = stream.getAudioTracks()[0].label
                 switches.push(selected)
+                if (scenario === 'warmup') bindMutedSender(stream)
             },
         })
         const expected = scenario === 'reverse' ? 'builtin' : 'usb'
@@ -95,6 +107,18 @@ button.onclick = async () => {
             )
         await delay(300)
         const first = selected
+        let warmedBeforeSending = false
+        if (scenario === 'warmup') {
+            await senderMonitor.ready
+            senderMonitor.sample()
+            if (senderMonitor.getLevel() !== 0 || selector.getSnapshot().level < 0.1)
+                throw new Error('Startup must meter the live input while its sender clone stays silent')
+            senderTrack.enabled = true
+            await delay(150)
+            senderMonitor.sample()
+            if (senderMonitor.getLevel() < 0.1) throw new Error('Selected input did not reach sender when enabled')
+            warmedBeforeSending = true
+        }
         if (scenario === 'normal') {
             paused = true
             gains.builtin.gain.value = 0.5
@@ -105,11 +129,21 @@ button.onclick = async () => {
             await delay(1600)
         }
         selector.stop()
-        window.result = { first, selected, switches, activeTracks: opened.filter(t => t.readyState === 'live').length }
+        senderMonitor?.close()
+        senderTrack?.stop()
+        window.result = {
+            first,
+            selected,
+            switches,
+            warmedBeforeSending,
+            activeTracks: opened.filter(t => t.readyState === 'live').length,
+        }
     } catch (error) {
         window.result = { error: error.message }
     } finally {
         selector?.stop()
+        senderMonitor?.close()
+        senderTrack?.stop()
         await context.close()
     }
 }

@@ -2944,5 +2944,9 @@
     "Enable call audio": "Activar audio de la llamada",
     "Microphone: %{name}": "Micrófono: %{name}",
     "Cancel assistant call": "Cancelar llamada",
-    "Hello, how can I help?": "Hola, ¿cómo puedo ayudarte?"
+    "Hello, how can I help?": "Hola, ¿cómo puedo ayudarte?",
+    "Microphone level": "Nivel del micrófono",
+    "Microphone preview": "Nivel local · conectando",
+    "Microphone paused": "Micrófono en pausa",
+    "Microphone meter unavailable": "Nivel del micrófono no disponible"
 }

@@ -6,6 +6,7 @@ import { translate } from '../../i18n/TranslationService'
 import Button from '../UIControls/Button'
 import Icon from '../Icon'
 import Spinner from './Spinner'
+import VoiceMicrophoneStatus from './VoiceMicrophoneStatus'
 import styles, { colors } from '../styles/global'
 
 export default function FloatingCallControls({ call }) {
@@ -44,11 +45,14 @@ export default function FloatingCallControls({ call }) {
                     </>
                 ) : (
                     <>
-                        {!!call.callName && (
-                            <Text style={localStyles.name} numberOfLines={1}>
-                                {call.callName}
-                            </Text>
-                        )}
+                        <View style={localStyles.details}>
+                            {!!call.callName && (
+                                <Text style={localStyles.name} numberOfLines={1}>
+                                    {call.callName}
+                                </Text>
+                            )}
+                            <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} />
+                        </View>
                         {call.needsAudioPlayback && (
                             <Button
                                 type="ghost"
@@ -97,7 +101,7 @@ const localStyles = StyleSheet.create({
         zIndex: 100000,
         alignItems: 'flex-end',
         padding: 8,
-        borderRadius: 32,
+        borderRadius: 24,
         backgroundColor: '#FFFFFF',
         boxShadow: '0 3px 12px rgba(0, 0, 0, 0.18)',
         maxWidth: 'calc(100vw - 32px)',
@@ -105,7 +109,8 @@ const localStyles = StyleSheet.create({
     row: { flexDirection: 'row', alignItems: 'center', maxWidth: '100%' },
     foregroundHint: { ...styles.caption1, color: colors.Text03, maxWidth: 260, padding: 8 },
     button: { height: 48, minHeight: 48, borderRadius: 24 },
-    name: { ...styles.body2, color: colors.Text02, marginHorizontal: 8, maxWidth: 100, flexShrink: 1 },
+    details: { width: 180, minWidth: 0, flexShrink: 1, marginHorizontal: 8 },
+    name: { ...styles.body2, color: colors.Text02 },
     error: { ...styles.caption1, color: colors.UtilityRed200, maxWidth: 220, flexShrink: 1 },
     connecting: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
     cancelIcon: { position: 'absolute' },

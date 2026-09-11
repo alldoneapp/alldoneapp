@@ -101,7 +101,15 @@ class FakePeerConnection {
 FakePeerConnection.instances = []
 
 const makeTrack = () => {
-    const track = { kind: 'audio', readyState: 'live', muted: false, stop: jest.fn() }
+    const track = { kind: 'audio', readyState: 'live', muted: false, enabled: true, label: 'MacBook Microphone' }
+    track.stop = jest.fn(() => {
+        track.readyState = 'ended'
+    })
+    track.clone = jest.fn(() => {
+        const clone = makeTrack()
+        clone.label = track.label
+        return clone
+    })
     return track
 }
 const makeStream = track => ({ getTracks: () => [track], getAudioTracks: () => [track] })
@@ -178,6 +186,7 @@ const findEndCallButton = tree => tree.root.findAllByType('Button').find(b => b.
 
 beforeEach(() => {
     jest.useFakeTimers()
+    window.localStorage.clear()
     jest.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     jest.spyOn(console, 'warn').mockImplementation(() => {})
     jest.spyOn(console, 'log').mockImplementation(() => {})
@@ -438,7 +447,7 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
             expect(getUserMedia).toHaveBeenCalledTimes(1)
             await advance(RETURN_MIC_SETTLE_MS)
             expect(getUserMedia).toHaveBeenCalledTimes(2)
-            expect(pc.senders[0].replaceTrack).toHaveBeenCalledWith(tracks[1])
+            expect(pc.senders[0].replaceTrack).toHaveBeenCalledWith(tracks[1].clone.mock.results[0].value)
             expect(tracks[0].stop).toHaveBeenCalled()
         })
 
@@ -501,10 +510,9 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
     })
 
     it('tells an iOS browser user to keep the app open, and says nothing elsewhere', async () => {
-        Object.defineProperty(navigator, 'userAgent', {
-            configurable: true,
-            value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/604.1',
-        })
+        jest.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/604.1'
+        )
         const tree = render()
         await startCall(tree)
         const hint = 'Keep Alldone open during the call, this browser pauses the microphone in the background'
@@ -949,4 +957,111 @@ test('navigation during startup keeps the pending call, but signing out releases
             diagnostics: expect.objectContaining({ reason: 'account_changed' }),
         })
     )
+})
+
+test('selects and meters a working microphone during connection setup while the sender remains muted', async () => {
+    const micCapture = require('../../hooks/rambleMicCapture')
+    const builtin = makeTrack(),
+        usb = makeTrack()
+    builtin.label = 'Built-in microphone'
+    usb.label = 'USB microphone'
+    builtin.getSettings = () => ({ deviceId: 'builtin', groupId: 'builtin' })
+    usb.getSettings = () => ({ deviceId: 'usb', groupId: 'usb' })
+    const inputs = { builtin: makeStream(builtin), usb: makeStream(usb) }
+    jest.spyOn(micCapture, 'createInputLevelMonitor').mockImplementation(stream => ({
+        ready: Promise.resolve(),
+        sample: jest.fn(),
+        isRunning: () => true,
+        getLevel: () => (stream === inputs.usb && usb.enabled ? 0.25 : 0),
+        getPeak: () => (stream === inputs.usb && usb.enabled ? 0.25 : 0),
+        close: jest.fn(),
+    }))
+    navigator.mediaDevices.enumerateDevices = jest.fn(async () => [
+        { kind: 'audioinput', deviceId: 'builtin', groupId: 'builtin' },
+        { kind: 'audioinput', deviceId: 'usb', groupId: 'usb' },
+    ])
+    getUserMedia.mockImplementation(async ({ audio }) => inputs[audio.deviceId?.exact || 'builtin'])
+    let respond
+    FakePeerConnection.liveStartupEvents = true
+    runHttpsCallableFunction.mockImplementation(name =>
+        name === 'startAssistantBrowserCallSecondGen'
+            ? new Promise(resolve => {
+                  respond = resolve
+              })
+            : Promise.resolve({ updated: true })
+    )
+    const tree = render()
+    let starting
+    await act(async () => {
+        starting = tree.root.findByType('Button').props.onPress()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+    })
+    const pc = FakePeerConnection.instances[0]
+    expect(builtin.enabled).toBe(true)
+    expect(pc.senders[0].track.enabled).toBe(false)
+    await advance(1600)
+    expect(pc.senders[0].track.label).toBe('USB microphone')
+    expect(pc.senders[0].track.enabled).toBe(false)
+    expect(tree.root.findByProps({ testID: 'voice-microphone-name' }).props.children).toBe('USB microphone')
+    expect(tree.root.findByProps({ testID: 'voice-microphone-level' }).props.accessibilityValue.now).toBe(50)
+    expect(pc.channel.send).not.toHaveBeenCalled()
+    await act(async () => {
+        respond({ answerSdp: 'answer', sessionId: 'browser-warmed-mic', voiceProvider: 'gpt-live' })
+        await starting
+    })
+    expect(pc.senders[0].track.label).toBe('USB microphone')
+    expect(pc.senders[0].track.enabled).toBe(true)
+    act(() => tree.unmount())
+    expect(builtin.readyState).toBe('ended')
+    expect(usb.readyState).toBe('ended')
+    expect(pc.senders[0].track.readyState).toBe('ended')
+    const ended = runHttpsCallableFunction.mock.calls.find(
+        ([name, data]) =>
+            name === 'endAssistantBrowserCallSecondGen' && data.sessionId === 'browser-warmed-mic' && data.diagnostics
+    )
+    expect(ended[1].diagnostics.events.map(e => e.event)).toEqual(
+        expect.arrayContaining([
+            'microphone_acquired',
+            'microphone_changed',
+            'microphone_first_signal',
+            'microphone_sent',
+        ])
+    )
+})
+
+test('cancelling during microphone warmup cannot unmute or greet when warmup finishes', async () => {
+    let prepared
+    const warmup = new Promise(resolve => {
+        prepared = resolve
+    })
+    jest.spyOn(require('./assistantVoiceMicrophone'), 'createVoiceMicrophoneSelector').mockReturnValue({
+        whenPrepared: () => warmup,
+        getSnapshot: () => ({ available: true, level: 0.1 }),
+        stop: jest.fn(() => prepared(false)),
+    })
+    FakePeerConnection.liveStartupEvents = true
+    runHttpsCallableFunction.mockImplementation(async name =>
+        name === 'startAssistantBrowserCallSecondGen'
+            ? { answerSdp: 'answer', sessionId: 'browser-cancel-warmup', voiceProvider: 'gpt-live' }
+            : { settled: true }
+    )
+    const tree = render()
+    let starting, ending
+    await act(async () => {
+        starting = tree.root.findByType('Button').props.onPress()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+    })
+    const pc = FakePeerConnection.instances[0]
+    await act(async () => {
+        ending = findEndCallButton(tree).props.onPress()
+        prepared(true)
+        await starting
+    })
+    expect(pc.senders[0].track.enabled).toBe(false)
+    expect(findEndCallButton(tree).props.disabled).toBe(true)
+    expect(pc.channel.send.mock.calls.map(([json]) => JSON.parse(json).event_id)).not.toContain('alldone_live_greeting')
+    await act(async () => {
+        pc.channel.onmessage({ data: JSON.stringify({ type: 'session.closed' }) })
+        await ending
+    })
 })
