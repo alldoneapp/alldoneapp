@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { sanitizeCallPageContext, formatCallPageContext } = require('./assistantCallPageContext')
 const admin = require('firebase-admin')
 const WebSocket = require('ws')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
@@ -7,7 +8,8 @@ const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant } = require('./assistantLiveBackend')
 const { createLiveTranscript, LIVE_READY_EVENT } = require('./assistantLiveProtocol')
-const { createLiveProgress, backgroundProgress, voiceToolFailure } = require('./assistantLiveProgress')
+const { createLiveProgress, backgroundProgress } = require('./assistantLiveProgress')
+const { voiceOperationOutcome, statusUpdate, formatLiveStatus } = require('./assistantLiveStatus')
 const { createLiveAnswerDelivery } = require('./assistantLiveAnswerDelivery')
 
 const keyFor = value => crypto.createHash('sha256').update(value).digest('hex')
@@ -99,6 +101,23 @@ async function runAssistantLiveCall(sessionId) {
     let deadlineTimer
     let stopped = false
     const outbox = new Map()
+    let pageContext = sanitizeCallPageContext(session.pageContext)
+    let sentPageContext = ''
+    const publishPageContext = () => {
+        const content = formatCallPageContext(pageContext)
+        if (!ready || ending || !content || content === sentPageContext) return
+        // Context changes never interrupt speech, trigger tools, or enter the
+        // spoken-answer outbox. On reconnect only the latest page is relevant.
+        if (
+            send({
+                type: 'session.thinking.append',
+                delegation_id: null,
+                event_id: `alldone_live_page_${crypto.randomUUID()}`,
+                content,
+            })
+        )
+            sentPageContext = content
+    }
 
     const send = payload => {
         if (socket?.readyState !== WebSocket.OPEN) return false
@@ -112,13 +131,30 @@ async function runAssistantLiveCall(sessionId) {
         if (eventId.startsWith('alldone_live_answer_'))
             console.info('Live Call: Answer append', { sessionId, eventId, delegationId, type, sent, at: Date.now() })
     }
-    const publishProgress = (content, delegationId) => {
+    const publishErrorContext = (content, delegationId) =>
+        send({
+            type: 'session.thinking.append',
+            delegation_id: delegationId,
+            event_id: crypto.randomUUID(),
+            content,
+        })
+    const publishProgress = (update, delegationId) => {
+        const content = formatLiveStatus(update)
+        if (!content) return
+        console.info('Live Call: Verified progress status', {
+            sessionId,
+            delegationId,
+            status: update.status,
+            scope: update.scope,
+            errorStatus: update.cause ? 'failed' : null,
+            cause: update.cause || null,
+        })
         // Wait messages must never be replayed after completion or reconnection.
         send({
             type: 'session.commentary.append',
             delegation_id: delegationId,
             event_id: crypto.randomUUID(),
-            content: appendText(content),
+            content,
         })
         lastProgressAt = Date.now()
     }
@@ -132,7 +168,11 @@ async function runAssistantLiveCall(sessionId) {
         if (typeof id !== 'string' || !id || id.includes('/')) return
         const job = {
             state: null,
-            progress: createLiveProgress({ publish: content => publishProgress(content, delegationId) }),
+            progress: createLiveProgress({
+                scope: `background:${id}`,
+                publish: update => publishProgress(update, delegationId),
+                publishContext: content => publishErrorContext(content, delegationId),
+            }),
         }
         backgroundJobs.set(id, job)
         try {
@@ -144,7 +184,10 @@ async function runAssistantLiveCall(sessionId) {
                         const data = snapshot.data()
                         job.state =
                             data?.kind === 'vm_job' && data.userId === session.userId ? backgroundProgress(data) : null
-                        if (job.state) job.progress.update(job.state.content)
+                        if (job.state) {
+                            job.progress.update(job.state)
+                            job.progress.flushContext()
+                        }
                     },
                     () => {
                         job.state = null
@@ -225,7 +268,13 @@ async function runAssistantLiveCall(sessionId) {
                 eventId: event.error?.client_event_id,
             })
             if (event.error?.client_event_id) outbox.delete(event.error.client_event_id)
-            close('provider_error', 'The call encountered a connection error and is ending.')
+            const { cause } = voiceOperationOutcome(null, event.error || new Error())
+            close(
+                'provider_error',
+                cause
+                    ? `The voice service stopped the call and reported this cause: “${cause}”. Say a brief goodbye.`
+                    : 'The voice service stopped the call without providing a cause. Say a brief goodbye; do not invent a reason.'
+            )
             return
         }
         if (transcriptChanged) {
@@ -286,9 +335,13 @@ async function runAssistantLiveCall(sessionId) {
         tickBusy = true
         try {
             await events
-            if (Date.now() - lastControlCheck >= 2000) {
+            const requestReady = ready && !backend && pending.size && Date.now() - lastUserChangeAt >= 900
+            if (Date.now() - lastControlCheck >= 2000 || requestReady) {
                 lastControlCheck = Date.now()
-                if ((await ref.get()).data()?.cancelRequestedAt) close('client_cancelled')
+                const control = (await ref.get()).data()
+                if (control?.cancelRequestedAt) close('client_cancelled')
+                pageContext = sanitizeCallPageContext(control?.pageContext)
+                publishPageContext()
             }
             await flushTranscript()
             answerDelivery?.tick({ active: ready && !ending && !stopped, lastSpeechAt })
@@ -369,11 +422,12 @@ async function runAssistantLiveCall(sessionId) {
             const runProgress = createLiveProgress({
                 // Progress is ephemeral: never replay an obsolete wait after a
                 // reconnect. Only actual spoken transcript fragments enter chat.
-                publish: content => publishProgress(content, delegationId),
+                publish: update => publishProgress(update, delegationId),
+                publishContext: content => publishErrorContext(content, delegationId),
             })
             progress = { ...runProgress, revision }
             backend = runLiveAssistant({
-                session,
+                session: { ...session, pageContext },
                 delegationId: runId,
                 assertActive: () => assertRevision(revision),
                 onProgress: runProgress.update,
@@ -385,6 +439,7 @@ async function runAssistantLiveCall(sessionId) {
                 },
             })
                 .then(async result => {
+                    if (!ending && revision === transcript.revision) runProgress.flushContext()
                     runProgress.stop()
                     await runRef.update({ status: 'completed', result, completedAt: Date.now() })
                     // Full result is durable even when the user interrupts or disconnects.
@@ -428,27 +483,26 @@ async function runAssistantLiveCall(sessionId) {
                 })
                 .catch(async error => {
                     runProgress.stop()
-                    const superseded = error.message === 'voice_request_superseded'
+                    const superseded = error?.message === 'voice_request_superseded'
+                    const outcome = voiceOperationOutcome(null, error)
                     await runRef.update({
                         status: superseded ? 'superseded' : 'failed',
                         error: superseded ? 'request_changed' : 'backend_failed',
+                        outcome,
                         completedAt: Date.now(),
                     })
                     if (superseded && !ending && transcript.revision > revision)
                         pending.set(delegationId, { ...notice, receivedAt: Date.now() })
-                    if (error.message === 'insufficient_gold')
+                    if (error?.message === 'insufficient_gold')
                         close(
                             'insufficient_gold',
                             'Tell the user their Gold balance is exhausted and the call is ending.'
                         )
-                    else if (!ending && !superseded) {
-                        const detail = voiceToolFailure(null, error)
-                        console.warn('Live Call: Backend failed', { sessionId, runId, detail })
-                        append(
-                            'session.commentary.append',
-                            `The request stopped with this error: “${detail}”. Completion has not been confirmed; check any prior tool results before retrying.`,
-                            delegationId
-                        )
+                    else if (!ending && !superseded && revision === transcript.revision) {
+                        console.warn('Live Call: Backend stopped', { sessionId, runId, ...outcome })
+                        const update = statusUpdate({ ...outcome, step: 'Processing the current request' })
+                        publishErrorContext(formatLiveStatus(update, { errorContextOnly: true }), delegationId)
+                        publishProgress(update, delegationId)
                     }
                 })
                 .finally(() => {
@@ -482,6 +536,8 @@ async function runAssistantLiveCall(sessionId) {
                         controllerConnected: true,
                         lastConnectedAt: Date.now(),
                     }).catch(() => close('controller_error'))
+                    sentPageContext = ''
+                    publishPageContext()
                     for (const payload of outbox.values()) send(payload)
                     if (attempt === 0)
                         append(

@@ -11,10 +11,13 @@ const EVENTS = new Set([
     'audio_waiting',
     'audio_stalled',
     'cleanup',
+    'page_context_update_failed',
 ])
 const REASONS = new Set([
     'cleanup',
     'component_unmounted',
+    'app_unmounted',
+    'account_changed',
     'disconnect_grace_expired',
     'peer_failed',
     'peer_closed',

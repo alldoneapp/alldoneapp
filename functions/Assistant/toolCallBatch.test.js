@@ -12,8 +12,8 @@ const flush = async () => {
     for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
-test('overlaps at most three reads, fills free slots and returns all five results in request order', async () => {
-    const gates = Array.from({ length: 5 }, deferred)
+test('overlaps at most five reads, fills free slots and returns all seven results in request order', async () => {
+    const gates = Array.from({ length: 7 }, deferred)
     const starts = []
     const states = []
     const running = executeToolCallBatch(
@@ -25,19 +25,21 @@ test('overlaps at most three reads, fills free slots and returns all five result
         { onState: state => states.push(state) }
     )
     await flush()
-    expect(starts).toEqual([0, 1, 2])
+    expect(starts).toEqual([0, 1, 2, 3, 4])
     gates[2].resolve('two')
     await flush()
-    expect(starts).toEqual([0, 1, 2, 3])
+    expect(starts).toEqual([0, 1, 2, 3, 4, 5])
     gates[3].resolve('three')
     await flush()
-    expect(starts).toEqual([0, 1, 2, 3, 4])
+    expect(starts).toEqual([0, 1, 2, 3, 4, 5, 6])
+    gates[6].resolve('six')
+    gates[5].resolve('five')
     gates[4].resolve('four')
     gates[1].resolve('one')
     gates[0].resolve('zero')
-    expect(await running).toEqual(['zero', 'one', 'two', 'three', 'four'])
-    expect(Math.max(...states.map(state => state.active.length))).toBe(3)
-    expect(states.at(-1)).toEqual({ total: 5, completed: 5, active: [] })
+    expect(await running).toEqual(['zero', 'one', 'two', 'three', 'four', 'five', 'six'])
+    expect(Math.max(...states.map(state => state.active.length))).toBe(5)
+    expect(states.at(-1)).toEqual({ total: 7, completed: 7, active: [] })
 })
 
 test.each([
@@ -77,10 +79,10 @@ test.each([
 })
 
 test('a cancellation or permission failure stops queued work and drains running reads before rejecting', async () => {
-    const gates = Array.from({ length: 3 }, deferred)
+    const gates = Array.from({ length: 5 }, deferred)
     const execute = jest.fn((_, i) => gates[i]?.promise)
     const running = executeToolCallBatch(
-        [0, 1, 2, 3].map(i => call('web_search', String(i))).concat(call('create_task')),
+        [0, 1, 2, 3, 4, 5].map(i => call('web_search', String(i))).concat(call('create_task')),
         execute
     )
     let finished = false
@@ -95,8 +97,12 @@ test('a cancellation or permission failure stops queued work and drains running 
     await flush()
     expect(finished).toBe(false)
     gates[2].resolve(2)
+    gates[3].resolve(3)
+    await flush()
+    expect(finished).toBe(false)
+    gates[4].resolve(4)
     expect((await outcome).message).toBe('voice_request_superseded')
-    expect(execute).toHaveBeenCalledTimes(3)
+    expect(execute).toHaveBeenCalledTimes(5)
 })
 
 test('returned tool failures stay associated with their call and do not drop other results', async () => {
