@@ -2926,5 +2926,13 @@
     "browser_allowlist_unused_in_all_public": "No se usa mientras se permitan todos los sitios web públicos.",
     "Blocked websites": "Sitios web bloqueados",
     "Blocked websites description": "Nunca se abren, sea cual sea la opción elegida arriba.",
-    "browser_allowlist_no_project": "Esta lista pertenece a un proyecto. Abre el asistente dentro del proyecto que quieras configurar."
+    "browser_allowlist_no_project": "Esta lista pertenece a un proyecto. Abre el asistente dentro del proyecto que quieras configurar.",
+    "Voice costs %{gold} Gold/min plus normal assistant usage": "La voz cuesta %{gold} Gold/min más el uso habitual del asistente",
+    "Voice has a %{seconds}-second minimum; connected time includes silence": "Mínimo de %{seconds} segundos; el tiempo conectado incluye los silencios",
+    "Voice usage: %{gold} Gold": "Uso de voz: %{gold} Gold",
+    "Assistant voice duration": "Duración de voz con el asistente",
+    "Assistant voice call": "Llamada de voz al asistente",
+    "Assistant phone call": "Llamada telefónica al asistente",
+    "Call cost: %{voice} Gold voice + %{assistant} Gold assistant": "Coste: %{voice} Gold de voz + %{assistant} Gold del asistente",
+    "Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant": "Uso hasta ahora: %{voice} Gold de voz + %{assistant} Gold del asistente"
 }
