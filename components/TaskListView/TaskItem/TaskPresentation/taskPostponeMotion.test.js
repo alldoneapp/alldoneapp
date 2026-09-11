@@ -16,13 +16,22 @@ import useTaskPostponeMotion, {
 let motion
 const PROJECT = 'project-1'
 const TASK = { id: 'task-1', parentGoalId: 'goal-1' }
+const pageStyle = { flex: 1 }
+const headerStyle = { paddingTop: 8 }
+const siblingStyle = { marginTop: 12 }
+const entryStyle = { paddingBottom: 8 }
 
 const Harness = ({ options = {} }) => {
     motion = useTaskPostponeMotion({ enabled: true, projectId: PROJECT, taskId: TASK.id, ...options })
-    return <View onLayout={motion.onRowLayout} style={motion.rowStyle} />
+    return (
+        <View testID="page" style={pageStyle}>
+            <View testID="header" style={headerStyle} />
+            <View testID="task" style={motion.rowStyle} />
+            <View testID="sibling-goal-section" style={siblingStyle} />
+            <View testID="entry-row" style={entryStyle} />
+        </View>
+    )
 }
-
-const layout = height => ({ nativeEvent: { layout: { height } } })
 
 describe('task postpone motion (AT-2541)', () => {
     const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled
@@ -52,7 +61,6 @@ describe('task postpone motion (AT-2541)', () => {
             tree = renderer.create(<Harness options={options} />)
             await Promise.resolve()
         })
-        act(() => motion.onRowLayout(layout(48)))
         return tree
     }
 
@@ -80,17 +88,24 @@ describe('task postpone motion (AT-2541)', () => {
         expect(targetLeavesToday(Number.MAX_SAFE_INTEGER, now)).toBe(true)
     })
 
-    it('slides left, fades, then collapses in 350ms before writing', async () => {
-        await mount()
+    it('animates only the row with compositor styles before writing', async () => {
+        const tree = await mount()
         const { promise, write } = await postpone()
 
         expect(POSTPONE_SLIDE_FADE_MS + POSTPONE_COLLAPSE_MS).toBe(POSTPONE_EXIT_TOTAL_MS)
         expect(POSTPONE_EXIT_TOTAL_MS).toBe(350)
         expect(POSTPONE_TRANSLATE_X).toBeLessThan(0)
-        expect(motion.rowStyle).toEqual(
-            expect.objectContaining({ opacity: expect.anything(), height: expect.anything(), overflow: 'hidden' })
-        )
+        expect(motion.rowStyle).toEqual(expect.objectContaining({ opacity: expect.anything() }))
         expect(motion.rowStyle.transform[0].translateX).toBeDefined()
+        expect(motion.rowStyle.transform[1].scaleY).toBeDefined()
+        expect(motion.rowStyle.height).toBeUndefined()
+        expect(motion.rowStyle.minHeight).toBeUndefined()
+        expect(motion.rowStyle.marginBottom).toBeUndefined()
+        expect(motion.rowStyle.overflow).toBeUndefined()
+        expect(tree.root.findByProps({ testID: 'page' }).props.style).toBe(pageStyle)
+        expect(tree.root.findByProps({ testID: 'header' }).props.style).toBe(headerStyle)
+        expect(tree.root.findByProps({ testID: 'sibling-goal-section' }).props.style).toBe(siblingStyle)
+        expect(tree.root.findByProps({ testID: 'entry-row' }).props.style).toBe(entryStyle)
         expect(write).not.toHaveBeenCalled()
 
         await act(async () => {
@@ -98,6 +113,22 @@ describe('task postpone motion (AT-2541)', () => {
             await promise
         })
         expect(write).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not hand a final task postpone to its goal section or other page elements', async () => {
+        const tree = await mount({ goalId: TASK.parentGoalId })
+        const { promise } = await postpone()
+
+        expect(motion.rowStyle).toBeDefined()
+        expect(tree.root.findByProps({ testID: 'page' }).props.style).toBe(pageStyle)
+        expect(tree.root.findByProps({ testID: 'header' }).props.style).toBe(headerStyle)
+        expect(tree.root.findByProps({ testID: 'sibling-goal-section' }).props.style).toBe(siblingStyle)
+        expect(tree.root.findByProps({ testID: 'entry-row' }).props.style).toBe(entryStyle)
+
+        await act(async () => {
+            jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
+            await promise
+        })
     })
 
     it('does nothing for a date change that leaves the task in Today', async () => {
@@ -126,12 +157,17 @@ describe('task postpone motion (AT-2541)', () => {
 
     it('uses a brief fade without translation or animated collapse for reduced motion', async () => {
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
-        await mount()
+        const tree = await mount()
         const { promise, write } = await postpone()
 
         expect(motion.rowStyle.opacity).toBeDefined()
         expect(motion.rowStyle.transform).toBeUndefined()
         expect(motion.rowStyle.height).toBeUndefined()
+        expect(motion.rowStyle.marginBottom).toBeUndefined()
+        expect(tree.root.findByProps({ testID: 'page' }).props.style).toBe(pageStyle)
+        expect(tree.root.findByProps({ testID: 'header' }).props.style).toBe(headerStyle)
+        expect(tree.root.findByProps({ testID: 'sibling-goal-section' }).props.style).toBe(siblingStyle)
+        expect(tree.root.findByProps({ testID: 'entry-row' }).props.style).toBe(entryStyle)
 
         await act(async () => {
             jest.advanceTimersByTime(POSTPONE_REDUCED_FADE_MS)
