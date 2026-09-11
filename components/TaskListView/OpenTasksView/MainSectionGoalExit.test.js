@@ -36,6 +36,15 @@ jest.mock('./EmptyGoal', () => 'EmptyGoal')
 jest.mock('./TasksList', () => 'TasksList')
 jest.mock('./NewTaskSection', () => 'NewTaskSection')
 jest.mock('./GeneralTaskSectionEntry', () => 'GeneralTaskSectionEntry')
+let mockGoalPostponeMotionListener
+jest.mock('./goalPostponeMotion', () => ({
+    subscribeToGoalPostponeMotion: listener => {
+        mockGoalPostponeMotionListener = listener
+        return () => {
+            if (mockGoalPostponeMotionListener === listener) mockGoalPostponeMotionListener = null
+        }
+    },
+}))
 jest.mock('./GeneralTasksHeader', () => 'GeneralTasksHeader')
 jest.mock('./SwipeableGeneralTasksHeader', () => 'SwipeableGeneralTasksHeader')
 jest.mock('../../GoalsView/SortModeActiveInfo', () => 'SortModeActiveInfo')
@@ -187,6 +196,7 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
 
     beforeEach(() => {
         jest.useFakeTimers()
+        mockGoalPostponeMotionListener = null
         resetGoalTaskCompletionListeners()
         resetGoalTaskPostponeListeners()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
@@ -245,6 +255,25 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
             const tree = await mount(withTask)
 
             expect(sectionsOf(tree).map(props => props.goalId)).toEqual([TASK_ONLY_GOAL])
+            expect(sectionsOf(tree)[0].postponeMotionEnabled).toBe(true)
+        })
+
+        it('reveals the general task entry while the final whole-goal swipe is collapsing', async () => {
+            const tree = await mount(withTask)
+
+            await act(async () => {
+                mockGoalPostponeMotionListener({
+                    projectId: PROJECT,
+                    goalId: TASK_ONLY_GOAL,
+                    runId: 1000001,
+                    active: true,
+                })
+            })
+
+            const entries = generalEntriesOf(tree)
+            expect(entries).toHaveLength(1)
+            expect(entries[0].entryRunId).toBe(1000001)
+            expect(entries[0].exitKind).toBe('goalPostpone')
         })
 
         /**
