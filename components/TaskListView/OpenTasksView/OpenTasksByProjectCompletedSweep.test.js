@@ -1,17 +1,8 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import moment from 'moment'
-import { AccessibilityInfo } from 'react-native'
 
 import OpenTasksByProject from './OpenTasksByProject'
 import ProjectSection from '../ProjectSection'
-import { PROJECT_LINE_EXIT_HOLD_MS, SWEEP_LEAD_MS } from './projectCompletedSweepMotion'
-import { MILESTONE_EXIT_MS } from '../Header/MilestoneRowTransition'
-import { PROJECT_SWEEP_PROBE_MS } from './useProjectCompletedSweep'
-import {
-    markProjectEmptyInboxDayReached,
-    resetProjectEmptyInboxCelebrationSessionMarkers,
-} from './projectEmptyInboxCelebrationMarker'
 
 let mockState
 let mockInSelectedProject
@@ -62,28 +53,16 @@ jest.mock('../../../utils/backends/openTasks', () => ({
 jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedProject: () => mockInSelectedProject,
 }))
-
-/**
- * AT-2492 (second pass) — the board-level wiring, which is where this feature actually lives or
- * dies.
- *
- * The unit rules are covered in `useProjectCompletedSweep.test.js`. What can only be seen here is
- * the conflict the feature creates with the board itself: in All Projects a cleared project is
- * dropped from the board (`hideProjectData`) at the very moment we want to sweep its line. These
- * cases pin both halves of the resolution — the line stays for the sweep, AND it still leaves
- * afterwards, so the settled board is unchanged.
- */
+jest.mock('../../UIComponents/Ghosts/ghostAnimation', () => ({
+    useReducedMotion: () => false,
+}))
 
 const USER = 'user-1'
 const PROJECT = 'project-a'
-const PINNED_NOW = new Date('2026-09-02T10:00:00Z')
-const todayKey = moment(PINNED_NOW).format('YYYY-MM-DD')
 
 const countOf = (tree, type) => tree.root.findAllByType(type).length
-const headerOf = tree => tree.root.findAllByType('ProjectHeader')[0]
-const sectionOf = tree => tree.root.findAllByType(ProjectSection)[0]
 
-const buildState = ({ todayIsEmpty, todayCount, filters = [] } = {}) => ({
+const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false } = {}) => ({
     loggedUserProjectsMap: { [PROJECT]: { index: 0, id: PROJECT, color: '#2F80ED' } },
     loggedUserProjects: [{ id: PROJECT }],
     selectedProjectIndex: 0,
@@ -91,54 +70,33 @@ const buildState = ({ todayIsEmpty, todayCount, filters = [] } = {}) => ({
     loggedUser: { uid: USER, isAnonymous: false, okrsHiddenInAllProjectsTodayByProjectAndOkr: {} },
     tasksArrowButtonIsExpanded: false,
     okrsByProjectInTasks: {},
-    // One "today" date section, with or without tasks in it.
-    filteredOpenTasksStore: { [PROJECT + USER]: [['0', todayIsEmpty ? 0 : 3, []]] },
-    taskPriorityFilters: filters,
+    filteredOpenTasksStore: { [PROJECT + USER]: loading ? [] : [['0', todayIsEmpty ? 0 : 3, []]] },
+    taskPriorityFilters: [],
     taskVmStateFilters: [],
-    initialLoadingEndOpenTasks: { [PROJECT + USER]: true },
-    initialLoadingEndObservedTasks: { [PROJECT + USER]: true },
+    initialLoadingEndOpenTasks: { [PROJECT + USER]: !loading },
+    initialLoadingEndObservedTasks: { [PROJECT + USER]: !loading },
     taskListSingleLoading: {},
-    thereAreNotTasksInFirstDay: { [PROJECT + USER]: !!todayIsEmpty },
+    thereAreNotTasksInFirstDay: { [PROJECT + USER]: todayIsEmpty },
     sidebarNumbers: { [PROJECT]: { [USER]: todayCount } },
 })
 
-describe('the completed sweep on the open-tasks board (AT-2492)', () => {
-    const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled
-    const originalAddEventListener = AccessibilityInfo.addEventListener
-    const originalNodeEnv = process.env.NODE_ENV
-
+describe('open-tasks project rendering (AT-2551)', () => {
     beforeEach(() => {
-        jest.useFakeTimers()
-        jest.setSystemTime(PINNED_NOW)
-        localStorage.clear()
-        resetProjectEmptyInboxCelebrationSessionMarkers()
         mockInSelectedProject = false
-        AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
-        AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
-        process.env.NODE_ENV = 'development'
     })
 
-    afterEach(() => {
-        jest.useRealTimers()
-        AccessibilityInfo.isReduceMotionEnabled = originalIsReduceMotionEnabled
-        AccessibilityInfo.addEventListener = originalAddEventListener
-        process.env.NODE_ENV = originalNodeEnv
-    })
-
-    const render = async (state, props = {}) => {
+    const render = state => {
         mockState = state
         let tree
-        await act(async () => {
-            tree = renderer.create(
-                <OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} {...props} />
-            )
+        act(() => {
+            tree = renderer.create(<OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} />)
         })
         return tree
     }
 
-    const update = async (tree, state) => {
+    const update = (tree, state) => {
         mockState = state
-        await act(async () => {
+        act(() => {
             tree.update(<OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} />)
         })
     }
@@ -149,154 +107,58 @@ describe('the completed sweep on the open-tasks board (AT-2492)', () => {
         [false, true, true],
     ])(
         'shares hierarchy across project and assistant boards (selected=%s, assistant=%s)',
-        async (selected, assistant, expected) => {
+        (selected, assistant, expected) => {
             mockInSelectedProject = selected
-            const tree = await render(buildState({ todayIsEmpty: false }), { assistantProfileMode: assistant })
+            mockState = buildState()
+            let tree
+            act(() => {
+                tree = renderer.create(
+                    <OpenTasksByProject
+                        projectId={PROJECT}
+                        sortedLoggedUserProjectIds={[PROJECT]}
+                        assistantProfileMode={assistant}
+                    />
+                )
+            })
             expect(tree.root.findByType('OpenTasksByDate').props.taskHierarchy).toBe(expected)
             expect(countOf(tree, 'OKRSection')).toBe(assistant ? 0 : 1)
             expect(countOf(tree, 'UpcomingMilestoneRow')).toBe(assistant ? 0 : 1)
-            await act(async () => tree.unmount())
+            act(() => tree.unmount())
         }
     )
 
-    describe('in All Projects', () => {
-        /**
-         * The case the whole second pass exists for. Before it, clearing a project here removed the
-         * block in the same commit and there was nothing left to celebrate on.
-         */
-        it('keeps the cleared project on the board for its sweep, then drops it', async () => {
-            // Deliberately NOT pre-seeded: this is the headline user story — the last task of a
-            // project is completed while looking at All Projects — so the hook has to observe the
-            // clearing itself. Seeding the record would let this pass without that ever working.
-            const tree = await render(buildState({ todayIsEmpty: false, todayCount: 1 }))
-            expect(countOf(tree, 'ProjectHeader')).toBe(1)
+    it('removes a cleared project immediately instead of holding it for a page-wide sweep', () => {
+        const tree = render(buildState())
+        expect(countOf(tree, 'ProjectHeader')).toBe(1)
 
-            // The last task of the project is completed.
-            await update(tree, buildState({ todayIsEmpty: true, todayCount: 0 }))
+        update(tree, buildState({ todayIsEmpty: true, todayCount: 0 }))
 
-            // The line is still there, and it is sweeping.
-            expect(countOf(tree, 'ProjectHeader')).toBe(1)
-            expect(sectionOf(tree).props.completedSweepRunId).toBe(1)
-            /**
-             * AT-2495 — and the header is told the line is on its way out, which is what turns the
-             * sweep's last stage from a settle into the disintegration.
-             *
-             * The value passed is the board's OWN verdict, deliberately not the held
-             * `hideProjectData`: that one is false for the whole hold — that is what the hold IS —
-             * so it could never say "this line is leaving" and the row would settle in place and
-             * then vanish.
-             */
-            expect(sectionOf(tree).props.completedSweepLineWillLeave).toBe(true)
-            expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(true)
-            // The milestone completes its exit before the project's dissolve starts.
-            expect(MILESTONE_EXIT_MS).toBeLessThan(SWEEP_LEAD_MS)
-            await act(async () => {
-                jest.advanceTimersByTime(MILESTONE_EXIT_MS)
-            })
-            expect(countOf(tree, 'ProjectHeader')).toBe(1)
-
-            // And once the sweep is over the board returns to exactly what it renders today.
-            await act(async () => {
-                jest.advanceTimersByTime(PROJECT_LINE_EXIT_HOLD_MS + 100)
-            })
-            expect(countOf(tree, 'ProjectHeader')).toBe(0)
-        })
-
-        /**
-         * The other half of the same contract: a project whose today list empties for any reason
-         * that is NOT a celebration must still disappear at once. 78 project blocks go through this
-         * code path on every board load.
-         */
-        it('drops a project that empties with nothing to celebrate, without delay', async () => {
-            // No task was completed today: the count never leaves 0, and the block goes away for
-            // some other reason (its last empty-goal row disappearing, a task moved to another
-            // project). Nothing was cleared, so nothing is celebrated.
-            const tree = await render(buildState({ todayIsEmpty: false, todayCount: 0 }))
-
-            await update(tree, buildState({ todayIsEmpty: true, todayCount: 0 }))
-
-            // Held only for the probe window while we find out...
-            await act(async () => {
-                jest.advanceTimersByTime(PROJECT_SWEEP_PROBE_MS + 20)
-            })
-            expect(countOf(tree, 'ProjectHeader')).toBe(0)
-        })
-
-        it('never tells a staying line that it is leaving', async () => {
-            // A project with tasks left in it is not going anywhere, so its header must never be
-            // handed the exit — a masked, collapsed project line that stays on the board is a hole
-            // the user cannot click.
-            const tree = await render(buildState({ todayIsEmpty: false, todayCount: 1 }))
-
-            expect(countOf(tree, 'ProjectHeader')).toBe(1)
-            expect(sectionOf(tree).props.completedSweepLineWillLeave).toBe(false)
-            expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(false)
-        })
-
-        it('never sweeps a project that was already off the board when it mounted', async () => {
-            markProjectEmptyInboxDayReached(USER, PROJECT, todayKey)
-
-            const tree = await render(buildState({ todayIsEmpty: true, todayCount: 0 }))
-
-            expect(countOf(tree, 'ProjectHeader')).toBe(0)
-        })
+        expect(countOf(tree, 'ProjectHeader')).toBe(0)
+        expect(countOf(tree, ProjectSection)).toBe(0)
     })
 
-    describe('in the selected project', () => {
-        beforeEach(() => {
-            mockInSelectedProject = true
-        })
+    it('does not arm completion motion for a project that stays on the board', () => {
+        const tree = render(buildState())
+        const section = tree.root.findByType(ProjectSection)
 
-        it('sweeps the project line and pops the picture as one event', async () => {
-            markProjectEmptyInboxDayReached(USER, PROJECT, todayKey)
-
-            const tree = await render(buildState({ todayIsEmpty: true, todayCount: 0 }))
-
-            expect(tree.root.findByType('UpcomingMilestoneRow').props.hidden).toBe(false)
-            const runId = sectionOf(tree).props.completedSweepRunId
-            expect(runId).toBe(1)
-            // The same run id reaches the date section, which forwards it to the Anna picture — so
-            // the sweep and the pop are visibly one celebration rather than two that overlap.
-            expect(tree.root.findAllByType('OpenTasksByDate')[0].props.projectCelebrationRunId).toBe(runId)
-        })
-
-        it('keeps its header whatever happens, so nothing is ever held back', async () => {
-            markProjectEmptyInboxDayReached(USER, PROJECT, todayKey)
-            const tree = await render(buildState({ todayIsEmpty: true, todayCount: 0 }))
-
-            await act(async () => {
-                jest.advanceTimersByTime(PROJECT_LINE_EXIT_HOLD_MS + 100)
-            })
-
-            expect(countOf(tree, 'ProjectHeader')).toBe(1)
-        })
+        expect(section.props.completedSweepRunId).toBeUndefined()
+        expect(section.props.completedSweepLineWillLeave).toBeUndefined()
     })
 
-    describe('the gates', () => {
-        beforeEach(() => {
-            mockInSelectedProject = true
-        })
+    it('keeps the selected-project empty state static and visible', () => {
+        mockInSelectedProject = true
+        const tree = render(buildState({ todayIsEmpty: true, todayCount: 0 }))
 
-        /**
-         * `thereAreNotTasksInFirstDay` and the filtered store both describe a FILTERED list, so a
-         * priority filter empties a project on screen without the project being done at all.
-         */
-        it('does not celebrate a list emptied by a filter', async () => {
-            markProjectEmptyInboxDayReached(USER, PROJECT, todayKey)
+        expect(countOf(tree, 'ProjectHeader')).toBe(1)
+        expect(tree.root.findByType(ProjectSection).props.completedSweepRunId).toBeUndefined()
+        expect(tree.root.findByType('OpenTasksByDate').props.projectCelebrationRunId).toBeUndefined()
+    })
 
-            const tree = await render(buildState({ todayIsEmpty: true, todayCount: 0, filters: ['high'] }))
+    it('still shows the loading skeleton while selected-project task data is pending', () => {
+        mockInSelectedProject = true
+        const tree = render(buildState({ loading: true }))
 
-            expect(sectionOf(tree).props.completedSweepRunId).toBe(0)
-        })
-
-        it("does not celebrate on somebody else's board", async () => {
-            markProjectEmptyInboxDayReached(USER, PROJECT, todayKey)
-            const state = buildState({ todayIsEmpty: true, todayCount: 0 })
-            state.currentUser = { uid: 'assistant-1' }
-
-            const tree = await render(state)
-
-            expect(sectionOf(tree).props.completedSweepRunId).toBe(0)
-        })
+        expect(countOf(tree, 'ProjectHeader')).toBe(1)
+        expect(countOf(tree, 'TaskListSkeleton')).toBe(1)
     })
 })
