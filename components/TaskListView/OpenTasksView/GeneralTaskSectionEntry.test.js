@@ -8,13 +8,17 @@ import {
     GENERAL_TASK_ENTRY_FADE_DELAY_MS,
     GENERAL_TASK_ENTRY_FADE_MS,
     GENERAL_TASK_ENTRY_TOTAL_MS,
+    GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS,
+    GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS,
+    GOAL_POSTPONE_GENERAL_TASK_ENTRY_TOTAL_MS,
     useGeneralTaskSectionEntry,
 } from './GeneralTaskSectionEntry'
 import { GOAL_EXIT_COLLAPSE_DELAY_MS, GOAL_EXIT_FADE_MS, GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
+import { POSTPONE_EXIT_TOTAL_MS, POSTPONE_SLIDE_FADE_MS } from '../TaskItem/TaskPresentation/taskPostponeMotion'
 
 let motion
-const Harness = ({ entryRunId }) => {
-    motion = useGeneralTaskSectionEntry(entryRunId)
+const Harness = ({ entryRunId, exitKind }) => {
+    motion = useGeneralTaskSectionEntry(entryRunId, exitKind)
     return (
         <View style={motion.sectionStyle}>
             <View onLayout={motion.onContentLayout} style={motion.contentStyle} />
@@ -44,10 +48,10 @@ describe('the general add-task row replacing a completed goal (AT-2534)', () => 
         process.env.NODE_ENV = originalNodeEnv
     })
 
-    const render = async entryRunId => {
+    const render = async (entryRunId, exitKind) => {
         let tree
         await act(async () => {
-            tree = renderer.create(<Harness entryRunId={entryRunId} />)
+            tree = renderer.create(<Harness entryRunId={entryRunId} exitKind={exitKind} />)
             await Promise.resolve()
         })
         return tree
@@ -114,5 +118,18 @@ describe('the general add-task row replacing a completed goal (AT-2534)', () => 
             GENERAL_TASK_ENTRY_TOTAL_MS
         )
         expect(GENERAL_TASK_ENTRY_TOTAL_MS).toBeLessThan(GOAL_SECTION_EXIT_TOTAL_MS)
+    })
+
+    it('waits for the whole-goal slide/fade, then replaces its collapsing height without a jump', async () => {
+        await render(1000001, 'goalPostpone')
+        await act(async () => motion.onContentLayout(layout(42)))
+
+        expect(GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS).toBe(POSTPONE_SLIDE_FADE_MS)
+        expect(GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_DELAY_MS + GOAL_POSTPONE_GENERAL_TASK_ENTRY_EXPAND_MS).toBe(
+            POSTPONE_EXIT_TOTAL_MS
+        )
+
+        await act(async () => jest.advanceTimersByTime(GOAL_POSTPONE_GENERAL_TASK_ENTRY_TOTAL_MS))
+        expect(motion.entering).toBe(false)
     })
 })
