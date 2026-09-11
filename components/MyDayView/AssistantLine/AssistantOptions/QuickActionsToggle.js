@@ -5,8 +5,8 @@ import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 
-export default function QuickActionsToggle({ expanded, onPress }) {
-    const label = translate(expanded ? 'Show less' : 'Show all')
+export default function QuickActionsToggle({ expanded, onPress, onLayout }) {
+    const label = translate(expanded ? 'Show less' : 'More')
 
     return (
         <TouchableOpacity
@@ -14,6 +14,7 @@ export default function QuickActionsToggle({ expanded, onPress }) {
             onPress={onPress}
             accessibilityLabel={label}
             accessibilityRole={'button'}
+            onLayout={onLayout}
         >
             <Text style={[styles.subtitle2, localStyles.text]}>{label}</Text>
             <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.Text03} />

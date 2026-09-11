@@ -28,7 +28,7 @@ jest.mock('../../../../UIComponents/ModalShell/AppPopover', () => {
 jest.mock('../OptionButtons/OptionButton', () => {
     const React = require('react')
     const { TouchableOpacity } = require('react-native')
-    return ({ onPress }) => <TouchableOpacity testID="search-button" onPress={onPress} />
+    return ({ onPress, onLayout }) => <TouchableOpacity testID="search-button" onPress={onPress} onLayout={onLayout} />
 })
 
 jest.mock('./AssistantTaskSearchModal', () => {
@@ -59,5 +59,18 @@ describe('AssistantTaskSearchButtonWrapper', () => {
         })
 
         expect(tree.root.findByType(AssistantTaskSearchModal)).toBeTruthy()
+    })
+
+    it('forwards its measured width to the quick-action row', () => {
+        const onLayout = jest.fn()
+        let tree
+        act(() => {
+            tree = renderer.create(<AssistantTaskSearchButtonWrapper onLayout={onLayout} />)
+        })
+
+        const event = { nativeEvent: { layout: { width: 80 } } }
+        act(() => tree.root.findByProps({ testID: 'search-button' }).props.onLayout(event))
+
+        expect(onLayout).toHaveBeenCalledWith(event)
     })
 })
