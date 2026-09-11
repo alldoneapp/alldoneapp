@@ -35,6 +35,7 @@ jest.mock('./ModalShell/BottomSheet', () => () => null)
 const { runHttpsCallableFunction } = require('../../utils/backends/firestore')
 const { createBotQuickTopic } = require('../../utils/assistantHelper')
 const AssistantVoiceCallButton = require('./AssistantVoiceCallButton').default
+const { AssistantVoiceCallProvider } = require('./AssistantVoiceCallProvider')
 const AppPopover = require('./ModalShell/AppPopover').default
 
 const MIC_HEALTH_POLL_MS = 4000
@@ -151,11 +152,13 @@ const render = (props = {}) => {
     let tree
     act(() => {
         tree = renderer.create(
-            <AssistantVoiceCallButton
-                assistant={{ uid: 'anna', displayName: 'Anna' }}
-                projectId="project-1"
-                {...props}
-            />
+            <AssistantVoiceCallProvider userId="user-1">
+                <AssistantVoiceCallButton
+                    assistant={{ uid: 'anna', displayName: 'Anna' }}
+                    projectId="project-1"
+                    {...props}
+                />
+            </AssistantVoiceCallProvider>
         )
     })
     trees.push(tree)
@@ -183,6 +186,8 @@ beforeEach(() => {
     callOrder = []
     tracks = []
     visibility = 'visible'
+    window.history.replaceState({}, '', '/')
+    document.title = ''
 
     window.RTCPeerConnection = FakePeerConnection
     getUserMedia = jest.fn(async () => {
@@ -237,12 +242,14 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
             let tree
             act(() => {
                 tree = renderer.create(
-                    <AppPopover content={<span>Gold balance</span>} isOpen={false}>
-                        <AssistantVoiceCallButton
-                            assistant={{ uid: 'anna', displayName: 'Anna' }}
-                            projectId="project-1"
-                        />
-                    </AppPopover>
+                    <AssistantVoiceCallProvider userId="user-1">
+                        <AppPopover content={<span>Gold balance</span>} isOpen={false}>
+                            <AssistantVoiceCallButton
+                                assistant={{ uid: 'anna', displayName: 'Anna' }}
+                                projectId="project-1"
+                            />
+                        </AppPopover>
+                    </AssistantVoiceCallProvider>
                 )
             })
             trees.push(tree)
@@ -833,3 +840,113 @@ test.each(['hangup', 'unmount', 'capture-failure'])(
         }
     }
 )
+
+const routeTree = (page, userId = 'user-1') => (
+    <AssistantVoiceCallProvider userId={userId}>
+        <div key={page}>
+            {page === 'tasks' && (
+                <AssistantVoiceCallButton assistant={{ uid: 'anna', displayName: 'Anna' }} projectId="project-1" />
+            )}
+            {page === 'notes' && (
+                <AssistantVoiceCallButton
+                    assistant={{ uid: 'other', displayName: 'Other assistant' }}
+                    projectId="project-2"
+                />
+            )}
+            <button onClick={jest.fn()}>{page}</button>
+        </div>
+    </AssistantVoiceCallProvider>
+)
+
+test('navigation removes the original launcher but keeps one call, audio and a usable floating hangup', async () => {
+    FakePeerConnection.liveStartupEvents = true
+    runHttpsCallableFunction.mockImplementation(async name =>
+        name === 'startAssistantBrowserCallSecondGen'
+            ? { answerSdp: 'answer', sessionId: 'browser-navigation', voiceProvider: 'gpt-live' }
+            : { updated: true }
+    )
+    let tree
+    act(() => {
+        tree = renderer.create(routeTree('tasks'))
+    })
+    trees.push(tree)
+    const pc = await startCall(tree)
+    const track = tracks[0]
+    const audio = document.querySelector('audio')
+    for (const page of ['notes', 'settings', 'tasks']) {
+        await act(async () => {
+            tree.update(routeTree(page))
+            window.history.pushState({}, '', `/projects/${page}`)
+            document.title = page
+            await jest.advanceTimersByTimeAsync(500)
+        })
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
+            'updateAssistantBrowserCallContextSecondGen',
+            expect.objectContaining({
+                sessionId: 'browser-navigation',
+                pageContext: { path: `/projects/${page}`, title: page },
+            })
+        )
+        expect(pc.closed).toBe(false)
+        expect(track.stop).not.toHaveBeenCalled()
+        expect(document.querySelector('audio')).toBe(audio)
+        expect(tree.root.findAllByType('Button')).toHaveLength(1)
+        expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
+        const appButton = tree.root.findByType('button')
+        act(() => appButton.props.onClick())
+        expect(appButton.props.onClick).toHaveBeenCalledTimes(1)
+    }
+    expect(FakePeerConnection.instances).toHaveLength(1)
+    let ending
+    await act(async () => {
+        ending = findEndCallButton(tree).props.onPress()
+        pc.channel.onmessage({ data: JSON.stringify({ type: 'session.closed', usage: { seconds: 30 } }) })
+        await ending
+    })
+    expect(pc.closed).toBe(true)
+    expect(track.stop).toHaveBeenCalledTimes(1)
+    expect(tree.root.findAllByProps({ testID: 'floating-voice-call' })).toHaveLength(0)
+})
+
+test('navigation during startup keeps the pending call, but signing out releases it', async () => {
+    let respond
+    FakePeerConnection.liveStartupEvents = true
+    runHttpsCallableFunction.mockImplementation(name =>
+        name === 'startAssistantBrowserCallSecondGen'
+            ? new Promise(resolve => {
+                  respond = resolve
+              })
+            : Promise.resolve({ updated: true })
+    )
+    let tree
+    act(() => {
+        tree = renderer.create(routeTree('tasks'))
+    })
+    trees.push(tree)
+    let starting
+    await act(async () => {
+        starting = tree.root.findByType('Button').props.onPress()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+    })
+    await act(async () => {
+        tree.update(routeTree('settings'))
+    })
+    expect(tree.root.findByType('Button').props.accessibilityLabel).toBe('Cancel assistant call')
+    await act(async () => {
+        respond({ answerSdp: 'answer', sessionId: 'browser-navigation', voiceProvider: 'gpt-live' })
+        await starting
+    })
+    expect(FakePeerConnection.instances[0].closed).toBe(false)
+    await act(async () => {
+        tree.update(routeTree('settings', null))
+    })
+    expect(FakePeerConnection.instances[0].closed).toBe(true)
+    expect(tracks[0].stop).toHaveBeenCalled()
+    expect(runHttpsCallableFunction).toHaveBeenCalledWith(
+        'endAssistantBrowserCallSecondGen',
+        expect.objectContaining({
+            sessionId: 'browser-navigation',
+            diagnostics: expect.objectContaining({ reason: 'account_changed' }),
+        })
+    )
+})

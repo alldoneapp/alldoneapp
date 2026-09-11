@@ -6671,6 +6671,12 @@ exports.endAssistantBrowserCallSecondGen = onCall(
     async request => require('./WhatsApp/assistantBrowserCall').endAssistantBrowserCall(request.data, request.auth)
 )
 
+exports.updateAssistantBrowserCallContextSecondGen = onCall(
+    { region: 'europe-west1', timeoutSeconds: 30, memory: '256MiB' },
+    async request =>
+        require('./WhatsApp/assistantBrowserCall').updateAssistantBrowserCallContext(request.data, request.auth)
+)
+
 exports.getAssistantBrowserCallSummarySecondGen = onCall(
     { region: 'europe-west1', timeoutSeconds: 30, memory: '256MiB' },
     async request =>

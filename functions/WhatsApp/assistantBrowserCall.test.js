@@ -388,3 +388,47 @@ describe('cancel abandoned Live startup', () => {
         expect(update.mock.calls.some(([data]) => data.cancelRequestedAt)).toBe(false)
     })
 })
+
+describe('live page context ownership and ordering', () => {
+    const { updateAssistantBrowserCallContext } = require('./assistantBrowserCall')
+    let session
+    let update
+    const data = {
+        sessionId: 'browser-one',
+        sequence: 1,
+        pageContext: { path: '/projects/p/notes/n/editor', title: 'Plan' },
+    }
+    beforeEach(() => {
+        session = { userId: 'owner', voiceProvider: 'gpt-live', status: 'controller_running', pageContextSequence: 0 }
+        update = jest.fn((ref, changes) => Object.assign(session, changes))
+        admin.firestore.mockReturnValue({
+            doc: path => ({ path }),
+            runTransaction: fn => fn({ get: async () => ({ exists: true, data: () => session }), update }),
+        })
+    })
+    test('only the authenticated call owner can change context', async () => {
+        await expect(updateAssistantBrowserCallContext(data, null)).rejects.toMatchObject({ code: 'unauthenticated' })
+        await expect(updateAssistantBrowserCallContext(data, { uid: 'someone-else' })).rejects.toMatchObject({
+            code: 'not-found',
+        })
+        expect(update).not.toHaveBeenCalled()
+        await expect(updateAssistantBrowserCallContext(data, { uid: 'owner' })).resolves.toEqual({ updated: true })
+        expect(session.pageContext).toEqual(data.pageContext)
+    })
+    test('rejects malformed data and does not overwrite a newer page or revive an ended call', async () => {
+        await expect(
+            updateAssistantBrowserCallContext(
+                { ...data, pageContext: { path: 'https://elsewhere.test' } },
+                { uid: 'owner' }
+            )
+        ).rejects.toMatchObject({ code: 'invalid-argument' })
+        await updateAssistantBrowserCallContext({ ...data, sequence: 2 }, { uid: 'owner' })
+        await expect(updateAssistantBrowserCallContext(data, { uid: 'owner' })).resolves.toEqual({ updated: false })
+        expect(update).toHaveBeenCalledTimes(1)
+        session.cancelRequestedAt = Date.now()
+        await expect(updateAssistantBrowserCallContext({ ...data, sequence: 3 }, { uid: 'owner' })).resolves.toEqual({
+            closed: true,
+        })
+        expect(update).toHaveBeenCalledTimes(1)
+    })
+})

@@ -7461,11 +7461,11 @@ describe('parallel tool execution in both assistant paths', () => {
                       )
             try {
                 await flush()
-                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(3)
+                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(5)
                 expect(mockResponsesCreate).not.toHaveBeenCalled()
                 gates[2].resolve({ success: true, options: [], message: 'result-2' })
                 await flush()
-                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(4)
+                expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(5)
                 gates[3].resolve({ success: false, options: [], message: 'result-3 unavailable' })
                 await flush()
                 expect(mockFindCalendarAvailabilityForAssistantRequest).toHaveBeenCalledTimes(5)
@@ -7588,7 +7588,7 @@ test('a corrected voice request drains active reads and prevents queued reads, w
     const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
     mockResponsesCreate.mockClear()
     let cancelled = false
-    const gates = Array.from({ length: 3 }, () => {
+    const gates = Array.from({ length: 5 }, () => {
         let resolve
         const promise = new Promise(done => {
             resolve = done
@@ -7597,7 +7597,7 @@ test('a corrected voice request drains active reads and prevents queued reads, w
     })
     let index = 0
     const execute = jest.fn(() => gates[index++].promise)
-    const calls = [0, 1, 2, 3].map(i => ({ id: `read-${i}`, function: { name: 'web_search', arguments: '{}' } }))
+    const calls = [0, 1, 2, 3, 4, 5].map(i => ({ id: `read-${i}`, function: { name: 'web_search', arguments: '{}' } }))
     calls.push({ id: 'write', function: { name: 'create_task', arguments: '{}' } })
     const running = collectAssistantTextWithToolCalls({
         stream: [{ additional_kwargs: { tool_calls: calls } }],
@@ -7618,14 +7618,16 @@ test('a corrected voice request drains active reads and prevents queued reads, w
         for (let i = 0; i < 60; i++) await Promise.resolve()
     }
     await flush()
-    expect(execute).toHaveBeenCalledTimes(3)
+    expect(execute).toHaveBeenCalledTimes(5)
     cancelled = true
     gates[0].resolve({ success: true })
     await flush()
     expect(finished).toBe(false)
     gates[1].resolve({ success: true })
     gates[2].resolve({ success: true })
+    gates[3].resolve({ success: true })
+    gates[4].resolve({ success: true })
     expect((await outcome).message).toBe('voice_request_superseded')
-    expect(execute).toHaveBeenCalledTimes(3)
+    expect(execute).toHaveBeenCalledTimes(5)
     expect(mockResponsesCreate).not.toHaveBeenCalled()
 })

@@ -12,6 +12,7 @@ import './assets/css/GlobalStyles.css'
 import store from './redux/store'
 import ErrorBoundary from './utils/ErrorBoundary'
 import AppContent from './AppContent'
+import ConnectedVoiceCallProvider from './components/UIComponents/AssistantVoiceCallProvider'
 import { getSentryVariables, initTimeProvider } from './utils/backends/firestore'
 import HelperFunctions from './utils/HelperFunctions'
 import { startDailyAppReload } from './utils/DailyAppReload'
@@ -70,7 +71,9 @@ export default function App() {
         <ErrorBoundary>
             <KeyboardAvoidingView behavior="height" style={{ flex: 1 }}>
                 <Provider store={store}>
-                    <AppContent />
+                    <ConnectedVoiceCallProvider>
+                        <AppContent />
+                    </ConnectedVoiceCallProvider>
                 </Provider>
             </KeyboardAvoidingView>
         </ErrorBoundary>

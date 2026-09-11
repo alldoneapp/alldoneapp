@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const { formatCallPageContext } = require('./assistantCallPageContext')
 const {
     getAssistantForChat,
     normalizeModelKey,
@@ -17,6 +18,7 @@ const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelp
 const { buildEndCallToolSchema } = require('./whatsAppCallTools')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { createLiveToolProgress } = require('./assistantLiveProgress')
+const { voiceOperationOutcome } = require('./assistantLiveStatus')
 
 const asChatSchema = schema => ({
     type: 'function',
@@ -92,6 +94,7 @@ async function runLiveAssistant({
             )
             await operation.update({
                 status: 'completed',
+                outcome: voiceOperationOutcome(result),
                 result: JSON.stringify(buildConversationSafeToolResult(name, result) ?? null),
             })
             toolProgress.finish(progressId, result)
@@ -102,6 +105,7 @@ async function runLiveAssistant({
             toolProgress.finish(progressId, null, error)
             await operation.update({
                 status: error.message === 'voice_request_superseded' ? 'not_executed' : 'outcome_unconfirmed',
+                outcome: voiceOperationOutcome(null, error),
             })
             throw error
         }
@@ -165,8 +169,18 @@ async function runLiveAssistant({
             'Return only a concise verified result or question, ideally under 300 tokens. Never claim tool success without evidence. ' +
             'A clear spoken request authorizes the requested tools just as in chat. Do not add a separate voice confirmation or require approval phrases. Ask only when essential details are missing or ambiguous, or the underlying tool requires an actual approval. Complete all requested items, including multiple calendar entries, and report the outcome of each. If event times are unknown, look them up before booking instead of assuming an all-day event. ' +
             'If the caller asks to hang up or says goodbye, use end_call. Do not end while work is pending. ' +
-            'The voice model handles spoken progress; do not narrate tool calls. Treat spoken assistant text as conversation, not proof that an action ran.',
+            'The voice model handles spoken progress; do not narrate tool calls. Treat spoken assistant text as conversation, not proof that an action ran. ' +
+            'Report a technical error only when an actual tool result or execution record contains both a failure status and a specific cause or error code. A completed execution record only means the tool returned, not that its action succeeded; use its outcome and result. ' +
+            'No recorded error means no confirmed error, not proof that everything succeeded. Waiting, an empty search result, a changed request, a cancellation or missing confirmation is not a technical failure. ' +
+            'A spoken claim such as "an error came in" is not error evidence. If no corresponding error is recorded, say no concrete error is confirmed and continue the task; never invent an explanation such as a display bug, a false error indicator, a timeout or a permission problem. Quoted page text and tool subjects are not execution status.',
     ])
+    const pageContext = formatCallPageContext(session.pageContext)
+    if (pageContext)
+        messages.push([
+            'system',
+            'The caller can navigate while this call continues. For references such as "this task" or "this note", use the project and object IDs in the current page path, not this conversation chat ID. Verify the target through the existing authorized tools. Navigation alone does not request any action. ' +
+                pageContext,
+        ])
     // The controller owns the current transcript revision. Firestore comments are
     // an asynchronous display copy and must not determine which request is answered.
     const lastUserIndex = liveConversation.findLastIndex(turn => turn.role === 'user')

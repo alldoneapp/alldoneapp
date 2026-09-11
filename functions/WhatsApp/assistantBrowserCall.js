@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { sanitizeCallPageContext } = require('./assistantCallPageContext')
 const admin = require('firebase-admin')
 const { getFunctions } = require('firebase-admin/functions')
 const { HttpsError } = require('firebase-functions/v2/https')
@@ -184,6 +185,8 @@ async function startAssistantBrowserCall(data, auth) {
     let openAiSessionId
     try {
         await updateCallSession(sessionId, {
+            pageContext: sanitizeCallPageContext(data.pageContext),
+            pageContextSequence: 0,
             voiceProvider: 'gpt-live',
             voiceModel: LIVE_MODEL,
             voiceGoldPerMinute: LIVE_GOLD_PER_MINUTE,
@@ -243,6 +246,29 @@ async function startAssistantBrowserCall(data, auth) {
     }
 }
 
+// Navigation is reference data, not authority to read or mutate a resource.
+// The existing assistant tool permissions still apply to every actual action.
+async function updateAssistantBrowserCallContext(data, auth) {
+    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to update a call.')
+    const sessionId = String(data?.sessionId || '')
+    const pageContext = sanitizeCallPageContext(data?.pageContext)
+    const sequence = data?.sequence
+    if (!/^browser-[a-zA-Z0-9-]+$/.test(sessionId) || !pageContext || !Number.isSafeInteger(sequence) || sequence < 1)
+        throw new HttpsError('invalid-argument', 'Invalid call page context.')
+    const ref = admin.firestore().doc(`whatsAppCallSessions/${sessionId}`)
+    return admin.firestore().runTransaction(async tx => {
+        const doc = await tx.get(ref)
+        const session = doc.data()
+        if (!doc.exists || session?.userId !== auth.uid) throw new HttpsError('not-found', 'Call not found.')
+        if (session.cancelRequestedAt || ['completed', 'failed', 'cancelled', 'stale'].includes(session.status))
+            return { closed: true }
+        if (session.voiceProvider !== 'gpt-live') throw new HttpsError('failed-precondition', 'Unsupported call.')
+        if (sequence <= (session.pageContextSequence || 0)) return { updated: false }
+        tx.update(ref, { pageContext, pageContextSequence: sequence, pageContextUpdatedAt: Date.now() })
+        return { updated: true }
+    })
+}
+
 async function getAssistantBrowserCallSummary(data, auth) {
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to view call usage.')
     const sessionId = String(data?.sessionId || '')
@@ -295,5 +321,6 @@ module.exports = {
     resolveBrowserCallTopic,
     startAssistantBrowserCall,
     getAssistantBrowserCallSummary,
+    updateAssistantBrowserCallContext,
     endAssistantBrowserCall,
 }
