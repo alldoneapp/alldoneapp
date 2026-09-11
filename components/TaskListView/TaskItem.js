@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react'
+import { Animated } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import DismissibleItem from '../UIComponents/DismissibleItem'
@@ -8,6 +9,7 @@ import { setCheckTaskItem } from '../../redux/actions'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { objectIsLockedForUser } from '../Guides/guidesHelper'
 import EditTask from './TaskItem/EditTask'
+import useTaskPostponeMotion from './TaskItem/TaskPresentation/taskPostponeMotion'
 
 export default function TaskItem({
     projectId,
@@ -28,12 +30,22 @@ export default function TaskItem({
     inParentGoal,
     isPending,
     createSubtask,
+    inTodayOpenList = false,
 }) {
     const dispatch = useDispatch()
     const isCheckedTaskItem = useSelector(
         state => state.checkTaskItem.id === task.id && state.checkTaskItem.isObserved === !!isObservedTask
     )
     const showSwipeDueDatePopup = useSelector(state => state.showSwipeDueDatePopup)
+    const postponeMotionEnabled = inTodayOpenList && !task.isSubtask && !task.parentId && !isActiveOrganizeMode
+    const { onRowLayout, rowStyle } = useTaskPostponeMotion({
+        enabled: postponeMotionEnabled,
+        projectId,
+        taskId: task.id,
+        goalId: task.parentGoalId,
+        isObservedTask,
+        isToReviewTask,
+    })
 
     const toggleModal = () => {
         if (!showSwipeDueDatePopup.visible) dismissibleRef.current.toggleModal()
@@ -78,7 +90,7 @@ export default function TaskItem({
         }
     }, [isCheckedTaskItem])
 
-    return (
+    const item = (
         <DismissibleItem
             ref={dismissibleRef}
             defaultComponent={
@@ -119,5 +131,13 @@ export default function TaskItem({
             }
             onToggleModal={onToggleModal}
         />
+    )
+
+    return postponeMotionEnabled ? (
+        <Animated.View onLayout={onRowLayout} style={rowStyle} testID="task-postpone-row">
+            {item}
+        </Animated.View>
+    ) : (
+        item
     )
 }

@@ -9,6 +9,8 @@ import {
     OBSERVED_TASKS_INDEX,
     STREAM_AND_USER_TASKS_INDEX,
     SUGGESTED_TASK_INDEX,
+    DATE_TASK_INDEX,
+    TODAY_DATE,
 } from '../../../utils/backends/openTasks'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
 import { useIsUserEditing } from '../../../utils/editingGuard'
@@ -33,6 +35,9 @@ export default function TasksList({
     focusedTaskId,
 }) {
     const subtaskByTaskStore = useSelector(state => state.subtaskByTaskStore[instanceKey])
+    const dateFormatted = useSelector(
+        state => state.filteredOpenTasksStore?.[instanceKey]?.[dateIndex]?.[DATE_TASK_INDEX]
+    )
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
     // Get the optimistic focus task ID for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
@@ -104,6 +109,7 @@ export default function TasksList({
                             isToReviewTask={isToReviewTask}
                             isSuggested={isSuggested}
                             inParentGoal={inParentGoal}
+                            inTodayOpenList={dateFormatted === TODAY_DATE}
                         />
                     )
                 })

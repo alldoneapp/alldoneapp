@@ -27,6 +27,7 @@ export default function ParentTaskContainer({
     inParentGoal,
     containerStyle,
     isPending,
+    inTodayOpenList,
 }) {
     const dispatch = useDispatch()
     const taskHierarchy = useTaskHierarchy()
@@ -146,6 +147,7 @@ export default function ParentTaskContainer({
                 inParentGoal={inParentGoal}
                 isPending={isPending}
                 createSubtask={createSubtask}
+                inTodayOpenList={inTodayOpenList}
             />
 
             {(!isActiveOrganizeMode && showSubTaskList) ||

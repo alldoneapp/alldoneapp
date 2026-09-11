@@ -5,9 +5,12 @@ import { AccessibilityInfo } from 'react-native'
 import useGoalSectionExit, {
     COMPLETION_MEMORY_MS,
     GOAL_SECTION_HOLD_MS,
+    POSTPONE_GOAL_SECTION_HOLD_MS,
+    POSTPONE_MEMORY_MS,
     keepDepartingGoalsSortable,
 } from './useGoalSectionExit'
 import { publishGoalTaskCompletion, resetGoalTaskCompletionListeners } from './goalCompletionSignal'
+import { cancelGoalTaskPostpone, publishGoalTaskPostpone, resetGoalTaskPostponeListeners } from './goalPostponeSignal'
 
 /**
  * AT-2507 — the rule that decides a goal section is LEAVING today's list because its work is done,
@@ -54,6 +57,7 @@ describe('useGoalSectionExit (AT-2507)', () => {
         jest.useFakeTimers()
         latest = undefined
         resetGoalTaskCompletionListeners()
+        resetGoalTaskPostponeListeners()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         process.env.NODE_ENV = 'development'
@@ -85,6 +89,12 @@ describe('useGoalSectionExit (AT-2507)', () => {
     const complete = async (taskId, goalId = GOAL) => {
         await act(async () => {
             publishGoalTaskCompletion({ projectId: PROJECT, goalId, taskId })
+        })
+    }
+
+    const postpone = async (taskId, goalId = GOAL) => {
+        await act(async () => {
+            publishGoalTaskPostpone({ projectId: PROJECT, goalId, taskId })
         })
     }
 
@@ -151,6 +161,74 @@ describe('useGoalSectionExit (AT-2507)', () => {
 
             expect(exitIdsOf().sort()).toEqual([GOAL, OTHER_GOAL].sort())
             expect(latest.exitRunIdByGoalId[GOAL]).not.toBe(latest.exitRunIdByGoalId[OTHER_GOAL])
+        })
+    })
+
+    describe('a goal whose final Today task was postponed (AT-2541)', () => {
+        it('holds the measured section with the short postpone exit', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+
+            await postpone('t1')
+            await update(tree, { mainTasks: [] })
+
+            expect(exitIdsOf()).toEqual([GOAL])
+            expect(latest.mainTasksWithExits).toEqual([[GOAL, []]])
+            expect(latest.exitKindByGoalId[GOAL]).toBe('postpone')
+        })
+
+        it('does not remove the hold until the short group collapse has finished', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+            await postpone('t1')
+            await update(tree, { mainTasks: [] })
+
+            await act(async () => {
+                jest.advanceTimersByTime(POSTPONE_GOAL_SECTION_HOLD_MS - 1)
+            })
+            expect(exitIdsOf()).toEqual([GOAL])
+
+            await act(async () => {
+                jest.advanceTimersByTime(1)
+            })
+            expect(exitIdsOf()).toEqual([])
+        })
+
+        it('does not treat one postponed task as clearing a multi-task goal', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1'), task('t2')])] })
+            await postpone('t1')
+            await update(tree, { mainTasks: [] })
+
+            expect(exitIdsOf()).toEqual([])
+        })
+
+        it('stays mounted normally when the goal becomes an empty Today goal', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+            await postpone('t1')
+            await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
+            await update(tree, { mainTasks: [], emptyGoals: [] })
+
+            expect(exitIdsOf()).toEqual([])
+        })
+
+        it('forgets a stale postpone before a later unrelated departure', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+            await postpone('t1')
+            await act(async () => {
+                jest.advanceTimersByTime(POSTPONE_MEMORY_MS + 1)
+            })
+            await update(tree, { mainTasks: [] })
+
+            expect(exitIdsOf()).toEqual([])
+        })
+
+        it('forgets the signal when the task write is rolled back', async () => {
+            const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+            await postpone('t1')
+            await act(async () => {
+                cancelGoalTaskPostpone({ projectId: PROJECT, goalId: GOAL, taskId: 't1' })
+            })
+            await update(tree, { mainTasks: [] })
+
+            expect(exitIdsOf()).toEqual([])
         })
     })
 

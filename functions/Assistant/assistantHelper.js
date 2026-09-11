@@ -2354,6 +2354,10 @@ async function collectAssistantTextWithToolCalls({
     allowedTools,
     toolRuntimeContext,
     userContext = null,
+    localTools = {},
+    toolExecutor = executeToolNatively,
+    onRoundComplete = null,
+    assertActive = null,
 }) {
     let responseText = ''
     let currentConversation = conversationHistory
@@ -2397,6 +2401,8 @@ async function collectAssistantTextWithToolCalls({
                 assistantText += chunk.content
             }
         }
+        if (onRoundComplete)
+            await onRoundComplete({ assistantText, conversation: currentConversation, round: toolCallRound })
         return { toolCalls: nextToolCalls, assistantText }
     }
 
@@ -2411,6 +2417,7 @@ async function collectAssistantTextWithToolCalls({
         // authorized call and return all outputs in one follow-up request; previously only
         // index 0 survived, forcing extra rounds or silently dropping requested work.
         for (const toolCall of currentToolCalls) {
+            if (assertActive) await assertActive()
             const toolName = toolCall?.function?.name
             const toolCallId = toolCall?.id
             let toolArgs = {}
@@ -2428,18 +2435,21 @@ async function collectAssistantTextWithToolCalls({
             const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userContext)
             toolArgs = createTaskImageArgs.toolArgs
 
-            const isAllowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
+            const localTool = Object.prototype.hasOwnProperty.call(localTools, toolName) ? localTools[toolName] : null
+            const isAllowed = localTool || (await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext))
             if (!isAllowed) throw new Error(`Tool not permitted: ${toolName}`)
 
-            const toolResult = await executeToolNatively(
-                toolName,
-                toolArgs,
-                toolRuntimeContext?.projectId,
-                toolRuntimeContext?.assistantId,
-                toolRuntimeContext?.requestUserId,
-                userContext,
-                toolRuntimeContext
-            )
+            const toolResult = localTool
+                ? await localTool.execute(toolArgs)
+                : await toolExecutor(
+                      toolName,
+                      toolArgs,
+                      toolRuntimeContext?.projectId,
+                      toolRuntimeContext?.assistantId,
+                      toolRuntimeContext?.requestUserId,
+                      userContext,
+                      toolRuntimeContext
+                  )
             executedToolCallsCount++
             executedToolNames.push(toolName)
             if (
@@ -2488,6 +2498,7 @@ async function collectAssistantTextWithToolCalls({
             userContext,
         })
 
+        if (assertActive) await assertActive()
         const resumedStream = await interactWithChatStream(
             currentConversation,
             modelKey,
@@ -2518,6 +2529,9 @@ async function collectAssistantTextWithToolCalls({
         createdChatCommentResults,
         startedVmJobResults,
         reachedMaxToolIterations,
+        finalResponseText: reachedMaxToolIterations
+            ? 'Maximum tool call iterations reached.'
+            : collectedStream.assistantText,
         finalConversation: currentConversation,
     }
 }
@@ -2706,6 +2720,8 @@ async function interactWithChatStream(
 ) {
     const streamStartTime = Date.now()
     const runtimeAllowedTools = filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext)
+    // Server-authored channel controls (for example voice hangup), never supplied by model arguments.
+    const additionalToolSchemas = toolRuntimeContext?.additionalToolSchemas || []
     // load_skill is implicit (no per-assistant toggle): it becomes available whenever the
     // assistant has chat-usable skills enabled. The skill list itself is the access control.
     if (
@@ -2754,7 +2770,10 @@ async function interactWithChatStream(
         const { streamOpenRouterChat } = require('./openRouterChatClient')
 
         let openRouterTools = null
-        if (modelSupportsNativeTools(modelKey) && runtimeAllowedTools.length > 0) {
+        if (
+            modelSupportsNativeTools(modelKey) &&
+            (runtimeAllowedTools.length > 0 || additionalToolSchemas.length > 0)
+        ) {
             const { getToolSchemas } = require('./toolSchemas')
             const staticAllowedTools = runtimeAllowedTools.filter(
                 toolName =>
@@ -2770,6 +2789,7 @@ async function interactWithChatStream(
             // Full schemas, always: hosted tool-search is a Responses-API feature and has no
             // Chat Completions equivalent. Flash's 1M-token window absorbs the extra context.
             openRouterTools = [
+                ...additionalToolSchemas,
                 ...getToolSchemas(staticAllowedTools),
                 ...delegationToolSchemas,
                 ...externalToolSchemas,
@@ -2920,7 +2940,10 @@ async function interactWithChatStream(
         }
 
         // Add tools if model supports native tools and tools are allowed
-        if (modelSupportsNativeTools(modelKey) && runtimeAllowedTools.length > 0) {
+        if (
+            modelSupportsNativeTools(modelKey) &&
+            (runtimeAllowedTools.length > 0 || additionalToolSchemas.length > 0)
+        ) {
             const { getToolSchemas } = require('./toolSchemas')
             const staticAllowedTools = runtimeAllowedTools.filter(
                 toolName =>
@@ -2942,6 +2965,7 @@ async function interactWithChatStream(
                 requestUserId: toolRuntimeContext?.requestUserId || null,
             })
             const toolSchemas = [
+                ...additionalToolSchemas,
                 ...staticToolSchemas,
                 ...delegationToolSchemas,
                 ...externalToolSchemas,
@@ -13605,7 +13629,8 @@ async function getOptimizedContextMessages(
     allowedTools,
     userTimezoneOffset,
     userId,
-    assistantId
+    assistantId,
+    options = {}
 ) {
     const compactedThreadState = assistantId
         ? await loadAssistantThreadState(admin.firestore(), projectId, objectType, objectId, assistantId).catch(
@@ -13676,7 +13701,7 @@ async function getOptimizedContextMessages(
     let amountOfCommentsInContext = 0
 
     for (let i = 0; i < commentDocs.length; i++) {
-        if (amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
+        if (options.includeAllRecent === true || amountOfCommentsInContext > 0 || messageId === commentDocs[i].id) {
             const messageData = commentDocs[i].data()
             const { commentText, fromAssistant } = messageData
 
