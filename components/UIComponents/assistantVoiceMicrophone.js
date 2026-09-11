@@ -5,6 +5,7 @@ import {
     getInputGroupId,
     listAudioInputDevices,
 } from '../../hooks/rambleMicCapture'
+import { isMobileVoiceCallDevice } from './assistantCallAudio'
 
 const stopStream = stream => stream?.getTracks?.().forEach(track => track.stop())
 const constraints = (deviceId, raw = false) => ({
@@ -31,9 +32,14 @@ export function microphoneScore(levels) {
     return sorted.length ? sorted[Math.floor((sorted.length - 1) * 0.8)] : 0
 }
 
-// Only the selected stream reaches WebRTC. Other inputs are metered locally for
-// the call's lifetime, so a newly used headset can win without another dialog.
+// On desktop, only the selected stream reaches WebRTC. Other inputs are metered
+// locally for the call's lifetime so a newly used mic can win without a dialog.
 export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () => false }) {
+    // Phones route input and output together. Opening a second, explicitly pinned
+    // microphone can pull playback off Bluetooth (or onto the earpiece) before
+    // replaceTrack even runs. Retain the system's default headset/speaker route;
+    // the existing health monitor still recovers a dead default capture.
+    if (isMobileVoiceCallDevice()) return null
     const captures = []
     let selected
     let stopped = false

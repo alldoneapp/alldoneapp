@@ -9,7 +9,7 @@ import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import Spinner from './Spinner'
 import { createLiveCallConnection } from './assistantLiveConnection'
-import { primeCallAudio } from './assistantCallAudio'
+import { beginMobileCallAudioSession, primeCallAudio } from './assistantCallAudio'
 import { acquireVoiceMicrophone, createVoiceMicrophoneSelector } from './assistantVoiceMicrophone'
 import { createInputLevelMonitor } from '../../hooks/rambleMicCapture'
 import {
@@ -109,6 +109,7 @@ export default function AssistantVoiceCallButton({
     const peerConnectionRef = useRef(null)
     const localStreamRef = useRef(null)
     const audioElementRef = useRef(null)
+    const releaseMobileAudioSessionRef = useRef(null)
     const mountedRef = useRef(true)
     const wakeLockRef = useRef(null)
     const disconnectTimerRef = useRef(null)
@@ -439,6 +440,8 @@ export default function AssistantVoiceCallButton({
                 audio.remove()
             }
             audioElementRef.current = null
+            releaseMobileAudioSessionRef.current?.()
+            releaseMobileAudioSessionRef.current = null
 
             // Release the native audio session AFTER the capture is stopped, so
             // the shell never deactivates a session the web view still records on.
@@ -559,6 +562,7 @@ export default function AssistantVoiceCallButton({
         setStatus(STATUS_CONNECTING)
         let ownSessionId = null
         try {
+            releaseMobileAudioSessionRef.current = beginMobileCallAudioSession()
             const pc = new window.RTCPeerConnection()
             peerConnectionRef.current = pc
 

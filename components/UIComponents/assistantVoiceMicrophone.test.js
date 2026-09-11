@@ -73,6 +73,23 @@ test('starts immediately without enumerating or asking the user to speak', async
     expect(listAudioInputDevices).not.toHaveBeenCalled()
     expect(createInputLevelMonitor).not.toHaveBeenCalled()
 })
+test.each(['iPhone', 'Android'])('retains the system headset/speaker route on %s', async userAgent => {
+    const agent = jest.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent)
+    try {
+        const headset = makeInput('bluetooth-headset', 0.01)
+        navigator.mediaDevices.getUserMedia.mockResolvedValue(headset)
+        const change = await start()
+        await jest.advanceTimersByTimeAsync(15000)
+        expect(selector).toBeNull()
+        expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
+        expect(navigator.mediaDevices.getUserMedia.mock.calls[0][0].audio.deviceId).toBeUndefined()
+        expect(listAudioInputDevices).not.toHaveBeenCalled()
+        expect(change).not.toHaveBeenCalled()
+        expect(headset.getTracks()[0].stop).not.toHaveBeenCalled()
+    } finally {
+        agent.mockRestore()
+    }
+})
 test('switches during the call and later follows the louder microphone in the other direction', async () => {
     const change = await start()
     expect(change).toHaveBeenLastCalledWith(inputs.usb)

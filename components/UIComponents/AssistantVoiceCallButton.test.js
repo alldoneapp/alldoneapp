@@ -687,3 +687,41 @@ test('an unused previous microphone cannot trigger another recovery', async () =
     })
     expect(getUserMedia).toHaveBeenCalledTimes(2)
 })
+
+test.each(['hangup', 'unmount', 'capture-failure'])(
+    'sets the mobile audio category before playback/capture and releases it on %s',
+    async ending => {
+        const previousUserAgent = Object.getOwnPropertyDescriptor(navigator, 'userAgent')
+        Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone' })
+        const audioSession = { type: 'auto' }
+        Object.defineProperty(navigator, 'audioSession', { configurable: true, value: audioSession })
+        const play = window.HTMLMediaElement.prototype.play
+        play.mockImplementation(async () => {
+            expect(audioSession.type).toBe('play-and-record')
+        })
+        const capture = getUserMedia.getMockImplementation()
+        getUserMedia.mockImplementation(async constraints => {
+            expect(audioSession.type).toBe('play-and-record')
+            if (ending === 'capture-failure') throw new Error('Permission denied')
+            return capture(constraints)
+        })
+        const tree = render()
+        try {
+            await startCall(tree)
+            if (ending !== 'capture-failure') {
+                expect(audioSession.type).toBe('play-and-record')
+                await act(async () => {
+                    if (ending === 'unmount') tree.unmount()
+                    else await findEndCallButton(tree).props.onPress()
+                })
+                expect(tracks[0].stop).toHaveBeenCalled()
+            }
+            expect(audioSession.type).toBe('auto')
+        } finally {
+            act(() => tree.unmount())
+            delete navigator.audioSession
+            if (previousUserAgent) Object.defineProperty(navigator, 'userAgent', previousUserAgent)
+            else delete navigator.userAgent
+        }
+    }
+)
