@@ -75,6 +75,7 @@ beforeEach(() => {
     docs = new Map([['whatsAppCallSessions/s', session]])
     const doc = path => ({
         path,
+        get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
         collection: name => ({ doc: id => doc(`${path}/${name}/${id}`) }),
         set: async data => docs.set(path, data),
         update: async data => docs.set(path, { ...docs.get(path), ...data }),
@@ -171,4 +172,13 @@ test('after losing sideband speech, reattaches only to close and settle', async 
     expect(runLiveAssistant).not.toHaveBeenCalled()
     expect(reattached.sent).toContainEqual({ type: 'session.close' })
     await finish({ running: state.running, socket: reattached })
+})
+
+test('honors browser cancellation while idle and does not execute another delegation', async () => {
+    const state = await start()
+    docs.get('whatsAppCallSessions/s').cancelRequestedAt = Date.now()
+    await jest.advanceTimersByTimeAsync(2400)
+    expect(state.socket.sent).toContainEqual({ type: 'session.close' })
+    expect(runLiveAssistant).not.toHaveBeenCalled()
+    await finish(state)
 })

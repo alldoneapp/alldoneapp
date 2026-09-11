@@ -192,6 +192,7 @@ async function startAssistantBrowserCall(data, auth) {
             backendBilledGold: 0,
             backendTokens: 0,
             voiceUsageFinal: false,
+            controllerConnected: false,
         })
         const assistant = await getAssistantForChat(projectId, assistantId, userId)
         const result = await createOpenAIWebRTCSession({
@@ -254,7 +255,32 @@ async function getAssistantBrowserCallSummary(data, auth) {
         assistantGold: Number(session.backendBilledGold || 0),
         settled: ['completed', 'failed', 'cancelled', 'stale'].includes(session.status),
         finalVoiceUsage: session.voiceUsageFinal === true,
+        controllerConnected:
+            session.controllerConnected === true &&
+            !session.cancelRequestedAt &&
+            !['completed', 'failed', 'cancelled', 'stale'].includes(session.status),
     }
+}
+
+// Close a paid provider session when the browser fails or leaves during startup.
+// IDs alone confer no authority; this is restricted to the call's owner.
+async function endAssistantBrowserCall(data, auth) {
+    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to end a call.')
+    const sessionId = String(data?.sessionId || '')
+    if (!/^browser-[a-zA-Z0-9-]+$/.test(sessionId)) throw new HttpsError('invalid-argument', 'Invalid call id.')
+    const ref = admin.firestore().doc(`whatsAppCallSessions/${sessionId}`)
+    const doc = await ref.get()
+    const session = doc.data()
+    if (!doc.exists || session?.userId !== auth.uid) throw new HttpsError('not-found', 'Call not found.')
+    if (['completed', 'failed', 'cancelled', 'stale'].includes(session.status)) return { closed: true }
+    if (session.voiceProvider !== 'gpt-live') throw new HttpsError('failed-precondition', 'Unsupported call.')
+    await ref.update({ cancelRequestedAt: Date.now(), controllerConnected: false })
+    const { closeLiveSession } = require('./assistantLiveController')
+    const closed = await closeLiveSession(getWhatsAppCallConfig(), { ...session, id: sessionId }).catch(() => false)
+    // An active controller settles only after its in-flight assistant work finishes.
+    if (closed && !session.liveControllerClaimedAt)
+        await finalizeCallSession(sessionId, 'client_cancelled', 'completed')
+    return { closed: !!closed }
 }
 
 module.exports = {
@@ -264,4 +290,5 @@ module.exports = {
     resolveBrowserCallTopic,
     startAssistantBrowserCall,
     getAssistantBrowserCallSummary,
+    endAssistantBrowserCall,
 }
