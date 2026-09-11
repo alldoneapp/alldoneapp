@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing } from 'react-native'
 
 import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
+import { cancelGoalTaskPostpone, publishGoalTaskPostpone } from '../../OpenTasksView/goalPostponeSignal'
 
 /**
  * AT-2541 — the short exit used when postponing a top-level task out of Today/My Day.
@@ -10,8 +11,6 @@ import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
  * popup is global, while the inline reminder picker replaces the presentation with an editor).
  * The registry below lets either surface borrow the motion owned by the mounted TaskItem without
  * putting transient animation state in redux and re-rendering every task on the board.
- * Only paint properties belong to this motion; animating row height would make the list reflow on
- * every frame and visually recruit unrelated sections into a single page-wide transition.
  */
 
 export const POSTPONE_SLIDE_FADE_MS = 220
@@ -67,27 +66,37 @@ export default function useTaskPostponeMotion({
     enabled = false,
     projectId,
     taskId,
+    goalId,
     isObservedTask = false,
     isToReviewTask = false,
 } = {}) {
     const reducedMotion = useReducedMotion()
+    const animated = !reducedMotion && !animationsAreDisabled()
     const [exiting, setExiting] = useState(false)
+    const [exitHeight, setExitHeight] = useState(0)
 
     const translateX = useRef(new Animated.Value(0)).current
     const opacity = useRef(new Animated.Value(1)).current
-    const scaleY = useRef(new Animated.Value(1)).current
+    const height = useRef(new Animated.Value(0)).current
+    const measuredHeightRef = useRef(0)
     const animationRef = useRef(null)
     const exitingRef = useRef(false)
+
+    const onRowLayout = useCallback(event => {
+        const measured = event?.nativeEvent?.layout?.height
+        if (measured > 0 && !exitingRef.current) measuredHeightRef.current = measured
+    }, [])
 
     const reset = useCallback(() => {
         animationRef.current?.stop()
         animationRef.current = null
         translateX.setValue(0)
         opacity.setValue(1)
-        scaleY.setValue(1)
+        height.setValue(0)
         exitingRef.current = false
+        setExitHeight(0)
         setExiting(false)
-    }, [opacity, scaleY, translateX])
+    }, [height, opacity, translateX])
 
     const begin = useCallback(
         ({ updatesDueDate, updatesObservedDate }) => {
@@ -103,7 +112,10 @@ export default function useTaskPostponeMotion({
             setExiting(true)
             translateX.setValue(0)
             opacity.setValue(1)
-            scaleY.setValue(1)
+
+            const measured = measuredHeightRef.current
+            height.setValue(measured)
+            setExitHeight(measured)
 
             let animation
             let holdMs
@@ -133,16 +145,19 @@ export default function useTaskPostponeMotion({
                             useNativeDriver: false,
                         }),
                     ]),
-                    // Collapse only the painted row. Its layout slot stays fixed until the write
-                    // removes it, so no ancestor or sibling participates in this animation.
-                    Animated.timing(scaleY, {
-                        toValue: 0,
-                        duration: POSTPONE_COLLAPSE_MS,
-                        easing: Easing.inOut(Easing.cubic),
-                        useNativeDriver: false,
-                    }),
+                    ...(measured > 0
+                        ? [
+                              Animated.timing(height, {
+                                  toValue: 0,
+                                  duration: POSTPONE_COLLAPSE_MS,
+                                  easing: Easing.inOut(Easing.cubic),
+                                  useNativeDriver: false,
+                              }),
+                          ]
+                        : []),
                 ])
                 holdMs = POSTPONE_EXIT_TOTAL_MS
+                if (goalId) publishGoalTaskPostpone({ projectId, goalId, taskId })
             }
 
             animationRef.current = animation
@@ -158,11 +173,24 @@ export default function useTaskPostponeMotion({
                 cancel: () => {
                     if (cancelled) return
                     cancelled = true
+                    if (goalId && !reducedMotion) cancelGoalTaskPostpone({ projectId, goalId, taskId })
                     reset()
                 },
             }
         },
-        [enabled, isObservedTask, isToReviewTask, opacity, projectId, reducedMotion, reset, scaleY, taskId, translateX]
+        [
+            enabled,
+            goalId,
+            height,
+            isObservedTask,
+            isToReviewTask,
+            opacity,
+            projectId,
+            reducedMotion,
+            reset,
+            taskId,
+            translateX,
+        ]
     )
 
     useEffect(() => {
@@ -182,12 +210,16 @@ export default function useTaskPostponeMotion({
         if (!exiting) return undefined
         const style = { opacity, pointerEvents: 'none' }
         if (!reducedMotion) {
-            style.transform = [{ translateX }, { scaleY }]
+            style.transform = [{ translateX }]
+            if (exitHeight > 0) {
+                style.height = height
+                style.overflow = 'hidden'
+            }
         }
         return style
-    }, [exiting, opacity, reducedMotion, scaleY, translateX])
+    }, [exitHeight, exiting, height, opacity, reducedMotion, translateX])
 
-    return { rowStyle, exiting }
+    return { onRowLayout, rowStyle, exiting }
 }
 
 /** Test seam. */

@@ -10,8 +10,8 @@ import { stopLoadingData } from '../../../../redux/actions'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { getAssistantLineData, getCollapsedQuickActionCount, getOptionsPresentationData } from './helper'
 import OptionButtons from './OptionButtons/OptionButtons'
-import OptionButton from './OptionButtons/OptionButton'
 import QuickActionsToggle from './QuickActionsToggle'
+import QuickActionsMeasurer from './QuickActionsMeasurer'
 import AssistantAvatarButton from './AssistantAvatarButton'
 import { GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../AdminPanel/Assistants/assistantsHelper'
 import { createBotQuickTopic } from '../../../../utils/assistantHelper'
@@ -508,23 +508,7 @@ export default function AssistantOptions({
                                     }
                                 />
                             )}
-                            <View
-                                style={localStyles.quickActionsMeasurer}
-                                pointerEvents="none"
-                                accessibilityElementsHidden={true}
-                                importantForAccessibility="no-hide-descendants"
-                            >
-                                {collapsedOptions.map(option => (
-                                    <OptionButton
-                                        key={option.id}
-                                        text={option.text}
-                                        icon={option.icon}
-                                        disabled={true}
-                                        testID={`assistant-quick-action-measure-${option.id}`}
-                                        onLayout={event => storeOptionWidth(option.id, event.nativeEvent.layout.width)}
-                                    />
-                                ))}
-                            </View>
+                            <QuickActionsMeasurer options={collapsedOptions} onOptionLayout={storeOptionWidth} />
                         </>
                     ) : (
                         <AssistantOptionButtonsSkeleton />
@@ -645,10 +629,5 @@ const localStyles = StyleSheet.create({
     quickActionsExpanded: {
         minHeight: ASSISTANT_QUICK_ACTIONS_DESKTOP_HEIGHT,
         flexWrap: 'wrap',
-    },
-    quickActionsMeasurer: {
-        position: 'absolute',
-        opacity: 0,
-        flexDirection: 'row',
     },
 })
