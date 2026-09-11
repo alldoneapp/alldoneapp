@@ -14,6 +14,7 @@ export function createLiveCallConnection(channel, { onClosed, onError, onUsage, 
     let readyTimer
     let closeTimer
     let closePromise
+    let greetingSent = false
     const resolveReady = () => {
         if (started && controllerReady && !disposed && !closed && !failure) {
             clearTimeout(readyTimer)
@@ -78,6 +79,31 @@ export function createLiveCallConnection(channel, { onClosed, onError, onUsage, 
     channel.onerror = () => fail(new Error('Voice connection failed'))
     return {
         isClosed: () => closed,
+        greet(content) {
+            if (
+                !started ||
+                !controllerReady ||
+                disposed ||
+                closed ||
+                failure ||
+                greetingSent ||
+                channel.readyState !== 'open'
+            )
+                return
+            try {
+                channel.send(
+                    JSON.stringify({
+                        type: 'session.commentary.append',
+                        event_id: 'alldone_live_greeting',
+                        delegation_id: null,
+                        content,
+                    })
+                )
+                greetingSent = true
+            } catch (_) {
+                fail(new Error('Voice connection failed'))
+            }
+        },
         waitUntilReady() {
             if (failure) return Promise.reject(failure)
             if (closed || disposed) return Promise.reject(new Error('Voice call has ended'))
