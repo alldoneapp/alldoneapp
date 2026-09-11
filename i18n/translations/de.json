@@ -763,6 +763,8 @@
     "A": "A",
     "C": "C",
     "Move": "Bewegen",
+    "Task could not be moved": "Aufgabe konnte nicht verschoben werden",
+    "No changes were made. Please try again.": "Es wurden keine Änderungen vorgenommen. Bitte versuche es erneut.",
     "Select the project this itemType will move to": "Wähle das Projekt des Objektes %{itemType} wohin das Objekt bewegt werden soll",
     "Task status": "Aufgabe status",
     "Choose a workflow step to move this task": "Wähle einen Workflow Step, um die Aufgabe dahin zu bewegen",

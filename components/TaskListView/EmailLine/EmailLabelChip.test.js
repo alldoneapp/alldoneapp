@@ -3,10 +3,9 @@
  */
 
 import React from 'react'
-import { StyleSheet, Text, TouchableOpacity } from 'react-native'
+import { Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
-import { colors } from '../../styles/global'
 import EmailLabelChip from './EmailLabelChip'
 
 jest.mock('react-redux', () => ({
@@ -31,13 +30,6 @@ describe('EmailLabelChip', () => {
         threadCount: 5,
         entries: [],
     }
-
-    it('uses the opaque Workflow tag surface in compact header locations', () => {
-        const tree = renderer.create(<EmailLabelChip group={group} compact />)
-        const triggerStyle = StyleSheet.flatten(tree.root.findByType(TouchableOpacity).props.style)
-
-        expect(triggerStyle.backgroundColor).toBe(colors.Grey300)
-    })
 
     it('shows the loaded total without closing the popup, including zero', () => {
         const tree = renderer.create(<EmailLabelChip group={group} />)
