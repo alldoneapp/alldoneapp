@@ -28,7 +28,6 @@ import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../OKRs/okrHelper
 import AssistantScheduleDateSection from './OpenTaskViewForAssistants/AssistantScheduleTimeline'
 import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSchedule'
 import TaskListSkeleton from '../TaskListSkeleton'
-import useProjectCompletedSweep from './useProjectCompletedSweep'
 import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
 
 function OpenTasksByProject({
@@ -84,38 +83,12 @@ function OpenTasksByProject({
             (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0))
 
     /**
-     * AT-2492 — who may spend the once-per-day, per-project "completed sweep".
-     *
-     * The gates moved up here from `OpenTasksByDate` together with the celebration itself, and one
-     * of them is gone: the sweep is no longer restricted to the selected-project board, because the
-     * project line exists in All Projects too and clearing a project there is the ordinary case.
-     * What is left closes the remaining ways of celebrating something that did not happen:
-     *
-     *   • no task filters. `thereAreNotTasksInFirstDay` and the filtered store both describe a
-     *     FILTERED list, so a priority or VM filter empties a project on screen without the project
-     *     being done. (The marker records are keyed on the unfiltered `sidebarNumbers` count, so
-     *     this is belt and braces rather than the only defence.)
-     *   • the board is the logged user's own — an assistant's board is not your inbox;
-     *   • not an assistant profile board, which renders no project header at all;
-     *   • not anonymous.
-     *
-     * Two more gates live inside the hook and are the load-bearing ones: the project must actually
-     * have gone from "has tasks today" to "clear" TODAY (otherwise a 78-project account, 64 of them
-     * guides and empty most days, sweeps on every visit), and its line must actually be on screen.
+     * AT-2551 — a cleared project no longer plays the page-wide completed sweep. In All Projects it
+     * disappears as soon as the board considers it empty; in the selected project its ordinary
+     * static empty state remains visible. Loading skeletons use separate readiness flags below and
+     * are intentionally unaffected.
      */
-    const celebrationEnabled =
-        !assistantProfileMode && !isAnonymous && !taskFiltersActive && currentUserId === loggedUser.uid
-
-    const { celebrationRunId, holdProjectLine } = useProjectCompletedSweep({
-        projectId,
-        userId: loggedUser.uid,
-        enabled: celebrationEnabled,
-        lineWouldLeave: baseHideProjectData,
-    })
-
-    // The only thing the celebration is allowed to change about the board: a line that is leaving
-    // stays for one sweep and then goes. The settled result is identical either way.
-    const hideProjectData = baseHideProjectData && !holdProjectLine
+    const hideProjectData = baseHideProjectData
 
     // AT-2430: which assistant this project's line speaks as — the project's own, the default
     // project's, or one the user picked with the line's switch — plus the switch's own options.
@@ -188,14 +161,6 @@ function OpenTasksByProject({
                     embedded={assistantProfileMode}
                     selected={inSelectedProject}
                     style={{ marginBottom: inSelectedProject ? 32 : 28 }}
-                    completedSweepRunId={celebrationRunId}
-                    /**
-                     * AT-2535 — `baseHideProjectData`, deliberately NOT `hideProjectData`. The
-                     * second one is false for the whole hold, so it can never say the card is on
-                     * its way out. The board's own verdict lets the full ProjectSection replace the
-                     * sweep's settle with the Thanos exit, including its remaining spacing.
-                     */
-                    completedSweepLineWillLeave={baseHideProjectData}
                 >
                     {inSelectedProject && <NeedShowMoreOpenTasksButton projectId={projectId} />}
                     {!assistantProfileMode && (
@@ -219,8 +184,6 @@ function OpenTasksByProject({
                         {!assistantProfileMode && (
                             <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
                         )}
-                        {/* Start the milestone exit while the project is held for its sweep. Its open
-                        data may stay unchanged when only today's tasks have been cleared. */}
                         {!assistantProfileMode && (
                             <UpcomingMilestoneRow projectId={projectId} hidden={baseHideProjectData} />
                         )}
@@ -241,7 +204,6 @@ function OpenTasksByProject({
                                     assistantProfileMode={assistantProfileMode}
                                     assistantScheduleOccurrences={timelineDate.occurrences}
                                     assistantScheduleContext={assistantScheduleContext}
-                                    projectCelebrationRunId={celebrationRunId}
                                     assistantTaskCreatorContext={
                                         assistantProfileMode && timelineDate.dateKey === TODAY_DATE
                                             ? assistantTaskCreatorContext
