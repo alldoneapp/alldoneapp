@@ -170,6 +170,10 @@ import TaskPresentation from './TaskPresentation'
 import TaskCompletionCelebration from './CheckBoxContainer/TaskCompletionCelebration'
 import { moveTasksFromOpen, setTaskStatus } from '../../../../utils/backends/Tasks/tasksFirestore'
 import { COMPLETION_HOLD_MS, RETAINED_HOLD_MS } from './taskCompletionMotion'
+import {
+    resetProjectTaskCompletionListeners,
+    subscribeToProjectTaskCompletions,
+} from '../../OpenTasksView/projectTaskCompletionSignal'
 
 const ROW_HEIGHT = 48
 
@@ -231,6 +235,7 @@ describe('TaskPresentation completion (AT-2404)', () => {
         process.env.NODE_ENV = 'development'
         moveTasksFromOpen.mockClear()
         setTaskStatus.mockClear()
+        resetProjectTaskCompletionListeners()
     })
 
     afterEach(() => {
@@ -464,6 +469,16 @@ describe('TaskPresentation completion (AT-2404)', () => {
             expect(tree.root.findAllByType(TaskCompletionCelebration)).toHaveLength(1)
             expect(tree.root.findByType('TitleContainer').props.completionProgress).not.toBeNull()
             expect(rowStyle(tree).height.__getValue()).toBe(ROW_HEIGHT)
+        })
+
+        it('reports the suggested bypass as a possible project exit', async () => {
+            const projectCompletion = jest.fn()
+            subscribeToProjectTaskCompletions('project-1', projectCompletion)
+            const { tree } = await openPopup()
+
+            act(() => popupMotion(tree).begin({ isCompletion: true, projectExitCandidate: true }))
+
+            expect(projectCompletion).toHaveBeenCalledWith({ projectId: 'project-1', taskId: popupTask.id })
         })
 
         it('tells the popup how long to hold its write', async () => {

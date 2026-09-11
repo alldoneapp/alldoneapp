@@ -1626,18 +1626,6 @@ which is the only place any of this is ever seen: jsdom drops `mask-image` witho
 `__mocks__/react-native.js` stubs `Animated.timing`, so it screenshots the card every ~50ms and counts
 surviving pixels per column, in four modes (leaving, late verdict, staying, reduced motion).
 
-### Per-project completion sweep is disabled (AT-2551)
-
-The per-project FILL → SHIMMER → PULSE → DISINTEGRATE run above is no longer connected to the open
-tasks board. After the rounded-card change its overlay covered the entire project card, and the
-shimmer plus pulse read as two page-wide flashes when a project became empty. `OpenTasksByProject`
-therefore does not call `useProjectCompletedSweep`, pass completion-run props to `ProjectSection`, or
-hold a cleared All Projects card for the animation. A cleared card leaves as soon as the existing
-empty-project condition says it should. The selected-project header and empty illustration remain
-visible but static, while task-loading skeletons continue to use their independent readiness flags.
-The animation modules remain available for now so this product decision is a small, reversible
-wiring change rather than a broad deletion of the earlier motion work.
-
 ### In-app GPT-Live voice calls
 
 In-app calls use GPT-Live (`gpt-live-1`) for speech and client delegation to the current
