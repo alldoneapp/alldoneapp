@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid')
 const admin = require('firebase-admin')
 const crypto = require('crypto')
+const { executeToolCallBatch, canRunToolInParallel } = require('./toolCallBatch')
 const moment = require('moment')
 const OpenAI = require('openai')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
@@ -717,6 +718,27 @@ function buildConversationAfterToolExecutions({
             userContext,
             ...executions[0],
         })
+    }
+
+    const compaction = executions.findLast(
+        execution =>
+            execution.toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY &&
+            typeof execution.conversationSafeToolResult?.compactedContextMessage === 'string' &&
+            execution.conversationSafeToolResult.compactedContextMessage.trim()
+    )
+    if (compaction) {
+        const latestUserMessage = buildLatestUserMessageForContinuation(currentConversation, userContext)
+        currentConversation = [
+            ...currentConversation
+                .map(cloneConversationEntry)
+                .filter(message => message?.role === 'system' && !isCompactThreadContextMessage(message.content)),
+            ...(latestUserMessage ? [latestUserMessage] : []),
+            {
+                role: 'system',
+                content: parseTextForUseLiKePrompt(compaction.conversationSafeToolResult.compactedContextMessage),
+            },
+        ]
+        responseText = ''
     }
 
     return [
@@ -2357,6 +2379,7 @@ async function collectAssistantTextWithToolCalls({
     localTools = {},
     toolExecutor = executeToolNatively,
     onRoundComplete = null,
+    onToolBatchState = undefined,
     assertActive = null,
 }) {
     let responseText = ''
@@ -2411,85 +2434,102 @@ async function collectAssistantTextWithToolCalls({
 
     while (currentToolCalls && currentToolCalls.length > 0 && toolCallRound < maxToolCallRounds) {
         toolCallRound++
-        const toolExecutions = []
+        const toolExecutions = await executeToolCallBatch(
+            currentToolCalls,
+            async toolCall => {
+                if (assertActive) await assertActive()
+                const toolName = toolCall?.function?.name
+                const toolCallId = toolCall?.id
+                let toolArgs = {}
 
-        // A Responses turn may emit several independent function calls. Execute every
-        // authorized call and return all outputs in one follow-up request; previously only
-        // index 0 survived, forcing extra rounds or silently dropping requested work.
-        for (const toolCall of currentToolCalls) {
-            if (assertActive) await assertActive()
-            const toolName = toolCall?.function?.name
-            const toolCallId = toolCall?.id
-            let toolArgs = {}
+                try {
+                    toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
+                } catch (error) {
+                    throw new Error(`Failed to parse tool arguments for ${toolName}`)
+                }
 
-            try {
-                toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
-            } catch (error) {
-                throw new Error(`Failed to parse tool arguments for ${toolName}`)
+                const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
+                    toolName,
+                    toolArgs,
+                    pendingAttachmentPayload
+                )
+                toolArgs = enrichedToolArgs.toolArgs
+                if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
+
+                const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(
+                    toolName,
+                    toolArgs,
+                    userContext
+                )
+                toolArgs = createTaskImageArgs.toolArgs
+
+                const localTool = Object.prototype.hasOwnProperty.call(localTools, toolName)
+                    ? localTools[toolName]
+                    : null
+                const isAllowed =
+                    localTool || (await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext))
+                if (!isAllowed) throw new Error(`Tool not permitted: ${toolName}`)
+
+                const toolResult = localTool
+                    ? await localTool.execute(toolArgs)
+                    : await toolExecutor(
+                          toolName,
+                          toolArgs,
+                          toolRuntimeContext?.projectId,
+                          toolRuntimeContext?.assistantId,
+                          toolRuntimeContext?.requestUserId,
+                          userContext,
+                          toolRuntimeContext
+                      )
+                executedToolCallsCount++
+                executedToolNames.push(toolName)
+                if (
+                    toolName === 'create_task' &&
+                    toolResult?.success !== false &&
+                    toolResult?.taskId &&
+                    toolResult?.projectId
+                ) {
+                    createdTaskResults.push({
+                        taskId: toolResult.taskId,
+                        projectId: toolResult.projectId,
+                        projectName: toolResult.projectName || '',
+                        task: toolResult.task || null,
+                    })
+                }
+                if (toolName === 'create_note' && toolResult?.success !== false) {
+                    const createdNote = normalizeCreatedNote(toolResult)
+                    if (createdNote) createdNoteResults.push(createdNote)
+                }
+                // The Gmail labeling sync stamps these onto the message's audit record so its
+                // server-side read sync knows which chat comment belongs to which Gmail message
+                // (AT-2376). A duplicate-skipped comment is reported too: the comment exists either
+                // way, and whether it is still unread is decided from its notification doc, not here.
+                if (toolName === 'add_chat_comment' && toolResult?.success !== false && toolResult?.commentId) {
+                    createdChatCommentResults.push({
+                        projectId: toolResult.projectId || '',
+                        chatId: toolResult.chatId || '',
+                        commentId: toolResult.commentId,
+                    })
+                }
+                collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
+                const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
+                pendingAttachmentPayload =
+                    buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+                return {
+                    toolName,
+                    toolArgs,
+                    toolCallId,
+                    conversationSafeToolResult,
+                }
+            },
+            {
+                // A locally overridden read name need not be stateless.
+                canRunInParallel: call =>
+                    !Object.prototype.hasOwnProperty.call(localTools, call?.function?.name) &&
+                    canRunToolInParallel(call),
+                onState: onToolBatchState,
             }
-
-            const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(toolName, toolArgs, pendingAttachmentPayload)
-            toolArgs = enrichedToolArgs.toolArgs
-            if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
-
-            const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(toolName, toolArgs, userContext)
-            toolArgs = createTaskImageArgs.toolArgs
-
-            const localTool = Object.prototype.hasOwnProperty.call(localTools, toolName) ? localTools[toolName] : null
-            const isAllowed = localTool || (await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext))
-            if (!isAllowed) throw new Error(`Tool not permitted: ${toolName}`)
-
-            const toolResult = localTool
-                ? await localTool.execute(toolArgs)
-                : await toolExecutor(
-                      toolName,
-                      toolArgs,
-                      toolRuntimeContext?.projectId,
-                      toolRuntimeContext?.assistantId,
-                      toolRuntimeContext?.requestUserId,
-                      userContext,
-                      toolRuntimeContext
-                  )
-            executedToolCallsCount++
-            executedToolNames.push(toolName)
-            if (
-                toolName === 'create_task' &&
-                toolResult?.success !== false &&
-                toolResult?.taskId &&
-                toolResult?.projectId
-            ) {
-                createdTaskResults.push({
-                    taskId: toolResult.taskId,
-                    projectId: toolResult.projectId,
-                    projectName: toolResult.projectName || '',
-                    task: toolResult.task || null,
-                })
-            }
-            if (toolName === 'create_note' && toolResult?.success !== false) {
-                const createdNote = normalizeCreatedNote(toolResult)
-                if (createdNote) createdNoteResults.push(createdNote)
-            }
-            // The Gmail labeling sync stamps these onto the message's audit record so its
-            // server-side read sync knows which chat comment belongs to which Gmail message
-            // (AT-2376). A duplicate-skipped comment is reported too: the comment exists either
-            // way, and whether it is still unread is decided from its notification doc, not here.
-            if (toolName === 'add_chat_comment' && toolResult?.success !== false && toolResult?.commentId) {
-                createdChatCommentResults.push({
-                    projectId: toolResult.projectId || '',
-                    chatId: toolResult.chatId || '',
-                    commentId: toolResult.commentId,
-                })
-            }
-            collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
-            const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
-            pendingAttachmentPayload = buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
-            toolExecutions.push({
-                toolName,
-                toolArgs,
-                toolCallId,
-                conversationSafeToolResult,
-            })
-        }
+        )
 
         currentConversation = buildConversationAfterToolExecutions({
             currentConversation,
@@ -10043,7 +10083,7 @@ async function storeChunks(
         let cachedRunAssistant = null
         const getRunAssistant = async () => {
             if (!cachedRunAssistant) {
-                cachedRunAssistant = await getAssistantForChat(projectId, assistantId, requestUserId, {
+                cachedRunAssistant = getAssistantForChat(projectId, assistantId, requestUserId, {
                     forceRefresh: true,
                 })
             }
@@ -10409,257 +10449,187 @@ async function storeChunks(
                         })
                     }
 
-                    // Process first tool call (OpenAI typically sends one at a time)
                     await throwIfCancelled(true)
-                    const toolCall = currentToolCalls[0]
-                    const toolName = toolCall.function.name
-                    const toolCallId = toolCall.id
-
-                    // Parse arguments
-                    let toolArgs = {}
-                    try {
-                        toolArgs = JSON.parse(toolCall.function.arguments)
-                        if (ENABLE_DETAILED_LOGGING) {
-                            console.log('🔧 NATIVE TOOL CALL: Parsed arguments', { toolName, toolArgs })
-                        }
-                    } catch (e) {
-                        console.error('🔧 NATIVE TOOL CALL: Failed to parse arguments', e)
-                        commentText += `\n\nError: Failed to parse tool arguments for ${toolName}`
-                        await safeCommentUpdate({ commentText, isLoading: false })
-                        toolAlreadyExecuted = true
-                        break // Exit the while loop
-                    }
-
-                    const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
-                        toolName,
-                        toolArgs,
-                        pendingAttachmentPayload
-                    )
-                    toolArgs = enrichedToolArgs.toolArgs
-                    if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
-
-                    const createTaskImageArgs = injectCurrentMessageImagesIntoCreateTaskArgs(
-                        toolName,
-                        toolArgs,
-                        userContext
-                    )
-                    toolArgs = createTaskImageArgs.toolArgs
-
-                    // Check permissions
-                    await throwIfCancelled(true)
-                    const assistant = await getRunAssistant()
-                    // The persisted list is the gate for anything a client could have asked for; a
-                    // server-authored run (contact enrichment) adds its own grant on the runtime
-                    // context, see runToolGrants.js.
-                    const { resolveRunAllowedTools } = require('./runToolGrants')
-                    const allowed = await isToolAllowedForExecution(
-                        resolveRunAllowedTools(assistant.allowedTools, runtimeContextForTools),
-                        toolName,
-                        runtimeContextForTools
-                    )
-
-                    if (!allowed) {
-                        if (ENABLE_DETAILED_LOGGING) {
-                            console.log('🔧 NATIVE TOOL CALL: Tool not permitted', { toolName })
-                        }
-                        await flushPendingUpdate() // Flush any pending updates first
-                        commentText = appendStatusBlock(commentText, `Tool not permitted: ${toolName}`)
-                        await safeCommentUpdate({ commentText, isLoading: false })
-                        toolAlreadyExecuted = true
-                        break // Exit the while loop
-                    }
-
-                    // Show loading indicator
-                    await flushPendingUpdate() // Flush any pending updates first
+                    await flushPendingUpdate()
                     const toolExecutionStartedAt = Date.now()
-                    // What the user sees while this runs: an i18n key plus an already
-                    // sanitized subject (whitelisted per tool). Both null when the tool
-                    // exposes nothing safe, which makes the client keep its generic story.
-                    const toolActivityDescriptor = buildToolActivityDescriptor({ toolName, toolArgs })
-                    if (assistantRun) {
-                        assistantRun.activity = {
-                            phase: 'tool',
-                            toolName,
-                            startedAt: toolExecutionStartedAt,
-                            iteration: toolCallIteration,
-                            actionKey: toolActivityDescriptor.actionKey || null,
-                            subject: toolActivityDescriptor.subject || null,
-                        }
-                    }
-                    let toolStatusMessage = buildToolProgressStatusMessage({
-                        toolName,
-                        toolArgs,
-                        toolCallIteration,
-                        elapsedMs: 0,
-                    })
-                    commentText = appendStatusBlock(commentText, toolStatusMessage)
-                    await safeCommentUpdate({
-                        commentText,
-                        isLoading: true,
-                        ...(assistantRun
-                            ? {
-                                  assistantRun: {
-                                      ...assistantRun,
-                                      status: 'running',
-                                  },
-                              }
-                            : {}),
-                    })
-
+                    let batchState = { total: currentToolCalls.length, completed: 0, active: [0] }
+                    let toolStatusMessage = ''
                     let stopToolProgressUpdates = false
-                    const updateToolProgressStatus = async () => {
-                        if (stopToolProgressUpdates) return
-
-                        const nextStatusMessage = buildToolProgressStatusMessage({
-                            toolName,
-                            toolArgs,
-                            toolCallIteration,
-                            elapsedMs: Date.now() - toolExecutionStartedAt,
-                        })
-                        if (nextStatusMessage === toolStatusMessage || stopToolProgressUpdates) return
-
-                        // Function replacement: the status text now embeds a user-supplied
-                        // subject, and `$&` / `$$` in a string replacement are special.
-                        commentText = commentText.replace(toolStatusMessage, () => nextStatusMessage)
-                        toolStatusMessage = nextStatusMessage
-                        if (stopToolProgressUpdates) return
-
-                        await safeCommentUpdate({ commentText, isLoading: true })
-                    }
-
-                    const toolProgressInterval = setInterval(() => {
-                        updateToolProgressStatus().catch(error => {
-                            console.warn('🔧 NATIVE TOOL CALL: Failed updating tool progress status', {
-                                toolName,
-                                error: error.message,
+                    let progressWrites = Promise.resolve()
+                    const updateToolProgressStatus = () => {
+                        progressWrites = progressWrites
+                            .then(async () => {
+                                if (stopToolProgressUpdates) return
+                                const activeCall = currentToolCalls[batchState.active[0] ?? 0]
+                                const toolName = activeCall?.function?.name
+                                let toolArgs = {}
+                                try {
+                                    toolArgs = JSON.parse(activeCall?.function?.arguments || '{}')
+                                } catch (_) {}
+                                const multiple = batchState.total > 1
+                                const descriptor = multiple
+                                    ? {
+                                          actionKey: 'assistant_activity_multiple_steps',
+                                          subject: `${batchState.completed}/${batchState.total}`,
+                                      }
+                                    : buildToolActivityDescriptor({ toolName, toolArgs })
+                                const nextStatusMessage = multiple
+                                    ? `Working through your request: ${batchState.completed}/${batchState.total} steps returned a result; ${batchState.active.length} running.`
+                                    : buildToolProgressStatusMessage({
+                                          toolName,
+                                          toolArgs,
+                                          elapsedMs: Date.now() - toolExecutionStartedAt,
+                                      })
+                                if (nextStatusMessage === toolStatusMessage) return
+                                commentText = toolStatusMessage
+                                    ? commentText.replace(toolStatusMessage, () => nextStatusMessage)
+                                    : appendStatusBlock(commentText, nextStatusMessage)
+                                toolStatusMessage = nextStatusMessage
+                                if (assistantRun)
+                                    assistantRun.activity = {
+                                        phase: 'tool',
+                                        toolName: multiple ? 'parallel_reads' : toolName,
+                                        startedAt: toolExecutionStartedAt,
+                                        iteration: toolCallIteration,
+                                        actionKey: descriptor.actionKey || null,
+                                        subject: descriptor.subject || null,
+                                        total: batchState.total,
+                                        completed: batchState.completed,
+                                        active: batchState.active.length,
+                                    }
+                                await safeCommentUpdate({
+                                    commentText,
+                                    isLoading: true,
+                                    ...(assistantRun ? { assistantRun: { ...assistantRun, status: 'running' } } : {}),
+                                })
                             })
-                        })
-                    }, TOOL_PROGRESS_UPDATE_INTERVAL_MS)
-
-                    if (ENABLE_DETAILED_LOGGING) {
-                        console.log('🔧 NATIVE TOOL CALL: Executing tool', { toolName, toolArgs })
+                            .catch(error => console.warn('Tool progress update failed', { error: error.message }))
+                        return progressWrites
                     }
-
-                    // Execute tool and get result
-                    let toolResult
+                    await updateToolProgressStatus()
+                    const toolProgressInterval = setInterval(updateToolProgressStatus, TOOL_PROGRESS_UPDATE_INTERVAL_MS)
+                    let toolExecutions
                     try {
-                        await throwIfCancelled(true)
-                        if (ENABLE_DETAILED_LOGGING) {
-                            console.log('🔧 NATIVE TOOL CALL: Starting tool execution', { toolName, toolArgs })
-                        }
-                        toolResult = await executeToolNatively(
-                            toolName,
-                            toolArgs,
-                            projectId,
-                            assistantId,
-                            runtimeContextForTools.requestUserId || requestUserId,
-                            userContext,
-                            runtimeContextForTools
-                        )
-                        await throwIfCancelled(true)
-                        if (toolName === 'create_note' && toolResult?.success !== false) {
-                            const createdNote = normalizeCreatedNote(toolResult)
-                            if (createdNote && !createdNoteResults.some(note => note.noteId === createdNote.noteId)) {
-                                createdNoteResults.push(createdNote)
-                                if (assistantRun) {
-                                    const existingCreatedEntities = Array.isArray(assistantRun.createdEntities)
-                                        ? assistantRun.createdEntities
-                                        : []
-                                    assistantRun.createdEntities = [...existingCreatedEntities, createdNote]
-                                    await safeCommentUpdate({
-                                        assistantRun: {
-                                            ...assistantRun,
-                                            status: 'running',
-                                        },
-                                    }).catch(error => {
-                                        console.warn('CREATE_NOTE TOOL: Failed persisting created-note metadata', {
-                                            noteId: createdNote.noteId,
-                                            error: error.message,
-                                        })
-                                    })
+                        toolExecutions = await executeToolCallBatch(
+                            currentToolCalls,
+                            async toolCall => {
+                                const toolName = toolCall?.function?.name
+                                try {
+                                    await throwIfCancelled(true)
+                                    if (Date.now() - runWallClockStart >= maxRunWallClockMs) {
+                                        const error = new Error('This run reached its time limit before finishing.')
+                                        error.code = 'ASSISTANT_TOOL_TIME_BUDGET'
+                                        throw error
+                                    }
+                                    let toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
+                                    const enriched = injectPendingAttachmentIntoToolArgs(
+                                        toolName,
+                                        toolArgs,
+                                        pendingAttachmentPayload
+                                    )
+                                    toolArgs = enriched.toolArgs
+                                    if (enriched.usedPendingAttachment) pendingAttachmentPayload = null
+                                    toolArgs = injectCurrentMessageImagesIntoCreateTaskArgs(
+                                        toolName,
+                                        toolArgs,
+                                        userContext
+                                    ).toolArgs
+                                    const assistant = await getRunAssistant()
+                                    const { resolveRunAllowedTools } = require('./runToolGrants')
+                                    if (
+                                        !(await isToolAllowedForExecution(
+                                            resolveRunAllowedTools(assistant.allowedTools, runtimeContextForTools),
+                                            toolName,
+                                            runtimeContextForTools
+                                        ))
+                                    )
+                                        throw new Error(`Tool not permitted: ${toolName}`)
+                                    await throwIfCancelled(true)
+                                    const toolResult = await executeToolNatively(
+                                        toolName,
+                                        toolArgs,
+                                        projectId,
+                                        assistantId,
+                                        runtimeContextForTools.requestUserId || requestUserId,
+                                        userContext,
+                                        runtimeContextForTools
+                                    )
+                                    await throwIfCancelled(true)
+                                    if (toolName === 'create_note' && toolResult?.success !== false) {
+                                        const createdNote = normalizeCreatedNote(toolResult)
+                                        if (
+                                            createdNote &&
+                                            !createdNoteResults.some(note => note.noteId === createdNote.noteId)
+                                        ) {
+                                            createdNoteResults.push(createdNote)
+                                            if (assistantRun) {
+                                                const existingCreatedEntities = Array.isArray(
+                                                    assistantRun.createdEntities
+                                                )
+                                                    ? assistantRun.createdEntities
+                                                    : []
+                                                assistantRun.createdEntities = [...existingCreatedEntities, createdNote]
+                                                await safeCommentUpdate({
+                                                    assistantRun: {
+                                                        ...assistantRun,
+                                                        status: 'running',
+                                                    },
+                                                }).catch(error => {
+                                                    console.warn(
+                                                        'CREATE_NOTE TOOL: Failed persisting created-note metadata',
+                                                        {
+                                                            noteId: createdNote.noteId,
+                                                            error: error.message,
+                                                        }
+                                                    )
+                                                })
+                                            }
+                                        }
+                                    }
+                                    collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
+
+                                    const conversationSafeToolResult = buildConversationSafeToolResult(
+                                        toolName,
+                                        toolResult
+                                    )
+                                    pendingAttachmentPayload =
+                                        buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+                                    return { toolName, toolArgs, toolCallId: toolCall.id, conversationSafeToolResult }
+                                } catch (error) {
+                                    error.toolName ||= toolName
+                                    throw error
                                 }
+                            },
+                            {
+                                onState: state => {
+                                    batchState = state
+                                },
                             }
-                        }
-                        collectStartedVmJobs(startedVmJobResults, toolName, toolResult)
-                        const toolResultString = JSON.stringify(toolResult, null, 2)
-                        if (ENABLE_DETAILED_LOGGING) {
-                            console.log('🔧 NATIVE TOOL CALL: Tool executed successfully', {
-                                toolName,
-                                resultLength: toolResultString.length,
-                                resultPreview: toolResultString.substring(0, 500),
-                                fullResult:
-                                    toolResultString.length < 1000 ? toolResultString : '[Too large to display fully]',
-                            })
-                        }
+                        )
                     } catch (error) {
-                        stopToolProgressUpdates = true
-                        clearInterval(toolProgressInterval)
-                        console.error('🔧 NATIVE TOOL CALL: Tool execution failed', {
-                            toolName,
-                            error: error.message,
-                            stack: error.stack,
-                        })
-                        await flushPendingUpdate() // Flush any pending updates first
-                        const errorMsg = `Error executing ${toolName}: ${error.message}`
-                        commentText = commentText.replace(toolStatusMessage, errorMsg)
+                        if (error instanceof AssistantRunCancelledError) throw error
+                        await progressWrites
+                        const errorMsg = `Error executing ${error.toolName || 'tool'}: ${error.message}`
+                        commentText = commentText.replace(toolStatusMessage, () => errorMsg)
                         await safeCommentUpdate({ commentText, isLoading: false })
                         if (runtimeContextForTools.failOnToolExecutionError === true) {
                             fatalToolExecutionError = error
-                            fatalToolExecutionError.toolName = toolName
-                            if (!fatalToolExecutionError.code) {
+                            if (!fatalToolExecutionError.code)
                                 fatalToolExecutionError.code = 'ASSISTANT_TOOL_EXECUTION_FAILED'
-                            }
                         }
                         toolAlreadyExecuted = true
-                        break // Exit the while loop
+                        break
+                    } finally {
+                        stopToolProgressUpdates = true
+                        clearInterval(toolProgressInterval)
+                        await progressWrites
                     }
-                    stopToolProgressUpdates = true
-                    clearInterval(toolProgressInterval)
-                    const conversationSafeToolResult = buildConversationSafeToolResult(toolName, toolResult)
-                    pendingAttachmentPayload =
-                        buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
-
-                    // Build new conversation history with tool result
-                    // Need to add: assistant's message with tool call, then tool result message
-
-                    // Collect all assistant content before tool call
-                    const assistantMessageContent = commentText.replace(toolStatusMessage, '').trim()
-                    if (ENABLE_DETAILED_LOGGING) {
-                        console.log('🔧 NATIVE TOOL CALL: Building conversation update', {
-                            assistantMessageContentLength: assistantMessageContent.length,
-                            assistantMessageContent: assistantMessageContent.substring(0, 200),
-                        })
-                    }
-
-                    // Build updated conversation with plain objects
-                    const updatedConversation = buildConversationAfterToolExecution({
+                    const updatedConversation = buildConversationAfterToolExecutions({
                         currentConversation,
-                        responseText: assistantMessageContent,
-                        toolName,
-                        toolArgs,
-                        toolCallId,
-                        conversationSafeToolResult,
+                        responseText: commentText.replace(toolStatusMessage, '').trim(),
+                        toolExecutions,
                         userContext,
                     })
-
-                    if (ENABLE_DETAILED_LOGGING) {
-                        console.log('🔧 NATIVE TOOL CALL: Built updated conversation', {
-                            conversationLength: updatedConversation.length,
-                            originalHistoryLength: currentConversation.length,
-                            toolResultLength: JSON.stringify(toolResult).length,
-                            toolResultPreview: JSON.stringify(toolResult).substring(0, 500),
-                            iteration: toolCallIteration,
-                            lastThreeMessages: updatedConversation.slice(-3).map(m => ({
-                                role: m.role,
-                                hasContent: !!m.content,
-                                contentLength: m.content?.length,
-                                contentPreview: m.content?.substring(0, 150),
-                                hasToolCalls: !!m.tool_calls,
-                                toolCallsCount: m.tool_calls?.length,
-                                hasToolCallId: !!m.tool_call_id,
-                            })),
-                        })
-                    }
 
                     // Update currentConversation for next iteration
                     currentConversation = updatedConversation
@@ -12111,6 +12081,12 @@ async function addBaseInstructions(
                 (allowedTools.includes('web_search')
                     ? `The only exception is the limited, occasional proactive web_search behavior described in your conversational style instructions.`
                     : ''),
+        ])
+    }
+    if (Array.isArray(allowedTools) && allowedTools.length) {
+        messages.push([
+            'system',
+            'TOOL EXECUTION: Request independent read-only lookups and research calls together in the same response; the server runs approved stateless reads with bounded parallelism. Wait for results before requesting dependent steps or choosing arguments for writes. Never guess identifiers or outputs from unfinished calls. Browser sessions, attachments, external tools and changes are executed in order. Use every returned result when answering; a returned error is not success.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('fetch_url') && allowedTools.includes(BROWSER_TOOL_KEY)) {
@@ -14024,6 +14000,7 @@ module.exports = {
     injectCurrentMessageImagesIntoCreateTaskArgs,
     postUserRequestComment,
     collectAssistantTextWithToolCalls,
+    storeChunks,
     buildConversationAfterToolExecution,
     buildConversationAfterToolExecutions,
     buildConversationSafeToolResult,

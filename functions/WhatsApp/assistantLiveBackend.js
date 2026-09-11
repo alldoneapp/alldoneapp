@@ -65,6 +65,7 @@ async function runLiveAssistant({
         userRequestText: lastUserTurn?.text || '',
     }
     const allowedTools = filterAllowedToolsForRuntimeContext(assistant.allowedTools || [], runtime)
+    let toolBatchSize = 1
     const executeVerified = async (name, args) => {
         await assertActive()
         const [freshUser, freshAssistant] = await Promise.all([
@@ -87,7 +88,7 @@ async function runLiveAssistant({
         // network call. The next delegation must know which actions already ran.
         try {
             await assertActive()
-            onProgress(toolProgress(name))
+            if (toolBatchSize === 1) onProgress(toolProgress(name))
             const result = await executeToolNatively(
                 name,
                 args,
@@ -112,7 +113,7 @@ async function runLiveAssistant({
         } finally {
             // A returned tool result can be a failure or a queued job; it is not
             // evidence that the user's task has finished successfully.
-            onProgress(REVIEWING)
+            if (toolBatchSize === 1) onProgress(REVIEWING)
         }
     }
     const localTools = {
@@ -221,6 +222,15 @@ async function runLiveAssistant({
                 }
             }
             return executeVerified(name, args)
+        },
+        onToolBatchState: state => {
+            toolBatchSize = state.total
+            if (state.total > 1)
+                onProgress(
+                    state.completed === state.total
+                        ? REVIEWING
+                        : `I have received results for ${state.completed} of ${state.total} steps; ${state.active.length} are running. I am still checking the results and have not finished the answer.`
+                )
         },
         onRoundComplete: async ({ assistantText, conversation, round }) => {
             const gold = await reconcileLiveUsage({

@@ -1637,6 +1637,7 @@
     "assistant_activity_search_workspace": "Suche in deinem Workspace nach „%{subject}“",
     "assistant_activity_search_workspace_plain": "Suche in deinem Workspace",
     "assistant_activity_search_web": "Suche im Web nach „%{subject}“",
+    "assistant_activity_multiple_steps": "Bearbeite deine Anfrage: %{subject} Ergebnisse erhalten",
     "assistant_activity_search_web_plain": "Suche im Web",
     "assistant_activity_search_email": "Suche in deinen E-Mails nach „%{subject}“",
     "assistant_activity_search_email_plain": "Suche in deinen E-Mails",

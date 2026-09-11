@@ -7,6 +7,7 @@ const { describeToolActivity, rememberDelegationDisplayName } = require('./assis
  * `%s` is replaced by the already-sanitized subject.
  */
 const ACTION_PRESENTATION = {
+    assistant_activity_multiple_steps: ['🧩', 'Working through your request: %s results received'],
     assistant_activity_search_notes: ['🔍', 'Searching notes for “%s”'],
     assistant_activity_search_tasks: ['🔍', 'Searching tasks for “%s”'],
     assistant_activity_search_goals: ['🔍', 'Searching goals for “%s”'],

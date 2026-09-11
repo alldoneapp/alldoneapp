@@ -2063,6 +2063,7 @@
     "assistant_activity_search_workspace": "Buscando «%{subject}» en tu espacio de trabajo",
     "assistant_activity_search_workspace_plain": "Buscando en tu espacio de trabajo",
     "assistant_activity_search_web": "Buscando «%{subject}» en la web",
+    "assistant_activity_multiple_steps": "Procesando tu solicitud: %{subject} resultados recibidos",
     "assistant_activity_search_web_plain": "Buscando en la web",
     "assistant_activity_search_email": "Buscando «%{subject}» en tu correo",
     "assistant_activity_search_email_plain": "Buscando en tu correo",
