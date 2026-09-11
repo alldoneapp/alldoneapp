@@ -7,6 +7,7 @@ const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant } = require('./assistantLiveBackend')
 const { createLiveTranscript, LIVE_READY_EVENT } = require('./assistantLiveProtocol')
+const { createLiveProgress, backgroundProgress } = require('./assistantLiveProgress')
 
 const keyFor = value => crypto.createHash('sha256').update(value).digest('hex')
 const attachUrl = id => `wss://api.openai.com/v1/live/sessions/${encodeURIComponent(id)}/attach`
@@ -78,11 +79,15 @@ async function runAssistantLiveCall(sessionId) {
     let socket
     let events = Promise.resolve()
     let backend = null
+    let progress = null
     let ready = false
     let ending = false
     let finalized = false
     let reason = 'connection_lost'
     let lastUserChangeAt = 0
+    let lastSpeechAt = 0
+    let lastProgressAt = 0
+    const backgroundJobs = new Map()
     let handledRevision = 0
     let tickBusy = false
     let lastControlCheck = 0
@@ -98,6 +103,51 @@ async function runAssistantLiveCall(sessionId) {
         const payload = { type, content: appendText(content), delegation_id: delegationId, event_id: eventId }
         outbox.set(eventId, payload)
         send(payload)
+    }
+    const publishProgress = (content, delegationId) => {
+        // Wait messages must never be replayed after completion or reconnection.
+        send({
+            type: 'session.commentary.append',
+            delegation_id: delegationId,
+            event_id: crypto.randomUUID(),
+            content: appendText(content),
+        })
+        lastProgressAt = Date.now()
+    }
+    const clearBackgroundJobs = () => {
+        for (const job of backgroundJobs.values()) job.unsubscribe?.()
+        backgroundJobs.clear()
+    }
+    const watchBackgroundJob = (id, delegationId, revision) => {
+        if (ending || stopped || revision !== transcript.revision || backgroundJobs.has(id)) return
+        // IDs come only from the actual VM tool result, never from model text.
+        if (typeof id !== 'string' || !id || id.includes('/')) return
+        const job = {
+            state: null,
+            progress: createLiveProgress({ publish: content => publishProgress(content, delegationId) }),
+        }
+        backgroundJobs.set(id, job)
+        try {
+            job.unsubscribe = admin
+                .firestore()
+                .doc(`pendingWebhooks/${id}`)
+                .onSnapshot(
+                    snapshot => {
+                        const data = snapshot.data()
+                        job.state =
+                            data?.kind === 'vm_job' && data.userId === session.userId ? backgroundProgress(data) : null
+                        if (job.state) job.progress.update(job.state.content)
+                    },
+                    () => {
+                        job.state = null
+                        backgroundJobs.delete(id)
+                    }
+                )
+        } catch (_) {
+            // Observation failure must not turn an already-started job into a
+            // failed tool call or cause it to be started again.
+            backgroundJobs.delete(id)
+        }
     }
     const flushTranscript = async () => {
         for (const group of transcript.messages()) {
@@ -121,6 +171,7 @@ async function runAssistantLiveCall(sessionId) {
     const close = (why, message = '') => {
         if (ending) return
         ending = true
+        clearBackgroundJobs()
         updateCallSession(sessionId, { controllerConnected: false }).catch(() => {})
         reason = why
         if (message) append('session.instructions.append', message)
@@ -208,6 +259,23 @@ async function runAssistantLiveCall(sessionId) {
                 if ((await ref.get()).data()?.cancelRequestedAt) close('client_cancelled')
             }
             await flushTranscript()
+            progress?.tick({
+                active: ready && !ending && !stopped && progress.revision === transcript.revision,
+                lastSpeechAt,
+            })
+            if (ready && !ending && !stopped && !backend && Date.now() - lastProgressAt >= 20000) {
+                for (const [id, job] of backgroundJobs) {
+                    // Dispatched jobs have their own authoritative lifecycle. A
+                    // new utterance pauses updates but does not cancel that work.
+                    if (job.state && job.progress.tick({ active: true, lastSpeechAt })) {
+                        if (job.state.terminal) {
+                            job.unsubscribe?.()
+                            backgroundJobs.delete(id)
+                        }
+                        break
+                    }
+                }
+            }
             if (!ready || ending || backend || !pending.size || Date.now() - lastUserChangeAt < 900) return
             const [delegationId, notice] = pending.entries().next().value
             const userGroups = transcript.messages().filter(group => group.role === 'user')
@@ -238,16 +306,25 @@ async function runAssistantLiveCall(sessionId) {
             if (!runClaimed) return
             handledRevision = revision
             let requestedEnd = false
+            const runProgress = createLiveProgress({
+                // Progress is ephemeral: never replay an obsolete wait after a
+                // reconnect. Only actual spoken transcript fragments enter chat.
+                publish: content => publishProgress(content, delegationId),
+            })
+            progress = { ...runProgress, revision }
             backend = runLiveAssistant({
                 session,
                 delegationId: runId,
                 assertActive: () => assertRevision(revision),
+                onProgress: runProgress.update,
+                onBackgroundJob: id => watchBackgroundJob(id, delegationId, revision),
                 lastUserTurn: { text: last.text, createdAt: last.receivedAt },
                 requestEnd: () => {
                     requestedEnd = true
                 },
             })
                 .then(async result => {
+                    runProgress.stop()
                     await runRef.update({ status: 'completed', result, completedAt: Date.now() })
                     // Full result is durable even when the user interrupts or disconnects.
                     await storeCallTranscriptTurn({
@@ -275,6 +352,7 @@ async function runAssistantLiveCall(sessionId) {
                         )
                 })
                 .catch(async error => {
+                    runProgress.stop()
                     const superseded = error.message === 'voice_request_superseded'
                     await runRef.update({
                         status: superseded ? 'superseded' : 'failed',
@@ -296,6 +374,7 @@ async function runAssistantLiveCall(sessionId) {
                         )
                 })
                 .finally(() => {
+                    progress = null
                     backend = null
                 })
         } finally {
@@ -340,9 +419,14 @@ async function runAssistantLiveCall(sessionId) {
                         // Invalidate in-flight work at receipt, before any queued
                         // Firestore write can delay processing this correction.
                         const transcriptChanged = transcript.append(event)
-                        if (transcriptChanged && event.type === 'session.input_transcript.delta')
+                        if (transcriptChanged) lastSpeechAt = Date.now()
+                        if (transcriptChanged && event.type === 'session.input_transcript.delta') {
                             lastUserChangeAt = Date.now()
-                        if (event.type === 'session.closed') ending = true
+                        }
+                        if (event.type === 'session.closed') {
+                            ending = true
+                            clearBackgroundJobs()
+                        }
                         events = events
                             .then(() => handleEvent(event, transcriptChanged))
                             .catch(() => close('event_processing_error'))
@@ -370,6 +454,7 @@ async function runAssistantLiveCall(sessionId) {
     } finally {
         ending = true
         stopped = true
+        clearBackgroundJobs()
         clearInterval(interval)
         clearTimeout(deadline)
         clearTimeout(closeTimer)
