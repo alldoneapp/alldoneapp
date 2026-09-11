@@ -7,7 +7,7 @@ const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant } = require('./assistantLiveBackend')
 const { createLiveTranscript, LIVE_READY_EVENT } = require('./assistantLiveProtocol')
-const { createLiveProgress, backgroundProgress } = require('./assistantLiveProgress')
+const { createLiveProgress, backgroundProgress, voiceToolFailure } = require('./assistantLiveProgress')
 const { createLiveAnswerDelivery } = require('./assistantLiveAnswerDelivery')
 
 const keyFor = value => crypto.createHash('sha256').update(value).digest('hex')
@@ -248,6 +248,11 @@ async function runAssistantLiveCall(sessionId) {
             if (!seenDelegations.has(id)) {
                 seenDelegations.add(id)
                 pending.set(id, { offset: Number(event.offset_ms) || 0, receivedAt: Date.now() })
+                console.info('Live Call: Delegation received', {
+                    sessionId,
+                    delegationId: id,
+                    revision: transcript.revision,
+                })
             }
         }
         if (event.type === 'session.usage.updated' || event.type === 'session.closed') {
@@ -317,6 +322,20 @@ async function runAssistantLiveCall(sessionId) {
                     }
                 }
             }
+            // Do not rely on the voice model always delegating a short answer such
+            // as “Ja, bitte”. Application-owned work uses delegation_id: null.
+            if (
+                ready &&
+                !ending &&
+                !backend &&
+                !pending.size &&
+                transcript.revision > handledRevision &&
+                lastUserChangeAt &&
+                Date.now() - lastUserChangeAt >= 3500
+            ) {
+                pending.set(null, { receivedAt: Date.now(), source: 'transcript_fallback' })
+                console.info('Live Call: Transcript fallback queued', { sessionId, revision: transcript.revision })
+            }
             if (!ready || ending || backend || !pending.size || Date.now() - lastUserChangeAt < 900) return
             const [delegationId, notice] = pending.entries().next().value
             const userGroups = transcript.messages().filter(group => group.role === 'user')
@@ -324,19 +343,18 @@ async function runAssistantLiveCall(sessionId) {
             if (!last || transcript.revision <= handledRevision) {
                 if (Date.now() - notice.receivedAt > 6000) {
                     pending.delete(delegationId)
-                    append(
-                        'session.commentary.append',
-                        last
-                            ? 'That request has already been handled or is in progress. Ask for a new detail if needed.'
-                            : 'I did not receive the request clearly. Please repeat it.',
-                        delegationId
-                    )
+                    if (!last)
+                        append(
+                            'session.commentary.append',
+                            'I did not receive the request clearly. Please repeat it.',
+                            delegationId
+                        )
                 }
                 return
             }
             pending.delete(delegationId)
             const revision = transcript.revision
-            const runId = `${delegationId}:${revision}`
+            const runId = `${delegationId || 'transcript'}:${revision}`
             const runRef = ref.collection('liveDelegations').doc(keyFor(runId))
             const runClaimed = await admin.firestore().runTransaction(async tx => {
                 const doc = await tx.get(runRef)
@@ -403,12 +421,7 @@ async function runAssistantLiveCall(sessionId) {
                                 )
                         },
                         supersede: () => pending.set(delegationId, { ...notice, receivedAt: Date.now() }),
-                        finish: () =>
-                            requestedEnd &&
-                            close(
-                                'assistant_ended_call',
-                                "Give a short warm goodbye in the user's language. The call is ending."
-                            ),
+                        finish: () => requestedEnd && close('assistant_ended_call'),
                     })
                 })
                 .catch(async error => {
@@ -426,12 +439,15 @@ async function runAssistantLiveCall(sessionId) {
                             'insufficient_gold',
                             'Tell the user their Gold balance is exhausted and the call is ending.'
                         )
-                    else if (!ending && !superseded)
+                    else if (!ending && !superseded) {
+                        const detail = voiceToolFailure(null, error)
+                        console.warn('Live Call: Backend failed', { sessionId, runId, detail })
                         append(
                             'session.commentary.append',
-                            'The assistant could not complete the request. Some actions may have completed; check their status before retrying.',
+                            `The request stopped with this error: “${detail}”. Completion has not been confirmed; check any prior tool results before retrying.`,
                             delegationId
                         )
+                    }
                 })
                 .finally(() => {
                     progress = null

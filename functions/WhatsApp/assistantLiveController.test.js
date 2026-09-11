@@ -149,7 +149,6 @@ test('attaches to the Live session, waits for transcript context and deduplicate
     const run = [...docs.entries()].find(([path]) => path.includes('/liveDelegations/'))[1]
     expect(run).toMatchObject({
         deliveryStatus: 'answer_acknowledged',
-        contextAcknowledgedAt: expect.any(Number),
         answerAcknowledgedAt: expect.any(Number),
     })
     expect(reconcileLiveUsage).toHaveBeenLastCalledWith({ sessionId: 's', seconds: 20, final: true })
@@ -361,8 +360,40 @@ test('keeps dispatched jobs across speech, checks ownership and releases observa
     watcher.next({ data: () => ({ kind: 'vm_job', userId: 'u', status: 'running' }) })
     await jest.advanceTimersByTimeAsync(3000)
     expect(progressMessages(state.socket)).toHaveLength(0)
-    await jest.advanceTimersByTimeAsync(1500)
+    // The fallback also handles the new utterance before background speech resumes.
+    await jest.advanceTimersByTimeAsync(15000)
     expect(progressMessages(state.socket).at(-1).content).toContain('still running')
     await finish(state)
     expect(watcher.unsubscribe).toHaveBeenCalledTimes(1)
+})
+
+test('recovers an undelegated spoken request and does not execute it again when the provider delegation arrives late', async () => {
+    const state = await start()
+    await emit(state.socket, user('approval', 'Ja, bitte eintragen'))
+    await jest.advanceTimersByTimeAsync(3300)
+    expect(runLiveAssistant).not.toHaveBeenCalled()
+    await jest.advanceTimersByTimeAsync(900)
+    expect(runLiveAssistant).toHaveBeenCalledTimes(1)
+    expect(runLiveAssistant.mock.calls[0][0].lastUserTurn.text).toBe('Ja, bitte eintragen')
+    expect(state.socket.sent).toContainEqual(
+        expect.objectContaining({ type: 'session.commentary.append', delegation_id: null, content: 'Verified result' })
+    )
+    await emit(state.socket, delegation)
+    await jest.advanceTimersByTimeAsync(12000)
+    expect(runLiveAssistant).toHaveBeenCalledTimes(1)
+    expect(state.socket.sent.filter(event => event.type === 'session.commentary.append')).toHaveLength(1)
+    await finish(state)
+})
+
+test('a correction extends the fallback settling window before starting backend work', async () => {
+    const state = await start()
+    await emit(state.socket, user('first', 'Trag es ganztägig ein'))
+    await jest.advanceTimersByTimeAsync(3000)
+    await emit(state.socket, user('correction', 'Nein, von elf bis zwanzig Uhr'))
+    await jest.advanceTimersByTimeAsync(3000)
+    expect(runLiveAssistant).not.toHaveBeenCalled()
+    await jest.advanceTimersByTimeAsync(900)
+    expect(runLiveAssistant).toHaveBeenCalledTimes(1)
+    expect(runLiveAssistant.mock.calls[0][0].lastUserTurn.text).toContain('von elf bis zwanzig Uhr')
+    await finish(state)
 })
