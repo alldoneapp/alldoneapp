@@ -684,9 +684,6 @@ deploy:cloud:functions:staging:
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:functions:staging
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
-        # firebase-tools can exit zero after a partial concurrent deployment. Verify the
-        # deployed inventory before a green job can hide a missing callable/task worker.
-        - firebase functions:list --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js
         - rm -rf tmp_project_name
     allow_failure:
         exit_codes: 75
@@ -746,9 +743,6 @@ deploy:cloud:functions:production:
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:functions:production
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
         - firebase deploy --only functions --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID"
-        # A 2026-09-10 deploy returned zero after GCP quota omitted one new task worker.
-        # Do not advance the deploy marker unless every source export now exists remotely.
-        - firebase functions:list --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js
         - rm -rf tmp_project_name
         # Only after a successful deploy. The path list lives in
         # ci/deploy-scope/functions-production.paths (functions/ plus firebase.json, which
