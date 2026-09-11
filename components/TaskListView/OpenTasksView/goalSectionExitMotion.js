@@ -61,6 +61,11 @@ export const GOAL_EXIT_COLLAPSE_MS = 1020
 
 export const GOAL_SECTION_EXIT_TOTAL_MS = GOAL_EXIT_COLLAPSE_DELAY_MS + GOAL_EXIT_COLLAPSE_MS
 
+/** AT-2541: postponing is routine, so its final-goal cleanup follows the 350ms task exit quietly. */
+export const POSTPONE_GOAL_EXIT_FADE_MS = 120
+export const POSTPONE_GOAL_EXIT_COLLAPSE_MS = 180
+export const POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS = POSTPONE_GOAL_EXIT_COLLAPSE_MS
+
 /** How far the block drifts up as it goes. Small: this is a departure, not a throw. */
 const LIFT_PX = 10
 
@@ -75,7 +80,7 @@ const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
  *   also carries the input block, rather than that being a separate prop, so there is exactly one
  *   thing for the section to apply and no way to apply half of it.
  */
-export default function useGoalSectionExitMotion(exitRunId) {
+export default function useGoalSectionExitMotion(exitRunId, exitKind = 'completion') {
     const reducedMotion = useReducedMotion()
     const animated = !reducedMotion && !animationsAreDisabled()
     const [exiting, setExiting] = useState(false)
@@ -116,11 +121,12 @@ export default function useGoalSectionExitMotion(exitRunId) {
         setExitHeight(measured)
         setExiting(true)
 
+        const isPostpone = exitKind === 'postpone'
         const beats = [
             Animated.timing(opacity, {
                 toValue: 0,
-                duration: GOAL_EXIT_FADE_MS,
-                easing: Easing.in(Easing.quad),
+                duration: isPostpone ? POSTPONE_GOAL_EXIT_FADE_MS : GOAL_EXIT_FADE_MS,
+                easing: isPostpone ? Easing.out(Easing.quad) : Easing.in(Easing.quad),
                 // `height` cannot be driven natively and the two must stay on one driver, or the
                 // fade and the collapse drift apart on exactly the frames where they overlap.
                 useNativeDriver: false,
@@ -133,16 +139,14 @@ export default function useGoalSectionExitMotion(exitRunId) {
          * there at full height for the whole hold.
          */
         if (measured > 0) {
+            const collapse = Animated.timing(height, {
+                toValue: 0,
+                duration: isPostpone ? POSTPONE_GOAL_EXIT_COLLAPSE_MS : GOAL_EXIT_COLLAPSE_MS,
+                easing: Easing.inOut(Easing.cubic),
+                useNativeDriver: false,
+            })
             beats.push(
-                Animated.sequence([
-                    Animated.delay(GOAL_EXIT_COLLAPSE_DELAY_MS),
-                    Animated.timing(height, {
-                        toValue: 0,
-                        duration: GOAL_EXIT_COLLAPSE_MS,
-                        easing: Easing.inOut(Easing.cubic),
-                        useNativeDriver: false,
-                    }),
-                ])
+                isPostpone ? collapse : Animated.sequence([Animated.delay(GOAL_EXIT_COLLAPSE_DELAY_MS), collapse])
             )
         }
 
@@ -150,7 +154,7 @@ export default function useGoalSectionExitMotion(exitRunId) {
         animation.start()
 
         return () => animation.stop()
-    }, [exitRunId, animated, opacity, height])
+    }, [exitRunId, exitKind, animated, opacity, height])
 
     /**
      * Deliberately NOT reset when the run ends. The section is unmounted by `MainSection` a beat

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react'
+import React, { useCallback, useRef, useState, useEffect } from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
 import { shallowEqual, useSelector } from 'react-redux'
 
@@ -29,6 +29,7 @@ export default function EmptyGoal({
     dateIndex,
     containerStyle,
     exitRunId = 0,
+    exitKind = 'completion',
     postponeMotionEnabled = false,
 }) {
     const taskHierarchy = useTaskHierarchy()
@@ -53,12 +54,20 @@ export default function EmptyGoal({
      * animated wrapper at all. `MainSection` decides WHETHER the goal is leaving and keeps it
      * mounted for the run; this only draws it.
      */
-    const sectionExitMotion = useGoalSectionExitMotion(exitRunId)
+    const sectionExitMotion = useGoalSectionExitMotion(exitRunId, exitKind)
     const goalPostponeMotion = useGoalPostponeMotion({
         enabled: postponeMotionEnabled,
         projectId,
         goalId: goal?.id,
+        sectionGap: containerStyle?.marginBottom || 0,
     })
+    const onSectionLayout = useCallback(
+        event => {
+            sectionExitMotion.onSectionLayout(event)
+            goalPostponeMotion.onSectionLayout(event)
+        },
+        [goalPostponeMotion.onSectionLayout, sectionExitMotion.onSectionLayout]
+    )
     const sectionStyle = goalPostponeMotion.sectionStyle || sectionExitMotion.sectionStyle
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
@@ -102,7 +111,7 @@ export default function EmptyGoal({
 
     return (
         <Animated.View
-            onLayout={sectionExitMotion.onSectionLayout}
+            onLayout={onSectionLayout}
             style={[
                 localStyles.container,
                 containerStyle,

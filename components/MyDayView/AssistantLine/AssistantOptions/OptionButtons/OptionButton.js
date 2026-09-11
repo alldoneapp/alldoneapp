@@ -15,6 +15,9 @@ export default function OptionButton({
     textStyle,
     onLayout,
     testID,
+    pointerEvents,
+    focusable,
+    accessible,
 }) {
     return (
         <TouchableOpacity
@@ -24,6 +27,9 @@ export default function OptionButton({
             activeOpacity={disabled ? 1 : 0.2}
             onLayout={onLayout}
             testID={testID}
+            pointerEvents={pointerEvents}
+            focusable={focusable}
+            accessible={accessible}
         >
             <View style={localStyles.icon}>
                 <Icon name={icon} size={16} color={iconColor} />

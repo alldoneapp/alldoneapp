@@ -56,6 +56,7 @@ export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
                 textStyle={localStyles.searchText}
                 onPress={openModal}
                 onLayout={onLayout}
+                testID="assistant-task-search-button"
             />
         </AppPopover>
     )

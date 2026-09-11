@@ -15,6 +15,7 @@ export default function QuickActionsToggle({ expanded, onPress, onLayout }) {
             accessibilityLabel={label}
             accessibilityRole={'button'}
             onLayout={onLayout}
+            testID="assistant-quick-actions-toggle"
         >
             <Text style={[styles.subtitle2, localStyles.text]}>{label}</Text>
             <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.Text03} />
