@@ -13,7 +13,7 @@ import AssistantLineSkeleton, {
     LastCommentPreviewSkeleton,
 } from './AssistantLineSkeleton'
 import { LAST_COMMENT_PREVIEW_HEIGHT } from './LastComment/lastCommentLayout'
-import { ProjectSectionAccentContext } from '../../TaskListView/TaskHierarchy'
+import { ProjectSectionLastCommentTintContext } from '../../TaskListView/TaskHierarchy'
 import { colors } from '../../styles/global'
 
 jest.mock('react-redux', () => ({ useSelector: selector => selector({ smallScreenNavigation: true }) }))
@@ -52,18 +52,18 @@ describe('AssistantLineSkeleton', () => {
         expect(card.height).toBe(LAST_COMMENT_PREVIEW_HEIGHT)
     })
 
-    it('uses the milestone accent for the loading preview in project context', () => {
-        const projectAccentColor = '#FAEBEE'
+    it('uses the darker project tint for the loading preview in project context', () => {
+        const projectLastCommentTint = '#F7DEE3'
         const tree = renderer.create(
-            <ProjectSectionAccentContext.Provider value={projectAccentColor}>
+            <ProjectSectionLastCommentTintContext.Provider value={projectLastCommentTint}>
                 <LastCommentPreviewSkeleton />
-            </ProjectSectionAccentContext.Provider>
+            </ProjectSectionLastCommentTintContext.Provider>
         )
         const card = StyleSheet.flatten(
             tree.root.findByProps({ testID: 'assistant-last-comment-loading-skeleton' }).props.style
         )
 
-        expect(card.backgroundColor).toBe(projectAccentColor)
+        expect(card.backgroundColor).toBe(projectLastCommentTint)
     })
 
     it('keeps the neutral loading preview outside project context', () => {
