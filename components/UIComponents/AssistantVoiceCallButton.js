@@ -9,7 +9,8 @@ import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import Spinner from './Spinner'
 import { createLiveCallConnection } from './assistantLiveConnection'
-import { acquireVoiceMicrophone } from './assistantVoiceMicrophone'
+import { primeCallAudio } from './assistantCallAudio'
+import { acquireVoiceMicrophone, createVoiceMicrophoneSelector } from './assistantVoiceMicrophone'
 import { createInputLevelMonitor } from '../../hooks/rambleMicCapture'
 import {
     LIVE_GOLD_PER_MINUTE,
@@ -89,7 +90,6 @@ export default function AssistantVoiceCallButton({
 }) {
     const [status, setStatus] = useState(STATUS_IDLE)
     const [error, setError] = useState('')
-    const [checkingMicrophone, setCheckingMicrophone] = useState(false)
     const [microphoneLabel, setMicrophoneLabel] = useState('')
     const [needsAudioPlayback, setNeedsAudioPlayback] = useState(false)
     const [voiceSeconds, setVoiceSeconds] = useState(0)
@@ -100,9 +100,11 @@ export default function AssistantVoiceCallButton({
     const endingRef = useRef(false)
     const callReadyRef = useRef(false)
     const startingRef = useRef(false)
-    const inputMonitorRef = useRef(null)
-    const silentPollsRef = useRef(0)
-    const recoveredSilenceRef = useRef(false)
+    const microphoneSelectorRef = useRef(null)
+    const startMicrophoneSelectionRef = useRef(null)
+    const playbackReadyRef = useRef(false)
+    const outputMonitorRef = useRef(null)
+    const lastOutputAudioRef = useRef(0)
     const callGenerationRef = useRef(0)
     const peerConnectionRef = useRef(null)
     const localStreamRef = useRef(null)
@@ -131,12 +133,21 @@ export default function AssistantVoiceCallButton({
         if (!audio?.srcObject) return
         try {
             await audio.play()
-            if (mountedRef.current && audioElementRef.current === audio) setNeedsAudioPlayback(false)
+            if (mountedRef.current && audioElementRef.current === audio) {
+                playbackReadyRef.current = true
+                setNeedsAudioPlayback(false)
+                if (callReadyRef.current)
+                    liveConnectionRef.current?.greet(
+                        translate('Hello, I am %{name}. How can I help you?', {
+                            name: assistant?.displayName || translate('Assistant'),
+                        })
+                    )
+            }
         } catch (error) {
             if (error?.name !== 'AbortError' && mountedRef.current && audioElementRef.current === audio)
                 setNeedsAudioPlayback(true)
         }
-    }, [])
+    }, [assistant?.displayName])
 
     // Acquire a Screen Wake Lock so the device does not sleep while a call is
     // active.  This is best-effort — the API may not be available everywhere.
@@ -200,13 +211,16 @@ export default function AssistantVoiceCallButton({
         track => {
             if (!track) return
             track.onended = () => {
+                if (localStreamRef.current?.getAudioTracks()[0] !== track) return
                 console.warn('[VoiceCall] Mic track ended — attempting recovery')
                 requestMicRecovery()
             }
             track.onmute = () => {
+                if (localStreamRef.current?.getAudioTracks()[0] !== track) return
                 console.warn('[VoiceCall] Mic track muted by OS')
             }
             track.onunmute = () => {
+                if (localStreamRef.current?.getAudioTracks()[0] !== track) return
                 console.log('[VoiceCall] Mic track unmuted')
                 stallCountRef.current = 0
                 micCheckPendingRef.current = false
@@ -263,9 +277,7 @@ export default function AssistantVoiceCallButton({
             }
             localStreamRef.current = newStream
             recoveryStream = null
-            inputMonitorRef.current?.close()
-            inputMonitorRef.current = createInputLevelMonitor(newStream)
-            silentPollsRef.current = 0
+            startMicrophoneSelectionRef.current?.(newStream)
             if (mountedRef.current) setMicrophoneLabel(capture.deviceLabel)
 
             // Attach event listeners on the fresh track.
@@ -282,6 +294,42 @@ export default function AssistantVoiceCallButton({
             micRecoveringRef.current = false
         }
     }, [attachTrackListeners])
+
+    startMicrophoneSelectionRef.current = stream => {
+        microphoneSelectorRef.current?.stop()
+        const pc = peerConnectionRef.current
+        microphoneSelectorRef.current = createVoiceMicrophoneSelector({
+            stream,
+            isPaused: () => {
+                if (
+                    peerConnectionRef.current !== pc ||
+                    endingRef.current ||
+                    !callReadyRef.current ||
+                    isDocumentHidden()
+                )
+                    return true
+                const output = outputMonitorRef.current
+                output?.sample()
+                if (output?.getLevel() > 0.008) lastOutputAudioRef.current = Date.now()
+                return Date.now() - lastOutputAudioRef.current < 700
+            },
+            onSwitch: async selected => {
+                if (micRecoveringRef.current) throw new Error('Microphone recovery in progress')
+                const sender = pc.getSenders().find(s => s.track?.kind === 'audio')
+                if (!sender || peerConnectionRef.current !== pc) throw new Error('Call ended')
+                micRecoveringRef.current = true
+                try {
+                    await sender.replaceTrack(selected.getAudioTracks()[0])
+                    if (peerConnectionRef.current !== pc) return
+                    localStreamRef.current = selected
+                    attachTrackListeners(selected.getAudioTracks()[0])
+                    if (mountedRef.current) setMicrophoneLabel(selected.getAudioTracks()[0]?.label || '')
+                } finally {
+                    micRecoveringRef.current = false
+                }
+            },
+        })
+    }
 
     // Keep the ref in sync so track listeners always call the latest version.
     attemptMicRecoveryRef.current = attemptMicRecovery
@@ -301,15 +349,6 @@ export default function AssistantVoiceCallButton({
         micHealthTimerRef.current = setInterval(async () => {
             const pc = peerConnectionRef.current
             if (!pc || endingRef.current || !callReadyRef.current) return
-            const monitor = inputMonitorRef.current
-            if (monitor && !isDocumentHidden()) {
-                const peak = monitor.sample()
-                silentPollsRef.current = peak > 0 ? 0 : silentPollsRef.current + 1
-                if (silentPollsRef.current >= 3 && !recoveredSilenceRef.current) {
-                    recoveredSilenceRef.current = true
-                    attemptMicRecoveryRef.current?.()
-                }
-            }
             try {
                 const stats = await pc.getStats()
                 stats.forEach(report => {
@@ -344,8 +383,11 @@ export default function AssistantVoiceCallButton({
         (resetState = true) => {
             callReadyRef.current = false
             startingRef.current = false
-            inputMonitorRef.current?.close()
-            inputMonitorRef.current = null
+            microphoneSelectorRef.current?.stop()
+            microphoneSelectorRef.current = null
+            outputMonitorRef.current?.close()
+            outputMonitorRef.current = null
+            playbackReadyRef.current = false
             const generation = callGenerationRef.current
             const sessionId = callSessionIdRef.current
             callSessionIdRef.current = null
@@ -407,7 +449,6 @@ export default function AssistantVoiceCallButton({
 
             if (resetState && mountedRef.current) {
                 setStatus(STATUS_IDLE)
-                setCheckingMicrophone(false)
                 setNeedsAudioPlayback(false)
             }
         },
@@ -507,8 +548,8 @@ export default function AssistantVoiceCallButton({
         startingRef.current = true
         const generation = ++callGenerationRef.current
         callReadyRef.current = false
-        recoveredSilenceRef.current = false
-        silentPollsRef.current = 0
+        playbackReadyRef.current = false
+        lastOutputAudioRef.current = 0
         setMicrophoneLabel('')
         setNeedsAudioPlayback(false)
         setError('')
@@ -522,8 +563,7 @@ export default function AssistantVoiceCallButton({
             peerConnectionRef.current = pc
 
             const audio = document.createElement('audio')
-            audio.autoplay = true
-            audio.setAttribute('playsinline', 'true')
+            primeCallAudio(audio)
             audio.style.display = 'none'
             document.body.appendChild(audio)
             audioElementRef.current = audio
@@ -531,6 +571,8 @@ export default function AssistantVoiceCallButton({
             pc.ontrack = event => {
                 if (peerConnectionRef.current !== pc) return
                 audio.srcObject = event.streams[0]
+                outputMonitorRef.current?.close()
+                outputMonitorRef.current = createInputLevelMonitor(event.streams[0])
                 playCallAudio()
             }
 
@@ -563,11 +605,10 @@ export default function AssistantVoiceCallButton({
             }
 
             const isCancelled = () => !mountedRef.current || peerConnectionRef.current !== pc || isDocumentHidden()
-            const capture = await acquireVoiceMicrophone({ isCancelled, onChecking: () => setCheckingMicrophone(true) })
+            const capture = await acquireVoiceMicrophone({ isCancelled })
             const localStream = capture.stream
             localStreamRef.current = localStream
             setMicrophoneLabel(capture.deviceLabel)
-            setCheckingMicrophone(false)
             localStream.getTracks().forEach(track => {
                 track.enabled = false
                 pc.addTrack(track, localStream)
@@ -618,7 +659,7 @@ export default function AssistantVoiceCallButton({
             const result = await runHttpsCallableFunction(
                 'startAssistantBrowserCallSecondGen',
                 {
-                    voiceProtocol: 'gpt-live-v1',
+                    voiceProtocol: 'gpt-live-v2',
                     offerSdp,
                     projectId: topicData.projectId,
                     chatId: topicData.chatId,
@@ -643,8 +684,14 @@ export default function AssistantVoiceCallButton({
                 track.enabled = true
             })
 
-            inputMonitorRef.current = createInputLevelMonitor(localStreamRef.current)
-            playCallAudio()
+            startMicrophoneSelectionRef.current?.(localStreamRef.current)
+            if (playbackReadyRef.current)
+                connection.greet(
+                    translate('Hello, I am %{name}. How can I help you?', {
+                        name: assistant?.displayName || translate('Assistant'),
+                    })
+                )
+            else playCallAudio()
             startingRef.current = false
 
             // Activate background-keepalive mechanisms.
@@ -701,12 +748,12 @@ export default function AssistantVoiceCallButton({
                 : 'Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant',
             { voice: callSummary.voiceGold, assistant: callSummary.assistantGold }
         )
-    const statusHint = checkingMicrophone ? translate('Checking microphones — please say a few words') : error
-    const hint = statusHint && (
+    const statusHint = error
+    const hint = statusHint ? (
         <Text accessibilityLiveRegion="polite" style={[localStyles.error, compact && localStyles.compactHint]}>
             {statusHint}
         </Text>
-    )
+    ) : null
     if (status === STATUS_CONNECTED || status === STATUS_ENDING) {
         const backgroundSupport = describeBackgroundCallSupport()
         const showForegroundHint = !compact && backgroundSupport.level === BACKGROUND_SUPPORT_FOREGROUND_ONLY

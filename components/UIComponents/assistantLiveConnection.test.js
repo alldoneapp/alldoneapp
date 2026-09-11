@@ -83,3 +83,23 @@ test('a disposed connection cannot start polling or become ready from a late sta
     expect(await result).toBeInstanceOf(Error)
     expect(getControllerStatus).toHaveBeenCalledTimes(1)
 })
+
+test('sends the greeting once, only after provider and controller readiness', async () => {
+    const channel = { readyState: 'open', send: jest.fn(), close: jest.fn() }
+    const connection = createLiveCallConnection(channel)
+    connection.greet('Hello, I am Anna.')
+    expect(channel.send).not.toHaveBeenCalled()
+    channel.onmessage({ data: JSON.stringify({ type: 'session.started' }) })
+    channel.onmessage({
+        data: JSON.stringify({ type: 'session.instructions.appended', client_event_id: 'alldone_live_ready' }),
+    })
+    connection.greet('Hello, I am Anna.')
+    connection.greet('Hello, I am Anna.')
+    expect(channel.send).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(channel.send.mock.calls[0][0])).toMatchObject({
+        type: 'session.commentary.append',
+        event_id: 'alldone_live_greeting',
+        content: 'Hello, I am Anna.',
+    })
+    connection.dispose()
+})

@@ -142,6 +142,8 @@ async function runAssistantLiveCall(sessionId) {
         if (ending || stopped || !ready || revision !== transcript.revision) throw new Error('voice_request_superseded')
     }
     const handleEvent = async (event, transcriptChanged) => {
+        if (event.type === 'session.commentary.appended' && event.client_event_id === 'alldone_live_greeting')
+            await updateCallSession(sessionId, { greetingAcknowledgedAt: Date.now() })
         if (event.client_event_id && event.type.endsWith('.appended')) outbox.delete(event.client_event_id)
         if (event.type === 'error') {
             console.warn('Live Call: Provider rejected event', {
@@ -327,7 +329,7 @@ async function runAssistantLiveCall(sessionId) {
                     if (attempt === 0)
                         append(
                             'session.instructions.append',
-                            'The application is ready. Greet the user briefly, then listen and delegate their requests.',
+                            'The server tools are ready. Remain silent until the browser sends the opening greeting after audio playback is ready.',
                             null,
                             LIVE_READY_EVENT
                         )

@@ -35,18 +35,24 @@ async function main() {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     let browser
     try {
-        browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
-        for (const scenario of ['normal', 'reverse', 'compatibility']) {
+        browser = await chromium.launch({
+            args: ['--no-sandbox', '--disable-dev-shm-usage', '--autoplay-policy=user-gesture-required'],
+        })
+        for (const scenario of ['normal', 'reverse', 'compatibility', 'playback']) {
             const page = await browser.newPage()
             page.on('pageerror', error => console.error('Browser error:', error.message))
             await page.goto(`http://127.0.0.1:${server.address().port}/?scenario=${scenario}`)
             await page.getByRole('button', { name: 'Test microphone selection' }).click()
             await page.waitForFunction(() => !!window.result, null, { timeout: 15000 })
             const result = await page.evaluate(() => window.result)
-            assert.equal(result.selected, scenario === 'reverse' ? 'builtin' : 'usb', JSON.stringify(result))
-            assert.equal(result.hasSignal, true)
-            assert.equal(result.activeTracks, 1)
-            assert.equal(result.compatibilityMode, scenario === 'compatibility')
+            if (scenario === 'playback') {
+                assert.equal(result.unlocked, true, JSON.stringify(result))
+                assert.equal(result.playing, true)
+            } else {
+                assert.equal(result.first, scenario === 'reverse' ? 'builtin' : 'usb', JSON.stringify(result))
+                assert.equal(result.selected, scenario === 'normal' ? 'builtin' : result.first, JSON.stringify(result))
+                assert.equal(result.activeTracks, 0)
+            }
             console.log('PASS', scenario, JSON.stringify(result))
             await page.close()
         }

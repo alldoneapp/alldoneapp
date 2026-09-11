@@ -144,7 +144,7 @@ async function enqueueBrowserCallController(sessionId) {
 async function startAssistantBrowserCall(data, auth) {
     const userId = auth?.uid
     if (!userId) throw new HttpsError('unauthenticated', 'Sign in before calling the assistant.')
-    if (data?.voiceProtocol !== 'gpt-live-v1')
+    if (data?.voiceProtocol !== 'gpt-live-v2')
         throw new HttpsError('failed-precondition', 'Refresh Alldone to use the updated voice calls.')
 
     const offerSdp = String(data?.offerSdp || data?.sdp || '')

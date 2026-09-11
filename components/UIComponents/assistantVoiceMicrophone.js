@@ -6,186 +6,194 @@ import {
     listAudioInputDevices,
 } from '../../hooks/rambleMicCapture'
 
-const stop = stream => stream?.getTracks?.().forEach(track => track.stop())
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
-const cancelledError = () => new Error('voice_start_cancelled')
+const stopStream = stream => stream?.getTracks?.().forEach(track => track.stop())
+const constraints = (deviceId, raw = false) => ({
+    audio: {
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+        echoCancellation: !raw,
+        noiseSuppression: !raw,
+        autoGainControl: false,
+    },
+})
 
-// Compare the same time window on all inputs. A sustained level wins over a
-// single click; silence keeps the browser default. No samples leave this device.
+// Start immediately with the default input. Comparison happens during the call.
+export async function acquireVoiceMicrophone({ isCancelled = () => false } = {}) {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints())
+    if (isCancelled()) {
+        stopStream(stream)
+        throw new Error('voice_start_cancelled')
+    }
+    return { stream, deviceLabel: getInputDeviceLabel(stream) }
+}
+
 export function microphoneScore(levels) {
     const sorted = levels.filter(Number.isFinite).sort((a, b) => a - b)
     return sorted.length ? sorted[Math.floor((sorted.length - 1) * 0.8)] : 0
 }
 
-export async function acquireVoiceMicrophone({ isCancelled = () => false, onChecking = () => {} } = {}) {
+// Only the selected stream reaches WebRTC. Other inputs are metered locally for
+// the call's lifetime, so a newly used headset can win without another dialog.
+export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () => false }) {
     const captures = []
     let selected
-    const check = () => {
-        if (isCancelled()) throw cancelledError()
-    }
-    const add = stream => {
-        const capture = { stream, monitor: createInputLevelMonitor(stream), levels: [], raw: false }
+    let stopped = false
+    let busy = false
+    let discovering = false
+    let lastSwitch = -Infinity
+    let silentWindows = 0
+    let compatibilityTried = false
+    let interval
+    const add = (input, raw = false) => {
+        const capture = { stream: input, monitor: createInputLevelMonitor(input), levels: [], raw }
         captures.push(capture)
         return capture
     }
-    try {
-        // Ask permission first, before enumeration (Chrome hides labels otherwise).
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
-        })
-        const first = add(stream)
-        check()
-        if (!first.monitor) {
-            selected = first
-            await Promise.resolve(stream.getAudioTracks()[0]?.applyConstraints?.({ autoGainControl: true })).catch(
-                () => {}
-            )
-            check()
-            return { stream, deviceLabel: getInputDeviceLabel(stream), measured: false }
-        }
-        onChecking()
-        const devices = await listAudioInputDevices()
-        check()
-        const ids = new Set([getInputDeviceId(stream), 'default', 'communications', ''])
-        const groups = new Set([getInputGroupId(stream)].filter(Boolean))
-        const candidates = devices.filter(device => {
-            if (ids.has(device.deviceId) || (device.groupId && groups.has(device.groupId))) return false
-            ids.add(device.deviceId)
-            if (device.groupId) groups.add(device.groupId)
-            return true
-        })
-        await Promise.all(
-            candidates.map(async device => {
-                let expired = false
-                let timer
-                // A disconnected USB/virtual input must not hold up every other mic.
-                const pending = navigator.mediaDevices
-                    .getUserMedia({
-                        audio: {
-                            deviceId: { exact: device.deviceId },
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: false,
-                        },
-                    })
-                    .then(candidate => {
-                        if (expired || isCancelled()) {
-                            stop(candidate)
-                            return null
-                        }
-                        return add(candidate)
-                    })
-                try {
-                    await Promise.race([
-                        pending,
-                        new Promise(resolve => {
-                            timer = setTimeout(() => {
-                                expired = true
-                                resolve()
-                            }, 2500)
-                        }),
-                    ])
-                } catch (_) {
-                    /* Busy, unplugged or denied inputs do not break a working default. */
-                } finally {
-                    clearTimeout(timer)
-                }
-            })
-        )
-        check()
-        await Promise.race([Promise.all(captures.map(c => c.monitor?.ready)), delay(700)])
-        const measure = async rounds => {
-            for (let i = 0; i < rounds; i++) {
-                check()
-                for (const capture of captures) {
-                    capture.monitor?.sample()
-                    capture.levels.push(capture.monitor?.getLevel() || 0)
-                }
-                await delay(50)
-            }
-        }
-        await measure(24)
-        // Chrome/macOS can send bit-exact zeros with audio processing enabled.
-        // Only try compatibility capture when every available input is silent.
-        if (captures.every(c => !c.monitor?.getPeak())) {
-            await Promise.all(
-                captures.map(async capture => {
-                    const deviceId = getInputDeviceId(capture.stream)
-                    capture.monitor?.close()
-                    capture.monitor = null
-                    stop(capture.stream)
-                    let expired = false
-                    let timer
-                    try {
-                        const pending = navigator.mediaDevices
-                            .getUserMedia({
-                                audio: {
-                                    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-                                    echoCancellation: false,
-                                    noiseSuppression: false,
-                                    autoGainControl: false,
-                                },
-                            })
-                            .then(raw => {
-                                if (expired || isCancelled()) {
-                                    stop(raw)
-                                    return
-                                }
-                                capture.stream = raw
-                                capture.monitor = createInputLevelMonitor(raw)
-                                capture.raw = true
-                                capture.levels = []
-                            })
-                        await Promise.race([
-                            pending,
-                            new Promise(resolve => {
-                                timer = setTimeout(() => {
-                                    expired = true
-                                    resolve()
-                                }, 2500)
-                            }),
-                        ])
-                    } catch (_) {
-                        /* Other available devices may still work. */
-                    } finally {
-                        clearTimeout(timer)
+    selected = add(stream)
+    if (!selected.monitor) return null
+    const usable = c => {
+        const track = c.stream.getAudioTracks()[0]
+        return track && track.readyState !== 'ended' && !track.muted
+    }
+    const open = async (deviceId, raw = false) => {
+        let expired = false
+        let timer
+        try {
+            return await Promise.race([
+                navigator.mediaDevices.getUserMedia(constraints(deviceId, raw)).then(input => {
+                    if (expired || stopped) {
+                        stopStream(input)
+                        return null
                     }
+                    return input
+                }),
+                new Promise(resolve => {
+                    timer = setTimeout(() => {
+                        expired = true
+                        resolve(null)
+                    }, 2500)
+                }),
+            ])
+        } catch (_) {
+            return null
+        } finally {
+            clearTimeout(timer)
+        }
+    }
+    const discover = async () => {
+        if (stopped || discovering) return
+        discovering = true
+        try {
+            const devices = await listAudioInputDevices()
+            const ids = new Set(['', 'default', 'communications'])
+            const groups = new Set()
+            captures.filter(usable).forEach(c => {
+                ids.add(getInputDeviceId(c.stream))
+                const group = getInputGroupId(c.stream)
+                if (group) groups.add(group)
+            })
+            const candidates = devices.filter(d => {
+                if (ids.has(d.deviceId) || (d.groupId && groups.has(d.groupId))) return false
+                ids.add(d.deviceId)
+                if (d.groupId) groups.add(d.groupId)
+                return true
+            })
+            await Promise.all(
+                candidates.map(async d => {
+                    if (stopped || isPaused()) return
+                    const input = await open(d.deviceId)
+                    if (input && !stopped) add(input)
                 })
             )
-            await Promise.race([Promise.all(captures.map(c => c.monitor?.ready)), delay(700)])
-            await measure(12)
+        } finally {
+            discovering = false
         }
-        check()
-        selected = captures.reduce((best, candidate) => {
-            const track = candidate.stream.getAudioTracks()[0]
-            if (track?.readyState === 'ended' || track?.muted) return best
-            const bestTrack = best.stream.getAudioTracks()[0]
-            return bestTrack?.readyState === 'ended' ||
-                bestTrack?.muted ||
-                microphoneScore(candidate.levels) > microphoneScore(best.levels)
-                ? candidate
-                : best
-        }, first)
-        if (selected.stream.getAudioTracks()[0]?.readyState === 'ended') throw new Error('No usable microphone')
-        if (!selected.raw)
-            await Promise.resolve(
-                selected.stream.getAudioTracks()[0]?.applyConstraints?.({ autoGainControl: true })
-            ).catch(() => {})
-        check()
-        return {
-            stream: selected.stream,
-            deviceLabel: getInputDeviceLabel(selected.stream),
-            measured: true,
-            hasSignal: selected.monitor?.getPeak() > 0,
-            compatibilityMode: selected.raw,
-        }
-    } catch (error) {
-        selected = null
-        throw error
-    } finally {
-        for (const capture of captures) {
+    }
+    const switchTo = async (candidate, repair = false) => {
+        if (stopped || (!repair && isPaused())) return
+        const changedDevice = candidate !== selected
+        await onSwitch(candidate.stream)
+        if (stopped) return
+        selected = candidate
+        if (changedDevice) lastSwitch = Date.now()
+        captures.forEach(c => {
+            c.levels = []
+        })
+    }
+    const recoverSilence = async () => {
+        compatibilityTried = true
+        // Stop/reopen the broken processing path; applyConstraints alone does not
+        // recover Chrome/macOS's bit-exact-zero capture failure.
+        for (const capture of [...captures]) {
+            if (stopped || isPaused()) return
+            const id = getInputDeviceId(capture.stream)
             capture.monitor?.close()
-            if (capture !== selected) stop(capture.stream)
+            stopStream(capture.stream)
+            const raw = await open(id, true)
+            if (!raw || stopped) continue
+            capture.stream = raw
+            capture.monitor = createInputLevelMonitor(raw)
+            capture.levels = []
+            capture.raw = true
+            if (capture === selected) await switchTo(capture, true)
         }
+    }
+    const sample = async () => {
+        if (stopped || busy) return
+        if (isPaused()) {
+            captures.forEach(c => {
+                c.levels = []
+            })
+            silentWindows = 0
+            return
+        }
+        for (const c of captures) {
+            c.monitor?.sample()
+            c.levels.push(c.monitor?.getLevel() || 0)
+            if (c.levels.length > 12) c.levels.shift()
+        }
+        if (selected.levels.length < 12) return
+        const candidates = captures.filter(c => usable(c) && c.levels.length >= 12)
+        const best =
+            candidates.reduce((a, b) => (!a || microphoneScore(b.levels) > microphoneScore(a.levels) ? b : a), null) ||
+            selected
+        const bestLevel = microphoneScore(best.levels)
+        const currentLevel = microphoneScore(selected.levels)
+        const allSilent = captures.every(c => !c.monitor?.getPeak())
+        silentWindows = allSilent ? silentWindows + 1 : 0
+        busy = true
+        try {
+            if (
+                best !== selected &&
+                (!usable(selected) ||
+                    (Date.now() - lastSwitch >= 4000 && bestLevel >= 0.008 && bestLevel > currentLevel * 1.6 + 0.003))
+            ) {
+                await switchTo(best)
+            } else if (silentWindows >= 30 && !compatibilityTried) {
+                await recoverSilence()
+            }
+        } catch (_) {
+            // A failed replaceTrack leaves the current sender in place; try again later.
+            lastSwitch = Date.now()
+        } finally {
+            busy = false
+        }
+    }
+    interval = setInterval(sample, 100)
+    const mediaDevices = navigator.mediaDevices
+    mediaDevices.addEventListener?.('devicechange', discover)
+    discover().catch(() => {})
+    const discoveryInterval = setInterval(() => discover().catch(() => {}), 5000)
+    return {
+        stop() {
+            if (stopped) return
+            stopped = true
+            clearInterval(interval)
+            clearInterval(discoveryInterval)
+            mediaDevices.removeEventListener?.('devicechange', discover)
+            captures.forEach(c => {
+                c.monitor?.close()
+                stopStream(c.stream)
+            })
+        },
     }
 }
