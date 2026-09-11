@@ -101,7 +101,7 @@ test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_DEEPSEEK_V4_FLASH'])
             null,
             'u',
             'a',
-            { includeAllRecent: true }
+            { includeAllRecent: true, excludeCallSessionId: 's' }
         )
     }
 )
@@ -131,8 +131,40 @@ test('executes both requested calendar entries without a voice-only confirmation
         ['create_calendar_event', { summary: 'Mitmachfest', start: '2026-09-13T12:00:00+02:00' }],
     ])
     const messages = helper.interactWithChatStream.mock.calls[0][0]
-    expect(messages.at(-1)[1]).toContain('Do not add a separate voice confirmation')
-    expect(messages.at(-1)[1]).toContain('look them up before booking')
+    expect(messages.map(message => message[1]).join('\n')).toContain('Do not add a separate voice confirmation')
+    expect(messages.map(message => message[1]).join('\n')).toContain('look them up before booking')
+})
+
+test('answers the current live request even when saved chat history still ends at the audio check', async () => {
+    helper.getOptimizedContextMessages.mockResolvedValueOnce([['system', 'Configured assistant context']])
+    const onProgress = jest.fn()
+    const liveConversation = [
+        { role: 'assistant', text: 'Hello, how can I help?' },
+        { role: 'user', text: 'Hallo, hörst du mich?' },
+        { role: 'assistant', text: 'Ja, ich höre dich klar und deutlich.' },
+        { role: 'user', text: 'Okay, was ist denn am Sonntag?' },
+        { role: 'assistant', text: 'Einen Moment, ich schau kurz nach.' },
+    ]
+    await runLiveAssistant(request({ liveConversation, lastUserTurn: { text: liveConversation[3].text }, onProgress }))
+    const messages = helper.interactWithChatStream.mock.calls[0][0]
+    expect(messages.slice(-4)).toEqual(liveConversation.slice(0, 4).map(turn => [turn.role, turn.text]))
+    expect(messages.at(-1)).toEqual(['user', 'Okay, was ist denn am Sonntag?'])
+    expect(messages.filter(([role]) => role === 'assistant').map(([, text]) => text)).not.toContain(
+        liveConversation[4].text
+    )
+    expect(messages.some(([role, text]) => role === 'system' && text.includes(liveConversation[4].text))).toBe(true)
+    expect(onProgress).not.toHaveBeenCalled()
+})
+
+test('keeps the outstanding request when the caller asks why the assistant asked twice', async () => {
+    const liveConversation = [
+        { role: 'user', text: 'Was ist denn am Sonntag?' },
+        { role: 'assistant', text: 'Was möchtest du erledigen?' },
+        { role: 'user', text: 'Du machst doch gerade was für mich. Warum fragst du zweimal nach?' },
+    ]
+    await runLiveAssistant(request({ liveConversation }))
+    const messages = helper.interactWithChatStream.mock.calls[0][0]
+    expect(messages.slice(-3)).toEqual(liveConversation.map(turn => [turn.role, turn.text]))
 })
 
 test('reports the actual calendar error with its subject instead of overwriting it with generic reviewing', async () => {

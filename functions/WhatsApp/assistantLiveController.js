@@ -338,6 +338,7 @@ async function runAssistantLiveCall(sessionId) {
             }
             if (!ready || ending || backend || !pending.size || Date.now() - lastUserChangeAt < 900) return
             const [delegationId, notice] = pending.entries().next().value
+            const liveConversation = transcript.messages().map(({ role, text }) => ({ role, text }))
             const userGroups = transcript.messages().filter(group => group.role === 'user')
             const last = userGroups[userGroups.length - 1]
             if (!last || transcript.revision <= handledRevision) {
@@ -378,6 +379,7 @@ async function runAssistantLiveCall(sessionId) {
                 onProgress: runProgress.update,
                 onBackgroundJob: id => watchBackgroundJob(id, delegationId, revision),
                 lastUserTurn: { text: last.text, createdAt: last.receivedAt },
+                liveConversation,
                 requestEnd: () => {
                     requestedEnd = true
                 },
