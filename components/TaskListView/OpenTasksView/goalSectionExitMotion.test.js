@@ -7,9 +7,6 @@ import useGoalSectionExitMotion, {
     GOAL_EXIT_COLLAPSE_MS,
     GOAL_EXIT_FADE_MS,
     GOAL_SECTION_EXIT_TOTAL_MS,
-    POSTPONE_GOAL_EXIT_COLLAPSE_MS,
-    POSTPONE_GOAL_EXIT_FADE_MS,
-    POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS,
 } from './goalSectionExitMotion'
 import { GOAL_SECTION_HOLD_MS } from './useGoalSectionExit'
 import { COLLAPSE_DURATION_MS, COMPLETION_HOLD_MS } from '../TaskItem/TaskPresentation/taskCompletionMotion'
@@ -25,8 +22,8 @@ import { SWEEP_TOTAL_MS } from './projectCompletedSweepMotion'
  */
 
 let motion
-const Harness = ({ exitRunId, exitKind }) => {
-    motion = useGoalSectionExitMotion(exitRunId, exitKind)
+const Harness = ({ exitRunId }) => {
+    motion = useGoalSectionExitMotion(exitRunId)
     return <View onLayout={motion.onSectionLayout} style={motion.sectionStyle} />
 }
 
@@ -206,12 +203,6 @@ describe('useGoalSectionExitMotion (AT-2507)', () => {
             // `COMPLETION_HOLD_MS` — so the two never run over the top of each other, and the goal
             // block is still at full height while the task row collapses inside it.
             expect(COMPLETION_HOLD_MS).toBeGreaterThan(COLLAPSE_DURATION_MS)
-        })
-
-        it('collapses a postponed final-task goal immediately after the task exit', () => {
-            expect(POSTPONE_GOAL_EXIT_FADE_MS).toBeLessThanOrEqual(POSTPONE_GOAL_EXIT_COLLAPSE_MS)
-            expect(POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS).toBe(POSTPONE_GOAL_EXIT_COLLAPSE_MS)
-            expect(POSTPONE_GOAL_SECTION_EXIT_TOTAL_MS).toBeLessThan(250)
         })
     })
 })
