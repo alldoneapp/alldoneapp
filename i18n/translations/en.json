@@ -2094,6 +2094,7 @@
     "assistant_activity_search_workspace": "Searching your workspace for “%{subject}”",
     "assistant_activity_search_workspace_plain": "Searching your workspace",
     "assistant_activity_search_web": "Searching the web for “%{subject}”",
+    "assistant_activity_multiple_steps": "Working through your request: %{subject} results received",
     "assistant_activity_search_web_plain": "Searching the web",
     "assistant_activity_search_email": "Searching your email for “%{subject}”",
     "assistant_activity_search_email_plain": "Searching your email",

@@ -72,6 +72,7 @@ const ACTIVITY_SEQUENCES = {
  * adding a key on the server can never break rendering here.
  */
 export const ACTION_EMOJI = {
+    assistant_activity_multiple_steps: '🧩',
     assistant_activity_search_notes: '🔍',
     assistant_activity_search_tasks: '🔍',
     assistant_activity_search_goals: '🔍',
