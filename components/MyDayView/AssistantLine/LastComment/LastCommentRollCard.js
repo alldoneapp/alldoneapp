@@ -5,7 +5,7 @@ import { colors } from '../../../styles/global'
 import { LAST_COMMENT_PREVIEW_HEIGHT, rowStyles } from './lastCommentLayout'
 import { useLastCommentArrivalMotion } from './lastCommentArrivalMotion'
 import { getLastCommentSlotRow, recordLastCommentSlotRow } from './lastCommentSlotRow'
-import { useProjectSectionLastCommentTint } from '../../../TaskListView/TaskHierarchy'
+import { useProjectSectionAccent } from '../../../TaskListView/TaskHierarchy'
 
 /**
  * Required at the point of use, not imported at the top.
@@ -69,7 +69,7 @@ export default function LastCommentRollCard({
     renderBadge = null,
     children,
 }) {
-    const projectLastCommentTint = useProjectSectionLastCommentTint()
+    const projectAccentColor = useProjectSectionAccent()
     const row = { projectId, commentText, objectName }
 
     // Read before this card records anything, so it names the row the PREVIOUS occupant of this
@@ -92,7 +92,7 @@ export default function LastCommentRollCard({
             accessibilityLiveRegion={accessibilityLiveRegion}
             style={[
                 compact ? localStyles.compactContainer : localStyles.container,
-                projectLastCommentTint && { backgroundColor: projectLastCommentTint },
+                projectAccentColor && { backgroundColor: projectAccentColor },
             ]}
             onLayout={motion.onCardLayout}
             testID={testID}
