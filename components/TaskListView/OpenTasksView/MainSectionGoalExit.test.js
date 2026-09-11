@@ -92,6 +92,7 @@ jest.mock('react-redux', () => ({
 
 import MainSection from './MainSection'
 import { publishGoalTaskCompletion, resetGoalTaskCompletionListeners } from './goalCompletionSignal'
+import { publishGoalTaskPostpone, resetGoalTaskPostponeListeners } from './goalPostponeSignal'
 import { TODAY_DATE } from '../../../utils/backends/openTasks'
 
 const PROJECT = 'project-1'
@@ -187,6 +188,7 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
     beforeEach(() => {
         jest.useFakeTimers()
         resetGoalTaskCompletionListeners()
+        resetGoalTaskPostponeListeners()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         // The exit stands down under jest's inert-animation convention and under reduced motion, so
@@ -223,6 +225,12 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
     const complete = async (taskId, goalId) => {
         await act(async () => {
             publishGoalTaskCompletion({ projectId: PROJECT, goalId, taskId })
+        })
+    }
+
+    const postpone = async (taskId, goalId) => {
+        await act(async () => {
+            publishGoalTaskPostpone({ projectId: PROJECT, goalId, taskId })
         })
     }
 
@@ -270,6 +278,19 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
             const creators = tree.root.findAllByType('NewTaskSection')
             expect(creators).toHaveLength(1)
             expect(creators[0].props.suspendShortcut).toBe(true)
+        })
+
+        it('uses the short group collapse after its final task is postponed', async () => {
+            const tree = await mount(withTask)
+
+            await postpone('t1', TASK_ONLY_GOAL)
+            await update(tree, { mainTasks: [], emptyGoals: [] })
+
+            const held = sectionsOf(tree)
+            expect(held).toHaveLength(1)
+            expect(held[0].taskList).toEqual([])
+            expect(held[0].exitKind).toBe('postpone')
+            expect(generalEntriesOf(tree)[0].exitKind).toBe('postpone')
         })
 
         it('does not reveal a general creator while another goal section remains', async () => {

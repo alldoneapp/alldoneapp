@@ -28,6 +28,7 @@ export default function EmptyGoal({
     dateIndex,
     containerStyle,
     exitRunId = 0,
+    exitKind = 'completion',
 }) {
     const taskHierarchy = useTaskHierarchy()
     const projectBorderColor = useProjectSectionBorder()
@@ -51,7 +52,7 @@ export default function EmptyGoal({
      * animated wrapper at all. `MainSection` decides WHETHER the goal is leaving and keeps it
      * mounted for the run; this only draws it.
      */
-    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
+    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId, exitKind)
 
     const accessGranted = SharedHelper.checkIfUserHasAccessToProject(isAnonymous, projectIds, projectId, false)
 

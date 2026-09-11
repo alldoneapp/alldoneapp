@@ -121,8 +121,8 @@ const localStyles = StyleSheet.create({
         maxWidth: 140,
         paddingLeft: 6,
         paddingRight: 4,
-        // Match the opaque surface of the adjacent Workflow tag.
-        backgroundColor: colors.Grey300,
+        // Match the header "Add task" button's transparent treatment.
+        backgroundColor: 'transparent',
     },
     chipIconOnly: {
         // No label text — just the mail icon + count, so the pill hugs its content.
