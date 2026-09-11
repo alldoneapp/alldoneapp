@@ -5,7 +5,6 @@ import moment from 'moment'
 import { EMPTY_INBOX_DATE_FORMAT } from '../../SettingsView/Profile/Achievements/AchievementsHelper'
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
 import { PROJECT_LINE_EXIT_HOLD_MS } from './projectCompletedSweepMotion'
-import { subscribeToProjectTaskCompletions } from './projectTaskCompletionSignal'
 import {
     didProjectReachEmptyInbox,
     hasCelebratedProjectEmptyInboxDay,
@@ -77,16 +76,15 @@ import {
  * the gate itself for the argument, and `useTodayEmptyInboxCelebration` for the identical change one
  * scope up, so the two moments keep behaving the same way.
  *
- * AT-2550 adds one more source of evidence for the narrow suggested-task bypass case. The task row
- * reports that completion directly; if the board then says the whole project is leaving, that pair
- * is enough to start the existing sweep even when the independent sidebar count never changes. A
- * completion on its own is deliberately insufficient — projects with other visible work stay put.
- *
- * One asymmetry with the all-projects hook remains for ordinary counter-driven runs. There, a run
- * that is still on screen suppresses a second one; here a rapid count change can refund and restart
- * it through the decision effect's cleanup. AT-2550's direct run deliberately owns its claim until
- * it settles, because the late counter snapshot describes the SAME clearing and must not restart
- * the animation. Counter-driven behavior outside this narrow path stays unchanged.
+ * One asymmetry with the all-projects hook is worth knowing rather than fixing. There, a run that
+ * is still on screen suppresses a second one; here it does not, because the decision effect lists
+ * `todayCount` and its cleanup hands an unsettled claim back — so a project that is refilled and
+ * re-cleared inside the ~3.6s claim window starts a fresh sweep. That is pre-existing AT-2492
+ * behaviour, it needs a colleague's task to land in the same project mid-animation to happen at
+ * all, and it errs toward showing the celebration rather than swallowing it, which is the direction
+ * AT-2506 asks for. Restructuring the refund the way `useTodayEmptyInboxCelebration` now does would
+ * be the fix, and it is not worth disturbing the probe/hold/late-clearing machinery around it for a
+ * case nobody has hit.
  */
 
 /**
@@ -122,13 +120,6 @@ export const PROJECT_SWEEP_PROBE_MS = 700
  * and the project's own board will still play it the next time it is opened.
  */
 export const PROJECT_LATE_CLEARING_GRACE_MS = 2000
-
-/**
- * The task row reports before its held Firestore write starts, so this must outlive the row's ~1s
- * completion motion plus the listener round trip. It remains short enough that a later unrelated
- * project removal cannot borrow stale completion evidence.
- */
-export const PROJECT_TASK_COMPLETION_MEMORY_MS = 5000
 
 /**
  * How long a claimed day stays refundable. Same rule and reasoning as `CELEBRATION_CLAIM_SETTLE_MS`
@@ -169,40 +160,10 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
     const [probing, setProbing] = useState(false)
     const [holding, setHolding] = useState(false)
     const [previousLineWouldLeave, setPreviousLineWouldLeave] = useState(lineWouldLeave)
-    const [completionCandidate, setCompletionCandidate] = useState(null)
     const previousCountRef = useRef(undefined)
     const claimedRef = useRef(null)
-    const directClaimSettleTimerRef = useRef(null)
-    const directClaimScopeRef = useRef(null)
-    const consumedCompletionRef = useRef(null)
 
     const todayKey = moment().format(EMPTY_INBOX_DATE_FORMAT)
-
-    useEffect(() => {
-        if (!enabled || !animated) return undefined
-        return subscribeToProjectTaskCompletions(projectId, event => {
-            setCompletionCandidate({ taskId: event.taskId, completedAt: Date.now() })
-        })
-    }, [animated, enabled, projectId])
-
-    /**
-     * A direct AT-2550 claim is refunded only when the component actually unmounts before the run
-     * settles. The decision effect also re-runs when the late sidebar count arrives; owning this
-     * claim separately keeps that snapshot from restarting the same sweep a second time. Ordinary
-     * counter-driven claims retain their existing effect-cleanup behavior below.
-     */
-    useEffect(
-        () => () => {
-            if (directClaimSettleTimerRef.current) clearTimeout(directClaimSettleTimerRef.current)
-            const claim = directClaimScopeRef.current
-            if (claim && claimedRef.current === claim.todayKey) {
-                releaseProjectEmptyInboxDayCelebration(claim.userId, claim.projectId, claim.todayKey)
-                claimedRef.current = null
-            }
-            directClaimScopeRef.current = null
-        },
-        []
-    )
 
     // Render-phase adjustment, see the header. Guarded by the comparison, so it cannot loop.
     if (lineWouldLeave !== previousLineWouldLeave) {
@@ -218,10 +179,13 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
      * `lineOnScreen` is read by the decision below but deliberately kept OUT of its dependency
      * array, so it is threaded through a ref that is refreshed on every commit.
      *
-     * `lineOnScreen` flips as a DIRECT CONSEQUENCE of claiming (the claim takes the hold), so using
-     * it as a trigger would re-run the decision for state the decision itself just created. Nothing
-     * needs that as a trigger: the count, the AT-2550 completion candidate and the board's own
-     * `lineWouldLeave` verdict cover every moment worth deciding on.
+     * The reason is the refund. The decision effect's cleanup hands the day back if it runs while
+     * the claim is still fresh — that is what stops a mount torn down mid-run from silently spending
+     * the day. But an effect re-run also fires its cleanup, and `lineOnScreen` flips as a DIRECT
+     * CONSEQUENCE of claiming (the claim takes the hold): listing it would refund the day one tick
+     * after claiming it, then immediately re-claim and restart the sweep. Nothing needs it as a
+     * trigger anyway — the moments worth re-deciding on are the count moving and the gates opening,
+     * both of which are listed.
      *
      * Declared before the decision effect so it has already run when the decision reads it; effects
      * within a component run in declaration order.
@@ -262,13 +226,7 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
         // thing on the same tick costs nothing. This hook keeps its own detection because effects
         // run child-before-parent — the app-wide detector mounted above has NOT run yet on the tick
         // the count reaches zero.
-        const countClearing = didProjectReachEmptyInbox(previousCount, todayCount)
-        const completionClearing =
-            lineWouldLeave &&
-            completionCandidate &&
-            completionCandidate !== consumedCompletionRef.current &&
-            Date.now() - completionCandidate.completedAt <= PROJECT_TASK_COMPLETION_MEMORY_MS
-        const watchedTheClearing = countClearing || completionClearing
+        const watchedTheClearing = didProjectReachEmptyInbox(previousCount, todayCount)
         if (userId && projectId && watchedTheClearing) {
             markProjectEmptyInboxDayReached(userId, projectId, todayKey)
         }
@@ -296,9 +254,7 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
         // so a snapshot that arrives just after the board dropped the row is late, not ineligible.
         if (!lineOnScreenRef.current && !(watchedTheClearing && lineLeftRecently(lineWasOnScreenRef, lineLeftAtRef)))
             return undefined
-        // AT-2550: the board removing the project after the reported bypass is the clear verdict.
-        // The sidebar counter is an independent listener and may remain stale for this transition.
-        if (!completionClearing && !projectTodayListLooksClear(todayCount)) return undefined
+        if (!projectTodayListLooksClear(todayCount)) return undefined
         if (claimedRef.current === todayKey) return undefined
         // Nothing was cleared today, so there is nothing to congratulate. This is what keeps a
         // project that simply has no tasks — most of a 78-project account, most days — from sweeping
@@ -322,24 +278,12 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
 
         markProjectEmptyInboxDayCelebrated(userId, projectId, todayKey)
         claimedRef.current = todayKey
-        if (completionClearing) consumedCompletionRef.current = completionCandidate
         setCelebrationRunId(runId => runId + 1)
         // Taken even on the selected-project board, where no line is leaving and it changes nothing.
         // Deciding here rather than at the call site keeps "how long does the sweep need" in one
         // place, and a hold nobody consumes is free. Unconditional now that `!animated` has already
         // returned above: when the line had just left, this is also what brings it back for the run.
         setHolding(true)
-
-        if (completionClearing) {
-            directClaimScopeRef.current = { userId, projectId, todayKey }
-            if (directClaimSettleTimerRef.current) clearTimeout(directClaimSettleTimerRef.current)
-            directClaimSettleTimerRef.current = setTimeout(() => {
-                claimedRef.current = null
-                directClaimScopeRef.current = null
-                directClaimSettleTimerRef.current = null
-            }, PROJECT_CELEBRATION_CLAIM_SETTLE_MS)
-            return undefined
-        }
 
         const playedTimer = setTimeout(() => {
             claimedRef.current = null
@@ -351,7 +295,7 @@ export default function useProjectCompletedSweep({ projectId, userId, enabled, l
             claimedRef.current = null
             releaseProjectEmptyInboxDayCelebration(userId, projectId, todayKey)
         }
-    }, [animated, completionCandidate, enabled, lineWouldLeave, projectId, todayCount, todayKey, userId])
+    }, [animated, enabled, projectId, todayCount, todayKey, userId])
 
     // Both holds expire on their own. Neither can outlive its timer, so the worst case for any bug
     // above is a project line that leaves the board under a second late.

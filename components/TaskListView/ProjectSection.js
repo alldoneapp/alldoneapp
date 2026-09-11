@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useCallback } from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
 
 import { PROJECT_COLOR_DEFAULT, PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
@@ -26,6 +26,7 @@ export default function ProjectSection({
     selected = false,
     completedSweepRunId = 0,
     completedSweepLineWillLeave = false,
+    onLayout,
 }) {
     const palette = getProjectPalette(projectColor)
     const backgroundColor = palette.PROJECT_ITEM_SECTION
@@ -52,6 +53,7 @@ export default function ProjectSection({
             style={style}
             completedSweepRunId={completedSweepRunId}
             completedSweepLineWillLeave={completedSweepLineWillLeave}
+            onLayout={onLayout}
         >
             {children}
         </ProjectSectionSurface>
@@ -69,6 +71,7 @@ function ProjectSectionSurface({
     children,
     completedSweepRunId,
     completedSweepLineWillLeave,
+    onLayout,
 }) {
     /**
      * AT-2535 — the exit belongs to the complete rounded project card. The earlier implementation
@@ -88,6 +91,13 @@ function ProjectSectionSurface({
     // `onLayout` excludes margins. Feed the resolved spacing to the exit explicitly so it closes
     // continuously instead of disappearing in one final jump when the held card unmounts.
     const { exitStyle, exitHeight, onLineLayout } = useProjectLineExit(motion, bottomSpacing)
+    const handleLayout = useCallback(
+        event => {
+            onLineLayout(event)
+            if (onLayout) onLayout(event)
+        },
+        [onLayout, onLineLayout]
+    )
 
     return (
         <ProjectSectionContext.Provider value={true}>
@@ -98,7 +108,7 @@ function ProjectSectionSurface({
                             <View style={localStyles.exitContainer}>
                                 <Animated.View
                                     style={[baseStyle, exitStyle]}
-                                    onLayout={onLineLayout}
+                                    onLayout={handleLayout}
                                     testID="project-section"
                                 >
                                     {children}
