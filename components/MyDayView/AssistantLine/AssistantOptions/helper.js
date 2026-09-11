@@ -71,30 +71,18 @@ const getOptions = (project, assistantId, tasks, showFullLabels = false) => {
     })
 }
 
-export const getCollapsedQuickActionCount = ({ containerWidth, searchWidth, moreWidth, optionWidths }) => {
-    if (optionWidths.length === 0) return 0
+export const calculateAmountOfOptionButtons = (containerWidth, isMiddleScreen, isMobile) => {
+    const filledSpaceWidth = isMiddleScreen ? 174 : 274
+    const freeSpaceWidth = containerWidth - filledSpaceWidth
+    const avarageWidthOfButtons = isMobile ? 130 : 150
+    const calculatedAmount = Math.floor(freeSpaceWidth / avarageWidthOfButtons)
 
-    const hasCompleteMeasurements = containerWidth > 0 && searchWidth > 0 && optionWidths.every(width => width > 0)
-    if (!hasCompleteMeasurements) return 0
-
-    const allOptionsWidth = optionWidths.reduce((total, width) => total + width, 0)
-    if (searchWidth + allOptionsWidth <= containerWidth) return optionWidths.length
-
-    // If any option is hidden, More has to fit on the same line too. Until More has been
-    // measured, keep every task hidden rather than briefly rendering a wrapping row.
-    if (moreWidth <= 0) return 0
-
-    const availableOptionsWidth = Math.max(0, containerWidth - searchWidth - moreWidth)
-    let usedWidth = 0
-    let visibleCount = 0
-
-    for (const width of optionWidths) {
-        if (usedWidth + width > availableOptionsWidth) break
-        usedWidth += width
-        visibleCount += 1
+    // Ensure at least 2 buttons fit on mobile phones
+    if (isMobile && calculatedAmount < 2) {
+        return 2
     }
 
-    return visibleCount
+    return calculatedAmount
 }
 
 export const getOptionsPresentationData = (

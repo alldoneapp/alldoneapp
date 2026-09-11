@@ -6,6 +6,7 @@ import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
+import { colors } from '../../styles/global'
 import AllProjectsEmailLabelChips from './AllProjectsEmailLabelChips'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
@@ -61,7 +62,7 @@ describe('AllProjectsEmailLabelChips', () => {
         expect(chipLabels(tree)).toEqual(['Inbox', 'Ads', 'No label'])
     })
 
-    test('renders all labels inside one shared outlined group', () => {
+    test('renders all labels inside one shared opaque group', () => {
         const tree = render([
             { key: 'inbox', displayName: 'Inbox', isInbox: true, projectId: null, threadCount: 9 },
             { key: 'ads', displayName: 'Ads', isInbox: false, projectId: null, threadCount: 2 },
@@ -73,8 +74,10 @@ describe('AllProjectsEmailLabelChips', () => {
         const chipStyles = chips.map(view => StyleSheet.flatten(view.props.style))
 
         expect(sharedGroupStyle.borderWidth).toBe(1)
+        expect(sharedGroupStyle.backgroundColor).toBe(colors.Grey300)
         expect(chipStyles).toHaveLength(3)
         expect(chipStyles.every(style => style.borderWidth === 0)).toBe(true)
+        expect(chipStyles.every(style => style.backgroundColor === 'transparent')).toBe(true)
     })
 
     test('shows the email icon only on the first label in the group', () => {
