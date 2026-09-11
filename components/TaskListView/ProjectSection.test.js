@@ -90,3 +90,18 @@ it('falls back to the default palette for a project without a known color', () =
     expect(getProjectPalette(undefined)).toBe(getProjectPalette(PROJECT_COLOR_DEFAULT))
     expect(getProjectPalette('unknown')).toBe(getProjectPalette(PROJECT_COLOR_DEFAULT))
 })
+
+it('forwards layout measurements from the existing project surface', () => {
+    const onLayout = jest.fn()
+    const event = { nativeEvent: { layout: { height: 240 } } }
+    const tree = renderer.create(
+        <ProjectSection projectColor={PROJECT_COLOR_BLUE} onLayout={onLayout}>
+            <SurfaceProbe />
+        </ProjectSection>
+    )
+
+    act(() => tree.root.findByProps({ testID: 'project-section' }).props.onLayout(event))
+
+    expect(onLayout).toHaveBeenCalledWith(event)
+    act(() => tree.unmount())
+})
