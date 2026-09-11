@@ -50,6 +50,11 @@ jest.mock('firebase-admin', () => {
     }
 })
 
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: { increment: value => ({ __increment: value }) },
+    Timestamp: { now: () => 'TIMESTAMP' },
+}))
+
 jest.mock('../Utils/HelperFunctionsCloud', () => ({ STAYWARD_COMMENT: 'STAYWARD_COMMENT' }))
 
 const admin = require('firebase-admin')
@@ -132,4 +137,30 @@ describe('storeCallTranscriptTurn -> lastAssistantCommentData (AssistantLine poi
         expect(admin.__mock.list('chatComments/project-1/topics/chat-1/comments/')).toHaveLength(1)
         expect(admin.__mock.get('users/user-1')[LAST_COMMENT_PROJECT_KEY]).toBeUndefined()
     })
+})
+
+test('updates growing voice text without duplicating comments or counting fragments as turns', async () => {
+    admin.__mock.reset()
+    admin.__mock.set('users/user-1', {})
+    const first = await storeCallTranscriptTurn({
+        ...TURN,
+        turnId: 'fragment-1',
+        role: 'user',
+        text: 'Book',
+        createdAt: 123,
+    })
+    await storeCallTranscriptTurn({
+        ...TURN,
+        turnId: 'fragment-1',
+        role: 'user',
+        text: 'Book on Friday.',
+        updateExisting: true,
+        createdAt: 123,
+    })
+    expect(admin.__mock.list('chatComments/')).toHaveLength(1)
+    expect(admin.__mock.get(`chatComments/project-1/topics/chat-1/comments/${first.commentId}`)).toMatchObject({
+        commentText: 'Book on Friday.',
+        created: 123,
+    })
+    expect(admin.__mock.get('whatsAppCallSessions/session-1').transcriptTurnCount).toBe(1)
 })

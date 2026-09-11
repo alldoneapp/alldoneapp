@@ -6666,6 +6666,12 @@ exports.phoneCallStatusCallback = onRequest(
     }
 )
 
+exports.getAssistantBrowserCallSummarySecondGen = onCall(
+    { region: 'europe-west1', timeoutSeconds: 30, memory: '256MiB' },
+    async request =>
+        require('./WhatsApp/assistantBrowserCall').getAssistantBrowserCallSummary(request.data, request.auth)
+)
+
 exports.startAssistantBrowserCallSecondGen = onCall(
     {
         timeoutSeconds: 60,

@@ -17,6 +17,7 @@ const mockSetTaskDueDate = jest.fn(() => Promise.resolve())
 const mockSetTaskToBacklog = jest.fn(() => Promise.resolve())
 const mockAutoPostponeGoal = jest.fn(() => Promise.resolve(654321))
 const mockDispatch = jest.fn()
+const mockPostponeGoalWithMotion = jest.fn((context, write) => write())
 let mockDateToMoveTask
 
 jest.mock('react-redux', () => ({
@@ -62,6 +63,10 @@ jest.mock('../../../../utils/backends/Tasks/tasksFirestore', () => ({
 jest.mock('../../../../utils/backends/Goals/goalsFirestore', () => ({
     autoPostponeGoal: (...args) => mockAutoPostponeGoal(...args),
     getDateToMoveGoalInAutoPostpone: () => require('moment')('2026-07-06T12:00:00'),
+}))
+
+jest.mock('../../../TaskListView/OpenTasksView/goalPostponeMotion', () => ({
+    postponeGoalWithMotion: (...args) => mockPostponeGoalWithMotion(...args),
 }))
 
 const baseProps = {
@@ -175,6 +180,27 @@ describe('DueDateModal AutoPostpone', () => {
         )
 
         resolveRequest(654321)
+    })
+
+    test('hands a goal swipe auto-postpone to the mounted whole-section motion', async () => {
+        const goal = { id: 'goal-1', timesPostponed: 2 }
+
+        await renderAndPress({
+            goal,
+            updateParentGoalReminderDate: jest.fn(),
+            inParentGoal: true,
+            animateGoalPostpone: true,
+        })
+
+        expect(mockPostponeGoalWithMotion).toHaveBeenCalledWith(
+            {
+                projectId: 'project-1',
+                goal,
+                targetDate: moment('2026-07-06T12:00:00').valueOf(),
+            },
+            expect.any(Function)
+        )
+        expect(mockAutoPostponeGoal).toHaveBeenCalled()
     })
 
     test('logs a goal auto-postpone background failure after closing', async () => {

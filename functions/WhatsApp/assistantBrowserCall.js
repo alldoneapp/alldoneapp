@@ -9,7 +9,14 @@ const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
 const { getRunCallQueueResource, getRunCallTaskId } = require('./whatsAppCallOpenAIWebhook')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
-const { buildCallBootstrapInstructions } = require('./whatsAppCallPrompt')
+const { buildLiveSession } = require('./assistantLiveProtocol')
+const {
+    LIVE_MODEL,
+    LIVE_GOLD_PER_MINUTE,
+    LIVE_INITIALIZATION_SECONDS,
+    calculateLiveVoiceGold,
+} = require('./assistantLivePricing')
+const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { createDirectCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
 
 const MAX_SDP_LENGTH = 200000
@@ -27,7 +34,7 @@ function getHttpsErrorForEligibility(reason) {
         disabled: 'Browser assistant calls are not available right now.',
         unlinked: 'You must be signed in to call the assistant.',
         premium_required: 'Browser assistant calls are available to premium Alldone users.',
-        gold_required: 'You need a positive Gold balance before starting an assistant call.',
+        gold_required: `You need more than ${calculateLiveVoiceGold(LIVE_INITIALIZATION_SECONDS)} Gold to start a voice call (the ${LIVE_INITIALIZATION_SECONDS}-second voice minimum plus assistant usage).`,
         missing_project: 'Set a default project before calling the assistant.',
         missing_assistant: 'No default assistant is available for your call.',
         missing_topic: 'Create a voice call topic before calling the assistant.',
@@ -38,21 +45,8 @@ function getHttpsErrorForEligibility(reason) {
     return new HttpsError(code, messages[reason] || 'The assistant call could not be started.')
 }
 
-function getLocationCallId(location) {
-    const normalized = String(location || '').trim()
-    if (!normalized) return ''
-    return normalized.split('/').filter(Boolean).pop() || ''
-}
-
-function buildInitialBrowserRealtimeSession({ config, voice, assistant, language }) {
-    return {
-        type: 'realtime',
-        model: config.realtimeModel,
-        instructions: buildCallBootstrapInstructions(assistant, language),
-        audio: {
-            output: { voice },
-        },
-    }
+function buildInitialBrowserLiveSession({ voice, assistant, language }) {
+    return buildLiveSession({ assistant, language, voice })
 }
 
 function getOpenAICallErrorCode(responseBody) {
@@ -104,29 +98,35 @@ async function resolveBrowserCallTopic(data, user, userId) {
 
 async function createOpenAIWebRTCSession({ config, offerSdp, assistant, language, userId }) {
     const voice = normalizeRealtimeVoice(assistant?.realtimeVoice)
-    const form = new FormData()
-    form.set('sdp', offerSdp)
-    form.set('session', JSON.stringify(buildInitialBrowserRealtimeSession({ config, voice, assistant, language })))
-
-    const response = await fetch('https://api.openai.com/v1/realtime/calls', {
+    const response = await fetch('https://api.openai.com/v1/live/sessions', {
         method: 'POST',
         headers: {
             Authorization: `Bearer ${config.openAiApiKey}`,
+            'Content-Type': 'application/json',
             'OpenAI-Safety-Identifier': getSafetyIdentifier(userId),
         },
-        body: form,
+        body: JSON.stringify({
+            session: buildInitialBrowserLiveSession({ voice, assistant, language }),
+            transport: { type: 'webrtc', sdp: offerSdp },
+        }),
+        signal: AbortSignal.timeout(25000),
     })
-    const answerSdp = await response.text()
+    const responseText = await response.text()
     if (!response.ok) {
         const error = new Error(`OpenAI WebRTC call failed with HTTP ${response.status}`)
         error.status = response.status
-        error.code = getOpenAICallErrorCode(answerSdp)
+        error.code = getOpenAICallErrorCode(responseText)
         throw error
     }
-
+    const result = JSON.parse(responseText)
+    if (!result.session?.id || !result.transport?.sdp) {
+        const error = createMissingOpenAICallIdError()
+        error.openAiSessionId = result.session?.id
+        throw error
+    }
     return {
-        answerSdp,
-        openAiCallId: getLocationCallId(response.headers.get('location')),
+        answerSdp: result.transport.sdp,
+        openAiSessionId: result.session.id,
         voice,
     }
 }
@@ -144,6 +144,8 @@ async function enqueueBrowserCallController(sessionId) {
 async function startAssistantBrowserCall(data, auth) {
     const userId = auth?.uid
     if (!userId) throw new HttpsError('unauthenticated', 'Sign in before calling the assistant.')
+    if (data?.voiceProtocol !== 'gpt-live-v1')
+        throw new HttpsError('failed-precondition', 'Refresh Alldone to use the updated voice calls.')
 
     const offerSdp = String(data?.offerSdp || data?.sdp || '')
     if (!offerSdp.trim() || offerSdp.length > MAX_SDP_LENGTH) {
@@ -159,6 +161,8 @@ async function startAssistantBrowserCall(data, auth) {
     })
     if (eligibilityReason) throw getHttpsErrorForEligibility(eligibilityReason)
     if (!config.openAiApiKey) throw getHttpsErrorForEligibility('configuration')
+    if (Number(user.gold) <= calculateLiveVoiceGold(LIVE_INITIALIZATION_SECONDS))
+        throw getHttpsErrorForEligibility('gold_required')
 
     const { projectId, chatId, assistantId } = await resolveBrowserCallTopic(data, user, userId)
     const sessionId = `browser-${uuidv4()}`
@@ -173,28 +177,42 @@ async function startAssistantBrowserCall(data, auth) {
         chatId,
         language: user.language,
         channel: 'browser_call',
-        realtimeModel: config.realtimeModel,
+        realtimeModel: '',
     })
     if (!leaseResult.success) throw getHttpsErrorForEligibility(leaseResult.reason || 'active_call')
 
+    let openAiSessionId
     try {
+        await updateCallSession(sessionId, {
+            voiceProvider: 'gpt-live',
+            voiceModel: LIVE_MODEL,
+            voiceGoldPerMinute: LIVE_GOLD_PER_MINUTE,
+            voiceSeconds: 0,
+            voiceBilledGold: 0,
+            backendBilledGold: 0,
+            backendTokens: 0,
+            voiceUsageFinal: false,
+        })
         const assistant = await getAssistantForChat(projectId, assistantId, userId)
-        const { answerSdp, openAiCallId, voice } = await createOpenAIWebRTCSession({
+        const result = await createOpenAIWebRTCSession({
             config,
             offerSdp,
             assistant,
             language: user.language,
             userId,
         })
-        if (!openAiCallId) throw createMissingOpenAICallIdError()
+        const { answerSdp, voice } = result
+        openAiSessionId = result.openAiSessionId
 
         await updateCallSession(sessionId, {
-            openAiCallId,
+            openAiSessionId,
             realtimeVoice: voice,
             status: 'accepted',
             startedAt: Date.now(),
             acceptCompletedAt: Date.now(),
         })
+        const gold = await reconcileLiveUsage({ sessionId, seconds: LIVE_INITIALIZATION_SECONDS })
+        if (gold.insufficientBalance || gold.currentGold <= 0) throw getHttpsErrorForEligibility('gold_required')
         await enqueueBrowserCallController(sessionId)
         await updateCallSession(sessionId, { status: 'controller_queued' })
 
@@ -204,8 +222,15 @@ async function startAssistantBrowserCall(data, auth) {
             chatId,
             assistantId,
             answerSdp,
+            voiceProvider: 'gpt-live',
+            voiceGoldPerMinute: LIVE_GOLD_PER_MINUTE,
         }
     } catch (error) {
+        openAiSessionId = openAiSessionId || error.openAiSessionId
+        if (openAiSessionId) {
+            const { closeLiveSession } = require('./assistantLiveController')
+            await closeLiveSession(config, { id: sessionId, openAiSessionId }).catch(() => {})
+        }
         console.error('Browser Call: Failed starting call', {
             sessionId,
             userId,
@@ -217,10 +242,26 @@ async function startAssistantBrowserCall(data, auth) {
     }
 }
 
+async function getAssistantBrowserCallSummary(data, auth) {
+    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Sign in to view call usage.')
+    const sessionId = String(data?.sessionId || '')
+    if (!/^browser-[a-zA-Z0-9-]+$/.test(sessionId)) throw new HttpsError('invalid-argument', 'Invalid call id.')
+    const doc = await admin.firestore().doc(`whatsAppCallSessions/${sessionId}`).get()
+    if (!doc.exists || doc.data()?.userId !== auth.uid) throw new HttpsError('not-found', 'Call not found.')
+    const session = doc.data()
+    return {
+        voiceGold: Number(session.voiceBilledGold || 0),
+        assistantGold: Number(session.backendBilledGold || 0),
+        settled: ['completed', 'failed', 'cancelled', 'stale'].includes(session.status),
+        finalVoiceUsage: session.voiceUsageFinal === true,
+    }
+}
+
 module.exports = {
-    buildInitialBrowserRealtimeSession,
+    buildInitialBrowserLiveSession,
     createMissingOpenAICallIdError,
     createOpenAIWebRTCSession,
     resolveBrowserCallTopic,
     startAssistantBrowserCall,
+    getAssistantBrowserCallSummary,
 }

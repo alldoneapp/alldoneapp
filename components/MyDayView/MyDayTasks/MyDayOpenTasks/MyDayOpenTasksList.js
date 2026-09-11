@@ -47,6 +47,7 @@ export default function MyDayOpenTasksList({ tasks }) {
                         isObservedTask={isObservedTask}
                         isToReviewTask={isToReviewTask}
                         isSuggested={isSuggested}
+                        inTodayOpenList={true}
                     />
                 )
             })}
