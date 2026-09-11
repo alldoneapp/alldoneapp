@@ -182,18 +182,13 @@ export default function AssistantVoiceCallButton({
             if (mountedRef.current && audioElementRef.current === audio) {
                 playbackReadyRef.current = true
                 setNeedsAudioPlayback(false)
-                if (callReadyRef.current)
-                    liveConnectionRef.current?.greet(
-                        translate('Hello, I am %{name}. How can I help you?', {
-                            name: assistant?.displayName || translate('Assistant'),
-                        })
-                    )
+                if (callReadyRef.current) liveConnectionRef.current?.greet(translate('Hello, how can I help?'))
             }
         } catch (error) {
             if (error?.name !== 'AbortError' && mountedRef.current && audioElementRef.current === audio)
                 setNeedsAudioPlayback(true)
         }
-    }, [assistant?.displayName])
+    }, [])
 
     // Acquire a Screen Wake Lock so the device does not sleep while a call is
     // active.  This is best-effort — the API may not be available everywhere.
@@ -745,12 +740,7 @@ export default function AssistantVoiceCallButton({
             })
 
             startMicrophoneSelectionRef.current?.(localStreamRef.current)
-            if (playbackReadyRef.current)
-                connection.greet(
-                    translate('Hello, I am %{name}. How can I help you?', {
-                        name: assistant?.displayName || translate('Assistant'),
-                    })
-                )
+            if (playbackReadyRef.current) connection.greet(translate('Hello, how can I help?'))
             else playCallAudio()
             startingRef.current = false
 
