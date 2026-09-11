@@ -2996,5 +2996,9 @@
     "Enable call audio": "Enable call audio",
     "Microphone: %{name}": "Microphone: %{name}",
     "Cancel assistant call": "Cancel assistant call",
-    "Hello, how can I help?": "Hello, how can I help?"
+    "Hello, how can I help?": "Hello, how can I help?",
+    "Microphone level": "Microphone level",
+    "Microphone preview": "Local preview · connecting",
+    "Microphone paused": "Microphone paused",
+    "Microphone meter unavailable": "Microphone level unavailable"
 }

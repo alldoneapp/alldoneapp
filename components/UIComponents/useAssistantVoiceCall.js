@@ -84,6 +84,8 @@ export default function useAssistantVoiceCall() {
     const callGenerationRef = useRef(0)
     const peerConnectionRef = useRef(null)
     const localStreamRef = useRef(null)
+    const transmittedTrackRef = useRef(null)
+    const firstInputSignalRef = useRef(false)
     const audioElementRef = useRef(null)
     const releaseMobileAudioSessionRef = useRef(null)
     const mountedRef = useRef(true)
@@ -110,6 +112,7 @@ export default function useAssistantVoiceCall() {
         const pc = peerConnectionRef.current
         const audio = audioElementRef.current
         const mic = localStreamRef.current?.getAudioTracks()?.[0]
+        const input = microphoneSelectorRef.current?.getSnapshot()
         const row = {
             atMs: Date.now() - diagnosticsRef.current.startedAt,
             width: window.innerWidth,
@@ -127,9 +130,16 @@ export default function useAssistantVoiceCall() {
             micEnabled: mic?.enabled,
             micReadyState: mic?.readyState,
             inputBytesSent: prevBytesSentRef.current,
+            inputLevelPermille: Math.round(Math.min(1, input?.level || 0) * 1000),
+            inputMonitorReady: input?.available === true,
+            inputSending: transmittedTrackRef.current?.enabled === true && callReadyRef.current && !endingRef.current,
         }
         diagnosticsRef.current.events.push({ event, ...row })
-        diagnosticsRef.current.events = diagnosticsRef.current.events.slice(-24)
+        if (diagnosticsRef.current.events.length > 24)
+            diagnosticsRef.current.events = [
+                ...diagnosticsRef.current.events.slice(0, 8),
+                ...diagnosticsRef.current.events.slice(-16),
+            ]
         return sanitizeCallDiagnostics({ reason, ...row, events: diagnosticsRef.current.events })
     }, [])
     useEffect(() => {
@@ -229,21 +239,44 @@ export default function useAssistantVoiceCall() {
             track.onended = () => {
                 if (localStreamRef.current?.getAudioTracks()[0] !== track) return
                 console.warn('[VoiceCall] Mic track ended — attempting recovery')
+                captureDiagnostics('microphone_ended')
                 requestMicRecovery()
             }
             track.onmute = () => {
                 if (localStreamRef.current?.getAudioTracks()[0] !== track) return
                 console.warn('[VoiceCall] Mic track muted by OS')
+                captureDiagnostics('microphone_muted')
             }
             track.onunmute = () => {
                 if (localStreamRef.current?.getAudioTracks()[0] !== track) return
                 console.log('[VoiceCall] Mic track unmuted')
+                captureDiagnostics('microphone_unmuted')
                 stallCountRef.current = 0
                 micCheckPendingRef.current = false
             }
         },
-        [requestMicRecovery]
+        [requestMicRecovery, captureDiagnostics]
     )
+
+    // The capture stays live for local warm-up/metering. Only its independent
+    // sender clone is muted until the provider and assistant controller are ready.
+    const replaceMicrophoneSender = useCallback(async (pc, stream) => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'audio')
+        if (!sender || peerConnectionRef.current !== pc) throw new Error('Call ended')
+        const track = stream.getAudioTracks()[0].clone()
+        const previous = sender.track
+        track.enabled = callReadyRef.current && !endingRef.current
+        try {
+            await sender.replaceTrack(track)
+            if (peerConnectionRef.current !== pc || endingRef.current) throw new Error('Call ended')
+            transmittedTrackRef.current = track
+            track.enabled = callReadyRef.current
+            previous?.stop()
+        } catch (error) {
+            track.stop()
+            throw error
+        }
+    }, [])
 
     // ------------------------------------------------------------------
     // Mic health monitor — detects when the OS suspends the mic track
@@ -278,10 +311,7 @@ export default function useAssistantVoiceCall() {
 
             // Replace the dead track on the RTCPeerConnection sender — no
             // renegotiation needed.
-            const sender = pc.getSenders().find(s => s.track?.kind === 'audio')
-            if (sender) {
-                await sender.replaceTrack(newTrack)
-            }
+            await replaceMicrophoneSender(pc, newStream)
             if (peerConnectionRef.current !== pc || endingRef.current || !callReadyRef.current) return
 
             // Stop old tracks and update the ref.
@@ -293,8 +323,9 @@ export default function useAssistantVoiceCall() {
             }
             localStreamRef.current = newStream
             recoveryStream = null
-            startMicrophoneSelectionRef.current?.(newStream)
+            startMicrophoneSelectionRef.current?.(newStream, capture.raw)
             if (mountedRef.current) setMicrophoneLabel(capture.deviceLabel)
+            captureDiagnostics('microphone_changed')
 
             // Attach event listeners on the fresh track.
             attachTrackListeners(newTrack)
@@ -309,37 +340,43 @@ export default function useAssistantVoiceCall() {
             recoveryStream?.getTracks().forEach(track => track.stop())
             micRecoveringRef.current = false
         }
-    }, [attachTrackListeners])
+    }, [attachTrackListeners, replaceMicrophoneSender, captureDiagnostics])
 
-    startMicrophoneSelectionRef.current = stream => {
+    startMicrophoneSelectionRef.current = (stream, raw = false) => {
         microphoneSelectorRef.current?.stop()
         const pc = peerConnectionRef.current
         microphoneSelectorRef.current = createVoiceMicrophoneSelector({
             stream,
+            raw,
             isPaused: () => {
-                if (
-                    peerConnectionRef.current !== pc ||
-                    endingRef.current ||
-                    !callReadyRef.current ||
-                    isDocumentHidden()
-                )
-                    return true
+                if (peerConnectionRef.current !== pc || endingRef.current || isDocumentHidden()) return true
                 const output = outputMonitorRef.current
                 output?.sample()
                 if (output?.getLevel() > 0.008) lastOutputAudioRef.current = Date.now()
                 return Date.now() - lastOutputAudioRef.current < 700
             },
+            onSample: input => {
+                if (!firstInputSignalRef.current && input.level >= 0.008) {
+                    firstInputSignalRef.current = true
+                    captureDiagnostics('microphone_first_signal')
+                }
+            },
+            onBeforeRepair: selected => {
+                if (localStreamRef.current === selected && peerConnectionRef.current === pc) {
+                    transmittedTrackRef.current?.stop()
+                    captureDiagnostics('microphone_recovering')
+                }
+            },
             onSwitch: async selected => {
                 if (micRecoveringRef.current) throw new Error('Microphone recovery in progress')
-                const sender = pc.getSenders().find(s => s.track?.kind === 'audio')
-                if (!sender || peerConnectionRef.current !== pc) throw new Error('Call ended')
                 micRecoveringRef.current = true
                 try {
-                    await sender.replaceTrack(selected.getAudioTracks()[0])
+                    await replaceMicrophoneSender(pc, selected)
                     if (peerConnectionRef.current !== pc) return
                     localStreamRef.current = selected
                     attachTrackListeners(selected.getAudioTracks()[0])
                     if (mountedRef.current) setMicrophoneLabel(selected.getAudioTracks()[0]?.label || '')
+                    captureDiagnostics('microphone_changed')
                 } finally {
                     micRecoveringRef.current = false
                 }
@@ -409,6 +446,8 @@ export default function useAssistantVoiceCall() {
             const diagnostics = captureDiagnostics('cleanup', endReasonRef.current || reason)
             callReadyRef.current = false
             startingRef.current = false
+            transmittedTrackRef.current?.stop()
+            transmittedTrackRef.current = null
             microphoneSelectorRef.current?.stop()
             microphoneSelectorRef.current = null
             outputMonitorRef.current?.close()
@@ -449,7 +488,10 @@ export default function useAssistantVoiceCall() {
             silentKeepaliveRef.current = null
 
             const stream = localStreamRef.current
-            if (stream) stream.getTracks().forEach(track => track.stop())
+            if (stream)
+                stream.getTracks().forEach(track => {
+                    if (track.readyState !== 'ended') track.stop()
+                })
             localStreamRef.current = null
 
             const pc = peerConnectionRef.current
@@ -489,6 +531,7 @@ export default function useAssistantVoiceCall() {
         endingRef.current = true
         setStatus(STATUS_ENDING)
         // Stop sending speech immediately, but retain transport until final usage.
+        if (transmittedTrackRef.current) transmittedTrackRef.current.enabled = false
         localStreamRef.current?.getAudioTracks().forEach(track => {
             track.enabled = false
         })
@@ -591,6 +634,7 @@ export default function useAssistantVoiceCall() {
             callReadyRef.current = false
             playbackReadyRef.current = false
             lastOutputAudioRef.current = 0
+            firstInputSignalRef.current = false
             setMicrophoneLabel('')
             setNeedsAudioPlayback(false)
             setError('')
@@ -659,10 +703,14 @@ export default function useAssistantVoiceCall() {
                 localStreamRef.current = localStream
                 setMicrophoneLabel(capture.deviceLabel)
                 localStream.getTracks().forEach(track => {
-                    track.enabled = false
-                    pc.addTrack(track, localStream)
+                    const senderTrack = track.clone()
+                    senderTrack.enabled = false
+                    transmittedTrackRef.current = senderTrack
+                    pc.addTrack(senderTrack, localStream)
                     attachTrackListeners(track)
                 })
+                startMicrophoneSelectionRef.current?.(localStream, capture.raw)
+                captureDiagnostics('microphone_acquired')
                 const channel = pc.createDataChannel('oai-events')
                 const connection = createLiveCallConnection(channel, {
                     getControllerStatus: () =>
@@ -736,13 +784,13 @@ export default function useAssistantVoiceCall() {
                     connection.dispose()
                     liveConnectionRef.current = null
                 }
-                if (!mountedRef.current || peerConnectionRef.current !== pc) return
+                await microphoneSelectorRef.current?.whenPrepared()
+                if (!mountedRef.current || peerConnectionRef.current !== pc || endingRef.current) return
+                captureDiagnostics('microphone_prepared')
                 callReadyRef.current = true
-                localStreamRef.current?.getAudioTracks().forEach(track => {
-                    track.enabled = true
-                })
+                if (transmittedTrackRef.current) transmittedTrackRef.current.enabled = true
+                captureDiagnostics('microphone_sent')
 
-                startMicrophoneSelectionRef.current?.(localStreamRef.current)
                 if (playbackReadyRef.current) connection.greet(translate('Hello, how can I help?'))
                 else playCallAudio()
                 startingRef.current = false
@@ -784,10 +832,20 @@ export default function useAssistantVoiceCall() {
         ]
     )
 
+    const getMicrophoneSnapshot = useCallback(
+        () => ({
+            ...microphoneSelectorRef.current?.getSnapshot(),
+            label: localStreamRef.current?.getAudioTracks()[0]?.label || '',
+            sending: callReadyRef.current && !endingRef.current && transmittedTrackRef.current?.enabled === true,
+        }),
+        []
+    )
+
     return {
         status,
         error,
         microphoneLabel,
+        getMicrophoneSnapshot,
         needsAudioPlayback,
         voiceSeconds,
         callSummary,

@@ -7,7 +7,19 @@ import {
 } from '../../hooks/rambleMicCapture'
 import { isMobileVoiceCallDevice } from './assistantCallAudio'
 
-const stopStream = stream => stream?.getTracks?.().forEach(track => track.stop())
+const stopStream = stream =>
+    stream?.getTracks?.().forEach(track => {
+        if (track.readyState !== 'ended') track.stop()
+    })
+const LAST_VOICE_MICROPHONE = 'alldone.voice.lastWorkingMicrophone'
+const readLastMicrophone = () => {
+    try {
+        const saved = JSON.parse(window.localStorage.getItem(LAST_VOICE_MICROPHONE))
+        return typeof saved?.deviceId === 'string' ? saved : {}
+    } catch (_) {
+        return {}
+    }
+}
 const constraints = (deviceId, raw = false) => ({
     audio: {
         ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
@@ -17,14 +29,25 @@ const constraints = (deviceId, raw = false) => ({
     },
 })
 
-// Start immediately with the default input. Comparison happens during the call.
+// Reuse the last working desktop input immediately; live comparison still follows
+// the user's voice. Phones must keep the system's headset/speaker routing.
 export async function acquireVoiceMicrophone({ isCancelled = () => false } = {}) {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints())
+    const preference = isMobileVoiceCallDevice() ? {} : readLastMicrophone()
+    const deviceId = preference.deviceId || ''
+    let raw = preference.raw === true
+    let stream
+    try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints(deviceId, raw))
+    } catch (error) {
+        if (!deviceId || !['NotFoundError', 'OverconstrainedError'].includes(error?.name) || isCancelled()) throw error
+        raw = false
+        stream = await navigator.mediaDevices.getUserMedia(constraints())
+    }
     if (isCancelled()) {
         stopStream(stream)
         throw new Error('voice_start_cancelled')
     }
-    return { stream, deviceLabel: getInputDeviceLabel(stream) }
+    return { stream, deviceLabel: getInputDeviceLabel(stream), raw }
 }
 
 export function microphoneScore(levels) {
@@ -34,12 +57,19 @@ export function microphoneScore(levels) {
 
 // On desktop, only the selected stream reaches WebRTC. Other inputs are metered
 // locally for the call's lifetime so a newly used mic can win without a dialog.
-export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () => false }) {
+export function createVoiceMicrophoneSelector({
+    stream,
+    raw = false,
+    onSwitch,
+    onBeforeRepair,
+    onSample,
+    isPaused = () => false,
+}) {
     // Phones route input and output together. Opening a second, explicitly pinned
     // microphone can pull playback off Bluetooth (or onto the earpiece) before
     // replaceTrack even runs. Retain the system's default headset/speaker route;
     // the existing health monitor still recovers a dead default capture.
-    if (isMobileVoiceCallDevice()) return null
+    const mobile = isMobileVoiceCallDevice()
     const captures = []
     let selected
     let stopped = false
@@ -49,13 +79,33 @@ export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () 
     let silentWindows = 0
     let compatibilityTried = false
     let interval
+    let warmupDone = false
+    let resolveWarmup
+    const warmup = new Promise(resolve => {
+        resolveWarmup = resolve
+    })
+    let warmupTimer
+    const finishWarmup = ready => {
+        if (warmupDone) return
+        warmupDone = true
+        clearTimeout(warmupTimer)
+        resolveWarmup(ready)
+    }
+    // Overlaps signaling; never require the caller to speak or wait indefinitely
+    // for a browser that cannot meter audio.
+    warmupTimer = setTimeout(() => finishWarmup(false), 4500)
+    let remembered = JSON.stringify(readLastMicrophone())
     const add = (input, raw = false) => {
-        const capture = { stream: input, monitor: createInputLevelMonitor(input), levels: [], raw }
+        const monitor = createInputLevelMonitor(input)
+        const capture = { stream: input, monitor, levels: [], raw, ready: false }
         captures.push(capture)
+        Promise.resolve(monitor?.ready).then(() => {
+            if (!stopped) capture.ready = !!monitor
+        })
         return capture
     }
-    selected = add(stream)
-    if (!selected.monitor) return null
+    selected = add(stream, raw)
+    if (!selected.monitor) finishWarmup(false)
     const usable = c => {
         const track = c.stream.getAudioTracks()[0]
         return track && track.readyState !== 'ended' && !track.muted
@@ -86,7 +136,7 @@ export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () 
         }
     }
     const discover = async () => {
-        if (stopped || discovering) return
+        if (mobile || stopped || discovering) return
         discovering = true
         try {
             const devices = await listAudioInputDevices()
@@ -132,19 +182,43 @@ export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () 
         for (const capture of [...captures]) {
             if (stopped || isPaused()) return
             const id = getInputDeviceId(capture.stream)
+            if (capture === selected) await onBeforeRepair?.(capture.stream)
+            if (stopped || isPaused()) return
             capture.monitor?.close()
             stopStream(capture.stream)
             const raw = await open(id, true)
             if (!raw || stopped) continue
             capture.stream = raw
             capture.monitor = createInputLevelMonitor(raw)
+            capture.ready = false
+            await capture.monitor?.ready
+            if (stopped) {
+                capture.monitor?.close()
+                stopStream(raw)
+                return
+            }
+            capture.ready = !!capture.monitor
             capture.levels = []
             capture.raw = true
             if (capture === selected) await switchTo(capture, true)
         }
     }
+    const getSnapshot = () => {
+        const track = selected.stream.getAudioTracks()[0]
+        const available = !stopped && selected.ready && selected.monitor?.isRunning?.() !== false
+        return {
+            label: getInputDeviceLabel(selected.stream),
+            available: !!available,
+            muted: !track || track.muted === true || track.enabled === false || track.readyState === 'ended',
+            level: available && usable(selected) && track.enabled !== false ? selected.monitor.getLevel() : 0,
+        }
+    }
     const sample = async () => {
         if (stopped || busy) return
+        // Keep the selected input meter live even while Anna speaks. Pausing the
+        // comparison must not freeze its last value or display the output level.
+        for (const c of captures) if (c.ready) c.monitor?.sample()
+        onSample?.(getSnapshot())
         if (isPaused()) {
             captures.forEach(c => {
                 c.levels = []
@@ -152,8 +226,27 @@ export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () 
             silentWindows = 0
             return
         }
+        const snapshot = getSnapshot()
+        const deviceId = getInputDeviceId(selected.stream)
+        const preference = JSON.stringify({ deviceId, raw: selected.raw })
+        if (
+            !mobile &&
+            snapshot.level >= 0.008 &&
+            deviceId &&
+            !['default', 'communications'].includes(deviceId) &&
+            preference !== remembered
+        ) {
+            try {
+                window.localStorage.setItem(LAST_VOICE_MICROPHONE, preference)
+                remembered = preference
+            } catch (_) {}
+        }
+        if (mobile) {
+            if (snapshot.available && !snapshot.muted) finishWarmup(true)
+            return
+        }
         for (const c of captures) {
-            c.monitor?.sample()
+            if (!c.ready || c.monitor?.isRunning?.() === false) continue
             c.levels.push(c.monitor?.getLevel() || 0)
             if (c.levels.length > 12) c.levels.shift()
         }
@@ -164,7 +257,8 @@ export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () 
             selected
         const bestLevel = microphoneScore(best.levels)
         const currentLevel = microphoneScore(selected.levels)
-        const allSilent = captures.every(c => !c.monitor?.getPeak())
+        // A suspended/unavailable analyser is not evidence of a broken input.
+        const allSilent = captures.every(c => c.ready && c.monitor?.isRunning?.() !== false && !c.monitor?.getPeak())
         silentWindows = allSilent ? silentWindows + 1 : 0
         busy = true
         try {
@@ -174,9 +268,17 @@ export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () 
                     (Date.now() - lastSwitch >= 4000 && bestLevel >= 0.008 && bestLevel > currentLevel * 1.6 + 0.003))
             ) {
                 await switchTo(best)
-            } else if (silentWindows >= 30 && !compatibilityTried) {
+            } else if (silentWindows >= (warmupDone ? 30 : 3) && !compatibilityTried) {
                 await recoverSilence()
             }
+            if (
+                !discovering &&
+                usable(selected) &&
+                selected.ready &&
+                selected.monitor?.isRunning?.() !== false &&
+                selected.monitor?.getPeak() > 0
+            )
+                finishWarmup(true)
         } catch (_) {
             // A failed replaceTrack leaves the current sender in place; try again later.
             lastSwitch = Date.now()
@@ -186,13 +288,16 @@ export function createVoiceMicrophoneSelector({ stream, onSwitch, isPaused = () 
     }
     interval = setInterval(sample, 100)
     const mediaDevices = navigator.mediaDevices
-    mediaDevices.addEventListener?.('devicechange', discover)
+    if (!mobile) mediaDevices.addEventListener?.('devicechange', discover)
     discover().catch(() => {})
-    const discoveryInterval = setInterval(() => discover().catch(() => {}), 5000)
+    const discoveryInterval = mobile ? null : setInterval(() => discover().catch(() => {}), 5000)
     return {
+        getSnapshot,
+        whenPrepared: () => warmup,
         stop() {
             if (stopped) return
             stopped = true
+            finishWarmup(false)
             clearInterval(interval)
             clearInterval(discoveryInterval)
             mediaDevices.removeEventListener?.('devicechange', discover)
