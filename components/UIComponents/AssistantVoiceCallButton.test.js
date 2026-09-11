@@ -24,10 +24,18 @@ jest.mock('../../utils/assistantHelper', () => ({ createBotQuickTopic: jest.fn()
 jest.mock('../UIControls/Button', () => 'Button')
 jest.mock('../Icon', () => 'Icon')
 jest.mock('./Spinner', () => 'Spinner')
+jest.mock(
+    'react-tiny-popover',
+    () =>
+        ({ children }) =>
+            children
+)
+jest.mock('./ModalShell/BottomSheet', () => () => null)
 
 const { runHttpsCallableFunction } = require('../../utils/backends/firestore')
 const { createBotQuickTopic } = require('../../utils/assistantHelper')
 const AssistantVoiceCallButton = require('./AssistantVoiceCallButton').default
+const AppPopover = require('./ModalShell/AppPopover').default
 
 const MIC_HEALTH_POLL_MS = 4000
 
@@ -214,6 +222,61 @@ afterEach(() => {
 })
 
 describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
+    it('keeps the same live connection and microphone when rotation crosses the popup breakpoint', async () => {
+        const oldWidth = window.innerWidth
+        const oldHeight = window.innerHeight
+        window.innerWidth = 390
+        window.innerHeight = 844
+        FakePeerConnection.liveStartupEvents = true
+        runHttpsCallableFunction.mockImplementation(async name =>
+            name === 'startAssistantBrowserCallSecondGen'
+                ? { answerSdp: 'answer', sessionId: 'browser-rotation', voiceProvider: 'gpt-live' }
+                : { settled: true }
+        )
+        try {
+            let tree
+            act(() => {
+                tree = renderer.create(
+                    <AppPopover content={<span>Gold balance</span>} isOpen={false}>
+                        <AssistantVoiceCallButton
+                            assistant={{ uid: 'anna', displayName: 'Anna' }}
+                            projectId="project-1"
+                        />
+                    </AppPopover>
+                )
+            })
+            trees.push(tree)
+            const pc = await startCall(tree)
+            const track = tracks[0]
+            for (const [width, height] of [
+                [844, 390],
+                [390, 844],
+                [844, 390],
+            ]) {
+                await act(async () => {
+                    window.innerWidth = width
+                    window.innerHeight = height
+                    window.dispatchEvent(new Event('resize'))
+                })
+                expect(pc.closed).toBe(false)
+                expect(track.stop).not.toHaveBeenCalled()
+                expect(findEndCallButton(tree)).toBeTruthy()
+            }
+            expect(FakePeerConnection.instances).toHaveLength(1)
+            expect(getUserMedia).toHaveBeenCalledTimes(1)
+            expect(runHttpsCallableFunction).not.toHaveBeenCalledWith(
+                'endAssistantBrowserCallSecondGen',
+                expect.anything()
+            )
+            act(() => tree.unmount())
+            expect(pc.closed).toBe(true)
+            expect(track.stop).toHaveBeenCalledTimes(1)
+        } finally {
+            window.innerWidth = oldWidth
+            window.innerHeight = oldHeight
+        }
+    })
+
     it('connects through the fake peer connection and shows the end-call button', async () => {
         const tree = render()
         const pc = await startCall(tree)

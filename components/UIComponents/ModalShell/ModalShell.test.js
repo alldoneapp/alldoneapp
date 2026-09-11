@@ -16,7 +16,7 @@
  */
 import React from 'react'
 import { Text } from 'react-native'
-import { act } from 'react-dom/test-utils'
+import { act, Simulate } from 'react-dom/test-utils'
 import { createRoot } from 'react-dom/client'
 
 import AppPopover from './AppPopover'
@@ -121,6 +121,53 @@ describe('ModalShell', () => {
     })
 
     describe('presentation switch', () => {
+        it.each([false, true])('preserves the trigger and its state across rotation with isOpen=%s', async isOpen => {
+            window.innerWidth = 390
+            window.innerHeight = 844
+            const unmount = jest.fn()
+            function Trigger() {
+                const [value, setValue] = React.useState('')
+                React.useEffect(() => unmount, [])
+                return (
+                    <input
+                        aria-label="Stateful trigger"
+                        value={value}
+                        onChange={event => setValue(event.target.value)}
+                    />
+                )
+            }
+            container = document.createElement('div')
+            document.body.appendChild(container)
+            root = createRoot(container)
+            act(() =>
+                root.render(
+                    <AppPopover content={<Text>SHEET CONTENT</Text>} isOpen={isOpen}>
+                        <Trigger />
+                    </AppPopover>
+                )
+            )
+            await settle()
+            const input = container.querySelector('input')
+            act(() => Simulate.change(input, { target: { value: 'Keep this draft' } }))
+            // DOM identity also preserves browser-owned state (focus, selection,
+            // media) which a replacement React subtree cannot recover.
+            for (const [width, height] of [
+                [844, 390],
+                [390, 844],
+            ]) {
+                act(() => {
+                    window.innerWidth = width
+                    window.innerHeight = height
+                    window.dispatchEvent(new Event('resize'))
+                })
+                await settle()
+                expect(container.querySelector('input')).toBe(input)
+                expect(input.value).toBe('Keep this draft')
+                expect(unmount).not.toHaveBeenCalled()
+                expect(!!sheetNode()).toBe(isOpen && width < MODAL_SHEET_BREAKPOINT)
+            }
+        })
+
         it('renders the bottom sheet below the breakpoint', async () => {
             window.innerWidth = MODAL_SHEET_BREAKPOINT - 140
             window.innerHeight = 700
@@ -147,6 +194,24 @@ describe('ModalShell', () => {
             renderShell({ isOpen: false })
             expect(sheetNode()).toBeNull()
             expect(document.body.textContent).toContain('TRIGGER')
+        })
+
+        it('does not cover self-positioned mobile dialogs with an empty sheet', () => {
+            window.innerWidth = 390
+            window.innerHeight = 844
+            container = document.createElement('div')
+            document.body.appendChild(container)
+            root = createRoot(container)
+            act(() =>
+                root.render(
+                    <AppPopover content={null} isOpen>
+                        <Text>SELF-POSITIONED DIALOG</Text>
+                    </AppPopover>
+                )
+            )
+            expect(sheetNode()).toBeNull()
+            expect(backdropNode()).toBeNull()
+            expect(document.body.textContent).toContain('SELF-POSITIONED DIALOG')
         })
     })
 
