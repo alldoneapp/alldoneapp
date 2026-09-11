@@ -118,8 +118,6 @@ import { AccessibilityInfo, Animated } from 'react-native'
 import ParentGoalSection from './ParentGoalSection'
 import { TaskHierarchyContext } from '../TaskHierarchy'
 import EmptyGoal from './EmptyGoal'
-import { postponeGoalWithMotion, resetGoalPostponeMotionRegistry } from './goalPostponeMotion'
-import { POSTPONE_EXIT_TOTAL_MS } from '../TaskItem/TaskPresentation/taskPostponeMotion'
 
 const PROJECT = 'project-1'
 const GOAL = 'goal-1'
@@ -158,12 +156,7 @@ const wrapperOf = tree => tree.root.findAll(node => node.type === Animated.View 
 
 const flatStyleOf = node => Object.assign({}, ...[].concat(node.props.style).filter(Boolean))
 
-const renderSection = async ({
-    exitRunId = 0,
-    measure = true,
-    hierarchy = false,
-    postponeMotionEnabled = false,
-} = {}) => {
+const renderSection = async ({ exitRunId = 0, measure = true, hierarchy = false } = {}) => {
     let tree
     await act(async () => {
         tree = renderer.create(
@@ -179,7 +172,6 @@ const renderSection = async ({
                     goalIndex={0}
                     amountToRender={0}
                     exitRunId={exitRunId}
-                    postponeMotionEnabled={postponeMotionEnabled}
                 />
             </TaskHierarchyContext.Provider>
         )
@@ -229,7 +221,6 @@ describe('a goal section wearing its exit (AT-2507)', () => {
 
     beforeEach(() => {
         jest.useFakeTimers()
-        resetGoalPostponeMotionRegistry()
         mockWatchGoal.mockClear()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
@@ -238,7 +229,6 @@ describe('a goal section wearing its exit (AT-2507)', () => {
 
     afterEach(() => {
         jest.useRealTimers()
-        resetGoalPostponeMotionRegistry()
         AccessibilityInfo.isReduceMotionEnabled = originalIsReduceMotionEnabled
         AccessibilityInfo.addEventListener = originalAddEventListener
         process.env.NODE_ENV = originalNodeEnv
@@ -306,33 +296,6 @@ describe('a goal section wearing its exit (AT-2507)', () => {
         await startExit(tree)
 
         expect(flatStyleOf(wrapperOf(tree)).pointerEvents).toBe('none')
-    })
-
-    it('applies the swipe postpone motion to the complete rendered goal section', async () => {
-        const tree = await renderSection({ hierarchy: true, postponeMotionEnabled: true })
-        const write = jest.fn()
-        let operation
-
-        act(() => {
-            operation = postponeGoalWithMotion(
-                { projectId: PROJECT, goal: goalDoc, targetDate: Number.MAX_SAFE_INTEGER },
-                write
-            )
-        })
-
-        const style = flatStyleOf(wrapperOf(tree))
-        expect(style.transform[0].translateX).toBeDefined()
-        expect(style.height).toBeDefined()
-        expect(style.pointerEvents).toBe('none')
-        // The same outer wrapper still contains both the goal row and its linked-task list.
-        expect(wrapperOf(tree).findAllByType('GoalProgressBar')).toHaveLength(1)
-        expect(wrapperOf(tree).findAllByType('TasksList')).toHaveLength(1)
-
-        await act(async () => {
-            jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
-            await operation
-        })
-        expect(write).toHaveBeenCalledTimes(1)
     })
 
     it('puts the exit style LAST, so no earlier floor can outrank it', async () => {

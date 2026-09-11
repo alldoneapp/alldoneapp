@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef, useDebugValue } from 'react'
+import React, { useEffect, useState, useRef, useDebugValue } from 'react'
 import { Animated, StyleSheet, View } from 'react-native'
 import GoalItem from '../../GoalsView/GoalItem'
 import Backend from '../../../utils/BackendBridge'
@@ -13,7 +13,6 @@ import LockedGoalModal from '../../UIComponents/FloatModals/LockedGoalModal/Lock
 import GoalIndicator from '../GoalIndicator'
 import useOptimisticGoalPostponeHidden from '../../GoalsView/useOptimisticGoalPostponeHidden'
 import useGoalSectionExitMotion from './goalSectionExitMotion'
-import useGoalPostponeMotion from './goalPostponeMotion'
 import {
     useTaskHierarchy,
     useProjectSectionBorder,
@@ -41,8 +40,6 @@ export default function ParentGoalSection({
     isTemplateProject,
     focusedTaskId,
     exitRunId = 0,
-    exitKind = 'completion',
-    postponeMotionEnabled = false,
 }) {
     const taskHierarchy = useTaskHierarchy()
     const projectBorderColor = useProjectSectionBorder()
@@ -71,21 +68,7 @@ export default function ParentGoalSection({
      * block carries no animated wrapper at all. `MainSection` decides WHETHER a section is leaving
      * and keeps it mounted for the run; this only draws it.
      */
-    const sectionExitMotion = useGoalSectionExitMotion(exitRunId, exitKind)
-    const goalPostponeMotion = useGoalPostponeMotion({
-        enabled: postponeMotionEnabled,
-        projectId,
-        goalId,
-        sectionGap: containerStyle?.marginBottom || 0,
-    })
-    const onSectionLayout = useCallback(
-        event => {
-            sectionExitMotion.onSectionLayout(event)
-            goalPostponeMotion.onSectionLayout(event)
-        },
-        [goalPostponeMotion.onSectionLayout, sectionExitMotion.onSectionLayout]
-    )
-    const sectionStyle = goalPostponeMotion.sectionStyle || sectionExitMotion.sectionStyle
+    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
 
     const setDismissibleRefs = ref => {
         dismissibleRef.current = ref

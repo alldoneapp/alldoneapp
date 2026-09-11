@@ -885,6 +885,11 @@
     "C": "P",
     "Move": "Mover",
     "Task could not be moved": "No se pudo mover la tarea",
+    "Moving task to projectName": "Moviendo la tarea a %{projectName}",
+    "Task move failed": "No se pudo mover la tarea",
+    "The task is still in its current project. Please try again.": "La tarea sigue en su proyecto actual. Inténtalo de nuevo.",
+    "Task move is taking longer than expected": "Mover la tarea está tardando más de lo esperado",
+    "We are still checking the move. This view will switch projects automatically when it completes.": "Seguimos comprobando el traslado. Esta vista cambiará de proyecto automáticamente cuando termine.",
     "No changes were made. Please try again.": "No se hicieron cambios. Inténtalo de nuevo.",
     "Select the project this itemType will move to": "Seleccione el proyecto al cual mover esta %{itemType}",
     "Task status": "Estado de la tarea",
@@ -2926,13 +2931,5 @@
     "browser_allowlist_unused_in_all_public": "No se usa mientras se permitan todos los sitios web públicos.",
     "Blocked websites": "Sitios web bloqueados",
     "Blocked websites description": "Nunca se abren, sea cual sea la opción elegida arriba.",
-    "browser_allowlist_no_project": "Esta lista pertenece a un proyecto. Abre el asistente dentro del proyecto que quieras configurar.",
-    "Voice costs %{gold} Gold/min plus normal assistant usage": "La voz cuesta %{gold} Gold/min más el uso habitual del asistente",
-    "Voice has a %{seconds}-second minimum; connected time includes silence": "Mínimo de %{seconds} segundos; el tiempo conectado incluye los silencios",
-    "Voice usage: %{gold} Gold": "Uso de voz: %{gold} Gold",
-    "Assistant voice duration": "Duración de voz con el asistente",
-    "Assistant voice call": "Llamada de voz al asistente",
-    "Assistant phone call": "Llamada telefónica al asistente",
-    "Call cost: %{voice} Gold voice + %{assistant} Gold assistant": "Coste: %{voice} Gold de voz + %{assistant} Gold del asistente",
-    "Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant": "Uso hasta ahora: %{voice} Gold de voz + %{assistant} Gold del asistente"
+    "browser_allowlist_no_project": "Esta lista pertenece a un proyecto. Abre el asistente dentro del proyecto que quieras configurar."
 }

@@ -30,6 +30,9 @@ export default function SelectProjectModal({
     headerText,
     subheaderText,
     onSelectProject,
+    onTaskProjectMoveStarted,
+    onTaskProjectMoveEnqueued,
+    onTaskProjectMoveEnqueueFailed,
 }) {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -61,8 +64,12 @@ export default function SelectProjectModal({
     const handleSelect = async newProject => {
         committedProjectRef.current = newProject
         if (newProject.id === project.id) return
-        if (onSelectProject) onSelectProject()
-        await moveObjectToProject(item, project, newProject)
+        if (onSelectProject) onSelectProject(newProject)
+        if (item.type === 'task') onTaskProjectMoveStarted?.(newProject)
+        await moveObjectToProject(item, project, newProject, {
+            onTaskProjectMoveEnqueued,
+            onTaskProjectMoveEnqueueFailed,
+        })
         dismissAllPopups()
     }
 

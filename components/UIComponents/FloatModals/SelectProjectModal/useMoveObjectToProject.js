@@ -87,7 +87,7 @@ export default function useMoveObjectToProject() {
         }
     }
 
-    const moveObjectToProject = async (item, project, newProject) => {
+    const moveObjectToProject = async (item, project, newProject, taskMoveCallbacks = {}) => {
         const { type, data } = item
         const performanceTrace = startPerformanceTrace('move_object_project', {
             object_type: type,
@@ -112,17 +112,20 @@ export default function useMoveObjectToProject() {
             // rejected enqueue still needs to reach the user: at that point no
             // task write has happened and silently swallowing the rejection
             // makes a broken worker look like a successful background action.
-            completeMove(queueTaskProjectMove(project.id, newProject.id, data.id)).catch(() => {
-                dispatch(
-                    showConfirmPopup({
-                        trigger: CONFIRM_POPUP_TRIGGER_INFO,
-                        object: {
-                            headerText: 'Task could not be moved',
-                            headerQuestion: 'No changes were made. Please try again.',
-                        },
-                    })
-                )
-            })
+            completeMove(queueTaskProjectMove(project.id, newProject.id, data.id))
+                .then(result => taskMoveCallbacks.onTaskProjectMoveEnqueued?.(result))
+                .catch(() => {
+                    taskMoveCallbacks.onTaskProjectMoveEnqueueFailed?.()
+                    dispatch(
+                        showConfirmPopup({
+                            trigger: CONFIRM_POPUP_TRIGGER_INFO,
+                            object: {
+                                headerText: 'Task could not be moved',
+                                headerQuestion: 'No changes were made. Please try again.',
+                            },
+                        })
+                    )
+                })
             dispatch(hideProjectPicker())
             return
         }

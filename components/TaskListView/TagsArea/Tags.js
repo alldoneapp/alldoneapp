@@ -38,7 +38,6 @@ import MergeStatusTag from '../../Tags/MergeStatusTag'
 import SuggestedGoalTag from '../../Tags/SuggestedGoalTag'
 import { hasPendingGoalSuggestion } from '../../../utils/TaskGoalSuggestion'
 import { getWorkflowStepReviewerPhotoURL } from './workflowReviewerPhoto'
-import { postponeTaskWithMotion } from '../TaskItem/TaskPresentation/taskPostponeMotion'
 
 export default function Tags({
     task,
@@ -157,46 +156,24 @@ export default function Tags({
         const inReview = task.userIds.length > 0 && !task.inDone
         const moveObservedDateAndDueDate = inMyDayOpenTab && isObservedTask && inReview
 
-        return postponeTaskWithMotion(
-            {
-                projectId,
-                task,
-                targetDate: dateTimestamp,
-                updatesDueDate: moveObservedDateAndDueDate || !isObservedTabActive,
-                updatesObservedDate: moveObservedDateAndDueDate || isObservedTabActive,
-            },
-            async () => {
-                if (moveObservedDateAndDueDate) {
-                    await setTaskDueDate(projectId, task.id, dateTimestamp, task, false, null)
-                    await setTaskDueDate(projectId, task.id, dateTimestamp, task, true, null)
-                } else {
-                    return setTaskDueDate(projectId, task.id, dateTimestamp, task, isObservedTabActive, null)
-                }
-            }
-        )
+        if (moveObservedDateAndDueDate) {
+            await setTaskDueDate(projectId, task.id, dateTimestamp, task, false, null)
+            await setTaskDueDate(projectId, task.id, dateTimestamp, task, true, null)
+        } else {
+            setTaskDueDate(projectId, task.id, dateTimestamp, task, isObservedTabActive, null)
+        }
     }
 
     const updateTaskDateToBacklog = async (taskToUpdate, isObservedTabActive) => {
         const inReview = task.userIds.length > 0 && !task.inDone
         const moveObservedDateAndDueDate = inMyDayOpenTab && isObservedTask && inReview
 
-        return postponeTaskWithMotion(
-            {
-                projectId,
-                task,
-                targetDate: Number.MAX_SAFE_INTEGER,
-                updatesDueDate: moveObservedDateAndDueDate || !isObservedTabActive,
-                updatesObservedDate: moveObservedDateAndDueDate || isObservedTabActive,
-            },
-            async () => {
-                if (moveObservedDateAndDueDate) {
-                    await setTaskToBacklog(projectId, task.id, task, false, null)
-                    await setTaskToBacklog(projectId, task.id, task, true, null)
-                } else {
-                    return setTaskToBacklog(projectId, task.id, task, isObservedTabActive, null)
-                }
-            }
-        )
+        if (moveObservedDateAndDueDate) {
+            await setTaskToBacklog(projectId, task.id, task, false, null)
+            await setTaskToBacklog(projectId, task.id, task, true, null)
+        } else {
+            setTaskToBacklog(projectId, task.id, task, isObservedTabActive, null)
+        }
     }
 
     useEffect(() => {

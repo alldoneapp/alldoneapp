@@ -22,8 +22,13 @@ describe('AT-2533 background task project move', () => {
 
     it('shows a visible failure after the picker has closed when the enqueue is rejected', () => {
         expect(taskBranch).toMatch(/\.catch\(\(\) => \{[\s\S]*showConfirmPopup\(/)
+        expect(taskBranch).toMatch(/onTaskProjectMoveEnqueueFailed/)
         expect(taskBranch).toMatch(/trigger: CONFIRM_POPUP_TRIGGER_INFO/)
         expect(taskBranch).toMatch(/headerText: 'Task could not be moved'/)
         expect(taskBranch).toMatch(/headerQuestion: 'No changes were made\. Please try again\.'/)
+    })
+
+    it('reports the accepted request id to the open detail-view handoff', () => {
+        expect(taskBranch).toMatch(/\.then\(result => taskMoveCallbacks\.onTaskProjectMoveEnqueued/)
     })
 })
