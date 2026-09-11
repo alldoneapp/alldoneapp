@@ -5694,6 +5694,11 @@ exports.runManualTaskProjectMove = onTaskDispatched(
         region: 'europe-west1',
         timeoutSeconds: 300,
         memory: '512MiB',
+        // The callable runs as this Admin SDK service account and uses it for
+        // the Cloud Task's OIDC token. Declaring it here lets Firebase manage
+        // both queue-enqueuer and worker-invoker IAM when the function is
+        // deployed, instead of relying on an out-of-band per-service grant.
+        ...(adminSdkRuntimeServiceAccount ? { invoker: adminSdkRuntimeServiceAccount } : {}),
         retryConfig: { maxAttempts: 3, minBackoffSeconds: 5, maxBackoffSeconds: 60 },
         rateLimits: { maxConcurrentDispatches: 20, maxDispatchesPerSecond: 20 },
     },
