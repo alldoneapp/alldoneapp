@@ -22,6 +22,8 @@ jest.mock(
     { virtual: true }
 )
 jest.mock('../Assistant/assistantHelper', () => ({ getAssistantForChat: jest.fn() }))
+jest.mock('./assistantLiveController', () => ({ closeLiveSession: jest.fn(async () => true) }))
+jest.mock('./assistantLiveGold', () => ({ reconcileLiveUsage: jest.fn(async () => ({ currentGold: 90 })) }))
 jest.mock('./whatsAppIncomingHandler', () => ({ getDefaultAssistantId: jest.fn() }))
 jest.mock('./whatsAppCallTwilioWebhook', () => ({ getCallEligibilityReason: jest.fn() }))
 jest.mock('./whatsAppCallConfig', () => ({
@@ -45,9 +47,10 @@ const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
 const { createDirectCallSessionWithLease, updateCallSession } = require('./whatsAppCallSessions')
 const {
-    buildInitialBrowserRealtimeSession,
+    buildInitialBrowserLiveSession,
     resolveBrowserCallTopic,
     startAssistantBrowserCall,
+    getAssistantBrowserCallSummary,
 } = require('./assistantBrowserCall')
 
 describe('assistant browser calls', () => {
@@ -63,7 +66,7 @@ describe('assistant browser calls', () => {
         }
         global.fetch = jest.fn(async () => ({
             ok: true,
-            text: async () => 'answer-sdp',
+            text: async () => JSON.stringify({ session: { id: 'live_123' }, transport: { sdp: 'answer-sdp' } }),
             headers: { get: name => (name === 'location' ? '/v1/realtime/calls/rtc_123' : null) },
         }))
         getWhatsAppCallConfig.mockReturnValue({
@@ -83,7 +86,7 @@ describe('assistant browser calls', () => {
                             id: 'user-1',
                             data: () => ({
                                 premium: { status: 'premium' },
-                                gold: 3,
+                                gold: 100,
                                 defaultProjectId: 'project-1',
                                 language: 'English',
                             }),
@@ -116,14 +119,22 @@ describe('assistant browser calls', () => {
     })
 
     test('requires auth', async () => {
-        await expect(startAssistantBrowserCall({ offerSdp: 'offer-sdp' }, null)).rejects.toMatchObject({
+        await expect(
+            startAssistantBrowserCall({ voiceProtocol: 'gpt-live-v1', offerSdp: 'offer-sdp' }, null)
+        ).rejects.toMatchObject({
             code: 'unauthenticated',
         })
     })
 
     test('creates a browser call session and queues the sideband controller', async () => {
         const result = await startAssistantBrowserCall(
-            { offerSdp: 'offer-sdp', projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' },
+            {
+                voiceProtocol: 'gpt-live-v1',
+                offerSdp: 'offer-sdp',
+                projectId: 'project-1',
+                chatId: 'chat-1',
+                assistantId: 'assistant-1',
+            },
             { uid: 'user-1' }
         )
 
@@ -145,16 +156,18 @@ describe('assistant browser calls', () => {
             })
         )
         expect(global.fetch).toHaveBeenCalledWith(
-            'https://api.openai.com/v1/realtime/calls',
+            'https://api.openai.com/v1/live/sessions',
             expect.objectContaining({ method: 'POST' })
         )
-        const initialSession = JSON.parse(global.fetch.mock.calls[0][1].body.values.session)
-        expect(initialSession.instructions).toContain('Act as Anna.')
-        expect(initialSession.instructions).toContain('All task IDs are silent by default')
+        const initialSession = JSON.parse(global.fetch.mock.calls[0][1].body).session
+        expect(initialSession.delegation).toEqual({ type: 'client' })
+        expect(initialSession.model).toBe('gpt-live-1')
+        expect(initialSession.store).toBe(false)
+        expect(initialSession.instructions).toContain('All task IDs and URLs are silent by default')
         expect(initialSession.instructions).toContain('Start the call in English')
         expect(updateCallSession).toHaveBeenCalledWith(
             expect.stringMatching(/^browser-/),
-            expect.objectContaining({ openAiCallId: 'rtc_123', status: 'accepted' })
+            expect.objectContaining({ openAiSessionId: 'live_123', status: 'accepted' })
         )
         expect(mockEnqueue).toHaveBeenCalled()
     })
@@ -163,15 +176,23 @@ describe('assistant browser calls', () => {
         const offerSdp = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n'
 
         await startAssistantBrowserCall(
-            { offerSdp, projectId: 'project-1', chatId: 'chat-1', assistantId: 'assistant-1' },
+            {
+                voiceProtocol: 'gpt-live-v1',
+                offerSdp,
+                projectId: 'project-1',
+                chatId: 'chat-1',
+                assistantId: 'assistant-1',
+            },
             { uid: 'user-1' }
         )
 
-        expect(global.fetch.mock.calls[0][1].body.values.sdp).toBe(offerSdp)
+        expect(JSON.parse(global.fetch.mock.calls[0][1].body).transport.sdp).toBe(offerSdp)
     })
 
     test('requires an explicit browser call topic', async () => {
-        await expect(startAssistantBrowserCall({ offerSdp: 'offer-sdp' }, { uid: 'user-1' })).rejects.toMatchObject({
+        await expect(
+            startAssistantBrowserCall({ voiceProtocol: 'gpt-live-v1', offerSdp: 'offer-sdp' }, { uid: 'user-1' })
+        ).rejects.toMatchObject({
             code: 'failed-precondition',
         })
     })
@@ -188,7 +209,7 @@ describe('assistant browser calls', () => {
 
     test('protects the browser call with the special prompt before the sideband connects', () => {
         expect(
-            buildInitialBrowserRealtimeSession({
+            buildInitialBrowserLiveSession({
                 config: { realtimeModel: 'gpt-realtime-2' },
                 voice: 'marin',
                 assistant: { displayName: 'Anna Alldone', instructions: 'Act as Anna.' },
@@ -196,11 +217,95 @@ describe('assistant browser calls', () => {
             })
         ).toEqual(
             expect.objectContaining({
-                type: 'realtime',
-                model: 'gpt-realtime-2',
-                instructions: expect.stringContaining('All task IDs are silent by default'),
+                delegation: { type: 'client' },
+                model: 'gpt-live-1',
+                instructions: expect.stringContaining('All task IDs and URLs are silent by default'),
                 audio: { output: { voice: 'marin' } },
             })
         )
+    })
+})
+
+const { closeLiveSession } = require('./assistantLiveController')
+const { reconcileLiveUsage } = require('./assistantLiveGold')
+describe('Live startup failures and usage privacy', () => {
+    const request = {
+        voiceProtocol: 'gpt-live-v1',
+        offerSdp: 'offer',
+        projectId: 'project-1',
+        chatId: 'chat-1',
+        assistantId: 'assistant-1',
+    }
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockEnqueue.mockReset()
+        getWhatsAppCallConfig.mockReturnValue({
+            browserCallsEnabled: true,
+            openAiApiKey: 'key',
+            callLeaseMs: 1000,
+            maxDurationSeconds: 60,
+        })
+        getCallEligibilityReason.mockReturnValue(null)
+        createDirectCallSessionWithLease.mockResolvedValue({ success: true })
+        getAssistantForChat.mockResolvedValue({ displayName: 'Anna' })
+        admin.firestore.mockReturnValue({
+            doc: path => ({
+                get: async () => ({
+                    exists: true,
+                    id: path.split('/').pop(),
+                    data: () =>
+                        path.startsWith('users/')
+                            ? { gold: 100 }
+                            : {
+                                  type: 'topics',
+                                  creatorId: 'user-1',
+                                  assistantId: 'assistant-1',
+                                  userId: 'user-1',
+                                  voiceBilledGold: 40,
+                                  backendBilledGold: 12,
+                                  status: 'completed',
+                                  voiceUsageFinal: true,
+                                  secret: 'never expose',
+                              },
+                }),
+            }),
+        })
+    })
+    test('rejects old clients before opening a paid session', async () => {
+        await expect(
+            startAssistantBrowserCall({ ...request, voiceProtocol: undefined }, { uid: 'user-1' })
+        ).rejects.toMatchObject({ code: 'failed-precondition' })
+        expect(createDirectCallSessionWithLease).not.toHaveBeenCalled()
+        expect(reconcileLiveUsage).not.toHaveBeenCalled()
+    })
+    test.each(['missing SDP', 'queue failure'])('closes a created provider session after %s', async kind => {
+        global.fetch = jest.fn(async () => ({
+            ok: true,
+            text: async () =>
+                JSON.stringify({
+                    session: { id: 'live_failed' },
+                    transport: kind === 'missing SDP' ? {} : { sdp: 'answer' },
+                }),
+        }))
+        if (kind === 'queue failure') mockEnqueue.mockRejectedValueOnce(new Error('queue unavailable'))
+        await expect(startAssistantBrowserCall(request, { uid: 'user-1' })).rejects.toMatchObject({ code: 'internal' })
+        expect(closeLiveSession).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ openAiSessionId: 'live_failed' })
+        )
+    })
+    test('only exposes the owner usage totals', async () => {
+        await expect(getAssistantBrowserCallSummary({ sessionId: 'browser-123' }, { uid: 'user-1' })).resolves.toEqual({
+            voiceGold: 40,
+            assistantGold: 12,
+            settled: true,
+            finalVoiceUsage: true,
+        })
+        await expect(
+            getAssistantBrowserCallSummary({ sessionId: 'browser-123' }, { uid: 'other' })
+        ).rejects.toMatchObject({ code: 'not-found' })
+        await expect(
+            getAssistantBrowserCallSummary({ sessionId: '../users' }, { uid: 'user-1' })
+        ).rejects.toMatchObject({ code: 'invalid-argument' })
     })
 })

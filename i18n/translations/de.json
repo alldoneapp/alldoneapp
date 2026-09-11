@@ -1813,6 +1813,7 @@
     "Show OKRs": "OKRs anzeigen",
     "Hide all": "alle ausblenden",
     "Show all": "alle anzeigen",
+    "More": "mehr",
     "Show less": "weniger anzeigen",
     "Hide all OKRs": "Alle OKRs ausblenden",
     "Show all OKRs": "Alle OKRs anzeigen",
@@ -2530,5 +2531,13 @@
     "browser_allowlist_unused_in_all_public": "Wird nicht verwendet, solange alle öffentlichen Webseiten erlaubt sind.",
     "Blocked websites": "Blockierte Webseiten",
     "Blocked websites description": "Werden nie geöffnet, egal welche Einstellung oben gewählt ist.",
-    "browser_allowlist_no_project": "Diese Liste gehört zu einem Projekt. Öffne den Assistenten in dem Projekt, das du einstellen möchtest."
+    "browser_allowlist_no_project": "Diese Liste gehört zu einem Projekt. Öffne den Assistenten in dem Projekt, das du einstellen möchtest.",
+    "Voice costs %{gold} Gold/min plus normal assistant usage": "Sprache kostet %{gold} Gold/Min. zzgl. normaler Assistentennutzung",
+    "Voice has a %{seconds}-second minimum; connected time includes silence": "Mindestens %{seconds} Sekunden; verbundene Zeit zählt auch bei Stille",
+    "Voice usage: %{gold} Gold": "Sprachnutzung: %{gold} Gold",
+    "Assistant voice duration": "Sprachdauer mit Assistent",
+    "Assistant voice call": "Sprachanruf mit Assistent",
+    "Assistant phone call": "Telefonanruf mit Assistent",
+    "Call cost: %{voice} Gold voice + %{assistant} Gold assistant": "Anrufkosten: %{voice} Gold Sprache + %{assistant} Gold Assistent",
+    "Call usage so far: %{voice} Gold voice + %{assistant} Gold assistant": "Bisherige Anrufkosten: %{voice} Gold Sprache + %{assistant} Gold Assistent"
 }
