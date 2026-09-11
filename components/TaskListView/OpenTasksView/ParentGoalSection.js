@@ -40,6 +40,7 @@ export default function ParentGoalSection({
     isTemplateProject,
     focusedTaskId,
     exitRunId = 0,
+    exitKind = 'completion',
 }) {
     const taskHierarchy = useTaskHierarchy()
     const projectBorderColor = useProjectSectionBorder()
@@ -68,7 +69,7 @@ export default function ParentGoalSection({
      * block carries no animated wrapper at all. `MainSection` decides WHETHER a section is leaving
      * and keeps it mounted for the run; this only draws it.
      */
-    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
+    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId, exitKind)
 
     const setDismissibleRefs = ref => {
         dismissibleRef.current = ref
