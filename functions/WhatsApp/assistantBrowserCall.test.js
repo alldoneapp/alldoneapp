@@ -300,6 +300,7 @@ describe('Live startup failures and usage privacy', () => {
             assistantGold: 12,
             settled: true,
             finalVoiceUsage: true,
+            controllerConnected: false,
         })
         await expect(
             getAssistantBrowserCallSummary({ sessionId: 'browser-123' }, { uid: 'other' })
@@ -307,5 +308,46 @@ describe('Live startup failures and usage privacy', () => {
         await expect(
             getAssistantBrowserCallSummary({ sessionId: '../users' }, { uid: 'user-1' })
         ).rejects.toMatchObject({ code: 'invalid-argument' })
+    })
+})
+
+describe('cancel abandoned Live startup', () => {
+    const { endAssistantBrowserCall } = require('./assistantBrowserCall')
+    let update
+    beforeEach(() => {
+        jest.clearAllMocks()
+        update = jest.fn(async () => {})
+        admin.firestore.mockReturnValue({
+            doc: () => ({
+                update,
+                get: async () => ({
+                    exists: true,
+                    data: () => ({
+                        userId: 'owner',
+                        voiceProvider: 'gpt-live',
+                        openAiSessionId: 'live_owned',
+                        status: 'controller_running',
+                    }),
+                }),
+            }),
+        })
+        closeLiveSession.mockResolvedValue(true)
+    })
+    test('requires ownership before cancellation or access to the provider session', async () => {
+        await expect(endAssistantBrowserCall({ sessionId: 'browser-owned' }, { uid: 'other' })).rejects.toMatchObject({
+            code: 'not-found',
+        })
+        expect(update).not.toHaveBeenCalled()
+        expect(closeLiveSession).not.toHaveBeenCalled()
+    })
+    test('records cancellation before closing the provider session', async () => {
+        await expect(endAssistantBrowserCall({ sessionId: 'browser-owned' }, { uid: 'owner' })).resolves.toEqual({
+            closed: true,
+        })
+        expect(update).toHaveBeenCalledWith({ cancelRequestedAt: expect.any(Number), controllerConnected: false })
+        expect(closeLiveSession).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ id: 'browser-owned', openAiSessionId: 'live_owned' })
+        )
     })
 })
