@@ -7239,3 +7239,89 @@ describe('assistant shared user context', () => {
         expect(systemMessages).toContain('include create_task.projectRoutingReason')
     })
 })
+
+describe('shared chat loop with voice channel controls', () => {
+    const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
+    const schema = {
+        type: 'function',
+        function: {
+            name: 'end_call',
+            description: 'End this voice call',
+            parameters: { type: 'object', properties: {}, required: [] },
+        },
+    }
+    const toolStream = [
+        {
+            content: 'Checking.',
+            additional_kwargs: {
+                tool_calls: [{ id: 'call-end', type: 'function', function: { name: 'end_call', arguments: '{}' } }],
+            },
+        },
+    ]
+    test('routes a local control through the configured model and accounts for both model rounds', async () => {
+        mockResponsesCreate.mockReset().mockResolvedValue([
+            { type: 'response.output_text.delta', delta: 'Goodbye.' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+        const execute = jest.fn(async () => ({ success: true }))
+        const rounds = jest.fn(async () => {})
+        const result = await collectAssistantTextWithToolCalls({
+            stream: toolStream,
+            conversationHistory: [['user', 'Goodbye']],
+            modelKey: 'MODEL_GPT5_6_SOL',
+            temperatureKey: 'TEMPERATURE_NORMAL',
+            allowedTools: [],
+            toolRuntimeContext: { additionalToolSchemas: [schema] },
+            localTools: { end_call: { execute } },
+            onRoundComplete: rounds,
+        })
+        expect(execute).toHaveBeenCalledTimes(1)
+        expect(rounds.mock.calls.map(([round]) => round.round)).toEqual([0, 1])
+        expect(result.finalResponseText).toBe('Goodbye.')
+        expect(mockResponsesCreate.mock.calls[0][0].tools).toEqual(
+            expect.arrayContaining([expect.objectContaining({ type: 'function', name: 'end_call' })])
+        )
+    })
+    test('a newer voice request prevents local actions and subsequent model rounds', async () => {
+        mockResponsesCreate.mockClear()
+        const execute = jest.fn()
+        await expect(
+            collectAssistantTextWithToolCalls({
+                stream: toolStream,
+                conversationHistory: [],
+                modelKey: 'MODEL_GPT5_6_SOL',
+                allowedTools: [],
+                localTools: { end_call: { execute } },
+                assertActive: async () => {
+                    throw new Error('voice_request_superseded')
+                },
+            })
+        ).rejects.toThrow('voice_request_superseded')
+        expect(execute).not.toHaveBeenCalled()
+        expect(mockResponsesCreate).not.toHaveBeenCalled()
+    })
+})
+
+test('includes voice controls for the configured OpenRouter model even without other tools', async () => {
+    const client = require('./openRouterChatClient')
+    const mockStream = jest.spyOn(client, 'streamOpenRouterChat').mockResolvedValue([])
+    const schema = {
+        type: 'function',
+        function: {
+            name: 'end_call',
+            description: 'End the call',
+            parameters: { type: 'object', properties: {}, required: [] },
+        },
+    }
+    try {
+        await interactWithChatStream([['user', 'Goodbye']], 'MODEL_DEEPSEEK_V4_FLASH', 'TEMPERATURE_NORMAL', [], {
+            additionalToolSchemas: [schema],
+            sourceChannel: 'browser_call',
+        })
+        expect(mockStream).toHaveBeenCalledWith(
+            expect.objectContaining({ tools: [schema], usageContext: { route: 'browser_call' } })
+        )
+    } finally {
+        mockStream.mockRestore()
+    }
+})

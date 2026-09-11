@@ -341,6 +341,9 @@ async function runAssistantRealtimeCall(sessionId) {
     const config = getWhatsAppCallConfig()
     const session = await getCallSession(sessionId)
     if (!session) return
+    if (session.voiceProvider === 'gpt-live') {
+        return require('./assistantLiveController').runAssistantLiveCall(sessionId)
+    }
     if (FINAL_STATUSES.has(session.status)) {
         await sendCallRecap(sessionId)
         return
@@ -783,6 +786,12 @@ async function cleanupStaleWhatsAppCalls() {
     const config = getWhatsAppCallConfig()
     for (const sessionId of sessionIds) {
         const session = await getCallSession(sessionId)
+        if (session?.voiceProvider === 'gpt-live') {
+            await require('./assistantLiveController')
+                .closeLiveSession(config, session)
+                .catch(() => {})
+            continue
+        }
         if (session?.openAiCallId) {
             await hangUpOpenAICall(config, session.openAiCallId).catch(() => {})
         }

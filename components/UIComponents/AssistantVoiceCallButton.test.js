@@ -53,7 +53,8 @@ class FakePeerConnection {
         return this.senders
     }
     createDataChannel() {
-        return {}
+        this.channel = { readyState: 'open', send: jest.fn(), close: jest.fn() }
+        return this.channel
     }
     async createOffer() {
         return { type: 'offer', sdp: 'offer-sdp' }
@@ -61,7 +62,14 @@ class FakePeerConnection {
     async setLocalDescription(description) {
         this.localDescription = description
     }
-    async setRemoteDescription() {}
+    async setRemoteDescription() {
+        if (FakePeerConnection.liveStartupEvents) {
+            this.channel.onmessage({ data: JSON.stringify({ type: 'session.started' }) })
+            this.channel.onmessage({
+                data: JSON.stringify({ type: 'session.instructions.appended', client_event_id: 'alldone_live_ready' }),
+            })
+        }
+    }
     async getStats() {
         return this.statsReports
     }
@@ -157,6 +165,7 @@ beforeEach(() => {
     jest.spyOn(console, 'warn').mockImplementation(() => {})
     jest.spyOn(console, 'log').mockImplementation(() => {})
     FakePeerConnection.instances = []
+    FakePeerConnection.liveStartupEvents = false
     callOrder = []
     tracks = []
     visibility = 'visible'
@@ -430,5 +439,48 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         const shellTree = render()
         await startCall(shellTree)
         expect(JSON.stringify(shellTree.toJSON())).not.toContain(hint)
+    })
+})
+
+describe('GPT-Live lifecycle', () => {
+    test('keeps live events during mic health checks and collects final usage before closing', async () => {
+        FakePeerConnection.liveStartupEvents = true
+        runHttpsCallableFunction.mockImplementation(async name =>
+            name === 'startAssistantBrowserCallSecondGen'
+                ? { answerSdp: 'sdp', sessionId: 'browser-123', voiceProvider: 'gpt-live' }
+                : { settled: true, finalVoiceUsage: true, voiceGold: 40, assistantGold: 2 }
+        )
+        const tree = render()
+        const pc = await startCall(tree)
+        expect(tracks[0].enabled).toBe(true)
+        await advance(MIC_HEALTH_POLL_MS)
+        expect(pc.channel.close).not.toHaveBeenCalled()
+        let ending
+        act(() => {
+            ending = findEndCallButton(tree).props.onPress()
+        })
+        expect(tracks[0].enabled).toBe(false)
+        expect(pc.closed).toBe(false)
+        expect(pc.channel.send).toHaveBeenCalledWith(JSON.stringify({ type: 'session.close' }))
+        await act(async () => {
+            pc.channel.onmessage({ data: JSON.stringify({ type: 'session.closed', usage: { seconds: 60 } }) })
+            await ending
+        })
+        expect(pc.closed).toBe(true)
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith('getAssistantBrowserCallSummarySecondGen', {
+            sessionId: 'browser-123',
+        })
+    })
+
+    test('can use the existing topic instead of starting a separate conversation', async () => {
+        createBotQuickTopic.mockClear()
+        const tree = render({ chatId: 'existing-topic' })
+        await startCall(tree)
+        expect(createBotQuickTopic).not.toHaveBeenCalled()
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
+            'startAssistantBrowserCallSecondGen',
+            expect.objectContaining({ chatId: 'existing-topic', voiceProtocol: 'gpt-live-v1' }),
+            expect.anything()
+        )
     })
 })

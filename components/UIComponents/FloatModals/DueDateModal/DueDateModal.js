@@ -21,7 +21,6 @@ import { watchGoal } from '../../../../utils/backends/Goals/goalsFirestore'
 import GoalBasedModal from './GoalBasedModal'
 import { BACKLOG_DATE_NUMERIC } from '../../../TaskListView/Utils/TasksHelper'
 import { applyPostponeToGoalTaskList } from './applyPostponeToGoalTaskList'
-import { postponeGoalWithMotion } from '../../../TaskListView/OpenTasksView/goalPostponeMotion'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 function DueDateModal({
@@ -41,7 +40,6 @@ function DueDateModal({
     goalCompletionDate,
     goalStartingDate,
     goal,
-    animateGoalPostpone = false,
 }) {
     const currentUser = useSelector(state => state.currentUser)
     const [parentGoal, setParentGoal] = useState(null)
@@ -96,82 +94,57 @@ function DueDateModal({
         : `${translate('Select the date to postpone the')} ${translate(updateParentGoalReminderDate ? 'goal' : 'task')}`
     const showTabs = !updateParentGoalReminderDate && isObservedTask && !visibleCalendar
 
-    const runGoalPostpone = (targetDate, write) => {
-        const operation =
-            animateGoalPostpone && goal
-                ? postponeGoalWithMotion({ projectId, goal, targetDate }, write)
-                : Promise.resolve().then(write)
-        // Date rows do not await their callback. Handle a rejected bulk write here so it cannot
-        // become an unhandled promise; the motion wrapper has already restored the section.
-        return operation.catch(error => {
-            console.error('[DueDateModal] Error postponing goal:', error)
-            return null
-        })
+    const wrappedSaveDueDate = async (date, isObserved) => {
+        if (multipleTasks && tasks && tasks.length > 0) {
+            if (!saveDueDateBeforeSaveTask) {
+                console.error('[DueDateModal] saveDueDateBeforeSaveTask is undefined for multiple task update.')
+            }
+            // AT-2160: goal row first, then all task writes together — see applyPostponeToGoalTaskList.
+            await applyPostponeToGoalTaskList({
+                tasks,
+                updateGoalReminderDate:
+                    inParentGoal && updateParentGoalReminderDate ? () => updateParentGoalReminderDate(date) : null,
+                applyToTask: saveDueDateBeforeSaveTask ? t => saveDueDateBeforeSaveTask(t, date, isObserved) : null,
+                onTaskError: (t, error) => console.error(`[DueDateModal] Error updating task ${t.id}:`, error),
+            })
+        } else if (saveDueDateBeforeSaveTask) {
+            saveDueDateBeforeSaveTask(task, date, isObserved)
+        } else if (updateParentGoalReminderDate) {
+            updateParentGoalReminderDate(date)
+        } else {
+            console.error(
+                '[DueDateModal] No valid update function found (saveDueDateBeforeSaveTask or updateParentGoalReminderDate).'
+            )
+        }
+        closePopover()
     }
 
-    const wrappedSaveDueDate = (date, isObserved) => {
-        const write = async () => {
-            if (multipleTasks && tasks && tasks.length > 0) {
-                if (!saveDueDateBeforeSaveTask) {
-                    console.error('[DueDateModal] saveDueDateBeforeSaveTask is undefined for multiple task update.')
-                }
-                // AT-2160: goal row first, then all task writes together — see applyPostponeToGoalTaskList.
-                return applyPostponeToGoalTaskList({
-                    tasks,
-                    updateGoalReminderDate:
-                        inParentGoal && updateParentGoalReminderDate ? () => updateParentGoalReminderDate(date) : null,
-                    applyToTask: saveDueDateBeforeSaveTask ? t => saveDueDateBeforeSaveTask(t, date, isObserved) : null,
-                    onTaskError: (t, error) => console.error(`[DueDateModal] Error updating task ${t.id}:`, error),
-                    rejectOnError: animateGoalPostpone,
-                })
-            } else if (saveDueDateBeforeSaveTask) {
-                return saveDueDateBeforeSaveTask(task, date, isObserved)
-            } else if (updateParentGoalReminderDate) {
-                return updateParentGoalReminderDate(date)
-            } else {
-                console.error(
-                    '[DueDateModal] No valid update function found (saveDueDateBeforeSaveTask or updateParentGoalReminderDate).'
-                )
+    const wrappedSetToBacklog = async isObserved => {
+        if (multipleTasks && tasks && tasks.length > 0) {
+            if (!setToBacklogBeforeSaveTask) {
+                console.error('[DueDateModal] setToBacklogBeforeSaveTask is undefined for multiple task update.')
             }
+            // AT-2160: same shape as wrappedSaveDueDate above — goal first, tasks together.
+            await applyPostponeToGoalTaskList({
+                tasks,
+                updateGoalReminderDate:
+                    inParentGoal && updateParentGoalReminderDate
+                        ? () => updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
+                        : null,
+                applyToTask: setToBacklogBeforeSaveTask ? t => setToBacklogBeforeSaveTask(t, isObserved) : null,
+                onTaskError: (t, error) =>
+                    console.error(`[DueDateModal] Error setting task ${t.id} to backlog:`, error),
+            })
+        } else if (setToBacklogBeforeSaveTask) {
+            setToBacklogBeforeSaveTask(task, isObserved)
+        } else if (updateParentGoalReminderDate) {
+            updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
+        } else {
+            console.error(
+                '[DueDateModal] No valid backlog function found (setToBacklogBeforeSaveTask or updateParentGoalReminderDate).'
+            )
         }
-
-        const operation = runGoalPostpone(date, write)
         closePopover()
-        return operation
-    }
-
-    const wrappedSetToBacklog = isObserved => {
-        const write = async () => {
-            if (multipleTasks && tasks && tasks.length > 0) {
-                if (!setToBacklogBeforeSaveTask) {
-                    console.error('[DueDateModal] setToBacklogBeforeSaveTask is undefined for multiple task update.')
-                }
-                // AT-2160: same shape as wrappedSaveDueDate above — goal first, tasks together.
-                return applyPostponeToGoalTaskList({
-                    tasks,
-                    updateGoalReminderDate:
-                        inParentGoal && updateParentGoalReminderDate
-                            ? () => updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
-                            : null,
-                    applyToTask: setToBacklogBeforeSaveTask ? t => setToBacklogBeforeSaveTask(t, isObserved) : null,
-                    onTaskError: (t, error) =>
-                        console.error(`[DueDateModal] Error setting task ${t.id} to backlog:`, error),
-                    rejectOnError: animateGoalPostpone,
-                })
-            } else if (setToBacklogBeforeSaveTask) {
-                return setToBacklogBeforeSaveTask(task, isObserved)
-            } else if (updateParentGoalReminderDate) {
-                return updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
-            } else {
-                console.error(
-                    '[DueDateModal] No valid backlog function found (setToBacklogBeforeSaveTask or updateParentGoalReminderDate).'
-                )
-            }
-        }
-
-        const operation = runGoalPostpone(BACKLOG_DATE_NUMERIC, write)
-        closePopover()
-        return operation
     }
 
     return (
@@ -262,7 +235,6 @@ function DueDateModal({
                             updateParentGoalReminderDate={updateParentGoalReminderDate}
                             showAutoPostpone={true}
                             goal={goal}
-                            animateGoalPostpone={animateGoalPostpone}
                         />
                     </View>
                 )}

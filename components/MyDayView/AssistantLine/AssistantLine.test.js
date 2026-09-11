@@ -21,7 +21,6 @@ jest.mock('../../Icon', () => 'Icon')
 // own behaviour is covered by AssistantSwitchControl.test.js.
 jest.mock('./AssistantSwitchControl', () => 'AssistantSwitchControl')
 jest.mock('./AssistantOptions/helper', () => ({
-    calculateAmountOfOptionButtons: () => 2,
     getAssistantLineData: () => ({
         assistant: mockAssistant,
         assistantProject: mockProject,
