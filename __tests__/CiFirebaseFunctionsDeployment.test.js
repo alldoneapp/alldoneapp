@@ -104,10 +104,13 @@ exports.runManualTaskProjectMove = onTaskDispatched({}, worker)
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'firebase-deploy-'))
         try {
             fs.writeFileSync(path.join(dir, 'firebase'), '#!/bin/sh\necho "failed deploy"\nexit 17\n', { mode: 0o755 })
-            const run = spawnSync('bash', ['-c', deploy], {
+            // The Alpine web-test image has BusyBox sh, not bash. Both that
+            // shell and macOS sh support the deployment block's pipefail.
+            const run = spawnSync('/bin/sh', ['-c', deploy], {
                 encoding: 'utf8',
                 env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, CI_PROJECT_DIR: dir },
             })
+            expect(run.error).toBeUndefined()
             expect(run.status).toBe(17)
             expect(fs.readFileSync(path.join(dir, 'functions-deploy.log'), 'utf8')).toContain('failed deploy')
             const verification = job.script.findIndex(line => line.includes('assertFirebaseFunctionsDeployed.js'))

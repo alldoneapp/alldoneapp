@@ -45,7 +45,9 @@ describe('PT-4660: resume signals have ONE owner', () => {
     // reload and must not be merged in here — appResume would race it.
     const KNOWN_VISIBILITY_LISTENERS = [
         'components/ChatsView/unreadEmailArchiveContext.js',
-        'components/UIComponents/AssistantVoiceCallButton.js',
+        // Existing call lifecycle listener moved out of the launcher so calls
+        // survive navigation; this is still one owner, not a new listener.
+        'components/UIComponents/useAssistantVoiceCall.js',
         'utils/DailyAppReload.js',
         'utils/HelperFunctions.js',
     ]
