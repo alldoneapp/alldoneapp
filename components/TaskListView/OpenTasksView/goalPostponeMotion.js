@@ -18,17 +18,14 @@ import {
  * goal row plus every task, control and spacer below it. The registry gives that popup a short-lived
  * handle to the section without putting animation state in Redux or rebuilding every goal row.
  *
- * The write deliberately starts after the exit has collapsed. That keeps the measured section in
- * the tree for the complete run, prevents live task snapshots from tearing rows out halfway through,
- * and gives a rejected write one stable section to restore.
+ * The write deliberately starts after the exit has finished. That keeps the section in the tree
+ * for the complete run, prevents live task snapshots from tearing rows out halfway through, and
+ * gives a rejected write one stable section to restore. Layout dimensions are never animated:
+ * siblings keep their slots until the final list update removes this section.
  */
 
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 const motionByGoal = new Map()
-const listeners = new Set()
-// Kept out of the small per-hook run-id range used by completion exits; the general-section entry
-// consumes both kinds and must never mistake a new postpone for a previously played completion.
-let nextRunId = 1000000
 
 const keyFor = (projectId, goalId) => `${projectId}:${goalId}`
 
@@ -41,75 +38,43 @@ const registerGoalPostponeMotion = (projectId, goalId, begin) => {
     }
 }
 
-export const subscribeToGoalPostponeMotion = listener => {
-    if (typeof listener !== 'function') return () => {}
-    listeners.add(listener)
-    return () => listeners.delete(listener)
-}
-
-const publishMotionState = event => {
-    Array.from(listeners).forEach(listener => {
-        try {
-            listener(event)
-        } catch (error) {
-            console.warn('[goal postpone motion] listener failed', error)
-        }
-    })
-}
-
 export const postponeGoalWithMotion = async ({ projectId, goal, targetDate }, write) => {
     const begin = motionByGoal.get(keyFor(projectId, goal?.id))
     const run =
         targetLeavesToday(targetDate) && typeof begin === 'function'
             ? begin()
             : { settled: () => Promise.resolve(), cancel: () => {} }
-    const runId = run.revealReplacement ? ++nextRunId : 0
-    if (runId) publishMotionState({ projectId, goalId: goal.id, runId, active: true })
-
     try {
         await run.settled()
-        const result = await write()
-        if (runId) publishMotionState({ projectId, goalId: goal.id, runId, active: false })
-        return result
+        return await write()
     } catch (error) {
         run.cancel()
-        if (runId) publishMotionState({ projectId, goalId: goal.id, runId, active: false })
         throw error
     }
 }
 
-export default function useGoalPostponeMotion({ enabled = false, projectId, goalId, sectionGap = 0 } = {}) {
+export default function useGoalPostponeMotion({ enabled = false, projectId, goalId } = {}) {
     const reducedMotion = useReducedMotion()
     const [exiting, setExiting] = useState(false)
-    const [exitHeight, setExitHeight] = useState(0)
 
     const translateX = useRef(new Animated.Value(0)).current
     const opacity = useRef(new Animated.Value(1)).current
-    const height = useRef(new Animated.Value(0)).current
-    const marginBottom = useRef(new Animated.Value(0)).current
-    const measuredHeightRef = useRef(0)
+    const scaleY = useRef(new Animated.Value(1)).current
     const animationRef = useRef(null)
     const exitingRef = useRef(false)
     const mountedRef = useRef(true)
-
-    const onSectionLayout = useCallback(event => {
-        const measured = event?.nativeEvent?.layout?.height
-        if (measured > 0 && !exitingRef.current) measuredHeightRef.current = measured
-    }, [])
 
     const reset = useCallback(() => {
         animationRef.current?.stop()
         animationRef.current = null
         translateX.setValue(0)
         opacity.setValue(1)
-        height.setValue(0)
-        marginBottom.setValue(0)
+        scaleY.setValue(1)
         exitingRef.current = false
         if (mountedRef.current) {
-            setExitHeight(0)
             setExiting(false)
         }
-    }, [height, marginBottom, opacity, translateX])
+    }, [opacity, scaleY, translateX])
 
     const begin = useCallback(() => {
         if (!enabled || exitingRef.current || animationsAreDisabled()) {
@@ -120,11 +85,7 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
         setExiting(true)
         translateX.setValue(0)
         opacity.setValue(1)
-
-        const measured = measuredHeightRef.current
-        height.setValue(measured)
-        marginBottom.setValue(sectionGap)
-        setExitHeight(measured)
+        scaleY.setValue(1)
 
         let animation
         let holdMs
@@ -152,32 +113,14 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
                         useNativeDriver: false,
                     }),
                 ]),
-                ...(measured > 0 || sectionGap > 0
-                    ? [
-                          Animated.parallel([
-                              ...(measured > 0
-                                  ? [
-                                        Animated.timing(height, {
-                                            toValue: 0,
-                                            duration: POSTPONE_COLLAPSE_MS,
-                                            easing: Easing.inOut(Easing.cubic),
-                                            useNativeDriver: false,
-                                        }),
-                                    ]
-                                  : []),
-                              ...(sectionGap > 0
-                                  ? [
-                                        Animated.timing(marginBottom, {
-                                            toValue: 0,
-                                            duration: POSTPONE_COLLAPSE_MS,
-                                            easing: Easing.inOut(Easing.cubic),
-                                            useNativeDriver: false,
-                                        }),
-                                    ]
-                                  : []),
-                          ]),
-                      ]
-                    : []),
+                // Visually collapse the departing section without changing its layout slot. The
+                // write performs the single final list closure after the motion has finished.
+                Animated.timing(scaleY, {
+                    toValue: 0,
+                    duration: POSTPONE_COLLAPSE_MS,
+                    easing: Easing.inOut(Easing.cubic),
+                    useNativeDriver: false,
+                }),
             ])
             holdMs = POSTPONE_EXIT_TOTAL_MS
         }
@@ -189,10 +132,6 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
 
         return {
             started: true,
-            // Reduced motion explicitly avoids animated layout changes. Let the normal list update
-            // introduce any replacement only after the brief fade instead of expanding it beside
-            // a still-full-height goal section.
-            revealReplacement: !reducedMotion,
             settled: () => {
                 const remaining = holdMs - (Date.now() - startedAt)
                 return remaining > 0 ? new Promise(resolve => setTimeout(resolve, remaining)) : Promise.resolve()
@@ -203,7 +142,7 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
                 reset()
             },
         }
-    }, [enabled, height, marginBottom, opacity, reducedMotion, reset, sectionGap, translateX])
+    }, [enabled, opacity, reducedMotion, reset, scaleY, translateX])
 
     useEffect(() => {
         if (!enabled) return undefined
@@ -223,23 +162,15 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
         if (!exiting) return undefined
         const style = { opacity, pointerEvents: 'none' }
         if (!reducedMotion) {
-            style.transform = [{ translateX }]
-            if (exitHeight > 0) {
-                style.height = height
-                style.minHeight = 0
-                style.overflow = 'hidden'
-            }
-            if (sectionGap > 0) style.marginBottom = marginBottom
+            style.transform = [{ translateX }, { scaleY }]
         }
         return style
-    }, [exitHeight, exiting, height, marginBottom, opacity, reducedMotion, sectionGap, translateX])
+    }, [exiting, opacity, reducedMotion, scaleY, translateX])
 
-    return { onSectionLayout, sectionStyle, exiting }
+    return { sectionStyle, exiting }
 }
 
 /** Test seam. */
 export const resetGoalPostponeMotionRegistry = () => {
     motionByGoal.clear()
-    listeners.clear()
-    nextRunId = 1000000
 }
