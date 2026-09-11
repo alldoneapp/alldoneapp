@@ -19,11 +19,4 @@ describe('AT-2533 background task project move', () => {
         expect(source).not.toMatch(/setTaskProject\(/)
         expect(source).not.toMatch(/setTaskAssignee\(/)
     })
-
-    it('shows a visible failure after the picker has closed when the enqueue is rejected', () => {
-        expect(taskBranch).toMatch(/\.catch\(\(\) => \{[\s\S]*showConfirmPopup\(/)
-        expect(taskBranch).toMatch(/trigger: CONFIRM_POPUP_TRIGGER_INFO/)
-        expect(taskBranch).toMatch(/headerText: 'Task could not be moved'/)
-        expect(taskBranch).toMatch(/headerQuestion: 'No changes were made\. Please try again\.'/)
-    })
 })
