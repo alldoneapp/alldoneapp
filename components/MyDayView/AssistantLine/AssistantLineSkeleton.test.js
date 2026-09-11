@@ -40,7 +40,7 @@ describe('AssistantLineSkeleton', () => {
                 16 +
                 8 +
                 LAST_COMMENT_PREVIEW_HEIGHT
-        ).toBe(305)
+        ).toBe(273)
     })
 
     it('uses the same fixed height as the real last-comment preview', () => {

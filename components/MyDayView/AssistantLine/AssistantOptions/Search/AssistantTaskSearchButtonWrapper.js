@@ -8,7 +8,7 @@ import { hideFloatPopup, showFloatPopup } from '../../../../../redux/actions'
 import { colors } from '../../../../styles/global'
 import { translate } from '../../../../../i18n/TranslationService'
 
-export default function AssistantTaskSearchButtonWrapper() {
+export default function AssistantTaskSearchButtonWrapper({ onLayout }) {
     const dispatch = useDispatch()
     const [isOpen, setIsOpen] = useState(false)
     const isUnmountedRef = useRef(false)
@@ -55,6 +55,7 @@ export default function AssistantTaskSearchButtonWrapper() {
                 iconColor="#ffffff"
                 textStyle={localStyles.searchText}
                 onPress={openModal}
+                onLayout={onLayout}
             />
         </AppPopover>
     )
