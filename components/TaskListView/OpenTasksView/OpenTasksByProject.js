@@ -29,8 +29,7 @@ import AssistantScheduleDateSection from './OpenTaskViewForAssistants/AssistantS
 import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSchedule'
 import TaskListSkeleton from '../TaskListSkeleton'
 import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
-import useSuggestedTaskProjectExit from './useSuggestedTaskProjectExit'
-import useGoalSectionExitMotion from './goalSectionExitMotion'
+import useTaskCompletionProjectExit from './useTaskCompletionProjectExit'
 
 function OpenTasksByProject({
     firstProject,
@@ -85,23 +84,23 @@ function OpenTasksByProject({
             (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0))
 
     /**
-     * AT-2550 / AT-2551 — keep the broad, coloured completed-project sweep disconnected. The one
-     * deliberately animated departure is the reported suggested-task workflow bypass: when the
-     * board independently confirms that this exact project is now leaving, keep its card mounted
-     * just long enough for the same quiet fade-and-collapse used by goal sections.
+     * AT-2558 — keep AT-2551's broad, coloured completion sweep disconnected, but do not let the
+     * whole card disappear abruptly after its final task row completes or leaves Today through a
+     * user-facing postpone. A row reports either eligible transition; only when the board
+     * independently confirms that this exact project is now leaving do we keep its card mounted for
+     * AT-2495's original mask, dust and sparks.
      */
-    const suggestedProjectExitEnabled =
+    const taskCompletionProjectExitEnabled =
         !inSelectedProject &&
         !assistantProfileMode &&
         !isAnonymous &&
         !taskFiltersActive &&
         currentUserId === loggedUser.uid
-    const { exitRunId, holdProjectLine } = useSuggestedTaskProjectExit({
+    const { exitRunId, holdProjectLine } = useTaskCompletionProjectExit({
         projectId,
-        enabled: suggestedProjectExitEnabled,
+        enabled: taskCompletionProjectExitEnabled,
         lineWouldLeave: baseHideProjectData,
     })
-    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
     const hideProjectData = baseHideProjectData && !holdProjectLine
 
     // AT-2430: which assistant this project's line speaks as — the project's own, the default
@@ -174,8 +173,9 @@ function OpenTasksByProject({
                     projectColor={projectColor}
                     embedded={assistantProfileMode}
                     selected={inSelectedProject}
-                    style={[{ marginBottom: inSelectedProject ? 32 : 28 }, sectionStyle]}
-                    onLayout={onSectionLayout}
+                    style={{ marginBottom: inSelectedProject ? 32 : 28 }}
+                    completedDisintegrationRunId={exitRunId}
+                    completedDisintegrationLineWillLeave={baseHideProjectData}
                 >
                     {inSelectedProject && <NeedShowMoreOpenTasksButton projectId={projectId} />}
                     {!assistantProfileMode && (

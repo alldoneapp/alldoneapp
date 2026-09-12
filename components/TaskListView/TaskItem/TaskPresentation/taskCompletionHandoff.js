@@ -55,8 +55,6 @@ const INERT_RUN = {
  *   list and still gets the exit, but it must not be swept to 100%, tinted green or celebrated at
  *   the checkbox — it would be congratulated for finishing something it has only passed on. Same
  *   flag, same meaning, as the one `CheckBoxWrapper` passes.
- * @param {boolean} [options.projectExitCandidate=false] AT-2550 — identifies the suggested-task
- *   bypass whose project disappearance may beat the independent sidebar counter.
  * @returns {{settled: function(): Promise<void>, cancel: function(): void}}
  */
 export const startTaskCompletionMotion = (completionMotion, options = {}) => {
