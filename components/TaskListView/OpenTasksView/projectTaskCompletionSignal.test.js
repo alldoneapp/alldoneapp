@@ -1,10 +1,11 @@
 import {
     publishProjectTaskCompletion,
+    publishProjectTaskPostpone,
     resetProjectTaskCompletionListeners,
     subscribeToProjectTaskCompletions,
 } from './projectTaskCompletionSignal'
 
-describe('projectTaskCompletionSignal (AT-2550)', () => {
+describe('projectTaskCompletionSignal (AT-2558)', () => {
     beforeEach(() => {
         resetProjectTaskCompletionListeners()
     })
@@ -16,6 +17,18 @@ describe('projectTaskCompletionSignal (AT-2550)', () => {
         subscribeToProjectTaskCompletions('p2', projectB)
 
         publishProjectTaskCompletion({ projectId: 'p1', taskId: 't1' })
+
+        expect(projectA).toHaveBeenCalledWith({ projectId: 'p1', taskId: 't1' })
+        expect(projectB).not.toHaveBeenCalled()
+    })
+
+    it('delivers a qualifying postpone through the same project-scoped channel', () => {
+        const projectA = jest.fn()
+        const projectB = jest.fn()
+        subscribeToProjectTaskCompletions('p1', projectA)
+        subscribeToProjectTaskCompletions('p2', projectB)
+
+        publishProjectTaskPostpone({ projectId: 'p1', taskId: 't1' })
 
         expect(projectA).toHaveBeenCalledWith({ projectId: 'p1', taskId: 't1' })
         expect(projectB).not.toHaveBeenCalled()

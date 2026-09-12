@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing } from 'react-native'
 
 import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
+import { publishProjectTaskPostpone } from '../../OpenTasksView/projectTaskCompletionSignal'
 
 /**
  * AT-2541 — the short exit used when postponing a top-level task out of Today/My Day.
@@ -24,6 +25,12 @@ const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 const motionByTask = new Map()
 
 const keyFor = (projectId, taskId) => `${projectId}:${taskId}`
+
+const inertRun = (projectExitEligible = false) => ({
+    settled: () => Promise.resolve(),
+    cancel: () => {},
+    projectExitEligible,
+})
 
 export const targetLeavesToday = (targetDate, now = Date.now()) =>
     Number.isFinite(targetDate) && targetDate > new Date(now).setHours(23, 59, 59, 999)
@@ -49,13 +56,15 @@ export const postponeTaskWithMotion = async (
 ) => {
     const begin = motionByTask.get(keyFor(projectId, task?.id))
     const canLeave = targetLeavesToday(targetDate)
-    const run =
-        canLeave && typeof begin === 'function'
-            ? begin({ updatesDueDate, updatesObservedDate })
-            : { settled: () => Promise.resolve(), cancel: () => {} }
+    const run = canLeave && typeof begin === 'function' ? begin({ updatesDueDate, updatesObservedDate }) : inertRun()
 
     try {
         await run.settled()
+        // Report immediately before the write. The project hook must already remember why this
+        // row is leaving when the local Firestore snapshot removes the final task from Today.
+        // It still requires the board's independent empty-project verdict, so this cannot animate
+        // a project that retains another task, OKR, or visible section.
+        if (run.projectExitEligible) publishProjectTaskPostpone({ projectId, taskId: task.id })
         return await write()
     } catch (error) {
         run.cancel()
@@ -96,7 +105,7 @@ export default function useTaskPostponeMotion({
             const rowUsesObservedDate = isObservedTask && !isToReviewTask
             const changesPlacementDate = rowUsesObservedDate ? updatesObservedDate : updatesDueDate
             if (!enabled || !changesPlacementDate || exitingRef.current || animationsAreDisabled()) {
-                return { settled: () => Promise.resolve(), cancel: () => {} }
+                return inertRun(enabled && changesPlacementDate && !exitingRef.current)
             }
 
             exitingRef.current = true
@@ -160,6 +169,7 @@ export default function useTaskPostponeMotion({
                     cancelled = true
                     reset()
                 },
+                projectExitEligible: true,
             }
         },
         [enabled, isObservedTask, isToReviewTask, opacity, projectId, reducedMotion, reset, scaleY, taskId, translateX]

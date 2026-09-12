@@ -213,17 +213,14 @@ export default class SuggestedModal extends Component {
                 const estimations = { ...task.estimations, [OPEN_STEP]: estimation }
                 // Skips every workflow step and completes the task, so this is always a real
                 // completion (AT-2495).
-                return completeTaskWithMotion(
-                    this.props.completionMotion,
-                    { isCompletion: true, projectExitCandidate: true },
-                    () =>
-                        moveSuggestedTaskToDoneBypassingWorkflow({
-                            projectId,
-                            task,
-                            estimations,
-                            comment: commentWithAttachments,
-                            checkBoxId,
-                        })
+                return completeTaskWithMotion(this.props.completionMotion, { isCompletion: true }, () =>
+                    moveSuggestedTaskToDoneBypassingWorkflow({
+                        projectId,
+                        task,
+                        estimations,
+                        comment: commentWithAttachments,
+                        checkBoxId,
+                    })
                 )
             })
             .catch(error => {
