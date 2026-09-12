@@ -442,6 +442,9 @@ function hasValidCompactThreadRuntimeContext(toolRuntimeContext = null) {
 
 function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = null) {
     if (!Array.isArray(allowedTools)) return []
+    // Presentation is an Anna surface capability, not a change to the saved assistant's tools.
+    allowedTools = allowedTools.filter(name => !['show_workspace', 'highlight_workspace'].includes(name))
+    if (toolRuntimeContext?.annaConversation) allowedTools = [...allowedTools, 'show_workspace', 'highlight_workspace']
     if (!allowedTools.includes(COMPACT_THREAD_CONTEXT_TOOL_KEY)) return [...allowedTools]
     if (hasValidCompactThreadRuntimeContext(toolRuntimeContext)) return [...allowedTools]
 
@@ -2323,6 +2326,10 @@ async function resolveDelegationTargetByToolName(toolName, toolRuntimeContext = 
 }
 
 async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRuntimeContext = null) {
+    if (['show_workspace', 'highlight_workspace'].includes(toolName)) {
+        const { loadAnnaContext } = require('./annaWorkspace')
+        return !!(await loadAnnaContext(require('firebase-admin').firestore(), toolRuntimeContext))
+    }
     if (!Array.isArray(assistantAllowedTools)) return false
     if (toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY) {
         return assistantAllowedTools.includes(toolName) && hasValidCompactThreadRuntimeContext(toolRuntimeContext)
@@ -5188,6 +5195,16 @@ async function executeToolNatively(
     // Keep the requesting user for access/search context, but use the assistant as actor
     // for tool-generated feeds so the feed reflects who performed the tool action.
     const creatorId = requestUserId || assistantId
+
+    if (toolName === 'highlight_workspace') {
+        const { requestAnnaHighlight } = require('./annaHighlight')
+        return requestAnnaHighlight({ db: admin.firestore(), runtime: toolRuntimeContext, args: toolArgs })
+    }
+
+    if (toolName === 'show_workspace') {
+        const { requestAnnaPresentation } = require('./annaWorkspace')
+        return requestAnnaPresentation({ db: admin.firestore(), runtime: toolRuntimeContext, args: toolArgs })
+    }
 
     if (isTalkToAssistantToolName(toolName)) {
         const callerAssistant = await getAssistantForChat(projectId, assistantId, requestUserId, {

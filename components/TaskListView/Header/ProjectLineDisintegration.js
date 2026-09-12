@@ -52,9 +52,8 @@ import {
  *   • It does NOT clip its own overflow, so a particle may drift a few pixels above the row. Dust
  *     stopping dead at an invisible line is exactly what gives a particle layer away.
  *
- * Reduced motion never reaches here: `ProjectSection` shares the sweep motion's accessibility gate
- * with the direct AT-2558 exit, so there is no decorative layer to suppress and the line simply
- * leaves the way it always did.
+ * Reduced motion never reaches here: `useProjectCompletedSweepMotion` stands the whole run down, so
+ * there is no decorative layer to suppress and the line simply leaves the way it always did.
  */
 
 const DUST_TONES = [colors.Text03, colors.Grey400, colors.Text02]
@@ -77,7 +76,8 @@ const SPARK_MIN_ARM = 1.4
  *   a particle can never lift off before or after the front that freed it.
  * @param {number} props.height The card's measured height, frozen when the exit began. The layer
  *   keeps it while the card underneath collapses, rather than collapsing with it.
- * @param {string} props.tint The visible project-line colour, used by the tinted sparks.
+ * @param {string} props.tint The project's colour, the same one the completed sweep has just
+ *   crossed the row in.
  */
 export default function ProjectLineDisintegration({ progress, height, tint, motes = DUST_MOTES, sparks = SPARKS }) {
     /**
