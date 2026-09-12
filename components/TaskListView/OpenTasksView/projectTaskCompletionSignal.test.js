@@ -4,7 +4,7 @@ import {
     subscribeToProjectTaskCompletions,
 } from './projectTaskCompletionSignal'
 
-describe('projectTaskCompletionSignal (AT-2550)', () => {
+describe('projectTaskCompletionSignal (AT-2558)', () => {
     beforeEach(() => {
         resetProjectTaskCompletionListeners()
     })

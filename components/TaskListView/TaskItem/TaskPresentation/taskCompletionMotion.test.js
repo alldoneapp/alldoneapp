@@ -528,17 +528,6 @@ describe('useTaskCompletionMotion', () => {
             expect(onCompletionStart).toHaveBeenCalledTimes(1)
         })
 
-        it('forwards the suggested-bypass project-exit hint with the completion', async () => {
-            const onCompletionStart = jest.fn()
-            await renderHarness({ onCompletionStart })
-
-            act(() => {
-                motion.beginCompletionMotion({ isCompletion: true, projectExitCandidate: true })
-            })
-
-            expect(onCompletionStart).toHaveBeenCalledWith({ projectExitCandidate: true })
-        })
-
         it('says nothing when a workflow task is only handed to the next reviewer', async () => {
             // The row leaves the list and gets the exit, but the task is not done. A goal
             // celebrated here would be congratulated for work it has only passed on.

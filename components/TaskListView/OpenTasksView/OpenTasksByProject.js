@@ -29,7 +29,7 @@ import AssistantScheduleDateSection from './OpenTaskViewForAssistants/AssistantS
 import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSchedule'
 import TaskListSkeleton from '../TaskListSkeleton'
 import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
-import useSuggestedTaskProjectExit from './useSuggestedTaskProjectExit'
+import useTaskCompletionProjectExit from './useTaskCompletionProjectExit'
 import useGoalSectionExitMotion from './goalSectionExitMotion'
 
 function OpenTasksByProject({
@@ -85,20 +85,20 @@ function OpenTasksByProject({
             (thereAreNotTasksInFirstDay || filteredOpenTasksDates.length == 0))
 
     /**
-     * AT-2550 / AT-2551 — keep the broad, coloured completed-project sweep disconnected. The one
-     * deliberately animated departure is the reported suggested-task workflow bypass: when the
-     * board independently confirms that this exact project is now leaving, keep its card mounted
-     * just long enough for the same quiet fade-and-collapse used by goal sections.
+     * AT-2558 — keep AT-2551's broad, coloured completion sweep disconnected, but do not let the
+     * whole card disappear abruptly after its final task row completes. A row reports every genuine
+     * completion; only when the board independently confirms that this exact project is now leaving
+     * do we keep its card mounted for the same quiet fade-and-collapse used by goal sections.
      */
-    const suggestedProjectExitEnabled =
+    const taskCompletionProjectExitEnabled =
         !inSelectedProject &&
         !assistantProfileMode &&
         !isAnonymous &&
         !taskFiltersActive &&
         currentUserId === loggedUser.uid
-    const { exitRunId, holdProjectLine } = useSuggestedTaskProjectExit({
+    const { exitRunId, holdProjectLine } = useTaskCompletionProjectExit({
         projectId,
-        enabled: suggestedProjectExitEnabled,
+        enabled: taskCompletionProjectExitEnabled,
         lineWouldLeave: baseHideProjectData,
     })
     const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
