@@ -89,4 +89,6 @@ The marker was verified in the local browser against the real staging notes view
 
 The normal production pipeline `2843573710` deployed `921382bd05b09bd6fea1c64065b5ad7bf99f44f9` after the direct Anna release. Both domains share one Hosting site, so both began serving that build, which did not contain the unpushed Anna commits. This was a missing source integration, not a DNS or browser-cache failure. HTTPS is now valid on the Anna domain.
 
-The Anna commits are being merged with the latest remote `master`, preserving the newer task completion and postponement animations. Anna must be delivered through the regular master pipeline, with the remote source, deployment marker and served OTA version verified together. A direct deployment of unpushed source does not constitute a durable release.
+The Anna commits were merged into remote `master` as `eb4ae3ded61ac54f8a7adad2156834d9c3b16ffb`, preserving the newer task completion and postponement animations. Anna must be delivered through the regular master pipeline, with the remote source, deployment marker and served OTA version verified together. A direct deployment of unpushed source does not constitute a durable release.
+
+The first integrated CI run found that highlighting added redundant visibility listeners, violating the existing centralized lifecycle guard. Highlighting now checks tab visibility through its existing bounded polling. A regression test verifies that hidden screen context is cleared and returning to the tab does not replay a dismissed marker.
