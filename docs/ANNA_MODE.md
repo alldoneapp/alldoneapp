@@ -40,7 +40,7 @@ npm run build-web-webpack
 
 ## Production rollout
 
-The Firebase Hosting custom domain has been registered on the existing production site `alldonealeph`. It is not serving Anna yet.
+The Firebase Hosting custom domain is registered on the existing production site `alldonealeph`. Rollout uses the same application bundle and production data; the hostname selects the Anna shell.
 
 1. Publish DNS CNAME `anna` to `alldonealeph.web.app` at the authoritative DNS provider. Wait for Firebase ownership and TLS certificate verification.
 2. Add `anna.alldone.app` to Firebase Authentication authorized domains. Add `https://anna.alldone.app/__/auth/handler` to the existing Google OAuth client's authorized redirect URIs. Verify Google sign-in on the new origin, including mobile.
@@ -48,9 +48,9 @@ The Firebase Hosting custom domain has been registered on the existing productio
 4. Build with production frontend configuration and deploy the Hosting bundle. The hostname check selects Anna only on the new domain. Do not deploy a bundle built with staging configuration.
 5. Verify one persistent conversation across reloads, text and voice transcripts, assistant-triggered task/note navigation, pin/defer behavior, mobile keyboard/back behavior and the normal `my.alldone.app` interface. Exercise a real GPT-Live call, transcript persistence, tool action and clean hangup.
 
-Automatic approval review rejected the attempted deployment to shared production text and voice handlers, citing their impact on the current app and the reconstructed release source containing production configuration. That deployment was not retried. Explicit user approval is required before continuing it.
+The user explicitly authorized the remaining production configuration and deployment on 2026-09-12 after completing DNS. The CNAME is confirmed by the authoritative nameserver and Firebase; Firebase Authentication now authorizes `anna.alldone.app`. The existing production Google OAuth client now includes `https://anna.alldone.app` as a JavaScript origin and `https://anna.alldone.app/__/auth/handler` as a redirect URI. Existing entries were preserved.
 
-Production Hosting, shared assistant handlers, DNS and OAuth configuration have not been changed by this implementation. Only the custom-domain registration has been completed in production.
+Release source: local commit `31311278de`. The isolated production bundle uses Firebase project `alldonealeph` and OTA version `31311278de`, channel `ci`; the workspace staging configuration was preserved. Deployment and live verification results follow below.
 
 ## Verification on 2026-09-12
 
@@ -69,4 +69,18 @@ The client retains the real DOM text-node references. Existing SocialText word s
 
 The client reports `shown` only after resolving a current visible target. Queued tool results are not proof of display. Marking is disabled while the mobile conversation overlays the workspace. Anna is instructed to mark before explaining the selected passage; this does not provide word-level audio timing synchronization.
 
-The marker was verified in the local browser against the real staging notes view by invoking the same server tool handler on the existing private staging conversation. The exact note title was visibly highlighted and a caption rendered. Scrolling moved the marker with the title; Escape removed the overlay while preserving the note. This check did not consume AI Gold or change the note. The new tool has not been deployed to production; live model selection and speech timing remain rollout checks.
+The marker was verified in the local browser against the real staging notes view by invoking the same server tool handler on the existing private staging conversation. The exact note title was visibly highlighted and a caption rendered. Scrolling moved the marker with the title; Escape removed the overlay while preserving the note. This check did not consume AI Gold or change the note. The tool is included in the production text and GPT-Live handlers deployed below. Live model selection and speech timing on the new domain remain rollout checks.
+
+## Production release on 2026-09-12
+
+- Hosting release completed successfully; `https://my.alldone.app/ota/latest.json` serves version `31311278de`, channel `ci`, built at `2026-09-12T20:27:13.651Z`.
+- `getAnnaConversationSecondGen` is active as revision `getannaconversationsecondgen-00001-fey`.
+- `askToBotSecondGen` is active as revision `asktobotsecondgen-01004-bet`.
+- `runWhatsAppRealtimeCall` is active as revision `runwhatsapprealtimecall-00408-zil`.
+- All three use `firebase-adminsdk-mpg7p@alldonealeph.iam.gserviceaccount.com`.
+- An unauthenticated request to the new endpoint returns `UNAUTHENTICATED`, as intended.
+- The signed-in production browser still renders the normal sidebar, tasks and existing assistant under `my.alldone.app`.
+- The latest highlighting checks passed 29 web tests and 332 Functions tests; the production-configured webpack build passed.
+- The first Hosting attempt uploaded successfully but failed while resolving Functions metadata during concurrent creation of the new endpoint. Retrying after all three Functions completed succeeded.
+- DNS and Firebase ownership are active. Firebase's HTTP certificate challenge matches, but the certificate remains `CERT_VALIDATING` and HTTPS hostname validation is not yet passing. Login, chat, presentation and an actual microphone call on `anna.alldone.app` therefore remain pending certificate activation. No browser certificate warning was bypassed.
+- The implementation is committed locally. No Git push or unrelated deployment was performed.
