@@ -1638,22 +1638,11 @@ visible but static, while task-loading skeletons continue to use their independe
 The animation modules remain available for now so this product decision is a small, reversible
 wiring change rather than a broad deletion of the earlier motion work.
 
-AT-2558 adds one narrow exception: when any genuine top-level task completion **or user-facing
-postpone out of Today** is followed by the board confirming that its project is leaving, the card
-gets AT-2495's original 1.2s right-to-left mask, dust and sparks. It starts the disintegration
-directly through `projectDisintegrationMotion`; the broad FILL → SHIMMER → PULSE colour sweep stays
-disconnected. Completion reports before its held write; postpone reports from the shared
-`postponeTaskWithMotion` coordinator after the row's short exit and immediately before its write.
-That ordering means the exit does not depend on which of the open-task and sidebar snapshots arrives
-first. It also keeps the signal at the UI boundary that knows a mounted, top-level Today row is
-actually changing its placement date: do not publish from generic Firestore due-date helpers, which
-also serve background, bulk, subtask and non-Today changes. Quick dates, custom calendar dates,
-Someday and single-task auto-postpone all converge on this coordinator. Date-list drag/drop only
-reorders inside one list (cross-list drops remain unimplemented), and bulk organize mode remains
-excluded. A signal alone cannot start the exit; filters, workflow handoffs, subtasks, projects with
-other visible content, selected-project boards, assistant profiles and reduced-motion paths retain
-the immediate/static behavior above. If new work lands while the card is dissolving, both the hold
-and mask are withdrawn immediately so the live project returns whole and clickable.
+AT-2550 is one narrow exception: when a suggested task explicitly bypasses its workflow and the
+board then confirms that its project is leaving, the existing card gets the neutral goal-section
+fade and collapse. This does not reconnect the coloured sweep or its completion props, and ordinary
+empty-project, filter, access, selected-project, assistant-profile, and reduced-motion paths retain
+the immediate/static behavior above.
 
 ### In-app GPT-Live voice calls
 

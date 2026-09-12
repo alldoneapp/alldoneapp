@@ -1,0 +1,669 @@
+.anna-shell {
+    --anna-ink: #243c38;
+    --anna-muted: #73827e;
+    --anna-accent: #276b5e;
+    color: var(--anna-ink);
+    background: #f7f8f5;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    font-family: Roboto, Arial, sans-serif;
+}
+.anna-shell * {
+    box-sizing: border-box;
+}
+.anna-shell button,
+.anna-shell textarea,
+.anna-shell a {
+    font: inherit;
+}
+.anna-shell button {
+    cursor: pointer;
+}
+.anna-shell button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.anna-shell button:focus-visible,
+.anna-shell a:focus-visible,
+.anna-shell textarea:focus-visible {
+    outline: 2px solid var(--anna-accent);
+    outline-offset: 3px;
+}
+.anna-header {
+    height: 72px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 0 30px;
+    border-bottom: 1px solid #e1e7e2;
+    background: #fff;
+}
+.anna-brand {
+    background: none;
+    border: 0;
+    color: var(--anna-ink);
+    font-size: 30px !important;
+    font-weight: 600 !important;
+    letter-spacing: -1.3px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.anna-brand span {
+    font-size: 13px;
+    letter-spacing: 0;
+    font-weight: 400;
+    color: var(--anna-muted);
+}
+.anna-header-note {
+    color: var(--anna-muted);
+    font-size: 13px;
+}
+.anna-search {
+    margin-left: auto;
+    border: 0;
+    background: none;
+    color: var(--anna-ink);
+    font-size: 13px !important;
+}
+.anna-workspace-link {
+    color: var(--anna-ink);
+    text-decoration: none;
+    font-size: 13px !important;
+}
+.anna-layout {
+    display: grid;
+    grid-template-columns: minmax(330px, 38%) minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+}
+.anna-conversation {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    border-right: 1px solid #e1e7e2;
+    background: #fff;
+    position: relative;
+}
+.anna-conversation-heading {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 24px 26px 20px;
+    flex: none;
+}
+.anna-small-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e3eee8;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+}
+.anna-small-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.anna-conversation-heading strong {
+    font-size: 15px;
+    font-weight: 500;
+}
+.anna-conversation-heading > div > span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 5px;
+    font-size: 12px;
+    color: var(--anna-muted);
+}
+.anna-shell i {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #5b9b83;
+}
+.anna-context {
+    display: flex;
+    align-items: center;
+    margin: 0 24px 8px;
+    padding: 8px 12px;
+    background: #edf4ef;
+    border-radius: 8px;
+    font-size: 12px;
+    gap: 8px;
+}
+.anna-context span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.anna-context button {
+    margin-left: auto;
+    border: 0;
+    background: none;
+}
+.anna-messages {
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+    padding: 16px 24px 24px;
+    overscroll-behavior: contain;
+    overflow-wrap: anywhere;
+}
+.anna-welcome {
+    padding: 48px 4px 28px;
+}
+.anna-eyebrow {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--anna-muted);
+}
+.anna-welcome h1 {
+    font-size: 34px;
+    font-weight: 400;
+    letter-spacing: -1.1px;
+    line-height: 1.2;
+    margin: 16px 0;
+}
+.anna-welcome p {
+    color: var(--anna-muted);
+    font-size: 15px;
+    line-height: 1.65;
+    margin: 0 0 30px;
+}
+.anna-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    align-items: flex-start;
+}
+.anna-suggestions button {
+    border: 1px solid #e1e7e2;
+    background: #fafbf9;
+    border-radius: 9px;
+    color: var(--anna-ink);
+    padding: 11px 14px;
+    font-size: 13px;
+    text-align: left;
+}
+.anna-message {
+    border-radius: 12px;
+    margin: 0 0 24px;
+    padding: 10px 0;
+}
+.anna-message-user {
+    margin-left: 32px;
+    background: #f0f4ef;
+    padding: 14px 16px;
+}
+.anna-message-author {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--anna-muted);
+}
+.anna-message-author time {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 400;
+}
+.anna-composer {
+    flex: none;
+    margin: 0 22px;
+    padding-top: 8px;
+}
+.anna-composer-field {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    padding: 10px 10px 10px 14px;
+    border: 1px solid #d9e2db;
+    background: #fafbf9;
+    border-radius: 15px;
+}
+.anna-composer textarea {
+    min-width: 0;
+    resize: none;
+    width: 100%;
+    background: transparent;
+    border: 0;
+    color: var(--anna-ink);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 4px 0;
+}
+.anna-composer textarea::placeholder {
+    color: #84918b;
+}
+.anna-send {
+    width: 36px;
+    height: 36px;
+    flex: none;
+    border: 0;
+    border-radius: 50%;
+    background: var(--anna-accent);
+    color: white;
+    font-size: 23px !important;
+}
+.anna-composer-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 10px;
+    color: var(--anna-muted);
+    padding: 9px 2px;
+}
+.anna-voice-controls {
+    padding: 4px 22px 16px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex: none;
+}
+.anna-end-call {
+    color: #a12f36;
+    background: #fbefef;
+    border: 1px solid #f2d2d5;
+    border-radius: 20px;
+    padding: 8px 12px;
+}
+.anna-duration {
+    font-size: 12px;
+    color: var(--anna-muted);
+}
+.anna-stage {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.anna-presence {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 32px;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    background: radial-gradient(ellipse at 50% 40%, #e5eee3 0, #f3f4ed 48%, #f8f8f3 100%);
+}
+.anna-presence-kicker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--anna-muted);
+    margin-bottom: 32px;
+}
+.anna-portrait {
+    width: clamp(160px, 23vw, 330px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    padding: 9px;
+    border: 1px solid #d7e0d1;
+    box-shadow: 0 15px 70px #465e4314;
+    flex: none;
+}
+.anna-portrait img,
+.anna-portrait > span {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    background: #dbe7da;
+    display: grid;
+    place-items: center;
+    font-size: 70px;
+    color: #608272;
+}
+.anna-presence-live .anna-portrait {
+    border-color: #639984;
+    box-shadow:
+        0 0 0 10px #6b9b7715,
+        0 15px 70px #465e4314;
+}
+.anna-presence-copy {
+    text-align: center;
+    margin: 30px 0 26px;
+}
+.anna-presence-copy h2 {
+    font-size: 34px;
+    font-weight: 400;
+    letter-spacing: -1px;
+    margin: 10px 0;
+}
+.anna-presence-copy p {
+    font-size: 14px;
+    color: var(--anna-muted);
+    line-height: 1.5;
+}
+.anna-quick-views {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.anna-quick-views button {
+    min-width: 110px;
+    display: flex;
+    gap: 24px;
+    justify-content: space-between;
+    background: #ffffff90;
+    border: 1px solid #dce4d8;
+    border-radius: 10px;
+    padding: 13px 16px;
+    color: var(--anna-ink);
+    font-size: 13px;
+}
+.anna-workspace {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    flex-direction: column;
+    background: white;
+}
+.anna-workspace-toolbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #e1e7e2;
+    background: #fafbf9;
+}
+.anna-workspace-toolbar button {
+    border: 0;
+    background: transparent;
+    color: var(--anna-ink);
+    font-size: 12px;
+    padding: 8px;
+    border-radius: 6px;
+}
+.anna-workspace-toolbar button:hover,
+.anna-workspace-toolbar button[aria-pressed='true'] {
+    background: #e6eee4;
+}
+.anna-workspace-toolbar nav {
+    display: flex;
+    margin-left: auto;
+}
+.anna-workspace-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    isolation: isolate;
+}
+.anna-pending {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    padding: 12px 16px;
+    background: #edf4ef;
+    font-size: 13px;
+}
+.anna-pending span {
+    flex: 1;
+}
+.anna-pending button,
+.anna-error button {
+    border: 1px solid #c9dbce;
+    background: white;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--anna-accent);
+}
+.anna-error {
+    color: #a3373c;
+    padding: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.anna-empty {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 14px;
+    padding: 28px;
+}
+.anna-muted {
+    color: var(--anna-muted);
+    font-size: 13px;
+}
+.anna-text-button {
+    border: 0;
+    background: none;
+    color: var(--anna-accent);
+    padding: 8px;
+}
+.anna-latest {
+    align-self: center;
+    border: 1px solid #dce4d8;
+    border-radius: 20px;
+    padding: 7px 14px;
+    color: var(--anna-accent);
+    background: white;
+}
+.anna-mobile-dock {
+    display: none;
+}
+@media (max-width: 760px) {
+    .anna-header {
+        height: 54px;
+        padding: 0 16px;
+    }
+    .anna-header-note {
+        display: none;
+    }
+    .anna-brand {
+        font-size: 26px !important;
+    }
+    .anna-layout {
+        display: flex;
+        flex-direction: column-reverse;
+        position: relative;
+    }
+    .anna-stage {
+        flex: 0 0 30%;
+    }
+    .anna-conversation {
+        flex: 1;
+        border-right: 0;
+        border-top: 1px solid #e1e7e2;
+    }
+    .anna-conversation-heading {
+        display: none;
+    }
+    .anna-presence {
+        flex-direction: row;
+        gap: 20px;
+        padding: 14px 20px;
+        justify-content: center;
+    }
+    .anna-presence-kicker,
+    .anna-quick-views {
+        display: none;
+    }
+    .anna-portrait {
+        width: 110px;
+        padding: 4px;
+    }
+    .anna-presence-copy {
+        margin: 0;
+        text-align: left;
+    }
+    .anna-presence-copy h2 {
+        font-size: 23px;
+    }
+    .anna-presence-copy p {
+        font-size: 12px;
+        max-width: 180px;
+        margin-bottom: 0;
+    }
+    .anna-presence-copy .anna-eyebrow {
+        font-size: 9px;
+    }
+    .anna-messages {
+        padding: 14px 16px;
+    }
+    .anna-welcome {
+        padding: 18px 4px;
+    }
+    .anna-welcome h1 {
+        font-size: 28px;
+    }
+    .anna-welcome p {
+        font-size: 13px;
+        margin-bottom: 16px;
+    }
+    .anna-suggestions {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    .anna-suggestions button {
+        font-size: 12px;
+        padding: 9px 10px;
+    }
+    .anna-composer {
+        margin: 0 14px;
+    }
+    .anna-composer-footer span:last-child {
+        display: none;
+    }
+    .anna-voice-controls {
+        padding: 0 14px max(8px, env(safe-area-inset-bottom));
+    }
+    .anna-has-workspace .anna-stage {
+        flex: 1;
+    }
+    .anna-has-workspace .anna-conversation {
+        flex: 0 0 auto;
+    }
+    .anna-has-workspace .anna-conversation .anna-messages,
+    .anna-has-workspace .anna-context {
+        display: none;
+    }
+    .anna-has-workspace .anna-mobile-dock {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 16px;
+        width: 100%;
+        background: white;
+        border: 0;
+        font-size: 13px;
+        color: var(--anna-ink);
+    }
+    .anna-mobile-dock img {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .anna-mobile-dock span:last-child {
+        margin-left: auto;
+    }
+    .anna-chat-expanded.anna-has-workspace .anna-conversation {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        height: 78%;
+        z-index: 30;
+        border-radius: 18px 18px 0 0;
+        box-shadow: 0 -12px 45px #18302630;
+        overflow: hidden;
+    }
+    .anna-chat-expanded.anna-has-workspace .anna-conversation .anna-messages {
+        display: block;
+    }
+    .anna-workspace-toolbar {
+        padding: 4px 8px;
+        gap: 0;
+    }
+    .anna-workspace-toolbar button {
+        font-size: 11px;
+        padding: 9px 6px;
+    }
+    .app-keyboard-open .anna-shell .anna-stage {
+        flex-basis: 0;
+    }
+    .app-keyboard-open .anna-shell.anna-has-workspace .anna-conversation {
+        height: 100%;
+    }
+}
+
+/* Temporary overlays: the actual task/note DOM and text selection remain untouched. */
+.anna-highlight-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10000;
+}
+.anna-highlight-overlay span {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 3px;
+    box-sizing: border-box;
+}
+.anna-highlight-marker {
+    background: rgba(255, 211, 64, 0.38);
+    border-bottom: 2px solid #c79100;
+}
+.anna-highlight-outline {
+    outline: 2px solid #27806a;
+    outline-offset: 2px;
+    background: rgba(65, 166, 131, 0.08);
+}
+.anna-workspace-content {
+    position: relative;
+}
+.anna-highlight-caption {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    max-width: min(340px, calc(100% - 24px));
+    z-index: 31;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 1px solid #d9bf6d;
+    border-radius: 9px;
+    color: #493d18;
+    background: #fff8db;
+    box-shadow: 0 3px 14px #493d1818;
+    font-size: 12px;
+}
+.anna-highlight-caption span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-highlight-caption button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 4px;
+}

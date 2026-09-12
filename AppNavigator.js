@@ -45,6 +45,8 @@ import { installConnectionHealthMonitor } from './utils/connectionHealth'
 import { installAppResumeListener } from './utils/appResume'
 import { installPassiveVirtualizedListWheel } from './utils/passiveVirtualizedListWheel'
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
+import AnnaShell from './components/Anna/AnnaShell'
+import { isAnnaMode } from './utils/annaMode'
 import { getResponsiveLayoutState } from './utils/responsiveLayout'
 
 const getCurrentResponsiveLayout = width => {
@@ -316,6 +318,27 @@ export class AppContainer extends React.Component {
                 {Extra ? <Extra /> : null}
             </React.Fragment>
         )
+
+        const user = store.getState().loggedUser
+        if (
+            isAnnaMode() &&
+            user?.uid &&
+            !user.isAnonymous &&
+            ![
+                'LoginScreen',
+                'Onboarding',
+                'WhatsAppOnboarding',
+                'AppAuth',
+                'PaymentSuccess',
+                'MeetingBooking',
+            ].includes(routeName)
+        ) {
+            return (
+                <AnnaShell key={user.uid} routeId={id}>
+                    <ScreenWrapper key={id}>{content}</ScreenWrapper>
+                </AnnaShell>
+            )
+        }
 
         return (
             <React.Fragment key={id}>

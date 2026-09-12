@@ -11,6 +11,7 @@ import GlobalModalsContainerRootView from '../UIComponents/GlobalModalsContainer
 import DragModalsContainer from '../UIComponents/FloatModals/DragModalsContainer'
 import GoldAnimationsContainer from './GoldAnimationsContainer'
 import { useTranslator } from '../../i18n/TranslationService'
+import { isAnnaMode } from '../../utils/annaMode'
 
 export default function RootView({ navigation }) {
     const dispatch = useDispatch()
@@ -33,7 +34,7 @@ export default function RootView({ navigation }) {
             <LoadingData />
             {showLeftSideMenu && <CustomSideMenu navigation={navigation} />}
             <View style={localStyles.subContainer}>
-                <TopBarContainer containerStyle={localStyles.topBarContainer} />
+                {!isAnnaMode() && <TopBarContainer containerStyle={localStyles.topBarContainer} />}
                 <MainViewsContainer />
                 <DragModalsContainer />
             </View>

@@ -3,6 +3,7 @@ import { Platform } from 'react-native'
 import { useSelector } from 'react-redux'
 import useAssistantVoiceCall from './useAssistantVoiceCall'
 import FloatingCallControls from './FloatingAssistantVoiceCall'
+import { isAnnaMode } from '../../utils/annaMode'
 
 const VoiceCallContext = createContext(null)
 export const useVoiceCall = () => useContext(VoiceCallContext)
@@ -19,7 +20,7 @@ export function AssistantVoiceCallProvider({ children, userId }) {
     return (
         <VoiceCallContext.Provider value={call}>
             {children}
-            {Platform.OS === 'web' && <FloatingCallControls call={call} />}
+            {Platform.OS === 'web' && !isAnnaMode() && <FloatingCallControls call={call} />}
         </VoiceCallContext.Provider>
     )
 }

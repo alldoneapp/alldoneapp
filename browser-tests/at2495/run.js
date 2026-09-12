@@ -30,10 +30,7 @@
  *   cp -R -f replacement_node_modules/* node_modules/
  *   npx playwright install chromium
  * Usage:
- *   node browser-tests/at2495/run.js [--reduce-motion] [--stay] [--late] [--direct]
- *
- * `--direct` is AT-2558's production path: the original mask, dust and sparks start immediately,
- * while the broad colour sweep that AT-2551 disabled is never mounted.
+ *   node browser-tests/at2495/run.js [--reduce-motion] [--stay] [--late]
  */
 const path = require('path')
 const http = require('http')
@@ -84,8 +81,7 @@ function build() {
 
 function serve() {
     const server = http.createServer((req, res) => {
-        const pathname = req.url.split('?')[0]
-        const url = pathname === '/' ? '/index.html' : pathname
+        const url = req.url === '/' ? '/index.html' : req.url.split('?')[0]
         const file = path.join(BUILD_DIR, url)
         if (!fs.existsSync(file)) {
             res.writeHead(404)
@@ -141,7 +137,6 @@ const finish = async (browser, server) => {
 
 async function main() {
     const reduceMotion = process.argv.includes('--reduce-motion')
-    const direct = process.argv.includes('--direct')
     // The board's verdict arrives BEFORE the celebration (`--late` off) or after it (`--late` on).
     const late = process.argv.includes('--late')
     // The line is staying put — the selected-project board, where the header never leaves.
@@ -156,20 +151,18 @@ async function main() {
         reducedMotion: reduceMotion ? 'reduce' : 'no-preference',
     })
     page.on('pageerror', e => console.log('PAGE ERROR:', e.message))
-    await page.goto(`http://127.0.0.1:${port}/${direct ? '?direct' : ''}`)
+    await page.goto(`http://127.0.0.1:${port}/`)
     await page.waitForFunction('window.__ready === true')
     // `useReducedMotion` resolves its preference a microtask deep; the run below must see it.
     await sleep(200)
 
     const mode = reduceMotion
         ? 'prefers-reduced-motion: reduce'
-        : direct
-          ? 'AT-2558 direct disintegration without the colour sweep'
-          : stay
-            ? 'the line stays'
-            : late
-              ? 'the board says "leaving" only after the celebration has started'
-              : 'the line leaves'
+        : stay
+          ? 'the line stays'
+          : late
+            ? 'the board says "leaving" only after the celebration has started'
+            : 'the line leaves'
     console.log(`\n--- mode: ${mode} ---\n`)
 
     const clip = { x: 0, y: 0, width: CARD_WIDTH, height: CARD_HEIGHT }
@@ -206,8 +199,7 @@ async function main() {
     const frames = []
     // Long enough to cover the abandoned-exit backstop as well as the run itself: the harness never
     // unmounts the line, which is exactly the situation that backstop exists for.
-    const leadMs = direct ? 0 : SWEEP_LEAD_MS
-    const deadline = Date.now() + leadMs + DISINTEGRATION_MS + RECOVERY_TAIL_MS
+    const deadline = Date.now() + SWEEP_LEAD_MS + DISINTEGRATION_MS + RECOVERY_TAIL_MS
     while (Date.now() < deadline) {
         const measured = await page.evaluate(() => window.__measure())
         frames.push({ ...measured, ...(await shot()) })
@@ -223,8 +215,8 @@ async function main() {
      * checks have to be scoped to the run or "the row is restored" reads as "the row came back
      * mid-dissolve".
      */
-    const runFrames = frames.filter(f => f.t <= leadMs + DISINTEGRATION_MS + 200)
-    const exitFrames = runFrames.filter(f => f.t >= leadMs - 150)
+    const runFrames = frames.filter(f => f.t <= SWEEP_LEAD_MS + DISINTEGRATION_MS + 200)
+    const exitFrames = runFrames.filter(f => f.t >= SWEEP_LEAD_MS - 150)
     console.log('    t (ms)     :', spark(exitFrames.map(f => f.t)))
     console.log('    coverage   :', spark(exitFrames.map(f => f.coverage.toFixed(2))))
     console.log('    opaqueRight:', spark(exitFrames.map(f => f.opaqueRight)))
@@ -232,7 +224,7 @@ async function main() {
     console.log('    mask pos   :', spark(exitFrames.map(f => (f.maskPosition || '').split(' ')[0] || '-')))
     console.log('    motes/sparks:', spark(exitFrames.map(f => `${f.moteCount}/${f.sparkCount}`)))
 
-    if (!reduceMotion && !direct) {
+    if (!reduceMotion) {
         const withSweep = frames.filter(f => f.sweepPresent)
         check('the completion sweep is mounted for the run', withSweep.length > 0, `${withSweep.length} frames`)
         check(
@@ -248,13 +240,6 @@ async function main() {
             'the sweep uses the exact colour painted by the project line',
             withSweep.length > 0 && withSweep.every(f => f.sweepAccentColor === 'rgb(255, 0, 0)'),
             withSweep.length ? withSweep[0].sweepAccentColor : ''
-        )
-    }
-    if (!reduceMotion && direct) {
-        check(
-            'the broad completion sweep is never mounted',
-            frames.every(frame => !frame.sweepPresent),
-            ''
         )
     }
 
@@ -415,11 +400,9 @@ async function main() {
         check('THE EXIT LASTS ~1.2 SECONDS', span >= 1100 && span <= 1350, `${span}ms of exit`)
     }
     check(
-        direct
-            ? 'the direct disintegration starts immediately'
-            : 'it waits for the celebration — the sweep gets all three of its stages first',
-        !!started && (direct ? started.t < 250 : started.t >= SWEEP_LEAD_MS - 100),
-        started ? `first moved at ${started.t}ms${direct ? '' : `, lead is ${SWEEP_LEAD_MS}ms`}` : 'never moved'
+        'it waits for the celebration — the sweep gets all three of its stages first',
+        !!started && started.t >= SWEEP_LEAD_MS - 100,
+        started ? `first moved at ${started.t}ms, lead is ${SWEEP_LEAD_MS}ms` : 'never moved'
     )
     if (late) {
         check(
@@ -454,7 +437,7 @@ async function main() {
      * remounted it. A line that reappears half a second late is a cosmetic oddity; that is a bug a
      * user has to reload to clear.
      */
-    const afterRun = frames.filter(f => f.t > leadMs + DISINTEGRATION_MS + 200)
+    const afterRun = frames.filter(f => f.t > SWEEP_LEAD_MS + DISINTEGRATION_MS + 200)
     const recovered = afterRun.find(
         f => f.rowHeight === CARD_HEIGHT && f.bottomSpacing === CARD_BOTTOM_SPACING && f.coverage > 0.98
     )

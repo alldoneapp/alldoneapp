@@ -39,7 +39,7 @@ class URLTrigger {
     }
 
     static processUrl = (navigation, pathname) => {
-        SharedHelper.processUrlAsLoggedIn(navigation, pathname, false)
+        return SharedHelper.processUrlAsLoggedIn(navigation, pathname, false)
     }
 
     static directProcessUrl = (navigation, pathname) => {

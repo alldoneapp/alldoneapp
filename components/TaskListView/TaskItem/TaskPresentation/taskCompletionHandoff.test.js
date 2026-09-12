@@ -39,6 +39,14 @@ describe('taskCompletionHandoff', () => {
             expect(motion.begin).toHaveBeenCalledWith({ isCompletion: false })
         })
 
+        it('preserves the suggested-bypass project-exit hint', () => {
+            const motion = makeMotion()
+
+            startTaskCompletionMotion(motion, { isCompletion: true, projectExitCandidate: true })
+
+            expect(motion.begin).toHaveBeenCalledWith({ isCompletion: true, projectExitCandidate: true })
+        })
+
         it('holds for as long as the row asked for', async () => {
             const motion = makeMotion(1070)
             const run = startTaskCompletionMotion(motion)
