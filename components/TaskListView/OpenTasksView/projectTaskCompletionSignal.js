@@ -1,12 +1,10 @@
 /**
- * AT-2550 — a completing task row can tell its own project block why it is about to leave.
+ * AT-2558 — a completing task row can tell its own project block why it is about to leave.
  *
- * The normal completed-project sweep is inferred from `sidebarNumbers`. Suggested-task workflow
- * bypasses also update the task through the open-task listener, and that listener can remove the
- * project before the independent sidebar counter reports the clearing. This small, in-memory
- * channel carries the fact the row already knows; `useProjectCompletedSweep` still cross-checks it
- * against the board's own `lineWouldLeave` verdict, so completing a task in a project with work
- * left never animates the project away.
+ * The open-task listener can remove the project before the independent sidebar counter reports the
+ * clearing. This small, in-memory channel carries the fact the row already knows; the project-exit
+ * hook still cross-checks it against the board's own `lineWouldLeave` verdict, so completing a task
+ * in a project with work left never animates the project away.
  *
  * Listeners are indexed by project rather than broadcast to every mounted project block. All
  * Projects can mount dozens of them, while a completion concerns exactly one.

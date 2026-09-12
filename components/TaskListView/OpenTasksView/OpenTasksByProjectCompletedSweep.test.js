@@ -4,7 +4,7 @@ import renderer, { act } from 'react-test-renderer'
 import OpenTasksByProject from './OpenTasksByProject'
 import ProjectSection from '../ProjectSection'
 import { publishProjectTaskCompletion, resetProjectTaskCompletionListeners } from './projectTaskCompletionSignal'
-import { SUGGESTED_TASK_PROJECT_EXIT_HOLD_MS } from './useSuggestedTaskProjectExit'
+import { TASK_COMPLETION_PROJECT_EXIT_HOLD_MS } from './useTaskCompletionProjectExit'
 
 let mockState
 let mockInSelectedProject
@@ -83,7 +83,7 @@ const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false } = 
     sidebarNumbers: { [PROJECT]: { [USER]: todayCount } },
 })
 
-describe('open-tasks project rendering (AT-2551)', () => {
+describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
     beforeEach(() => {
         jest.useFakeTimers()
         resetProjectTaskCompletionListeners()
@@ -148,12 +148,12 @@ describe('open-tasks project rendering (AT-2551)', () => {
         expect(countOf(tree, ProjectSection)).toBe(0)
     })
 
-    it('quietly exits after bypassing the only suggested task while its count is stale', () => {
+    it('quietly exits after completing the last task while its count is stale', () => {
         const tree = render(buildState({ todayIsEmpty: false, todayCount: 1 }))
         const sectionBeforeExit = tree.root.findByType(ProjectSection)
         act(() => {
             sectionBeforeExit.props.onLayout({ nativeEvent: { layout: { height: 240 } } })
-            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'suggested-task' })
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
         })
 
         // The open-task listener removes the only row before the independent sidebar count updates.
@@ -167,13 +167,16 @@ describe('open-tasks project rendering (AT-2551)', () => {
             expect.objectContaining({ overflow: 'hidden', pointerEvents: 'none', minHeight: 0 })
         )
 
-        act(() => jest.advanceTimersByTime(SUGGESTED_TASK_PROJECT_EXIT_HOLD_MS))
+        act(() => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
         expect(countOf(tree, 'ProjectHeader')).toBe(0)
         expect(countOf(tree, ProjectSection)).toBe(0)
     })
 
-    it('does not arm completion motion for a project that stays on the board', () => {
+    it("does not arm completion motion when the completed task was not the project's last", () => {
         const tree = render(buildState())
+        act(() => {
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'one-of-several-tasks' })
+        })
         const section = tree.root.findByType(ProjectSection)
 
         expect(section.props.completedSweepRunId).toBeUndefined()
