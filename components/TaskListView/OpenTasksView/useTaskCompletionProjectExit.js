@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
-import { subscribeToProjectTaskCompletions } from './projectTaskCompletionSignal'
+import { subscribeToProjectTaskExits } from './projectTaskCompletionSignal'
 import { PROJECT_DISINTEGRATION_EXIT_HOLD_MS } from './projectDisintegrationMotion'
 
 /** A small tail keeps React's final unmount from cutting off the last collapse frame. */
 export const TASK_COMPLETION_PROJECT_EXIT_HOLD_MS = PROJECT_DISINTEGRATION_EXIT_HOLD_MS
 
 /**
- * The row reports before its ~1s completion motion and held write. Keep that fact just long enough
- * for the open-task listener to decide the project is empty, but not long enough for an unrelated
- * later removal to borrow it.
+ * The row reports before the write that removes it (after any row-level completion/postpone
+ * motion). Keep that fact just long enough for the open-task listener to decide the project is
+ * empty, but not long enough for an unrelated later removal to borrow it.
  */
 export const TASK_COMPLETION_PROJECT_EXIT_MEMORY_MS = 5000
 
@@ -18,7 +18,7 @@ const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 
 /**
  * AT-2558 — holds a project card for the original Thanos-style disintegration when a genuine task
- * completion clears the project's visible work for today.
+ * completion or postpone clears the project's visible work for today.
  *
  * The completion signal alone never starts or holds anything. The board must independently say the
  * complete project is leaving, which preserves immediate removals caused by filters, access changes
@@ -28,16 +28,16 @@ const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 export default function useTaskCompletionProjectExit({ projectId, enabled, lineWouldLeave }) {
     const reducedMotion = useReducedMotion()
     const active = enabled && !reducedMotion && !animationsAreDisabled()
-    const [completionCandidate, setCompletionCandidate] = useState(null)
+    const [exitCandidate, setExitCandidate] = useState(null)
     const [previousLineWouldLeave, setPreviousLineWouldLeave] = useState(lineWouldLeave)
     const [exitRunId, setExitRunId] = useState(0)
     const [holding, setHolding] = useState(false)
-    const consumedCompletionRef = useRef(null)
+    const consumedExitRef = useRef(null)
 
     useEffect(() => {
         if (!active) return undefined
-        return subscribeToProjectTaskCompletions(projectId, event => {
-            setCompletionCandidate({ taskId: event.taskId, completedAt: Date.now() })
+        return subscribeToProjectTaskExits(projectId, event => {
+            setExitCandidate({ taskId: event.taskId, reportedAt: Date.now() })
         })
     }, [active, projectId])
 
@@ -45,14 +45,14 @@ export default function useTaskCompletionProjectExit({ projectId, enabled, lineW
     // commit that already removed it, producing a one-frame disappear/reappear flash.
     if (lineWouldLeave !== previousLineWouldLeave) {
         setPreviousLineWouldLeave(lineWouldLeave)
-        const recentUnconsumedCompletion =
+        const recentUnconsumedExit =
             active &&
-            completionCandidate &&
-            completionCandidate !== consumedCompletionRef.current &&
-            Date.now() - completionCandidate.completedAt <= TASK_COMPLETION_PROJECT_EXIT_MEMORY_MS
+            exitCandidate &&
+            exitCandidate !== consumedExitRef.current &&
+            Date.now() - exitCandidate.reportedAt <= TASK_COMPLETION_PROJECT_EXIT_MEMORY_MS
 
-        if (lineWouldLeave && recentUnconsumedCompletion) {
-            consumedCompletionRef.current = completionCandidate
+        if (lineWouldLeave && recentUnconsumedExit) {
+            consumedExitRef.current = exitCandidate
             setExitRunId(runId => runId + 1)
             setHolding(true)
         } else if (!lineWouldLeave && holding) {

@@ -18,8 +18,8 @@ export const PROJECT_DISINTEGRATION_RECOVERY_MS = PROJECT_DISINTEGRATION_EXIT_HO
  *
  * The pixels, dust, sparks and collapse all still derive from the same `Animated.Value`; this hook
  * changes only when that value starts. A run id means the board has already combined two facts: a
- * genuine top-level task completion was reported, and this exact project is now leaving All
- * Projects. The dissolve can therefore begin immediately and play exactly once.
+ * genuine top-level task completion or postpone was reported, and this exact project is now
+ * leaving All Projects. The dissolve can therefore begin immediately and play exactly once.
  */
 export default function useProjectDisintegrationMotion(runId, lineWillLeave = false, enabled = true) {
     const [exiting, setExiting] = useState(false)

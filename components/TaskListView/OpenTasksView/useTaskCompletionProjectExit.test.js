@@ -6,7 +6,11 @@ import useTaskCompletionProjectExit, {
     TASK_COMPLETION_PROJECT_EXIT_HOLD_MS,
     TASK_COMPLETION_PROJECT_EXIT_MEMORY_MS,
 } from './useTaskCompletionProjectExit'
-import { publishProjectTaskCompletion, resetProjectTaskCompletionListeners } from './projectTaskCompletionSignal'
+import {
+    publishProjectTaskCompletion,
+    publishProjectTaskPostpone,
+    resetProjectTaskCompletionListeners,
+} from './projectTaskCompletionSignal'
 
 const PROJECT = 'project-1'
 let latest
@@ -72,6 +76,19 @@ describe('useTaskCompletionProjectExit (AT-2558)', () => {
         expect(latest.holdProjectLine).toBe(false)
     })
 
+    it('holds after the final task is postponed out of Today', async () => {
+        const tree = await render()
+
+        await act(async () => {
+            publishProjectTaskPostpone({ projectId: PROJECT, taskId: 'last-task' })
+        })
+        expect(latest.holdProjectLine).toBe(false)
+
+        await update(tree, { lineWouldLeave: true })
+        expect(latest.exitRunId).toBe(1)
+        expect(latest.holdProjectLine).toBe(true)
+    })
+
     it('does not hold an ordinary project removal', async () => {
         const tree = await render()
 
@@ -123,10 +140,10 @@ describe('useTaskCompletionProjectExit (AT-2558)', () => {
         expect(latest.holdProjectLine).toBe(false)
     })
 
-    it('releases the hold when new work makes the project stay', async () => {
+    it('restores a postponed project when new work arrives during its exit', async () => {
         const tree = await render()
         await act(async () => {
-            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
+            publishProjectTaskPostpone({ projectId: PROJECT, taskId: 'last-task' })
         })
         await update(tree, { lineWouldLeave: true })
         expect(latest.holdProjectLine).toBe(true)

@@ -85,9 +85,10 @@ function OpenTasksByProject({
 
     /**
      * AT-2558 — keep AT-2551's broad, coloured completion sweep disconnected, but do not let the
-     * whole card disappear abruptly after its final task row completes. A row reports every genuine
-     * completion; only when the board independently confirms that this exact project is now leaving
-     * do we keep its card mounted for AT-2495's original mask, dust and sparks.
+     * whole card disappear abruptly after its final task row completes or leaves Today through a
+     * user-facing postpone. A row reports either eligible transition; only when the board
+     * independently confirms that this exact project is now leaving do we keep its card mounted for
+     * AT-2495's original mask, dust and sparks.
      */
     const taskCompletionProjectExitEnabled =
         !inSelectedProject &&
