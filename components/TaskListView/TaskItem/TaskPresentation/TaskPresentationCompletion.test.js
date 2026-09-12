@@ -255,6 +255,17 @@ describe('TaskPresentation completion (AT-2404)', () => {
     })
 
     describe('a top-level task', () => {
+        it('reports a checkbox completion to its project before the write', async () => {
+            const projectCompletion = jest.fn()
+            subscribeToProjectTaskCompletions('project-1', projectCompletion)
+            const { ref } = await renderRow(baseTask)
+
+            tickCheckbox(ref)
+
+            expect(projectCompletion).toHaveBeenCalledWith({ projectId: 'project-1', taskId: baseTask.id })
+            expect(moveTasksFromOpen).not.toHaveBeenCalled()
+        })
+
         it('collapses out of the list and holds its write behind the animation', async () => {
             const { tree, ref } = await renderRow(baseTask)
 
@@ -471,12 +482,12 @@ describe('TaskPresentation completion (AT-2404)', () => {
             expect(rowStyle(tree).height.__getValue()).toBe(ROW_HEIGHT)
         })
 
-        it('reports the suggested bypass as a possible project exit', async () => {
+        it('also reports a popup completion as a possible project exit', async () => {
             const projectCompletion = jest.fn()
             subscribeToProjectTaskCompletions('project-1', projectCompletion)
             const { tree } = await openPopup()
 
-            act(() => popupMotion(tree).begin({ isCompletion: true, projectExitCandidate: true }))
+            act(() => popupMotion(tree).begin({ isCompletion: true }))
 
             expect(projectCompletion).toHaveBeenCalledWith({ projectId: 'project-1', taskId: popupTask.id })
         })

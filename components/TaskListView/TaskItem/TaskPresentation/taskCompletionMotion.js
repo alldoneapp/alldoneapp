@@ -286,12 +286,10 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
      *   but the task is not done, so it gets neither the progress sweep, the green wash nor the
      *   checkbox celebration — it just exits. It would otherwise be told it had finished something
      *   it has only handed on.
-     * @param {boolean} options.projectExitCandidate AT-2550 — true only for the suggested-task
-     *   workflow bypass whose independent project-count update can miss the project exit.
      * @returns {number} ms to wait before persisting.
      */
     const begin = useCallback(
-        ({ isCompletion = true, projectExitCandidate = false } = {}) => {
+        ({ isCompletion = true } = {}) => {
             /**
              * A run that draws nothing AND collapses nothing has nothing to wait for, so holding
              * the write would be pure latency. That is exactly a workflow step advance on a
@@ -316,7 +314,7 @@ export default function useTaskCompletionMotion({ retainRow = false, isDone = fa
              * the goal's own celebration makes its own reduced-motion decision.
              */
             if (isCompletion && !retainRow && typeof onCompletionStart === 'function') {
-                onCompletionStart({ projectExitCandidate })
+                onCompletionStart()
             }
 
             const staticOnly = reducedMotion || animationsAreDisabled()

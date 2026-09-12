@@ -2,21 +2,21 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { AccessibilityInfo } from 'react-native'
 
-import useSuggestedTaskProjectExit, {
-    SUGGESTED_TASK_PROJECT_EXIT_HOLD_MS,
-    SUGGESTED_TASK_PROJECT_EXIT_MEMORY_MS,
-} from './useSuggestedTaskProjectExit'
+import useTaskCompletionProjectExit, {
+    TASK_COMPLETION_PROJECT_EXIT_HOLD_MS,
+    TASK_COMPLETION_PROJECT_EXIT_MEMORY_MS,
+} from './useTaskCompletionProjectExit'
 import { publishProjectTaskCompletion, resetProjectTaskCompletionListeners } from './projectTaskCompletionSignal'
 
 const PROJECT = 'project-1'
 let latest
 
 const Host = ({ projectId = PROJECT, enabled = true, lineWouldLeave = false }) => {
-    latest = useSuggestedTaskProjectExit({ projectId, enabled, lineWouldLeave })
+    latest = useTaskCompletionProjectExit({ projectId, enabled, lineWouldLeave })
     return null
 }
 
-describe('useSuggestedTaskProjectExit (AT-2550)', () => {
+describe('useTaskCompletionProjectExit (AT-2558)', () => {
     const originalNodeEnv = process.env.NODE_ENV
     const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled
     const originalAddEventListener = AccessibilityInfo.addEventListener
@@ -56,11 +56,11 @@ describe('useSuggestedTaskProjectExit (AT-2550)', () => {
         await act(async () => tree.update(<Host {...props} />))
     }
 
-    it('holds only after a reported bypass and an actual project departure', async () => {
+    it('holds only after a reported task completion and an actual project departure', async () => {
         const tree = await render()
 
         await act(async () => {
-            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'suggested-task' })
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
         })
         expect(latest.holdProjectLine).toBe(false)
 
@@ -68,7 +68,7 @@ describe('useSuggestedTaskProjectExit (AT-2550)', () => {
         expect(latest.exitRunId).toBe(1)
         expect(latest.holdProjectLine).toBe(true)
 
-        await act(async () => jest.advanceTimersByTime(SUGGESTED_TASK_PROJECT_EXIT_HOLD_MS))
+        await act(async () => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
         expect(latest.holdProjectLine).toBe(false)
     })
 
@@ -84,7 +84,7 @@ describe('useSuggestedTaskProjectExit (AT-2550)', () => {
     it('does not borrow a completion from another project', async () => {
         const tree = await render()
         await act(async () => {
-            publishProjectTaskCompletion({ projectId: 'project-2', taskId: 'suggested-task' })
+            publishProjectTaskCompletion({ projectId: 'project-2', taskId: 'last-task' })
         })
 
         await update(tree, { lineWouldLeave: true })
@@ -95,8 +95,8 @@ describe('useSuggestedTaskProjectExit (AT-2550)', () => {
     it('does not borrow stale completion evidence', async () => {
         const tree = await render()
         await act(async () => {
-            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'suggested-task' })
-            jest.advanceTimersByTime(SUGGESTED_TASK_PROJECT_EXIT_MEMORY_MS + 1)
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
+            jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_MEMORY_MS + 1)
         })
 
         await update(tree, { lineWouldLeave: true })
@@ -116,7 +116,7 @@ describe('useSuggestedTaskProjectExit (AT-2550)', () => {
         const tree = await render()
 
         await act(async () => {
-            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'suggested-task' })
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
         })
         await update(tree, { lineWouldLeave: true })
 

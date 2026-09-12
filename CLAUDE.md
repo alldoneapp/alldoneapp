@@ -1638,11 +1638,13 @@ visible but static, while task-loading skeletons continue to use their independe
 The animation modules remain available for now so this product decision is a small, reversible
 wiring change rather than a broad deletion of the earlier motion work.
 
-AT-2550 is one narrow exception: when a suggested task explicitly bypasses its workflow and the
-board then confirms that its project is leaving, the existing card gets the neutral goal-section
-fade and collapse. This does not reconnect the coloured sweep or its completion props, and ordinary
-empty-project, filter, access, selected-project, assistant-profile, and reduced-motion paths retain
-the immediate/static behavior above.
+AT-2558 adds one narrow exception: when any genuine top-level task completion is followed by the
+board confirming that its project is leaving, the existing card gets the neutral goal-section fade
+and collapse. The task row reports the completion before its held write, so the exit does not depend
+on which of the open-task and sidebar snapshots arrives first. This does not reconnect the coloured
+sweep or its completion props. A signal alone cannot start the exit; filters, workflow handoffs,
+subtasks, projects with other visible content, selected-project boards, assistant profiles and
+reduced-motion paths retain the immediate/static behavior above.
 
 ### In-app GPT-Live voice calls
 
