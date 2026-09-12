@@ -28,8 +28,6 @@ const LEGACY_ASSISTANT_SETTINGS_MODEL_KEYS = [
 ]
 
 const toolSchemas = {
-    show_workspace: require('./annaWorkspaceContract').showWorkspaceSchema,
-    highlight_workspace: require('./annaWorkspaceContract').highlightWorkspaceSchema,
     create_task: {
         type: 'function',
         function: {

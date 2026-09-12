@@ -38,7 +38,6 @@ import URLTrigger from './URLSystem/URLTrigger'
 import { unwatch } from './utils/backends/firestore'
 import Shortcuts from './components/UIComponents/ShortcutCheatSheet/Shortcuts'
 import EndDayStatisticsModal from './components/UIComponents/FloatModals/EndDayStatisticsModal'
-import { isAnnaMode } from './utils/annaMode'
 import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoaders'
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
@@ -453,7 +452,7 @@ export default function AppContent() {
                         <>
                             <GlobalModalsContainerApp />
                             <UndoActionBar />
-                            {!isAnnaMode() && <EndDayStatisticsModal />}
+                            <EndDayStatisticsModal />
                             <Shortcuts />
                             <InitLoadView />
                             {heavyComponentsLoaded && (

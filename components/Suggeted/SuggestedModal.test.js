@@ -216,10 +216,7 @@ describe('SuggestedModal row completion animation (AT-2495)', () => {
         tree.root.findByProps({ testID: 'bypass-workflow-button' }).props.onPress()
         await flush()
 
-        expect(completionMotion.begin).toHaveBeenCalledWith({
-            isCompletion: true,
-            projectExitCandidate: true,
-        })
+        expect(completionMotion.begin).toHaveBeenCalledWith({ isCompletion: true })
         expect(moveSuggestedTaskToDoneBypassingWorkflow).toHaveBeenCalledTimes(1)
     })
 

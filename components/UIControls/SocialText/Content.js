@@ -33,7 +33,6 @@ export default function Content({
     return (
         <View
             ref={textSection}
-            dataSet={{ annaHighlightGroup: 'true' }}
             style={[
                 localStyles.container,
                 wrapText ? localStyles.wrapContent : undefined,

@@ -1,5 +1,4 @@
 import { useSelector } from 'react-redux'
-import { isAnnaMode } from '../../../utils/annaMode'
 
 export default function useCollapsibleSidebar() {
     const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
@@ -12,5 +11,5 @@ export default function useCollapsibleSidebar() {
     const expanded = isAnonymous || mobile || addProjectIsOpen || addContactIsOpen || sidebarExpanded || sidebarHovered
     const overlay = !isAnonymous && !mobile && !sidebarExpanded
 
-    return isAnnaMode() ? { expanded: false, overlay: false } : { expanded, overlay }
+    return { expanded, overlay }
 }
