@@ -30,7 +30,6 @@ import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSche
 import TaskListSkeleton from '../TaskListSkeleton'
 import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
 import useTaskCompletionProjectExit from './useTaskCompletionProjectExit'
-import useGoalSectionExitMotion from './goalSectionExitMotion'
 
 function OpenTasksByProject({
     firstProject,
@@ -88,7 +87,7 @@ function OpenTasksByProject({
      * AT-2558 — keep AT-2551's broad, coloured completion sweep disconnected, but do not let the
      * whole card disappear abruptly after its final task row completes. A row reports every genuine
      * completion; only when the board independently confirms that this exact project is now leaving
-     * do we keep its card mounted for the same quiet fade-and-collapse used by goal sections.
+     * do we keep its card mounted for AT-2495's original mask, dust and sparks.
      */
     const taskCompletionProjectExitEnabled =
         !inSelectedProject &&
@@ -101,7 +100,6 @@ function OpenTasksByProject({
         enabled: taskCompletionProjectExitEnabled,
         lineWouldLeave: baseHideProjectData,
     })
-    const { onSectionLayout, sectionStyle } = useGoalSectionExitMotion(exitRunId)
     const hideProjectData = baseHideProjectData && !holdProjectLine
 
     // AT-2430: which assistant this project's line speaks as — the project's own, the default
@@ -174,8 +172,9 @@ function OpenTasksByProject({
                     projectColor={projectColor}
                     embedded={assistantProfileMode}
                     selected={inSelectedProject}
-                    style={[{ marginBottom: inSelectedProject ? 32 : 28 }, sectionStyle]}
-                    onLayout={onSectionLayout}
+                    style={{ marginBottom: inSelectedProject ? 32 : 28 }}
+                    completedDisintegrationRunId={exitRunId}
+                    completedDisintegrationLineWillLeave={baseHideProjectData}
                 >
                     {inSelectedProject && <NeedShowMoreOpenTasksButton projectId={projectId} />}
                     {!assistantProfileMode && (

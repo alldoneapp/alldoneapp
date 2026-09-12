@@ -122,4 +122,17 @@ describe('useTaskCompletionProjectExit (AT-2558)', () => {
 
         expect(latest.holdProjectLine).toBe(false)
     })
+
+    it('releases the hold when new work makes the project stay', async () => {
+        const tree = await render()
+        await act(async () => {
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
+        })
+        await update(tree, { lineWouldLeave: true })
+        expect(latest.holdProjectLine).toBe(true)
+
+        await update(tree, { lineWouldLeave: false })
+
+        expect(latest.holdProjectLine).toBe(false)
+    })
 })

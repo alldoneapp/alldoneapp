@@ -1639,12 +1639,14 @@ The animation modules remain available for now so this product decision is a sma
 wiring change rather than a broad deletion of the earlier motion work.
 
 AT-2558 adds one narrow exception: when any genuine top-level task completion is followed by the
-board confirming that its project is leaving, the existing card gets the neutral goal-section fade
-and collapse. The task row reports the completion before its held write, so the exit does not depend
-on which of the open-task and sidebar snapshots arrives first. This does not reconnect the coloured
-sweep or its completion props. A signal alone cannot start the exit; filters, workflow handoffs,
-subtasks, projects with other visible content, selected-project boards, assistant profiles and
-reduced-motion paths retain the immediate/static behavior above.
+board confirming that its project is leaving, the card gets AT-2495's original 1.2s right-to-left
+mask, dust and sparks. It starts the disintegration directly through `projectDisintegrationMotion`;
+the broad FILL → SHIMMER → PULSE colour sweep stays disconnected. The task row reports the
+completion before its held write, so the exit does not depend on which of the open-task and sidebar
+snapshots arrives first. A signal alone cannot start the exit; filters, workflow handoffs, subtasks,
+projects with other visible content, selected-project boards, assistant profiles and reduced-motion
+paths retain the immediate/static behavior above. If new work lands while the card is dissolving,
+both the hold and mask are withdrawn immediately so the live project returns whole and clickable.
 
 ### In-app GPT-Live voice calls
 
