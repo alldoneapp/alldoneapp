@@ -3,12 +3,8 @@ import renderer, { act } from 'react-test-renderer'
 
 import OpenTasksByProject from './OpenTasksByProject'
 import ProjectSection from '../ProjectSection'
-import {
-    publishProjectTaskCompletion,
-    publishProjectTaskPostpone,
-    resetProjectTaskCompletionListeners,
-} from './projectTaskCompletionSignal'
-import { TASK_COMPLETION_PROJECT_EXIT_HOLD_MS } from './useTaskCompletionProjectExit'
+import { publishProjectTaskCompletion, resetProjectTaskCompletionListeners } from './projectTaskCompletionSignal'
+import { SUGGESTED_TASK_PROJECT_EXIT_HOLD_MS } from './useSuggestedTaskProjectExit'
 
 let mockState
 let mockInSelectedProject
@@ -69,7 +65,7 @@ const originalNodeEnv = process.env.NODE_ENV
 
 const countOf = (tree, type) => tree.root.findAllByType(type).length
 
-const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false, priorityFilters = [] } = {}) => ({
+const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false } = {}) => ({
     loggedUserProjectsMap: { [PROJECT]: { index: 0, id: PROJECT, color: '#2F80ED' } },
     loggedUserProjects: [{ id: PROJECT }],
     selectedProjectIndex: 0,
@@ -78,7 +74,7 @@ const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false, pri
     tasksArrowButtonIsExpanded: false,
     okrsByProjectInTasks: {},
     filteredOpenTasksStore: { [PROJECT + USER]: loading ? [] : [['0', todayIsEmpty ? 0 : 3, []]] },
-    taskPriorityFilters: priorityFilters,
+    taskPriorityFilters: [],
     taskVmStateFilters: [],
     initialLoadingEndOpenTasks: { [PROJECT + USER]: !loading },
     initialLoadingEndObservedTasks: { [PROJECT + USER]: !loading },
@@ -87,7 +83,7 @@ const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false, pri
     sidebarNumbers: { [PROJECT]: { [USER]: todayCount } },
 })
 
-describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
+describe('open-tasks project rendering (AT-2551)', () => {
     beforeEach(() => {
         jest.useFakeTimers()
         resetProjectTaskCompletionListeners()
@@ -152,10 +148,12 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
         expect(countOf(tree, ProjectSection)).toBe(0)
     })
 
-    it('runs only the historic disintegration after completing the last task while its count is stale', () => {
+    it('quietly exits after bypassing the only suggested task while its count is stale', () => {
         const tree = render(buildState({ todayIsEmpty: false, todayCount: 1 }))
+        const sectionBeforeExit = tree.root.findByType(ProjectSection)
         act(() => {
-            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
+            sectionBeforeExit.props.onLayout({ nativeEvent: { layout: { height: 240 } } })
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'suggested-task' })
         })
 
         // The open-task listener removes the only row before the independent sidebar count updates.
@@ -163,56 +161,23 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
 
         const sectionDuringExit = tree.root.findByType(ProjectSection)
         expect(countOf(tree, 'ProjectHeader')).toBe(1)
-        expect(sectionDuringExit.props.completedDisintegrationRunId).toBe(1)
-        expect(sectionDuringExit.props.completedDisintegrationLineWillLeave).toBe(true)
-        // AT-2551 stays intact: the broad FILL → SHIMMER → PULSE sweep is not reconnected.
         expect(sectionDuringExit.props.completedSweepRunId).toBeUndefined()
         expect(sectionDuringExit.props.completedSweepLineWillLeave).toBeUndefined()
-        expect(sectionDuringExit.props.style).toEqual({ marginBottom: 28 })
+        expect(sectionDuringExit.props.style[1]).toEqual(
+            expect.objectContaining({ overflow: 'hidden', pointerEvents: 'none', minHeight: 0 })
+        )
 
-        act(() => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
+        act(() => jest.advanceTimersByTime(SUGGESTED_TASK_PROJECT_EXIT_HOLD_MS))
         expect(countOf(tree, 'ProjectHeader')).toBe(0)
         expect(countOf(tree, ProjectSection)).toBe(0)
     })
 
-    it('runs the same disintegration after postponing the last task out of Today', () => {
-        const tree = render(buildState({ todayIsEmpty: false, todayCount: 1 }))
-        act(() => {
-            publishProjectTaskPostpone({ projectId: PROJECT, taskId: 'last-task' })
-        })
-
-        update(tree, buildState({ todayIsEmpty: true, todayCount: 1 }))
-
-        const sectionDuringExit = tree.root.findByType(ProjectSection)
-        expect(sectionDuringExit.props.completedDisintegrationRunId).toBe(1)
-        expect(sectionDuringExit.props.completedDisintegrationLineWillLeave).toBe(true)
-
-        act(() => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
-        expect(countOf(tree, ProjectSection)).toBe(0)
-    })
-
-    it("does not arm completion motion when the completed task was not the project's last", () => {
+    it('does not arm completion motion for a project that stays on the board', () => {
         const tree = render(buildState())
-        act(() => {
-            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'one-of-several-tasks' })
-        })
         const section = tree.root.findByType(ProjectSection)
 
         expect(section.props.completedSweepRunId).toBeUndefined()
         expect(section.props.completedSweepLineWillLeave).toBeUndefined()
-        expect(section.props.completedDisintegrationRunId).toBe(0)
-        expect(section.props.completedDisintegrationLineWillLeave).toBe(false)
-    })
-
-    it('does not hold or animate a project hidden by active filters', () => {
-        const tree = render(buildState({ priorityFilters: ['urgent'] }))
-        act(() => {
-            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-visible-task' })
-        })
-
-        update(tree, buildState({ todayIsEmpty: true, priorityFilters: ['urgent'] }))
-
-        expect(countOf(tree, ProjectSection)).toBe(0)
     })
 
     it('keeps the selected-project empty state static and visible', () => {
@@ -221,7 +186,6 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
 
         expect(countOf(tree, 'ProjectHeader')).toBe(1)
         expect(tree.root.findByType(ProjectSection).props.completedSweepRunId).toBeUndefined()
-        expect(tree.root.findByType(ProjectSection).props.completedDisintegrationRunId).toBe(0)
         expect(tree.root.findByType('OpenTasksByDate').props.projectCelebrationRunId).toBeUndefined()
     })
 

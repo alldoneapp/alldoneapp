@@ -22,7 +22,6 @@ import {
     setOptimisticGoalPostpone,
 } from '../../../../redux/actions'
 import { postponeGoalWithMotion } from '../../../TaskListView/OpenTasksView/goalPostponeMotion'
-import { postponeTaskWithMotion } from '../../../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion'
 
 export default function AutoPostpone({
     projectId,
@@ -59,7 +58,7 @@ export default function AutoPostpone({
             // instantly via Firestore's local cache, instead of waiting on the auto-postpone
             // Cloud Function round-trip. The target date is already computed client-side below.
             const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
-            const write = () =>
+            const applyPromise =
                 dateTimestamp === BACKLOG_DATE_NUMERIC
                     ? setTaskToBacklog(
                           projectId,
@@ -75,16 +74,6 @@ export default function AutoPostpone({
                           singleTaskToPostpone,
                           isObservedTabActive
                       )
-            const applyPromise = postponeTaskWithMotion(
-                {
-                    projectId,
-                    task: singleTaskToPostpone,
-                    targetDate: dateTimestamp,
-                    updatesDueDate: !isObservedTabActive,
-                    updatesObservedDate: isObservedTabActive,
-                },
-                write
-            )
             Promise.resolve(applyPromise).catch(error => {
                 console.error('AutoPostpone: failed to apply auto-postpone', error)
             })
