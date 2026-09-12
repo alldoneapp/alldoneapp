@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
-import { GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
 import { subscribeToProjectTaskCompletions } from './projectTaskCompletionSignal'
+import { PROJECT_DISINTEGRATION_EXIT_HOLD_MS } from './projectDisintegrationMotion'
 
 /** A small tail keeps React's final unmount from cutting off the last collapse frame. */
-export const TASK_COMPLETION_PROJECT_EXIT_HOLD_MS = GOAL_SECTION_EXIT_TOTAL_MS + 120
+export const TASK_COMPLETION_PROJECT_EXIT_HOLD_MS = PROJECT_DISINTEGRATION_EXIT_HOLD_MS
 
 /**
  * The row reports before its ~1s completion motion and held write. Keep that fact just long enough
@@ -17,13 +17,13 @@ export const TASK_COMPLETION_PROJECT_EXIT_MEMORY_MS = 5000
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 
 /**
- * AT-2558 — holds a project card for the quiet section exit when a genuine task completion clears
- * the project's visible work for today.
+ * AT-2558 — holds a project card for the original Thanos-style disintegration when a genuine task
+ * completion clears the project's visible work for today.
  *
  * The completion signal alone never starts or holds anything. The board must independently say the
  * complete project is leaving, which preserves immediate removals caused by filters, access changes
- * and non-completion actions. AT-2551's page-wide coloured sweep stays disconnected; this hook only
- * supplies a run id for the existing neutral fade-and-collapse motion.
+ * and non-completion actions. AT-2551's page-wide coloured sweep stays disconnected; this hook
+ * supplies a run id only for the original mask, dust and sparks.
  */
 export default function useTaskCompletionProjectExit({ projectId, enabled, lineWouldLeave }) {
     const reducedMotion = useReducedMotion()
@@ -55,6 +55,10 @@ export default function useTaskCompletionProjectExit({ projectId, enabled, lineW
             consumedCompletionRef.current = completionCandidate
             setExitRunId(runId => runId + 1)
             setHolding(true)
+        } else if (!lineWouldLeave && holding) {
+            // New work arrived before the dissolve finished. Stop holding immediately; the motion
+            // layer receives the same verdict and restores the card in the same render cycle.
+            setHolding(false)
         }
     }
 

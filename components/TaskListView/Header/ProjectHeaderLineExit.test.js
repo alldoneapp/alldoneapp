@@ -87,6 +87,8 @@ describe('the project card leaving the board (AT-2535)', () => {
             style={{ marginBottom: CARD_BOTTOM_SPACING }}
             completedSweepRunId={props.completedSweepRunId}
             completedSweepLineWillLeave={props.completedSweepLineWillLeave}
+            completedDisintegrationRunId={props.completedDisintegrationRunId}
+            completedDisintegrationLineWillLeave={props.completedDisintegrationLineWillLeave}
         >
             <ProjectHeader projectIndex={0} projectId={PROJECT} />
             <View testID="project-card-body" style={{ height: CARD_HEIGHT - 57 }} />
@@ -218,6 +220,37 @@ describe('the project card leaving the board (AT-2535)', () => {
             expect(rawStyle(cardNode(tree)).maskImage).toBeUndefined()
             expect(countOf(tree, 'project-line-disintegration')).toBe(0)
             expect(countOf(tree, 'project-completed-sweep')).toBe(0)
+        })
+    })
+
+    describe('when AT-2558 starts the historic effect directly', () => {
+        const startDirectExit = async () => {
+            const tree = await mount()
+            await act(async () => {
+                tree.update(card({ completedDisintegrationRunId: 1, completedDisintegrationLineWillLeave: true }))
+            })
+            return tree
+        }
+
+        it('disintegrates the complete card without mounting the broad colour sweep', async () => {
+            const tree = await startDirectExit()
+
+            expect(rawStyle(cardNode(tree)).maskImage).toBe(DISSOLVE_MASK_IMAGE)
+            expect(countOf(tree, 'project-line-disintegration')).toBe(1)
+            expect(countOf(tree, 'project-line-disintegration-spark')).toBe(SPARK_COUNT)
+            expect(countOf(tree, 'project-completed-sweep')).toBe(0)
+        })
+
+        it('keeps the dust and sparks outside the mask and uses the visible project tint', async () => {
+            const tree = await startDirectExit()
+            const card = cardNode(tree)
+
+            expect(card.findAllByProps({ testID: 'project-card-body' })).toHaveLength(1)
+            expect(card.findAllByProps({ testID: 'project-line-disintegration' })).toHaveLength(0)
+            const armColours = findAll(tree, 'project-line-disintegration-spark-arm').map(
+                arm => rawStyle(arm).backgroundColor
+            )
+            expect(armColours).toContain(PROJECT_LINE_COLOR)
         })
     })
 })
