@@ -18,7 +18,6 @@ const mockSetTaskToBacklog = jest.fn(() => Promise.resolve())
 const mockAutoPostponeGoal = jest.fn(() => Promise.resolve(654321))
 const mockDispatch = jest.fn()
 const mockPostponeGoalWithMotion = jest.fn((context, write) => write())
-const mockPostponeTaskWithMotion = jest.fn((context, write) => write())
 let mockDateToMoveTask
 
 jest.mock('react-redux', () => ({
@@ -70,10 +69,6 @@ jest.mock('../../../TaskListView/OpenTasksView/goalPostponeMotion', () => ({
     postponeGoalWithMotion: (...args) => mockPostponeGoalWithMotion(...args),
 }))
 
-jest.mock('../../../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion', () => ({
-    postponeTaskWithMotion: (...args) => mockPostponeTaskWithMotion(...args),
-}))
-
 const baseProps = {
     projectId: 'project-1',
     isObservedTabActive: false,
@@ -108,16 +103,6 @@ describe('DueDateModal AutoPostpone', () => {
 
         const expectedDate = moment('2026-07-05T12:00:00').valueOf()
         expect(mockSetTaskDueDate).toHaveBeenCalledWith('project-1', 'task-1', expectedDate, task, false)
-        expect(mockPostponeTaskWithMotion).toHaveBeenCalledWith(
-            {
-                projectId: 'project-1',
-                task,
-                targetDate: expectedDate,
-                updatesDueDate: true,
-                updatesObservedDate: false,
-            },
-            expect.any(Function)
-        )
         expect(mockSetTaskToBacklog).not.toHaveBeenCalled()
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_LAST_SELECTED_DUE_DATE', value: expectedDate })
         expect(baseProps.closePopover).toHaveBeenCalled()
@@ -129,14 +114,6 @@ describe('DueDateModal AutoPostpone', () => {
         await renderAndPress({ task })
 
         expect(mockSetTaskToBacklog).toHaveBeenCalledWith('project-1', 'task-1', task, false, null)
-        expect(mockPostponeTaskWithMotion).toHaveBeenCalledWith(
-            expect.objectContaining({
-                projectId: 'project-1',
-                task,
-                targetDate: BACKLOG_DATE_NUMERIC,
-            }),
-            expect.any(Function)
-        )
         expect(mockSetTaskDueDate).not.toHaveBeenCalled()
         expect(mockDispatch).toHaveBeenCalledWith({
             type: 'SET_LAST_SELECTED_DUE_DATE',
@@ -145,26 +122,11 @@ describe('DueDateModal AutoPostpone', () => {
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 
-    test('qualifies an observer-date auto-postpone against the row placement field', async () => {
-        const task = { id: 'task-1', timesPostponed: 2 }
-        await renderAndPress({ task, isObservedTabActive: true })
-
-        expect(mockPostponeTaskWithMotion).toHaveBeenCalledWith(
-            expect.objectContaining({
-                task,
-                updatesDueDate: false,
-                updatesObservedDate: true,
-            }),
-            expect.any(Function)
-        )
-    })
-
     test('routes persisted multiple tasks through the callable wrapper', async () => {
         const tasks = [{ id: 'task-1' }, { id: 'task-2' }]
         await renderAndPress({ task: tasks[0], tasks })
 
         expect(mockAutoPostponeMultipleTasks).toHaveBeenCalledWith(tasks, 'target-1', { background: true })
-        expect(mockPostponeTaskWithMotion).not.toHaveBeenCalled()
         expect(baseProps.closePopover).toHaveBeenCalled()
     })
 

@@ -151,18 +151,25 @@ function TaskPresentation(
      */
     const retainRow = rowRemainsAfterCompletion(task, { inCommentPopup })
     /**
-     * AT-2507 / AT-2558 — tells the goal section and project card above this row that one of their
-     * tasks is being completed, so each can react if the one being ticked was its last for today.
+     * AT-2507 — tells the goal section above this row that one of its tasks is being completed, so
+     * it can celebrate when the one being ticked is the last one it had for the day.
      *
      * The hook calls this only for a genuine completion of a row that is leaving the list, so the
-     * The goal signal is harmless for a task without `parentGoalId`, while the project card still
-     * requires its own `lineWouldLeave` verdict before it exits. The completion signal therefore
-     * cannot remove a project with tasks, OKRs, or other visible content left.
+     * one condition left here is the one the hook cannot know: whether the task belongs to a goal
+     * at all. A task with no `parentGoalId` renders in the general-tasks block, which has no goal
+     * row to celebrate on.
+     *
+     * AT-2550 uses the same fact one level higher only for the suggested-task workflow bypass. The
+     * project block still requires its own `lineWouldLeave` verdict before it animates, so this hint
+     * can never remove or celebrate a project with other content left.
      */
-    const announceTaskCompletion = useCallback(() => {
-        publishGoalTaskCompletion({ projectId, goalId: task.parentGoalId, taskId: task.id })
-        publishProjectTaskCompletion({ projectId, taskId: task.id })
-    }, [projectId, task.parentGoalId, task.id])
+    const announceTaskCompletion = useCallback(
+        ({ projectExitCandidate } = {}) => {
+            publishGoalTaskCompletion({ projectId, goalId: task.parentGoalId, taskId: task.id })
+            if (projectExitCandidate) publishProjectTaskCompletion({ projectId, taskId: task.id })
+        },
+        [projectId, task.parentGoalId, task.id]
+    )
     const {
         onRowLayout: onCompletionRowLayout,
         rowStyle: completionRowStyle,

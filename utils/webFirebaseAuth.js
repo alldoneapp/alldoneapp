@@ -11,7 +11,11 @@ export function resolveFirebaseAuthDomain({ location, hostingUrl, fallbackAuthDo
 
     try {
         const configuredHostingHost = new URL(hostingUrl).host
-        if (protocol === 'https:' && host === configuredHostingHost) {
+        if (
+            protocol === 'https:' &&
+            (host === configuredHostingHost ||
+                (hostname === 'anna.alldone.app' && configuredHostingHost === 'my.alldone.app'))
+        ) {
             return host
         }
     } catch (error) {
