@@ -369,6 +369,36 @@ exports.createBotQuickTopicSecondGen = onCall(
     }
 )
 
+exports.getAnnaConversationSecondGen = onCall(
+    { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth || request.auth.token?.firebase?.sign_in_provider === 'anonymous')
+            throw new HttpsError('unauthenticated', 'Sign in to talk with Anna.')
+        const { ensureAnnaConversation } = require('./Assistant/annaWorkspace')
+        const { getDefaultAssistantId } = require('./WhatsApp/whatsAppIncomingHandler')
+        try {
+            return await ensureAnnaConversation({
+                db: admin.firestore(),
+                userId: request.auth.uid,
+                resolveAssistantId: async (user, projectId) => {
+                    // Match the app's default assistant preference before its project fallback.
+                    const defaults = await admin
+                        .firestore()
+                        .collection(`assistants/${projectId}/items`)
+                        .where('isDefault', '==', true)
+                        .limit(1)
+                        .get()
+                    return defaults.empty ? getDefaultAssistantId(user, projectId) : defaults.docs[0].id
+                },
+            })
+        } catch (error) {
+            if (['unauthenticated', 'not-found', 'failed-precondition', 'permission-denied'].includes(error.code))
+                throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
 exports.awardXpSecondGen = onCall(
     {
         timeoutSeconds: 60,

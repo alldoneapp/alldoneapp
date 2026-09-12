@@ -393,11 +393,9 @@ is animated properly, keeps moving. And the first grain generator jittered its a
 smooth ramp, which makes a band that takes a pixel, gives it back and takes it again as it slides:
 flicker, not dust.
 
-Five modes, each pinning a distinct branch:
+Four modes, and the last two exist for one bug each:
 
 - default — the board's verdict ("this line is leaving") lands before the celebration starts.
-- `--direct` — AT-2558's production path: the same 1.2s mask, dust and sparks begin immediately,
-  while AT-2551's disabled full-card colour sweep is never mounted.
 - `--late` — it lands 900ms **after**, which is the ordinary production order: the celebration runs
   off the `sidebarNumbers` snapshot and the hide comes through `thereAreNotTasksInFirstDay`. Stage 4
   is therefore chosen 2.1s in, from a ref, and not at `start()`. Getting that wrong is invisible in

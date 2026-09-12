@@ -1,7 +1,10 @@
 import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallPageContext'
+import { getAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 
 export function readCallPageContext() {
     if (typeof window === 'undefined') return null
+    const annaContext = getAnnaWorkspaceContext()
+    if (annaContext) return sanitizeCallPageContext(annaContext)
     // Both values are written by Alldone's URLSystem; title supplies the visible
     // task/note name without reading the page contents or unsaved input.
     return sanitizeCallPageContext({ path: window.location.pathname, title: document.title })
