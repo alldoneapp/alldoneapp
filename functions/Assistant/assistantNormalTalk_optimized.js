@@ -206,9 +206,6 @@ async function askToOpenAIBotOptimized(
             language,
             maxRunWallClockMs: INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
         }
-        const { loadAnnaContext, annaInstructions } = require('./annaWorkspace')
-        const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext)
-        if (annaContext) baseToolRuntimeContext.annaConversation = true
 
         // At 19 uncompacted messages this is a hard safety gate. A failed/stale compaction
         // aborts the run so no message can fall beyond the current 20-message context window
@@ -248,7 +245,6 @@ async function askToOpenAIBotOptimized(
             // Pre-fetch common data needed for storeBotAnswerStream
             getCommonDataOptimized(projectId, objectType, objectId),
         ])
-        if (annaContext) messages.push(['system', annaInstructions(annaContext)])
         const step2Duration = Date.now() - step2Start
 
         console.log('✅ [TIMING] Step 2 - PARALLEL Context & Common Data fetch', {
