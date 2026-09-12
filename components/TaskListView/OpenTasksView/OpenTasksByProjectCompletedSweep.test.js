@@ -65,7 +65,7 @@ const originalNodeEnv = process.env.NODE_ENV
 
 const countOf = (tree, type) => tree.root.findAllByType(type).length
 
-const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false } = {}) => ({
+const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false, priorityFilters = [] } = {}) => ({
     loggedUserProjectsMap: { [PROJECT]: { index: 0, id: PROJECT, color: '#2F80ED' } },
     loggedUserProjects: [{ id: PROJECT }],
     selectedProjectIndex: 0,
@@ -74,7 +74,7 @@ const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false } = 
     tasksArrowButtonIsExpanded: false,
     okrsByProjectInTasks: {},
     filteredOpenTasksStore: { [PROJECT + USER]: loading ? [] : [['0', todayIsEmpty ? 0 : 3, []]] },
-    taskPriorityFilters: [],
+    taskPriorityFilters: priorityFilters,
     taskVmStateFilters: [],
     initialLoadingEndOpenTasks: { [PROJECT + USER]: !loading },
     initialLoadingEndObservedTasks: { [PROJECT + USER]: !loading },
@@ -148,11 +148,9 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
         expect(countOf(tree, ProjectSection)).toBe(0)
     })
 
-    it('quietly exits after completing the last task while its count is stale', () => {
+    it('runs only the historic disintegration after completing the last task while its count is stale', () => {
         const tree = render(buildState({ todayIsEmpty: false, todayCount: 1 }))
-        const sectionBeforeExit = tree.root.findByType(ProjectSection)
         act(() => {
-            sectionBeforeExit.props.onLayout({ nativeEvent: { layout: { height: 240 } } })
             publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
         })
 
@@ -161,11 +159,12 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
 
         const sectionDuringExit = tree.root.findByType(ProjectSection)
         expect(countOf(tree, 'ProjectHeader')).toBe(1)
+        expect(sectionDuringExit.props.completedDisintegrationRunId).toBe(1)
+        expect(sectionDuringExit.props.completedDisintegrationLineWillLeave).toBe(true)
+        // AT-2551 stays intact: the broad FILL → SHIMMER → PULSE sweep is not reconnected.
         expect(sectionDuringExit.props.completedSweepRunId).toBeUndefined()
         expect(sectionDuringExit.props.completedSweepLineWillLeave).toBeUndefined()
-        expect(sectionDuringExit.props.style[1]).toEqual(
-            expect.objectContaining({ overflow: 'hidden', pointerEvents: 'none', minHeight: 0 })
-        )
+        expect(sectionDuringExit.props.style).toEqual({ marginBottom: 28 })
 
         act(() => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
         expect(countOf(tree, 'ProjectHeader')).toBe(0)
@@ -181,6 +180,19 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
 
         expect(section.props.completedSweepRunId).toBeUndefined()
         expect(section.props.completedSweepLineWillLeave).toBeUndefined()
+        expect(section.props.completedDisintegrationRunId).toBe(0)
+        expect(section.props.completedDisintegrationLineWillLeave).toBe(false)
+    })
+
+    it('does not hold or animate a project hidden by active filters', () => {
+        const tree = render(buildState({ priorityFilters: ['urgent'] }))
+        act(() => {
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-visible-task' })
+        })
+
+        update(tree, buildState({ todayIsEmpty: true, priorityFilters: ['urgent'] }))
+
+        expect(countOf(tree, ProjectSection)).toBe(0)
     })
 
     it('keeps the selected-project empty state static and visible', () => {
@@ -189,6 +201,7 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
 
         expect(countOf(tree, 'ProjectHeader')).toBe(1)
         expect(tree.root.findByType(ProjectSection).props.completedSweepRunId).toBeUndefined()
+        expect(tree.root.findByType(ProjectSection).props.completedDisintegrationRunId).toBe(0)
         expect(tree.root.findByType('OpenTasksByDate').props.projectCelebrationRunId).toBeUndefined()
     })
 
