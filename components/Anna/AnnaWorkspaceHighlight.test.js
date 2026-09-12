@@ -86,3 +86,16 @@ it('removes the highlight at expiry and when its text changes', async () => {
     await act(async () => jest.advanceTimersByTime(150))
     expect(document.querySelector('.anna-highlight-overlay')).toBeNull()
 })
+it('clears hidden workspace context and does not replay a marker when the tab returns', async () => {
+    await show()
+    jest.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    await act(async () => jest.advanceTimersByTime(750))
+    expect(document.querySelector('.anna-highlight-overlay')).toBeNull()
+    expect(mockUpdate).toHaveBeenCalledWith({ annaScreenContext: null })
+
+    jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    await act(async () => jest.advanceTimersByTime(750))
+    expect(document.querySelector('.anna-highlight-overlay')).toBeNull()
+    const snapshots = mockUpdate.mock.calls.filter(([patch]) => 'annaScreenContext' in patch)
+    expect(snapshots[snapshots.length - 1][0].annaScreenContext.targets).toHaveLength(1)
+})

@@ -57,14 +57,13 @@ export default function AnnaWorkspaceHighlight({ rootRef, active, conversation, 
                 publishing = false
             }
         }
+        // Polling also checks document.hidden; appResume owns visibility listeners.
         // Throttle inventory updates while a user scrolls or an editor changes.
         tick()
         const timer = setInterval(tick, 750)
-        document.addEventListener('visibilitychange', tick)
         return () => {
             stopped = true
             clearInterval(timer)
-            document.removeEventListener('visibilitychange', tick)
             current.current = { snapshot: null, references: new Map() }
         }
     }, [docPath, active, routeId])
@@ -100,13 +99,11 @@ export default function AnnaWorkspaceHighlight({ rootRef, active, conversation, 
         window.addEventListener('keydown', escape)
         window.addEventListener('scroll', refresh, true)
         window.addEventListener('resize', refresh)
-        document.addEventListener('visibilitychange', refresh)
         return () => {
             clearInterval(timer)
             window.removeEventListener('keydown', escape)
             window.removeEventListener('scroll', refresh, true)
             window.removeEventListener('resize', refresh)
-            document.removeEventListener('visibilitychange', refresh)
             dismiss('cleared')
         }
     }, [active, routeId, docPath])
