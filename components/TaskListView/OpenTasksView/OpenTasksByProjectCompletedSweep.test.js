@@ -3,7 +3,11 @@ import renderer, { act } from 'react-test-renderer'
 
 import OpenTasksByProject from './OpenTasksByProject'
 import ProjectSection from '../ProjectSection'
-import { publishProjectTaskCompletion, resetProjectTaskCompletionListeners } from './projectTaskCompletionSignal'
+import {
+    publishProjectTaskCompletion,
+    publishProjectTaskPostpone,
+    resetProjectTaskCompletionListeners,
+} from './projectTaskCompletionSignal'
 import { TASK_COMPLETION_PROJECT_EXIT_HOLD_MS } from './useTaskCompletionProjectExit'
 
 let mockState
@@ -168,6 +172,22 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
 
         act(() => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
         expect(countOf(tree, 'ProjectHeader')).toBe(0)
+        expect(countOf(tree, ProjectSection)).toBe(0)
+    })
+
+    it('runs the same disintegration after postponing the last task out of Today', () => {
+        const tree = render(buildState({ todayIsEmpty: false, todayCount: 1 }))
+        act(() => {
+            publishProjectTaskPostpone({ projectId: PROJECT, taskId: 'last-task' })
+        })
+
+        update(tree, buildState({ todayIsEmpty: true, todayCount: 1 }))
+
+        const sectionDuringExit = tree.root.findByType(ProjectSection)
+        expect(sectionDuringExit.props.completedDisintegrationRunId).toBe(1)
+        expect(sectionDuringExit.props.completedDisintegrationLineWillLeave).toBe(true)
+
+        act(() => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
         expect(countOf(tree, ProjectSection)).toBe(0)
     })
 

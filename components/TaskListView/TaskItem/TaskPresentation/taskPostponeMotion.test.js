@@ -12,6 +12,10 @@ import useTaskPostponeMotion, {
     resetTaskPostponeMotionRegistry,
     targetLeavesToday,
 } from './taskPostponeMotion'
+import {
+    resetProjectTaskCompletionListeners,
+    subscribeToProjectTaskCompletions,
+} from '../../OpenTasksView/projectTaskCompletionSignal'
 
 let motion
 const PROJECT = 'project-1'
@@ -41,6 +45,7 @@ describe('task postpone motion (AT-2541)', () => {
     beforeEach(() => {
         jest.useFakeTimers()
         resetTaskPostponeMotionRegistry()
+        resetProjectTaskCompletionListeners()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         process.env.NODE_ENV = 'development'
@@ -50,6 +55,7 @@ describe('task postpone motion (AT-2541)', () => {
     afterEach(() => {
         jest.useRealTimers()
         resetTaskPostponeMotionRegistry()
+        resetProjectTaskCompletionListeners()
         AccessibilityInfo.isReduceMotionEnabled = originalIsReduceMotionEnabled
         AccessibilityInfo.addEventListener = originalAddEventListener
         process.env.NODE_ENV = originalNodeEnv
@@ -115,6 +121,26 @@ describe('task postpone motion (AT-2541)', () => {
         expect(write).toHaveBeenCalledTimes(1)
     })
 
+    it('reports a quick-Tomorrow postpone before the write can empty its project', async () => {
+        await mount()
+        const projectExit = jest.fn()
+        subscribeToProjectTaskCompletions(PROJECT, projectExit)
+        const write = jest.fn(() => {
+            expect(projectExit).toHaveBeenCalledWith({ projectId: PROJECT, taskId: TASK.id })
+        })
+        const { promise } = await postpone({}, write)
+
+        expect(projectExit).not.toHaveBeenCalled()
+
+        await act(async () => {
+            jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
+            await promise
+        })
+
+        expect(projectExit).toHaveBeenCalledTimes(1)
+        expect(write).toHaveBeenCalledTimes(1)
+    })
+
     it('does not hand a final task postpone to its goal section or other page elements', async () => {
         const tree = await mount({ goalId: TASK.parentGoalId })
         const { promise } = await postpone()
@@ -134,6 +160,8 @@ describe('task postpone motion (AT-2541)', () => {
     it('does nothing for a date change that leaves the task in Today', async () => {
         await mount()
         const write = jest.fn()
+        const projectExit = jest.fn()
+        subscribeToProjectTaskCompletions(PROJECT, projectExit)
 
         await act(async () => {
             await postponeTaskWithMotion(
@@ -143,15 +171,19 @@ describe('task postpone motion (AT-2541)', () => {
         })
 
         expect(write).toHaveBeenCalledTimes(1)
+        expect(projectExit).not.toHaveBeenCalled()
         expect(motion.rowStyle).toBeUndefined()
     })
 
     it('does not animate an observed-only row when only the assignee date changes', async () => {
         await mount({ isObservedTask: true, isToReviewTask: false })
+        const projectExit = jest.fn()
+        subscribeToProjectTaskCompletions(PROJECT, projectExit)
         const { promise, write } = await postpone({ updatesDueDate: true, updatesObservedDate: false })
 
         await act(async () => promise)
         expect(write).toHaveBeenCalledTimes(1)
+        expect(projectExit).not.toHaveBeenCalled()
         expect(motion.rowStyle).toBeUndefined()
     })
 
@@ -193,10 +225,13 @@ describe('task postpone motion (AT-2541)', () => {
 
     it('is inert when no eligible Today/My Day row registered the task', async () => {
         const write = jest.fn()
+        const projectExit = jest.fn()
+        subscribeToProjectTaskCompletions(PROJECT, projectExit)
         await postponeTaskWithMotion(
             { projectId: PROJECT, task: TASK, targetDate: Number.MAX_SAFE_INTEGER, updatesDueDate: true },
             write
         )
         expect(write).toHaveBeenCalledTimes(1)
+        expect(projectExit).not.toHaveBeenCalled()
     })
 })
