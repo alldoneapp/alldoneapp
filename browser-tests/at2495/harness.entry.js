@@ -38,6 +38,7 @@ import ProjectLineDisintegration from '../../components/TaskListView/Header/Proj
 import useProjectCompletedSweepMotion, {
     useProjectLineExit,
 } from '../../components/TaskListView/OpenTasksView/projectCompletedSweepMotion'
+import useProjectDisintegrationMotion from '../../components/TaskListView/OpenTasksView/projectDisintegrationMotion'
 
 const CARD_WIDTH = 900
 const CARD_HEIGHT = 96
@@ -46,6 +47,7 @@ const CARD_BOTTOM_SPACING = 28
 // threshold on one number rather than a colour-distance heuristic.
 const ROW_COLOR = 'rgb(255, 0, 0)'
 const PROJECT_TINT = ROW_COLOR
+const direct = new URLSearchParams(window.location.search).has('direct')
 
 const localStyles = StyleSheet.create({
     page: { width: CARD_WIDTH, backgroundColor: 'white' },
@@ -63,7 +65,9 @@ const localStyles = StyleSheet.create({
 function Line() {
     const [runId, setRunId] = useState(0)
     const [lineWillLeave, setLineWillLeave] = useState(false)
-    const motion = useProjectCompletedSweepMotion(runId, lineWillLeave)
+    const sweepMotion = useProjectCompletedSweepMotion(direct ? 0 : runId, lineWillLeave)
+    const directMotion = useProjectDisintegrationMotion(direct ? runId : 0, lineWillLeave, sweepMotion.animated)
+    const motion = direct ? directMotion : sweepMotion
     const { exitStyle, exitHeight, onLineLayout } = useProjectLineExit(motion, CARD_BOTTOM_SPACING)
 
     // `leaving` is set separately from the run so the runner can reproduce BOTH arrival orders: the
@@ -87,7 +91,7 @@ function Line() {
                 originally written for) reproduced it exactly. */}
             <View style={localStyles.lineContainer} nativeID="line-wrapper">
                 <Animated.View style={[localStyles.card, exitStyle]} onLayout={onLineLayout} nativeID="project-card">
-                    <ProjectCompletedSweep motion={motion} tint={PROJECT_TINT} />
+                    {!direct && <ProjectCompletedSweep motion={sweepMotion} tint={PROJECT_TINT} />}
                 </Animated.View>
                 {exitStyle ? (
                     <ProjectLineDisintegration progress={motion.disintegrate} height={exitHeight} tint={PROJECT_TINT} />

@@ -83,4 +83,10 @@ The marker was verified in the local browser against the real staging notes view
 - The latest highlighting checks passed 29 web tests and 332 Functions tests; the production-configured webpack build passed.
 - The first Hosting attempt uploaded successfully but failed while resolving Functions metadata during concurrent creation of the new endpoint. Retrying after all three Functions completed succeeded.
 - DNS and Firebase ownership are active. Firebase's HTTP certificate challenge matches, but the certificate remains `CERT_VALIDATING` and HTTPS hostname validation is not yet passing. Login, chat, presentation and an actual microphone call on `anna.alldone.app` therefore remain pending certificate activation. No browser certificate warning was bypassed.
-- The implementation is committed locally. No Git push or unrelated deployment was performed.
+- The initial implementation was committed locally and deployed directly, without pushing its source. This release procedure was corrected after the regression below.
+
+## Deployment regression on 2026-09-12
+
+The normal production pipeline `2843573710` deployed `921382bd05b09bd6fea1c64065b5ad7bf99f44f9` after the direct Anna release. Both domains share one Hosting site, so both began serving that build, which did not contain the unpushed Anna commits. This was a missing source integration, not a DNS or browser-cache failure. HTTPS is now valid on the Anna domain.
+
+The Anna commits are being merged with the latest remote `master`, preserving the newer task completion and postponement animations. Anna must be delivered through the regular master pipeline, with the remote source, deployment marker and served OTA version verified together. A direct deployment of unpushed source does not constitute a durable release.
