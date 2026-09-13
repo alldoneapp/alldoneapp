@@ -190,7 +190,7 @@ describe('HappinessRatingModal (AT-2392)', () => {
         expect(date).toBe(getTodayHappinessDate())
     })
 
-    it('closes on Done, saving a comment that was never blurred', () => {
+    it('closes on Done, saving a comment that was never blurred', async () => {
         const { tree, onClose } = render()
 
         rate(tree, 3)
@@ -204,6 +204,7 @@ describe('HappinessRatingModal (AT-2392)', () => {
         press(tree, 'doneHappinessRating')
 
         expect(onClose).toHaveBeenCalledTimes(1)
+        await renderer.act(async () => {})
         const lastWrite = Backend.setProjectHappiness.mock.calls.pop()
         expect(lastWrite[3]).toBe(3)
         expect(lastWrite[4]).toBe('good day')

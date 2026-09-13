@@ -115,3 +115,23 @@ it.each(['reject', 'http'])('contains %s reporting failures', async kind => {
     else global.fetch.mockResolvedValue({ ok: false, status: 403 })
     expect(await reportNewDayStatisticsError(failure, context)).toBe(false)
 })
+
+it('reports a replayed lifecycle event using its original timestamp and stable event id', async () => {
+    const event = {
+        ...context,
+        source: 'new-day-lifecycle',
+        stage: 'reload',
+        eventId: 'event-1',
+        eventTime: 123456789,
+        reason: 'daily-lifecycle',
+        acknowledgedDate: 1234,
+    }
+    expect(await reportNewDayStatisticsError({ code: 'lifecycle' }, event)).toBe(true)
+    const { fields } = JSON.parse(global.fetch.mock.calls[0][1].body)
+    expect(fields).toMatchObject({
+        source: { stringValue: 'new-day-lifecycle' },
+        datetime: { integerValue: '123456789' },
+        eventId: { stringValue: 'event-1' },
+        reason: { stringValue: 'daily-lifecycle' },
+    })
+})

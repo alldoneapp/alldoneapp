@@ -1,3 +1,4 @@
+import { recordNewDayEvent } from './newDayDiagnostics'
 /**
  * Recovers the page from an unrecoverable Firestore client assertion.
  *
@@ -145,6 +146,7 @@ export const installFirestoreFatalRecovery = ({
             reloadStarted = true
             writeRecoveryTime(sessionStorage, now())
             console.warn(`[FirestoreRecovery] Reloading after unrecoverable Firestore state (${pendingReason}).`)
+            recordNewDayEvent('reload', { reason: `firestore-${pendingReason}` })
             reloadPage()
         }, reloadDelayMs)
     }
