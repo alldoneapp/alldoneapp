@@ -1,3 +1,4 @@
+import { readHappinessForSave } from './Projects/happinessRecoveryRead'
 // Config file
 import { runExclusiveFirestoreRestart } from './firestoreRestartLease'
 import moment from 'moment'
@@ -3601,7 +3602,13 @@ export function watchAllUserStatisticsByRange(
 const getProjectHappinessCollection = (projectId, userId) =>
     db.collection(`projectHappiness/${projectId}/users/${userId}/days`)
 
-export async function setProjectHappiness(projectId, userId, date, rating, comment = '', project = null) {
+export async function setProjectHappiness(projectId, userId, date, rating, comment = '', project = null, options = {}) {
+    const feedCreator = store.getState().loggedUser
+    const assertAccount = () => {
+        if (feedCreator.uid !== userId || store.getState().loggedUser.uid !== userId)
+            throw new Error('Happiness account changed')
+    }
+    assertAccount()
     const timestamp = getHappinessTimestamp(date)
     const dateKey = getHappinessDateKey(timestamp)
     const day = getHappinessDay(timestamp)
@@ -3611,7 +3618,9 @@ export async function setProjectHappiness(projectId, userId, date, rating, comme
     const feedProject = project || ProjectHelper.getProjectById(projectId) || (await getProjectData(projectId))
 
     if (rating) {
-        const currentDoc = await docRef.get()
+        const currentDoc = await readHappinessForSave(db, docRef, options.recoverable, assertAccount)
+        const current = currentDoc.data()
+        if (current?.rating === rating && (current.comment || '') === cleanedComment) return
         const data = {
             projectId,
             userId,
@@ -3624,12 +3633,13 @@ export async function setProjectHappiness(projectId, userId, date, rating, comme
         }
         if (!currentDoc.exists) data.created = data.updated
         batch.set(docRef, data, { merge: true })
-        await createProjectHappinessFeed(projectId, feedProject, data, batch)
+        await createProjectHappinessFeed(projectId, feedProject, data, batch, feedCreator)
     } else {
         batch.delete(docRef)
-        await createProjectHappinessFeed(projectId, feedProject, { cleared: true }, batch)
+        await createProjectHappinessFeed(projectId, feedProject, { cleared: true }, batch, feedCreator)
     }
 
+    assertAccount()
     await batch.commit()
 }
 

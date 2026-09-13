@@ -13,6 +13,15 @@
  * and `checkIfDataIsLoaded()` is satisfied by the empty map it sets.
  */
 
+import { newDayRecoveryStore, createNewDayRecoveryStore } from '../../utils/newDayRecoveryStore'
+import { dayReloadCoordinator, createDayReloadCoordinator } from '../../utils/dayReloadCoordinator'
+
+beforeEach(() => {
+    localStorage.clear()
+    Object.assign(newDayRecoveryStore, createNewDayRecoveryStore())
+    Object.assign(dayReloadCoordinator, createDayReloadCoordinator())
+})
+
 import React from 'react'
 import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
@@ -61,6 +70,12 @@ const signIn = () =>
     )
 
 let currentTree = null
+
+afterEach(() => {
+    if (currentTree) renderer.act(() => currentTree.unmount())
+    currentTree = null
+    jest.useRealTimers()
+})
 
 const render = () => {
     let tree
@@ -181,4 +196,36 @@ describe('EndDayStatisticsModal — "Start new day" (AT-2367)', () => {
 
         expect(setUserStatisticsModalDate).toHaveBeenCalledTimes(1)
     })
+})
+
+it('keeps a confirmed day closed after a stale user snapshot and a fresh popup mount', async () => {
+    signIn()
+    const first = render()
+    pressStartNewDay(first)
+    renderer.act(() => signIn()) // stale server/cache snapshot
+    expect(first.toJSON()).toBeNull()
+    renderer.act(() => first.unmount())
+    Object.assign(newDayRecoveryStore, createNewDayRecoveryStore())
+    const replacement = render()
+    expect(replacement.toJSON()).toBeNull()
+    await renderer.act(async () => {})
+    expect(setUserStatisticsModalDate).toHaveBeenCalledWith(YESTERDAY, expect.any(Number), 'user-1')
+})
+
+it('holds a queued daily reload until the popup is closed and the write grace has elapsed', async () => {
+    jest.useFakeTimers()
+    setUserStatisticsModalDate.mockImplementation(() => new Promise(() => {}))
+    signIn()
+    const tree = render()
+    const reload = jest.fn()
+    dayReloadCoordinator.request(reload)
+    expect(reload).not.toHaveBeenCalled()
+    pressStartNewDay(tree)
+    expect(tree.toJSON()).toBeNull()
+    expect(reload).not.toHaveBeenCalled()
+    await renderer.act(async () => {
+        await jest.advanceTimersByTimeAsync(1200)
+    })
+    expect(reload).toHaveBeenCalledTimes(1)
+    jest.useRealTimers()
 })

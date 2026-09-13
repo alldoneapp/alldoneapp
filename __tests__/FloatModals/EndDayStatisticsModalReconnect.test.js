@@ -25,6 +25,15 @@
  * shared manual-reconnect path from PT-4660) and the statistics read.
  */
 
+import { newDayRecoveryStore, createNewDayRecoveryStore } from '../../utils/newDayRecoveryStore'
+import { dayReloadCoordinator, createDayReloadCoordinator } from '../../utils/dayReloadCoordinator'
+
+beforeEach(() => {
+    localStorage.clear()
+    Object.assign(newDayRecoveryStore, createNewDayRecoveryStore())
+    Object.assign(dayReloadCoordinator, createDayReloadCoordinator())
+})
+
 import React from 'react'
 import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
@@ -194,6 +203,25 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         // the acknowledgement is queued locally (AT-2340).
         expect(has(tree, 'startNewDayButton')).toBe(true)
         expect(text(tree)).toContain('Try again')
+    })
+
+    it('uses yesterday local confirmation when the server still holds an older offline date', async () => {
+        const olderDate = moment(YESTERDAY).subtract(1, 'day').valueOf()
+        renderer.act(() =>
+            store.dispatch(storeLoggedUser({ ...store.getState().loggedUser, statisticsModalDate: olderDate }))
+        )
+        newDayRecoveryStore.acknowledge('user-1', olderDate, YESTERDAY)
+        readsStatistics({ doneTasks: 24 })
+        const tree = await render()
+        expect(Backend.getUserStatistics.mock.calls[0][2]).toBe(moment(YESTERDAY).format('DDMMYYYY'))
+        expect(has(tree, 'newDayStatistics')).toBe(true)
+        const readsBefore = Backend.getUserStatistics.mock.calls.length
+        renderer.act(() =>
+            store.dispatch(storeLoggedUser({ ...store.getState().loggedUser, statisticsModalDate: YESTERDAY }))
+        )
+        await flush()
+        expect(Backend.getUserStatistics).toHaveBeenCalledTimes(readsBefore)
+        expect(has(tree, 'startNewDayButton')).toBe(true)
     })
 
     it('shows the saved summary while day-rate maintenance is stuck and refreshes when it finally completes', async () => {
@@ -566,7 +594,9 @@ describe('EndDayStatisticsModal — reconnect from the offline card (AT-2391)', 
         await renderer.act(async () => failSecond({ code: 'deadline-exceeded' }))
         expect(text(tree)).toContain(second.name)
         expect(text(tree)).toContain(PROJECT.name)
-        expect(reportNewDayStatisticsError).toHaveBeenCalledTimes(2)
+        expect(
+            reportNewDayStatisticsError.mock.calls.filter(([, context]) => context.source !== 'new-day-lifecycle')
+        ).toHaveLength(2)
     })
 
     it('reports a stalled read with its project, stage and elapsed time', async () => {

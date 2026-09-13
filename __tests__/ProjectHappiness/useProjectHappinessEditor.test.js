@@ -13,6 +13,15 @@
  *     leaves the previous day's ratings on screen.
  */
 
+import { newDayRecoveryStore, createNewDayRecoveryStore } from '../../utils/newDayRecoveryStore'
+import { dayReloadCoordinator, createDayReloadCoordinator } from '../../utils/dayReloadCoordinator'
+
+beforeEach(() => {
+    localStorage.clear()
+    Object.assign(newDayRecoveryStore, createNewDayRecoveryStore())
+    Object.assign(dayReloadCoordinator, createDayReloadCoordinator())
+})
+
 import React from 'react'
 import renderer from 'react-test-renderer'
 
@@ -30,6 +39,14 @@ const PROJECT_B = { id: 'project-b', name: 'Juno' }
 
 const MONDAY = new Date('2026-08-17T00:00:00.000Z').getTime()
 const TUESDAY = new Date('2026-08-18T00:00:00.000Z').getTime()
+
+const trees = new Set()
+afterEach(async () => {
+    await renderer.act(async () => {
+        trees.forEach(tree => tree.unmount())
+    })
+    trees.clear()
+})
 
 const renderEditor = (options = {}) => {
     let editor
@@ -49,6 +66,7 @@ const renderEditor = (options = {}) => {
         tree = renderer.create(<Probe date={options.date} />)
     })
 
+    trees.add(tree)
     return {
         editor: () => editor,
         setDate: date => renderer.act(() => tree.update(<Probe date={date} />)),
@@ -67,7 +85,7 @@ describe('useProjectHappinessEditor (AT-2392)', () => {
         renderer.act(() => editor().setRating(PROJECT_A, 4))
 
         expect(Backend.setProjectHappiness).toHaveBeenCalledTimes(1)
-        expect(lastWrite()).toEqual(['project-a', 'user-1', MONDAY, 4, '', PROJECT_A])
+        expect(lastWrite()).toEqual(['project-a', 'user-1', MONDAY, 4, '', PROJECT_A, { recoverable: true }])
         expect(editor().ratings['project-a']).toBe(4)
     })
 
@@ -80,34 +98,42 @@ describe('useProjectHappinessEditor (AT-2392)', () => {
         expect(Backend.setProjectHappiness).toHaveBeenCalledTimes(1)
     })
 
-    it('writes again when the rating actually changes', () => {
+    it('writes again when the rating actually changes', async () => {
         const { editor } = renderEditor({ date: MONDAY })
 
         renderer.act(() => editor().setRating(PROJECT_A, 4))
-        renderer.act(() => editor().setRating(PROJECT_A, 2))
+        await renderer.act(async () => editor().setRating(PROJECT_A, 2))
 
         expect(Backend.setProjectHappiness).toHaveBeenCalledTimes(2)
         expect(lastWrite()[3]).toBe(2)
     })
 
-    it('ignores a comment saved with no rating', () => {
+    it('ignores a comment saved with no rating', async () => {
         const { editor } = renderEditor({ date: MONDAY })
 
         renderer.act(() => editor().setComment(PROJECT_A, 'rough morning'))
-        renderer.act(() => editor().saveComment(PROJECT_A))
+        await renderer.act(async () => editor().saveComment(PROJECT_A))
 
         expect(Backend.setProjectHappiness).not.toHaveBeenCalled()
     })
 
-    it('stores the comment against the rating on blur', () => {
+    it('stores the comment against the rating on blur', async () => {
         const { editor } = renderEditor({ date: MONDAY })
 
         renderer.act(() => editor().setRating(PROJECT_A, 5))
         renderer.act(() => editor().setComment(PROJECT_A, 'shipped AT-2392'))
-        renderer.act(() => editor().saveComment(PROJECT_A))
+        await renderer.act(async () => editor().saveComment(PROJECT_A))
 
         expect(Backend.setProjectHappiness).toHaveBeenCalledTimes(2)
-        expect(lastWrite()).toEqual(['project-a', 'user-1', MONDAY, 5, 'shipped AT-2392', PROJECT_A])
+        expect(lastWrite()).toEqual([
+            'project-a',
+            'user-1',
+            MONDAY,
+            5,
+            'shipped AT-2392',
+            PROJECT_A,
+            { recoverable: true },
+        ])
     })
 
     it('rates a second day the same way as the first — the dedupe is per day', () => {
@@ -122,14 +148,15 @@ describe('useProjectHappinessEditor (AT-2392)', () => {
         expect(Backend.setProjectHappiness.mock.calls[1][2]).toBe(TUESDAY)
     })
 
-    it('flushes an unblurred comment onto the day it was typed on, not the new one', () => {
+    it('flushes an unblurred comment onto the day it was typed on, not the new one', async () => {
         const { editor, setDate } = renderEditor({ date: MONDAY })
 
         renderer.act(() => editor().setRating(PROJECT_A, 3))
         renderer.act(() => editor().setComment(PROJECT_A, 'monday note'))
         setDate(TUESDAY)
 
-        expect(lastWrite()).toEqual(['project-a', 'user-1', MONDAY, 3, 'monday note', PROJECT_A])
+        await renderer.act(async () => {})
+        expect(lastWrite()).toEqual(['project-a', 'user-1', MONDAY, 3, 'monday note', PROJECT_A, { recoverable: true }])
     })
 
     it('clears the previous day off the screen when the day changes', () => {
@@ -193,7 +220,15 @@ describe('useProjectHappinessEditor (AT-2392)', () => {
                 await flush()
             })
 
-            expect(lastWrite()).toEqual(['project-a', 'user-1', MONDAY, 3, 'typed, never blurred', PROJECT_A])
+            expect(lastWrite()).toEqual([
+                'project-a',
+                'user-1',
+                MONDAY,
+                3,
+                'typed, never blurred',
+                PROJECT_A,
+                { recoverable: true },
+            ])
         })
 
         it('is a no-op when nothing is pending', async () => {
@@ -270,4 +305,46 @@ describe('useProjectHappinessEditor — what is already stored for the day', () 
 
         expect(editor().storedEntries['project-a']).toBeUndefined()
     })
+})
+
+it('recovers the unblurred comment after a page reload during a stalled save', async () => {
+    Backend.setProjectHappiness
+        .mockReset()
+        .mockImplementationOnce(() => new Promise(() => {}))
+        .mockResolvedValue(undefined)
+    const first = renderEditor({ date: MONDAY })
+    renderer.act(() => {
+        first.editor().setRating(PROJECT_A, 4)
+        first.editor().setComment(PROJECT_A, 'survive the phone reload')
+    })
+    first.unmount()
+    // A new JS context has no in-flight Promise or React refs; only storage remains.
+    Object.assign(newDayRecoveryStore, createNewDayRecoveryStore())
+    const second = renderEditor({ date: MONDAY })
+    expect(second.editor().comments['project-a']).toBe('survive the phone reload')
+    await renderer.act(async () => {})
+    expect(lastWrite()).toEqual([
+        'project-a',
+        'user-1',
+        MONDAY,
+        4,
+        'survive the phone reload',
+        PROJECT_A,
+        { recoverable: true },
+    ])
+    expect(newDayRecoveryStore.getDraft('user-1', 'project-a', MONDAY)).toBeUndefined()
+})
+
+it('does not overwrite an unblurred local comment with a delayed watcher response', () => {
+    Backend.setProjectHappiness.mockReset().mockImplementation(() => new Promise(() => {}))
+    Backend.watchProjectHappinessByRange.mockReset()
+    const current = renderEditor({ date: MONDAY })
+    renderer.act(() => {
+        current.editor().setRating(PROJECT_A, 4)
+        current.editor().setComment(PROJECT_A, 'still typing')
+    })
+    const answer = Backend.watchProjectHappinessByRange.mock.calls[0][5]
+    renderer.act(() => answer('project-a', [{ rating: 2, comment: 'stale server text' }]))
+    expect(current.editor().ratings['project-a']).toBe(4)
+    expect(current.editor().comments['project-a']).toBe('still typing')
 })

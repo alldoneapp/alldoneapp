@@ -1,3 +1,4 @@
+import { persistNewDayAcknowledgement } from './newDayAcknowledgement'
 import firebase from 'firebase/compat/app'
 import { cloneDeep } from 'lodash'
 import moment from 'moment'
@@ -1265,12 +1266,18 @@ export function setUserDailyTopicDate(dailyTopicDate) {
         .update({ dailyTopicDate: Date.now(), previousDailyTopicDate: dailyTopicDate })
 }
 
-export function setUserStatisticsModalDate(statisticsModalDate, newStatisticsModalDate = Date.now()) {
-    const { loggedUser } = store.getState()
-    return firebase
-        .firestore()
-        .doc(`users/${loggedUser.uid}`)
-        .update({ statisticsModalDate: newStatisticsModalDate, previousStatisticsModalDate: statisticsModalDate })
+export function setUserStatisticsModalDate(
+    statisticsModalDate,
+    newStatisticsModalDate = Date.now(),
+    userId = store.getState().loggedUser.uid
+) {
+    return persistNewDayAcknowledgement(
+        firebase.firestore(),
+        userId,
+        statisticsModalDate,
+        newStatisticsModalDate,
+        () => store.getState().loggedUser.uid
+    )
 }
 
 export function updateUserStatisticsFilter(userId, statisticsData) {
