@@ -1,14 +1,14 @@
 const fs = require('fs')
 const path = require('path')
+const { parse } = require('@babel/parser')
 
 /**
  * AT-2367 — "Start new day" contract, guarded at the source level.
  *
- * `EndDayStatisticsModal` cannot practically be mounted in jsdom (it pulls
- * `BackendBridge` → `firestore.js` and the whole redux store with it), so the
- * behaviour that the bug was about is pinned the same way
- * `OfflineWriteAckCallSites.test.js` pins its call sites. The orchestration
- * itself is covered behaviourally by `__tests__/utils/StartNewDayFlow.test.js`.
+ * These assertions guard the shared wiring. The real mounted popup's close,
+ * persistence and coordinated reload behavior is covered by
+ * `__tests__/FloatModals/EndDayStatisticsModal.test.js`; the orchestration's
+ * timing is covered by `__tests__/utils/StartNewDayFlow.test.js`.
  *
  * What must never come back:
  *
@@ -36,6 +36,24 @@ const read = file => fs.readFileSync(path.resolve(__dirname, '..', '..', file), 
 const source = read(MODAL)
 const editorSource = read(EDITOR)
 
+// Inspect the handler and its callbacks rather than matching a whole-file
+// spelling: the background persistence callback deliberately awaits a server
+// acknowledgement, while the button handler must still close synchronously.
+const findNode = (node, predicate) => {
+    if (!node || typeof node !== 'object') return undefined
+    if (predicate(node)) return node
+    for (const child of Object.values(node)) {
+        const found = Array.isArray(child)
+            ? child.map(value => findNode(value, predicate)).find(Boolean)
+            : findNode(child, predicate)
+        if (found) return found
+    }
+}
+const ast = parse(source, { sourceType: 'module', plugins: ['jsx'] })
+const handler = findNode(ast, node => node.type === 'VariableDeclarator' && node.id.name === 'onPressStartNewDay').init
+const flow = findNode(handler, node => node.type === 'CallExpression' && node.callee.name === 'runStartNewDay')
+const flowOption = name => flow.arguments[0].properties.find(property => property.key.name === name).value
+
 describe('EndDayStatisticsModal "Start new day" contract (AT-2367)', () => {
     it('runs the flow through the shared, tested orchestration helper', () => {
         expect(source).toMatch(/startNewDay as runStartNewDay.*from '\.\.\/\.\.\/\.\.\/utils\/NewDayModalHelper'/)
@@ -43,10 +61,12 @@ describe('EndDayStatisticsModal "Start new day" contract (AT-2367)', () => {
     })
 
     it('never parks the press handler on a server ack', () => {
-        expect(source).toMatch(/import \{ awaitWriteAck \} from '\.\.\/\.\.\/\.\.\/utils\/backends\/offlineWriteAck'/)
-        expect(source).not.toMatch(/await setUserStatisticsModalDate\(/)
-        expect(source).not.toMatch(/await happinessEditor\.(save|take)DirtyEntries\(/)
-        expect(source).toMatch(/awaitWriteAck\(\s*\n?\s*setUserStatisticsModalDate\(/)
+        expect(handler.async).toBe(false)
+        expect(flowOption('persistAcknowledgement')).toMatchObject({
+            type: 'ArrowFunctionExpression',
+            body: { type: 'CallExpression', callee: { name: 'persistPendingAcknowledgement' } },
+        })
+        expect(findNode(handler, node => node.type === 'AwaitExpression')).toBeUndefined()
     })
 
     it('snapshots the happiness drafts before the close that clears them', () => {
@@ -68,8 +88,20 @@ describe('EndDayStatisticsModal "Start new day" contract (AT-2367)', () => {
         expect(source).not.toMatch(/if \(!isOfflineRef\.current\) \{\s*\n\s*const newStatisticsModalDate/)
     })
 
-    it('reloads only the device that actually crossed midnight while open', () => {
-        expect(source).toMatch(/crossedMidnightWhileOpen \? \(\) => deleteCacheAndRefresh\(\) : undefined/)
+    it('routes the midnight device reload through the shared coordinator', () => {
+        const reload = flowOption('reloadApp')
+        expect(reload).toMatchObject({
+            type: 'ConditionalExpression',
+            test: { name: 'crossedMidnightWhileOpen' },
+            alternate: { name: 'undefined' },
+            consequent: {
+                type: 'ArrowFunctionExpression',
+                body: {
+                    type: 'CallExpression',
+                    callee: { object: { name: 'dayReloadCoordinator' }, property: { name: 'request' } },
+                },
+            },
+        })
     })
 
     it('writes a happiness entry through one deduplicated path', () => {
