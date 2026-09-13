@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react'
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Lottie from 'lottie-react'
@@ -25,7 +25,9 @@ import {
 } from '../../../utils/EstimationHelper'
 import { setUserStatisticsModalDate } from '../../../utils/backends/Users/usersFirestore'
 import { needToAcknowledgeNewDay, startNewDay as runStartNewDay } from '../../../utils/NewDayModalHelper'
-import { awaitWriteAck } from '../../../utils/backends/offlineWriteAck'
+import { newDayRecoveryStore } from '../../../utils/newDayRecoveryStore'
+import { dayReloadCoordinator, markDailyReload } from '../../../utils/dayReloadCoordinator'
+import { recordNewDayEvent, flushNewDayDiagnostics } from '../../../utils/newDayDiagnostics'
 import {
     normalizeDayRateTimeLogConfig,
     reconcileProjectDayRateTimeLogsBackfill,
@@ -81,8 +83,9 @@ const RECONNECT_FAILED = 'failed'
 export default function EndDayStatisticsModal() {
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const loggedUserProjectsAmount = useSelector(state => state.loggedUserProjects.length)
-    const statisticsModalDate = useSelector(state => state.loggedUser.statisticsModalDate)
+    const serverStatisticsModalDate = useSelector(state => state.loggedUser.statisticsModalDate)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const statisticsModalDate = newDayRecoveryStore.getAcknowledgedDate(loggedUserId, serverStatisticsModalDate)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const projectIdsAmount = useSelector(state => state.loggedUser.projectIds.length)
     const showNewDayNotification = useSelector(state => state.showNewDayNotification)
@@ -192,6 +195,7 @@ export default function EndDayStatisticsModal() {
         // the state is already local. Logging with the failing step is what
         // makes a real failure diagnosable instead of a silent `console.log`.
         console.warn(`[NewDay] "${label}" failed`, error)
+        recordNewDayEvent('save-failed', { userId: loggedUserId, reason: label, errorCode: error?.code || 'unknown' })
     }
 
     const happinessProjects = getHappinessProjects(loggedUserProjects, loggedUser)
@@ -241,7 +245,9 @@ export default function EndDayStatisticsModal() {
         // Read from the store rather than the render closure: the "Start new
         // day" flow dispatches the new acknowledgement first, so the closure
         // value here is one day stale by the time it resets.
-        setStatsDate(store.getState().loggedUser.statisticsModalDate)
+        setStatsDate(
+            newDayRecoveryStore.getAcknowledgedDate(loggedUserId, store.getState().loggedUser.statisticsModalDate)
+        )
         happinessEditor.reset()
         statisticsUnavailableRef.current = false
         setStatisticsUnavailable(false)
@@ -269,6 +275,7 @@ export default function EndDayStatisticsModal() {
         isSavingStartNewDay.current = true
         setStartNewDayIsLoading(true)
 
+        const releaseSubmission = dayReloadCoordinator.hold()
         const acknowledgedStatsDate = statsDate
         const crossedMidnightWhileOpen = showNewDayNotification
         // Snapshot the unsaved drafts here, not inside the flow: the flow
@@ -278,6 +285,12 @@ export default function EndDayStatisticsModal() {
 
         return runStartNewDay({
             applyLocalAcknowledgement: statisticsModalDate => {
+                newDayRecoveryStore.acknowledge(loggedUserId, acknowledgedStatsDate, statisticsModalDate)
+                recordNewDayEvent('confirmation-local', {
+                    userId: loggedUserId,
+                    acknowledgedDate: statisticsModalDate,
+                    previousDate: acknowledgedStatsDate,
+                })
                 const { loggedUser } = store.getState()
                 const updatedLoggedUser = {
                     ...loggedUser,
@@ -290,19 +303,57 @@ export default function EndDayStatisticsModal() {
             },
             closePopup: () => resetModalState({ keepStartNewDayGuard: true }),
             persistHappinessDrafts,
-            // Acknowledge the day even when the statistics could not be read
-            // (offline). The write lands in the persisted mutation queue and
-            // flushes on reconnect; skipping it is what made the popup come
-            // back after every offline "Start new day".
-            persistAcknowledgement: statisticsModalDate =>
-                awaitWriteAck(
-                    setUserStatisticsModalDate(acknowledgedStatsDate, statisticsModalDate),
-                    'new day statisticsModalDate'
-                ),
-            reloadApp: crossedMidnightWhileOpen ? () => deleteCacheAndRefresh() : undefined,
+            persistAcknowledgement: () => persistPendingAcknowledgement(),
+            reloadApp: crossedMidnightWhileOpen
+                ? () =>
+                      dayReloadCoordinator.request(
+                          () => {
+                              markDailyReload()
+                              recordNewDayEvent('reload-requested', {
+                                  userId: loggedUserId,
+                                  reason: 'new-day-confirmed',
+                              })
+                              void deleteCacheAndRefresh(undefined, 'new-day-confirmed')
+                          },
+                          () => typeof navigator === 'undefined' || navigator.onLine !== false
+                      )
+                : undefined,
             onError: reportNewDayError,
-        })
+        }).finally(releaseSubmission)
     }
+
+    const persistPendingAcknowledgement = () => {
+        const entry = newDayRecoveryStore.getAcknowledgement(loggedUserId)
+        if (!entry?.pending) return Promise.resolve()
+        return newDayRecoveryStore
+            .flush(
+                entry,
+                async current => {
+                    await setUserStatisticsModalDate(current.previousDate, current.date, current.userId)
+                    recordNewDayEvent('confirmation-server', {
+                        userId: current.userId,
+                        acknowledgedDate: current.date,
+                        previousDate: current.previousDate,
+                    })
+                },
+                () => store.getState().loggedUser.uid === loggedUserId
+            )
+            .finally(() => dayReloadCoordinator.retry())
+    }
+
+    const needsAcknowledgement = !isAnonymous && !!loggedUserId && needToShowYesterdayStats()
+    useLayoutEffect(() => {
+        if (!needsAcknowledgement) return
+        recordNewDayEvent('popup-open', { userId: loggedUserId, previousDate: statisticsModalDate })
+        return dayReloadCoordinator.hold()
+    }, [loggedUserId, needsAcknowledgement])
+
+    useEffect(() => {
+        if (!loggedUserId || isAnonymous) return
+        void flushNewDayDiagnostics(loggedUserId)
+        void persistPendingAcknowledgement().catch(error => reportNewDayError(error, 'persistAcknowledgement'))
+        dayReloadCoordinator.retry()
+    }, [loggedUserId, isAnonymous, connectionState, connectionHealth])
 
     const updateStatistics = (projectId, statistics = {}) => {
         // Replace this project's result, so a retry or late answer never doubles
@@ -336,7 +387,7 @@ export default function EndDayStatisticsModal() {
         setGold(goldTotal)
         setXp(xpTotal)
         // Yesterday's recorded achievement does not depend on today's counters.
-        setShowEmptyInbox(getIfLoggedUserReachedEmptyInbox(store.getState().loggedUser.statisticsModalDate))
+        setShowEmptyInbox(getIfLoggedUserReachedEmptyInbox(statisticsModalDate))
         statisticsUnavailableRef.current = statisticsFailuresRef.current.size > 0
         setStatisticsUnavailable(statisticsUnavailableRef.current)
         setDataLoaded(loaded => ({ ...loaded, [projectId]: true }))
@@ -376,7 +427,8 @@ export default function EndDayStatisticsModal() {
      */
     const loadYesterdayStatistics = () => {
         const { loggedUserProjects, loggedUser } = store.getState()
-        const statisticsDate = moment(loggedUser.statisticsModalDate).format('DDMMYYYY')
+        const acknowledgedDate = newDayRecoveryStore.getAcknowledgedDate(loggedUser.uid, loggedUser.statisticsModalDate)
+        const statisticsDate = moment(acknowledgedDate).format('DDMMYYYY')
         const generation = statisticsGenerationRef.current
         const projects = loggedUserProjects.filter(project => !loggedUser.templateProjectIds.includes(project.id))
         setDataLoaded(
@@ -385,7 +437,8 @@ export default function EndDayStatisticsModal() {
         const isCurrent = () =>
             generation === statisticsGenerationRef.current &&
             store.getState().loggedUser.uid === loggedUser.uid &&
-            store.getState().loggedUser.statisticsModalDate === loggedUser.statisticsModalDate
+            newDayRecoveryStore.getAcknowledgedDate(loggedUser.uid, store.getState().loggedUser.statisticsModalDate) ===
+                acknowledgedDate
 
         projects.forEach(project => {
             if (!projectLoadersRef.current.has(project.id)) {
@@ -404,16 +457,10 @@ export default function EndDayStatisticsModal() {
                         ),
                     reconcile: normalizeDayRateTimeLogConfig(project.dayRateTimeLog).enabled
                         ? signal =>
-                              reconcileProjectDayRateTimeLogsBackfill(
-                                  project,
-                                  loggedUser.uid,
-                                  loggedUser.statisticsModalDate,
-                                  end,
-                                  {
-                                      source: 'new-day-modal',
-                                      signal,
-                                  }
-                              )
+                              reconcileProjectDayRateTimeLogsBackfill(project, loggedUser.uid, acknowledgedDate, end, {
+                                  source: 'new-day-modal',
+                                  signal,
+                              })
                         : null,
                     onStatistics: statistics => updateStatistics(project.id, statistics),
                     onReadStart: () => {
@@ -462,7 +509,8 @@ export default function EndDayStatisticsModal() {
             reconnectOperationRef.current === operation &&
             generation === statisticsGenerationRef.current &&
             store.getState().loggedUser.uid === loggedUserId &&
-            store.getState().loggedUser.statisticsModalDate === statisticsModalDate
+            newDayRecoveryStore.getAcknowledgedDate(loggedUserId, store.getState().loggedUser.statisticsModalDate) ===
+                statisticsModalDate
         setReconnectStatus(RECONNECT_PROBING)
         loadYesterdayStatistics()
 

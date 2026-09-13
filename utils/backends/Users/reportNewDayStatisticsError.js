@@ -18,7 +18,7 @@ export const reportNewDayStatisticsError = async (error, context) => {
         const now = Date.now()
         const code = shortText(error?.code || 'unknown', 100)
         const stage = shortText(context.stage || 'statistics-read', 100)
-        const key = JSON.stringify([user.uid, context.projectId, context.statisticsDate, code, stage])
+        const key = JSON.stringify([user.uid, context.projectId, context.statisticsDate, code, stage, context.eventId])
         for (const [reportKey, at] of recentReports) {
             if (now - at >= STATISTICS_ERROR_REPORT_COOLDOWN_MS) recentReports.delete(reportKey)
         }
@@ -27,11 +27,16 @@ export const reportNewDayStatisticsError = async (error, context) => {
         recentReports.set(key, now)
 
         const values = {
-            source: 'new-day-statistics',
+            source: context.source === 'new-day-lifecycle' ? 'new-day-lifecycle' : 'new-day-statistics',
+            eventId: shortText(context.eventId, 100),
+            reason: shortText(context.reason, 100),
+            acknowledgedDate: Number.isFinite(context.acknowledgedDate) ? context.acknowledgedDate : 0,
+            previousDate: Number.isFinite(context.previousDate) ? context.previousDate : 0,
             userId: user.uid,
             projectId: shortText(context.projectId),
             statisticsDate: shortText(context.statisticsDate, 20),
-            datetime: now,
+            datetime:
+                context.source === 'new-day-lifecycle' && Number.isFinite(context.eventTime) ? context.eventTime : now,
             errorCode: code,
             errorMessage: shortText(error?.message || 'Statistics could not be loaded'),
             errorStackTrace: shortText(error?.stack, 4000),

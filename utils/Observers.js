@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { recordNewDayEvent } from './newDayDiagnostics'
 
 import store from '../redux/store'
 import {
@@ -197,7 +198,7 @@ export const PRE_RELOAD_BUDGET_MS = 2000
  * reload); when nothing usable is known the marker is left alone and the
  * previous behaviour applies.
  */
-export const deleteCacheAndRefresh = async reloadingToVersion => {
+export const deleteCacheAndRefresh = async (reloadingToVersion, reason = 'requested-refresh') => {
     try {
         const { alldoneNewVersion, alldoneVersion } = store.getState()
 
@@ -213,6 +214,7 @@ export const deleteCacheAndRefresh = async reloadingToVersion => {
         console.warn('Pre-reload housekeeping failed', error)
     }
 
+    recordNewDayEvent('reload', { reason })
     appReloader.reload()
 }
 
@@ -253,7 +255,7 @@ const updateVersion = async serverVersion => {
             // A stale bundle really is running: bust the caches and reload.
             // The marker is written for the version we are reloading into, so
             // the replacement page sees a match and stays put.
-            await deleteCacheAndRefresh(serverVersion)
+            await deleteCacheAndRefresh(serverVersion, 'version-change')
         }
     } catch (error) {
         console.log(error)

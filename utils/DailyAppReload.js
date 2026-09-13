@@ -1,4 +1,6 @@
-export const DAILY_APP_LOAD_DATE_STORAGE_KEY = 'alldone.lastFullAppLoadLocalDate'
+import { DAILY_APP_LOAD_DATE_STORAGE_KEY, dayReloadCoordinator } from './dayReloadCoordinator'
+import { recordNewDayEvent } from './newDayDiagnostics'
+export { DAILY_APP_LOAD_DATE_STORAGE_KEY } from './dayReloadCoordinator'
 
 const MIDNIGHT_GRACE_PERIOD = 1000
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -58,6 +60,7 @@ export function startDailyAppReload({
     reload,
     setTimer = setTimeout,
     clearTimer = clearTimeout,
+    coordinator = dayReloadCoordinator,
 } = {}) {
     if (!windowObject || !documentObject) return () => {}
 
@@ -95,9 +98,15 @@ export function startDailyAppReload({
 
         // Mark before navigating and latch in memory. Both are intentional:
         // navigation can be delayed, while storage can be unavailable.
-        reloadStarted = true
-        storeAppLoadDate(localStorage, currentDate)
-        reloadPage()
+        coordinator.request(
+            () => {
+                reloadStarted = true
+                storeAppLoadDate(localStorage, getLocalCalendarDate(now()))
+                recordNewDayEvent('reload', { reason: 'daily-lifecycle' })
+                reloadPage()
+            },
+            () => documentObject.visibilityState !== 'hidden' && !isOffline()
+        )
     }
 
     const scheduleMidnightCheck = () => {
@@ -118,7 +127,7 @@ export function startDailyAppReload({
     // falls through to the listeners below and reloads when connectivity is back.
     if (needsStartupReload && documentObject.visibilityState !== 'hidden' && !isOffline()) {
         reloadIfNewLocalDay()
-        return () => {}
+        if (reloadStarted) return () => {}
     }
 
     documentObject.addEventListener('visibilitychange', handleVisibilityChange)

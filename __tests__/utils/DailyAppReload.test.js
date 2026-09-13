@@ -1,3 +1,4 @@
+import { createDayReloadCoordinator } from '../../utils/dayReloadCoordinator'
 import { DAILY_APP_LOAD_DATE_STORAGE_KEY, getLocalCalendarDate, startDailyAppReload } from '../../utils/DailyAppReload'
 
 function createEventTarget(properties = {}) {
@@ -42,6 +43,7 @@ function createGuard(startTime, options = {}) {
 
     const stop = startDailyAppReload({
         windowObject,
+        coordinator: options.coordinator || createDayReloadCoordinator(),
         documentObject,
         storage,
         now: () => new Date(currentTime),
@@ -97,6 +99,7 @@ describe('DailyAppReload', () => {
         const reload = jest.fn()
 
         const stop = startDailyAppReload({
+            coordinator: createDayReloadCoordinator(),
             windowObject,
             documentObject,
             storage,
@@ -219,4 +222,44 @@ describe('DailyAppReload', () => {
         guard.windowObject.dispatch('online')
         expect(guard.reload).toHaveBeenCalledTimes(1)
     })
+})
+
+it('defers the phone resume reload while editing and combines it with the confirmation reload', () => {
+    const coordinator = createDayReloadCoordinator()
+    const releaseEditor = coordinator.hold()
+    const guard = createGuard('2026-09-12T18:00:00', {
+        coordinator,
+        windowProperties: { navigator: { onLine: false } },
+    })
+    guard.setTime('2026-09-13T09:50:00')
+    guard.windowObject.navigator.onLine = true
+    guard.windowObject.dispatch('online')
+    guard.windowObject.dispatch('focus')
+    expect(guard.reload).not.toHaveBeenCalled()
+    const releaseSubmission = coordinator.hold()
+    releaseEditor()
+    const buttonReload = jest.fn()
+    coordinator.request(buttonReload)
+    expect(guard.reload).not.toHaveBeenCalled()
+    releaseSubmission()
+    guard.windowObject.dispatch('focus')
+    expect(guard.reload).toHaveBeenCalledTimes(1)
+    expect(buttonReload).not.toHaveBeenCalled()
+    expect(guard.storage.value(DAILY_APP_LOAD_DATE_STORAGE_KEY)).toBe('2026-09-13')
+    guard.stop()
+})
+
+it('waits for connectivity again if it disappears while the popup is closing', () => {
+    const coordinator = createDayReloadCoordinator()
+    const release = coordinator.hold()
+    const guard = createGuard('2026-09-12T18:00:00', { coordinator, windowProperties: { navigator: { onLine: true } } })
+    guard.setTime('2026-09-13T09:50:00')
+    guard.windowObject.dispatch('focus')
+    guard.windowObject.navigator.onLine = false
+    release()
+    expect(guard.reload).not.toHaveBeenCalled()
+    guard.windowObject.navigator.onLine = true
+    guard.windowObject.dispatch('online')
+    expect(guard.reload).toHaveBeenCalledTimes(1)
+    guard.stop()
 })

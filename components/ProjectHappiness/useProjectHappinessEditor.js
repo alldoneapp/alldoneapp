@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
 import Backend from '../../utils/BackendBridge'
-import { awaitWriteAck } from '../../utils/backends/offlineWriteAck'
+import { newDayRecoveryStore } from '../../utils/newDayRecoveryStore'
+import { dayReloadCoordinator } from '../../utils/dayReloadCoordinator'
+import { subscribeConnectionHealth } from '../../utils/connectionHealth'
 
 /**
  * The rating logic behind every happiness editor (AT-2392).
@@ -36,6 +38,8 @@ export default function useProjectHappinessEditor({
     watcherKeyPrefix = 'project_happiness_editor',
     onError,
 }) {
+    const activeUserRef = useRef(userId)
+    activeUserRef.current = userId
     const [ratings, setRatings] = useState({})
     const [comments, setComments] = useState({})
     const [visibleComments, setVisibleComments] = useState({})
@@ -58,7 +62,9 @@ export default function useProjectHappinessEditor({
     // days (AT-2392): without it, rating two days the same way would look like
     // a repeat of the first write and the second day would never be stored.
     const persistedHappinessRef = useRef({})
+    const locallyEditedRef = useRef(new Set())
     const watchedDateRef = useRef(date)
+    const watchedUserRef = useRef(userId)
 
     const projectIds = projects.map(project => project.id)
     const projectIdsKey = projectIds.join(',')
@@ -92,15 +98,54 @@ export default function useProjectHappinessEditor({
         if (persistedHappinessRef.current[project.id] === signature) return Promise.resolve()
         persistedHappinessRef.current[project.id] = signature
 
-        return awaitWriteAck(
-            Backend.setProjectHappiness(project.id, userId, targetDate, rating, cleanComment, project),
-            'project happiness'
-        ).catch(error => {
-            // Let a retry through: the value was not stored after all.
+        const entry = newDayRecoveryStore.saveDraft(userId, project.id, targetDate, rating, cleanComment)
+        return flushEntry(entry, project).catch(error => {
             if (persistedHappinessRef.current[project.id] === signature)
                 delete persistedHappinessRef.current[project.id]
             reportError(error, 'setProjectHappiness')
         })
+    }
+
+    const flushEntry = (entry, project) =>
+        newDayRecoveryStore
+            .flush(
+                entry,
+                current =>
+                    Backend.setProjectHappiness(
+                        current.projectId,
+                        current.userId,
+                        current.date,
+                        current.rating,
+                        current.comment,
+                        project,
+                        { recoverable: true }
+                    ),
+                () => activeUserRef.current === entry.userId
+            )
+            .then(() => {
+                if (
+                    activeUserRef.current === entry.userId &&
+                    watchedDateRef.current === entry.date &&
+                    !newDayRecoveryStore.getDraft(entry.userId, entry.projectId, entry.date)?.pending
+                )
+                    dirtyHappinessProjectIdsRef.current.delete(entry.projectId)
+            })
+            .finally(() => dayReloadCoordinator.retry())
+
+    const retryPending = () => {
+        const projectMap = new Map(projects.map(project => [project.id, project]))
+        return Promise.all(
+            newDayRecoveryStore
+                .list(userId)
+                .filter(
+                    entry => entry.kind === 'draft' && entry.pending && entry.rating && projectMap.has(entry.projectId)
+                )
+                .map(entry =>
+                    flushEntry(entry, projectMap.get(entry.projectId)).catch(error =>
+                        reportError(error, 'setProjectHappiness')
+                    )
+                )
+        )
     }
 
     /**
@@ -148,31 +193,41 @@ export default function useProjectHappinessEditor({
         dirtyHappinessProjectIdsRef.current.clear()
         happinessDraftsRef.current = {}
         persistedHappinessRef.current = {}
+        locallyEditedRef.current.clear()
     }
 
     const setRating = (project, rating) => {
+        locallyEditedRef.current.add(project.id)
         dirtyHappinessProjectIdsRef.current.add(project.id)
         happinessDraftsRef.current[project.id] = {
             ...happinessDraftsRef.current[project.id],
             rating,
-            comment: comments[project.id] || happinessDraftsRef.current[project.id]?.comment || '',
+            comment: happinessDraftsRef.current[project.id]?.comment ?? comments[project.id] ?? '',
         }
         setRatings(state => ({ ...state, [project.id]: rating }))
-        persistHappiness(project, rating, comments[project.id] || '')
+        return persistHappiness(project, rating, happinessDraftsRef.current[project.id].comment)
     }
 
     const setComment = (project, comment) => {
+        locallyEditedRef.current.add(project.id)
         dirtyHappinessProjectIdsRef.current.add(project.id)
         happinessDraftsRef.current[project.id] = {
             ...happinessDraftsRef.current[project.id],
-            rating: ratings[project.id] || happinessDraftsRef.current[project.id]?.rating,
+            rating: happinessDraftsRef.current[project.id]?.rating || ratings[project.id],
             comment,
         }
+        const draft = happinessDraftsRef.current[project.id]
+        newDayRecoveryStore.saveDraft(userId, project.id, date, draft.rating, comment)
         setComments(state => ({ ...state, [project.id]: comment }))
     }
 
     const saveComment = project => {
-        persistHappiness(project, ratings[project.id], comments[project.id] || '')
+        const draft = happinessDraftsRef.current[project.id]
+        return persistHappiness(
+            project,
+            draft?.rating || ratings[project.id],
+            draft?.comment ?? comments[project.id] ?? ''
+        )
     }
 
     const toggleComment = projectId => {
@@ -199,17 +254,49 @@ export default function useProjectHappinessEditor({
      * corruption.
      */
     useEffect(() => {
-        if (watchedDateRef.current === date) return
+        if (watchedDateRef.current === date && watchedUserRef.current === userId) return
 
         const previousDate = watchedDateRef.current
         watchedDateRef.current = date
-        saveDirtyEntries(previousDate)
+        // Never flush the previous account through the new account's editor.
+        if (watchedUserRef.current === userId) saveDirtyEntries(previousDate)
+        watchedUserRef.current = userId
         clearDrafts()
-    }, [date])
+    }, [date, userId])
+
+    // Restore before attaching watchers: cached or delayed server values must
+    // not overwrite an unblurred comment recovered after a phone restart.
+    useEffect(() => {
+        projects.forEach(project => {
+            const draft = newDayRecoveryStore.getDraft(userId, project.id, date)
+            if (!draft?.pending) return
+            happinessDraftsRef.current[project.id] = { rating: draft.rating, comment: draft.comment }
+            dirtyHappinessProjectIdsRef.current.add(project.id)
+            locallyEditedRef.current.add(project.id)
+            if (draft.rating) setRatings(state => ({ ...state, [project.id]: draft.rating }))
+            setComments(state => ({ ...state, [project.id]: draft.comment }))
+        })
+    }, [userId, date, projectIdsKey, watchEnabled])
+
+    useEffect(() => {
+        void retryPending()
+        const onOnline = () => {
+            void retryPending()
+        }
+        if (typeof window !== 'undefined') window.addEventListener('online', onOnline)
+        const unsubscribe = subscribeConnectionHealth(health => {
+            if (health === 'live') onOnline()
+        })
+        return () => {
+            if (typeof window !== 'undefined') window.removeEventListener('online', onOnline)
+            unsubscribe()
+        }
+    }, [userId, projectIdsKey])
 
     useEffect(() => {
         if (!watchEnabled || !userId || !date || projectIds.length === 0) return
 
+        let active = true
         const watcherKeys = projectIds.map(projectId => `${watcherKeyPrefix}_${projectId}`)
         projects.forEach(project => {
             Backend.watchProjectHappinessByRange(
@@ -219,6 +306,7 @@ export default function useProjectHappinessEditor({
                 date,
                 `${watcherKeyPrefix}_${project.id}`,
                 (projectId, entries) => {
+                    if (!active || activeUserRef.current !== userId || watchedDateRef.current !== date) return
                     const entry = entries[0]
                     setStoredEntries(state => ({
                         ...state,
@@ -226,6 +314,18 @@ export default function useProjectHappinessEditor({
                             ? { rating: entry.rating, comment: entry.comment || '', updated: entry.updated }
                             : null,
                     }))
+                    const local = happinessDraftsRef.current[projectId]
+                    if (locallyEditedRef.current.has(projectId)) {
+                        if (
+                            !entry ||
+                            entry.rating !== local?.rating ||
+                            (entry.comment || '') !== (local?.comment || '')
+                        )
+                            return
+                        locallyEditedRef.current.delete(projectId)
+                    }
+                    const draft = newDayRecoveryStore.getDraft(userId, projectId, date)
+                    if (draft?.pending || dirtyHappinessProjectIdsRef.current.has(projectId)) return
                     if (entry) {
                         happinessDraftsRef.current[projectId] = {
                             rating: entry.rating,
@@ -241,6 +341,7 @@ export default function useProjectHappinessEditor({
         })
 
         return () => {
+            active = false
             watcherKeys.forEach(key => Backend.unwatch(key))
         }
     }, [projectIdsKey, userId, date, watchEnabled, watcherKeyPrefix])
@@ -270,5 +371,6 @@ export default function useProjectHappinessEditor({
         saveDirtyEntries,
         takeDirtyEntries,
         reset: clearDrafts,
+        retryPending,
     }
 }

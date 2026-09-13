@@ -312,8 +312,8 @@ export default class Backend {
         )
     }
 
-    static setProjectHappiness(projectId, userId, date, rating, comment, project) {
-        return bridge.setProjectHappiness(projectId, userId, date, rating, comment, project)
+    static setProjectHappiness(projectId, userId, date, rating, comment, project, options) {
+        return bridge.setProjectHappiness(projectId, userId, date, rating, comment, project, options)
     }
 
     static watchProjectHappiness(projectId, userId, watcherKey, callback) {
