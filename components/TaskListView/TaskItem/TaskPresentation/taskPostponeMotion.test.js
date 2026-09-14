@@ -16,6 +16,7 @@ import {
     resetProjectTaskCompletionListeners,
     subscribeToProjectTaskCompletions,
 } from '../../OpenTasksView/projectTaskCompletionSignal'
+import { resetGoalTaskCompletionListeners, subscribeToGoalTaskExits } from '../../OpenTasksView/goalCompletionSignal'
 
 let motion
 const PROJECT = 'project-1'
@@ -46,6 +47,7 @@ describe('task postpone motion (AT-2541)', () => {
         jest.useFakeTimers()
         resetTaskPostponeMotionRegistry()
         resetProjectTaskCompletionListeners()
+        resetGoalTaskCompletionListeners()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         process.env.NODE_ENV = 'development'
@@ -56,6 +58,7 @@ describe('task postpone motion (AT-2541)', () => {
         jest.useRealTimers()
         resetTaskPostponeMotionRegistry()
         resetProjectTaskCompletionListeners()
+        resetGoalTaskCompletionListeners()
         AccessibilityInfo.isReduceMotionEnabled = originalIsReduceMotionEnabled
         AccessibilityInfo.addEventListener = originalAddEventListener
         process.env.NODE_ENV = originalNodeEnv
@@ -141,9 +144,19 @@ describe('task postpone motion (AT-2541)', () => {
         expect(write).toHaveBeenCalledTimes(1)
     })
 
-    it('does not hand a final task postpone to its goal section or other page elements', async () => {
+    it('reports a goal-linked postpone before the write without directly changing other page elements', async () => {
         const tree = await mount({ goalId: TASK.parentGoalId })
-        const { promise } = await postpone()
+        const goalExit = jest.fn()
+        subscribeToGoalTaskExits(goalExit)
+        const write = jest.fn(() => {
+            expect(goalExit).toHaveBeenCalledWith({
+                projectId: PROJECT,
+                goalId: TASK.parentGoalId,
+                taskId: TASK.id,
+                reason: 'postpone',
+            })
+        })
+        const { promise } = await postpone({}, write)
 
         expect(motion.rowStyle).toBeDefined()
         expect(tree.root.findByProps({ testID: 'page' }).props.style).toBe(pageStyle)
@@ -155,6 +168,23 @@ describe('task postpone motion (AT-2541)', () => {
             jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
             await promise
         })
+
+        expect(goalExit).toHaveBeenCalledTimes(1)
+        expect(write).toHaveBeenCalledTimes(1)
+    })
+
+    it('publishes no goal exit for a task without a goal', async () => {
+        await mount()
+        const goalExit = jest.fn()
+        subscribeToGoalTaskExits(goalExit)
+        const { promise } = await postpone({ task: { ...TASK, parentGoalId: null } })
+
+        await act(async () => {
+            jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
+            await promise
+        })
+
+        expect(goalExit).not.toHaveBeenCalled()
     })
 
     it('does nothing for a date change that leaves the task in Today', async () => {

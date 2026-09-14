@@ -1,6 +1,6 @@
 /**
- * AT-2507 — "the task I just ticked was the LAST one this goal had for today", told by the row that
- * was ticked to the goal section that renders above it.
+ * AT-2507 / AT-2565 — "the task I just completed or postponed was the LAST one this goal had for
+ * today", told by the row that is leaving to the goal section that renders above it.
  *
  * ── WHY A SIGNAL AND NOT A STORE READ ────────────────────────────────────────────────────────────
  *
@@ -18,17 +18,16 @@
  * removal to see the event it is watching for. AT-2492 solves exactly that with a probe and a hold
  * because it had no alternative; here there is one.
  *
- * The alternative is that a count reaching zero is an INFERENCE while a completion is a FACT. The
- * row knows it is being completed, and it knows a full second before the write goes out — AT-2404
- * holds the Firestore write for `COMPLETION_HOLD_MS` (1070ms) so the row can play its collapse. So
- * the goal section is told at the moment of the tick, while it is still comfortably mounted, and
+ * The alternative is that a count reaching zero is an INFERENCE while a user-facing task exit is a
+ * FACT. A completing row knows before its held write goes out; a postponing row reports after its
+ * short exit and immediately before its write. In both cases the goal section is still mounted, so
  * the whole probe/hold/late-arrival machinery AT-2492 needs is simply not required.
  *
- * It also makes the trigger HONEST in a way a count cannot be. "The list is empty" is not "the work
- * was done" — the lesson AT-2492's header spells out. A goal's today bucket also empties when its
- * last task is dragged to tomorrow, deleted, reassigned, or has its goal changed, and a
- * count-watcher would congratulate the user for every one of them. Only a genuine completion is
- * published here, so those cases stay exactly as silent as they are today.
+ * It also makes the trigger HONEST in a way a count cannot be. A goal's today bucket empties when
+ * its last task is dragged, deleted, reassigned, or re-goaled as well. Only a genuine completion or
+ * a user-facing postpone out of Today is published here, so those other removals stay exactly as
+ * silent as they are today. The goal's own list membership still decides whether it disappears;
+ * this signal changes only whether that already-decided departure is animated.
  *
  * ── WHAT IS PUBLISHED, AND WHAT IS NOT ───────────────────────────────────────────────────────────
  *
@@ -38,7 +37,7 @@
  * (`WorkflowModal`, `FollowUpModal`, `SuggestedModal`). Both go through the row's single
  * `beginCompletionMotion`, so wrapping it there covers both and cannot be forgotten by one of them.
  *
- * Three kinds of tick deliberately publish NOTHING, and each of them would otherwise celebrate
+ * Completion still stands down for three kinds of tick, and each of them would otherwise animate
  * something that did not happen:
  *
  *   • a WORKFLOW hand-off (`isCompletion: false`). The row leaves the list and gets the exit, but
@@ -58,18 +57,18 @@
  * section that is mounted for exactly as long as it has tasks on screen, it accumulates the ids it
  * has been told about in its own ref, and that ref dies with it. There is no shared state here to
  * go stale, so there is nothing to expire — and a stamp that expired on a timer would silently
- * break the ordinary case of finishing a goal's three tasks over the course of a morning.
+ * break the ordinary case of finishing or postponing a goal's tasks over time.
  */
 
 /** @type {Set<Function>} */
 const listeners = new Set()
 
 /**
- * @param {Function} listener Called with `{ projectId, goalId, taskId }` for every genuine
- *   completion of a list-leaving task that belongs to a goal.
+ * @param {Function} listener Called with `{ projectId, goalId, taskId, reason }` for every genuine
+ *   completion or user-facing postpone of a list-leaving task that belongs to a goal.
  * @returns {Function} unsubscribe. Idempotent, so a double-invoked effect cleanup is harmless.
  */
-export const subscribeToGoalTaskCompletions = listener => {
+export const subscribeToGoalTaskExits = listener => {
     if (typeof listener !== 'function') return () => {}
     listeners.add(listener)
     return () => {
@@ -83,9 +82,9 @@ export const subscribeToGoalTaskCompletions = listener => {
  * @param {string} event.goalId
  * @param {string} event.taskId
  */
-export const publishGoalTaskCompletion = ({ projectId, goalId, taskId } = {}) => {
+const publishGoalTaskExit = ({ projectId, goalId, taskId } = {}, reason) => {
     if (!projectId || !goalId || !taskId) return
-    const event = { projectId, goalId, taskId }
+    const event = { projectId, goalId, taskId, reason }
     /**
      * A copy, because a listener is free to unsubscribe from inside its own callback — a goal
      * section that decides this was the last task may well be about to tear down — and mutating the
@@ -99,12 +98,27 @@ export const publishGoalTaskCompletion = ({ projectId, goalId, taskId } = {}) =>
         try {
             listener(event)
         } catch (error) {
-            console.warn('[goal completion] listener failed', error)
+            console.warn('[goal task exit] listener failed', error)
         }
     })
 }
 
+export const publishGoalTaskCompletion = event => publishGoalTaskExit(event, 'completion')
+
+/**
+ * AT-2565 — a task postponed out of Today may take the goal shown only because of that task with
+ * it. The task-postpone coordinator publishes at the UI boundary that already proved the mounted
+ * row is leaving; the goal section still has to independently disappear from its live lists before
+ * it is held for animation.
+ */
+export const publishGoalTaskPostpone = event => publishGoalTaskExit(event, 'postpone')
+
+/** Backwards-compatible names for the completion-only callers and harnesses introduced first. */
+export const subscribeToGoalTaskCompletions = subscribeToGoalTaskExits
+
 /** Test seam. Never call from app code — a stray reset would silently deafen every mounted goal. */
-export const resetGoalTaskCompletionListeners = () => {
+export const resetGoalTaskExitListeners = () => {
     listeners.clear()
 }
+
+export const resetGoalTaskCompletionListeners = resetGoalTaskExitListeners

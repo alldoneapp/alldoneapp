@@ -1655,6 +1655,15 @@ other visible content, selected-project boards, assistant profiles and reduced-m
 the immediate/static behavior above. If new work lands while the card is dissolving, both the hold
 and mask are withdrawn immediately so the live project returns whole and clickable.
 
+AT-2565 applies the same handoff one level down when that postponed task belongs to a goal. The
+shared `postponeTaskWithMotion` coordinator publishes the goal id after the task row's exit and
+immediately before its write. `useGoalSectionExit` still requires the goal to be absent from both
+the populated and empty-goal lists before it holds the existing row for the AT-2507 fade/collapse,
+so the signal cannot decide visibility or remove a goal that has its own Today reminder. Dragging,
+deleting, reassigning, re-goaling, goal-level postpone, non-Today lists, filters, organize mode and
+reduced motion keep their existing immediate/static behavior. Completion and task-postpone events
+share the in-memory goal-task-exit channel; no Redux or persistence state is added.
+
 ### In-app GPT-Live voice calls
 
 In-app calls use GPT-Live (`gpt-live-1`) for speech and client delegation to the current

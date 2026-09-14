@@ -21,7 +21,10 @@ import { Animated, StyleSheet, View } from 'react-native'
 
 import useGoalSectionExit from '../../components/TaskListView/OpenTasksView/useGoalSectionExit'
 import useGoalSectionExitMotion from '../../components/TaskListView/OpenTasksView/goalSectionExitMotion'
-import { publishGoalTaskCompletion } from '../../components/TaskListView/OpenTasksView/goalCompletionSignal'
+import {
+    publishGoalTaskCompletion,
+    publishGoalTaskPostpone,
+} from '../../components/TaskListView/OpenTasksView/goalCompletionSignal'
 
 const PROJECT = 'project-a'
 const GOAL = 'goal-1'
@@ -95,6 +98,8 @@ function Board() {
 
 /** Exactly what `TaskPresentation` publishes when a task row starts a genuine completion. */
 window.__completeTask = taskId => publishGoalTaskCompletion({ projectId: PROJECT, goalId: GOAL, taskId })
+/** Exactly what `postponeTaskWithMotion` publishes after the row exit and before its write. */
+window.__postponeTask = taskId => publishGoalTaskPostpone({ projectId: PROJECT, goalId: GOAL, taskId })
 /** The snapshot landing: the goal's bucket is gone from the day's main tasks. */
 window.__dropSection = () => window.__setMainTasks([])
 /** The other fork: the goal is still active today, so it comes back as an empty goal instead. */

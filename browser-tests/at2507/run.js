@@ -19,6 +19,8 @@
  *      `useGoalSectionExit.test.js`: against the pre-AT-2521 hook the exit run is simply never
  *      created, and this harness cannot run there at all because the hook returns no
  *      `emptyGoalsWithExits` — deliberately strict, so an API break cannot read as "no animation".
+ *   0c. AT-2565 — postponing the last task produces that same hold without changing whether the
+ *       live board keeps or removes the goal.
  *   1. the HOLD    — the board drops the section and it is STILL THERE, wearing an exit.
  *   2. FADE        — its opacity falls.
  *   3. COLLAPSE    — its painted height falls to nothing, and the content below is pulled up with
@@ -233,6 +235,36 @@ async function main() {
         !movedAway.present && movedAway.sections.length === 0,
         `present=${movedAway.present}`
     )
+
+    // AT-2565: a user-facing postpone of the LAST task gets the existing goal exit.
+    await page.evaluate(() => window.__setMainTasks([['goal-1', [{ id: 'p1' }]]]))
+    await sleep(120)
+    await page.evaluate(() => {
+        window.__postponeTask('p1')
+        window.__dropSection()
+    })
+    await sleep(30)
+    const postponed = await page.evaluate(() => ({
+        ...window.__measure(),
+        sections: window.__sections,
+        exits: window.__exits,
+    }))
+    if (reduceMotion) {
+        check(
+            'reduced motion — a goal removed after its final task postpone is dropped instantly',
+            !postponed.present && postponed.sections.length === 0,
+            `present=${postponed.present}`
+        )
+    } else {
+        check(
+            'AT-2565 — postponing the final task keeps the departing goal on screen for its exit',
+            postponed.present && postponed.sections.length === 1 && !!postponed.exits['goal-1'],
+            `present=${postponed.present} exits=${JSON.stringify(postponed.exits)}`
+        )
+    }
+
+    // Let that run release before reusing the same goal id for the completion case below.
+    await sleep(GOAL_SECTION_EXIT_TOTAL_MS + 300)
 
     // ── the real case ────────────────────────────────────────────────────────────────────────────
     await page.evaluate(() => window.__setMainTasks([['goal-1', [{ id: 'b1' }, { id: 'b2' }]]]))
