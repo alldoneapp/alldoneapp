@@ -42,6 +42,7 @@ import {
     TaskHierarchyBackgroundContext,
     ProjectSectionBorderContext,
 } from '../TaskListView/TaskHierarchy'
+import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 export default class GoalItemPresentation extends PureComponent {
     static contextType = TaskHierarchyBackgroundContext
@@ -523,6 +524,7 @@ export default class GoalItemPresentation extends PureComponent {
                                 activeDragGoalMode && { paddingRight: 28 },
                             ]}
                         >
+                            <ProjectMoveIndicator object={goal} />
                             <Animated.View
                                 style={[
                                     localStyles.borderInside,

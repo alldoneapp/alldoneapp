@@ -49,6 +49,7 @@ import { publishGoalTaskCompletion } from '../../OpenTasksView/goalCompletionSig
 import { publishProjectTaskCompletion } from '../../OpenTasksView/projectTaskCompletionSignal'
 import useSwipeCloseGuard from '../../../../hooks/useSwipeCloseGuard'
 import { useTaskHierarchy, useTaskHierarchyBackground } from '../../TaskHierarchy'
+import ProjectMoveIndicator from '../../../UIComponents/ProjectMoveIndicator'
 
 function TaskPresentation(
     {
@@ -442,6 +443,7 @@ function TaskPresentation(
                                 onLayout={onLayoutChange}
                                 nativeID={`task_body_${projectId}_${task.id}_${isObservedTask}`}
                             >
+                                <ProjectMoveIndicator object={task} />
                                 {/* AT-2381 — decoration only, and deliberately a sibling rather than
                                     a wrapper: it fills the row absolutely with `pointerEvents="none"`,
                                     so it can never change the row's height or swallow a tap. The task

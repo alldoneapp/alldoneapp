@@ -45,7 +45,9 @@ const onDeleteContact = async (projectId, contact) => {
                 : deleteNote(projectId, noteId, '', admin)
         )
     }
-    promises.push(deletePictures(projectId, contactId))
+    // The moved contact intentionally keeps its existing Storage URLs. Those
+    // files remain the canonical avatar assets for the destination document.
+    if (!movingToOtherProjectId) promises.push(deletePictures(projectId, contactId))
     promises.push(removeObjectFromBacklinks(projectId, 'linkedParentContactsIds', contactId, admin))
     promises.push(deleteRecord(contactId, projectId, CONTACTS_OBJECTS_TYPE))
     promises.push(deleteOpenManagedFollowUpTasks(projectId, contactId))

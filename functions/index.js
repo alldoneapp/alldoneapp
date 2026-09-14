@@ -310,6 +310,53 @@ exports.moveTaskToProjectSecondGen = onCall(
     }
 )
 
+// AT-2572: every object exposed by the shared project picker uses the same
+// authenticated, durable move contract. The callable marks the source before
+// returning, so every mounted list can render progress immediately; the task
+// object queue worker owns the cross-project fan-out after the browser goes away.
+exports.moveObjectToProjectSecondGen = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { sourceProjectId, targetProjectId, objectType, objectId } = request.data || {}
+        const { getProjectMoveCollectionType, normalizeProjectMoveType } = require('./shared/projectMoveContract')
+        const normalizedType = normalizeProjectMoveType(objectType)
+        if (!sourceProjectId || !targetProjectId || !normalizedType || !objectId) {
+            throw new HttpsError('invalid-argument', 'A supported object type, project ids and object id are required')
+        }
+        const database = admin.firestore()
+        try {
+            await Promise.all([
+                assertObjectAccess(
+                    database,
+                    request.auth.uid,
+                    sourceProjectId,
+                    getProjectMoveCollectionType(normalizedType),
+                    objectId
+                ),
+                assertProjectAccess(request.auth.uid, targetProjectId),
+            ])
+        } catch (error) {
+            throw new HttpsError('permission-denied', error.message)
+        }
+
+        const { enqueueManualObjectProjectMove } = require('./Objects/manualObjectProjectMove')
+        return enqueueManualObjectProjectMove({
+            sourceProjectId,
+            targetProjectId,
+            objectType: normalizedType,
+            objectId,
+            actorId: request.auth.uid,
+        })
+    }
+)
+
 exports.markChatNotificationsReadSecondGen = onCall(
     {
         timeoutSeconds: 60,
@@ -5735,6 +5782,21 @@ exports.runManualTaskProjectMove = onTaskDispatched(
     async req => {
         const { handleManualTaskProjectMoveDispatch } = require('./Tasks/manualTaskProjectMove')
         await handleManualTaskProjectMoveDispatch(req)
+    }
+)
+
+exports.runManualObjectProjectMove = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: 300,
+        memory: '512MiB',
+        ...(adminSdkRuntimeServiceAccount ? { invoker: adminSdkRuntimeServiceAccount } : {}),
+        retryConfig: { maxAttempts: 3, minBackoffSeconds: 5, maxBackoffSeconds: 60 },
+        rateLimits: { maxConcurrentDispatches: 20, maxDispatchesPerSecond: 20 },
+    },
+    async req => {
+        const { handleManualObjectProjectMoveDispatch } = require('./Objects/manualObjectProjectMove')
+        await handleManualObjectProjectMoveDispatch(req)
     }
 )
 

@@ -3822,6 +3822,8 @@ export function mapNoteData(noteId, note) {
         assistantId: note.assistantId ? note.assistantId : '',
         isAssistantEnabled: note.isAssistantEnabled,
         commentsData: note.commentsData ? note.commentsData : '',
+        projectMove: note.projectMove || null,
+        movingToOtherProjectId: note.movingToOtherProjectId || null,
     }
 }
 
@@ -3860,6 +3862,8 @@ export function mapGoalData(goalId, goal) {
         commentsData: goal.commentsData ? goal.commentsData : '',
         timesPostponed: goal.timesPostponed ?? 0,
         scheduleMode: normalizeGoalScheduleMode(goal.scheduleMode),
+        projectMove: goal.projectMove || null,
+        movingToOtherProjectId: goal.movingToOtherProjectId || null,
     }
 }
 
@@ -4016,6 +4020,8 @@ export function mapSkillData(skillId, skill) {
         assistantId: skill.assistantId || '',
         isAssistantEnabled: skill.isAssistantEnabled,
         commentsData: skill.commentsData || '',
+        projectMove: skill.projectMove || null,
+        movingToOtherProjectId: skill.movingToOtherProjectId || null,
     }
 }
 
@@ -4193,6 +4199,8 @@ export function mapContactData(contactId, contact) {
         openTasksAmount: contact.openTasksAmount ? contact.openTasksAmount : 0,
         contactStatusId: contact.contactStatusId ? contact.contactStatusId : null,
         linkedInUrl: contact.linkedInUrl ? contact.linkedInUrl : '',
+        projectMove: contact.projectMove || null,
+        movingToOtherProjectId: contact.movingToOtherProjectId || null,
     }
 }
 

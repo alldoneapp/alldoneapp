@@ -35,6 +35,7 @@ import {
     getContactItemStoreUpdate,
     getContactPresentationData,
 } from './contactItemStoreUpdate'
+import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 export const CONTACT_BACKLINKS_ROOT_MARGIN = '600px 0px'
 
@@ -331,6 +332,7 @@ export default class ContactItem extends Component {
                                 },
                             ]}
                         >
+                            <ProjectMoveIndicator object={contact} />
                             <View style={localStyles.mainRow}>
                                 <View style={localStyles.avatarContainer}>
                                     {contact.photoURL != null && contact.photoURL !== '' ? (
