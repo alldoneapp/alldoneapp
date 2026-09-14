@@ -1,6 +1,8 @@
 import {
     publishGoalTaskCompletion,
+    publishGoalTaskPostpone,
     resetGoalTaskCompletionListeners,
+    subscribeToGoalTaskExits,
     subscribeToGoalTaskCompletions,
 } from './goalCompletionSignal'
 
@@ -28,8 +30,17 @@ describe('goalCompletionSignal (AT-2507)', () => {
 
         publishGoalTaskCompletion(event)
 
-        expect(first).toHaveBeenCalledWith(event)
-        expect(second).toHaveBeenCalledWith(event)
+        expect(first).toHaveBeenCalledWith({ ...event, reason: 'completion' })
+        expect(second).toHaveBeenCalledWith({ ...event, reason: 'completion' })
+    })
+
+    it('delivers a postpone through the same goal-task-exit channel', () => {
+        const listener = jest.fn()
+        subscribeToGoalTaskExits(listener)
+
+        publishGoalTaskPostpone(event)
+
+        expect(listener).toHaveBeenCalledWith({ ...event, reason: 'postpone' })
     })
 
     it('stops delivering once unsubscribed', () => {
@@ -69,7 +80,7 @@ describe('goalCompletionSignal (AT-2507)', () => {
 
         publishGoalTaskCompletion(event)
 
-        expect(second).toHaveBeenCalledWith(event)
+        expect(second).toHaveBeenCalledWith({ ...event, reason: 'completion' })
     })
 
     it('never lets a broken listener abort the completion it is reporting', () => {
@@ -83,7 +94,7 @@ describe('goalCompletionSignal (AT-2507)', () => {
         // An exception escaping here would abort `beginCompletionMotion`, so the row would never
         // learn how long to hold its write and the task would never be written at all.
         expect(() => publishGoalTaskCompletion(event)).not.toThrow()
-        expect(healthy).toHaveBeenCalledWith(event)
+        expect(healthy).toHaveBeenCalledWith({ ...event, reason: 'completion' })
 
         warn.mockRestore()
     })

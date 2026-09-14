@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing } from 'react-native'
 
 import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
+import { publishGoalTaskPostpone } from '../../OpenTasksView/goalCompletionSignal'
 import { publishProjectTaskPostpone } from '../../OpenTasksView/projectTaskCompletionSignal'
 
 /**
@@ -60,11 +61,14 @@ export const postponeTaskWithMotion = async (
 
     try {
         await run.settled()
-        // Report immediately before the write. The project hook must already remember why this
-        // row is leaving when the local Firestore snapshot removes the final task from Today.
-        // It still requires the board's independent empty-project verdict, so this cannot animate
-        // a project that retains another task, OKR, or visible section.
-        if (run.projectExitEligible) publishProjectTaskPostpone({ projectId, taskId: task.id })
+        // Report immediately before the write. The goal section and project card must already
+        // remember why this row is leaving when the local Firestore snapshot removes the final task
+        // from Today. Each still requires its board's independent departure verdict, so this only
+        // animates UI that the unchanged list logic was going to remove anyway.
+        if (run.projectExitEligible) {
+            publishGoalTaskPostpone({ projectId, goalId: task.parentGoalId, taskId: task.id })
+            publishProjectTaskPostpone({ projectId, taskId: task.id })
+        }
         return await write()
     } catch (error) {
         run.cancel()
