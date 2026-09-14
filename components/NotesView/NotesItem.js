@@ -31,6 +31,7 @@ import { Themes } from '../RootView/Themes'
 import LastEditionData from './LastEditionData'
 import Avatar from '../Avatar'
 import { resolveNoteOwner } from './NoteFilters/noteOwnerFilterHelper'
+import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommentPopup, onPress }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -258,6 +259,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
                         isSticky && [localStyles.containerSticky, theme.containerSticky(project.color)],
                     ]}
                 >
+                    <ProjectMoveIndicator object={note} />
                     <TouchableOpacity
                         style={localStyles.subContainer}
                         onPress={inCommentPopup ? onPress : onOpenNoteDV}

@@ -39,6 +39,7 @@ async function copyProjectMoveChat({
     objectType,
     objectId,
     copyChat = require('./chatsFirestoreCloud').copyChatToOtherProject,
+    requestId,
 }) {
     if (!sourceProjectId || !targetProjectId || !objectType || !objectId) {
         throw new ProjectMoveChatError('invalid-argument', 'Project ids, object type and object id are required')
@@ -54,7 +55,20 @@ async function copyProjectMoveChat({
         database.doc(`projects/${targetProjectId}`).get(),
         sourceChatRef.get(),
     ])
-    if (!sourceChatDoc.exists) return { copied: false, reason: 'no-chat' }
+    if (!sourceChatDoc.exists) {
+        if (requestId) {
+            const targetChatRef = database.doc(`chatObjects/${targetProjectId}/chats/${objectId}`)
+            const targetChatDoc = await targetChatRef.get()
+            const targetMove = targetChatDoc.data?.()?.projectMove
+            if (targetChatDoc.exists && targetMove?.requestId === requestId && targetMove.status !== 'completed') {
+                await targetChatRef.set(
+                    { projectMove: { ...targetMove, status: 'completed', completedAt: Date.now() } },
+                    { merge: true }
+                )
+            }
+        }
+        return { copied: false, reason: 'no-chat' }
+    }
 
     const sourceChat = sourceChatDoc.data() || {}
     const isPublicFor = Array.isArray(sourceChat.isPublicFor) ? sourceChat.isPublicFor : []
@@ -77,9 +91,29 @@ async function copyProjectMoveChat({
         chatData = buildMovedTopicChatData(sourceChat, targetUserIds, actorId, followerIds)
     }
 
+    const projectMove = requestId
+        ? {
+              requestId,
+              sourceProjectId,
+              targetProjectId,
+              requestedByUserId: actorId,
+              requestedAt: Date.now(),
+              status: 'moving',
+          }
+        : null
+    if (projectMove) chatData.projectMove = projectMove
     await copyChat(adminRef, sourceProjectId, targetProjectId, objectType, objectId, { chatData })
-    await sourceChatRef.update({ movingToOtherProjectId: targetProjectId })
+    await sourceChatRef.update({
+        movingToOtherProjectId: targetProjectId,
+        ...(projectMove ? { projectMove } : {}),
+    })
     await sourceChatRef.delete()
+
+    if (projectMove) {
+        await database
+            .doc(`chatObjects/${targetProjectId}/chats/${objectId}`)
+            .set({ projectMove: { ...projectMove, status: 'completed', completedAt: Date.now() } }, { merge: true })
+    }
 
     if (objectType === 'topics') {
         const writes = [

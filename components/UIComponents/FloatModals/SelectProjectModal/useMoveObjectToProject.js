@@ -1,7 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux'
 
 import URLsChats, { URL_CHAT_DETAILS_PROPERTIES } from '../../../../URLSystem/Chats/URLsChats'
-import Backend from '../../../../utils/BackendBridge'
 import {
     hideProjectPicker,
     setSelectedNavItem,
@@ -14,22 +13,22 @@ import {
 } from '../../../../redux/actions'
 import {
     DV_TAB_CHAT_PROPERTIES,
+    DV_TAB_CONTACT_PROPERTIES,
+    DV_TAB_GOAL_PROPERTIES,
+    DV_TAB_NOTE_PROPERTIES,
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
+    DV_TAB_ROOT_GOALS,
+    DV_TAB_ROOT_NOTES,
     DV_TAB_SKILL_PROPERTIES,
 } from '../../../../utils/TabNavigationConstants'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../../utils/NavigationService'
-import { queueTaskProjectMove } from '../../../../utils/backends/Tasks/tasksFirestore'
-import { setNoteProject } from '../../../../utils/backends/Notes/notesFirestore'
-import { findNoteOwnerInProject, resolveMovedNoteOwnerId } from '../../../NotesView/NoteFilters/noteOwnerFilterHelper'
-import { moveChatOnMoveObjectFromProject } from '../../../../utils/backends/Chats/chatsFirestore'
-import { moveInnerFeedsOnMoveObjectFromProject } from '../../../../utils/backends/firestore'
-import { updateGoalProject } from '../../../../utils/backends/Goals/goalsFirestore'
-import { setContactProject } from '../../../../utils/backends/Contacts/contactsFirestore'
 import store from '../../../../redux/store'
 import { startPerformanceTrace } from '../../../../utils/performance/performanceLogger'
 import { CONFIRM_POPUP_TRIGGER_INFO } from '../../ConfirmPopup'
+import { queueObjectProjectMove, waitForProjectMoveCompletion } from '../../../../utils/backends/projectMoves'
+import { translate } from '../../../../i18n/TranslationService'
 
 /**
  * The cross-entity "move this object to another project" engine, extracted
@@ -39,11 +38,9 @@ import { CONFIRM_POPUP_TRIGGER_INFO } from '../../ConfirmPopup'
  * activity feed with it, and rewrites the browser URL when a DetailedView
  * properties tab is showing the moved object.
  *
- * AT-2194 lives in the note branch: the owner must be resolved with the notes
- * resolver (assistants are owners but not project members) and never
- * pre-assigned, so `resolveMovedNoteOwnerId` in the backend stays the single
- * authority on whether an owner survives the move. Pinned by
- * MoveNoteOwner.test.js.
+ * AT-2572 moved the fan-out behind one durable Cloud Function contract. The
+ * client now only tracks acceptance/completion and performs detail-view
+ * navigation; it never rewrites entity data or ownership locally.
  */
 export default function useMoveObjectToProject() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -79,31 +76,18 @@ export default function useMoveObjectToProject() {
         return error
     }
 
-    const runMoveStep = async (step, work) => {
-        try {
-            return await work()
-        } catch (error) {
-            throw reportMoveFailure(step, error)
-        }
-    }
-
     const moveObjectToProject = async (item, project, newProject, taskMoveCallbacks = {}) => {
         const { type, data } = item
+        const objectId = type === 'contact' ? data.uid : data.id
         const performanceTrace = startPerformanceTrace('move_object_project', {
             object_type: type,
             task_count: type === 'task' ? 1 : 0,
             subtask_count: type === 'task' ? data.subtaskIds?.length || 0 : 0,
         })
-        const completeMove = async promise => {
-            try {
-                const result = await promise
-                performanceTrace.end('move_complete', { outcome: 'success' })
-                return result
-            } catch (error) {
-                performanceTrace.fail('move_failed')
-                throw reportMoveFailure(`move ${type}`, error)
-            }
-        }
+        const movePromise = queueObjectProjectMove(project.id, newProject.id, type, objectId).catch(error => {
+            performanceTrace.fail('move_failed')
+            throw reportMoveFailure(`move ${type}`, error)
+        })
 
         if (type === 'task') {
             // The callable only enqueues the durable Cloud Tasks worker. Do not
@@ -112,8 +96,11 @@ export default function useMoveObjectToProject() {
             // rejected enqueue still needs to reach the user: at that point no
             // task write has happened and silently swallowing the rejection
             // makes a broken worker look like a successful background action.
-            completeMove(queueTaskProjectMove(project.id, newProject.id, data.id))
-                .then(result => taskMoveCallbacks.onTaskProjectMoveEnqueued?.(result))
+            movePromise
+                .then(result => {
+                    performanceTrace.end('move_queued', { outcome: 'success' })
+                    taskMoveCallbacks.onTaskProjectMoveEnqueued?.(result)
+                })
                 .catch(() => {
                     taskMoveCallbacks.onTaskProjectMoveEnqueueFailed?.()
                     dispatch(
@@ -130,98 +117,86 @@ export default function useMoveObjectToProject() {
             return
         }
 
-        const objectType = type === 'chat' ? 'topics' : type + 's'
-        const beforeDeleteSource =
-            type === 'chat'
-                ? movedChat => {
-                      NavigationService.navigate('ChatDetailedView', {
-                          chat: movedChat,
-                          projectId: newProject.id,
-                      })
-                      const projectType = ProjectHelper.getTypeOfProject(loggedUser, newProject.id)
-                      dispatch([
-                          setSelectedSidebarTab(DV_TAB_ROOT_CHATS),
-                          switchProject(newProject.index),
-                          setSelectedTypeOfProject(projectType),
-                          setSelectedNavItem(DV_TAB_CHAT_PROPERTIES),
-                      ])
-                  }
-                : null
+        const route = store.getState().route
+        const keepDetailLoader =
+            (type === 'chat' && route === 'ChatDetailedView') ||
+            (type === 'note' && route === 'NotesDetailedView') ||
+            (type === 'contact' && route === 'ContactDetailedView')
+        if (keepDetailLoader) dispatch(startLoadingData())
 
-        if (type === 'chat') dispatch(startLoadingData())
-
-        await runMoveStep('move conversation', () =>
-            moveChatOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id, beforeDeleteSource)
-        )
-        performanceTrace.mark('chat_history_moved')
-        if (type !== 'chat') dispatch(stopLoadingData())
-        // Keep the object's "Updates" activity history with it across the move (chat is handled above).
-        const movedFeedCount = await runMoveStep('move activity history', () =>
-            moveInnerFeedsOnMoveObjectFromProject(project.id, newProject.id, objectType, data.id)
-        )
-        performanceTrace.mark('activity_history_moved', { document_count: movedFeedCount || 0 })
-
-        if (type === 'chat') {
-            dispatch(stopLoadingData())
-            performanceTrace.end('move_complete', { outcome: 'success' })
-        } else if (type === 'note') {
-            const note = data
-            // A note can be owned by an assistant since AT-2194, and an assistant is not a
-            // project *user*. The old `getUserInProject` member check therefore resolved to
-            // undefined for every assistant-owned note and reassigned it to the acting human
-            // — and it did so by mutating `note.userId` BEFORE `setNoteProject` ran, which
-            // bypassed `resolveMovedNoteOwnerId` (notesFirestore.js) entirely, defeating the
-            // guard that exists precisely to keep an assistant owner across a move.
-            //
-            // Mirror the task branch above, which already uses the cross-project-aware
-            // `TasksHelper.getTaskOwner`: resolve the owner with the notes resolver and let
-            // the backend stay the single authority on whether it survives the move.
-            const noteOwner = findNoteOwnerInProject(project.id, note.userId)
-            const movedOwnerId = resolveMovedNoteOwnerId(newProject.id, note.userId, loggedUser.uid)
-
-            dispatch(startLoadingData())
-            try {
-                await completeMove(
-                    movedOwnerId !== note.userId
-                        ? setNoteProject(project, newProject, note, noteOwner, loggedUser)
-                        : setNoteProject(project, newProject, note)
-                )
-                dispatch(hideProjectPicker())
-            } finally {
-                dispatch(stopLoadingData())
-            }
-        } else if (type === 'goal') {
-            const goal = data
-            await completeMove(updateGoalProject(project, newProject, goal))
-        } else if (type === 'skill') {
-            const skill = data
-            const { loggedUser, route } = store.getState()
-            Backend.updateSkillProject(project, newProject, skill, () => {
-                if (route === 'SkillDetailedView') {
+        movePromise
+            .then(() => waitForProjectMoveCompletion(project.id, newProject.id, type, objectId))
+            .then(movedObject => {
+                const currentRoute = store.getState().route
+                const projectType = ProjectHelper.getTypeOfProject(loggedUser, newProject.id)
+                if (type === 'chat' && currentRoute === 'ChatDetailedView') {
+                    NavigationService.navigate('ChatDetailedView', { chat: movedObject, projectId: newProject.id })
+                    dispatch([
+                        setSelectedSidebarTab(DV_TAB_ROOT_CHATS),
+                        switchProject(newProject.index),
+                        setSelectedTypeOfProject(projectType),
+                        setSelectedNavItem(DV_TAB_CHAT_PROPERTIES),
+                    ])
+                } else if (type === 'note' && currentRoute === 'NotesDetailedView') {
+                    NavigationService.navigate('NotesDetailedView', { noteId: objectId, projectId: newProject.id })
+                    dispatch([
+                        setSelectedSidebarTab(DV_TAB_ROOT_NOTES),
+                        switchProject(newProject.index),
+                        setSelectedTypeOfProject(projectType),
+                        setSelectedNavItem(DV_TAB_NOTE_PROPERTIES),
+                    ])
+                } else if (type === 'goal' && currentRoute === 'GoalDetailedView') {
+                    NavigationService.navigate('GoalDetailedView', { goalId: objectId, projectId: newProject.id })
+                    dispatch([
+                        setSelectedSidebarTab(DV_TAB_ROOT_GOALS),
+                        switchProject(newProject.index),
+                        setSelectedTypeOfProject(projectType),
+                        setSelectedNavItem(DV_TAB_GOAL_PROPERTIES),
+                    ])
+                } else if (type === 'skill' && currentRoute === 'SkillDetailedView') {
                     NavigationService.navigate('SkillDetailedView', {
-                        skillId: skill.id,
+                        skillId: objectId,
                         projectId: newProject.id,
-                        skill,
+                        skill: movedObject,
                     })
-                    const projectType = ProjectHelper.getTypeOfProject(loggedUser, newProject.id)
-                    store.dispatch([
+                    dispatch([
                         setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
                         switchProject(newProject.index),
                         setSelectedTypeOfProject(projectType),
                         setSelectedNavItem(DV_TAB_SKILL_PROPERTIES),
                     ])
+                } else if (type === 'contact' && currentRoute === 'ContactDetailedView') {
+                    NavigationService.navigate('ContactDetailedView', {
+                        contact: { uid: objectId, ...movedObject },
+                        project: newProject,
+                    })
+                    dispatch([
+                        setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
+                        switchProject(newProject.index),
+                        setSelectedTypeOfProject(projectType),
+                        setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES),
+                    ])
                 }
+                writeBrowserUrl(item, newProject)
+                performanceTrace.end('move_complete', { outcome: 'success' })
             })
-            performanceTrace.end('client_complete', { outcome: 'success' })
-        } else if (type === 'contact') {
-            const contact = data
-            dispatch(startLoadingData())
-            await setContactProject(project, newProject, contact)
-            dispatch(stopLoadingData())
-            performanceTrace.end('move_complete', { outcome: 'success' })
-        }
+            .catch(error => {
+                reportMoveFailure(`move ${type}`, error)
+                dispatch(
+                    showConfirmPopup({
+                        trigger: CONFIRM_POPUP_TRIGGER_INFO,
+                        object: {
+                            headerText: `${translate(type)} could not be moved`,
+                            headerQuestion: 'The item is still in its current project. Please try again.',
+                        },
+                    })
+                )
+            })
+            .finally(() => {
+                if (keepDetailLoader) dispatch(stopLoadingData())
+            })
 
-        writeBrowserUrl(item, newProject)
+        dispatch(hideProjectPicker())
     }
 
     return moveObjectToProject

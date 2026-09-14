@@ -65,6 +65,7 @@ function prepareManualTaskMove({
     actorId,
     requestId,
     timestamp,
+    targetGoal,
 }) {
     const targetMembers = new Set(targetProjectUserIds || [])
     const originalOwnerId = rootTask.userId
@@ -87,9 +88,9 @@ function prepareManualTaskMove({
         observersIds: [],
         dueDateByObserversIds: {},
         estimationsByObserverIds: {},
-        parentGoalId: null,
-        parentGoalIsPublicFor: null,
-        lockKey: '',
+        parentGoalId: targetGoal?.id || null,
+        parentGoalIsPublicFor: targetGoal?.isPublicFor || null,
+        lockKey: targetGoal?.lockKey || '',
         isPublicFor,
         sortIndex: isRootTask ? timestamp : -timestamp,
         creatorId: targetMembers.has(rootTask.creatorId) ? rootTask.creatorId : actorId,
@@ -285,6 +286,7 @@ async function moveTaskToDifferentProject(params) {
                   actorId,
                   requestId,
                   timestamp,
+                  targetGoal: params.targetGoal,
               })
             : withoutAccessProjection({ ...sourceTask, lastEditionDate: timestamp })
 

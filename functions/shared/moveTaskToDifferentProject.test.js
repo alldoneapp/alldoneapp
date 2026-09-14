@@ -149,6 +149,27 @@ describe('prepareManualTaskMove', () => {
             completed: 1000,
         })
     })
+
+    it('keeps tasks attached when they move as part of a goal', () => {
+        const moved = prepareManualTaskMove({
+            task: baseTask,
+            rootTask: baseTask,
+            isRootTask: true,
+            sourceProjectId: 'project-a',
+            targetProjectId: 'project-b',
+            targetProjectUserIds: ['owner-1'],
+            actorId: 'actor-1',
+            requestId: 'request-1',
+            timestamp: 1000,
+            targetGoal: { id: 'goal-1', isPublicFor: ['owner-1'], lockKey: 'target-lock' },
+        })
+
+        expect(moved).toMatchObject({
+            parentGoalId: 'goal-1',
+            parentGoalIsPublicFor: ['owner-1'],
+            lockKey: 'target-lock',
+        })
+    })
 })
 
 describe('moveTaskToDifferentProject manual orchestration', () => {
