@@ -8,6 +8,7 @@ import {
     UNDO_EXIT_MS,
     UNDO_EXIT_SETTLE_BUFFER_MS,
 } from './undoActionBarMotion'
+import { UNDO_BURST_SETTLE_MS } from '../../utils/undo/undoActionGrouping'
 
 /**
  * AT-2503 — drives the REAL UndoActionBar through its REAL animated branch.
@@ -88,6 +89,7 @@ const render = (action = buildAction()) => {
         tree = renderer.create(<UndoActionBar />)
     })
     emit(tree, action)
+    act(() => jest.advanceTimersByTime(UNDO_BURST_SETTLE_MS))
     return tree
 }
 
@@ -160,6 +162,7 @@ describe('the Undo banner show/hide animation, wired up (AT-2503)', () => {
             act(() => tree.root.findByProps({ testID: 'undo-action-bar' }).props.onPress())
             act(() => jest.advanceTimersByTime(UNDO_EXIT_MS + UNDO_EXIT_SETTLE_BUFFER_MS + 1))
             emit(tree, buildAction({ actionId: `action-${round}`, lastChangedAt: Date.now() + round }))
+            act(() => jest.advanceTimersByTime(UNDO_BURST_SETTLE_MS))
             seen.push(variantOf(tree))
         }
 
