@@ -54,21 +54,10 @@ jest.mock('../../../../ModalsManager/modalsManager', () => ({
 }))
 jest.mock('../../../../../utils/SharedHelper', () => ({ accessGranted: () => true }))
 jest.mock('../../../../../utils/HelperFunctions', () => ({ popoverToCenter: jest.fn(), getPopoverWidth: () => 600 }))
-jest.mock('../../../../../utils/LinkingHelper', () => ({ handleNestedLinks: text => text }))
 jest.mock('../../../../../utils/backends/Tasks/tasksFirestore', () => ({
     setTaskDueDate: jest.fn(),
     setTaskDescription: jest.fn(),
 }))
-jest.mock('../../../../Icon', () => 'Icon')
-jest.mock('../../../../Tags/TaskEstimation', () => 'TaskEstimation')
-jest.mock('../../../../Tags/DescriptionTag', () => 'DescriptionTag')
-jest.mock('../../../../Tags/TaskRecurrence', () => 'TaskRecurrence')
-jest.mock('../../../../Tags/PrivacyTag', () => 'PrivacyTag')
-jest.mock('../../../../Tags/TaskSubTasks', () => 'TaskSubTasks')
-jest.mock('../../../../Tags/TaskSummation', () => 'TaskSummation')
-jest.mock('../../../../Tags/TaskCommentsWrapper', () => () => null)
-jest.mock('../../../../UIControls/DateTagButton', () => 'DateTagButton')
-jest.mock('../../../../../assets/svg/SVGGenericUser', () => 'SVGGenericUser')
 jest.mock('../../../../../utils/BackendBridge', () => ({
     __esModule: true,
     default: {
