@@ -23,7 +23,10 @@ const onDeleteSkill = async (projectId, skill) => {
     const promises = []
     promises.push(deleteChat(admin, projectId, skillId))
     if (noteId) promises.push(deleteNote(projectId, noteId, movingToOtherProjectId, admin))
-    if (points) promises.push(updateSkillPoints(userId, points))
+    // A project move keeps the same skill and therefore must not change the
+    // user's aggregate points. The destination write is no longer a client
+    // "create" that compensates this increment.
+    if (points && !movingToOtherProjectId) promises.push(updateSkillPoints(userId, points))
     if (!movingToOtherProjectId)
         promises.push(removeObjectFromBacklinks(projectId, 'linkedParentSkillsIds', skillId, admin))
     await Promise.all(promises)

@@ -45,6 +45,13 @@ async function moveNoteToDifferentProject(params) {
     const targetNoteRef = database.doc(`noteItems/${targetProjectId}/notes/${noteId}`)
     const [sourceNoteDoc, targetNoteDoc] = await Promise.all([sourceNoteRef.get(), targetNoteRef.get()])
     if (!sourceNoteDoc.exists && targetNoteDoc.exists) {
+        const targetMove = targetNoteDoc.data?.()?.projectMove
+        if (params.requestId && targetMove?.requestId === params.requestId && targetMove.status !== 'completed') {
+            await targetNoteRef.set(
+                { projectMove: { ...targetMove, status: 'completed', completedAt: Date.now() } },
+                { merge: true }
+            )
+        }
         return { moved: false, reason: 'already_moved', sourceProjectId, targetProjectId, noteId }
     }
     if (!sourceNoteDoc.exists) {
@@ -60,10 +67,19 @@ async function moveNoteToDifferentProject(params) {
     const copyInnerFeeds = params.copyInnerFeeds || require('../Feeds/globalFeedsHelper').copyInnerFeedsToOtherProject
 
     const timestamp = Date.now()
+    const projectMove = {
+        requestId: params.requestId || crypto.randomUUID().replace(/-/g, ''),
+        sourceProjectId,
+        targetProjectId,
+        requestedByUserId: editorId || '',
+        requestedAt: timestamp,
+        status: 'moving',
+    }
     const movedNote = {
         ...(sourceNoteDoc.data() || {}),
         projectId: targetProjectId,
         lastEditionDate: timestamp,
+        projectMove,
     }
     if (editorId) movedNote.lastEditorId = editorId
     if (editorName) movedNote.lastEditorName = editorName
@@ -80,6 +96,7 @@ async function moveNoteToDifferentProject(params) {
 
     const sourceMoveMarkerUpdate = {
         movingToOtherProjectId: targetProjectId,
+        projectMove,
         lastEditionDate: timestamp,
     }
     if (editorId) sourceMoveMarkerUpdate.lastEditorId = editorId
@@ -107,6 +124,10 @@ async function moveNoteToDifferentProject(params) {
     })
 
     await sourceNoteRef.delete()
+    await targetNoteRef.set(
+        { projectMove: { ...projectMove, status: 'completed', completedAt: Date.now() } },
+        { merge: true }
+    )
 
     return { moved: true, sourceProjectId, targetProjectId, noteId }
 }

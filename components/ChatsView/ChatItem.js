@@ -23,6 +23,7 @@ import { getUserPresentationDataInProject } from '../ContactsView/Utils/Contacts
 import { getChatItemBackgroundColor } from './chatItemBackground'
 import { getUnreadCommentIds } from './Utils/unreadChatFilter'
 import ChatItemUnreadMessages from './ChatItemUnreadMessages'
+import ProjectMoveIndicator from '../UIComponents/ProjectMoveIndicator'
 
 export default function ChatItem({ chat, project, openEditModal, inCommentPopup, onPress }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -74,6 +75,7 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
                 { backgroundColor },
             ]}
         >
+            <ProjectMoveIndicator object={chat} />
             <TouchableOpacity onPress={inCommentPopup ? onPress : onOpenEditModal} accessible={false}>
                 <ChatHeaderItem members={chat.members} membersNumber={chat.members.length} />
             </TouchableOpacity>

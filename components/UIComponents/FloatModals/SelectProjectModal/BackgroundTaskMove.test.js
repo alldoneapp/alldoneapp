@@ -6,13 +6,12 @@ const taskBranch = source.match(/if \(type === 'task'\) \{([\s\S]*?)\n        \}
 
 describe('AT-2533 background task project move', () => {
     it('dispatches the Cloud Function without awaiting it, then returns before legacy client fan-out', () => {
-        expect(taskBranch).toMatch(/completeMove\(queueTaskProjectMove\(project\.id, newProject\.id, data\.id\)\)/)
+        expect(source).toMatch(/queueObjectProjectMove\(project\.id, newProject\.id, type, objectId\)/)
         expect(taskBranch).not.toMatch(/await\s+completeMove/)
         expect(taskBranch).toMatch(/dispatch\(hideProjectPicker\(\)\)/)
         expect(taskBranch).toMatch(/return/)
 
-        const branchEnd = source.indexOf(taskBranch) + taskBranch.length
-        expect(source.indexOf("runMoveStep('move conversation'", branchEnd)).toBeGreaterThan(branchEnd)
+        expect(source).not.toMatch(/runMoveStep\('move conversation'/)
     })
 
     it('does not retain the client-side task move implementation', () => {
@@ -29,6 +28,6 @@ describe('AT-2533 background task project move', () => {
     })
 
     it('reports the accepted request id to the open detail-view handoff', () => {
-        expect(taskBranch).toMatch(/\.then\(result => taskMoveCallbacks\.onTaskProjectMoveEnqueued/)
+        expect(taskBranch).toMatch(/\.then\(result => \{[\s\S]*taskMoveCallbacks\.onTaskProjectMoveEnqueued/)
     })
 })
