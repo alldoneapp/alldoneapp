@@ -7,7 +7,11 @@ import useGoalSectionExit, {
     GOAL_SECTION_HOLD_MS,
     keepDepartingGoalsSortable,
 } from './useGoalSectionExit'
-import { publishGoalTaskCompletion, resetGoalTaskCompletionListeners } from './goalCompletionSignal'
+import {
+    publishGoalTaskCompletion,
+    publishGoalTaskPostpone,
+    resetGoalTaskCompletionListeners,
+} from './goalCompletionSignal'
 
 /**
  * AT-2507 — the rule that decides a goal section is LEAVING today's list because its work is done,
@@ -88,6 +92,12 @@ describe('useGoalSectionExit (AT-2507)', () => {
         })
     }
 
+    const postpone = async (taskId, goalId = GOAL) => {
+        await act(async () => {
+            publishGoalTaskPostpone({ projectId: PROJECT, goalId, taskId })
+        })
+    }
+
     /** The ordinary shape: a goal with tasks, all of them completed, then dropped by the snapshot. */
     const clearAndDrop = async (tree, tasks) => {
         for (const t of tasks) await complete(t.id)
@@ -154,15 +164,40 @@ describe('useGoalSectionExit (AT-2507)', () => {
         })
     })
 
-    it('does not make the parent goal participate when its final task is postponed', async () => {
+    it('holds the parent goal when its final task is postponed and the goal leaves Today', async () => {
         const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
 
-        // A postpone has no completion signal. When its snapshot removes the final task, the row
-        // may close naturally but the goal wrapper must not be held or receive an exit run.
+        await postpone('t1')
         await update(tree, { mainTasks: [] })
 
+        expect(exitIdsOf()).toEqual([GOAL])
+        expect(latest.mainTasksWithExits).toEqual([[GOAL, []]])
+    })
+
+    it('does not animate a postponed task whose goal stays as an empty goal for Today', async () => {
+        const tree = await mount({ mainTasks: [section(GOAL, [task('t1')])] })
+
+        await postpone('t1')
+        await update(tree, { mainTasks: [], emptyGoals: [emptyGoal(GOAL)] })
+
         expect(exitIdsOf()).toEqual([])
-        expect(latest.mainTasksWithExits).toEqual([])
+        expect(latest.emptyGoalsWithExits).toEqual([emptyGoal(GOAL)])
+
+        // A later goal-level action must not borrow the task's old animation signal.
+        await update(tree, { mainTasks: [], emptyGoals: [] })
+        expect(exitIdsOf()).toEqual([])
+    })
+
+    it('waits until the postponed task was the last task shown for the goal', async () => {
+        const tree = await mount({ mainTasks: [section(GOAL, [task('t1'), task('t2')])] })
+
+        await postpone('t1')
+        await update(tree, { mainTasks: [section(GOAL, [task('t2')])] })
+        expect(exitIdsOf()).toEqual([])
+
+        await postpone('t2')
+        await update(tree, { mainTasks: [] })
+        expect(exitIdsOf()).toEqual([GOAL])
     })
 
     /**

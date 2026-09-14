@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
-import { subscribeToGoalTaskCompletions } from './goalCompletionSignal'
+import { subscribeToGoalTaskExits } from './goalCompletionSignal'
 import { GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
 
 /**
- * AT-2507 — decides which goal sections are LEAVING today's list because their work is finished,
- * and keeps them on the board long enough to leave gracefully instead of popping.
+ * AT-2507 / AT-2565 — decides which goal sections are LEAVING today's list after their last visible
+ * task was completed or postponed, and keeps them on the board long enough to leave gracefully
+ * instead of popping.
  *
  * ── "ACTUALLY LEAVES" IS A NARROWER EVENT THAN "WAS CLEARED" ─────────────────────────────────────
  *
@@ -45,8 +46,8 @@ import { GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
  * test passed, because they all modelled the departure as a single step.
  *
  * A goal seen in `emptyGoals` is therefore kept as a PENDING departure: its task ids and its goal
- * object are remembered so that a later real departure is still attributable to the completion,
- * while nothing is animated for as long as the row is on screen. `COMPLETION_MEMORY_MS` is what
+ * object are remembered so that a later real departure is still attributable to the task exit,
+ * while nothing is animated for as long as the row is on screen. `TASK_EXIT_MEMORY_MS` is what
  * stops that pending state from turning a departure hours later into an animation, and tasks
  * reappearing under the goal replace the record outright.
  *
@@ -61,14 +62,14 @@ import { GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
  * block fades and still drops its full height in a single frame when the hold ends, which is the
  * jump this task is about.
  *
- * ── AND IT MUST BE A COMPLETION ──────────────────────────────────────────────────────────────────
+ * ── AND IT MUST BE A QUALIFYING TASK EXIT ──────────────────────────────────────────────────────────
  *
- * A goal also leaves today's list when its last task is postponed, dragged, deleted, reassigned or
- * re-goaled, and when the goal itself is postponed. None of those is finished work. Watching the
- * list alone cannot tell them apart — the AT-2492 lesson that "the list is empty" is not "the work
- * was done" — so departures are cross-checked against `goalCompletionSignal`, which only ever
- * carries genuine completions of list-leaving rows. Every other way of leaving keeps today's
- * behaviour exactly, including its instant removal.
+ * A goal also leaves today's list when its last task is dragged, deleted, reassigned or re-goaled,
+ * and when the goal itself is postponed. Watching the list alone cannot tell them apart, so
+ * departures are cross-checked against the row-owned signal. It carries genuine completions and,
+ * for AT-2565, user-facing postpones out of Today. Every other way of leaving keeps today's
+ * behaviour exactly, including its instant removal. This hook never decides visibility: the goal
+ * must already be absent from both live lists before it supplies an animation hold.
  *
  * ── THE HOLD, AND WHY IT IS UNAVOIDABLE ──────────────────────────────────────────────────────────
  *
@@ -79,8 +80,8 @@ import { GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
  * so the existing sort places it exactly where it was and no other code needs to know.
  *
  * An empty task list is the right content for it, and not merely convenient: those task rows have
- * already collapsed to zero height under AT-2404's own exit, and re-rendering the completed task
- * would bring a finished row back onto the screen for the length of the hold.
+ * already collapsed or faded away under their own exit, and re-rendering the departed task would
+ * bring it back onto the screen for the length of the hold.
  *
  * The decision is made DURING RENDER (React's documented "adjust state when a prop changes" shape,
  * guarded so it cannot loop) rather than from an effect, for the reason AT-2492 records: an effect
@@ -90,23 +91,24 @@ import { GOAL_SECTION_EXIT_TOTAL_MS } from './goalSectionExitMotion'
  * The hold is bounded three ways, because a goal stranded on a board it should have left is a real
  * bug where a missed animation is only a missed nicety: it always expires on a timer, it is never
  * taken when there would be nothing to see (reduced motion, jest), and it is never taken for a
- * section leaving for any other reason. It delays no Firestore write — the write that completed the
- * task happened over a second earlier, which is precisely why this section is still on screen to be
- * held.
+ * section leaving for any other reason. It delays no Firestore write — the task's row-level motion
+ * has already finished and its write has already been sent by the time this hold begins.
  */
 
 /** A little longer than the run, so the last frame cannot be cut off by the hold expiring first. */
 export const GOAL_SECTION_HOLD_MS = GOAL_SECTION_EXIT_TOTAL_MS + 120
 
 /**
- * How long a completed task id is remembered as a reason for its goal to leave.
+ * How long a qualifying task-exit id is remembered as a reason for its goal to leave.
  *
  * It has to outlive the gap between the tick and the snapshot — AT-2404 holds the write for
- * `COMPLETION_HOLD_MS` (1070ms) and the round trip follows it — and it must not be so long that a
- * task completed at breakfast still counts as the reason a goal left at lunchtime. Ten seconds is
- * two orders of magnitude clear of the first and three of the second.
+ * `COMPLETION_HOLD_MS` (1070ms) and the round trip follows it; the postpone path reports immediately
+ * before its own write. It must not be so long that a morning action still counts as the reason a
+ * goal left at lunchtime. Ten seconds is two orders of magnitude clear of the first.
  */
-export const COMPLETION_MEMORY_MS = 10000
+export const TASK_EXIT_MEMORY_MS = 10000
+/** Backwards-compatible name for the completion-only tests introduced with AT-2507. */
+export const COMPLETION_MEMORY_MS = TASK_EXIT_MEMORY_MS
 
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
 
@@ -181,8 +183,8 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
     const active = enabled && animated
 
     const [exits, setExits] = useState(EMPTY_EXITS)
-    // goalId -> Map(taskId -> completedAt). Pruned lazily, only when a departure is being judged.
-    const completionsRef = useRef(new Map())
+    // goalId -> Map(taskId -> { reportedAt, reason }). Pruned when a departure is judged.
+    const taskExitsRef = useRef(new Map())
     /**
      * goalId -> `{ taskIds, emptyGoal }`. The record of what "cleared" has to mean for this
      * particular goal: `taskIds` are the ids the section last rendered, and `emptyGoal` is the goal
@@ -204,20 +206,20 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
 
     useEffect(() => {
         if (!active) return undefined
-        return subscribeToGoalTaskCompletions(event => {
+        return subscribeToGoalTaskExits(event => {
             if (event.projectId !== projectId) return
-            let byTask = completionsRef.current.get(event.goalId)
+            let byTask = taskExitsRef.current.get(event.goalId)
             if (!byTask) {
                 byTask = new Map()
-                completionsRef.current.set(event.goalId, byTask)
+                taskExitsRef.current.set(event.goalId, byTask)
             }
-            byTask.set(event.taskId, Date.now())
+            byTask.set(event.taskId, { reportedAt: Date.now(), reason: event.reason })
         })
     }, [active, projectId])
 
     const endExit = useCallback(goalId => {
         timersRef.current.delete(goalId)
-        completionsRef.current.delete(goalId)
+        taskExitsRef.current.delete(goalId)
         setExits(current => {
             if (!current[goalId]) return current
             const next = { ...current }
@@ -246,15 +248,15 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
     if (active) {
         lastSectionsRef.current.forEach((record, goalId) => {
             if (presentGoalIds.has(goalId) || exits[goalId] || timersRef.current.has(goalId)) return
-            const byTask = completionsRef.current.get(goalId)
+            const byTask = taskExitsRef.current.get(goalId)
             if (!byTask) return
-            const freshEnough = Date.now() - COMPLETION_MEMORY_MS
+            const freshEnough = Date.now() - TASK_EXIT_MEMORY_MS
             const taskIds = record.taskIds
-            // EVERY task the section last held has to have been completed. One of them merely moved
-            // or deleted means the goal did not leave because its work was finished.
-            const clearedByCompletion =
-                taskIds.length > 0 && taskIds.every(taskId => (byTask.get(taskId) || 0) >= freshEnough)
-            if (clearedByCompletion) departing.push(goalId)
+            // EVERY task the section last held has to have reported a genuine completion or a
+            // user-facing postpone. One of them merely moving or being deleted must stay silent.
+            const clearedByTaskExit =
+                taskIds.length > 0 && taskIds.every(taskId => (byTask.get(taskId)?.reportedAt || 0) >= freshEnough)
+            if (clearedByTaskExit) departing.push(goalId)
         })
     }
 
@@ -297,7 +299,16 @@ export default function useGoalSectionExit({ projectId, mainTasks, emptyGoals, e
     liveEmptyGoals.forEach(goal => {
         if (!goal || !goal.id || seen.has(goal.id)) return
         const previous = lastSectionsRef.current.get(goal.id)
-        if (previous) seen.set(goal.id, { taskIds: previous.taskIds, emptyGoal: goal })
+        const exitsForGoal = taskExitsRef.current.get(goal.id)
+        // A completion can legitimately reach the empty-goal row one snapshot before the goal's
+        // progress update removes it, so preserve that pending departure. A postpone does not
+        // change goal progress: if the goal remains here because it has its own Today reminder,
+        // its later departure is unrelated and must not borrow the old postpone animation.
+        const pendingCompletion =
+            previous?.taskIds.length > 0 &&
+            previous.taskIds.every(taskId => exitsForGoal?.get(taskId)?.reason === 'completion')
+        if (pendingCompletion) seen.set(goal.id, { taskIds: previous.taskIds, emptyGoal: goal })
+        else if (previous) taskExitsRef.current.delete(goal.id)
     })
     // A goal that is neither on screen nor leaving is forgotten, so this cannot grow with the day.
     lastSectionsRef.current.forEach((record, goalId) => {

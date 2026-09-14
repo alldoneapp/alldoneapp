@@ -91,7 +91,11 @@ jest.mock('react-redux', () => ({
 }))
 
 import MainSection from './MainSection'
-import { publishGoalTaskCompletion, resetGoalTaskCompletionListeners } from './goalCompletionSignal'
+import {
+    publishGoalTaskCompletion,
+    publishGoalTaskPostpone,
+    resetGoalTaskCompletionListeners,
+} from './goalCompletionSignal'
 import { TODAY_DATE } from '../../../utils/backends/openTasks'
 
 const PROJECT = 'project-1'
@@ -225,6 +229,11 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
             publishGoalTaskCompletion({ projectId: PROJECT, goalId, taskId })
         })
     }
+    const postpone = async (taskId, goalId) => {
+        await act(async () => {
+            publishGoalTaskPostpone({ projectId: PROJECT, goalId, taskId })
+        })
+    }
 
     const sectionsOf = tree => tree.root.findAllByType('ParentGoalSection').map(node => node.props)
     const emptyGoalsOf = tree => tree.root.findAllByType('EmptyGoal').map(node => node.props)
@@ -273,14 +282,18 @@ describe('the board deciding a goal has left today (AT-2521)', () => {
             expect(creators[0].props.suspendShortcut).toBe(true)
         })
 
-        it('does not animate the parent section or entry row after its final task is postponed', async () => {
+        it('animates the parent section and entry row after its final task is postponed', async () => {
             const tree = await mount(withTask)
 
+            await postpone('t1', TASK_ONLY_GOAL)
             await update(tree, { mainTasks: [], emptyGoals: [] })
 
-            expect(sectionsOf(tree)).toHaveLength(0)
+            expect(sectionsOf(tree)).toHaveLength(1)
+            expect(sectionsOf(tree)[0].goalId).toBe(TASK_ONLY_GOAL)
+            expect(sectionsOf(tree)[0].exitRunId).toBeGreaterThan(0)
+            expect(sectionsOf(tree)[0].taskList).toEqual([])
             expect(generalEntriesOf(tree)).toHaveLength(1)
-            expect(generalEntriesOf(tree)[0].entryRunId).toBe(0)
+            expect(generalEntriesOf(tree)[0].entryRunId).toBeGreaterThan(0)
         })
 
         it('does not reveal a general creator while another goal section remains', async () => {

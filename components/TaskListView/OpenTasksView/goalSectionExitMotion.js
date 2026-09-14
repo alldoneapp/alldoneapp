@@ -4,7 +4,8 @@ import { Animated, Easing } from 'react-native'
 import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
 
 /**
- * AT-2507 — how a goal section LEAVES today's list once the last task under it has been completed.
+ * AT-2507 / AT-2565 — how a goal section LEAVES today's list once the last task under it has been
+ * completed or postponed out of Today.
  *
  * ── IT IS AN EXIT, NOT A CELEBRATION ─────────────────────────────────────────────────────────────
  *
@@ -44,12 +45,11 @@ import { useReducedMotion } from '../../UIComponents/Ghosts/ghostAnimation'
  *
  * ── WHY 1.4 SECONDS IS AFFORDABLE HERE AND NOT ON A TASK ROW ─────────────────────────────────────
  *
- * A task is completed dozens of times an hour, often in bursts while a list is cleared, so its exit
- * has to be short, quiet and repeatable (320ms). A goal section leaves today's list at most a
- * handful of times a day, and only ever because everything scheduled under it is finished. Nothing
- * waits on this either: the Firestore write went out long before — see `useGoalSectionExit` for why
- * the block is still on screen at all — so the only cost is that the gap below the goal closes
- * about a second later than it used to.
+ * A task leaves the day dozens of times an hour, often in bursts while a list is cleared, so its
+ * exit has to be short, quiet and repeatable. A whole goal section leaves today's list at most a
+ * handful of times a day. Nothing waits on this either: the Firestore write has already gone out —
+ * see `useGoalSectionExit` for why the block is still on screen at all — so the only cost is that
+ * the gap below the goal closes about a second later than it used to.
  */
 
 /** The block dims. */
