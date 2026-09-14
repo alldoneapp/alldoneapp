@@ -1,4 +1,4 @@
-import { Platform, StatusBar, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 
 import { colors, hexColorToRGBa } from '../styles/global'
 
@@ -7,7 +7,7 @@ const undoActionBarStyles = StyleSheet.create({
         position: 'absolute',
         left: 0,
         right: 0,
-        top: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
+        bottom: 0,
         zIndex: 100000,
         alignItems: 'center',
     },
@@ -21,7 +21,7 @@ const undoActionBarStyles = StyleSheet.create({
         paddingHorizontal: 24,
     },
     container: {
-        marginTop: 64,
+        marginBottom: 64,
         minHeight: 48,
         maxWidth: 560,
         width: '100%',

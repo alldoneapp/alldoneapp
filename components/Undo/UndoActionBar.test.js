@@ -17,10 +17,11 @@ jest.mock('../styles/global', () => ({
 import undoActionBarStyles from './undoActionBarStyles'
 
 describe('UndoActionBar layout', () => {
-    it('positions the undo banner at the safe top edge instead of the bottom', () => {
-        expect(undoActionBarStyles.overlay.top).toBeDefined()
-        expect(undoActionBarStyles.overlay.bottom).toBeUndefined()
-        expect(undoActionBarStyles.container.marginTop).toBe(64)
+    it('positions the undo banner 64px above the safe bottom edge', () => {
+        expect(undoActionBarStyles.overlay.bottom).toBe(0)
+        expect(undoActionBarStyles.overlay.top).toBeUndefined()
+        expect(undoActionBarStyles.container.marginBottom).toBe(64)
+        expect(undoActionBarStyles.container.marginTop).toBeUndefined()
     })
 
     it('adds extra horizontal viewport padding on mobile', () => {
