@@ -79,10 +79,18 @@ export default function GoalDateTagButton({
                 onPress={hidePopover}
                 icon={'calendar'}
                 disabled={disabled}
+                showDateOnMobile={true}
                 style={{ marginLeft: 8 }}
             />
         </AppPopover>
     ) : (
-        <DateTag date={date} onPress={showPopover} icon={'calendar'} disabled={disabled} style={{ marginLeft: 8 }} />
+        <DateTag
+            date={date}
+            onPress={showPopover}
+            icon={'calendar'}
+            disabled={disabled}
+            showDateOnMobile={true}
+            style={{ marginLeft: 8 }}
+        />
     )
 }
