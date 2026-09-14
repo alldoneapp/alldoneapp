@@ -30,7 +30,37 @@ jest.mock('../../redux/actions', () => ({
     showFloatPopup: jest.fn(() => ({ type: 'show' })),
 }))
 
-describe('GoalDateTagButton reminder write', () => {
+describe('GoalDateTagButton', () => {
+    test('keeps the goal reminder date visible on mobile', () => {
+        const goal = {
+            id: 'goal-1',
+            assigneesReminderDate: { 'user-1': 100 },
+            startingMilestoneDate: 100,
+            completionMilestoneDate: 200,
+        }
+        const tree = renderer.create(
+            <GoalDateTagButton
+                projectId="project-1"
+                goal={goal}
+                isEmptyGoal={true}
+                parentGoaltasks={[]}
+                areObservedTask={false}
+                inParentGoal={true}
+            />
+        )
+
+        expect(tree.root.findByType('DateTag').props).toMatchObject({
+            date: '01.01.1970',
+            showDateOnMobile: true,
+        })
+
+        act(() => tree.root.findByType('DateTag').props.onPress())
+
+        expect(tree.root.findByType('DateTag').props.showDateOnMobile).toBe(true)
+
+        tree.unmount()
+    })
+
     test('passes its loaded goal so the write does not wait for a server reread', () => {
         const goal = {
             id: 'goal-1',
