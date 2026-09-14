@@ -3,6 +3,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import UndoActionBar from './UndoActionBar'
 import { reverseUndoAction } from '../../utils/undo/undoActions'
+import { UNDO_BURST_SETTLE_MS } from '../../utils/undo/undoActionGrouping'
 
 const mockOnSnapshot = jest.fn()
 
@@ -50,13 +51,19 @@ const renderActionBar = () => {
     act(() => {
         mockOnSnapshot.mock.calls[0][0]({ docs: [{ data: () => action }] })
     })
+    act(() => {
+        jest.advanceTimersByTime(UNDO_BURST_SETTLE_MS)
+    })
     return tree
 }
 
 describe('UndoActionBar interactions', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        jest.useFakeTimers()
     })
+
+    afterEach(() => jest.useRealTimers())
 
     it('dismisses when the notification background is pressed without undoing', () => {
         const tree = renderActionBar()

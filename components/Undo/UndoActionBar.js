@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux'
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import { reverseUndoAction } from '../../utils/undo/undoActions'
+import { buildUndoActionGroup, reverseUndoActionGroup, UNDO_BURST_SETTLE_MS } from '../../utils/undo/undoActionGrouping'
 import undoActionBarStyles from './undoActionBarStyles'
 import useUndoActionBarMotion, { UNDO_DISPLAY_TIME_MS } from './undoActionBarMotion'
 
@@ -23,13 +24,15 @@ export default function UndoActionBar() {
     const loggedIn = useSelector(state => state.loggedIn)
     const userId = useSelector(state => state.loggedUser?.uid)
     const mobile = useSelector(state => state.smallScreenNavigation)
-    const [action, setAction] = useState(null)
+    const [group, setGroup] = useState(null)
+    const [pendingGroup, setPendingGroup] = useState(null)
     const [actions, setActions] = useState([])
     const [visible, setVisible] = useState(false)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     const mountedAt = useRef(Date.now())
     const busyRef = useRef(false)
+    const failedNewestActionIdRef = useRef('')
 
     useEffect(() => {
         if (!loggedIn || !userId) return undefined
@@ -43,39 +46,82 @@ export default function UndoActionBar() {
                 const nextActions = snapshot.docs.map(document => document.data())
                 setActions(nextActions)
                 if (nextActions.length === 0) {
-                    setAction(null)
+                    setPendingGroup(null)
+                    setGroup(null)
                     return
                 }
-                const nextAction = [...nextActions].sort(
-                    (first, second) => second.lastChangedAt - first.lastChangedAt
-                )[0]
-                setAction(nextAction)
-                setError('')
+                const nextGroup = buildUndoActionGroup(nextActions)
+                if (!nextGroup || busyRef.current) return
+                // Callable results and Firestore listener updates can arrive in either order. Do
+                // not let a late status snapshot erase a failure message; only a genuinely newer
+                // user action supersedes it.
+                if (failedNewestActionIdRef.current) {
+                    if (nextGroup.actions[0].actionId === failedNewestActionIdRef.current) return
+                    failedNewestActionIdRef.current = ''
+                }
                 if (
-                    nextAction.createdAt >= mountedAt.current - 1000 ||
-                    nextAction.lastChangedAt >= mountedAt.current - 1000
+                    nextGroup.newestCreatedAt >= mountedAt.current - 1000 ||
+                    nextGroup.newestChangedAt >= mountedAt.current - 1000
                 ) {
-                    setVisible(true)
+                    // New records settle briefly before anything is rendered. A five-write burst
+                    // therefore creates one live-region announcement and one entry animation,
+                    // rather than replacing the same banner four times while it is being read.
+                    if (nextGroup.status === 'applied' && nextGroup.newestCreatedAt === nextGroup.newestChangedAt) {
+                        setPendingGroup(nextGroup)
+                    } else {
+                        setPendingGroup(null)
+                        setGroup(nextGroup)
+                        setError('')
+                        setVisible(true)
+                    }
                 }
             })
     }, [loggedIn, userId])
 
     useEffect(() => {
+        if (!pendingGroup) return undefined
+        const timer = setTimeout(() => {
+            if (busyRef.current) return
+            setGroup(pendingGroup)
+            failedNewestActionIdRef.current = ''
+            setError('')
+            setVisible(true)
+        }, UNDO_BURST_SETTLE_MS)
+        return () => clearTimeout(timer)
+    }, [pendingGroup?.id, pendingGroup?.status])
+
+    useEffect(() => {
         if (!visible || busy) return undefined
         const timer = setTimeout(() => setVisible(false), DISPLAY_TIME_MS)
         return () => clearTimeout(timer)
-    }, [visible, busy, action?.actionId, action?.status])
+    }, [visible, busy, group?.id, group?.status])
 
-    const reverse = async (targetAction, direction) => {
-        if (!targetAction || busyRef.current) return
+    const reverse = async (targetGroup, direction) => {
+        if (!targetGroup?.actions?.length || busyRef.current) return
         busyRef.current = true
+        setPendingGroup(null)
+        setGroup(targetGroup)
+        failedNewestActionIdRef.current = ''
         setBusy(true)
         setError('')
         setVisible(true)
         try {
-            await reverseUndoAction(targetAction.actionId, direction)
+            if (targetGroup.actions.length === 1) {
+                await reverseUndoAction(targetGroup.actions[0].actionId, direction)
+            } else {
+                await reverseUndoActionGroup(targetGroup.actions, direction, reverseUndoAction)
+            }
+            const nextStatus = direction === 'undo' ? 'undone' : 'applied'
+            setGroup({
+                ...targetGroup,
+                status: nextStatus,
+                actions: targetGroup.actions.map(action => ({ ...action, status: nextStatus })),
+            })
         } catch (reverseError) {
-            const message = reverseError?.message || translate('Could not reverse action')
+            const message = reverseError?.compensationFailed
+                ? translate('Some actions could not be restored after undo failed')
+                : reverseError?.message || translate('Could not reverse action')
+            failedNewestActionIdRef.current = targetGroup.actions[0].actionId
             setError(message.replace(/^.*?:\s*/, ''))
         } finally {
             busyRef.current = false
@@ -93,7 +139,14 @@ export default function UndoActionBar() {
                 : actions.find(candidate => candidate.status === 'applied')
             if (!targetAction) return
             event.preventDefault()
-            reverse(targetAction, event.shiftKey ? 'redo' : 'undo')
+            reverse(
+                {
+                    id: targetAction.actionId,
+                    status: targetAction.status,
+                    actions: [targetAction],
+                },
+                event.shiftKey ? 'redo' : 'undo'
+            )
         }
         window.addEventListener('keydown', onKeyDown)
         return () => window.removeEventListener('keydown', onKeyDown)
@@ -106,23 +159,34 @@ export default function UndoActionBar() {
      * synchronously, so a dismiss still removes the banner in the very same commit as the press.
      *
      * The hook is called before the early return because hooks cannot be conditional; every input
-     * it takes tolerates a null `action`.
+     * it takes tolerates a null `group`.
      */
     const motion = useUndoActionBarMotion({
         visible,
         // A status flip (Undo → "Undone: …") or an error replacing the label is a content change,
         // which is a nudge rather than a re-entry.
-        contentKey: `${action?.actionId || ''}|${action?.status || ''}|${error}`,
+        contentKey: `${group?.id || ''}|${group?.status || ''}|${error}`,
         // Deliberately the same inputs as the auto-hide effect above, so the line refills exactly
         // when that timer restarts.
-        countdownKey: `${action?.actionId || ''}|${action?.status || ''}`,
+        countdownKey: `${group?.id || ''}|${group?.status || ''}`,
         countdownActive: visible && !busy,
     })
 
-    if (!motion.rendered || !action) return null
+    if (!motion.rendered || !group?.actions?.length) return null
 
-    const isUndone = action.status === 'undone'
-    const message = error ? error : isUndone ? `${translate('Undone')}: ${action.label}` : action.label
+    const isGrouped = group.actions.length > 1
+    const isUndone = group.status === 'undone'
+    const action = group.actions[0]
+    const message = error
+        ? error
+        : isGrouped
+          ? translate(isUndone ? '%{count} actions undone' : '%{count} actions completed', {
+                count: group.actions.length,
+            })
+          : isUndone
+            ? `${translate('Undone')}: ${action.label}`
+            : action.label
+    const actionLabel = translate(isGrouped ? (isUndone ? 'Redo all' : 'Undo all') : isUndone ? 'Redo' : 'Undo')
     const stopPropagation = event => event?.stopPropagation?.()
 
     return (
@@ -133,7 +197,6 @@ export default function UndoActionBar() {
             >
                 <Animated.View
                     style={[undoActionBarStyles.container, motion.containerStyle]}
-                    accessibilityLiveRegion="polite"
                     // A banner on its way out must not swallow a click meant for the app behind it.
                     pointerEvents={motion.exiting ? 'none' : 'auto'}
                     // Which of the four is playing, as a real `data-undo-animation` attribute
@@ -155,6 +218,9 @@ export default function UndoActionBar() {
                         pointerEvents="none"
                         numberOfLines={2}
                         style={[styles.body2, localStyles.message, motion.messageStyle]}
+                        accessibilityLiveRegion="polite"
+                        aria-atomic={true}
+                        testID="undo-action-message"
                     >
                         {message}
                     </Animated.Text>
@@ -175,15 +241,13 @@ export default function UndoActionBar() {
                         <TouchableOpacity
                             onPress={event => {
                                 stopPropagation(event)
-                                reverse(action, isUndone ? 'redo' : 'undo')
+                                reverse(group, isUndone ? 'redo' : 'undo')
                             }}
                             accessibilityRole="button"
-                            accessibilityLabel={translate(isUndone ? 'Redo' : 'Undo')}
+                            accessibilityLabel={actionLabel}
                             testID="undo-action-button"
                         >
-                            <Text style={[styles.button, localStyles.action]}>
-                                {translate(isUndone ? 'Redo' : 'Undo')}
-                            </Text>
+                            <Text style={[styles.button, localStyles.action]}>{actionLabel}</Text>
                         </TouchableOpacity>
                     )}
                     {motion.showCountdown && (
