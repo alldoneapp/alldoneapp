@@ -2092,8 +2092,11 @@ never touches `chatNotifications`, which is independent comment/chat unread stat
 `increaseFeedCount` path applies this only when the new feed's `creatorId` is the signed-in user;
 assistant/system-authored feeds therefore leave the user's unread entries intact. `storeComment`
 also applies it for a newly created user comment, but not when `editingCommentId` identifies an
-edit. The decision and writes are pinned by `utils/backends/Feeds/activityFeedReadState.test.js`
-and `__tests__/Feeds/activityFeedReadCallSites.test.js`.
+edit. Root-task Done/Open feeds are server-owned and appear only after the task write, so the three
+`moveTasksFrom*` transition paths queue the same clear in the authoritative task batch; the later
+server feed excludes its actor and cannot make the task unread again. The decision and writes are
+pinned by `utils/backends/Feeds/activityFeedReadState.test.js` and
+`__tests__/Feeds/activityFeedReadCallSites.test.js`.
 
 Every write batch trims `feedsStore/{project}/all` and the user's `followed` store to the newest
 200 readable entries (`deleteOldVisibleFeeds`, called from the `feedsCleaned` block of each

@@ -42,4 +42,40 @@ describe('activity-feed unread interaction call sites', () => {
         expect(newCommentBranch).toContain('objectType,')
         expect(newCommentBranch).not.toContain('chatNotifications/${projectId}/${creatorId}')
     })
+
+    it('clears activity unread state in the task batch for every task transition path', () => {
+        const source = read('utils/backends/Tasks/tasksFirestore.js')
+        const helper = readFunction(
+            source,
+            'const queueTaskTransitionActivityFeedUnreadClear =',
+            'export async function moveTasksFromMiddleOfWorkflow('
+        )
+        const transitionFunctions = [
+            readFunction(
+                source,
+                'export async function moveTasksFromMiddleOfWorkflow(',
+                'const getTaskCompletedTime ='
+            ),
+            readFunction(
+                source,
+                'export async function moveTasksFromOpen(',
+                'export async function moveTasksFromDone('
+            ),
+            readFunction(source, 'export async function moveTasksFromDone(', 'export async function setTaskStatus('),
+        ]
+
+        expect(helper).toContain('queueObjectActivityFeedUnreadClear(getDb(), batch, {')
+        expect(helper).toContain("objectType: 'tasks'")
+        expect(helper).toContain('userId: store.getState().loggedUser.uid')
+
+        transitionFunctions.forEach(transitionFunction => {
+            const clearIndex = transitionFunction.indexOf(
+                'queueTaskTransitionActivityFeedUnreadClear(projectId, task.id, batch)'
+            )
+            const commitIndex = transitionFunction.indexOf('batch.commit()')
+
+            expect(clearIndex).toBeGreaterThan(-1)
+            expect(commitIndex).toBeGreaterThan(clearIndex)
+        })
+    })
 })
