@@ -62,6 +62,20 @@ export default function FloatingCallControls({ call }) {
                                 accessible
                             />
                         )}
+                        {call.status === 'connected' && (
+                            <Button
+                                type={call.microphoneMuted ? 'secondary' : 'ghost'}
+                                icon={call.microphoneMuted ? 'mic-off' : 'mic'}
+                                onPress={call.toggleMicrophoneMuted}
+                                buttonStyle={localStyles.muteButton}
+                                accessibilityLabel={translate(
+                                    call.microphoneMuted ? 'Unmute assistant call' : 'Mute assistant call'
+                                )}
+                                accessibilityState={{ selected: call.microphoneMuted }}
+                                aria-pressed={call.microphoneMuted}
+                                accessible
+                            />
+                        )}
                         <Button
                             type="danger"
                             icon={
@@ -109,6 +123,7 @@ const localStyles = StyleSheet.create({
     row: { flexDirection: 'row', alignItems: 'center', maxWidth: '100%' },
     foregroundHint: { ...styles.caption1, color: colors.Text03, maxWidth: 260, padding: 8 },
     button: { height: 48, minHeight: 48, borderRadius: 24 },
+    muteButton: { width: 48, height: 48, minHeight: 48, borderRadius: 24, marginRight: 8 },
     details: { width: 180, minWidth: 0, flexShrink: 1, marginHorizontal: 8 },
     name: { ...styles.body2, color: colors.Text02 },
     error: { ...styles.caption1, color: colors.UtilityRed200, maxWidth: 220, flexShrink: 1 },
