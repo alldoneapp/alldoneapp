@@ -142,6 +142,12 @@ describe('AddTaskTag', () => {
         expect(StyleSheet.flatten(button.props.style).backgroundColor).not.toBe(colors.Primary100)
     })
 
+    it('allows a larger icon inside the floating task-board action', () => {
+        const tree = renderer.create(<AddTaskTag projectId="project-1" iconSize={24} />)
+
+        expect(tree.root.findByType(Icon).props.size).toBe(24)
+    })
+
     // A caller-supplied style still overrides the variant (unchanged precedence).
     it('lets a caller style override the large primary colors', () => {
         const tree = renderer.create(

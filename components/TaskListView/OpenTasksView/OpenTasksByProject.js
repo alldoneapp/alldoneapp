@@ -150,13 +150,10 @@ function OpenTasksByProject({
     }, [currentUserId, projectDecorationsReady, projectId])
 
     useEffect(() => {
-        if (currentUserId) {
-            setPressedShowMoreMainSection(tasksArrowButtonIsExpanded)
-            if (tasksArrowButtonIsExpanded) {
-                dispatch(setTasksArrowButtonIsExpanded(false))
-            }
-        }
-    }, [currentUserId, projectId])
+        if (!currentUserId || !tasksArrowButtonIsExpanded) return
+        setPressedShowMoreMainSection(true)
+        dispatch(setTasksArrowButtonIsExpanded(false))
+    }, [currentUserId, projectId, tasksArrowButtonIsExpanded])
 
     return (
         <>
@@ -183,8 +180,7 @@ function OpenTasksByProject({
                             projectIndex={projectIndex}
                             projectId={projectId}
                             showWorkflowTag={!isAssistant}
-                            showAddTask={!isAssistant}
-                            setPressedShowMoreMainSection={setPressedShowMoreMainSection}
+                            showTaskMore={!isAssistant}
                             showRootSectionNavigation={inSelectedProject}
                             showEmailLabels={!isAssistant}
                         />

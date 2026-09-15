@@ -7,10 +7,8 @@ import Icon from '../../Icon'
 import styles, { colors, windowTagStyle } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import SharedHelper from '../../../utils/SharedHelper'
-import AddTaskTag from '../../Tags/AddTaskTag'
 import AddGoalTag from '../../Tags/AddGoalTag'
-import ProjectHelper, { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import { FEED_TASK_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
+import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import TaskHeaderMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import GoalMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Goals/GoalMoreButton'
 
@@ -19,14 +17,12 @@ export default function TagsArea({
     mobile,
     onClickWorkflowIndicator,
     showWorkflow,
-    showAddTask,
+    showTaskMore,
     showAddGoal,
-    setPressedShowMoreMainSection,
 }) {
     const taskHierarchy = useTaskHierarchy()
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUserId = useSelector(state => state.currentUser.uid)
-    const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
@@ -35,8 +31,6 @@ export default function TagsArea({
     const loggedUserIsBoardOwner = loggedUser.uid === currentUserId
     const loggedUserCanUpdateObject =
         loggedUserIsBoardOwner || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)
-
-    const isSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
     return (
         <View
@@ -58,35 +52,19 @@ export default function TagsArea({
                     )}
                 </TouchableOpacity>
             )}
-            {showAddTask && loggedUserCanUpdateObject && accessGranted && (
-                <>
-                    <AddTaskTag
-                        projectId={projectId}
-                        style={{ marginLeft: 8 }}
-                        setPressedShowMoreMainSection={setPressedShowMoreMainSection}
-                        sourceType={FEED_TASK_OBJECT_TYPE}
-                        expandTaskListIfNeeded={true}
-                        primary={true}
-                        headerAction={taskHierarchy}
-                    />
-                    {taskViewToggleSection === 'Open' && (
-                        <TaskHeaderMoreButton
-                            projectIdOverride={projectId}
-                            userId={currentUserId}
-                            wrapperStyle={[
-                                localStyles.taskMoreWrapper,
-                                taskHierarchy && { marginLeft: 6, marginTop: 0 },
-                            ]}
-                            buttonStyle={[
-                                localStyles.taskMoreButton,
-                                taskHierarchy && localStyles.headerMoreButton,
-                                taskHierarchy && mobile && { width: 36, height: 36 },
-                            ]}
-                            iconSize={16}
-                            iconColor={taskHierarchy ? colors.Text02 : undefined}
-                        />
-                    )}
-                </>
+            {showTaskMore && loggedUserCanUpdateObject && accessGranted && taskViewToggleSection === 'Open' && (
+                <TaskHeaderMoreButton
+                    projectIdOverride={projectId}
+                    userId={currentUserId}
+                    wrapperStyle={[localStyles.taskMoreWrapper, taskHierarchy && { marginLeft: 6, marginTop: 0 }]}
+                    buttonStyle={[
+                        localStyles.taskMoreButton,
+                        taskHierarchy && localStyles.headerMoreButton,
+                        taskHierarchy && mobile && { width: 36, height: 36 },
+                    ]}
+                    iconSize={16}
+                    iconColor={taskHierarchy ? colors.Text02 : undefined}
+                />
             )}
             {showAddGoal && loggedUserCanUpdateObject && accessGranted && (
                 <>
