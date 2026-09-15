@@ -8,11 +8,19 @@ import renderer from 'react-test-renderer'
 import TaskHeaderMoreButton from './TaskHeaderMoreButton'
 import { clearUserOKRsHiddenInAllProjectsToday } from '../../../../../utils/backends/Users/usersFirestore'
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
+import NavigationService from '../../../../../utils/NavigationService'
+import { setSelectedNavItem } from '../../../../../redux/actions'
 
 let mockState
+const mockDispatch = jest.fn()
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(selector => selector(mockState)),
+    useDispatch: jest.fn(() => mockDispatch),
+}))
+
+jest.mock('../../../../../redux/actions', () => ({
+    setSelectedNavItem: jest.fn(tab => ({ type: 'SET_SELECTED_NAV_ITEM', tab })),
 }))
 
 jest.mock('../Common/MoreButtonWrapper', () => {
@@ -20,7 +28,7 @@ jest.mock('../Common/MoreButtonWrapper', () => {
     const { View } = require('react-native')
     return React.forwardRef(({ children }, ref) => {
         React.useImperativeHandle(ref, () => ({ close: jest.fn() }))
-        return <View>{children}</View>
+        return <View testID="menu">{children}</View>
     })
 })
 
@@ -31,6 +39,7 @@ jest.mock('../../MorePopupsOfEditModals/Common/ModalItem', () => {
 })
 
 jest.mock('../../MorePopupsOfEditModals/Common/CopyLinkModalItem', () => () => null)
+jest.mock('../../GoalMilestoneModal/Line', () => 'MenuLine')
 jest.mock('../Common/OpenInNewWindowModalItem', () => () => null)
 jest.mock('./SyncCalendarModalItem', () => () => null)
 jest.mock('./DateBarOrganizeModalItem', () => () => null)
@@ -59,16 +68,19 @@ jest.mock('../../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     default: {
         processURLProjectDetailsTab: jest.fn(),
     },
-    checkIfSelectedAllProjects: jest.fn(() => false),
+    checkIfSelectedAllProjects: jest.fn(index => index === -1),
 }))
-jest.mock('../../../../../utils/NavigationService', () => ({}))
+jest.mock('../../../../../utils/NavigationService', () => ({
+    navigate: jest.fn(),
+}))
 
 const projectId = 'project-1'
 const okrs = [{ id: 'okr-1' }, { id: 'okr-2' }]
 
-const createState = hiddenTodayById => ({
-    selectedProjectIndex: 0,
+const createState = (hiddenTodayById = {}, selectedProjectIndex = 0) => ({
+    selectedProjectIndex,
     loggedUserProjects: [{ id: projectId }],
+    loggedUserProjectsMap: { [projectId]: { id: projectId, index: 7 } },
     okrsByProjectInTasks: { [projectId]: okrs },
     filteredOpenTasksStore: {},
     loggedUser: {
@@ -86,6 +98,50 @@ const renderMenu = hiddenTodayById => {
 }
 
 const findItems = tree => tree.root.findAll(node => typeof node.props.text === 'string')
+
+describe('TaskHeaderMoreButton project navigation', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('shows Open Project first with a separator for a project row in All Projects', () => {
+        mockState = createState({}, -1)
+        const tree = renderer.create(<TaskHeaderMoreButton projectIdOverride={projectId} userId="user-1" />)
+        const items = findItems(tree)
+
+        expect(items[0].props.text).toBe('Open Project')
+        expect(items[0].props.shortcut).toBe('1')
+        expect(items.find(node => node.props.text === 'Auto-postpone tasks').props.shortcut).toBe('2')
+        expect(tree.root.findAllByType('MenuLine')).toHaveLength(1)
+
+        items[0].props.onPress()
+
+        expect(setSelectedNavItem).toHaveBeenCalledWith('PROJECT_PROPERTIES')
+        expect(NavigationService.navigate).toHaveBeenCalledWith('ProjectDetailedView', { projectIndex: 7 })
+    })
+
+    it('shows Open Project in the selected project header and opens its Properties tab', () => {
+        mockState = createState()
+        const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
+        const openProjectItem = findItems(tree).find(node => node.props.text === 'Open Project')
+
+        openProjectItem.props.onPress()
+
+        expect(setSelectedNavItem).toHaveBeenCalledWith('PROJECT_PROPERTIES')
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_NAV_ITEM', tab: 'PROJECT_PROPERTIES' })
+        expect(NavigationService.navigate).toHaveBeenCalledWith('ProjectDetailedView', { projectIndex: 7 })
+    })
+
+    it('keeps the generic All Projects menu unchanged', () => {
+        mockState = createState({}, -1)
+        const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
+        const items = findItems(tree)
+
+        expect(items.map(node => node.props.text)).not.toContain('Open Project')
+        expect(items.find(node => node.props.text === 'Auto-postpone tasks').props.shortcut).toBe('1')
+        expect(tree.root.findAllByType('MenuLine')).toHaveLength(0)
+    })
+})
 
 describe('TaskHeaderMoreButton OKR actions', () => {
     beforeEach(() => {
