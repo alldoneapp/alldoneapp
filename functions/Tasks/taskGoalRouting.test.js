@@ -184,7 +184,7 @@ describe('taskGoalRouting', () => {
         mockFeedCommit.mockResolvedValue()
     })
 
-    test('rejects invented goal IDs and uses the confidence margin for auto assignment', () => {
+    test('rejects invented goal IDs and ignores automatic matches below the auto-assignment threshold', () => {
         expect(normalizeTaskGoalRoutingMode(undefined)).toBe(TASK_GOAL_ROUTING_AUTOMATIC)
 
         expect(
@@ -210,7 +210,14 @@ describe('taskGoalRouting', () => {
                 confidence: 0.92,
                 alternativeConfidence: 0.8,
             })
-        ).toBe('suggest')
+        ).toBe('none')
+        expect(
+            chooseRoutingAction(TASK_GOAL_ROUTING_AUTOMATIC, {
+                goalId: 'goal1',
+                confidence: 0.8,
+                alternativeConfidence: 0.2,
+            })
+        ).toBe('none')
         expect(
             chooseRoutingAction(TASK_GOAL_ROUTING_AUTOMATIC, {
                 goalId: 'goal1',
@@ -808,6 +815,38 @@ describe('taskGoalRouting', () => {
         )
         expect(mockAddGoalRoutingReasonComment).not.toHaveBeenCalled()
         expect(mockCreateTaskParentGoalChangedFeed).not.toHaveBeenCalled()
+    })
+
+    test('ignores a medium-confidence match in automatic mode without creating a pending suggestion', async () => {
+        const { db, state } = createDb({ mode: TASK_GOAL_ROUTING_AUTOMATIC })
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            now: 1000,
+            classify: async () => ({
+                result: {
+                    goalId: 'goal1',
+                    confidence: 0.8,
+                    alternativeGoalId: 'goal2',
+                    alternativeConfidence: 0.2,
+                    reason: 'Possible match.',
+                },
+                totalTokens: 100,
+            }),
+        })
+
+        expect(result.action).toBe('none')
+        expect(state.tasks.task1.parentGoalId).toBeNull()
+        expect(state.tasks.task1.goalSuggestion).toEqual(
+            expect.objectContaining({
+                goalId: 'goal1',
+                status: 'none',
+            })
+        )
+        expect(mockAddGoalRoutingReasonComment).not.toHaveBeenCalled()
+        expect(mockCreateTaskParentGoalChangedFeed).not.toHaveBeenCalled()
+        expect(state.undoActions).toEqual({})
     })
 
     test('auto-assigns only a high-confidence match and creates an undo action', async () => {
