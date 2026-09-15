@@ -2,24 +2,24 @@ import React from 'react'
 import renderer from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-import MainViewsContainer from '../../components/RootView/MainViewsContainer'
+import MainViewsContainer from './MainViewsContainer'
 import { DV_TAB_ROOT_CONTACTS, DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(),
 }))
-jest.mock('../../components/TaskListView/MainTasksView', () => 'MainTasksView')
-jest.mock('../../components/ContactsView/ContactsView', () => 'ContactsView')
-jest.mock('../../components/GoalsView/GoalsView', () => 'GoalsView')
-jest.mock('../../components/Feeds/RootViewFeedsGlobalProject', () => 'RootViewFeedsGlobalProject')
-jest.mock('../../components/NotesView/NotesView', () => 'NotesView')
-jest.mock('../../components/ChatsView/ChatsView', () => 'ChatsView')
-jest.mock('../../components/UIControls/CustomScrollView', () => 'CustomScrollView')
-jest.mock('../../components/RootView/RootSectionNavigation', () => 'RootSectionNavigation')
-jest.mock('../../components/TopBar/ConnectionStatusChip', () => 'ConnectionStatusChip')
-jest.mock('../../components/TaskListView/FloatingAddTaskButton', () => 'FloatingAddTaskButton')
-jest.mock('../../components/SidebarMenu/Collapsible/UseCollapsibleSidebar', () => () => ({ overlay: false }))
-jest.mock('../../components/SettingsView/ProjectsSettings/ProjectHelper', () => ({
+jest.mock('../TaskListView/MainTasksView', () => 'MainTasksView')
+jest.mock('../ContactsView/ContactsView', () => 'ContactsView')
+jest.mock('../GoalsView/GoalsView', () => 'GoalsView')
+jest.mock('../Feeds/RootViewFeedsGlobalProject', () => 'RootViewFeedsGlobalProject')
+jest.mock('../NotesView/NotesView', () => 'NotesView')
+jest.mock('../ChatsView/ChatsView', () => 'ChatsView')
+jest.mock('../UIControls/CustomScrollView', () => 'CustomScrollView')
+jest.mock('./RootSectionNavigation', () => 'RootSectionNavigation')
+jest.mock('../TopBar/ConnectionStatusChip', () => 'ConnectionStatusChip')
+jest.mock('../TaskListView/FloatingAddTaskButton', () => 'FloatingAddTaskButton')
+jest.mock('../SidebarMenu/Collapsible/UseCollapsibleSidebar', () => () => ({ overlay: false }))
+jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedAllProjects: () => false,
 }))
 
