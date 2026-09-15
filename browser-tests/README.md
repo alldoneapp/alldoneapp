@@ -564,3 +564,14 @@ the very same host stays refused in the selected-sites project, the denylist sti
 localhost / a private range / an IP literal / the cloud metadata endpoint / a single-label host / a
 `file:` URL all stay refused — including as **redirect targets**, and including a chain that goes
 through an internal host and back out to a permitted one. 51 checks; exit code 0 = pass.
+
+### `at2588/` — Project Detail property-row alignment
+
+Renders the real `IntegrationsLinkProperty` and measures its Flexbox geometry in Chromium at the
+reported 1993×1280 desktop viewport, a responsive 1024×768 desktop viewport and a 390×844 mobile
+viewport. It verifies one 56px row, a shared vertical center, right-aligned link placement, contained
+children and 11px regular link typography.
+
+```bash
+node browser-tests/at2588/run.js
+```

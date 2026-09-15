@@ -14,16 +14,27 @@ export default function IntegrationsLinkProperty() {
     const openIntegrations = () => {
         SettingsHelper.processURLSettingsTab(NavigationService, DV_TAB_SETTINGS_INTEGRATIONS)
     }
+    const integrationsLink = `${translate('Settings')} → ${translate('Integrations')}`
 
     return (
-        <View style={localStyles.container}>
-            <View style={localStyles.labelRow}>
-                <Icon name="link" size={20} color={colors.Text03} style={localStyles.icon} />
-                <Text style={[styles.subtitle2, localStyles.label]}>{translate('Email & Calendar')}</Text>
+        <View testID="email-calendar-property-row" style={localStyles.container}>
+            <View testID="email-calendar-property-label" style={localStyles.labelRow}>
+                <Icon name="link" size={24} color={colors.Text03} style={localStyles.icon} />
+                <Text numberOfLines={1} style={[styles.subtitle2, localStyles.label]}>
+                    {translate('Email & Calendar')}
+                </Text>
             </View>
-            <TouchableOpacity style={localStyles.linkButton} onPress={openIntegrations}>
-                <Text style={[styles.caption1, localStyles.linkText]}>
-                    {translate('Email & Calendar accounts are managed in Settings → Integrations')}
+            <TouchableOpacity
+                testID="email-calendar-property-link"
+                style={localStyles.linkButton}
+                onPress={openIntegrations}
+            >
+                <Text
+                    testID="email-calendar-property-link-text"
+                    numberOfLines={1}
+                    style={[styles.body3, localStyles.linkText]}
+                >
+                    {integrationsLink}
                 </Text>
                 <Icon name="arrow-right" size={14} color={colors.Primary100} style={{ marginLeft: 4 }} />
             </TouchableOpacity>
@@ -36,23 +47,26 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        paddingVertical: 8,
+        height: 56,
     },
     labelRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        flex: 1,
+        minWidth: 0,
     },
     icon: {
-        marginRight: 8,
+        marginHorizontal: 8,
     },
     label: {
         color: colors.Text03,
+        flexShrink: 1,
     },
     linkButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        flexShrink: 1,
+        justifyContent: 'flex-end',
+        marginLeft: 8,
     },
     linkText: {
         color: colors.Primary100,
