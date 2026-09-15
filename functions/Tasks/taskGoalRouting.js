@@ -149,11 +149,12 @@ const chooseRoutingAction = (mode, classification) => {
     if (!classification.goalId || classification.confidence < SUGGESTION_CONFIDENCE_THRESHOLD) return 'none'
 
     const confidenceMargin = classification.confidence - classification.alternativeConfidence
-    if (mode === TASK_GOAL_ROUTING_AUTOMATIC) {
-        return classification.confidence >= AUTO_ASSIGN_CONFIDENCE_THRESHOLD &&
-            confidenceMargin >= AUTO_ASSIGN_MARGIN_THRESHOLD
-            ? 'auto_assign'
-            : 'none'
+    if (
+        mode === TASK_GOAL_ROUTING_AUTOMATIC &&
+        classification.confidence >= AUTO_ASSIGN_CONFIDENCE_THRESHOLD &&
+        confidenceMargin >= AUTO_ASSIGN_MARGIN_THRESHOLD
+    ) {
+        return 'auto_assign'
     }
     return 'suggest'
 }
