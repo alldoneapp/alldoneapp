@@ -23,6 +23,7 @@ const mockWatchGoal = jest.fn()
 
 let capturedMainModalProps = null
 let capturedProjectPickerProps = null
+let capturedGoalPickerProps = null
 
 jest.mock('react-redux', () => ({
     useDispatch: () => mockDispatch,
@@ -45,10 +46,10 @@ jest.mock(
     '../../../components/UIComponents/FloatModals/AssigneeAndObserversModal/AssigneeAndObserversModal',
     () => 'AssigneeAndObserversModal'
 )
-jest.mock(
-    '../../../components/UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal',
-    () => 'TaskParentGoalModal'
-)
+jest.mock('../../../components/UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal', () => props => {
+    capturedGoalPickerProps = props
+    return null
+})
 jest.mock(
     '../../../components/UIComponents/FloatModals/TaskMoreOptionsModal/TaskMoreOptionModal',
     () => 'TaskMoreOptionModal'
@@ -164,6 +165,7 @@ const baseTask = {
 const renderPopup = (props = {}, taskOverrides = {}) => {
     capturedMainModalProps = null
     capturedProjectPickerProps = null
+    capturedGoalPickerProps = null
     let tree
     act(() => {
         tree = renderer.create(
@@ -267,6 +269,74 @@ describe('RichCreateTaskModal project switcher (PT-4745)', () => {
             capturedMainModalProps.createTask(jest.fn())
         })
         expect(mockCreateTaskWithService.mock.calls[0][0].projectId).toBe('project-default')
+    })
+
+    it("shows a selected goal and adopts that goal's project scope", () => {
+        renderPopup()
+        const goal = {
+            id: 'goal-personal',
+            projectId: 'project-default',
+            extendedName: 'Prepare the launch',
+            isPublicFor: [0],
+            lockKey: 'goal-lock',
+        }
+
+        act(() => {
+            capturedMainModalProps.showParentGoal()
+        })
+
+        // RichCreateTaskModal must receive the picker result itself. The
+        // add-task-section Redux route would reopen a task line elsewhere and
+        // leave this popup unchanged.
+        expect(capturedGoalPickerProps.fromAddTaskSection).toBeUndefined()
+        act(() => {
+            capturedGoalPickerProps.setActiveGoal(goal, goal.projectId)
+        })
+
+        expect(capturedMainModalProps.projectId).toBe('project-default')
+        expect(capturedMainModalProps.selectedProject).toEqual({
+            id: 'project-default',
+            name: 'Personal',
+        })
+        expect(capturedMainModalProps.activeGoal).toBe(goal)
+        expect(capturedMainModalProps.task).toMatchObject({
+            parentGoalId: 'goal-personal',
+            parentGoalIsPublicFor: [0],
+            lockKey: 'goal-lock',
+        })
+
+        act(() => {
+            capturedMainModalProps.createTask(jest.fn())
+        })
+        expect(mockCreateTaskWithService.mock.calls[0][0]).toMatchObject({
+            projectId: 'project-default',
+            parentGoalId: 'goal-personal',
+        })
+    })
+
+    it('turns Automatic off when a goal fixes the project scope', () => {
+        renderPopup({ initialProjectId: AUTOMATIC_PROJECT_OPTION })
+        const goal = {
+            id: 'goal-default',
+            projectId: 'project-default',
+            extendedName: 'Default project goal',
+            isPublicFor: [0],
+        }
+
+        act(() => {
+            capturedMainModalProps.showParentGoal()
+        })
+        act(() => {
+            capturedGoalPickerProps.setActiveGoal(goal, goal.projectId)
+        })
+        act(() => {
+            capturedMainModalProps.createTask(jest.fn())
+        })
+
+        const [payload] = mockCreateTaskWithService.mock.calls[0]
+        expect(payload.projectId).toBe('project-default')
+        expect(payload.parentGoalId).toBe('goal-default')
+        expect(payload.projectRouting).toBeUndefined()
     })
 
     it('keeps the switcher when the popup opens on a project it cannot resolve', () => {
