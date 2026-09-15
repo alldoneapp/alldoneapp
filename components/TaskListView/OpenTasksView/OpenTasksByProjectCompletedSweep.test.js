@@ -9,12 +9,14 @@ import {
     resetProjectTaskCompletionListeners,
 } from './projectTaskCompletionSignal'
 import { TASK_COMPLETION_PROJECT_EXIT_HOLD_MS } from './useTaskCompletionProjectExit'
+import { setTasksArrowButtonIsExpanded } from '../../../redux/actions'
 
 let mockState
 let mockInSelectedProject
+const mockDispatch = jest.fn()
 
 jest.mock('react-redux', () => ({
-    useDispatch: () => jest.fn(),
+    useDispatch: () => mockDispatch,
     useSelector: selector => selector(mockState),
     shallowEqual: jest.fn(),
 }))
@@ -69,13 +71,19 @@ const originalNodeEnv = process.env.NODE_ENV
 
 const countOf = (tree, type) => tree.root.findAllByType(type).length
 
-const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false, priorityFilters = [] } = {}) => ({
+const buildState = ({
+    todayIsEmpty = false,
+    todayCount = 1,
+    loading = false,
+    priorityFilters = [],
+    expandRequested = false,
+} = {}) => ({
     loggedUserProjectsMap: { [PROJECT]: { index: 0, id: PROJECT, color: '#2F80ED' } },
     loggedUserProjects: [{ id: PROJECT }],
     selectedProjectIndex: 0,
     currentUser: { uid: USER },
     loggedUser: { uid: USER, isAnonymous: false, okrsHiddenInAllProjectsTodayByProjectAndOkr: {} },
-    tasksArrowButtonIsExpanded: false,
+    tasksArrowButtonIsExpanded: expandRequested,
     okrsByProjectInTasks: {},
     filteredOpenTasksStore: { [PROJECT + USER]: loading ? [] : [['0', todayIsEmpty ? 0 : 3, []]] },
     taskPriorityFilters: priorityFilters,
@@ -90,6 +98,7 @@ const buildState = ({ todayIsEmpty = false, todayCount = 1, loading = false, pri
 describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
     beforeEach(() => {
         jest.useFakeTimers()
+        jest.clearAllMocks()
         resetProjectTaskCompletionListeners()
         process.env.NODE_ENV = 'development'
         mockInSelectedProject = false
@@ -115,6 +124,14 @@ describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
             tree.update(<OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} />)
         })
     }
+
+    it('consumes a board-level request to reveal newly added selected-project tasks', () => {
+        mockInSelectedProject = true
+        const tree = render(buildState({ expandRequested: true }))
+
+        expect(tree.root.findByType('OpenTasksByDate').props.pressedShowMoreMainSection).toBe(true)
+        expect(setTasksArrowButtonIsExpanded).toHaveBeenCalledWith(false)
+    })
 
     it.each([
         [false, false, true],

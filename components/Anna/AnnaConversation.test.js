@@ -17,7 +17,6 @@ jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS
 jest.mock('../ChatsView/Utils/ChatHelper', () => ({ getTimestampInMilliseconds: value => value }))
 jest.mock('../ChatsView/ChatDV/EditorView/messageLoadingState', () => ({ resolveEffectiveMessageLoading: () => false }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: value => value }))
-jest.mock('./useAnnaMessageReadState', () => jest.fn())
 let root, container
 const render = (overrides = {}) =>
     act(() =>

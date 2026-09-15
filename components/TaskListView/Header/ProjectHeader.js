@@ -31,9 +31,8 @@ export default function ProjectHeader({
     showWorkflowTag = false,
     badge,
     customRight,
-    showAddTask,
+    showTaskMore,
     showAddGoal,
-    setPressedShowMoreMainSection,
     showRootSectionNavigation = false,
     showEmailLabels = false,
 }) {
@@ -105,9 +104,8 @@ export default function ProjectHeader({
                                 mobile={mobile || mobileCollapsed}
                                 onClickWorkflowIndicator={onClickWorkflowIndicator}
                                 showWorkflow={showWorkflow}
-                                showAddTask={showAddTask}
+                                showTaskMore={showTaskMore}
                                 showAddGoal={showAddGoal}
-                                setPressedShowMoreMainSection={setPressedShowMoreMainSection}
                             />
                             {customRight}
                         </View>
