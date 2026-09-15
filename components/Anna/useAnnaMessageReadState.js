@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSelector } from 'react-redux'
 import { markChatCommentsAsRead } from '../../utils/backends/Chats/markChatCommentsAsRead'
+import { subscribePageVisible } from '../../utils/appResume'
 
 export const getAnnaUnreadCommentIds = notification => [
     ...new Set([...(notification?.followedCommentIds || []), ...(notification?.unfollowedCommentIds || [])]),
@@ -88,8 +89,6 @@ export default function useAnnaMessageReadState(projectId, chatId, scrollRef, me
     }, [scrollRef, messages.length, firstMessageId, lastMessageId, acknowledgeVisibleMessages])
 
     useEffect(() => {
-        if (typeof document === 'undefined') return
-        document.addEventListener('visibilitychange', acknowledgeVisibleMessages)
-        return () => document.removeEventListener('visibilitychange', acknowledgeVisibleMessages)
+        return subscribePageVisible(acknowledgeVisibleMessages)
     }, [acknowledgeVisibleMessages])
 }

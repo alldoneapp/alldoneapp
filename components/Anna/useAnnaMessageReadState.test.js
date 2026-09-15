@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 import useAnnaMessageReadState, { getAnnaUnreadCommentIds } from './useAnnaMessageReadState'
 import { markChatCommentsAsRead } from '../../utils/backends/Chats/markChatCommentsAsRead'
+import { subscribePageVisible } from '../../utils/appResume'
 
 jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({ markChatCommentsAsRead: jest.fn() }))
+jest.mock('../../utils/appResume', () => ({ subscribePageVisible: jest.fn() }))
 
 const createStore = initialState => {
     let state = initialState
@@ -54,11 +56,16 @@ describe('Anna message read state', () => {
     let observer
     let originalIntersectionObserver
     let originalVisibilityState
+    let pageVisibleCallback
 
     beforeEach(async () => {
         global.IS_REACT_ACT_ENVIRONMENT = true
         jest.clearAllMocks()
         markChatCommentsAsRead.mockResolvedValue(undefined)
+        subscribePageVisible.mockImplementation(callback => {
+            pageVisibleCallback = callback
+            return jest.fn()
+        })
         store = createStore(stateWithNotifications(['m1', 'm2']))
         originalIntersectionObserver = global.IntersectionObserver
         originalVisibilityState = Object.getOwnPropertyDescriptor(document, 'visibilityState')
@@ -137,7 +144,7 @@ describe('Anna message read state', () => {
         expect(markChatCommentsAsRead).not.toHaveBeenCalled()
 
         Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
-        await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+        await act(async () => pageVisibleCallback())
 
         expect(markChatCommentsAsRead).toHaveBeenCalledWith([{ projectId: 'p1', chatId: 'c1', commentId: 'm1' }])
     })
