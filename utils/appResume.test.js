@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { installAppResumeListener } from './appResume'
+import { installAppResumeListener, subscribePageVisible } from './appResume'
 
 const createEventTarget = (extra = {}) => {
     const listeners = {}
@@ -183,6 +183,21 @@ describe('installAppResumeListener', () => {
         expect(harness.calls.connection).toHaveLength(0)
         expect(harness.calls.integrity).toBe(0)
         expect(harness.calls.serviceWorker).toBe(0)
+        harness.stop()
+    })
+
+    it('notifies lightweight page-visible subscribers after a short absence', () => {
+        const onPageVisible = jest.fn()
+        const unsubscribe = subscribePageVisible(onPageVisible)
+        const harness = setup()
+        harness.hide()
+        harness.advance(5000)
+        harness.show()
+
+        expect(onPageVisible).toHaveBeenCalledTimes(1)
+        expect(harness.resumes).toHaveLength(0)
+
+        unsubscribe()
         harness.stop()
     })
 

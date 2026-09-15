@@ -49,6 +49,29 @@ export const RESUME_SW_UPDATE_MS = 60 * 60 * 1000
  */
 export const RESUME_COALESCE_MS = 1000
 
+const pageVisibleSubscribers = new Set()
+
+/**
+ * Lets UI features react when the shared lifecycle owner confirms that the page is visible again.
+ * Unlike the expensive app-resume work below, this fires after short absences too. Consumers must
+ * keep their callbacks cheap and idempotent because browsers can report one return several ways.
+ */
+export const subscribePageVisible = callback => {
+    if (typeof callback !== 'function') return () => {}
+    pageVisibleSubscribers.add(callback)
+    return () => pageVisibleSubscribers.delete(callback)
+}
+
+const notifyPageVisible = () => {
+    pageVisibleSubscribers.forEach(callback => {
+        try {
+            callback()
+        } catch (error) {
+            console.warn('[AppResume] Page-visible subscriber failed:', error)
+        }
+    })
+}
+
 const SIGNALS = [
     // visibilitychange is the ordinary browser path. `freeze` covers Chrome's
     // Page Lifecycle suspension and `pagehide` covers bfcache restores even when
@@ -170,6 +193,7 @@ export const installAppResumeListener = ({
                 recordAbsence()
                 return
             }
+            notifyPageVisible()
             handleResume()
             return
         }
@@ -178,6 +202,7 @@ export const installAppResumeListener = ({
         // visible. Ignore it without erasing the recorded absence; the ensuing
         // visibilitychange will perform the resume with the real age.
         if (isHidden()) return
+        notifyPageVisible()
         handleResume()
     }
 
