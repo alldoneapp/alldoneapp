@@ -15,6 +15,11 @@ import ProjectHelper, {
 } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import AddTaskTag from '../Tags/AddTaskTag'
 import { colors } from '../styles/global'
+import {
+    FLOATING_ACTION_SIZE,
+    FLOATING_ACTION_VIEWPORT_GAP,
+    getFloatingActionBottom,
+} from '../UIComponents/floatingActionLayout'
 
 /**
  * AT-2575 — the task board owns one add-task action, independent of the active
@@ -59,8 +64,8 @@ export default function FloatingAddTaskButton() {
             style={[
                 localStyles.floating,
                 {
-                    right: 24 + safeAreaInsets.right,
-                    bottom: 24 + safeAreaInsets.bottom,
+                    right: FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.right,
+                    bottom: getFloatingActionBottom(safeAreaInsets.bottom),
                 },
             ]}
         >
@@ -74,6 +79,7 @@ export default function FloatingAddTaskButton() {
                 forceShrink={true}
                 headerAction={true}
                 iconSize={24}
+                floating={true}
                 style={localStyles.button}
                 initialTaskName={pendingWebShareTarget?.taskName}
                 autoOpenKey={pendingWebShareTarget?.id}
@@ -85,17 +91,21 @@ export default function FloatingAddTaskButton() {
 
 const localStyles = StyleSheet.create({
     floating: {
-        position: 'fixed',
+        // MainViewsContainer renders this through CustomScrollView.fixedChildren,
+        // outside the scrolling content. Absolute positioning therefore pins it
+        // to the visible task viewport without relying on fixed descendants of a
+        // browser scroller.
+        position: 'absolute',
         zIndex: 9000,
-        borderRadius: 28,
-        boxShadow: '0 4px 14px rgba(0, 0, 0, 0.24)',
+        borderRadius: FLOATING_ACTION_SIZE / 2,
     },
     button: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: FLOATING_ACTION_SIZE,
+        height: FLOATING_ACTION_SIZE,
+        borderRadius: FLOATING_ACTION_SIZE / 2,
         paddingHorizontal: 0,
         backgroundColor: colors.Primary100,
         borderColor: colors.Primary100,
+        boxShadow: '0px 6px 16px rgba(4,20,47,0.24)',
     },
 })

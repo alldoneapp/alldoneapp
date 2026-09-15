@@ -109,9 +109,24 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
     })
 
     it('is anchored to the safe bottom-right corner of the screen', () => {
-        const wrapper = renderButton().root.findByProps({ testID: 'floating-add-task-button' })
+        const tree = renderButton()
+        const wrapper = tree.root.findByProps({ testID: 'floating-add-task-button' })
         const styles = StyleSheet.flatten(wrapper.props.style)
+        const addTask = tree.root.findByType('AddTaskTag')
 
-        expect(styles).toMatchObject({ position: 'fixed', right: 27, bottom: 29 })
+        expect(styles).toMatchObject({ position: 'absolute', right: 27, bottom: 29 })
+        expect(addTask.props.floating).toBe(true)
+    })
+
+    it('draws the shadow on the circular action itself', () => {
+        const button = renderButton().root.findByType('AddTaskTag')
+        const styles = StyleSheet.flatten(button.props.style)
+
+        expect(styles).toMatchObject({
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            boxShadow: '0px 6px 16px rgba(4,20,47,0.24)',
+        })
     })
 })

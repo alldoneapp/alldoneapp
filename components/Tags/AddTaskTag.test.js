@@ -196,6 +196,20 @@ describe('AddTaskTag', () => {
         expect(tree.root.findByType('RichCreateTaskModal').props.wide).toBeFalsy()
     })
 
+    it('opens the floating action popup above the button with a clear gap', () => {
+        const tree = renderer.create(<AddTaskTag projectId="project-1" floating={true} />)
+        const popover = tree.root.findByType('Popover')
+
+        expect(popover.props.position).toEqual(['top'])
+        expect(popover.props.align).toBe('end')
+        expect(popover.props.padding).toBe(12)
+        expect(popover.props.windowBorderPadding).toBe(16)
+        const popupCard = tree.root.find(
+            node => node.type === 'div' && node.props.style?.backgroundColor === 'var(--background-primary)'
+        )
+        expect(popupCard.props.style.maxHeight).toBe(window.innerHeight - 108)
+    })
+
     it('opens automatically and prefills the existing popup for a shared link', () => {
         const openPopover = jest.fn()
         const onAutoOpen = jest.fn()
