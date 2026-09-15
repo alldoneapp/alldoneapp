@@ -32,7 +32,7 @@ export default function ProjectHeader({
     badge,
     customRight,
     showTaskMore,
-    showAddGoal,
+    showGoalMore,
     showRootSectionNavigation = false,
     showEmailLabels = false,
 }) {
@@ -105,7 +105,7 @@ export default function ProjectHeader({
                                 onClickWorkflowIndicator={onClickWorkflowIndicator}
                                 showWorkflow={showWorkflow}
                                 showTaskMore={showTaskMore}
-                                showAddGoal={showAddGoal}
+                                showGoalMore={showGoalMore}
                             />
                             {customRight}
                         </View>

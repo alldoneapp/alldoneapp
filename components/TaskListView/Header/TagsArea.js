@@ -7,7 +7,6 @@ import Icon from '../../Icon'
 import styles, { colors, windowTagStyle } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import SharedHelper from '../../../utils/SharedHelper'
-import AddGoalTag from '../../Tags/AddGoalTag'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import TaskHeaderMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import GoalMoreButton from '../../UIComponents/FloatModals/MorePopupsOfMainViews/Goals/GoalMoreButton'
@@ -18,7 +17,7 @@ export default function TagsArea({
     onClickWorkflowIndicator,
     showWorkflow,
     showTaskMore,
-    showAddGoal,
+    showGoalMore,
 }) {
     const taskHierarchy = useTaskHierarchy()
     const loggedUser = useSelector(state => state.loggedUser)
@@ -66,15 +65,12 @@ export default function TagsArea({
                     iconColor={taskHierarchy ? colors.Text02 : undefined}
                 />
             )}
-            {showAddGoal && loggedUserCanUpdateObject && accessGranted && (
-                <>
-                    <AddGoalTag projectId={projectId} style={{ marginLeft: 8 }} />
-                    <GoalMoreButton
-                        wrapperStyle={localStyles.goalMoreWrapper}
-                        buttonStyle={localStyles.goalMoreButton}
-                        iconSize={16}
-                    />
-                </>
+            {showGoalMore && loggedUserCanUpdateObject && accessGranted && (
+                <GoalMoreButton
+                    wrapperStyle={localStyles.goalMoreWrapper}
+                    buttonStyle={localStyles.goalMoreButton}
+                    iconSize={16}
+                />
             )}
         </View>
     )
