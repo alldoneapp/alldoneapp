@@ -1,4 +1,5 @@
 import React from 'react'
+import { StyleSheet } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 jest.mock('react-redux', () => ({
@@ -42,6 +43,9 @@ describe('SelectedGoalRow (AT-2580)', () => {
 
         expect(tree.root.findByProps({ testID: 'selected-goal-row' })).toBeTruthy()
         expect(tree.root.findByProps({ testID: 'selected-goal-name' }).props.children).toBe('Prepare the launch')
+        expect(
+            StyleSheet.flatten(tree.root.findByProps({ testID: 'selected-goal-row' }).props.style).justifyContent
+        ).toBe('flex-start')
 
         act(() => {
             tree.root.findByProps({ testID: 'selected-goal-row' }).props.onPress()
