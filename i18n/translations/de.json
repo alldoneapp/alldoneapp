@@ -1927,7 +1927,6 @@
     "ConnectionBrokenEmailConsequence": "Alldone hat den Zugriff auf dieses Postfach verloren. E-Mails werden nicht mehr gelesen, gelabelt oder in Aufgaben umgewandelt, bis du es neu verbindest.",
     "ConnectionBrokenCalendarConsequence": "Alldone hat den Zugriff auf diesen Kalender verloren. Termine werden nicht mehr in deine Projekte synchronisiert, bis du ihn neu verbindest.",
     "Email & Calendar": "E-Mail & Kalender",
-    "Email & Calendar accounts are managed in Settings → Integrations": "E-Mail- & Kalender-Konten werden in Einstellungen → Integrationen verwaltet",
     "IntegrationsSettingsDescription": "Verbinde deine E-Mail- und Kalender-Konten einmal und nutze sie in allen Projekten. Jedes Konto braucht ein Standardprojekt — dort landen seine E-Mails und Termine, sofern die KI sie nicht anders zuordnet.",
     "Email needs-reply scan": "E-Mail-Antwortbedarf-Prüfung",
     "Show again in All Projects": "wieder in Alle Projekte anzeigen",

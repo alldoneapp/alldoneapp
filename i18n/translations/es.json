@@ -2351,7 +2351,6 @@
     "ConnectionBrokenEmailConsequence": "Alldone perdió el acceso a este buzón. Los correos ya no se leen, etiquetan ni se convierten en tareas hasta que lo reconectes.",
     "ConnectionBrokenCalendarConsequence": "Alldone perdió el acceso a este calendario. Los eventos ya no se sincronizan con tus proyectos hasta que lo reconectes.",
     "Email & Calendar": "Correo y calendario",
-    "Email & Calendar accounts are managed in Settings → Integrations": "Las cuentas de correo y calendario se gestionan en Ajustes → Integraciones",
     "IntegrationsSettingsDescription": "Conecta tus cuentas de correo y calendario una vez y úsalas en todos tus proyectos. Cada cuenta necesita un proyecto predeterminado: allí llegan sus correos y eventos salvo que la IA los dirija a otro lugar.",
     "Email needs-reply scan": "Análisis de correos por responder",
     "Show again in All Projects": "mostrar de nuevo en Todos los proyectos",

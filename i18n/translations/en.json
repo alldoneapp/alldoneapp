@@ -2379,7 +2379,6 @@
     "ConnectionBrokenEmailConsequence": "Alldone lost access to this mailbox. Emails are no longer being read, labeled or turned into tasks until you reconnect it.",
     "ConnectionBrokenCalendarConsequence": "Alldone lost access to this calendar. Events are no longer being synced into your projects until you reconnect it.",
     "Email & Calendar": "Email & Calendar",
-    "Email & Calendar accounts are managed in Settings → Integrations": "Email & Calendar accounts are managed in Settings → Integrations",
     "IntegrationsSettingsDescription": "Connect your email and calendar accounts once and use them across all your projects. Each account needs a default project — that is where its emails and events land unless the AI routes them elsewhere.",
     "Email needs-reply scan": "Email needs-reply scan",
     "Show again in All Projects": "show again in All Projects",
