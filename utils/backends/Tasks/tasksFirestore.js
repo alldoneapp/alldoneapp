@@ -54,6 +54,7 @@ import {
 } from '../firestore'
 import store from '../../../redux/store'
 import { awaitWriteAck, isAppOffline } from '../offlineWriteAck'
+import { queueObjectActivityFeedUnreadClear } from '../Feeds/activityFeedReadState'
 import { startPerformanceTrace } from '../../performance/performanceLogger'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import {
@@ -2961,6 +2962,18 @@ export async function stopObservingTask(
     feedsChainInStopObservingTask(projectId, task, userIdStopingObserving, assigneeEstimation, updateEstimation)
 }
 
+// Root task Done/Open activity is persisted later by onUpdateTaskSecondGen, so those transitions do
+// not pass through the client feed counter path that normally acknowledges older Updates entries.
+// Clear on every task transition in the authoritative task batch; a later server feed excludes the
+// actor from its recipients and therefore cannot make the object unread again.
+const queueTaskTransitionActivityFeedUnreadClear = (projectId, taskId, batch) =>
+    queueObjectActivityFeedUnreadClear(getDb(), batch, {
+        projectId,
+        userId: store.getState().loggedUser.uid,
+        objectType: 'tasks',
+        objectId: taskId,
+    })
+
 export async function moveTasksFromMiddleOfWorkflow(
     projectId,
     task,
@@ -3064,6 +3077,7 @@ export async function moveTasksFromMiddleOfWorkflow(
     }
 
     const batch = new BatchWrapper(getDb())
+    queueTaskTransitionActivityFeedUnreadClear(projectId, task.id, batch)
 
     if (stepToMoveId === DONE_STEP) {
         const taskEstimation = estimations[OPEN_STEP] ? estimations[OPEN_STEP] : 0
@@ -3311,6 +3325,7 @@ export async function moveTasksFromOpen(
     }
 
     const batch = new BatchWrapper(getDb())
+    queueTaskTransitionActivityFeedUnreadClear(projectId, task.id, batch)
 
     if (stepToMoveId === DONE_STEP) {
         if (ownerIsTeamMeber) {
@@ -3463,6 +3478,7 @@ export async function moveTasksFromDone(projectId, task, stepToMoveId) {
     }
 
     const batch = new BatchWrapper(getDb())
+    queueTaskTransitionActivityFeedUnreadClear(projectId, task.id, batch)
 
     const ownerIsTeamMeber = !!TasksHelper.getUserInProject(projectId, task.userId)
 
