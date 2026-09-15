@@ -178,22 +178,20 @@ describe('AddTaskTag', () => {
     })
 
     // AT-2364: the big All Projects call to action is horizontally centered on
-    // the screen, so its popup must be centered on it and open wide. Every
-    // other add-task entry point keeps the anchored, legacy-width popup.
-    it('opens a wide, center-aligned popup for the large call to action', () => {
+    // the screen, so its popup remains centered on it. Width is now owned by
+    // RichCreateTaskModal for every add-task entry point (AT-2582).
+    it('opens a center-aligned popup for the large call to action', () => {
         const tree = renderer.create(<AddTaskTag projectId="project-1" primary={true} large={true} />)
         const popover = tree.root.findByType('Popover')
 
         expect(popover.props.align).toBe('center')
-        expect(tree.root.findByType('RichCreateTaskModal').props.wide).toBe(true)
     })
 
-    it('keeps the anchored, default-width popup for the regular tag', () => {
+    it('keeps the regular tag popup anchored to its trigger', () => {
         const tree = renderer.create(<AddTaskTag projectId="project-1" />)
         const popover = tree.root.findByType('Popover')
 
         expect(popover.props.align).toBe('start')
-        expect(tree.root.findByType('RichCreateTaskModal').props.wide).toBeFalsy()
     })
 
     it('opens the floating action popup above the button with a clear gap', () => {
