@@ -1,6 +1,8 @@
 import {
+    FLOATING_ACTION_CLEARANCE,
     FLOATING_ACTION_POPOVER_GAP,
     FLOATING_ACTION_SIZE,
+    FLOATING_ACTION_STACK_GAP,
     FLOATING_ACTION_VIEWPORT_GAP,
     getFloatingActionBottom,
     getLoadingDataBottom,
@@ -20,5 +22,12 @@ describe('floating action layout', () => {
     it('reserves explicit viewport and popup gaps around the task action', () => {
         expect(FLOATING_ACTION_VIEWPORT_GAP).toBe(24)
         expect(FLOATING_ACTION_POPOVER_GAP).toBe(12)
+    })
+
+    it('reserves a clear vertical stack above the task action', () => {
+        expect(FLOATING_ACTION_STACK_GAP).toBe(12)
+        expect(FLOATING_ACTION_CLEARANCE).toBe(
+            FLOATING_ACTION_VIEWPORT_GAP + FLOATING_ACTION_SIZE + FLOATING_ACTION_STACK_GAP
+        )
     })
 })

@@ -1,6 +1,7 @@
 import { StyleSheet } from 'react-native'
 
 import { colors, hexColorToRGBa } from '../styles/global'
+import { FLOATING_ACTION_CLEARANCE } from '../UIComponents/floatingActionLayout'
 
 const undoActionBarStyles = StyleSheet.create({
     overlay: {
@@ -21,7 +22,9 @@ const undoActionBarStyles = StyleSheet.create({
         paddingHorizontal: 24,
     },
     container: {
-        marginBottom: 64,
+        // Clear the task board's bottom-right floating action at narrow widths,
+        // where this full-width banner and the action share horizontal space.
+        marginBottom: FLOATING_ACTION_CLEARANCE,
         minHeight: 48,
         maxWidth: 560,
         width: '100%',
