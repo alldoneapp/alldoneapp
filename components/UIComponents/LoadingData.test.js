@@ -4,16 +4,13 @@
 
 import React from 'react'
 import { Platform, StyleSheet } from 'react-native'
-import LoadingData, {
-    LOADING_DATA_SPINNER_DELAY_MS,
-    LOADING_DATA_SPINNER_MIN_VISIBLE_MS,
-} from '../../components/UIComponents/LoadingData'
-import Spinner from '../../components/UIComponents/Spinner'
+import LoadingData, { LOADING_DATA_SPINNER_DELAY_MS, LOADING_DATA_SPINNER_MIN_VISIBLE_MS } from './LoadingData'
+import Spinner from './Spinner'
 
 const mockState = { showLoadingDataSpinner: false }
 jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
 jest.mock('../../hooks/useModalSizing', () => () => ({ safeAreaInsets: { bottom: 5 } }))
-jest.mock('../../components/UIComponents/Spinner', () => 'Spinner')
+jest.mock('./Spinner', () => 'Spinner')
 
 // MyPlatform.osType only consults window.navigator off the mobile path,
 // and the react-native preset reports ios.
