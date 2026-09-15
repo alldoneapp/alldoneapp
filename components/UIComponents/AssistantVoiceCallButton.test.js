@@ -183,6 +183,10 @@ const startCall = async tree => {
 }
 
 const findEndCallButton = tree => tree.root.findAllByType('Button').find(b => b.props.type === 'danger')
+const findMuteButton = tree =>
+    tree.root
+        .findAllByType('Button')
+        .find(button => ['Mute assistant call', 'Unmute assistant call'].includes(button.props.accessibilityLabel))
 
 beforeEach(() => {
     jest.useFakeTimers()
@@ -307,6 +311,80 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         expect(findEndCallButton(tree)).toBeTruthy()
         expect(navigator.mediaSession.playbackState).toBe('playing')
         expect(navigator.mediaSession.setMicrophoneActive).toHaveBeenCalledWith(true)
+    })
+
+    it('mutes and unmutes the WebRTC sender from the floating call panel', async () => {
+        const tree = render()
+        const pc = await startCall(tree)
+
+        const localTrack = tracks[0]
+        const senderTrack = pc.senders[0].track
+        expect(localTrack.enabled).toBe(true)
+        expect(senderTrack.enabled).toBe(true)
+        expect(findMuteButton(tree).props).toMatchObject({
+            icon: 'mic',
+            accessibilityLabel: 'Mute assistant call',
+            accessibilityState: { selected: false },
+            'aria-pressed': false,
+        })
+
+        await act(async () => {
+            findMuteButton(tree).props.onPress()
+        })
+        expect(localTrack.enabled).toBe(true)
+        expect(senderTrack.enabled).toBe(false)
+        expect(findMuteButton(tree).props).toMatchObject({
+            icon: 'mic-off',
+            accessibilityLabel: 'Unmute assistant call',
+            accessibilityState: { selected: true },
+            'aria-pressed': true,
+        })
+        await advance(100)
+        expect(tree.root.findByProps({ testID: 'voice-microphone-level' }).props.accessibilityLabel).toBe(
+            'Microphone paused'
+        )
+        expect(navigator.mediaSession.setMicrophoneActive).toHaveBeenLastCalledWith(false)
+
+        await act(async () => {
+            findMuteButton(tree).props.onPress()
+        })
+        expect(localTrack.enabled).toBe(true)
+        expect(senderTrack.enabled).toBe(true)
+        expect(findMuteButton(tree).props.accessibilityLabel).toBe('Mute assistant call')
+        await advance(100)
+        expect(tree.root.findByProps({ testID: 'voice-microphone-level' }).props.accessibilityLabel).not.toBe(
+            'Microphone paused'
+        )
+        expect(navigator.mediaSession.setMicrophoneActive).toHaveBeenLastCalledWith(true)
+    })
+
+    it('does not treat an intentional mute as a stalled microphone', async () => {
+        const tree = render()
+        const pc = await startCall(tree)
+        pc.statsReports = [{ type: 'outbound-rtp', kind: 'audio', bytesSent: 4200 }]
+
+        await act(async () => {
+            findMuteButton(tree).props.onPress()
+        })
+        await advance(MIC_HEALTH_POLL_MS * 4)
+
+        expect(getUserMedia).toHaveBeenCalledTimes(1)
+        expect(pc.senders[0].track.enabled).toBe(false)
+    })
+
+    it('keeps the user mute applied when microphone recovery replaces the sender', async () => {
+        const tree = render()
+        const pc = await startCall(tree)
+
+        await act(async () => {
+            findMuteButton(tree).props.onPress()
+            tracks[0].onended()
+            for (let i = 0; i < 20; i++) await Promise.resolve()
+        })
+
+        expect(getUserMedia).toHaveBeenCalledTimes(2)
+        expect(pc.senders[0].track.enabled).toBe(false)
+        expect(findMuteButton(tree).props.accessibilityLabel).toBe('Unmute assistant call')
     })
 
     describe('iOS shell audio session', () => {
@@ -898,7 +976,7 @@ test('navigation removes the original launcher but keeps one call, audio and a u
         expect(pc.closed).toBe(false)
         expect(track.stop).not.toHaveBeenCalled()
         expect(document.querySelector('audio')).toBe(audio)
-        expect(tree.root.findAllByType('Button')).toHaveLength(1)
+        expect(tree.root.findAllByType('Button')).toHaveLength(2)
         expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
         const appButton = tree.root.findByType('button')
         act(() => appButton.props.onClick())
