@@ -109,10 +109,7 @@ function ProjectLine({ projectIndex, user, badge, openPopover, closePopover, isO
                     size={16}
                     color={project.color}
                     isGuide={!!project.parentTemplateId}
-                    containerStyle={{
-                        marginHorizontal: 4,
-                        ...(textColor && { backgroundColor: '#FFFFFF', borderRadius: 10 }),
-                    }}
+                    containerStyle={{ marginHorizontal: 4 }}
                     projectId={project.id}
                 />
                 <Text
