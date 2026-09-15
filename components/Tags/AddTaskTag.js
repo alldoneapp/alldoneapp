@@ -34,6 +34,7 @@ function AddTaskTag({
     expandTaskListIfNeeded,
     primary,
     headerAction = true,
+    iconSize,
     // The empty-inbox call to action (AT-2306) is the same control at a bigger
     // size — sharing the component keeps one popup wiring (popover, float-popup
     // bookkeeping, mention-modal-aware close) instead of a second copy of it.
@@ -119,7 +120,7 @@ function AddTaskTag({
             <View style={localStyles.icon}>
                 <Icon
                     name={headerAction && !large ? 'plus' : 'check-square'}
-                    size={large ? 20 : 16}
+                    size={iconSize || (large ? 20 : 16)}
                     color={(headerAction && !large) || primary ? '#ffffff' : colors.Text03}
                 />
             </View>
