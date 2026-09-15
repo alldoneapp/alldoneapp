@@ -21,6 +21,7 @@ jest.mock('../../components/HashtagFilters/HashtagFiltersView', () => 'HashtagFi
 jest.mock('../../components/TaskListView/TasksAmountContainers/TasksAmountContainers', () => 'TasksAmountContainers')
 jest.mock('../../components/TaskListView/WriteTasksUrl', () => 'WriteTasksUrl')
 jest.mock('../../components/TaskListView/TasksSections', () => 'TasksSections')
+jest.mock('../../components/TaskListView/FloatingAddTaskButton', () => 'FloatingAddTaskButton')
 jest.mock('../../hooks/useDeferredStartupWork', () => ({
     __esModule: true,
     default: () => mockDeferredStartupWorkReady,
@@ -54,6 +55,7 @@ describe('MainTasksView component', () => {
         expect(tree.root.findAllByType('TasksAmountContainers')).toHaveLength(1)
         expect(tree.root.findAllByType('HashtagFiltersView')).toHaveLength(1)
         expect(tree.root.findAllByType('TasksSections')).toHaveLength(1)
+        expect(tree.root.findAllByType('FloatingAddTaskButton')).toHaveLength(1)
     })
 
     it('lets the hashtag filters handle spaces', () => {

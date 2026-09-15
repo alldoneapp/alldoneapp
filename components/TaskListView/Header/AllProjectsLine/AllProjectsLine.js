@@ -1,19 +1,14 @@
-import React, { useCallback } from 'react'
+import React from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 
 import { HeaderActionsContext } from '../../TaskHierarchy'
 import { colors } from '../../../styles/global'
 import AllProjectData from './AllProjectData'
-import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
-import AddTaskTag from '../../../Tags/AddTaskTag'
 import Avatar from '../../../Avatar'
 import TaskHeaderMoreButton from '../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton'
 import ToggleByTime from '../../ToggleByTime'
 import AllProjectsEmailLabelChips from '../../EmailLine/AllProjectsEmailLabelChips'
-import { AUTOMATIC_PROJECT_OPTION } from '../../../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
-import { clearPendingWebShareTarget } from '../../../../redux/actions'
-import { clearStoredWebShareTarget } from '../../../../utils/webShareTarget'
 
 export default function AllProjectsLine({
     showActions = true,
@@ -21,18 +16,12 @@ export default function AllProjectsLine({
     customRight,
     bottomSpacing = 16,
 }) {
-    const dispatch = useDispatch()
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const photoURL = useSelector(state => state.loggedUser.photoURL)
     const taskViewToggleSection = useSelector(state => state.taskViewToggleSection)
-    const pendingWebShareTarget = useSelector(state => state.pendingWebShareTarget)
 
     const inOpenSection = taskViewToggleSection === 'Open'
-    const consumeWebShareTarget = useCallback(() => {
-        clearStoredWebShareTarget()
-        dispatch(clearPendingWebShareTarget())
-    }, [dispatch])
 
     return (
         <HeaderActionsContext.Provider value={true}>
@@ -56,31 +45,13 @@ export default function AllProjectsLine({
                 <View style={[localStyles.leftContainer, { height: mobile ? 36 : 32, maxHeight: mobile ? 36 : 32 }]}>
                     {customRight}
                     {showActions && inOpenSection && (
-                        <>
-                            {/* In All Projects there is no project in context, so the picker
-                            opens on "Automatic" and the server routes the task (AT-2306).
-                            The user's default project is still where it is created, and
-                            picking a project by hand overrides the routing entirely. */}
-                            <AddTaskTag
-                                projectId={AUTOMATIC_PROJECT_OPTION}
-                                style={{ marginLeft: 8 }}
-                                sourceType={FEED_TASK_OBJECT_TYPE}
-                                expandTaskListIfNeeded={true}
-                                showProjectSelector={true}
-                                primary={true}
-                                headerAction={true}
-                                initialTaskName={pendingWebShareTarget?.taskName}
-                                autoOpenKey={pendingWebShareTarget?.id}
-                                onAutoOpen={consumeWebShareTarget}
-                            />
-                            <TaskHeaderMoreButton
-                                userId={loggedUserId}
-                                wrapperStyle={localStyles.taskMoreWrapper}
-                                buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}
-                                iconSize={16}
-                                iconColor={colors.Text02}
-                            />
-                        </>
+                        <TaskHeaderMoreButton
+                            userId={loggedUserId}
+                            wrapperStyle={localStyles.taskMoreWrapper}
+                            buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}
+                            iconSize={16}
+                            iconColor={colors.Text02}
+                        />
                     )}
                 </View>
             </View>
