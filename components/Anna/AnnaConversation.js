@@ -9,7 +9,6 @@ import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../utils/assistantHelper'
 import { getTimestampInMilliseconds } from '../ChatsView/Utils/ChatHelper'
 import { resolveEffectiveMessageLoading } from '../ChatsView/ChatDV/EditorView/messageLoadingState'
 import { translate } from '../../i18n/TranslationService'
-import useAnnaMessageReadState from './useAnnaMessageReadState'
 
 export default function AnnaConversation({ conversation, assistant, user, call, onExpand, onSendingChange }) {
     const [limit, setLimit] = useState(40)
@@ -37,7 +36,6 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
         if (follow.current) element.scrollTop = element.scrollHeight
         else setNewMessages(true)
     }, [messages.length, last?.commentText])
-    useAnnaMessageReadState(conversation.projectId, conversation.id, scroll, messages)
 
     const send = async event => {
         event?.preventDefault()
@@ -162,11 +160,7 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
                 {messages.map(message => {
                     const own = message.creatorId === user.uid && !message.fromAssistant
                     return (
-                        <article
-                            key={message.id}
-                            data-anna-message-id={message.id}
-                            className={`anna-message ${own ? 'anna-message-user' : ''}`}
-                        >
+                        <article key={message.id} className={`anna-message ${own ? 'anna-message-user' : ''}`}>
                             <div className="anna-message-author">
                                 {own ? translate('You') : assistant.displayName || 'Anna'}
                                 <time>

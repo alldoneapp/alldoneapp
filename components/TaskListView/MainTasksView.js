@@ -9,6 +9,7 @@ import TasksAmountContainers from './TasksAmountContainers/TasksAmountContainers
 import WriteTasksUrl from './WriteTasksUrl'
 import TasksSections from './TasksSections'
 import useDeferredStartupWork from '../../hooks/useDeferredStartupWork'
+import FloatingAddTaskButton from './FloatingAddTaskButton'
 
 export default function MainTasksView() {
     const dispatch = useDispatch()
@@ -24,6 +25,7 @@ export default function MainTasksView() {
             {deferredStartupWorkReady && <TasksAmountContainers />}
             <HashtagFiltersView handleSpaces={true} />
             <TasksSections />
+            <FloatingAddTaskButton />
         </KeyboardAvoidingView>
     )
 }
