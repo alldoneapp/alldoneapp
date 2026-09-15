@@ -205,15 +205,12 @@ export default function RichCreateTaskModal({
     // call sites keep saying out loud that they depend on it.
     showProjectSelector = true,
     expandTaskListIfNeeded,
-    // AT-2364: opt in to the wide card (used by the big, centered All Projects
-    // "Add task" call to action). Every other entry point keeps its width.
-    wide,
     initialTaskName,
 }) {
     const dispatch = useDispatch()
     // One measurement shared by the form and the in-place project picker, so
     // the popup never changes width between the two steps.
-    const widthStyle = useCreateTaskPopupWidth(wide)
+    const widthStyle = useCreateTaskPopupWidth()
     // "Automatic" is a picker option, not a project: the task still needs a real
     // project to be written to, so the sentinel is split here into the flag that
     // asks the server to route it and the host project it is created in.
