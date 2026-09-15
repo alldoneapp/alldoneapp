@@ -58,6 +58,7 @@ describe('MainModal selected goal layout (AT-2580)', () => {
 
         expect(goalRow.parent).toBe(projectRow.parent)
         expect(siblings.indexOf(goalRow)).toBe(siblings.indexOf(projectRow) + 1)
+        expect(projectRow.props.containerStyle).toEqual({ marginBottom: 0, marginTop: 0 })
     })
 
     it('does not reserve a goal row before a goal is selected', () => {

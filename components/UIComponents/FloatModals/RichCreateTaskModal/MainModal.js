@@ -68,7 +68,7 @@ export default function MainModal({
                         showSelectProject(true)
                     }}
                     selectedProject={selectedProject}
-                    containerStyle={{ marginBottom: activeGoal ? 0 : 16, marginTop: 0, paddingLeft: 0 }}
+                    containerStyle={{ marginBottom: activeGoal ? 0 : 16, marginTop: 0 }}
                     text="Select project"
                 />
             )}
