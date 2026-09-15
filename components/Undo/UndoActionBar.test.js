@@ -15,12 +15,21 @@ jest.mock('../styles/global', () => ({
 }))
 
 import undoActionBarStyles from './undoActionBarStyles'
+import {
+    FLOATING_ACTION_CLEARANCE,
+    FLOATING_ACTION_SIZE,
+    FLOATING_ACTION_STACK_GAP,
+    FLOATING_ACTION_VIEWPORT_GAP,
+} from '../UIComponents/floatingActionLayout'
 
 describe('UndoActionBar layout', () => {
-    it('positions the undo banner 64px above the safe bottom edge', () => {
+    it('positions the undo banner above the floating task action', () => {
         expect(undoActionBarStyles.overlay.bottom).toBe(0)
         expect(undoActionBarStyles.overlay.top).toBeUndefined()
-        expect(undoActionBarStyles.container.marginBottom).toBe(64)
+        expect(undoActionBarStyles.container.marginBottom).toBe(FLOATING_ACTION_CLEARANCE)
+        expect(undoActionBarStyles.container.marginBottom - (FLOATING_ACTION_VIEWPORT_GAP + FLOATING_ACTION_SIZE)).toBe(
+            FLOATING_ACTION_STACK_GAP
+        )
         expect(undoActionBarStyles.container.marginTop).toBeUndefined()
     })
 
