@@ -3,12 +3,15 @@ import { View, StyleSheet } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import Spinner from './Spinner'
+import useModalSizing from '../../hooks/useModalSizing'
+import { getLoadingDataBottom, LOADING_DATA_CONTAINER_SIZE } from './floatingActionLayout'
 
 export const LOADING_DATA_SPINNER_DELAY_MS = 300
 export const LOADING_DATA_SPINNER_MIN_VISIBLE_MS = 500
 
 export default function LoadingData() {
     const spinnerRequested = useSelector(state => state.showLoadingDataSpinner)
+    const { safeAreaInsets } = useModalSizing()
     const [spinnerVisible, setSpinnerVisible] = useState(false)
     const shownAtRef = useRef(null)
 
@@ -34,8 +37,11 @@ export default function LoadingData() {
 
     return (
         spinnerVisible && (
-            <View style={localStyles.container}>
-                <Spinner containerSize={48} spinnerSize={32} />
+            <View
+                testID="loading-data-spinner"
+                style={[localStyles.container, { bottom: getLoadingDataBottom(safeAreaInsets.bottom) }]}
+            >
+                <Spinner containerSize={LOADING_DATA_CONTAINER_SIZE} spinnerSize={32} />
             </View>
         )
     )
@@ -43,9 +49,11 @@ export default function LoadingData() {
 
 const localStyles = StyleSheet.create({
     container: {
-        position: 'absolute',
-        bottom: 56,
-        right: 56,
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        pointerEvents: 'none',
         zIndex: 10000,
     },
 })

@@ -23,6 +23,7 @@ import RootSectionNavigation from './RootSectionNavigation'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import ConnectionStatusChip from '../TopBar/ConnectionStatusChip'
 import { showConnectionChipBelowHeader } from '../TopBar/connectionChipPlacement'
+import FloatingAddTaskButton from '../TaskListView/FloatingAddTaskButton'
 
 export const isMainViewScrollEnabled = state => !(state.smallScreen && state.showFloatPopup > 0)
 
@@ -43,6 +44,7 @@ export default function MainViewsContainer() {
         <CustomScrollView
             style={[localStyles.subContainer, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}
             scrollEnabled={enableScroll}
+            fixedChildren={selectedTab === DV_TAB_ROOT_TASKS ? <FloatingAddTaskButton /> : null}
         >
             <View>
                 {chipBelowHeader && <ConnectionStatusChip belowHeader />}

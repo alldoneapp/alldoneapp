@@ -3,7 +3,7 @@ import renderer from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
 import MainViewsContainer from '../../components/RootView/MainViewsContainer'
-import { DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
+import { DV_TAB_ROOT_CONTACTS, DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(),
@@ -17,6 +17,7 @@ jest.mock('../../components/ChatsView/ChatsView', () => 'ChatsView')
 jest.mock('../../components/UIControls/CustomScrollView', () => 'CustomScrollView')
 jest.mock('../../components/RootView/RootSectionNavigation', () => 'RootSectionNavigation')
 jest.mock('../../components/TopBar/ConnectionStatusChip', () => 'ConnectionStatusChip')
+jest.mock('../../components/TaskListView/FloatingAddTaskButton', () => 'FloatingAddTaskButton')
 jest.mock('../../components/SidebarMenu/Collapsible/UseCollapsibleSidebar', () => () => ({ overlay: false }))
 jest.mock('../../components/SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedAllProjects: () => false,
@@ -36,6 +37,22 @@ const renderWithState = responsiveState => {
 }
 
 describe('MainViewsContainer popup scroll lock', () => {
+    test.each([
+        ['phone', { smallScreen: true, smallScreenNavigation: true, isMiddleScreen: true }],
+        ['tablet', { smallScreen: true, smallScreenNavigation: false, isMiddleScreen: true }],
+        ['desktop', { smallScreen: false, smallScreenNavigation: false, isMiddleScreen: false }],
+    ])('%s pins the task action outside the scrolling content', (_mode, state) => {
+        const scrollView = renderWithState({ ...state, showFloatPopup: 0 })
+
+        expect(scrollView.props.fixedChildren.type).toBe('FloatingAddTaskButton')
+    })
+
+    it('does not render the floating task action outside the Tasks screen', () => {
+        const scrollView = renderWithState({ selectedSidebarTab: DV_TAB_ROOT_CONTACTS, showFloatPopup: 0 })
+
+        expect(scrollView.props.fixedChildren).toBeNull()
+    })
+
     test.each([
         ['phone', { smallScreen: true, smallScreenNavigation: true, isMiddleScreen: true }, false],
         ['tablet', { smallScreen: true, smallScreenNavigation: false, isMiddleScreen: true }, false],
