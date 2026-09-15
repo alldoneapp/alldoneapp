@@ -56,8 +56,8 @@ export default function MainModal({
                 applyPopoverWidth(),
                 smallScreenNavigation && { minWidth: 315 },
                 { maxHeight: getSafeAreaModalMaxHeight(screenDimensions.height) },
-                // AT-2364: last, so the wide variant overrides both the legacy
-                // popover width and the small-screen minimum above it.
+                // AT-2582: last, so the responsive add-task width overrides
+                // both the legacy popover width and small-screen minimum.
                 widthStyle,
             ]}
         >
