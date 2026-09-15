@@ -187,9 +187,10 @@ function AddTaskTag({
                         backgroundColor: 'var(--background-primary)',
                         borderRadius: '8px',
                         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
-                        // RichCreateTaskModal owns the responsive card width.
-                        // Keeping a second floor here would fight that sizing
-                        // on narrow windows.
+                        // The wide variant sizes itself from the modal system
+                        // (see createTaskPopupWidth); a hard 300px floor here
+                        // would only fight it on narrow windows.
+                        ...(large ? {} : { minWidth: '300px' }),
                         ...(isSheet
                             ? {}
                             : {
@@ -217,6 +218,7 @@ function AddTaskTag({
                         tryExpandTasksListInGoalWhenAddTask={tryExpandTasksListInGoalWhenAddTask}
                         showProjectSelector={showProjectSelector}
                         expandTaskListIfNeeded={expandTaskListIfNeeded}
+                        wide={large}
                         initialTaskName={autoOpenInitialTaskNameRef.current || initialTaskName}
                     />
                 </div>

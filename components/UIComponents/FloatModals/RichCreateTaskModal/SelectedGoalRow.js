@@ -38,7 +38,7 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 16,
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-start',
     },
     label: {
         flexDirection: 'row',
@@ -53,6 +53,7 @@ const localStyles = StyleSheet.create({
     goalTag: {
         minWidth: 0,
         maxWidth: '65%',
+        flexShrink: 1,
         height: 24,
         borderRadius: 12,
         paddingHorizontal: 8,
