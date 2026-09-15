@@ -18,6 +18,7 @@ import NavigationService from '../../../../utils/NavigationService'
 import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import useCreateTaskPopupWidth from '../RichCreateTaskModal/createTaskPopupWidth'
 
 class ManageTaskModal extends Component {
     constructor(props) {
@@ -108,8 +109,19 @@ class ManageTaskModal extends Component {
 
     render() {
         const { subtasks, taskBeenEdited } = this.state
-        const { projectId, editing, closeModal, editorRef, noteId, task, tagId, unwatchTask, windowSize, objectUrl } =
-            this.props
+        const {
+            projectId,
+            editing,
+            closeModal,
+            editorRef,
+            noteId,
+            task,
+            tagId,
+            unwatchTask,
+            windowSize,
+            objectUrl,
+            createTaskWidthStyle,
+        } = this.props
 
         const isAssistant = task && task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 
@@ -119,6 +131,10 @@ class ManageTaskModal extends Component {
                     localStyles.container,
                     { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
                     applyPopoverWidth(),
+                    // The note-editor toolbar opens this shared modal in
+                    // creation mode. Match every other Add task popup without
+                    // changing the width used to edit an existing task.
+                    !editing && createTaskWidthStyle,
                     this.closed && { opacity: 0 },
                 ]}
                 showsVerticalScrollIndicator={false}
@@ -171,7 +187,13 @@ class ManageTaskModal extends Component {
         )
     }
 }
-export default withWindowSizeHook(ManageTaskModal)
+
+const ManageTaskModalWithWindowSize = withWindowSizeHook(ManageTaskModal)
+
+export default function ResponsiveManageTaskModal(props) {
+    const createTaskWidthStyle = useCreateTaskPopupWidth(!props.editing)
+    return <ManageTaskModalWithWindowSize {...props} createTaskWidthStyle={createTaskWidthStyle} />
+}
 
 const localStyles = StyleSheet.create({
     container: {
