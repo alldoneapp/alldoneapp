@@ -27,7 +27,12 @@ export default function AllProjectsEmptyInboxTags() {
             {sortedActiveProjects.map(project => {
                 const loggedUserIsAdmin = ProjectHelper.checkIfLoggedUserIsAdminUserInGuide(project)
                 return loggedUserIsAdmin ? null : (
-                    <ProjectTag key={project.id} project={project} style={localStyles.projectTag} />
+                    <ProjectTag
+                        key={project.id}
+                        project={project}
+                        style={localStyles.projectTag}
+                        shrinkTextToAmountOfLetter={8}
+                    />
                 )
             })}
         </View>

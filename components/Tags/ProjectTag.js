@@ -39,7 +39,11 @@ export default function ProjectTag({
     }
 
     return finalProject ? (
-        <TouchableOpacity disabled={disabled} onPress={onPress}>
+        <TouchableOpacity
+            accessibilityLabel={name !== finalProject.name ? finalProject.name : undefined}
+            disabled={disabled}
+            onPress={onPress}
+        >
             <View style={[localStyles.container, isMobile && localStyles.containerMobile, style]}>
                 <ColoredCircleSmall
                     size={12}
