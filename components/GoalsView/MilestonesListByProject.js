@@ -164,7 +164,7 @@ function MilestonesListByProject({
             <ProjectHeader
                 projectIndex={project.index}
                 projectId={project.id}
-                showAddGoal={inOpenTab}
+                showGoalMore={inOpenTab}
                 showRootSectionNavigation={!inAllProjects}
             />
             <ProjectSectionBody style={inAllProjects && { paddingTop: 26 }}>

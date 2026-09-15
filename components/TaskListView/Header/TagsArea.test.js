@@ -22,7 +22,6 @@ jest.mock('../../styles/global', () => ({
 }))
 jest.mock('../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../../utils/SharedHelper', () => ({ accessGranted: jest.fn(() => true) }))
-jest.mock('../../Tags/AddGoalTag', () => 'AddGoalTag')
 jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     __esModule: true,
     default: { checkIfLoggedUserIsNormalUserInGuide: () => false },
@@ -137,5 +136,25 @@ describe('TagsArea task actions (AT-2575)', () => {
 
         expect(tree.root.findAllByType('TaskHeaderMoreButton')).toHaveLength(0)
         state.taskViewToggleSection = 'Open'
+    })
+})
+
+describe('TagsArea goal actions (AT-2577)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        SharedHelper.accessGranted.mockReturnValue(true)
+    })
+
+    it('removes add-goal creation from the project line but keeps the more action', () => {
+        const tree = renderTagsArea({ showGoalMore: true })
+
+        expect(tree.root.findAllByType('AddGoalTag')).toHaveLength(0)
+        expect(tree.root.findAllByType('GoalMoreButton')).toHaveLength(1)
+    })
+
+    it('does not show the more action outside the open goals tab', () => {
+        const tree = renderTagsArea({ showGoalMore: false })
+
+        expect(tree.root.findAllByType('GoalMoreButton')).toHaveLength(0)
     })
 })
