@@ -11,7 +11,6 @@ import AssigneeArea from './AssigneeArea'
 import { translate } from '../../../../i18n/TranslationService'
 import ProjectFilter from '../../../GlobalSearchAlgolia/Filter/ProjectFilter'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
-import SelectedGoalRow from './SelectedGoalRow'
 
 export default function MainModal({
     projectId,
@@ -29,7 +28,6 @@ export default function MainModal({
     setTask,
     showMoreOptions,
     selectedProject,
-    activeGoal,
     widthStyle,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -68,18 +66,15 @@ export default function MainModal({
                         showSelectProject(true)
                     }}
                     selectedProject={selectedProject}
-                    containerStyle={{ marginBottom: activeGoal ? 0 : 16, marginTop: 0, paddingLeft: 0 }}
+                    containerStyle={{ marginBottom: 16, marginTop: 0, paddingLeft: 0 }}
                     text="Select project"
                 />
-            )}
-            {selectedProject && activeGoal && (
-                <SelectedGoalRow activeGoal={activeGoal} showParentGoal={showParentGoal} />
             )}
             <AssigneeArea
                 projectId={projectId}
                 task={task}
                 showAssignee={showAssignee}
-                containerStyle={{ top: selectedProject ? (activeGoal ? 146 : 106) : 50 }}
+                containerStyle={{ top: selectedProject ? 106 : 50 }}
             />
             <TaskEditForm
                 projectId={projectId}
