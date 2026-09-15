@@ -30,7 +30,7 @@ export default function ScopeTag({ selectedProject }) {
     const shrinkedText = shrinkText(textToShow)
 
     return (
-        <View style={localStyles.tag}>
+        <View style={localStyles.tag} testID="project-scope-tag">
             {project ? (
                 <ColoredCircleSmall
                     size={12}
@@ -44,7 +44,9 @@ export default function ScopeTag({ selectedProject }) {
             ) : (
                 <Image style={localStyles.avatar} source={{ uri: photoURL }} />
             )}
-            <Text style={localStyles.text}>{shrinkedText}</Text>
+            <Text numberOfLines={1} style={localStyles.text} testID="project-scope-tag-name">
+                {shrinkedText}
+            </Text>
         </View>
     )
 }
@@ -52,6 +54,9 @@ export default function ScopeTag({ selectedProject }) {
 const localStyles = StyleSheet.create({
     tag: {
         flexDirection: 'row',
+        minWidth: 0,
+        maxWidth: '100%',
+        flexShrink: 1,
         alignItems: 'center',
         backgroundColor: colors.Grey300,
         borderRadius: 12,
@@ -62,6 +67,8 @@ const localStyles = StyleSheet.create({
     },
     text: {
         ...styles.subtitle2,
+        minWidth: 0,
+        flexShrink: 1,
         color: colors.Text03,
     },
     avatar: {
