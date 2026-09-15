@@ -3,15 +3,17 @@
  */
 
 import React from 'react'
-import { Provider } from 'react-redux'
-import store from '../../redux/store'
-import { Platform } from 'react-native'
+import { Platform, StyleSheet } from 'react-native'
 import LoadingData, {
     LOADING_DATA_SPINNER_DELAY_MS,
     LOADING_DATA_SPINNER_MIN_VISIBLE_MS,
 } from '../../components/UIComponents/LoadingData'
 import Spinner from '../../components/UIComponents/Spinner'
-import { resetLoadingData, startLoadingData, stopLoadingData } from '../../redux/actions'
+
+const mockState = { showLoadingDataSpinner: false }
+jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
+jest.mock('../../hooks/useModalSizing', () => () => ({ safeAreaInsets: { bottom: 5 } }))
+jest.mock('../../components/UIComponents/Spinner', () => 'Spinner')
 
 // MyPlatform.osType only consults window.navigator off the mobile path,
 // and the react-native preset reports ios.
@@ -19,21 +21,20 @@ Platform.OS = 'web'
 
 import renderer, { act } from 'react-test-renderer'
 
-const renderLoadingData = () =>
-    renderer.create(
-        <Provider store={store}>
-            <LoadingData />
-        </Provider>
-    )
+const renderLoadingData = () => renderer.create(<LoadingData />)
+
+const setSpinnerRequested = (tree, requested) => {
+    mockState.showLoadingDataSpinner = requested
+    act(() => tree.update(<LoadingData />))
+}
 
 describe('LoadingData component', () => {
     beforeEach(() => {
         jest.useFakeTimers()
-        store.dispatch(resetLoadingData())
+        mockState.showLoadingDataSpinner = false
     })
 
     afterEach(() => {
-        store.dispatch(resetLoadingData())
         jest.useRealTimers()
     })
 
@@ -47,9 +48,9 @@ describe('LoadingData component', () => {
     it('does not flash for a short loading operation', () => {
         const tree = renderLoadingData()
 
-        act(() => store.dispatch(startLoadingData()))
+        setSpinnerRequested(tree, true)
         act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_DELAY_MS - 1))
-        act(() => store.dispatch(stopLoadingData()))
+        setSpinnerRequested(tree, false)
         act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_DELAY_MS + LOADING_DATA_SPINNER_MIN_VISIBLE_MS))
 
         expect(tree.root.findAllByType(Spinner)).toHaveLength(0)
@@ -59,11 +60,21 @@ describe('LoadingData component', () => {
     it('keeps a displayed spinner stable for a minimum duration', () => {
         const tree = renderLoadingData()
 
-        act(() => store.dispatch(startLoadingData()))
+        setSpinnerRequested(tree, true)
         act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_DELAY_MS))
         expect(tree.root.findAllByType(Spinner)).toHaveLength(1)
+        expect(StyleSheet.flatten(tree.root.findByProps({ testID: 'loading-data-spinner' }).props.style)).toMatchObject(
+            {
+                position: 'fixed',
+                left: 0,
+                right: 0,
+                bottom: 33,
+                alignItems: 'center',
+                pointerEvents: 'none',
+            }
+        )
 
-        act(() => store.dispatch(stopLoadingData()))
+        setSpinnerRequested(tree, false)
         act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_MIN_VISIBLE_MS - 1))
         expect(tree.root.findAllByType(Spinner)).toHaveLength(1)
 

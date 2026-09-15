@@ -17,6 +17,12 @@ import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import useModalSizing from '../../hooks/useModalSizing'
 import useLiftAboveKeyboard from '../../hooks/useLiftAboveKeyboard'
 import useFloatPopupLock from '../../hooks/useFloatPopupLock'
+import { MODAL_EDGE_GAP } from '../styles/modals'
+import {
+    FLOATING_ACTION_POPOVER_GAP,
+    FLOATING_ACTION_SIZE,
+    FLOATING_ACTION_VIEWPORT_GAP,
+} from '../UIComponents/floatingActionLayout'
 
 function AddTaskTag({
     projectId,
@@ -35,6 +41,7 @@ function AddTaskTag({
     primary,
     headerAction = true,
     iconSize,
+    floating,
     // The empty-inbox call to action (AT-2306) is the same control at a bigger
     // size — sharing the component keeps one popup wiring (popover, float-popup
     // bookkeeping, mention-modal-aware close) instead of a second copy of it.
@@ -60,8 +67,19 @@ function AddTaskTag({
     const autoOpenedKeyRef = useRef(null)
     const autoOpenInitialTaskNameRef = useRef('')
     const popupLock = useFloatPopupLock()
-    const { maxHeight: popupMaxHeight, isSheet } = useModalSizing({ size: 'L' })
+    const { maxHeight: popupMaxHeight, isSheet, windowHeight, safeAreaInsets } = useModalSizing({ size: 'L' })
     const keyboardLift = useLiftAboveKeyboard(popupCardRef)
+    const floatingPopupMaxHeight = Math.max(
+        windowHeight -
+            safeAreaInsets.top -
+            safeAreaInsets.bottom -
+            MODAL_EDGE_GAP -
+            FLOATING_ACTION_VIEWPORT_GAP -
+            FLOATING_ACTION_SIZE -
+            FLOATING_ACTION_POPOVER_GAP,
+        0
+    )
+    const resolvedPopupMaxHeight = floating ? Math.min(popupMaxHeight, floatingPopupMaxHeight) : popupMaxHeight
 
     useEffect(() => {
         if (!autoOpenKey || autoOpenedKeyRef.current === autoOpenKey) return
@@ -144,17 +162,21 @@ function AddTaskTag({
     return (
         <AppPopover
             isOpen={isOpen}
-            positions={['bottom', 'top', 'left', 'right']}
+            // The floating action sits at the viewport's bottom-right edge, so
+            // its desktop popup must open above it and align their right edges.
+            // Mobile remains a modal-system BottomSheet via AppPopover.
+            position={floating ? ['top'] : undefined}
             // AT-2364: the large call to action is itself centered on the
             // screen, so an edge-aligned popup reads as off-center. Centering
             // stays library-managed (no contentLocation), which keeps the
             // vendored viewport nudge and the position-flip search working.
-            align={large ? 'center' : 'start'}
+            align={floating ? 'end' : large ? 'center' : 'start'}
             // overflow visible: the vendored popover hard-codes overflow:hidden
             // on its container, which would clip the card when
             // useLiftAboveKeyboard translates it above the keyboard.
             containerStyle={{ zIndex: 9999, overflow: 'visible' }}
-            padding={8}
+            padding={floating ? FLOATING_ACTION_POPOVER_GAP : 8}
+            windowBorderPadding={floating ? MODAL_EDGE_GAP : undefined}
             offsetY={5}
             onClickOutside={handleClose}
             content={
@@ -174,7 +196,7 @@ function AddTaskTag({
                             : {
                                   // Keyboard-aware cap: taller content scrolls
                                   // inside the modal's own CustomScrollView.
-                                  maxHeight: popupMaxHeight,
+                                  maxHeight: resolvedPopupMaxHeight,
                                   display: 'flex',
                                   flexDirection: 'column',
                                   overflow: 'hidden',
