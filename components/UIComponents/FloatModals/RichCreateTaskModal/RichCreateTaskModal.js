@@ -326,13 +326,31 @@ export default function RichCreateTaskModal({
         setShowMoreOptionsModal(false)
     }
 
-    const saveParentGoal = goal => {
+    const saveParentGoal = (goal, goalProjectId) => {
+        const goalScopeProjectId = goal ? goal.projectId || goalProjectId || projectId : projectId
+        const projectChanged = !!goal && (goalScopeProjectId !== projectId || automaticProject)
+        const { loggedUser, loggedUserProjectsMap } = store.getState()
+        const scopedTask = projectChanged ? applyProjectSwitchToDraft(task, loggedUser.uid) : task
         const parentGoalId = goal ? goal.id : null
         const parentGoalIsPublicFor = goal ? goal.isPublicFor : null
         const lockKey = goal && goal.lockKey ? goal.lockKey : ''
-        setTask({ ...task, parentGoalId, parentGoalIsPublicFor, lockKey })
+        setTask({ ...scopedTask, parentGoalId, parentGoalIsPublicFor, lockKey })
         setActiveGoal(goal)
+
+        // A goal belongs to exactly one project. Selecting it therefore turns
+        // even the Automatic option into an explicit project scope and keeps
+        // the visible project row aligned with the Firestore path that will
+        // receive the task.
+        if (projectChanged) {
+            setAutomaticProject(false)
+            setProjectId(goalScopeProjectId)
+            setSelectedProject(
+                projects.find(project => project.id === goalScopeProjectId) ||
+                    loggedUserProjectsMap[goalScopeProjectId] || { id: goalScopeProjectId }
+            )
+        }
         setShowParentGoalModal(false)
+        return true
     }
 
     const savePrivacy = (isPrivate, isPublicFor) => {
@@ -644,7 +662,7 @@ export default function RichCreateTaskModal({
                 Backend.unwatch(projectId, watcherKey)
             }
         }
-    }, [task.parentGoalId])
+    }, [task.parentGoalId, projectId])
 
     useEffect(() => {
         if (showProjectSelector) {
@@ -737,7 +755,7 @@ export default function RichCreateTaskModal({
                     projectId={projectId}
                     closeModal={delayClosePopup}
                     ownerId={task.userId}
-                    fromAddTaskSection={true}
+                    notDelayClose={true}
                 />
             ) : showMoreOptionsModal ? (
                 <TaskMoreOptionModal
@@ -776,6 +794,7 @@ export default function RichCreateTaskModal({
                     createTask={createTask}
                     setTask={setTask}
                     selectedProject={selectedProject}
+                    activeGoal={activeGoal}
                     widthStyle={widthStyle}
                 />
             )}
