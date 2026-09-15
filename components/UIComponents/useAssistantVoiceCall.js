@@ -66,6 +66,7 @@ export default function useAssistantVoiceCall() {
     const [callName, setCallName] = useState('')
     const [error, setError] = useState('')
     const [microphoneLabel, setMicrophoneLabel] = useState('')
+    const [microphoneMuted, setMicrophoneMuted] = useState(false)
     const [needsAudioPlayback, setNeedsAudioPlayback] = useState(false)
     const [voiceSeconds, setVoiceSeconds] = useState(0)
     const [callSummary, setCallSummary] = useState(null)
@@ -96,6 +97,9 @@ export default function useAssistantVoiceCall() {
     const prevBytesSentRef = useRef(0)
     const stallCountRef = useRef(0)
     const micRecoveringRef = useRef(false)
+    // The capture track stays enabled so device selection and recovery keep
+    // working while the user mutes only the WebRTC sender track.
+    const microphoneMutedRef = useRef(false)
     // Set when the mic looked dead while the page was hidden. A hidden page must
     // never reopen the microphone; the check is replayed once we are visible.
     const micCheckPendingRef = useRef(false)
@@ -265,12 +269,12 @@ export default function useAssistantVoiceCall() {
         if (!sender || peerConnectionRef.current !== pc) throw new Error('Call ended')
         const track = stream.getAudioTracks()[0].clone()
         const previous = sender.track
-        track.enabled = callReadyRef.current && !endingRef.current
+        track.enabled = callReadyRef.current && !endingRef.current && !microphoneMutedRef.current
         try {
             await sender.replaceTrack(track)
             if (peerConnectionRef.current !== pc || endingRef.current) throw new Error('Call ended')
             transmittedTrackRef.current = track
-            track.enabled = callReadyRef.current
+            track.enabled = callReadyRef.current && !microphoneMutedRef.current
             previous?.stop()
         } catch (error) {
             track.stop()
@@ -402,6 +406,14 @@ export default function useAssistantVoiceCall() {
         micHealthTimerRef.current = setInterval(async () => {
             const pc = peerConnectionRef.current
             if (!pc || endingRef.current || !callReadyRef.current) return
+            // A deliberately disabled sender naturally stops increasing
+            // bytesSent. It is not a stalled microphone and must not trigger
+            // getUserMedia/recovery while the user is muted.
+            if (microphoneMutedRef.current) {
+                prevBytesSentRef.current = 0
+                stallCountRef.current = 0
+                return
+            }
             try {
                 const stats = await pc.getStats()
                 stats.forEach(report => {
@@ -453,6 +465,7 @@ export default function useAssistantVoiceCall() {
             outputMonitorRef.current?.close()
             outputMonitorRef.current = null
             playbackReadyRef.current = false
+            microphoneMutedRef.current = false
             const generation = callGenerationRef.current
             const sessionId = callSessionIdRef.current
             callSessionIdRef.current = null
@@ -520,11 +533,26 @@ export default function useAssistantVoiceCall() {
             if (resetState && mountedRef.current) {
                 setStatus(STATUS_IDLE)
                 setNeedsAudioPlayback(false)
+                setMicrophoneMuted(false)
             }
         },
         [clearDisconnectTimer, releaseWakeLock, stopMicHealthMonitor, captureDiagnostics]
     )
     cleanupRef.current = cleanup
+    const toggleMicrophoneMuted = useCallback(() => {
+        if (!peerConnectionRef.current || !callReadyRef.current || endingRef.current) return
+        const muted = !microphoneMutedRef.current
+        microphoneMutedRef.current = muted
+        if (transmittedTrackRef.current) transmittedTrackRef.current.enabled = !muted
+        prevBytesSentRef.current = 0
+        stallCountRef.current = 0
+        try {
+            navigator.mediaSession?.setMicrophoneActive?.(!muted)
+        } catch (_) {
+            /* optional Media Session state */
+        }
+        if (mountedRef.current) setMicrophoneMuted(muted)
+    }, [])
     const endCall = useCallback(async () => {
         if (endingRef.current) return
         endReasonRef.current = 'user_hangup'
@@ -635,7 +663,9 @@ export default function useAssistantVoiceCall() {
             playbackReadyRef.current = false
             lastOutputAudioRef.current = 0
             firstInputSignalRef.current = false
+            microphoneMutedRef.current = false
             setMicrophoneLabel('')
+            setMicrophoneMuted(false)
             setNeedsAudioPlayback(false)
             setError('')
             setVoiceSeconds(0)
@@ -788,7 +818,7 @@ export default function useAssistantVoiceCall() {
                 if (!mountedRef.current || peerConnectionRef.current !== pc || endingRef.current) return
                 captureDiagnostics('microphone_prepared')
                 callReadyRef.current = true
-                if (transmittedTrackRef.current) transmittedTrackRef.current.enabled = true
+                if (transmittedTrackRef.current) transmittedTrackRef.current.enabled = !microphoneMutedRef.current
                 captureDiagnostics('microphone_sent')
 
                 if (playbackReadyRef.current) connection.greet(translate('Hello, how can I help?'))
@@ -832,19 +862,21 @@ export default function useAssistantVoiceCall() {
         ]
     )
 
-    const getMicrophoneSnapshot = useCallback(
-        () => ({
-            ...microphoneSelectorRef.current?.getSnapshot(),
+    const getMicrophoneSnapshot = useCallback(() => {
+        const input = microphoneSelectorRef.current?.getSnapshot() || {}
+        return {
+            ...input,
             label: localStreamRef.current?.getAudioTracks()[0]?.label || '',
+            muted: microphoneMutedRef.current || input.muted === true,
             sending: callReadyRef.current && !endingRef.current && transmittedTrackRef.current?.enabled === true,
-        }),
-        []
-    )
+        }
+    }, [])
 
     return {
         status,
         error,
         microphoneLabel,
+        microphoneMuted,
         getMicrophoneSnapshot,
         needsAudioPlayback,
         voiceSeconds,
@@ -852,6 +884,7 @@ export default function useAssistantVoiceCall() {
         callName,
         startCall,
         endCall,
+        toggleMicrophoneMuted,
         playCallAudio,
         cleanup,
         dismissError: () => setError(''),
