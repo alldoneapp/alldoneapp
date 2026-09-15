@@ -205,15 +205,12 @@ export default function RichCreateTaskModal({
     // call sites keep saying out loud that they depend on it.
     showProjectSelector = true,
     expandTaskListIfNeeded,
-    // AT-2364: opt in to the wide card (used by the big, centered All Projects
-    // "Add task" call to action). Every other entry point keeps its width.
-    wide,
     initialTaskName,
 }) {
     const dispatch = useDispatch()
     // One measurement shared by the form and the in-place project picker, so
     // the popup never changes width between the two steps.
-    const widthStyle = useCreateTaskPopupWidth(wide)
+    const widthStyle = useCreateTaskPopupWidth()
     // "Automatic" is a picker option, not a project: the task still needs a real
     // project to be written to, so the sentinel is split here into the flag that
     // asks the server to route it and the host project it is created in.
@@ -326,31 +323,13 @@ export default function RichCreateTaskModal({
         setShowMoreOptionsModal(false)
     }
 
-    const saveParentGoal = (goal, goalProjectId) => {
-        const goalScopeProjectId = goal ? goal.projectId || goalProjectId || projectId : projectId
-        const projectChanged = !!goal && (goalScopeProjectId !== projectId || automaticProject)
-        const { loggedUser, loggedUserProjectsMap } = store.getState()
-        const scopedTask = projectChanged ? applyProjectSwitchToDraft(task, loggedUser.uid) : task
+    const saveParentGoal = goal => {
         const parentGoalId = goal ? goal.id : null
         const parentGoalIsPublicFor = goal ? goal.isPublicFor : null
         const lockKey = goal && goal.lockKey ? goal.lockKey : ''
-        setTask({ ...scopedTask, parentGoalId, parentGoalIsPublicFor, lockKey })
+        setTask({ ...task, parentGoalId, parentGoalIsPublicFor, lockKey })
         setActiveGoal(goal)
-
-        // A goal belongs to exactly one project. Selecting it therefore turns
-        // even the Automatic option into an explicit project scope and keeps
-        // the visible project row aligned with the Firestore path that will
-        // receive the task.
-        if (projectChanged) {
-            setAutomaticProject(false)
-            setProjectId(goalScopeProjectId)
-            setSelectedProject(
-                projects.find(project => project.id === goalScopeProjectId) ||
-                    loggedUserProjectsMap[goalScopeProjectId] || { id: goalScopeProjectId }
-            )
-        }
         setShowParentGoalModal(false)
-        return true
     }
 
     const savePrivacy = (isPrivate, isPublicFor) => {
@@ -662,7 +641,7 @@ export default function RichCreateTaskModal({
                 Backend.unwatch(projectId, watcherKey)
             }
         }
-    }, [task.parentGoalId, projectId])
+    }, [task.parentGoalId])
 
     useEffect(() => {
         if (showProjectSelector) {
@@ -755,7 +734,7 @@ export default function RichCreateTaskModal({
                     projectId={projectId}
                     closeModal={delayClosePopup}
                     ownerId={task.userId}
-                    notDelayClose={true}
+                    fromAddTaskSection={true}
                 />
             ) : showMoreOptionsModal ? (
                 <TaskMoreOptionModal
@@ -794,7 +773,6 @@ export default function RichCreateTaskModal({
                     createTask={createTask}
                     setTask={setTask}
                     selectedProject={selectedProject}
-                    activeGoal={activeGoal}
                     widthStyle={widthStyle}
                 />
             )}
