@@ -3,15 +3,29 @@ import renderer from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
 import AllProjectsLine from './AllProjectsLine'
-jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
+import { AUTOMATIC_PROJECT_OPTION } from '../../../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
+
+const mockDispatch = jest.fn()
+const mockClearStoredWebShareTarget = jest.fn()
+
+jest.mock('react-redux', () => ({ useDispatch: () => mockDispatch, useSelector: jest.fn() }))
+jest.mock('../../../../redux/actions', () => ({
+    clearPendingWebShareTarget: () => ({ type: 'Clear pending web share target' }),
+}))
+jest.mock('../../../../utils/webShareTarget', () => ({
+    clearStoredWebShareTarget: () => mockClearStoredWebShareTarget(),
+}))
 jest.mock('./AllProjectData', () => 'AllProjectData')
+jest.mock('../../../Tags/AddTaskTag', () => 'AddTaskTag')
 jest.mock('../../../Avatar', () => 'Avatar')
 jest.mock('../../../UIComponents/FloatModals/MorePopupsOfMainViews/Tasks/TaskHeaderMoreButton', () => 'More')
 jest.mock('../../ToggleByTime', () => 'ToggleByTime')
 jest.mock('../../EmailLine/AllProjectsEmailLabelChips', () => 'AllProjectsEmailLabelChips')
 
-describe('AllProjectsLine task actions', () => {
+describe('AllProjectsLine add-task button', () => {
     beforeEach(() => {
+        mockDispatch.mockClear()
+        mockClearStoredWebShareTarget.mockClear()
         const state = {
             loggedUser: { uid: 'user-1', photoURL: '', defaultProjectId: 'project-default' },
             taskViewToggleSection: 'Open',
@@ -19,20 +33,30 @@ describe('AllProjectsLine task actions', () => {
         useSelector.mockImplementation(selector => selector(state))
     })
 
-    it('leaves add-task creation to the board-level floating action', () => {
-        const tree = renderer.create(<AllProjectsLine />)
+    // AT-2306: in All Projects no project is in context, so the popup opens on
+    // "Automatic" rather than silently filing everything in the default project.
+    it('defaults to the Automatic project option', () => {
+        const addTask = renderer.create(<AllProjectsLine />).root.findByType('AddTaskTag')
 
-        expect(tree.root.findAllByType('AddTaskTag')).toHaveLength(0)
-        expect(tree.root.findAllByType('More')).toHaveLength(1)
+        expect(addTask.props.projectId).toBe(AUTOMATIC_PROJECT_OPTION)
+        expect(addTask.props.showProjectSelector).toBe(true)
     })
 
-    it('keeps the existing more action limited to the Open tab', () => {
+    it('opens the same popup with an incoming shared link and consumes it once opened', () => {
         const state = {
             loggedUser: { uid: 'user-1', photoURL: '', defaultProjectId: 'project-default' },
-            taskViewToggleSection: 'Done',
+            taskViewToggleSection: 'Open',
+            pendingWebShareTarget: { id: 'share-1', taskName: 'https://example.com/article' },
         }
         useSelector.mockImplementation(selector => selector(state))
 
-        expect(renderer.create(<AllProjectsLine />).root.findAllByType('More')).toHaveLength(0)
+        const addTask = renderer.create(<AllProjectsLine />).root.findByType('AddTaskTag')
+
+        expect(addTask.props.initialTaskName).toBe('https://example.com/article')
+        expect(addTask.props.autoOpenKey).toBe('share-1')
+
+        addTask.props.onAutoOpen()
+        expect(mockClearStoredWebShareTarget).toHaveBeenCalledTimes(1)
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'Clear pending web share target' })
     })
 })

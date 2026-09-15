@@ -22,6 +22,7 @@ jest.mock('../../styles/global', () => ({
 }))
 jest.mock('../../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../../utils/SharedHelper', () => ({ accessGranted: jest.fn(() => true) }))
+jest.mock('../../Tags/AddTaskTag', () => 'AddTaskTag')
 jest.mock('../../Tags/AddGoalTag', () => 'AddGoalTag')
 jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     __esModule: true,
@@ -118,24 +119,28 @@ describe('TagsArea workflow indicator', () => {
     })
 })
 
-describe('TagsArea task actions (AT-2575)', () => {
+describe('TagsArea add-task button (PT-4745)', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         SharedHelper.accessGranted.mockReturnValue(true)
     })
 
-    it('removes add-task creation from the project line but keeps the more action', () => {
-        const tree = renderTagsArea({ showTaskMore: true })
+    // The "but of course" half of PT-4745: the switcher is on this popup too, and
+    // it opens on THIS project. The popup reads its pre-selection from
+    // `initialProjectId` alone, so handing it the header's own project id is the
+    // whole of the pre-selection contract from this side.
+    it('opens the popup on the project whose line it sits on', () => {
+        const addTask = renderTagsArea({ showAddTask: true }).root.findByType('AddTaskTag')
 
-        expect(tree.root.findAllByType('AddTaskTag')).toHaveLength(0)
-        expect(tree.root.findByType('TaskHeaderMoreButton').props.projectIdOverride).toBe('project-1')
+        expect(addTask.props.projectId).toBe('project-1')
     })
 
-    it('keeps the project-line more action limited to the Open tab', () => {
-        state.taskViewToggleSection = 'Done'
-        const tree = renderTagsArea({ showTaskMore: true })
+    // It must NOT opt out. `showProjectSelector` defaults to on, so passing
+    // nothing is correct — passing `false` would be the regression, and it is
+    // invisible on screen (the row is simply absent).
+    it('does not switch the project switcher off', () => {
+        const addTask = renderTagsArea({ showAddTask: true }).root.findByType('AddTaskTag')
 
-        expect(tree.root.findAllByType('TaskHeaderMoreButton')).toHaveLength(0)
-        state.taskViewToggleSection = 'Open'
+        expect(addTask.props.showProjectSelector).not.toBe(false)
     })
 })
