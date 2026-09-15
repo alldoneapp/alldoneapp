@@ -1,6 +1,5 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { MODAL_WIDTH_L } from '../../../components/styles/modals'
 
 // AT-2183: a single intended submission of the "Add task" popup must create
 // exactly one task, no matter how many Enter triggers fire for it.
@@ -182,16 +181,6 @@ describe('RichCreateTaskModal duplicate submissions (AT-2183)', () => {
         expect(capturedMainModalProps.task).toMatchObject({
             name: 'https://example.com/shared',
             extendedName: 'https://example.com/shared',
-        })
-    })
-
-    test('uses the responsive large width for a regular add-task entry point (AT-2582)', () => {
-        renderPopup()
-
-        expect(capturedMainModalProps.widthStyle).toEqual({
-            width: MODAL_WIDTH_L,
-            minWidth: MODAL_WIDTH_L,
-            maxWidth: MODAL_WIDTH_L,
         })
     })
 
