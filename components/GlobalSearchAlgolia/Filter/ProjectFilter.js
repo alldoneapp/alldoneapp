@@ -17,13 +17,14 @@ export default function ProjectFilter({ setShowSelectProjectModal, selectedProje
             disabled={disabled}
             onPress={setShowSelectProjectModal}
             style={[localStyles.container, containerStyle]}
+            testID="project-filter"
         >
-            <View style={[localStyles.rowContainer, { flexWrap: 'wrap', flex: 1, justifyContent: 'space-between' }]}>
-                <View style={[localStyles.rowContainer, { marginTop: 8 }]}>
+            <View style={[localStyles.rowContainer, localStyles.content]} testID="project-filter-content">
+                <View style={[localStyles.rowContainer, localStyles.label]} testID="project-filter-label">
                     <Icon name="icon-circle" size={24} color="#ffffff" />
                     <Text style={localStyles.text}>{translate(currentText)}</Text>
                 </View>
-                <View style={[localStyles.rowContainer, { flexWrap: 'wrap' }]}>
+                <View style={[localStyles.rowContainer, localStyles.scope]} testID="project-filter-scope">
                     <ScopeTag selectedProject={selectedProject} />
                 </View>
             </View>
@@ -45,6 +46,20 @@ const localStyles = StyleSheet.create({
     },
     rowContainer: {
         flexDirection: 'row',
+    },
+    content: {
+        flex: 1,
+        minWidth: 0,
+        justifyContent: 'flex-start',
+    },
+    label: {
+        flexShrink: 0,
+        marginTop: 8,
+        marginRight: 16,
+    },
+    scope: {
+        flexShrink: 1,
+        minWidth: 0,
     },
     text: {
         ...styles.subtitle1,
