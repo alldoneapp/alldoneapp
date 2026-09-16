@@ -136,6 +136,7 @@ export const initialState = {
     },
     showFloatPopup: 0,
     shownFloatPopup: false,
+    addTaskCreationCount: 0,
     dismissibleActive: false,
     dismissibleComponent: null,
     dismissibleLimits: null,
@@ -811,6 +812,10 @@ export const theReducer = (state = initialState, action) => {
         case 'Reset float popup': {
             return { ...state, showFloatPopup: 0, shownFloatPopup: false }
         }
+        case 'Start add task creation':
+            return { ...state, addTaskCreationCount: (state.addTaskCreationCount || 0) + 1 }
+        case 'Finish add task creation':
+            return { ...state, addTaskCreationCount: Math.max((state.addTaskCreationCount || 0) - 1, 0) }
         case 'Toggle dismissible active':
             return { ...state, dismissibleActive: action.dismissibleActive }
         case 'Set dismissible component':
