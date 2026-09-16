@@ -1,9 +1,7 @@
 # Image for the standalone webpack pipeline (web-bundler/, FRONTEND_MIGRATION_PLAN.md
-# Stage 0). Two dependency trees meet here:
-# - /app/node_modules: the app's runtime deps, reused from the Node 14-era base image
-#   (still installed with npm 6 / lockfile v1 until migration Stage 1+)
-# - /bundler/node_modules: the webpack/babel tooling, installed with modern npm on
-#   Node 22 (web-bundler has its own lockfile v3)
+# Stage 0). Two Node 22 dependency trees meet here:
+# - /app/node_modules: the app's runtime dependencies from the root lockfile
+# - /bundler/node_modules: webpack/babel tooling from web-bundler's lockfile
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS appdeps
 

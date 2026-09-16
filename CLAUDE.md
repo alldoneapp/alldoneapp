@@ -32,9 +32,11 @@ npm run format-code          # Format with Prettier
 **Required versions**: Node 22 (repo-wide, `.nvmrc`), npm 10, firebase-tools 13.29.3.
 Since migration Stage 5 the whole repo — installs (lockfile v3, `.npmrc` with
 legacy-peer-deps), Jest, the web-bundler build, and Cloud Functions work — runs on
-Node 22; the Node 14 / npm 6 / expo-cli era is over. The RN-era scripts still in
-package.json (`start`, `web`, `android`, `ios`, `build-web`, `start-clean`) are dead:
-they need the retired expo/metro toolchain and cannot run under Node 22.
+Node 22; the Node 14 / npm 6 / Expo/Metro CLI era is over. The retired RN-era scripts,
+root webpack/Metro configs, Expo 36 package, and native React Native package were removed
+in the 2026-09-16 dependency-hygiene pass. Application imports still use the
+`react-native` dialect, but webpack and Jest both resolve it explicitly to
+`react-native-web`; do not restore native tooling to make those imports resolve.
 
 **web-bundler (migration Stage 0)**: `web-bundler/` is the standalone webpack 5
 replacement for `expo build:web` (own lockfile, its own babel config). Since Stage 5 it is
