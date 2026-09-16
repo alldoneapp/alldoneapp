@@ -2514,6 +2514,52 @@ describe('assistant attachment handoff helpers', () => {
         expect(buildConversationSafeToolResult('create_task', toolResult)).toBe(toolResult)
     })
 
+    test('labels calendar account targets without exposing internal project IDs', () => {
+        expect(
+            buildConversationSafeToolResult('create_calendar_event', {
+                success: false,
+                code: 'calendar_account_ambiguous',
+                message: 'Choose a calendar account.',
+                projectId: 'internal-top-level-project',
+                event: {
+                    projectId: 'internal-event-project',
+                    eventId: 'event-1',
+                },
+                accounts: [
+                    {
+                        projectId: 'internal-project-1',
+                        calendarEmail: 'one@example.com',
+                        calendarDefault: false,
+                    },
+                    {
+                        projectId: 'internal-project-2',
+                        calendarEmail: 'two@example.com',
+                        calendarDefault: true,
+                    },
+                ],
+            })
+        ).toEqual({
+            success: false,
+            code: 'calendar_account_ambiguous',
+            message: 'Choose a calendar account.',
+            event: {
+                eventId: 'event-1',
+            },
+            availableCalendarTargets: [
+                {
+                    calendarId: 'one@example.com',
+                    calendarEmail: 'one@example.com',
+                    isDefault: false,
+                },
+                {
+                    calendarId: 'two@example.com',
+                    calendarEmail: 'two@example.com',
+                    isDefault: true,
+                },
+            ],
+        })
+    })
+
     test('globally caps oversized tool results before returning them to the model', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
         const safeResult = buildConversationSafeToolResult('get_large_result', {

@@ -2275,7 +2275,7 @@ const toolSchemas = {
                     calendarId: {
                         type: 'string',
                         description:
-                            'Optional calendar ID to write to. Defaults to "primary". Required when multiple connected accounts make the write target ambiguous.',
+                            'Optional non-default calendar target. Omit this field to use the user\'s saved default calendar account. Do not pass "primary" merely to select the default account. Provide a calendar email address or actual non-primary calendar ID only when the user named a different target or the tool requested disambiguation.',
                     },
                 },
                 required: ['summary', 'start', 'end'],
@@ -2363,7 +2363,7 @@ const toolSchemas = {
                     calendarId: {
                         type: 'string',
                         description:
-                            'Optional calendar ID containing the event. Provide this when the event is not on the primary calendar or multiple accounts are connected.',
+                            'Optional non-default calendar target containing the event. Omit this field to use the saved default account. Do not pass "primary" merely to select the default account; provide a calendar email address or actual non-primary calendar ID only when needed.',
                     },
                 },
                 required: ['eventId'],
@@ -2387,7 +2387,7 @@ const toolSchemas = {
                     calendarId: {
                         type: 'string',
                         description:
-                            'Optional calendar ID containing the event. Provide this when the event is not on the primary calendar or multiple accounts are connected.',
+                            'Optional non-default calendar target containing the event. Omit this field to use the saved default account. Do not pass "primary" merely to select the default account; provide a calendar email address or actual non-primary calendar ID only when needed.',
                     },
                 },
                 required: ['eventId'],

@@ -345,7 +345,7 @@ async function collectStreamWithToolCalls(
                     return getUserFacingToolErrorMessage(toolName, error)
                 }
 
-                const followUpInstruction = buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext)
+                const followUpInstruction = buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext, toolResult)
                 const conversationSafeToolArgs = buildConversationSafeToolArgs(toolName, toolArgs, null)
 
                 currentConversation = [
@@ -524,7 +524,7 @@ async function attachPendingInvoiceWithFollowUp({
         },
         {
             role: 'user',
-            content: buildEmailToolResultFollowUpPrompt(invoiceToolName, toolRuntimeContext),
+            content: buildEmailToolResultFollowUpPrompt(invoiceToolName, toolRuntimeContext, toolResult),
         },
     ]
 
@@ -550,12 +550,31 @@ async function attachPendingInvoiceWithFollowUp({
     )
 }
 
-function buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext = {}) {
+function buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext = {}, toolResult = null) {
     const basePrompt = getToolResultFollowUpPrompt({
         finalReply: true,
         toolPhrase: 'other available tools',
         usePlural: false,
     })
+    if (
+        ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'].includes(toolName) &&
+        toolResult?.success === false
+    ) {
+        const failureCode = String(toolResult.code || 'calendar_write_failed')
+        const failureMessage = String(toolResult.message || '')
+        const connectionFailure =
+            ['calendar_not_connected', 'calendar_auth_required'].includes(failureCode) ||
+            /\b(?:invalid_grant|oauth|authentication|authorization|credentials?|access token|refresh token)\b|token has been expired or revoked|reconnect required/i.test(
+                failureMessage
+            )
+        return (
+            `${basePrompt} The calendar write failed with code "${failureCode}". Report that failure accurately. ` +
+            (connectionFailure
+                ? 'Connection guidance is appropriate because the result explicitly reports a calendar connection or authentication problem.'
+                : 'Do not tell the sender to connect or reconnect Calendar: this result does not report a connection or authentication problem. Do not retry by treating internal account or project identifiers as calendar IDs. If a calendar choice is still required, ask the sender to choose from the labelled calendar email targets in the tool result.')
+        )
+    }
+
     if (toolName !== 'find_calendar_availability') return basePrompt
 
     const ownerName = toolRuntimeContext?.calendarOwnerName || 'the account owner'

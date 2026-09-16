@@ -653,6 +653,49 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         ).toBe('Karsten ist verfügbar. Karstens Verfügbarkeit steht in Karstens Kalender.')
     })
 
+    test('does not recommend reconnecting for calendar selection failures', () => {
+        const prompt = __private__.buildEmailToolResultFollowUpPrompt(
+            'create_calendar_event',
+            {},
+            {
+                success: false,
+                code: 'calendar_account_ambiguous',
+                availableCalendarTargets: [
+                    { calendarId: 'one@example.com', calendarEmail: 'one@example.com', isDefault: false },
+                ],
+            }
+        )
+
+        expect(prompt).toContain('Do not tell the sender to connect or reconnect Calendar')
+        expect(prompt).toContain('labelled calendar email targets')
+        expect(prompt).toContain('Do not retry by treating internal account or project identifiers as calendar IDs')
+    })
+
+    test('allows connection guidance only for explicit calendar connection failures', () => {
+        const prompt = __private__.buildEmailToolResultFollowUpPrompt(
+            'create_calendar_event',
+            {},
+            { success: false, code: 'calendar_not_connected' }
+        )
+
+        expect(prompt).toContain('Connection guidance is appropriate')
+        expect(prompt).not.toContain('Do not tell the sender to connect or reconnect Calendar')
+    })
+
+    test('allows reconnect guidance for an explicit OAuth failure message without a structured code', () => {
+        const prompt = __private__.buildEmailToolResultFollowUpPrompt(
+            'create_calendar_event',
+            {},
+            {
+                success: false,
+                message: 'Calendar event creation failed: invalid_grant; token has been expired or revoked.',
+            }
+        )
+
+        expect(prompt).toContain('Connection guidance is appropriate')
+        expect(prompt).not.toContain('Do not tell the sender to connect or reconnect Calendar')
+    })
+
     test('builds a stripped availability context for a later recipient-safe follow-up', () => {
         expect(
             __private__.buildSafeActionContextFromToolResult(
