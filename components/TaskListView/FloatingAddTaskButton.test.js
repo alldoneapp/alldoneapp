@@ -40,6 +40,7 @@ const baseState = {
     loggedUser: { uid: 'user-1' },
     currentUser: { uid: 'user-1' },
     taskViewToggleSection: 'Open',
+    addTaskCreationCount: 0,
 }
 
 const renderButton = (overrides = {}, callStatus = 'idle') => {
@@ -128,5 +129,15 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
             borderRadius: 28,
             boxShadow: '0px 6px 16px rgba(4,20,47,0.24)',
         })
+    })
+
+    it('hides without unmounting while a task is being added', () => {
+        const tree = renderButton({ addTaskCreationCount: 1 })
+        const wrapper = tree.root.findByProps({ testID: 'floating-add-task-button' })
+
+        expect(tree.root.findAllByType('AddTaskTag')).toHaveLength(1)
+        expect(StyleSheet.flatten(wrapper.props.style).opacity).toBe(0)
+        expect(wrapper.props.pointerEvents).toBe('none')
+        expect(wrapper.props.accessibilityElementsHidden).toBe(true)
     })
 })

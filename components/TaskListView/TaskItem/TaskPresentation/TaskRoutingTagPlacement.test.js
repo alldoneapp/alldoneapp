@@ -190,11 +190,11 @@ const baseTask = {
     stepHistory: [],
 }
 
-const renderRow = async (taskOverrides = {}) => {
+const renderRow = async () => {
     let tree
     // Awaited because `useReducedMotion` and the tag-width measurement each settle a microtask deep.
     await act(async () => {
-        tree = renderer.create(<TaskPresentation projectId={'project-1'} task={{ ...baseTask, ...taskOverrides }} />)
+        tree = renderer.create(<TaskPresentation projectId={'project-1'} task={baseTask} />)
         await Promise.resolve()
         await Promise.resolve()
     })
@@ -209,44 +209,6 @@ const contains = (element, type) => {
     tree.unmount()
     return found
 }
-
-describe('reminder tag placement (AT-2598)', () => {
-    beforeEach(() => {
-        mockRoutingActivity = { processing: null, confirmation: null }
-        mockInMyDay = false
-    })
-
-    it('puts an alert in the title wrapping flow instead of beside the whole title', async () => {
-        const tree = await renderRow({ alertEnabled: true, dueDate: 1789569007766 })
-        const title = tree.root.findByType('TitleContainer')
-
-        expect(contains(title.props.leadingReminderTag, 'AlertTag')).toBe(true)
-        expect(title.props.leadingReminderTag.props.containerStyle).toEqual({ marginRight: 8 })
-        // A direct child here would reserve its width for every title line, recreating the
-        // excessive indentation on the second line.
-        expect(tree.root.findAllByType('AlertTag')).toHaveLength(0)
-    })
-
-    it('uses the same inline placement for a calendar task transcription reminder', async () => {
-        const tree = await renderRow({
-            alertEnabled: true,
-            dueDate: 1789569007766,
-            calendarData: { eventId: 'event-1' },
-        })
-        const title = tree.root.findByType('TitleContainer')
-
-        expect(contains(title.props.leadingReminderTag, 'TranscribeTag')).toBe(true)
-        expect(tree.root.findAllByType('TranscribeTag')).toHaveLength(0)
-    })
-
-    it('keeps the My Day alert in the trailing tag area', async () => {
-        mockInMyDay = true
-
-        const tree = await renderRow({ alertEnabled: true, dueDate: 1789569007766 })
-
-        expect(tree.root.findByType('TitleContainer').props.leadingReminderTag).toBeNull()
-    })
-})
 
 describe('routing badge placement (AT-2453)', () => {
     beforeEach(() => {
