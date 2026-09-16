@@ -31,7 +31,7 @@ export default function AllProjectsEmptyInboxTags() {
                         key={project.id}
                         project={project}
                         style={localStyles.projectTag}
-                        shrinkTextToAmountOfLetter={8}
+                        shrinkTextToAmountOfLetter={15}
                     />
                 )
             })}

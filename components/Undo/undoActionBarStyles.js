@@ -58,7 +58,7 @@ const undoActionBarStyles = StyleSheet.create({
         color: colors.UtilityBlue200,
     },
     /**
-     * AT-2503 — the auto-hide countdown, drawn. A bare draining fill with NO track behind it: a
+     * AT-2503 — the ten-second auto-hide, drawn. A bare draining fill with NO track behind it: a
      * grey rail would announce a UI control in what is otherwise a sentence and a button, and it
      * would still be sitting there after the bar had emptied. Same reasoning as the task-completion
      * progress bar in AT-2404.

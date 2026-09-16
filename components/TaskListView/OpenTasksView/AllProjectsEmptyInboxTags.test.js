@@ -47,7 +47,7 @@ describe('AllProjectsEmptyInboxTags', () => {
             'project-1',
             'project-2',
         ])
-        expect(tags.root.findAllByType('ProjectTag').map(tag => tag.props.shrinkTextToAmountOfLetter)).toEqual([8, 8])
+        expect(tags.root.findAllByType('ProjectTag').map(tag => tag.props.shrinkTextToAmountOfLetter)).toEqual([15, 15])
         expect(tags.root.findAllByType(Text)).toHaveLength(0)
     })
 })
