@@ -46,6 +46,7 @@ import {
     INVITE_THEME_DEFAULT,
     normalizeDictatedText,
     buildDictationDelta,
+    buildResolvedPeopleMention,
     placeDictationCaret,
 } from './textInputHelper'
 import RambleButton from '../../UIControls/RambleButton'
@@ -139,6 +140,7 @@ function CustomTextInput3(
         setAssistantId,
         autoFocus,
         onMentionSelected,
+        insertAssistantAsMention = false,
         onContentSizeChange,
         scrollEnabled = true,
         showScrollIndicator = true,
@@ -472,7 +474,16 @@ function CustomTextInput3(
         if (selectUserToMentionEditTag) {
             selectUserToMentionEditTag(item)
         } else if (activeTab === MENTION_MODAL_CONTACTS_TAB) {
-            if (item.isAssistant) {
+            if (item.isAssistant && insertAssistantAsMention) {
+                selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
+                const mention = buildResolvedPeopleMention(item, v4(), editorId, userEditingTagsId)
+                const delta = new Delta()
+                delta.retain(selectionRef.current.index)
+                delta.insert({ mention })
+                delta.insert(' ')
+                delta.delete(mentionTextRef.current.length + 1)
+                quillRef.current.updateContents(delta, 'user')
+            } else if (item.isAssistant) {
                 const { uid: assistantId } = item
                 selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
                 const assistantUrl = `${window.location.origin}${getDvMainTabLink(
