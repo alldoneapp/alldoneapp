@@ -21,7 +21,6 @@ export default function TitleContainer({
     showVerticalEllipsisInByTime,
     leadingVmStatusTag,
     leadingPriorityTag,
-    leadingReminderTag,
     useCommentPopupTextColor,
     setTaskTitleIsMultiline,
     completionProgress,
@@ -34,7 +33,6 @@ export default function TitleContainer({
     // (TaskTagsContainerByTime); here it leads the title so it sits next to the calendar tag.
     const leftCustomElement = (
         <>
-            {!inMyDayAndNotSubtask && leadingReminderTag}
             {!inMyDayAndNotSubtask && leadingPriorityTag}
             {gmailTag}
         </>

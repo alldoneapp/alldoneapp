@@ -17,7 +17,6 @@ import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import useModalSizing from '../../hooks/useModalSizing'
 import useLiftAboveKeyboard from '../../hooks/useLiftAboveKeyboard'
 import useFloatPopupLock from '../../hooks/useFloatPopupLock'
-import useAddTaskCreationLock from '../../hooks/useAddTaskCreationLock'
 import { MODAL_EDGE_GAP } from '../styles/modals'
 import {
     FLOATING_ACTION_POPOVER_GAP,
@@ -68,7 +67,6 @@ function AddTaskTag({
     const autoOpenedKeyRef = useRef(null)
     const autoOpenInitialTaskNameRef = useRef('')
     const popupLock = useFloatPopupLock()
-    const taskCreationLock = useAddTaskCreationLock()
     const { maxHeight: popupMaxHeight, isSheet, windowHeight, safeAreaInsets } = useModalSizing({ size: 'L' })
     const keyboardLift = useLiftAboveKeyboard(popupCardRef)
     const floatingPopupMaxHeight = Math.max(
@@ -92,21 +90,18 @@ function AddTaskTag({
         autoOpenInitialTaskNameRef.current = initialTaskName || ''
         openPopover()
         popupLock.acquire()
-        taskCreationLock.acquire()
         if (onAutoOpen) onAutoOpen()
-    }, [autoOpenKey, initialTaskName, onAutoOpen, openPopover, popupLock, taskCreationLock])
+    }, [autoOpenKey, initialTaskName, onAutoOpen, openPopover, popupLock])
 
     const handleOpen = () => {
         openPopover()
         popupLock.acquire()
-        taskCreationLock.acquire()
     }
 
     const handleClose = () => {
         if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
             closePopover()
             popupLock.release()
-            taskCreationLock.release()
             autoOpenInitialTaskNameRef.current = ''
         }
     }

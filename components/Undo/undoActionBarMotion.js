@@ -9,7 +9,7 @@ import { useReducedMotion } from '../UIComponents/Ghosts/ghostAnimation'
  * Before this, the banner had no transition in either direction: `if (!visible || !action) return
  * null` put a 48px card over the top of the app on one frame and took it away on another. A toast
  * that teleports in is easy to miss entirely — which matters here more than for most decoration,
- * because the thing it is offering is a ten-second window to take an action back.
+ * because the thing it is offering is a five-second window to take an action back.
  *
  * Four decisions, in the order they were made:
  *
@@ -53,7 +53,7 @@ export const UNDO_EXIT_SETTLE_BUFFER_MS = 60
  * because the auto-hide timer and the countdown line that visualises it must be the same number:
  * a bar that empties before or after the banner actually leaves is worse than no bar at all.
  */
-export const UNDO_DISPLAY_TIME_MS = 10000
+export const UNDO_DISPLAY_TIME_MS = 5000
 
 /**
  * The values a settled banner sits at. Every variant must start its exit here and end its entry
@@ -189,7 +189,7 @@ const variantById = id => UNDO_ANIMATION_VARIANTS[id] || UNDO_ANIMATION_VARIANTS
  * test (and a user) sees a toast that ignored them.
  *
  * The countdown is the one thing here that is not decoration — it says how long is left to press
- * Undo — but it is also ten full seconds of continuous movement, which is the exact shape of motion
+ * Undo — but it is also five full seconds of continuous movement, which is the exact shape of motion
  * `prefers-reduced-motion` exists to suppress. It is dropped rather than frozen: a static full-width
  * line states a falsehood, and the information it carries is still available in the plainest
  * possible form, namely that the banner is about to go away.
