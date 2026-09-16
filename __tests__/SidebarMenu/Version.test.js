@@ -7,7 +7,7 @@ import { Provider } from 'react-redux'
 import { Platform } from 'react-native'
 import Version from '../../components/SidebarMenu/Version'
 import store from '../../redux/store'
-import { render, fireEvent } from '@testing-library/react-native'
+import { render, fireEvent } from '@testing-library/react'
 import renderer from 'react-test-renderer'
 
 // MyPlatform.osType only consults window.navigator off the mobile path,
@@ -54,16 +54,12 @@ describe('Version component', () => {
 
     describe('Clicking the resfresh button works', () => {
         it('test', () => {
-            // getByTestId only matches host elements, and react-native-web
-            // hosts are DOM tags that carry data-testid instead of testID -
-            // match the touchable component by prop instead.
-            const { UNSAFE_getByProps } = render(
+            const { getByTestId } = render(
                 <Provider store={store}>
                     <Version />
                 </Provider>
             )
-            const button = UNSAFE_getByProps({ testID: 'refreshButton' })
-            fireEvent.press(button)
+            fireEvent.click(getByTestId('refreshButton'))
         })
     })
 })

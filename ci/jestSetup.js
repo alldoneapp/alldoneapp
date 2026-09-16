@@ -80,11 +80,15 @@ if (!String.prototype.replaceAll) {
 // such as `display: 'inline-flex'` (components/Tags/LinkTag.js) are legal in
 // the browser but make StyleSheet.create() throw here, which takes down every
 // suite that transitively imports the tag components.
-jest.mock('react-native/Libraries/StyleSheet/StyleSheetValidation', () => ({
-    validateStyle: () => {},
-    validateStyleProp: () => {},
-    addValidStylePropTypes: () => {},
-}))
+jest.mock(
+    'react-native/Libraries/StyleSheet/StyleSheetValidation',
+    () => ({
+        validateStyle: () => {},
+        validateStyleProp: () => {},
+        addValidStylePropTypes: () => {},
+    }),
+    { virtual: true }
+)
 
 // React 18 defers passive effects (useEffect) to the scheduler. Legacy suites
 // that render with react-test-renderer and never unmount would have those
