@@ -91,6 +91,11 @@ function prepareManualTaskMove({
         parentGoalId: targetGoal?.id || null,
         parentGoalIsPublicFor: targetGoal?.isPublicFor || null,
         lockKey: targetGoal?.lockKey || '',
+        // A project move creates the task again in the destination project. Clear
+        // every completed or pending decision from the source project so the
+        // destination onCreate trigger evaluates its own Goals. Tasks moved as
+        // part of a Goal keep their routing state and the copied Goal association.
+        goalSuggestion: targetGoal ? task.goalSuggestion || null : null,
         isPublicFor,
         sortIndex: isRootTask ? timestamp : -timestamp,
         creatorId: targetMembers.has(rootTask.creatorId) ? rootTask.creatorId : actorId,
@@ -298,6 +303,7 @@ async function moveTaskToDifferentProject(params) {
             movedTask.parentGoalId = null
             movedTask.parentGoalIsPublicFor = null
             movedTask.lockKey = ''
+            movedTask.goalSuggestion = null
             if (isRootTask && movedTask.parentId) {
                 movedTask.parentId = null
                 movedTask.isSubtask = false

@@ -17,6 +17,7 @@ import { translate } from '../../../i18n/TranslationService'
 
 export const CREATED_BY_ME_CHIP_LABEL = 'Only created by me'
 export const ARCHIVED_CHIP_LABEL = 'Include archived'
+export const OPEN_TASKS_CHIP_LABEL = 'Only open tasks'
 
 /**
  * The search popup's filter row as chips, matching the task list's
@@ -28,8 +29,9 @@ export const ARCHIVED_CHIP_LABEL = 'Include archived'
  * template/guide projects are only searched when one is explicitly picked as
  * the scope.
  *
- * The scope chip is a PICKER (opens SelectProjectModalInSearch, alt+1); the
- * two toggles are "Only created by me" and "Include archived".
+ * The scope chip is a PICKER (opens SelectProjectModalInSearch, alt+1). The
+ * general toggles are "Only created by me" and "Include archived"; Tasks also
+ * exposes "Only open tasks" while that result tab is selected.
  *
  * "Include archived" is back (AT-2524) after AT-2390 removed it, and the two
  * archived controls no longer overlap because they answer DIFFERENT questions:
@@ -56,6 +58,9 @@ export default function SearchFilterChips({
     includeArchived,
     onToggleArchived,
     showArchivedChip,
+    openTasksOnly,
+    onToggleOpenTasks,
+    showOpenTasksChip,
     disabled,
     mobile,
     compact,
@@ -89,6 +94,15 @@ export default function SearchFilterChips({
                         onPress={onToggleArchived}
                         disabled={disabled}
                         testID={'search-filter-archived'}
+                    />
+                )}
+                {showOpenTasksChip && (
+                    <ToggleChip
+                        label={OPEN_TASKS_CHIP_LABEL}
+                        selected={openTasksOnly}
+                        onPress={onToggleOpenTasks}
+                        disabled={disabled}
+                        testID={'search-filter-open-tasks'}
                     />
                 )}
             </ScrollView>

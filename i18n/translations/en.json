@@ -2823,6 +2823,7 @@
     "Amount earlier unread messages": "%{amount} earlier unread messages",
     "Only created by me": "Only created by me",
     "Include archived": "Include archived",
+    "Only open tasks": "Only open tasks",
     "Automatic project description": "Let Alldone pick the project for you",
     "Automatic project selection": "Automatic project selection",
     "Open the task": "Open task",
