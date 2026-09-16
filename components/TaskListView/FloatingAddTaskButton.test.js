@@ -40,7 +40,7 @@ const baseState = {
     loggedUser: { uid: 'user-1' },
     currentUser: { uid: 'user-1' },
     taskViewToggleSection: 'Open',
-    addTaskCreationCount: 0,
+    taskEditorCount: 0,
 }
 
 const renderButton = (overrides = {}, callStatus = 'idle') => {
@@ -131,8 +131,8 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
         })
     })
 
-    it('hides without unmounting while a task is being added', () => {
-        const tree = renderButton({ addTaskCreationCount: 1 })
+    it('hides without unmounting while a task editor is active', () => {
+        const tree = renderButton({ taskEditorCount: 1 })
         const wrapper = tree.root.findByProps({ testID: 'floating-add-task-button' })
 
         expect(tree.root.findAllByType('AddTaskTag')).toHaveLength(1)

@@ -69,6 +69,8 @@ const mockStoreState = {
     loggedUser: { uid: 'user-1' },
 }
 
+const mockUseTaskEditorLock = jest.fn()
+
 const mockNewDefaultTask = () => ({
     done: false,
     inDone: false,
@@ -196,6 +198,10 @@ jest.mock('../../../utils/NavigationService', () => ({
 jest.mock('../../../utils/HelperFunctions', () => ({ dismissAllPopups: jest.fn() }))
 jest.mock('../../../utils/LinkingHelper', () => ({ getLinkedParentUrl: jest.fn(() => '') }))
 jest.mock('../../../hooks/useRevealEditorOnOpen', () => ({ __esModule: true, default: jest.fn() }))
+jest.mock('../../../hooks/useTaskEditorLock', () => ({
+    __esModule: true,
+    default: active => mockUseTaskEditorLock(active),
+}))
 
 jest.mock('../../../utils/backends/firestore', () => ({ setLinkedParentObjects: jest.fn() }))
 jest.mock('../../../utils/backends/openTasks', () => ({ TODAY_DATE: 'Today' }))
@@ -239,6 +245,42 @@ const renderAddTaskEditor = () => {
         )
     })
 }
+
+const renderExistingTaskEditor = () => {
+    onCancelAction = jest.fn()
+    const task = { ...mockNewDefaultTask(), id: 'task-1', name: 'Existing task', extendedName: 'Existing task' }
+
+    act(() => {
+        tree = renderer.create(
+            <EditTask task={task} isSubtask={false} projectId="project-1" onCancelAction={onCancelAction} />
+        )
+    })
+}
+
+describe('existing task editor visibility lock', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    afterEach(() => {
+        act(() => {
+            tree?.unmount()
+        })
+        tree = null
+    })
+
+    test('activates the shared task-editor lock for an existing task', () => {
+        renderExistingTaskEditor()
+
+        expect(mockUseTaskEditorLock).toHaveBeenCalledWith(true)
+    })
+
+    test('leaves creation locking to the add-task entry point', () => {
+        renderAddTaskEditor()
+
+        expect(mockUseTaskEditorLock).toHaveBeenCalledWith(false)
+    })
+})
 
 describe('dictating into the add-new-task field', () => {
     beforeEach(() => {

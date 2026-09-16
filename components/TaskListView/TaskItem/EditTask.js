@@ -57,6 +57,7 @@ import TaskInputArea from './TaskInputArea'
 import CheckboxAndIcon from './CheckboxAndIcon'
 import { taskEditorLayout } from './TaskEditorLayout'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
+import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
 import { mergeBackgroundTaskUpdates } from './mergeBackgroundTaskUpdates'
 import { postponeTaskWithMotion } from './TaskPresentation/taskPostponeMotion'
 
@@ -112,6 +113,7 @@ export default function EditTask({
     createSubtask,
 }) {
     const dispatch = useDispatch()
+    useTaskEditorLock(!adding)
     let currentUserId = useSelector(state => state.currentUser.uid)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)

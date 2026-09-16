@@ -18,7 +18,7 @@ jest.mock('react-redux', () => ({
             addTaskSectionToOpenData: null,
         }),
 }))
-jest.mock('../../../hooks/useAddTaskCreationLock', () => () => ({
+jest.mock('../../../hooks/useTaskEditorLock', () => () => ({
     acquire: mockAcquire,
     release: mockRelease,
 }))

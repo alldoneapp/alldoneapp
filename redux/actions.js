@@ -229,12 +229,12 @@ export const setDismissibleComponent = dismissibleComponent => {
     return action
 }
 
-export const startAddTaskCreation = () => ({
-    type: 'Start add task creation',
+export const startTaskEditor = () => ({
+    type: 'Start task editor',
 })
 
-export const finishAddTaskCreation = () => ({
-    type: 'Finish add task creation',
+export const finishTaskEditor = () => ({
+    type: 'Finish task editor',
 })
 
 export const setShortcutFocusTasks = shortcutFocusTasks => {

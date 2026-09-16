@@ -14,15 +14,15 @@ import { DATE_TASK_INDEX, TODAY_DATE } from '../../../utils/backends/openTasks'
 import EditTask from '../TaskItem/EditTask'
 import { setAddTaskSectionToOpenData } from '../../../redux/actions'
 import { taskEditorLayout } from '../TaskItem/TaskEditorLayout'
-import useAddTaskCreationLock from '../../../hooks/useAddTaskCreationLock'
+import useTaskEditorLock from '../../../hooks/useTaskEditorLock'
 
 function AddTaskEditor(props) {
-    const taskCreationLock = useAddTaskCreationLock()
+    const taskEditorLock = useTaskEditorLock()
 
     useEffect(() => {
-        taskCreationLock.acquire()
-        return taskCreationLock.release
-    }, [taskCreationLock])
+        taskEditorLock.acquire()
+        return taskEditorLock.release
+    }, [taskEditorLock])
 
     return <EditTask {...props} />
 }
