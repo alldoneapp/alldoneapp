@@ -187,7 +187,7 @@ describe('the Undo banner show/hide animation, wired up (AT-2503)', () => {
         expect(container(tree).props.dataSet.undoAnimationPhase).toBe('shown')
     })
 
-    describe('the five-second countdown line', () => {
+    describe('the ten-second countdown line', () => {
         it('draws while the auto-hide timer is actually running', () => {
             const tree = render()
 
@@ -262,7 +262,7 @@ describe('the Undo banner show/hide animation, wired up (AT-2503)', () => {
         })
 
         /**
-         * The countdown is five seconds of continuous movement — the exact shape of motion this
+         * The countdown is ten seconds of continuous movement — the exact shape of motion this
          * preference exists to suppress. It is dropped rather than frozen: a static full-width line
          * would state something untrue.
          */
