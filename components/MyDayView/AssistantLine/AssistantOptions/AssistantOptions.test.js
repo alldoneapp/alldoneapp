@@ -603,6 +603,23 @@ describe('AssistantOptions search button', () => {
     })
 })
 
+describe('AssistantOptions mentions (AT-2592)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        localStorage.clear()
+    })
+
+    it('asks the shared composer to preserve selected assistants as real mentions', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+        })
+
+        const input = tree.root.findByType(TextInput)
+        expect(input.props.insertAssistantAsMention).toBe(true)
+    })
+})
+
 // AT-2442: the greeting shares one centred `numberOfLines={1}` line with the assistant's
 // display name, so it ellipsises on narrow phones as soon as it grows. These pin BOTH
 // halves of a copy change — the rendered string and the localisation — because the header
