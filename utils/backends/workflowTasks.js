@@ -3,7 +3,6 @@ import { getDb, mapTaskData } from './firestore'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 
 import store from '../../redux/store'
-import { startLoadingData, stopLoadingData } from '../../redux/actions'
 import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
 import TasksHelper, { OPEN_STEP } from '../../components/TaskListView/Utils/TasksHelper'
 import { chronoEntriesOrder } from '../HelperFunctions'
@@ -113,9 +112,6 @@ const processSubtaskChange = (subtasksByParentId, subtasksById, subtasksListToSo
 }
 
 export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
-    setTimeout(() => {
-        store.dispatch(startLoadingData())
-    })
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
     const loggedUserId = loggedUser.uid
@@ -188,7 +184,7 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
         .where('currentReviewerId', '!=', currentUserId)
         .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
-    const gate = createCachedSnapshotGate(() => handleWorkflowTasksSnapshot)
+    const gate = createCachedSnapshotGate(() => handleWorkflowTasksSnapshot, { loadingSource: 'workflow_tasks' })
     function handleWorkflowTasksSnapshot(querySnapshot) {
         const changes = querySnapshot
             .docChanges()
@@ -226,10 +222,9 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
 
                 cacheChanges = []
             }
-            store.dispatch(stopLoadingData())
         }
     }
-    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleWorkflowTasksSnapshot))
+    const unsub = gate.subscribe(query)
 
     userTasksInWorkflow[projectId] = { [currentUserId]: unsub }
 }

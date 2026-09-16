@@ -16,8 +16,6 @@ import {
     setOpenSubtasksMap,
     setOpenTasksMap,
     setTaskListWatchersVars,
-    startLoadingData,
-    stopLoadingData,
     updateSubtaskByTask,
     setLaterTasksExpanded,
     setTaskListSingleLoading,
@@ -687,10 +685,6 @@ const watchUserOpenTasks = (
         performanceSource,
     } = {}
 ) => {
-    if (!areObservedTasks && affectsLoadingState)
-        setTimeout(() => {
-            store.dispatch(startLoadingData())
-        })
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
     const assistantOwner = !!currentUser.temperature
@@ -720,7 +714,10 @@ const watchUserOpenTasks = (
     // empty and during a create it lives only through the projection round trip. Declared up here
     // rather than beside the subscriber that fills it, because the snapshot handler reads it.
     const unconfirmedOptimisticTaskIds = new Set()
-    const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, { trackConnectionHealth })
+    const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, {
+        trackConnectionHealth,
+        loadingSource: !areObservedTasks && affectsLoadingState ? 'open_tasks' : undefined,
+    })
     const snapshotPerformance = createFirstSnapshotPerformance(
         {
             object_type: 'tasks',
@@ -787,11 +784,8 @@ const watchUserOpenTasks = (
      * The delivery half of the snapshot handler, split out so AT-2342's optimistic insert can
      * reach it without impersonating a Firestore snapshot.
      *
-     * `optimistic` turns off the two things that belong to a real snapshot and only to it:
-     * flushing whatever `cachedSnapshotGate` has buffered (those changes are still waiting for
-     * a server snapshot to confirm them - a locally created task is no reason to render a
-     * half-synced list early), and `stopLoadingData()`, which decrements a *counter* and would
-     * corrupt the global spinner if called without a matching `startLoadingData()`.
+     * Optimistic publications neither flush buffered snapshots nor complete the
+     * initial read. Only the snapshot gate can release this listener's loading owner.
      */
     function deliverOpenTasksChanges(changes, { optimistic = false } = {}) {
         // AT-2337: one snapshot used to produce ~10 separate store notifications,
@@ -838,8 +832,6 @@ const watchUserOpenTasks = (
                 // for the five-second safety timeout despite already having data.
                 batchDispatch(updateInitialLoadingEndOpenTasks(instanceKey, true))
             }
-
-            if (!optimistic && (!areObservedTasks ? affectsLoadingState : true)) batchDispatch(stopLoadingData())
 
             batchDispatch(
                 setOpenSubtasksMap(projectId, {
@@ -961,7 +953,13 @@ const watchUserOpenTasks = (
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
 
-    const unsub = gate.wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, handleOpenTasksSnapshot))
+    let unsub
+    try {
+        unsub = gate.subscribe(query)
+    } catch (error) {
+        unsubOptimistic()
+        throw error
+    }
     let unsubscribed = false
     const unsubAll = () => {
         if (unsubscribed) return

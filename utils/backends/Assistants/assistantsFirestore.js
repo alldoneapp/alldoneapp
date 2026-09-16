@@ -1,4 +1,5 @@
 import firebase from 'firebase/compat/app'
+import { subscribeWithLoading } from '../../redux/loadingOperation'
 
 import TasksHelper from '../../../components/TaskListView/Utils/TasksHelper'
 import {
@@ -170,50 +171,37 @@ export async function getGlobalAssistants() {
 }
 
 export function watchAssistants(projectId, watcherKey, callback, { onError } = {}) {
-    let firstSnap = true
-    store.dispatch(startLoadingData())
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`assistants/${projectId}/items`)
-        .orderBy('lastEditionDate', 'desc')
-        .onSnapshot(
-            assistantDocs => {
-                let assistants = []
-                assistantDocs.forEach(doc => {
-                    const assistant = doc.data()
-                    assistant.uid = doc.id
-                    assistants.push(assistant)
-                })
-                callback(assistants)
-                if (firstSnap) {
-                    firstSnap = false
-                    store.dispatch(stopLoadingData())
-                }
-            },
-            error => {
-                if (firstSnap) {
-                    firstSnap = false
-                    store.dispatch(stopLoadingData())
-                }
-                onError?.(error)
-            }
-        )
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'project_assistants',
+        (next, error) =>
+            getDb()
+                .collection(`assistants/${projectId}/items`)
+                .orderBy('lastEditionDate', 'desc')
+                .onSnapshot(next, error),
+        assistantDocs => {
+            let assistants = []
+            assistantDocs.forEach(doc => {
+                const assistant = doc.data()
+                assistant.uid = doc.id
+                assistants.push(assistant)
+            })
+            callback(assistants)
+        },
+        { onError }
+    )
 }
 
 export function watchAssistant(projectId, assistantId, watcherKey, callback) {
-    let firstSnap = true
-    store.dispatch(startLoadingData())
-    globalWatcherUnsub[watcherKey] = getDb()
-        .doc(`assistants/${projectId}/items/${assistantId}`)
-        .onSnapshot(doc => {
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'assistant',
+        (next, error) => getDb().doc(`assistants/${projectId}/items/${assistantId}`).onSnapshot(next, error),
+        doc => {
             const assistant = doc.data()
             if (assistant) assistant.uid = doc.id
 
             callback(assistant)
-            if (firstSnap) {
-                firstSnap = false
-                store.dispatch(stopLoadingData())
-            }
-        })
+        }
+    )
 }
 
 export async function getProjectAssistants(projectId) {
@@ -230,8 +218,6 @@ export async function getProjectAssistants(projectId) {
 }
 
 export function watchAssistantTasks(projectId, assistantId, watcherKey, callback) {
-    let firstSnap = true
-    store.dispatch(startLoadingData())
     const collectionPath = getAssistantTasksCollectionPath(projectId, assistantId)
     let query = getDb().collection(collectionPath)
 
@@ -239,20 +225,20 @@ export function watchAssistantTasks(projectId, assistantId, watcherKey, callback
         query = query.where('assistantId', '==', assistantId)
     }
 
-    globalWatcherUnsub[watcherKey] = query.onSnapshot(assistantDocs => {
-        const tasks = []
-        assistantDocs.forEach(doc => {
-            tasks.push(mapAssistantTaskData(doc.id, doc.data()))
-        })
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'assistant_tasks',
+        (next, error) => query.onSnapshot(next, error),
+        assistantDocs => {
+            const tasks = []
+            assistantDocs.forEach(doc => {
+                tasks.push(mapAssistantTaskData(doc.id, doc.data()))
+            })
 
-        sortAssistantTasks(tasks)
-        setAssistantTasksCache(projectId, assistantId, tasks)
-        callback(tasks)
-        if (firstSnap) {
-            firstSnap = false
-            store.dispatch(stopLoadingData())
+            sortAssistantTasks(tasks)
+            setAssistantTasksCache(projectId, assistantId, tasks)
+            callback(tasks)
         }
-    })
+    )
 }
 
 export async function getPreConfigTasksForProject(projectId) {
