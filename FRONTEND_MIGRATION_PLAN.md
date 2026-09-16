@@ -218,6 +218,15 @@ items rather than a sequence, and they resolved differently once measured:
 
 ## Status log
 
+- 2026-09-16 — **Retired Expo/native dependency tail removed.** The deployed web-only
+  architecture now exists in the dependency graph as well as the bundler: removed the
+  dead Expo/RN scripts, Expo 36, React Native 0.61, the old Expo/Metro presets and root
+  configs, native-only testing-library packages, and the stale optimized-build manifest.
+  Webpack and Jest resolve `react-native` explicitly to `react-native-web`. A scoped npm
+  override keeps remaining minimatch 3.x consumers on 3.1.4 or newer, and a dependency
+  hygiene test prevents `xmldom`, vulnerable minimatch 3.x releases, and the retired
+  direct packages from returning.
+
 - 2026-08-10 — **Stage 6 executed as its dependency floor only; React 19 and
   `moment` → `dayjs` deferred on evidence.** Branch `frontend-migration-stage-6`.
   With this the migration is complete: stages 0–5 shipped in full, and stage 6's
