@@ -755,7 +755,7 @@ describe('taskGoalRouting', () => {
     })
 
     test.each(['none', 'dismissed', 'failed', 'superseded'])(
-        'does not rerun resolved %s routing state after a project move',
+        'does not rerun resolved %s routing state without an explicit project-move reset',
         async status => {
             const { db, state } = createDb()
             const resolvedSuggestion = {
