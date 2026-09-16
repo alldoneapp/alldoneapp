@@ -57,6 +57,12 @@ describe('prepareManualTaskMove', () => {
         parentGoalId: 'goal-1',
         parentGoalIsPublicFor: [0],
         lockKey: 'goal-key',
+        goalSuggestion: {
+            goalId: 'goal-1',
+            status: 'auto_assigned',
+            projectId: 'project-a',
+            claimId: 'source-claim',
+        },
         isPublicFor: [0],
         sortIndex: 1,
         done: false,
@@ -88,6 +94,7 @@ describe('prepareManualTaskMove', () => {
             parentGoalId: null,
             parentGoalIsPublicFor: null,
             lockKey: '',
+            goalSuggestion: null,
             creatorId: 'creator-1',
             sortIndex: 1000,
             projectMove: { requestId: 'request-1', status: 'moving' },
@@ -168,6 +175,7 @@ describe('prepareManualTaskMove', () => {
             parentGoalId: 'goal-1',
             parentGoalIsPublicFor: ['owner-1'],
             lockKey: 'target-lock',
+            goalSuggestion: baseTask.goalSuggestion,
         })
     })
 })
@@ -184,6 +192,12 @@ describe('moveTaskToDifferentProject manual orchestration', () => {
                 isPublicFor: [0],
                 subtaskIds: ['subtask-1'],
                 created: 10,
+                goalSuggestion: {
+                    goalId: 'source-goal',
+                    status: 'dismissed',
+                    projectId: 'project-a',
+                    claimId: 'source-claim',
+                },
             },
             [subtaskPath]: {
                 id: 'subtask-1',
@@ -215,6 +229,7 @@ describe('moveTaskToDifferentProject manual orchestration', () => {
         expect(result).toMatchObject({ moved: true, movedTaskCount: 2 })
         expect(state.get('items/project-b/tasks/task-1')).toMatchObject({
             projectId: 'project-b',
+            goalSuggestion: null,
             projectMove: { requestId: 'request-1', status: 'completed' },
         })
         expect(state.get('items/project-b/tasks/subtask-1')).toMatchObject({
@@ -242,5 +257,45 @@ describe('moveTaskToDifferentProject manual orchestration', () => {
                 manual: true,
             })
         ).resolves.toMatchObject({ moved: false, reason: 'already_moved' })
+    })
+})
+
+describe('moveTaskToDifferentProject assistant orchestration', () => {
+    it('clears source Goal routing state so the destination create trigger re-evaluates the task', async () => {
+        const { database, state } = createMoveDatabase({
+            'items/project-a/tasks/task-1': {
+                id: 'task-1',
+                name: 'Prepare launch plan',
+                userId: 'user-1',
+                creatorId: 'user-1',
+                parentGoalId: 'source-goal',
+                parentGoalIsPublicFor: [0],
+                lockKey: 'source-goal-lock',
+                goalSuggestion: {
+                    goalId: 'source-goal',
+                    status: 'auto_assigned',
+                    projectId: 'project-a',
+                    claimId: 'source-claim',
+                },
+                subtaskIds: [],
+            },
+        })
+
+        await moveTaskToDifferentProject({
+            database,
+            sourceProjectId: 'project-a',
+            targetProjectId: 'project-b',
+            taskId: 'task-1',
+            editorId: 'user-1',
+            copyChat: jest.fn(async () => {}),
+            copyInnerFeeds: jest.fn(async () => {}),
+        })
+
+        expect(state.get('items/project-b/tasks/task-1')).toMatchObject({
+            parentGoalId: null,
+            parentGoalIsPublicFor: null,
+            lockKey: '',
+            goalSuggestion: null,
+        })
     })
 })
