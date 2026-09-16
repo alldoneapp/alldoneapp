@@ -43,6 +43,16 @@ describe('Calendar assistant tool schemas', () => {
         expect(toolSchemas.update_calendar_event.function.parameters.required).toEqual(['eventId'])
         expect(toolSchemas.delete_calendar_event.function.parameters.required).toEqual(['eventId'])
     })
+
+    test('tells calendar writes to omit primary and use the saved default account', () => {
+        const calendarWriteToolNames = ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event']
+        calendarWriteToolNames.forEach(toolName => {
+            const description = toolSchemas[toolName].function.parameters.properties.calendarId.description
+            expect(description).toMatch(/omit this field/i)
+            expect(description).toMatch(/saved default/i)
+            expect(description).toMatch(/do not pass "primary"/i)
+        })
+    })
 })
 
 describe('Gmail assistant tool schemas', () => {

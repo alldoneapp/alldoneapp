@@ -881,6 +881,66 @@ describe('assistantCalendarTools', () => {
         expect(calendarClients.p1.events.insert).not.toHaveBeenCalled()
     })
 
+    test('treats explicit primary as the saved default account when multiple are connected', async () => {
+        setUser('user-1', {
+            projectIds: ['p1', 'p2'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com', calendarDefault: false },
+                p2: { calendar: true, calendarEmail: 'two@example.com', calendarDefault: true },
+            },
+        })
+
+        const nonDefaultClient = setCalendarClient('p1')
+        const defaultClient = setCalendarClient('p2')
+        defaultClient.events.insert.mockResolvedValue({
+            data: {
+                id: 'evt-explicit-primary',
+                summary: 'Default Event',
+                start: { dateTime: '2026-03-11T09:00:00+01:00' },
+                end: { dateTime: '2026-03-11T10:00:00+01:00' },
+            },
+        })
+
+        const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            summary: 'Default Event',
+            start: '2026-03-11T09:00:00+01:00',
+            end: '2026-03-11T10:00:00+01:00',
+            calendarId: 'primary',
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.projectId).toBe('p2')
+        expect(defaultClient.events.insert).toHaveBeenCalledWith(expect.objectContaining({ calendarId: 'primary' }))
+        expect(nonDefaultClient.calendars.get).not.toHaveBeenCalled()
+        expect(nonDefaultClient.events.insert).not.toHaveBeenCalled()
+    })
+
+    test('keeps explicit primary ambiguous when multiple accounts have no saved default', async () => {
+        setUser('user-1', {
+            projectIds: ['p1', 'p2'],
+            apisConnected: {
+                p1: { calendar: true, calendarEmail: 'one@example.com', calendarDefault: false },
+                p2: { calendar: true, calendarEmail: 'two@example.com', calendarDefault: false },
+            },
+        })
+
+        const firstClient = setCalendarClient('p1')
+        const secondClient = setCalendarClient('p2')
+        const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            summary: 'Ambiguous',
+            start: '2026-03-11T09:00:00+01:00',
+            end: '2026-03-11T10:00:00+01:00',
+            calendarId: 'primary',
+        })
+
+        expect(result.success).toBe(false)
+        expect(result.code).toBe('calendar_account_ambiguous')
+        expect(firstClient.calendars.get).not.toHaveBeenCalled()
+        expect(secondClient.calendars.get).not.toHaveBeenCalled()
+    })
+
     // AT-2198: every meeting Anna books must come with a join link already attached.
     describe('automatic Google Meet conferencing', () => {
         function connectSingleAccount() {
