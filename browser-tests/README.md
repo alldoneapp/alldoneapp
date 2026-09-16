@@ -416,7 +416,7 @@ leave an erased, zero-height hole that a user can neither see nor click.
 The Undo banner used to appear and vanish on a single frame. AT-2503 gave it four entry animations
 (drop, pop, glide, tilt), picked at random with a no-repeat rule, an exit that mirrors whichever one
 arrived, a small beat when its content changes in place, and a line along its bottom edge that
-drains over the ten seconds before it hides itself.
+drains over the five seconds before it hides itself.
 
 Jest covers the two halves it can: `undoActionBarMotion.test.js` checks the keyframe geometry
 exhaustively (every entry lands at rest, every exit starts there, every entry overshoots, and no
