@@ -917,7 +917,13 @@ async function resolveCalendarAccountForWrite({ userId, calendarId }) {
         }
     }
 
-    if (!calendarId) {
+    // Google uses "primary" as an alias within each account. When more than one account is
+    // connected, probing that alias across every account makes the otherwise deterministic saved
+    // default look ambiguous. Treat an explicit "primary" exactly like an omitted target so tool
+    // callers cannot accidentally bypass the user's saved default account.
+    const targetsDefaultCalendar = !calendarId || resolvedCalendarId === DEFAULT_CALENDAR_ID
+
+    if (targetsDefaultCalendar) {
         const defaultAccount = accounts.find(account => account.calendarDefault)
         if (defaultAccount) {
             return {
@@ -944,12 +950,12 @@ async function resolveCalendarAccountForWrite({ userId, calendarId }) {
         }
     }
 
-    if (!calendarId) {
+    if (targetsDefaultCalendar) {
         return {
             success: false,
             code: 'calendar_account_ambiguous',
             message:
-                'Multiple Google Calendar accounts are connected. Please provide a calendarId or connect only one Calendar account for assistant writes.',
+                'Multiple Google Calendar accounts are connected and no saved default is available. Please specify one of the connected calendar email targets or set a default Calendar account.',
             accounts,
         }
     }

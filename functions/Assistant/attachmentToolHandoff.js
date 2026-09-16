@@ -4,6 +4,7 @@ const GLOBAL_TOOL_RESULT_MAX_STRING_LENGTH = 2000
 const GLOBAL_TOOL_RESULT_MAX_ARRAY_ITEMS = 20
 const GLOBAL_TOOL_RESULT_MAX_OBJECT_KEYS = 50
 const BINARY_TOOL_ARG_KEY_PATTERN = /(?:^|_)(?:file_?)?base64(?:$|_)|(?:^|_)(?:data_?url|content_?bytes)(?:$|_)/i
+const CALENDAR_WRITE_TOOL_NAMES = new Set(['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'])
 
 function isObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -53,6 +54,32 @@ function buildConversationSafeCalendarAvailabilityResult(toolResult) {
         }
     }
 
+    return safeResult
+}
+
+function buildConversationSafeCalendarWriteResult(toolResult) {
+    if (!isObject(toolResult)) return toolResult
+
+    const safeResult = { ...toolResult }
+    const accounts = safeResult.accounts
+    delete safeResult.accounts
+    delete safeResult.projectId
+    if (isObject(safeResult.event)) {
+        safeResult.event = { ...safeResult.event }
+        delete safeResult.event.projectId
+    }
+
+    const availableCalendarTargets = Array.isArray(accounts)
+        ? accounts
+              .map(account => ({
+                  calendarId: typeof account?.calendarEmail === 'string' ? account.calendarEmail.trim() : '',
+                  calendarEmail: typeof account?.calendarEmail === 'string' ? account.calendarEmail.trim() : '',
+                  isDefault: account?.calendarDefault === true,
+              }))
+              .filter(target => target.calendarId)
+        : []
+
+    if (availableCalendarTargets.length > 0) safeResult.availableCalendarTargets = availableCalendarTargets
     return safeResult
 }
 
@@ -208,6 +235,8 @@ function buildConversationSafeToolResult(toolName, toolResult) {
     let safeToolResult = toolResult
     if (toolName === 'find_calendar_availability') {
         safeToolResult = buildConversationSafeCalendarAvailabilityResult(toolResult)
+    } else if (CALENDAR_WRITE_TOOL_NAMES.has(toolName)) {
+        safeToolResult = buildConversationSafeCalendarWriteResult(toolResult)
     } else if (toolName === 'search') {
         safeToolResult = buildConversationSafeSearchResult(toolResult)
     } else if (isSuccessfulAttachmentToolResult(toolName, toolResult)) {
