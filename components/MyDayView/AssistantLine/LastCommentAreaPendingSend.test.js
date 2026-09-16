@@ -13,6 +13,8 @@ import {
 } from './assistantLinePendingSend'
 
 const ALL_PROJECTS = 'allProjects'
+let mockLastCommentProps = null
+let mockCommentDataArgs = null
 
 const mockState = {
     defaultAssistant: { uid: 'assistant-1' },
@@ -45,17 +47,24 @@ jest.mock('./AssistantOptions/helper', () => ({
         assistantProject: { id: 'project-1', index: 0, name: 'Project one' },
         assistantProjectId: 'project-1',
     }),
-    getCommentData: (project, notification, lastCommentData) => ({
-        commentProject: lastCommentData ? project : null,
-        commentCreator: lastCommentData ? { uid: 'assistant-1' } : null,
-    }),
+    getCommentData: (project, notification, lastCommentData) => {
+        mockCommentDataArgs = { project, notification, lastCommentData }
+        const source = notification || lastCommentData
+        return {
+            commentProject: source ? project || { id: source.projectId } : null,
+            commentCreator: source ? { uid: 'assistant-1' } : null,
+        }
+    },
 }))
 
 // The real preview drags in the whole comment/tag rendering and navigation graph.
 jest.mock('./LastComment/LastComment', () => {
     const React = require('react')
     const { Text } = require('react-native')
-    return () => <Text testID="real-last-comment">real preview</Text>
+    return props => {
+        mockLastCommentProps = props
+        return <Text testID="real-last-comment">real preview</Text>
+    }
 })
 
 // Only `useReducedMotion` is replaced — it resolves `AccessibilityInfo` asynchronously, which this
@@ -120,9 +129,87 @@ const has = (tree, testID) => tree.root.findAllByProps({ testID }).length > 0
 describe('LastCommentArea pending send (AT-2504)', () => {
     beforeEach(() => {
         resetAssistantLinePendingSends()
+        mockState.selectedProjectIndex = 0
         setLastCommentData(null)
         mockState.projectChatLastNotification = {}
         lastWrapperProps = null
+        mockLastCommentProps = null
+        mockCommentDataArgs = null
+    })
+
+    describe('preview scope (AT-2602)', () => {
+        it('uses the selected project pointers, including its followed unread comment', () => {
+            const projectComment = {
+                objectId: 'project-chat',
+                objectType: 'topics',
+                creatorType: 'assistant',
+            }
+            const globalComment = {
+                objectId: 'other-project-chat',
+                objectType: 'topics',
+                creatorType: 'assistant',
+                projectId: 'project-2',
+            }
+            const projectNotification = {
+                chatId: 'followed-project-chat',
+                chatType: 'topics',
+                followed: true,
+            }
+            const globalNotification = {
+                chatId: 'followed-other-project-chat',
+                chatType: 'topics',
+                followed: true,
+                projectId: 'project-2',
+            }
+            mockState.loggedUser.lastAssistantCommentData = {
+                'project-1': projectComment,
+                [ALL_PROJECTS]: globalComment,
+            }
+            mockState.projectChatLastNotification = {
+                'project-1': projectNotification,
+                [ALL_PROJECTS]: globalNotification,
+            }
+
+            const tree = render({ useAssistantProjectContext: false, useGlobalLatestComment: false })
+
+            expect(mockCommentDataArgs).toEqual({
+                project: mockState.loggedUserProjects[0],
+                notification: projectNotification,
+                lastCommentData: projectComment,
+            })
+            expect(mockLastCommentProps.currentProjectChatLastNotification).toBe(projectNotification)
+            expect(mockLastCommentProps.currentLastAssistantCommentData).toBe(projectComment)
+            act(() => tree.unmount())
+        })
+
+        it('keeps All Projects and My Day on the global pointers', () => {
+            const globalComment = {
+                objectId: 'global-chat',
+                objectType: 'topics',
+                creatorType: 'assistant',
+                projectId: 'project-1',
+            }
+            const globalNotification = {
+                chatId: 'followed-global-chat',
+                chatType: 'topics',
+                followed: true,
+                projectId: 'project-1',
+            }
+            mockState.selectedProjectIndex = -1
+            mockState.loggedUser.lastAssistantCommentData = { [ALL_PROJECTS]: globalComment }
+            mockState.projectChatLastNotification = { [ALL_PROJECTS]: globalNotification }
+
+            const tree = render({ useAssistantProjectContext: false })
+
+            expect(mockCommentDataArgs).toEqual({
+                project: undefined,
+                notification: globalNotification,
+                lastCommentData: globalComment,
+            })
+            expect(mockLastCommentProps.currentProjectChatLastNotification).toBe(globalNotification)
+            expect(mockLastCommentProps.currentLastAssistantCommentData).toBe(globalComment)
+            act(() => tree.unmount())
+        })
     })
 
     it('takes over the slot the answer will land in, ahead of the loading ghost', () => {

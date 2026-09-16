@@ -78,11 +78,6 @@ export const useProjectAssistantLine = project => {
     )
 
     const assistantIdOverride = activeOption ? activeOption.assistantId : baseAssistantId
-    // The default project's assistant answers out of the global conversation, wherever it is
-    // used. That was the meaning of the old two-state toggle and it is preserved here.
-    const defaultProjectAssistantActive = activeOption
-        ? activeOption.isDefaultProjectAssistant
-        : !useSelectedProjectAssistantLine
 
     const assistantSwitch = useMemo(
         () => ({
@@ -99,8 +94,11 @@ export const useProjectAssistantLine = project => {
         hasAssistantLine: !!project && !!assistantIdOverride,
         assistantLineProps: {
             showLastComment: true,
-            useAssistantProjectContext: defaultProjectAssistantActive,
-            useGlobalLatestComment: defaultProjectAssistantActive,
+            // These two flags are consumed only by LastCommentArea. Keep the preview on the
+            // selected project's pointers even when the active assistant lives in the default
+            // project; AssistantOptions receives the project and assistant independently below.
+            useAssistantProjectContext: false,
+            useGlobalLatestComment: false,
             projectOverride: project,
             assistantIdOverride,
             // Only an explicit choice may outrank `project.assistantId` inside
