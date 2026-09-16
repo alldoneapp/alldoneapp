@@ -33,6 +33,10 @@ describe('retired Expo and React Native tooling stays out of the web app depende
         expect(fs.existsSync(path.join(repoRoot, 'package-optimized-build-bundle.json'))).toBe(false)
     })
 
+    it('keeps the Firebase CLI prompt peer resolvable from the root install', () => {
+        expect(() => require('inquirer-autocomplete-prompt')).not.toThrow()
+    })
+
     it('contains neither the retired xmldom package nor vulnerable minimatch 3.x releases', () => {
         const packages = Object.entries(packageLock.packages)
 
