@@ -9,7 +9,10 @@ import { StyleSheet } from 'react-native'
 import ManageTaskModal from './ManageTaskModal'
 import useModalSizing from '../../../../hooks/useModalSizing'
 
+const mockUseTaskEditorLock = jest.fn()
+
 jest.mock('../../../../hooks/useModalSizing', () => jest.fn())
+jest.mock('../../../../hooks/useTaskEditorLock', () => active => mockUseTaskEditorLock(active))
 jest.mock('../../../../utils/useWindowSize', () => ({
     withWindowSizeHook: Component => props => {
         const ReactForMock = jest.requireActual('react')
@@ -53,6 +56,7 @@ const renderModal = props =>
 
 describe('ManageTaskModal add-task width (AT-2582)', () => {
     beforeEach(() => {
+        jest.clearAllMocks()
         useModalSizing.mockReturnValue({ width: 640, isSheet: false })
     })
 
@@ -61,6 +65,7 @@ describe('ManageTaskModal add-task width (AT-2582)', () => {
         const style = StyleSheet.flatten(tree.root.findByType('CustomScrollView').props.style)
 
         expect(style).toMatchObject({ width: 640, minWidth: 640, maxWidth: 640 })
+        expect(mockUseTaskEditorLock).toHaveBeenCalledWith(false)
         tree.unmount()
     })
 
@@ -72,6 +77,7 @@ describe('ManageTaskModal add-task width (AT-2582)', () => {
         const style = StyleSheet.flatten(tree.root.findByType('CustomScrollView').props.style)
 
         expect(style).toMatchObject({ width: 432, minWidth: 432, maxWidth: 432 })
+        expect(mockUseTaskEditorLock).toHaveBeenCalledWith(true)
         tree.unmount()
     })
 })

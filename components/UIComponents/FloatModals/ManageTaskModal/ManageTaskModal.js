@@ -19,6 +19,7 @@ import { TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksH
 import { getDvMainTabLink } from '../../../../utils/LinkingHelper'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 import useCreateTaskPopupWidth from '../RichCreateTaskModal/createTaskPopupWidth'
+import useTaskEditorLock from '../../../../hooks/useTaskEditorLock'
 
 class ManageTaskModal extends Component {
     constructor(props) {
@@ -192,6 +193,7 @@ const ManageTaskModalWithWindowSize = withWindowSizeHook(ManageTaskModal)
 
 export default function ResponsiveManageTaskModal(props) {
     const createTaskWidthStyle = useCreateTaskPopupWidth(!props.editing)
+    useTaskEditorLock(!!props.editing)
     return <ManageTaskModalWithWindowSize {...props} createTaskWidthStyle={createTaskWidthStyle} />
 }
 
