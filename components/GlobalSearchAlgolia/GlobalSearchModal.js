@@ -72,7 +72,6 @@ export default function GlobalSearchModal() {
         state => realIdSet(state.loggedUser.realArchivedProjectIds, state.loggedUser.archivedProjectIds).length
     )
     const searchText = useSelector(state => state.searchText)
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const [projects, setProjects] = useState([])
     const [showShortcuts, setShowShortcuts] = useState(false)
     const [activeTab, setActiveTab] = useState(getInitialTab)
@@ -829,8 +828,12 @@ export default function GlobalSearchModal() {
     // brings the scrim, drag handle, swipe/back-button dismissal, scroll lock
     // and keyboard riding along for free. The card height stays bounded (the
     // results list needs a definite height to scroll internally) but follows
-    // the sheet's keyboard-aware maxHeight.
+    // the sheet's keyboard-aware maxHeight. Search is a results-heavy surface,
+    // so unlike a short confirmation sheet it uses all of that available
+    // height. The previous 512px cap left roughly a third of a modern phone
+    // unused while showing only a few results.
     const { isSheet: isPhone, width: cardWidth, maxHeight: sheetMaxHeight } = useModalSizing({ size: 'L' })
+    const compactMobileLayout = isPhone && sheetMaxHeight < 480
     // The overlay already pads MODAL_EDGE_GAP on every side; add the insets
     // on top so the centered card clears the status bar and home indicator.
     const safeAreaOverlayPadding = useSafeAreaOverlayPadding({
@@ -846,7 +849,7 @@ export default function GlobalSearchModal() {
               borderRadius: 0,
               boxShadow: 'none',
               backgroundColor: 'transparent',
-              height: Math.min(512, sheetMaxHeight - 48),
+              height: Math.max(sheetMaxHeight - 48, 0),
           }
         : null
 
@@ -876,7 +879,16 @@ export default function GlobalSearchModal() {
             showAllArchivedProjects={true}
         />
     ) : (
-        <View style={[localStyles.popup, { width: width }, sheetCardStyle]}>
+        <View
+            testID="global-search-popup"
+            style={[
+                localStyles.popup,
+                { width: width },
+                isPhone && localStyles.mobilePopup,
+                compactMobileLayout && localStyles.compactMobilePopup,
+                sheetCardStyle,
+            ]}
+        >
             <View style={localStyles.titleContainer}>
                 <Text style={[styles.title7, localStyles.title]}>Search</Text>
             </View>
@@ -894,9 +906,17 @@ export default function GlobalSearchModal() {
                 onToggleOpenTasks={() => setOpenTasksOnly(!openTasksOnly)}
                 showOpenTasksChip={activeTab === MENTION_MODAL_TASKS_TAB}
                 disabled={projects.length === 0}
+                mobile={isPhone}
+                compact={compactMobileLayout}
             />
 
-            <Line style={{ width: '100%', marginTop: 0, marginBottom: 16 }} />
+            <Line
+                style={{
+                    width: '100%',
+                    marginTop: 0,
+                    marginBottom: compactMobileLayout ? 8 : isPhone ? 12 : 16,
+                }}
+            />
             <SearchForm
                 searchInputRef={searchInputRef}
                 onPressButton={onSearch}
@@ -939,6 +959,8 @@ export default function GlobalSearchModal() {
                 scrollRef={scrollRef}
                 resultsContainerRef={resultsContainerRef}
                 showShortcuts={showShortcuts}
+                mobile={isPhone}
+                compact={compactMobileLayout}
             />
 
             <View style={localStyles.closeContainer}>
@@ -1001,7 +1023,14 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         height: 512,
         maxHeight: '100%',
+        minHeight: 0,
         zIndex: 11000,
+    },
+    mobilePopup: {
+        paddingVertical: 12,
+    },
+    compactMobilePopup: {
+        paddingVertical: 8,
     },
     titleContainer: {
         width: '100%',
