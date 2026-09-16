@@ -62,9 +62,18 @@ export default function SearchFilterChips({
     onToggleOpenTasks,
     showOpenTasksChip,
     disabled,
+    mobile,
+    compact,
 }) {
     return (
-        <View style={localStyles.container}>
+        <View
+            testID="global-search-filters"
+            style={[
+                localStyles.container,
+                mobile && localStyles.mobileContainer,
+                compact && localStyles.compactContainer,
+            ]}
+        >
             <ScrollView
                 horizontal={true}
                 showsHorizontalScrollIndicator={false}
@@ -165,6 +174,14 @@ const localStyles = StyleSheet.create({
         marginTop: 16,
         marginBottom: 16,
         paddingHorizontal: 16,
+    },
+    mobileContainer: {
+        marginTop: 12,
+        marginBottom: 12,
+    },
+    compactContainer: {
+        marginTop: 8,
+        marginBottom: 8,
     },
     chipsRow: {
         flexDirection: 'row',
