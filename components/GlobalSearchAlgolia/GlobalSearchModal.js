@@ -121,6 +121,10 @@ export default function GlobalSearchModal() {
         templateIds: [],
         archivedIds: [],
     })
+    // AT-2593 — task-only status filter. Component state makes it reset to off
+    // whenever the popup opens, while keeping the choice through tab switches
+    // for as long as this popup instance remains mounted.
+    const [openTasksOnly, setOpenTasksOnly] = useState(false)
     const searchInstanceIdRef = useRef(v4())
     const modalRef = useRef(null)
     const searchInputRef = useRef(null)
@@ -690,6 +694,7 @@ export default function GlobalSearchModal() {
                 projects: projectsToSearch,
                 loggedUser,
                 createdByMeOnly,
+                openTasksOnly,
             })
             if (filterBy) {
                 searchableTabs.push({ ...config, filterBy })
@@ -808,6 +813,16 @@ export default function GlobalSearchModal() {
         if (localText.trim() !== '') onSearch()
     }, [includeArchived])
 
+    // Re-run the entered query as soon as the task status filter changes. The
+    // Typesense builder applies it only to the task collection, so the other
+    // result tabs keep their existing result scope.
+    const openTasksAppliedRef = useRef(openTasksOnly)
+    useEffect(() => {
+        if (openTasksAppliedRef.current === openTasksOnly) return
+        openTasksAppliedRef.current = openTasksOnly
+        if (localText.trim() !== '') onSearch()
+    }, [openTasksOnly])
+
     // Desktop: a window-centered card at the L token width (round-3 centering
     // policy; the old marginLeft sidebar offset pushed it right of center).
     // Phones: the standard BottomSheet, same as every other popup — which
@@ -875,6 +890,9 @@ export default function GlobalSearchModal() {
                 includeArchived={includeArchived}
                 onToggleArchived={() => setIncludeArchived(!includeArchived)}
                 showArchivedChip={showArchivedChip}
+                openTasksOnly={openTasksOnly}
+                onToggleOpenTasks={() => setOpenTasksOnly(!openTasksOnly)}
+                showOpenTasksChip={activeTab === MENTION_MODAL_TASKS_TAB}
                 disabled={projects.length === 0}
             />
 
