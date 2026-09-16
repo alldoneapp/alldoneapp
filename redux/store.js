@@ -46,6 +46,7 @@ import {
 import { addProjectDataToOpenTasksShowMoreData } from '../utils/backends/Tasks/openTasksShowMore/openTasksShowMore'
 import { getProjectChatLastNotification } from '../utils/backends/Chats/chatsComments'
 import { getRandomLoadingMessage } from '../utils/FunnyLoadingMessages'
+import { reduceLoadingData, START_LOADING_OPERATION, FINISH_LOADING_OPERATION } from './loadingData'
 
 const SHOW_MORE_TIME_FIELDS = ['hasTomorrowTasks', 'hasFutureTasks', 'hasSomedayTasks']
 
@@ -171,6 +172,8 @@ export const initialState = {
     lastVisitedScreen: ['/projects/tasks/open'],
     taskTitleElementsWidths: [],
     isLoadingData: 0,
+    legacyLoadingDataCount: 0,
+    loadingDataOperations: {},
     showLoadingDataSpinner: false,
     registeredNewUser: false,
     alldoneVersion: { major: 0, minor: 0, patch: 0 },
@@ -1070,20 +1073,12 @@ export const theReducer = (state = initialState, action) => {
             return { ...state, lastVisitedScreen: action.lastVisitedScreen }
         case 'Set task title elements widths':
             return { ...state, taskTitleElementsWidths: action.taskTitleElementsWidths }
-        case 'Start loading data': {
-            const { processes } = action
-            const valueInc =
-                processes !== undefined && processes !== null && processes > 0
-                    ? state.isLoadingData + processes
-                    : state.isLoadingData + 1
-            return { ...state, isLoadingData: valueInc, showLoadingDataSpinner: valueInc > 0 }
-        }
-        case 'Stop loading data': {
-            const valueDec = state.isLoadingData > 0 ? state.isLoadingData - 1 : 0
-            return { ...state, isLoadingData: valueDec, showLoadingDataSpinner: valueDec > 0 }
-        }
+        case START_LOADING_OPERATION:
+        case FINISH_LOADING_OPERATION:
+        case 'Start loading data':
+        case 'Stop loading data':
         case 'Reset loading data':
-            return { ...state, isLoadingData: 0, showLoadingDataSpinner: false }
+            return reduceLoadingData(state, action)
         case 'Set registered new user':
             return { ...state, registeredNewUser: action.registeredNewUser }
         case 'Set global search results':

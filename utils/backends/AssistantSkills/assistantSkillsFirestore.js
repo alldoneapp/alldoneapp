@@ -1,6 +1,6 @@
 import { getDb, getId, globalWatcherUnsub, runHttpsCallableFunction } from '../firestore'
 import store from '../../../redux/store'
-import { startLoadingData, stopLoadingData } from '../../../redux/actions'
+import { subscribeWithLoading } from '../../redux/loadingOperation'
 import { BUILT_IN_ASSISTANT_SKILLS, mergeBuiltInAssistantSkills } from '../../AssistantSkills/builtInAssistantSkills'
 import { GLOBAL_SKILL_CATALOG_ID as GLOBAL_PROJECT_ID, isGlobalSkillCatalog } from '../../AssistantSkills/skillCatalog'
 
@@ -67,18 +67,17 @@ export function watchGlobalAssistantSkills(watcherKey, callback) {
 }
 
 export function watchAssistantSkills(projectId, watcherKey, callback) {
-    let firstSnap = true
-    store.dispatch(startLoadingData())
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(getSkillsCollectionPath(projectId))
-        .orderBy('lastEditionDate', 'desc')
-        .onSnapshot(skillDocs => {
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'assistant_skills',
+        (next, error) =>
+            getDb()
+                .collection(getSkillsCollectionPath(projectId))
+                .orderBy('lastEditionDate', 'desc')
+                .onSnapshot(next, error),
+        skillDocs => {
             callback(decorateCatalog(readSkillDocs(skillDocs), projectId))
-            if (firstSnap) {
-                firstSnap = false
-                store.dispatch(stopLoadingData())
-            }
-        })
+        }
+    )
 }
 
 export async function uploadNewAssistantSkill(skill, projectId = GLOBAL_PROJECT_ID) {
