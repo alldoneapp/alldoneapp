@@ -106,9 +106,11 @@ describe('reads target the catalog they were asked for', () => {
     it('watches the catalog it was pointed at', () => {
         watchAssistantSkills(PROJECT_ID, 'watcher-key', jest.fn())
         expect(collectionPaths).toEqual([`assistantSkills/${PROJECT_ID}/items`])
-        // The unsubscribe has to be the one Firestore handed back, or `unwatch`
-        // leaves a live listener behind on every project switch.
-        expect(globalWatcherUnsub['watcher-key']).toBe(unsubscribeSentinel)
+        // Cleanup also retires its loading owner; it must still unsubscribe
+        // from Firestore exactly once when the project changes.
+        globalWatcherUnsub['watcher-key']()
+        globalWatcherUnsub['watcher-key']()
+        expect(unsubscribeSentinel).toHaveBeenCalledTimes(1)
     })
 
     it('merges the built-in skills into the global catalog only', async () => {

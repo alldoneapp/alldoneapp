@@ -66,6 +66,7 @@ jest.mock('../EstimationHelper', () => ({
 // Every listener registered by watchOpenTasks lands here so a test can drive the one it wants.
 const listeners = []
 const listenerUnsubscribes = []
+const listenerErrors = []
 const queryRegistrations = []
 
 const buildQuery = () => {
@@ -86,6 +87,7 @@ const buildQuery = () => {
             const handler = typeof args[0] === 'function' ? args[0] : args[1]
             const unsubscribe = jest.fn()
             listeners.push(handler)
+            listenerErrors.push(typeof args[0] === 'function' ? args[1] : args[2])
             listenerUnsubscribes.push(unsubscribe)
             return unsubscribe
         },
@@ -149,6 +151,11 @@ import {
     resetOptimisticTaskCreates,
 } from './Tasks/optimisticTaskCreate'
 import { settleOptimisticTaskRow, stopAllOptimisticTaskSettlements } from './Tasks/optimisticTaskSettlement'
+import { reduceLoadingData } from '../../redux/loadingData'
+import { INITIAL_LOAD_TIMEOUT_MS } from '../redux/loadingOperation'
+import { globalWatcherUnsub } from './firestore'
+import { watchTodayDoneTasks, watchEarlierDoneTasks, watchEarlierDoneSubtasks } from './doneTasks'
+import { watchTasksInWorkflow, unwatchTasksInWorkflow } from './workflowTasks'
 
 const PROJECT_ID = 'project-1'
 
@@ -186,6 +193,173 @@ const mainTasksOf = dayTuples => {
 }
 
 const taskIdsOf = dayTuples => mainTasksOf(dayTuples).flatMap(([, tasks]) => tasks.map(task => task.id))
+
+describe('task listener loading ownership', () => {
+    let loadingState
+    let callback
+    const snapshot = (fromCache = false) => ({
+        docChanges: () => [],
+        docs: [],
+        size: 0,
+        empty: true,
+        forEach: () => {},
+        metadata: { fromCache, hasPendingWrites: false },
+    })
+    const variants = [
+        [
+            'open',
+            cb => watchOpenTasks(PROJECT_ID, cb, false, false, false, 'project-1user-1'),
+            () => unwatchOpenTasks(PROJECT_ID, 'user-1'),
+        ],
+        [
+            'today done',
+            cb => watchTodayDoneTasks({ id: PROJECT_ID }, 'loading-test', cb),
+            () => globalWatcherUnsub['loading-test']?.(),
+        ],
+        [
+            'earlier done',
+            cb => watchEarlierDoneTasks({ id: PROJECT_ID }, 15, 'loading-test', cb),
+            () => globalWatcherUnsub['loading-test']?.(),
+        ],
+        ['workflow', cb => watchTasksInWorkflow(PROJECT_ID, cb, jest.fn()), () => unwatchTasksInWorkflow(PROJECT_ID)],
+    ]
+
+    beforeEach(() => {
+        jest.useFakeTimers()
+        jest.spyOn(console, 'warn').mockImplementation(() => {})
+        jest.spyOn(console, 'error').mockImplementation(() => {})
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        unwatchTasksInWorkflow(PROJECT_ID)
+        globalWatcherUnsub['loading-test']?.()
+        listeners.length = 0
+        listenerErrors.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
+        loadingState = { isLoadingData: 0 }
+        callback = jest.fn()
+        mockState.globalDataByProject = {}
+        mockDispatch.mockImplementation(payload => {
+            for (const action of [payload].flat()) loadingState = reduceLoadingData(loadingState, action)
+        })
+    })
+
+    afterEach(() => {
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        unwatchTasksInWorkflow(PROJECT_ID)
+        globalWatcherUnsub['loading-test']?.()
+        jest.clearAllTimers()
+        jest.useRealTimers()
+        jest.restoreAllMocks()
+        mockDispatch.mockReset()
+    })
+
+    describe.each(variants)('%s listener', (name, watch, unwatch) => {
+        it('cancels before the deferred start without leaving any loading work', () => {
+            watch(callback)
+            unwatch()
+            jest.runAllTimers()
+            expect(loadingState.isLoadingData).toBe(0)
+            expect(listenerUnsubscribes[0]).toHaveBeenCalledTimes(1)
+        })
+
+        it('releases pending loading on unmount without touching another operation', () => {
+            watch(callback)
+            jest.advanceTimersByTime(0)
+            mockDispatch({ type: 'Start loading data' })
+            expect(loadingState.isLoadingData).toBe(2)
+            unwatch()
+            unwatch()
+            expect(loadingState.isLoadingData).toBe(1)
+        })
+
+        it('ignores callbacks delivered after cancellation', () => {
+            watch(callback)
+            unwatch()
+            listeners[0](snapshot())
+            jest.runAllTimers()
+            expect(callback).not.toHaveBeenCalled()
+            expect(loadingState.isLoadingData).toBe(0)
+        })
+
+        it('releases on a Firestore error without publishing an empty result', () => {
+            watch(callback)
+            jest.advanceTimersByTime(0)
+            expect(loadingState.isLoadingData).toBe(1)
+            listenerErrors[0]({ code: 'permission-denied' })
+            expect(loadingState.isLoadingData).toBe(0)
+            expect(callback).not.toHaveBeenCalled()
+            expect(console.error).toHaveBeenCalledWith(
+                '[LoadingData] Snapshot listener failed',
+                expect.objectContaining({ code: 'permission-denied' })
+            )
+        })
+
+        it('only completes its initial load once across repeated snapshots', () => {
+            watch(callback)
+            jest.advanceTimersByTime(0)
+            listeners[0](snapshot())
+            expect(loadingState.isLoadingData).toBe(0)
+            mockDispatch({ type: 'Start loading data' })
+            listeners[0](snapshot())
+            unwatch()
+            expect(loadingState.isLoadingData).toBe(1)
+        })
+
+        it('can receive a snapshot before the deferred start without starting late', () => {
+            watch(callback)
+            listeners[0](snapshot())
+            jest.runAllTimers()
+            expect(loadingState.isLoadingData).toBe(0)
+            expect(console.warn).not.toHaveBeenCalledWith('[LoadingData] Initial load timed out', expect.anything())
+        })
+
+        it('settles from cached data after the gate flushes', () => {
+            watch(callback)
+            jest.advanceTimersByTime(0)
+            listeners[0](snapshot(true))
+            expect(loadingState.isLoadingData).toBe(1)
+            jest.advanceTimersByTime(250)
+            expect(loadingState.isLoadingData).toBe(0)
+        })
+
+        it('bounds a silent listener without unsubscribing or pretending data arrived', () => {
+            watch(callback)
+            jest.advanceTimersByTime(INITIAL_LOAD_TIMEOUT_MS)
+            expect(loadingState.isLoadingData).toBe(0)
+            expect(callback).not.toHaveBeenCalled()
+            expect(listenerUnsubscribes[0]).not.toHaveBeenCalled()
+            mockDispatch({ type: 'Start loading data' })
+            listeners[0](snapshot())
+            expect(loadingState.isLoadingData).toBe(1)
+        })
+    })
+
+    it('does not let observed tasks retire the assigned task load', () => {
+        variants[0][1](callback)
+        jest.advanceTimersByTime(0)
+        listeners[1](snapshot())
+        expect(loadingState.isLoadingData).toBe(1)
+        listeners[0](snapshot())
+        expect(loadingState.isLoadingData).toBe(0)
+    })
+
+    it('does not let done-subtask snapshots consume an unrelated loading count', () => {
+        mockDispatch({ type: 'Start loading data' })
+        watchEarlierDoneSubtasks({ id: PROJECT_ID }, 'loading-test', callback, 0)
+        listeners[0](snapshot())
+        expect(loadingState.isLoadingData).toBe(1)
+    })
+
+    it('releases the owner if a task snapshot consumer throws', () => {
+        callback.mockImplementation(() => {
+            throw new Error('render failed')
+        })
+        variants[0][1](callback)
+        jest.advanceTimersByTime(0)
+        expect(() => listeners[0](snapshot())).toThrow('render failed')
+        expect(loadingState.isLoadingData).toBe(0)
+    })
+})
 
 describe('AT-2342 optimistic task insert in the open board', () => {
     let published

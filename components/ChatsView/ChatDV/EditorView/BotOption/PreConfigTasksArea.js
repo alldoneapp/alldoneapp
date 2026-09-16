@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { View } from 'react-native'
-import { useSelector, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import PreConfigTaskOption from './PreConfigTaskOption'
 import { watchAssistantTasks } from '../../../../../utils/backends/Assistants/assistantsFirestore'
 import { unwatch } from '../../../../../utils/backends/firestore'
-import { stopLoadingData } from '../../../../../redux/actions'
 import { getAssistantProjectId } from '../../../../AdminPanel/Assistants/assistantsHelper'
 
 export default function PreConfigTasksArea({
@@ -18,7 +16,6 @@ export default function PreConfigTasksArea({
     enableAssistantForObject,
     inMyDay,
 }) {
-    const dispatch = useDispatch()
     const [tasks, setTasks] = useState([])
 
     const tasksProjectId = getAssistantProjectId(assistantId, projectId)
@@ -28,7 +25,6 @@ export default function PreConfigTasksArea({
         watchAssistantTasks(tasksProjectId, assistantId, watcherKey, setTasks)
         return () => {
             unwatch(watcherKey)
-            dispatch(stopLoadingData())
         }
     }, [assistantId, tasksProjectId])
 

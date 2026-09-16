@@ -3,7 +3,7 @@ import moment from 'moment'
 import { getDb, mapTaskData, globalWatcherUnsub } from './firestore'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import store from '../../redux/store'
-import { startLoadingData, stopLoadingData, updateUserProject } from '../../redux/actions'
+import { updateUserProject } from '../../redux/actions'
 import { checkIfSelectedAllProjects } from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
 import TasksHelper, { OPEN_STEP } from '../../components/TaskListView/Utils/TasksHelper'
@@ -12,9 +12,6 @@ import { ESTIMATION_0_MIN, getEstimationRealValue } from '../EstimationHelper'
 export const AMOUNT_OF_EARLIER_TASKS_TO_SHOW_WHEN_PRESS_BUTTON = 15
 
 export function watchTodayDoneTasks(project, watcherKey, callback) {
-    setTimeout(() => {
-        store.dispatch(startLoadingData())
-    })
     const { currentUser, loggedUser, selectedProjectIndex } = store.getState()
     const projectId = project.id
     const currentUserId = currentUser.uid
@@ -26,7 +23,7 @@ export function watchTodayDoneTasks(project, watcherKey, callback) {
     const startOfToday = now.startOf('day').valueOf()
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
 
-    const gate = createCachedSnapshotGate(() => handleNewestDoneTasksSnapshot)
+    const gate = createCachedSnapshotGate(() => handleNewestDoneTasksSnapshot, { loadingSource: 'today_done_tasks' })
     function handleNewestDoneTasksSnapshot(querySnapshot) {
         if (!gate.shouldBuffer(querySnapshot)) {
             const tasks = {}
@@ -56,12 +53,10 @@ export function watchTodayDoneTasks(project, watcherKey, callback) {
             inAllProjects && store.dispatch(updateUserProject({ ...project, lastDoneDate: lastDoneTimestamp }))
 
             const tasksByDate = Object.entries(tasks).sort((a, b) => b[0] - a[0])
-            store.dispatch(stopLoadingData())
-
             callback(tasksByDate, todaySubtasksByTask, estimationByDate)
         }
     }
-    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(
+    globalWatcherUnsub[watcherKey] = gate.subscribe(
         getDb()
             .collection(`items/${projectId}/tasks`)
             .where('userId', '==', currentUserId)
@@ -71,14 +66,10 @@ export function watchTodayDoneTasks(project, watcherKey, callback) {
             .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .orderBy('completed', 'desc')
             .orderBy('sortIndex', 'desc')
-            .onSnapshot({ includeMetadataChanges: true }, handleNewestDoneTasksSnapshot)
     )
 }
 
 export function watchEarlierDoneTasks(project, tasksAmountToWatch, watcherKey, callback) {
-    setTimeout(() => {
-        store.dispatch(startLoadingData())
-    })
     const { currentUser, loggedUser, selectedProjectIndex } = store.getState()
     const projectId = project.id
     const currentUserId = currentUser.uid
@@ -172,7 +163,7 @@ export function watchEarlierDoneTasks(project, tasksAmountToWatch, watcherKey, c
 
     let cacheChanges = []
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
-    const gate = createCachedSnapshotGate(() => handleEarlierDoneTasksSnapshot)
+    const gate = createCachedSnapshotGate(() => handleEarlierDoneTasksSnapshot, { loadingSource: 'earlier_done_tasks' })
     function handleEarlierDoneTasksSnapshot(querySnapshot) {
         const changes = querySnapshot.docChanges()
         if (gate.shouldBuffer(querySnapshot)) {
@@ -186,10 +177,9 @@ export function watchEarlierDoneTasks(project, tasksAmountToWatch, watcherKey, c
                 callback(tasksByDate, estimationByDate, querySnapshot.docs.length, earlierCompletedDateToCheck)
                 cacheChanges = []
             }
-            store.dispatch(stopLoadingData())
         }
     }
-    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(
+    globalWatcherUnsub[watcherKey] = gate.subscribe(
         getDb()
             .collection(`items/${projectId}/tasks`)
             .where('userId', '==', currentUserId)
@@ -199,7 +189,6 @@ export function watchEarlierDoneTasks(project, tasksAmountToWatch, watcherKey, c
             .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
             .orderBy('completed', 'desc')
             .limit(tasksAmountToWatch)
-            .onSnapshot({ includeMetadataChanges: true }, handleEarlierDoneTasksSnapshot)
     )
 }
 
@@ -257,7 +246,6 @@ export function watchEarlierDoneSubtasks(project, watcherKey, callback, complete
         } else {
             const mergedChanges = [...cacheChanges, ...changes]
             if (mergedChanges.length > 0) updateLastTwoWeeksSubtasks(mergedChanges)
-            store.dispatch(stopLoadingData())
             callback(subtasksByParentId)
             cacheChanges = []
         }

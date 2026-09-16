@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Keyboard, StyleSheet, View, Text, TouchableOpacity } from 'react-native'
-import { useSelector, useDispatch } from 'react-redux'
+import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import { watchAssistantTasks } from '../../../../utils/backends/Assistants/assistantsFirestore'
 import { unwatch } from '../../../../utils/backends/firestore'
-import { stopLoadingData } from '../../../../redux/actions'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { getAssistantLineData, getCollapsedQuickActionCount, getOptionsPresentationData } from './helper'
 import OptionButtons from './OptionButtons/OptionButtons'
@@ -60,7 +59,6 @@ export default function AssistantOptions({
     preferAssistantIdOverride = false,
     deferQuickActions = false,
 }) {
-    const dispatch = useDispatch()
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProjectFromStore = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const selectedProject = projectOverride || selectedProjectFromStore
@@ -160,7 +158,6 @@ export default function AssistantOptions({
             if (refreshTimer) clearTimeout(refreshTimer)
             if (watcherStarted) {
                 unwatch(watcherKey)
-                dispatch(stopLoadingData())
             }
         }
     }, [assistant?.uid, assistantTasksProjectId, cachedTasks, deferQuickActions, userId])

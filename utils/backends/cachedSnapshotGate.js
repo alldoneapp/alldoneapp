@@ -33,6 +33,8 @@
 import store from '../../redux/store'
 import { isBrowserOffline } from '../connectionState'
 import { markServerContact, startConnectionLatencySample } from '../connectionHealth'
+import { beginLoadingOperation } from '../redux/loadingOperation'
+import { runInDispatchBatch } from '../redux/dispatchBatch'
 
 // Give a healthy server snapshot one short paint-sized head start, then render
 // the durable IndexedDB result. Four seconds made an online-but-reconnecting
@@ -74,11 +76,13 @@ export const createCachedSnapshotGate = (
         isOffline = defaultIsOffline,
         trackConnectionHealth = true,
         connectionSource = 'server_snapshot',
+        loadingSource,
     } = {}
 ) => {
     let graceTimer
     let latestSnapshot = null
     let disposed = false
+    let finishLoading = () => {}
     let finishServerLatencySample = trackConnectionHealth ? startConnectionLatencySample(connectionSource) : null
 
     const finishLatencySample = () => {
@@ -103,14 +107,20 @@ export const createCachedSnapshotGate = (
         graceTimer = undefined
         if (disposed || !latestSnapshot) return
         const handler = getHandler()
-        if (typeof handler === 'function') handler(createFlushSnapshot(latestSnapshot))
+        if (typeof handler === 'function') deliver(createFlushSnapshot(latestSnapshot))
+    }
+
+    const ready = () => {
+        finishLoading()
+        return false
     }
 
     const shouldBuffer = querySnapshot => {
+        if (disposed) return true
         const metadata = (querySnapshot && querySnapshot.metadata) || {}
         // A flush re-invocation must run the handler's delivery branch and must
         // not re-arm the timer.
-        if (metadata.isGateFlush) return false
+        if (metadata.isGateFlush) return ready()
         if (!metadata.fromCache) {
             // A non-cached snapshot is the app's only positive proof that the
             // Firestore transport is alive right now — the gate is the one place
@@ -121,13 +131,13 @@ export const createCachedSnapshotGate = (
             markServerContact('snapshot')
             clearGraceTimer()
             latestSnapshot = null
-            return false
+            return ready()
         }
         latestSnapshot = querySnapshot
         if (isOffline()) {
             finishLatencySample()
             clearGraceTimer()
-            return false
+            return ready()
         }
         ensureLatencySample()
         if (graceTimer === undefined && !disposed) graceTimer = setTimeout(flush, graceMs)
@@ -136,6 +146,7 @@ export const createCachedSnapshotGate = (
 
     const dispose = () => {
         disposed = true
+        finishLoading()
         finishLatencySample()
         clearGraceTimer()
         latestSnapshot = null
@@ -144,10 +155,47 @@ export const createCachedSnapshotGate = (
     // Watchers store their unsubscribe functions in maps that outlive the view;
     // wrapping ties the pending flush timer's lifetime to the subscription so a
     // flush can never deliver into an unwatched view.
-    const wrapUnsubscribe = unsubscribe => () => {
-        dispose()
-        if (typeof unsubscribe === 'function') unsubscribe()
+    const wrapUnsubscribe = unsubscribe => {
+        let unsubscribed = false
+        return () => {
+            if (unsubscribed) return
+            unsubscribed = true
+            dispose()
+            if (typeof unsubscribe === 'function') unsubscribe()
+        }
     }
 
-    return { shouldBuffer, dispose, wrapUnsubscribe }
+    const reportError = error => {
+        dispose()
+        console.error('[LoadingData] Snapshot listener failed', {
+            source: loadingSource || connectionSource,
+            code: error?.code || 'unknown',
+        })
+    }
+
+    const deliver = snapshot => {
+        if (disposed) return
+        // Keep retiring the loading owner in the same store notification as the
+        // open-task publication. Also release it if mapping/render callbacks throw.
+        return runInDispatchBatch(() => {
+            try {
+                return getHandler()(snapshot)
+            } catch (error) {
+                reportError(error)
+                throw error
+            }
+        })
+    }
+
+    const subscribe = query => {
+        if (loadingSource) finishLoading = beginLoadingOperation(loadingSource, { deferStart: true })
+        try {
+            return wrapUnsubscribe(query.onSnapshot({ includeMetadataChanges: true }, deliver, reportError))
+        } catch (error) {
+            reportError(error)
+            throw error
+        }
+    }
+
+    return { shouldBuffer, dispose, wrapUnsubscribe, subscribe }
 }
