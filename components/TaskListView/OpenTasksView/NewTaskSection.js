@@ -14,6 +14,18 @@ import { DATE_TASK_INDEX, TODAY_DATE } from '../../../utils/backends/openTasks'
 import EditTask from '../TaskItem/EditTask'
 import { setAddTaskSectionToOpenData } from '../../../redux/actions'
 import { taskEditorLayout } from '../TaskItem/TaskEditorLayout'
+import useAddTaskCreationLock from '../../../hooks/useAddTaskCreationLock'
+
+function AddTaskEditor(props) {
+    const taskCreationLock = useAddTaskCreationLock()
+
+    useEffect(() => {
+        taskCreationLock.acquire()
+        return taskCreationLock.release
+    }, [taskCreationLock])
+
+    return <EditTask {...props} />
+}
 
 export default function NewTaskSection({
     projectId,
@@ -133,7 +145,7 @@ export default function NewTaskSection({
                     )
                 }
                 modalComponent={
-                    <EditTask
+                    <AddTaskEditor
                         adding={true}
                         projectId={projectId}
                         onCancelAction={forceAction => {
