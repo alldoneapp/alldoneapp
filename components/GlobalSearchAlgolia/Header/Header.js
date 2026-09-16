@@ -19,6 +19,8 @@ export default function Header({
     notesResultAmount,
     chatsResultAmount,
     showShortcuts,
+    mobile,
+    compact,
 }) {
     useEffect(() => {
         document.addEventListener('keydown', onKeyDown)
@@ -59,7 +61,14 @@ export default function Header({
     }
 
     return (
-        <View style={localStyles.container}>
+        <View
+            testID="global-search-tabs"
+            style={[
+                localStyles.container,
+                mobile && localStyles.mobileContainer,
+                compact && localStyles.compactContainer,
+            ]}
+        >
             <HeaderTab
                 text={'Tasks'}
                 onPress={activeTasksTab}
@@ -67,6 +76,7 @@ export default function Header({
                 isNextShortcutTab={activeTab === MENTION_MODAL_TOPICS_TAB}
                 badgeValue={tasksResultAmount}
                 showShortcuts={showShortcuts}
+                mobile={mobile}
             />
             <HeaderTab
                 text={'Goals'}
@@ -75,6 +85,7 @@ export default function Header({
                 isNextShortcutTab={activeTab === MENTION_MODAL_TASKS_TAB}
                 badgeValue={goalsResultAmount}
                 showShortcuts={showShortcuts}
+                mobile={mobile}
             />
             <HeaderTab
                 text={'Notes'}
@@ -83,6 +94,7 @@ export default function Header({
                 isNextShortcutTab={activeTab === MENTION_MODAL_GOALS_TAB}
                 badgeValue={notesResultAmount}
                 showShortcuts={showShortcuts}
+                mobile={mobile}
             />
             <HeaderTab
                 text={'Contacts'}
@@ -91,6 +103,7 @@ export default function Header({
                 isNextShortcutTab={activeTab === MENTION_MODAL_NOTES_TAB}
                 badgeValue={contactsResultAmount}
                 showShortcuts={showShortcuts}
+                mobile={mobile}
             />
             <HeaderTab
                 text={'Chats'}
@@ -99,6 +112,7 @@ export default function Header({
                 isNextShortcutTab={activeTab === MENTION_MODAL_CONTACTS_TAB}
                 badgeValue={chatsResultAmount}
                 showShortcuts={showShortcuts}
+                mobile={mobile}
             />
         </View>
     )
@@ -112,5 +126,14 @@ const localStyles = StyleSheet.create({
         marginTop: 24,
         marginBottom: 8,
         paddingHorizontal: 16,
+    },
+    mobileContainer: {
+        marginTop: 16,
+        marginBottom: 4,
+        paddingHorizontal: 8,
+    },
+    compactContainer: {
+        marginTop: 8,
+        marginBottom: 0,
     },
 })
