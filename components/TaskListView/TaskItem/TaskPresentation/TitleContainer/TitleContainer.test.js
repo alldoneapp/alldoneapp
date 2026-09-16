@@ -1,5 +1,5 @@
 import React from 'react'
-import { Animated } from 'react-native'
+import { Animated, Text } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 jest.mock('../../../../UIControls/SocialText/SocialText', () => 'SocialText')
@@ -19,7 +19,7 @@ import TitleContainer from './TitleContainer'
 
 const task = { id: 'task-1', name: 'Write the launch brief', extendedName: '', isSubtask: false, linkBack: [] }
 
-const renderTitle = completionProgress => {
+const renderTitle = (completionProgress, props = {}) => {
     let tree
     act(() => {
         tree = renderer.create(
@@ -29,6 +29,7 @@ const renderTitle = completionProgress => {
                 isObservedTask={false}
                 setTaskTitleIsMultiline={jest.fn()}
                 completionProgress={completionProgress}
+                {...props}
             />
         )
     })
@@ -70,5 +71,15 @@ describe('TitleContainer completion progress', () => {
         // the sweep measuring an element that no longer exists.
         expect(overlayId).toBe(socialTextId)
         expect(overlayId).toBe('social_text_project-1_task-1_false')
+    })
+})
+
+describe('TitleContainer leading tags', () => {
+    it('puts the reminder in SocialText so wrapped lines return to the title start', () => {
+        const reminderTag = <Text>Reminder</Text>
+        const tree = renderTitle(null, { inMyDayAndNotSubtask: false, leadingReminderTag: reminderTag })
+        const inlineElements = tree.root.findByType('SocialText').props.leftCustomElement
+
+        expect(inlineElements.props.children[0]).toBe(reminderTag)
     })
 })
