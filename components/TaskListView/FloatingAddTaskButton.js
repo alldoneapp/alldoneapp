@@ -34,7 +34,7 @@ export default function FloatingAddTaskButton() {
     const loggedUser = useSelector(state => state.loggedUser)
     const currentUser = useSelector(state => state.currentUser)
     const pendingWebShareTarget = useSelector(state => state.pendingWebShareTarget)
-    const addTaskCreationCount = useSelector(state => state.addTaskCreationCount)
+    const taskEditorCount = useSelector(state => state.taskEditorCount)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
@@ -64,15 +64,15 @@ export default function FloatingAddTaskButton() {
             testID="floating-add-task-button"
             style={[
                 localStyles.floating,
-                addTaskCreationCount > 0 && localStyles.hidden,
+                taskEditorCount > 0 && localStyles.hidden,
                 {
                     right: FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.right,
                     bottom: getFloatingActionBottom(safeAreaInsets.bottom),
                 },
             ]}
-            pointerEvents={addTaskCreationCount > 0 ? 'none' : 'auto'}
-            accessibilityElementsHidden={addTaskCreationCount > 0}
-            importantForAccessibility={addTaskCreationCount > 0 ? 'no-hide-descendants' : 'auto'}
+            pointerEvents={taskEditorCount > 0 ? 'none' : 'auto'}
+            accessibilityElementsHidden={taskEditorCount > 0}
+            importantForAccessibility={taskEditorCount > 0 ? 'no-hide-descendants' : 'auto'}
         >
             <AddTaskTag
                 projectId={projectId}

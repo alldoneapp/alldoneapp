@@ -20,8 +20,8 @@ jest.mock('react-redux', () => ({
 jest.mock('../../redux/actions', () => ({
     hideFloatPopup: () => ({ type: 'Hide float popup' }),
     showFloatPopup: () => ({ type: 'Show float popup' }),
-    startAddTaskCreation: () => ({ type: 'Start add task creation' }),
-    finishAddTaskCreation: () => ({ type: 'Finish add task creation' }),
+    startTaskEditor: () => ({ type: 'Start task editor' }),
+    finishTaskEditor: () => ({ type: 'Finish task editor' }),
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
 jest.mock('../styles/global', () => {
@@ -80,18 +80,18 @@ describe('AddTaskTag', () => {
 
         expect(openPopover).toHaveBeenCalledTimes(2)
         expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Show float popup')).toHaveLength(1)
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Start add task creation')).toHaveLength(1)
+        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Start task editor')).toHaveLength(1)
 
         act(() => tree.root.findByType('Popover').props.onClickOutside())
 
         expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Finish add task creation')).toHaveLength(1)
+        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Finish task editor')).toHaveLength(1)
 
         act(() => tree.unmount())
 
         // Cleanup is idempotent after the explicit close.
         expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
-        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Finish add task creation')).toHaveLength(1)
+        expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Finish task editor')).toHaveLength(1)
     })
 
     it('uses the assistant Search button colors when requested', () => {
