@@ -423,11 +423,6 @@ export default function AssistantOptions({
                     projectId={conversationProjectId}
                     styleTheme={TASK_THEME}
                     setMentionsModalActive={setMentionsModalActive}
-                    // In object editors an assistant selection is a command to change that
-                    // object's assistant, so CustomTextInput3 inserts a profile link. Here it is
-                    // message content: preserve the selected assistant id in a real @-mention so
-                    // comment parsing and the assistant runtime can detect it (AT-2592).
-                    insertAssistantAsMention={true}
                     // AT-2444: hands the live editor + caret to the drop zone above, and declares
                     // the attachment formats. Declaring them is also what gives this composer
                     // image PASTE, since CustomTextInput3 gates `appManagedFileUpload` on them.

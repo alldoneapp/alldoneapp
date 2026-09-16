@@ -40,6 +40,8 @@ export default function ResultLists({
     resultsContainerRef,
     showShortcuts,
     indexing,
+    mobile,
+    compact,
 }) {
     const showEmptyResult = () => {
         if (activeTab === MENTION_MODAL_TASKS_TAB && tasksResultAmount > 0) {
@@ -57,7 +59,7 @@ export default function ResultLists({
     }
 
     return (
-        <View style={localStyles.container}>
+        <View testID="global-search-results" style={[localStyles.container, mobile && localStyles.mobileContainer]}>
             <Header
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
@@ -67,6 +69,8 @@ export default function ResultLists({
                 contactsResultAmount={contactsResultAmount}
                 chatsResultAmount={chatsResultAmount}
                 showShortcuts={showShortcuts}
+                mobile={mobile}
+                compact={compact}
             />
 
             {processing[activeTab] ? (
@@ -148,8 +152,15 @@ export default function ResultLists({
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
+        minHeight: 0,
         width: '100%',
         marginHorizontal: -16,
+    },
+    // The desktop result surface deliberately bleeds 16px beyond the card.
+    // A bottom sheet is already edge-constrained and clips that bleed, leaving
+    // the first and last tabs visibly cut off on narrow phones.
+    mobileContainer: {
+        marginHorizontal: 0,
     },
     spinnerContainer: {
         flex: 1,

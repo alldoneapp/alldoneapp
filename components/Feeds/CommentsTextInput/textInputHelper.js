@@ -63,21 +63,6 @@ export const MENTION_MODAL_WIDTH = 305
 export const MENTION_MODAL_RIGHT_MARGIN = 15
 export const TAG_INTERACTION_CLASS = 'TAG_INTERACTION_CLASS'
 
-/**
- * Builds the Quill embed used for a resolved person mention.
- *
- * Assistants can be real mentions too: their ids are understood by the mention parser and the
- * mention renderer. Keeping this construction shared prevents an assistant selected in a composer
- * from silently losing its id and degrading into an ordinary URL (AT-2592).
- */
-export const buildResolvedPeopleMention = ({ displayName = '', uid = '' }, id, editorId, userIdAllowedToEditTags) => ({
-    text: displayName.replaceAll(' ', MENTION_SPACE_CODE),
-    id,
-    userId: uid,
-    editorId,
-    userIdAllowedToEditTags,
-})
-
 export const TASK_THEME = 0
 export const SUBTASK_THEME = 1
 export const COMMENT_MODAL_THEME = 2

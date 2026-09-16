@@ -575,3 +575,15 @@ children and 11px regular link typography.
 ```bash
 node browser-tests/at2588/run.js
 ```
+
+### `at2594/` — responsive Global Search popup
+
+Renders the real `GlobalSearchModal` in Chromium and measures the popup, filters,
+search field, results region, and five-tab strip. It covers a 390×844 phone, a
+320×568 narrow phone, and a 568×320 landscape phone, asserting that the search
+sheet uses the available height without clipping or horizontal page overflow.
+The desktop case pins the existing centered 640×512 card.
+
+```bash
+node browser-tests/at2594/run.js
+```
