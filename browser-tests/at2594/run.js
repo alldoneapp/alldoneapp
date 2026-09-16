@@ -71,10 +71,28 @@ async function main() {
     const { chromium } = requirePlaywright()
     const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
     const cases = [
-        { name: 'desktop', viewport: { width: 1280, height: 900 }, mobile: false },
-        { name: 'tall phone', viewport: { width: 390, height: 844 }, mobile: true },
-        { name: 'narrow phone', viewport: { width: 320, height: 568 }, mobile: true },
-        { name: 'short landscape phone', viewport: { width: 568, height: 320 }, mobile: true },
+        { name: 'desktop', viewport: { width: 1280, height: 900 }, mobile: false, language: 'en' },
+        {
+            name: 'tall phone',
+            viewport: { width: 390, height: 844 },
+            mobile: true,
+            language: 'de',
+            expectWrappedFilters: true,
+        },
+        {
+            name: 'narrow phone',
+            viewport: { width: 320, height: 568 },
+            mobile: true,
+            language: 'de',
+            expectWrappedFilters: true,
+        },
+        {
+            name: 'short landscape phone',
+            viewport: { width: 568, height: 320 },
+            mobile: true,
+            language: 'de',
+            expectWrappedFilters: true,
+        },
     ]
     const failures = []
 
@@ -93,7 +111,9 @@ async function main() {
             if (process.env.HARNESS_DEBUG) console.log(`[console.${message.type()}] ${message.text()}`)
         })
         await page.route('**://*.google*/**', route => route.abort())
-        await page.goto(`http://127.0.0.1:${server.address().port}/?mobile=${testCase.mobile ? 1 : 0}`)
+        await page.goto(
+            `http://127.0.0.1:${server.address().port}/?mobile=${testCase.mobile ? 1 : 0}&language=${testCase.language}`
+        )
         try {
             await page.waitForFunction(() => window.__ready && window.__measureSearchLayout())
         } catch (error) {
@@ -114,6 +134,15 @@ async function main() {
                   'uses the available screen height': measured.popup.height >= measured.viewport.height - 100,
                   'keeps the popup inside the sheet': within(measured.popup, measured.sheet),
                   'keeps filters inside the popup': within(measured.filters, measured.popup),
+                  'keeps every filter chip fully visible': measured.filterChips.every(chip =>
+                      within(chip, measured.filters)
+                  ),
+                  'keeps every filter label unclipped': measured.filterChips.every(
+                      chip => chip.scrollWidth <= chip.clientWidth + 1
+                  ),
+                  ...(testCase.expectWrappedFilters
+                      ? { 'wraps filters when horizontal space is insufficient': measured.filterRowCount >= 2 }
+                      : {}),
                   'keeps the search field inside the popup': within(measured.input, measured.popup),
                   'keeps the results region inside the popup': within(measured.results, measured.popup),
                   'keeps the tab strip inside the results region': within(measured.tabs, measured.results),
@@ -130,6 +159,10 @@ async function main() {
                   'keeps the 512px desktop height': Math.abs(measured.popup.height - 512) <= 1,
                   'keeps the desktop card centered':
                       Math.abs(measured.popup.left - (measured.viewport.width - measured.popup.width) / 2) <= 1,
+                  'keeps desktop filters on one line': measured.filterRowCount === 1,
+                  'keeps every desktop filter chip visible': measured.filterChips.every(chip =>
+                      within(chip, measured.filters)
+                  ),
               }
 
         checks['renders without page errors'] = pageErrors.length === 0

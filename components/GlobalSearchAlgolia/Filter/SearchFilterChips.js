@@ -1,5 +1,5 @@
 import React from 'react'
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Hotkeys from 'react-hot-keys'
 import { useSelector } from 'react-redux'
 
@@ -21,9 +21,10 @@ export const OPEN_TASKS_CHIP_LABEL = 'Only open tasks'
 
 /**
  * The search popup's filter row as chips, matching the task list's
- * TaskFiltersLine pattern (one horizontal row of pills; selection is the
- * Primary200 background, not a checkbox). Replaces the three stacked rows the
- * popup used to open with — the "Select search scope" row, the
+ * TaskFiltersLine pattern (individual pills; selection is the Primary200
+ * background, not a checkbox). The row wraps when it runs out of room instead
+ * of hiding later filters in a horizontal scroller. It replaces the three
+ * stacked rows the popup used to open with — the "Select search scope" row, the
  * "Only objects I created" checkbox and the "Include archived projects"
  * checkbox — and drops the "Include templates & guides" toggle entirely:
  * template/guide projects are only searched when one is explicitly picked as
@@ -74,11 +75,7 @@ export default function SearchFilterChips({
                 compact && localStyles.compactContainer,
             ]}
         >
-            <ScrollView
-                horizontal={true}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={localStyles.chipsRow}
-            >
+            <View testID="global-search-filter-chip-row" style={localStyles.chipsRow}>
                 <ScopeChip selectedProject={selectedProject} onPress={onOpenScope} disabled={disabled} />
                 <ToggleChip
                     label={CREATED_BY_ME_CHIP_LABEL}
@@ -105,7 +102,7 @@ export default function SearchFilterChips({
                         testID={'search-filter-open-tasks'}
                     />
                 )}
-            </ScrollView>
+            </View>
         </View>
     )
 }
@@ -185,8 +182,13 @@ const localStyles = StyleSheet.create({
     },
     chipsRow: {
         flexDirection: 'row',
-        flexWrap: 'nowrap',
+        flexWrap: 'wrap',
         alignItems: 'center',
+        // Each chip owns an 8px right/bottom gutter. Cancel the trailing
+        // gutter so wrapping is based on the full padded content width and the
+        // divider below keeps the same optical spacing on one or many rows.
+        marginRight: -8,
+        marginBottom: -8,
     },
     // Same pill as the task list's FilterChip (TaskFiltersLine.js): selection
     // is the background color, not a checkbox.
@@ -198,7 +200,9 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 10,
         paddingVertical: 4,
         marginRight: 8,
+        marginBottom: 8,
         minHeight: 24,
+        flexShrink: 0,
     },
     chipSelected: {
         backgroundColor: colors.Primary200,
