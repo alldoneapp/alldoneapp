@@ -171,10 +171,10 @@ describe('Undo banner animation timing (AT-2503)', () => {
         expect(UNDO_EXIT_SETTLE_BUFFER_MS).toBeGreaterThan(0)
     })
 
-    it('leaves the ten-second display time exactly as it was before the animation work', () => {
-        // The countdown line visualises this number; AT-2503 changed how the banner arrives and
-        // leaves, deliberately not how long it stays.
-        expect(UNDO_DISPLAY_TIME_MS).toBe(10000)
+    it('uses the five-second display time requested in AT-2600', () => {
+        // One shared value drives both the auto-dismiss timer and the countdown line, so changing
+        // it cannot leave the visual countdown out of sync with the notification.
+        expect(UNDO_DISPLAY_TIME_MS).toBe(5000)
         expect(UNDO_DISPLAY_TIME_MS).toBeGreaterThan(UNDO_ENTER_MS + UNDO_EXIT_MS)
     })
 })
