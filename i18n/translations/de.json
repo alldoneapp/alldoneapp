@@ -2358,6 +2358,7 @@
     "Amount earlier unread messages": "%{amount} frühere ungelesene Nachrichten",
     "Only created by me": "Nur von mir erstellt",
     "Include archived": "Archivierte einbeziehen",
+    "Only open tasks": "Nur offene Aufgaben",
     "Automatic project description": "Alldone wählt das Projekt für dich aus",
     "Automatic project selection": "Automatische Projektauswahl",
     "Open the task": "Aufgabe öffnen",
