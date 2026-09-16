@@ -67,13 +67,7 @@ export const buildTypesenseCreatedByMeFilter = (indexPrefix, userId) => {
     return `${creatorAttribute}:=${formatTypesenseValue(userId)}`
 }
 
-export const buildTypesenseSearchFilters = ({
-    indexPrefix,
-    projects,
-    loggedUser,
-    createdByMeOnly = false,
-    openTasksOnly = false,
-}) => {
+export const buildTypesenseSearchFilters = ({ indexPrefix, projects, loggedUser, createdByMeOnly = false }) => {
     const projectsAccessFilter = buildTypesenseProjectsAccessFilter(projects, loggedUser)
     if (!projectsAccessFilter) return ''
 
@@ -86,10 +80,6 @@ export const buildTypesenseSearchFilters = ({
     if (createdByMeOnly) {
         const createdByMeFilter = buildTypesenseCreatedByMeFilter(indexPrefix, loggedUser?.uid)
         if (createdByMeFilter) conjuncts.push(createdByMeFilter)
-    }
-
-    if (openTasksOnly && indexPrefix === TASKS_INDEX_NAME_PREFIX) {
-        conjuncts.push('done:=false')
     }
 
     return conjuncts.join(' && ')
