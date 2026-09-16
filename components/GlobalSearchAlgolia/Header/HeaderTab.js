@@ -4,11 +4,13 @@ import styles, { colors } from '../../styles/global'
 import Shortcut, { SHORTCUT_LIGHT } from '../../UIControls/Shortcut'
 import Badge from './Badge'
 
-export default function HeaderTab({ text, badgeValue, onPress, isActive, isNextShortcutTab, showShortcuts }) {
+export default function HeaderTab({ text, badgeValue, onPress, isActive, isNextShortcutTab, showShortcuts, mobile }) {
     return (
         <View style={localStyles.container}>
             <TouchableOpacity style={localStyles.container} onPress={onPress}>
-                <Text style={[localStyles.text, isActive ? localStyles.activeText : null]}>{text}</Text>
+                <Text style={[localStyles.text, mobile && localStyles.mobileText, isActive && localStyles.activeText]}>
+                    {text}
+                </Text>
                 <View style={[localStyles.firstLine, isActive ? localStyles.activeLine : null]} />
             </TouchableOpacity>
             <View style={[localStyles.lastLine, isActive ? localStyles.activeLine : null]} />
@@ -37,6 +39,11 @@ const localStyles = StyleSheet.create({
     },
     activeText: {
         color: '#ffffff',
+    },
+    mobileText: {
+        fontSize: 12,
+        lineHeight: 16,
+        letterSpacing: 0.5,
     },
     firstLine: {
         width: '100%',
