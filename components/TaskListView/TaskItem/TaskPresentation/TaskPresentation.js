@@ -352,18 +352,6 @@ function TaskPresentation(
             <TaskVmStatusTag projectId={projectId} taskId={task.id} style={{ marginRight: 8 }} />
         </>
     )
-    // AT-2598 — keep the reminder in the same wrapping flow as the title. When this chip lived
-    // beside `TitleContainer`, the title received only the width left after the chip, so every
-    // wrapped line started after it. As a leading inline element, only the first line follows the
-    // chip and subsequent lines can use the full title width.
-    const leadingReminderTag =
-        !inMyDayAndNotSubtask && task?.alertEnabled ? (
-            task.calendarData ? (
-                <TranscribeTag task={task} projectId={projectId} containerStyle={{ marginRight: 8 }} />
-            ) : (
-                <AlertTag task={task} containerStyle={{ marginRight: 8 }} onPress={onLeftSwipe} />
-            )
-        ) : null
 
     /**
      * AT-2453 — the routing badge belongs to the TRAILING tag area, not to the leading slot in
@@ -525,6 +513,23 @@ function TaskPresentation(
                                             propStyles={{ marginTop: 8, marginLeft: 12 }}
                                         />
                                     )}
+                                    {!inMyDayAndNotSubtask && task?.alertEnabled && (
+                                        <>
+                                            {task.calendarData ? (
+                                                <TranscribeTag
+                                                    task={task}
+                                                    projectId={projectId}
+                                                    containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                                />
+                                            ) : (
+                                                <AlertTag
+                                                    task={task}
+                                                    containerStyle={{ marginTop: 8, marginLeft: 12, marginRight: 0 }}
+                                                    onPress={onLeftSwipe}
+                                                />
+                                            )}
+                                        </>
+                                    )}
                                     <TitleContainer
                                         task={task}
                                         projectId={projectId}
@@ -539,7 +544,6 @@ function TaskPresentation(
                                         showVerticalEllipsisInByTime={inMyDayAndNotSubtask && showVerticalEllipsis}
                                         leadingVmStatusTag={leadingVmStatusTag}
                                         leadingPriorityTag={leadingPriorityTag}
-                                        leadingReminderTag={leadingReminderTag}
                                         useCommentPopupTextColor={inCommentPopup}
                                         setTaskTitleIsMultiline={setTaskTitleIsMultiline}
                                         completionProgress={completionProgress}
