@@ -12,6 +12,7 @@ import store from '../../redux/store'
 import { initFirebase } from '../../utils/backends/firestore'
 import { showGlobalSearchPopup, toggleSmallScreenNavigation } from '../../redux/actions'
 import { installEscapeStack } from '../../utils/escapeStack'
+import { setLanguage } from '../../i18n/TranslationService'
 import GlobalSearchModal from '../../components/GlobalSearchAlgolia/GlobalSearchModal'
 
 initFirebase()
@@ -56,7 +57,9 @@ store.dispatch({
     assistants: [],
 })
 
-const mobile = new URLSearchParams(window.location.search).get('mobile') === '1'
+const searchParams = new URLSearchParams(window.location.search)
+const mobile = searchParams.get('mobile') === '1'
+setLanguage(searchParams.get('language') || 'en')
 store.dispatch(toggleSmallScreenNavigation(mobile))
 
 const rect = element => {
@@ -83,6 +86,19 @@ window.__measureSearchLayout = () => {
     if (!popup || !filters || !results || !tabs || !input) return null
 
     const tabLabels = Array.from(tabs.querySelectorAll('[dir="auto"]')).map(rect)
+    const filterChips = Array.from(
+        filters.querySelectorAll(
+            '[data-testid="search-filter-scope"], [data-testid="search-filter-created-by-me"], [data-testid="search-filter-archived"], [data-testid="search-filter-open-tasks"]'
+        )
+    ).map(element => ({
+        ...rect(element),
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+    }))
+    const filterRowTops = filterChips.reduce((tops, chip) => {
+        if (!tops.some(top => Math.abs(top - chip.top) <= 1)) tops.push(chip.top)
+        return tops
+    }, [])
     return {
         popup: rect(popup),
         sheet: rect(sheet),
@@ -91,6 +107,8 @@ window.__measureSearchLayout = () => {
         tabs: rect(tabs),
         input: rect(input),
         tabLabels,
+        filterChips,
+        filterRowCount: filterRowTops.length,
         viewport: { width: window.innerWidth, height: window.innerHeight },
         documentWidth: document.documentElement.scrollWidth,
         bodyWidth: document.body.scrollWidth,

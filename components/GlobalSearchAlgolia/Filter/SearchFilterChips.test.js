@@ -18,6 +18,7 @@
  * scope, is ON by default, and stays hidden where it could not mean anything.
  */
 import React from 'react'
+import { StyleSheet } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import {
@@ -79,6 +80,18 @@ describe('SearchFilterChips', () => {
         expect(chipByTestID(component, 'search-filter-archived')).toBeTruthy()
         expect(chipByTestID(component, 'search-filter-open-tasks')).toBeTruthy()
         expect(component.root.findAllByType(ToggleChip)).toHaveLength(3)
+        act(() => component.unmount())
+    })
+
+    it('uses a wrapping chip row instead of a clipping horizontal scroller', () => {
+        const component = render({ mobile: true })
+        const row = component.root.findByProps({ testID: 'global-search-filter-chip-row' })
+
+        expect(StyleSheet.flatten(row.props.style)).toMatchObject({
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+        })
+        expect(row.props.horizontal).toBeUndefined()
         act(() => component.unmount())
     })
 
