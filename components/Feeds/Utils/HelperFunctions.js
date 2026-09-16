@@ -51,7 +51,7 @@ import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 import { LOADED_MODE, NEW_ATTACHMENT, OLD_ATTACHMENT } from '../CommentsTextInput/textInputHelper'
 import Backend from '../../../utils/BackendBridge'
 import URLTrigger from '../../../URLSystem/URLTrigger'
-import { getAssistantInProject } from '../../AdminPanel/Assistants/assistantsHelper'
+import { getAssistant, getAssistantInProject } from '../../AdminPanel/Assistants/assistantsHelper'
 import { removeColor } from '../../../functions/Utils/hashtagUtils'
 import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
@@ -197,7 +197,11 @@ export const getUserOrContactForMentions = (projectId, peopleId) => {
                 peopleName: contact.displayName,
             }
         }
-        const assistant = getAssistantInProject(projectId, peopleId)
+        // Assistant mentions may legitimately cross project boundaries (the mention picker searches
+        // every project the user can access). Prefer the current-project lookup, but fall back to
+        // the already-loaded assistant so the selected mention still renders as a person instead of
+        // an unresolved @ token in the assistant line (AT-2592).
+        const assistant = getAssistantInProject(projectId, peopleId) || getAssistant?.(peopleId)
         if (assistant) {
             return {
                 uid: peopleId,
