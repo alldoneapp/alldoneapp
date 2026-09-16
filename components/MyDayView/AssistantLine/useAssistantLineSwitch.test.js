@@ -107,12 +107,12 @@ describe('useProjectAssistantLine — no user choice yet', () => {
         expect(result.current.assistantLineProps.preferAssistantIdOverride).toBe(false)
     })
 
-    it('inherits the default project’s assistant, and its global conversation, when the project has none', () => {
+    it('inherits the default project’s assistant but keeps the preview scoped to the selected project', () => {
         const { result } = renderHook(useProjectAssistantLine, alldoneProject)
 
         expect(result.current.assistantLineProps.assistantIdOverride).toBe('anna')
-        expect(result.current.assistantLineProps.useAssistantProjectContext).toBe(true)
-        expect(result.current.assistantLineProps.useGlobalLatestComment).toBe(true)
+        expect(result.current.assistantLineProps.useAssistantProjectContext).toBe(false)
+        expect(result.current.assistantLineProps.useGlobalLatestComment).toBe(false)
         expect(result.current.assistantLineProps.preferAssistantIdOverride).toBe(false)
     })
 
@@ -169,14 +169,14 @@ describe('useProjectAssistantLine — after choosing an assistant', () => {
         expect(result.current.assistantLineProps.assistantSwitch.activeAssistantId).toBe('derek')
     })
 
-    it('keeps the global conversation when the choice is the default-project entry', () => {
+    it('keeps the selected project’s preview when the choice is the default-project entry', () => {
         mockState = buildState({ assistantLineSelection: { 'p-alldone': 'anna' } })
 
         const { result } = renderHook(useProjectAssistantLine, alldoneProject)
 
         expect(result.current.assistantLineProps.assistantIdOverride).toBe('anna')
-        expect(result.current.assistantLineProps.useAssistantProjectContext).toBe(true)
-        expect(result.current.assistantLineProps.useGlobalLatestComment).toBe(true)
+        expect(result.current.assistantLineProps.useAssistantProjectContext).toBe(false)
+        expect(result.current.assistantLineProps.useGlobalLatestComment).toBe(false)
     })
 
     it('ignores a choice that no longer resolves to a real option', () => {
