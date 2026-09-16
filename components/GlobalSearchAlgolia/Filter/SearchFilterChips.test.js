@@ -37,6 +37,7 @@ jest.mock('react-redux', () => ({
 import SearchFilterChips, {
     ARCHIVED_CHIP_LABEL,
     CREATED_BY_ME_CHIP_LABEL,
+    OPEN_TASKS_CHIP_LABEL,
     ScopeChip,
     ToggleChip,
 } from './SearchFilterChips'
@@ -56,6 +57,9 @@ const render = props => {
                 includeArchived={true}
                 onToggleArchived={jest.fn()}
                 showArchivedChip={true}
+                openTasksOnly={false}
+                onToggleOpenTasks={jest.fn()}
+                showOpenTasksChip={true}
                 {...props}
             />
         )
@@ -67,14 +71,31 @@ const chipByTestID = (component, testID) =>
     component.root.findAllByType(ToggleChip).find(chip => chip.props.testID === testID)
 
 describe('SearchFilterChips', () => {
-    it('renders exactly the scope picker and the two toggles', () => {
+    it('renders the scope picker and the available toggles', () => {
         const component = render()
 
         expect(component.root.findAllByType(ScopeChip)).toHaveLength(1)
         expect(chipByTestID(component, 'search-filter-created-by-me')).toBeTruthy()
         expect(chipByTestID(component, 'search-filter-archived')).toBeTruthy()
-        expect(component.root.findAllByType(ToggleChip)).toHaveLength(2)
+        expect(chipByTestID(component, 'search-filter-open-tasks')).toBeTruthy()
+        expect(component.root.findAllByType(ToggleChip)).toHaveLength(3)
         act(() => component.unmount())
+    })
+
+    it('shows the open-tasks chip only when requested and reflects its state', () => {
+        const onToggleOpenTasks = jest.fn()
+        const visible = render({ openTasksOnly: true, onToggleOpenTasks })
+
+        expect(chipByTestID(visible, 'search-filter-open-tasks').props.selected).toBe(true)
+        expect(JSON.stringify(visible.toJSON())).toContain(translate(OPEN_TASKS_CHIP_LABEL))
+        act(() => chipByTestID(visible, 'search-filter-open-tasks').props.onPress())
+        expect(onToggleOpenTasks).toHaveBeenCalledTimes(1)
+
+        const hidden = render({ showOpenTasksChip: false })
+        expect(chipByTestID(hidden, 'search-filter-open-tasks')).toBeUndefined()
+
+        act(() => visible.unmount())
+        act(() => hidden.unmount())
     })
 
     it('renders the archived chip directly in the row, selected by default (AT-2524)', () => {
@@ -155,7 +176,7 @@ describe('SearchFilterChips', () => {
         }
 
         locales.forEach(locale => {
-            ;[ARCHIVED_CHIP_LABEL, CREATED_BY_ME_CHIP_LABEL].forEach(label => {
+            ;[ARCHIVED_CHIP_LABEL, CREATED_BY_ME_CHIP_LABEL, OPEN_TASKS_CHIP_LABEL].forEach(label => {
                 expect(typeof translations[locale][label]).toBe('string')
                 expect(translations[locale][label].length).toBeGreaterThan(0)
             })

@@ -79,6 +79,23 @@ describe('buildTypesenseSearchFilters', () => {
         expect(filters).toBe('projectId:=[`p1`,`p2`] && isPublicFor:=[`0`,`me`,`ws@default`] && userId:=`me`')
     })
 
+    it('filters only the task index to open tasks when requested', () => {
+        ALL_INDEXES.forEach(indexPrefix => {
+            const filters = buildTypesenseSearchFilters({
+                indexPrefix,
+                projects: PROJECTS,
+                loggedUser: LOGGED_USER,
+                openTasksOnly: true,
+            })
+
+            if (indexPrefix === TASKS_INDEX_NAME_PREFIX) {
+                expect(filters).toContain(' && done:=false')
+            } else {
+                expect(filters).not.toContain('done:=false')
+            }
+        })
+    })
+
     it('keeps the contacts assistant exclusion alongside the creator filter', () => {
         const filters = buildTypesenseSearchFilters({
             indexPrefix: CONTACTS_INDEX_NAME_PREFIX,
