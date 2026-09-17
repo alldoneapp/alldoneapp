@@ -43,9 +43,11 @@ jest.mock('../../../redux/actions', () => ({
 }))
 
 const mockScheduleTaskColdStartCachePersist = jest.fn()
+let mockPageVisibleRefreshGeneration = 0
 jest.mock('../../../utils/InitialLoad/taskColdStartCache', () => ({
     scheduleTaskColdStartCachePersist: (...args) => mockScheduleTaskColdStartCachePersist(...args),
 }))
+jest.mock('../../../hooks/usePageVisibleRefreshGeneration', () => () => mockPageVisibleRefreshGeneration)
 
 jest.mock('../../../redux/store', () => ({
     __esModule: true,
@@ -88,6 +90,7 @@ describe('OpenTasksAmountContainer readiness (AT-2445)', () => {
         watchOpenTasksAmount.mockImplementation(registerTokens('normal'))
         watchObservedOpenTasksAmount.mockImplementation(registerTokens('observed'))
         watchUserWorkstreamsOpenTasksAmount.mockImplementation(registerTokens('workstream'))
+        mockPageVisibleRefreshGeneration = 0
     })
 
     afterEach(() => {
@@ -170,5 +173,27 @@ describe('OpenTasksAmountContainer readiness (AT-2445)', () => {
         settleAll()
         act(() => jest.advanceTimersByTime(OPEN_TASKS_AMOUNT_READY_TIMEOUT_MS))
         expect(loadedDispatches(dispatch)).toHaveLength(1)
+    })
+
+    it('rebuilds every count watcher after a long page-visible gap', () => {
+        const projectIds = ['project-1', 'project-2']
+        let tree
+
+        act(() => {
+            tree = renderer.create(<OpenTasksAmountContainer projectIds={projectIds} />)
+        })
+        expect(watchOpenTasksAmount).toHaveBeenCalledTimes(1)
+        expect(watchObservedOpenTasksAmount).toHaveBeenCalledTimes(1)
+        expect(watchUserWorkstreamsOpenTasksAmount).toHaveBeenCalledTimes(1)
+
+        mockPageVisibleRefreshGeneration = 1
+        act(() => tree.update(<OpenTasksAmountContainer projectIds={projectIds} />))
+
+        expect(unwatchOpenTasksAmount).toHaveBeenCalledTimes(1)
+        expect(watchOpenTasksAmount).toHaveBeenCalledTimes(2)
+        expect(watchObservedOpenTasksAmount).toHaveBeenCalledTimes(2)
+        expect(watchUserWorkstreamsOpenTasksAmount).toHaveBeenCalledTimes(2)
+
+        act(() => tree.unmount())
     })
 })

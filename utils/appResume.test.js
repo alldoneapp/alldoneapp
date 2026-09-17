@@ -117,6 +117,25 @@ describe('installAppResumeListener', () => {
         harness.stop()
     })
 
+    it('still notifies page-visible subscribers when Android missed the absence signal', () => {
+        const onPageVisible = jest.fn()
+        const unsubscribe = subscribePageVisible(onPageVisible)
+        const harness = setup()
+        harness.advance(10 * 60 * 1000)
+
+        // A killed/frozen TWA can return a focus signal without first delivering visibilitychange,
+        // freeze or pagehide. Connection-health cannot calculate hiddenMs in that case, but task
+        // watchers still need a chance to replace their retained morning snapshot.
+        harness.windowObject.emit('focus')
+
+        expect(onPageVisible).toHaveBeenCalledTimes(1)
+        expect(onPageVisible).toHaveBeenCalledWith({ hiddenMs: null, signal: 'focus' })
+        expect(harness.resumes).toHaveLength(0)
+
+        unsubscribe()
+        harness.stop()
+    })
+
     it('uses freeze and resume when visibilitychange is unavailable', () => {
         const harness = setup()
         harness.documentObject.emit('freeze')
@@ -195,6 +214,7 @@ describe('installAppResumeListener', () => {
         harness.show()
 
         expect(onPageVisible).toHaveBeenCalledTimes(1)
+        expect(onPageVisible).toHaveBeenCalledWith({ hiddenMs: 5000, signal: 'visibilitychange' })
         expect(harness.resumes).toHaveLength(0)
 
         unsubscribe()

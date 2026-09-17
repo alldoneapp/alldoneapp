@@ -55,6 +55,8 @@ const pageVisibleSubscribers = new Set()
  * Lets UI features react when the shared lifecycle owner confirms that the page is visible again.
  * Unlike the expensive app-resume work below, this fires after short absences too. Consumers must
  * keep their callbacks cheap and idempotent because browsers can report one return several ways.
+ * `hiddenMs` is null when Android did not deliver an absence signal; consumers that need a missed-
+ * signal fallback can then compare this return with their own last-visible timestamp.
  */
 export const subscribePageVisible = callback => {
     if (typeof callback !== 'function') return () => {}
@@ -62,10 +64,10 @@ export const subscribePageVisible = callback => {
     return () => pageVisibleSubscribers.delete(callback)
 }
 
-const notifyPageVisible = () => {
+const notifyPageVisible = details => {
     pageVisibleSubscribers.forEach(callback => {
         try {
-            callback()
+            callback(details)
         } catch (error) {
             console.warn('[AppResume] Page-visible subscriber failed:', error)
         }
@@ -182,7 +184,7 @@ export const installAppResumeListener = ({
         if (typeof onResume === 'function') onResume({ hiddenMs })
     }
 
-    const handleSignal = kind => () => {
+    const handleSignal = (kind, signal) => () => {
         if (kind === 'absence') {
             recordAbsence()
             return
@@ -193,7 +195,7 @@ export const installAppResumeListener = ({
                 recordAbsence()
                 return
             }
-            notifyPageVisible()
+            notifyPageVisible({ hiddenMs: hiddenAt === null ? null : Math.max(0, now() - hiddenAt), signal })
             handleResume()
             return
         }
@@ -202,13 +204,13 @@ export const installAppResumeListener = ({
         // visible. Ignore it without erasing the recorded absence; the ensuing
         // visibilitychange will perform the resume with the real age.
         if (isHidden()) return
-        notifyPageVisible()
+        notifyPageVisible({ hiddenMs: hiddenAt === null ? null : Math.max(0, now() - hiddenAt), signal })
         handleResume()
     }
 
     const listeners = SIGNALS.map(({ target, type, kind }) => {
         const node = target === 'document' ? documentObject : windowObject
-        const listener = handleSignal(kind)
+        const listener = handleSignal(kind, type)
         node.addEventListener(type, listener)
         return () => node.removeEventListener(type, listener)
     })
