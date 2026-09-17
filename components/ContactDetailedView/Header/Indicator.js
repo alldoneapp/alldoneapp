@@ -10,9 +10,7 @@ const Indicator = ({}) => {
     return (
         <View>
             <View style={localStyles.container}>
-                {!mobile && (
-                    <Text style={[styles.subtitle1, { color: colors.Text03 }]}>{translate('RELEVANT CONTACT')}</Text>
-                )}
+                {!mobile && <Text style={[styles.subtitle1, { color: colors.Text03 }]}>{translate('CONTACT')}</Text>}
                 <View style={{ marginLeft: 14 }}>
                     <Icon name="user-aster" size={20} color={colors.Text03} />
                 </View>
