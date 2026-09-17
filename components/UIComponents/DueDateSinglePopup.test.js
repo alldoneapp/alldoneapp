@@ -25,7 +25,13 @@ jest.mock('react-redux', () => ({
     useDispatch: () => jest.fn(),
     useSelector: selector => selector(mockState),
 }))
-jest.mock('react-tiny-popover', () => 'Popover')
+jest.mock('react-tiny-popover', () => {
+    const React = require('react')
+    return {
+        __esModule: true,
+        default: props => React.createElement('Popover', props, props.children, props.content),
+    }
+})
 jest.mock('../UIComponents/FloatModals/DueDateModal/DueDateModal', () => 'DueDateModal')
 const mockUpdateGoalAssigneeReminderDate = jest.fn()
 jest.mock('../../utils/BackendBridge', () => ({
@@ -99,7 +105,7 @@ describe('DueDateSinglePopup task postpone handoff (AT-2541)', () => {
         }
     })
 
-    const dueDateModal = tree => tree.root.findByType('Popover').props.content.props.children
+    const dueDateModal = tree => tree.root.findByType('DueDateModal')
 
     it('hands a single swipe postpone to the mounted Today row before writing', async () => {
         const tree = renderer.create(<DueDateSinglePopup />)
@@ -173,8 +179,7 @@ describe('DueDateSinglePopup goal reminder write', () => {
     // write — a full round trip in front of every goal postpone made from this popup.
     it('hands the loaded goal to the backend so it does not re-read it first', () => {
         const tree = renderer.create(<DueDateSinglePopup />)
-        // Popover is mocked as a host element, so its content stays an unrendered element prop.
-        const modal = tree.root.findByType('Popover').props.content.props.children
+        const modal = tree.root.findByType('DueDateModal')
 
         modal.props.updateParentGoalReminderDate(4242)
 
