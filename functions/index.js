@@ -273,6 +273,35 @@ exports.copyProjectMoveChatSecondGen = onCall(
     }
 )
 
+exports.copyFollowUpTaskChatSecondGen = onCall(
+    {
+        timeoutSeconds: 120,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required')
+
+        const { projectId, sourceTaskId, targetTaskId } = request.data || {}
+        await assertProjectAccess(request.auth.uid, projectId)
+
+        const { FollowUpTaskChatError, copyFollowUpTaskChat } = require('./Chats/copyFollowUpTaskChat')
+        try {
+            return await copyFollowUpTaskChat({
+                adminRef: admin,
+                actorId: request.auth.uid,
+                projectId,
+                sourceTaskId,
+                targetTaskId,
+            })
+        } catch (error) {
+            if (error instanceof FollowUpTaskChatError) throw new HttpsError(error.code, error.message)
+            throw error
+        }
+    }
+)
+
 // Queue manual cross-project task moves so the project picker can close as soon
 // as the server accepts the request. The task worker below owns the long-running
 // task/subtask/chat/feed fan-out and retries independently of the browser.

@@ -68,7 +68,7 @@ jest.mock('./FollowUpDueDate', () => 'FollowUpDueDate')
 jest.mock('./CustomFollowUpDateModal', () => 'CustomFollowUpDateModal')
 
 import FollowUpModal from './FollowUpModal'
-import { moveTasksFromOpen } from '../../utils/backends/Tasks/tasksFirestore'
+import { createFollowUpTask, moveTasksFromOpen } from '../../utils/backends/Tasks/tasksFirestore'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 
 const PROJECT_ID = 'project-1'
@@ -110,6 +110,7 @@ describe('FollowUpModal completion animation (AT-2495)', () => {
         jest.useFakeTimers()
         updateNewAttachmentsData.mockImplementation((projectId, comment) => Promise.resolve(comment))
         moveTasksFromOpen.mockResolvedValue(undefined)
+        createFollowUpTask.mockResolvedValue(undefined)
     })
 
     afterEach(() => {
@@ -206,6 +207,27 @@ describe('FollowUpModal completion animation (AT-2495)', () => {
 
         await pressDone(tree)
 
+        expect(completionMotion.cancel).toHaveBeenCalledTimes(1)
+        expect(consoleError).toHaveBeenCalled()
+        consoleError.mockRestore()
+    })
+
+    it('waits for follow-up creation so its failure is handled instead of disappearing', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+        createFollowUpTask.mockRejectedValueOnce(new Error('permission-denied'))
+        const completionMotion = makeMotion()
+        const { tree } = renderModal(completionMotion)
+
+        act(() => tree.root.findByProps({ keyName: '3' }).props.onKeyDown())
+        act(() =>
+            tree.root.findByType('FollowUpDueDate').props.selectDate('Tomorrow', {
+                valueOf: () => 123456789,
+            })
+        )
+        await pressDone(tree)
+
+        expect(moveTasksFromOpen).toHaveBeenCalledTimes(1)
+        expect(createFollowUpTask).toHaveBeenCalledWith(PROJECT_ID, task, 123456789, '', 15)
         expect(completionMotion.cancel).toHaveBeenCalledTimes(1)
         expect(consoleError).toHaveBeenCalled()
         consoleError.mockRestore()
