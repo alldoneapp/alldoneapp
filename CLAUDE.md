@@ -986,6 +986,14 @@ FloatModals card color, so existing modal contents render seamlessly inside it w
 relinquishing their own chrome (that migration comes per-modal via `ModalShellContext`).
 Migrated so far: DueDateButton, EstimationButton, TaskPriorityWrapper, TaskDetailedView
 Assignee + ProjectPicker, MorePopupsOfEditModals MoreButtonWrapper.
+**The breakpoint may change while a popup is open, but its content tree must not (AT-2607).**
+`AppPopover` owns one stable `display: contents` portal container and its desktop/sheet
+hosts only move that container in the DOM. This preserves component state, uncontrolled
+form state and editor instances while rotation still switches presentation responsively;
+the stable portal also provides the current `ModalShellContext`, since a React portal
+inherits context from its logical owner rather than its physical DOM parent. Do not put
+the content back under the conditional `<Popover>` / `<BottomSheet>` branches. Pinned by
+the form-state rotation case in `ModalShell.test.js` and `browser-tests/modalsheet`.
 **`PopupDismissSurface` must stand down inside a sheet (AT-2287)**: the surface's
 window-capture outside-gesture guard treats the sheet's own chrome (handle strip,
 backdrop) as "outside" — it swallowed the handle's `touchstart` at capture (so the

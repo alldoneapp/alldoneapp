@@ -27,6 +27,22 @@ installEscapeStack()
 let setOuterOpenExternal = () => {}
 let setNestedOpenExternal = () => {}
 let nestedActionCount = 0
+let outerContentMountCount = 0
+
+function StatefulSheetInput() {
+    const [value, setValue] = useState('')
+    useState(() => ++outerContentMountCount)
+
+    return (
+        <TextInput
+            testID={'sheet-input'}
+            placeholder={'type here'}
+            value={value}
+            onChangeText={setValue}
+            style={{ color: '#ffffff', borderWidth: 1, borderColor: '#ffffff', padding: 8, marginVertical: 12 }}
+        />
+    )
+}
 
 function Harness() {
     const [outerOpen, setOuterOpen] = useState(false)
@@ -50,11 +66,7 @@ function Harness() {
             <Text testID={'outer-content'} style={{ color: '#ffffff' }}>
                 OUTER SHEET
             </Text>
-            <TextInput
-                testID={'sheet-input'}
-                placeholder={'type here'}
-                style={{ color: '#ffffff', borderWidth: 1, borderColor: '#ffffff', padding: 8, marginVertical: 12 }}
-            />
+            <StatefulSheetInput />
             <AppPopover
                 isOpen={nestedOpen}
                 onClickOutside={() => setNestedOpen(false)}
@@ -100,6 +112,8 @@ window.__state = () => ({
     bodyOverflowY: document.body.style.overflowY,
     sheetRect: rect(document.querySelector('[data-testid="bottom-sheet"]')),
     nestedActionCount,
+    outerContentMountCount,
+    inputValue: document.querySelector('[data-testid="sheet-input"]')?.value || '',
     focusedTag: document.activeElement ? document.activeElement.tagName : null,
 })
 
