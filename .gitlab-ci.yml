@@ -286,7 +286,10 @@ test:web:changed:
         - |
             if node ci/selectTargetedJestFiles.js "origin/$CI_DEFAULT_BRANCH" > /tmp/targeted-jest-files.z; then
                 if [ -s /tmp/targeted-jest-files.z ]; then
-                    xargs -0 npm test -- --config ci/jest.web.config.js --runInBand --findRelatedTests --passWithNoTests < /tmp/targeted-jest-files.z
+                    # A shared UI primitive can select hundreds of suites. Suppress legacy
+                    # React console warnings so GitLab's 4 MB trace cap cannot hide the
+                    # assertion summary (the full-suite job uses the same option below).
+                    xargs -0 npm test -- --config ci/jest.web.config.js --runInBand --silent --findRelatedTests --passWithNoTests < /tmp/targeted-jest-files.z
                 else
                     echo "No Jest input selected, so no suites will run. See the selection summary above for why."
                 fi
