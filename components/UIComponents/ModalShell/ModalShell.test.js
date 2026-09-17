@@ -20,6 +20,7 @@ import { act, Simulate } from 'react-dom/test-utils'
 import { createRoot } from 'react-dom/client'
 
 import AppPopover from './AppPopover'
+import { useModalShellPresentation } from './ModalShellContext'
 import { highResNow } from '../../../utils/popupDismissGuard'
 import { installEscapeStack, resetEscapeStack } from '../../../utils/escapeStack'
 import { consumePopstateForSheetLayers, resetSheetHistoryLayers } from '../../../utils/sheetHistoryLayers'
@@ -165,6 +166,75 @@ describe('ModalShell', () => {
                 expect(input.value).toBe('Keep this draft')
                 expect(unmount).not.toHaveBeenCalled()
                 expect(!!sheetNode()).toBe(isOpen && width < MODAL_SHEET_BREAKPOINT)
+            }
+        })
+
+        it('moves open form content between sheet and popover without losing its state', async () => {
+            window.innerWidth = 390
+            window.innerHeight = 844
+            const unmount = jest.fn()
+            function StatefulForm() {
+                const [value, setValue] = React.useState('')
+                const [enabled, setEnabled] = React.useState(false)
+                const presentation = useModalShellPresentation()
+                React.useEffect(() => unmount, [])
+                return (
+                    <form aria-label={'Stateful popup form'}>
+                        <span data-testid={'current-presentation'}>{presentation || 'popover'}</span>
+                        <input
+                            aria-label={'Task name'}
+                            value={value}
+                            onChange={event => setValue(event.target.value)}
+                        />
+                        <input
+                            aria-label={'Task enabled'}
+                            type={'checkbox'}
+                            checked={enabled}
+                            onChange={event => setEnabled(event.target.checked)}
+                        />
+                    </form>
+                )
+            }
+            container = document.createElement('div')
+            document.body.appendChild(container)
+            root = createRoot(container)
+            act(() =>
+                root.render(
+                    <AppPopover content={<StatefulForm />} isOpen>
+                        <Text>TRIGGER</Text>
+                    </AppPopover>
+                )
+            )
+            await settle()
+
+            const nameInput = document.querySelector('[aria-label="Task name"]')
+            const enabledInput = document.querySelector('[aria-label="Task enabled"]')
+            act(() => {
+                Simulate.change(nameInput, { target: { value: 'Keep the complete draft' } })
+                Simulate.change(enabledInput, { target: { checked: true } })
+            })
+
+            for (const [width, height, expectsSheet] of [
+                [844, 390, false],
+                [390, 844, true],
+                [844, 390, false],
+            ]) {
+                act(() => {
+                    window.innerWidth = width
+                    window.innerHeight = height
+                    window.dispatchEvent(new Event('resize'))
+                })
+                await settle()
+
+                expect(!!sheetNode()).toBe(expectsSheet)
+                expect(document.querySelector('[aria-label="Task name"]')).toBe(nameInput)
+                expect(document.querySelector('[aria-label="Task enabled"]')).toBe(enabledInput)
+                expect(nameInput.value).toBe('Keep the complete draft')
+                expect(enabledInput.checked).toBe(true)
+                expect(document.querySelector('[data-testid="current-presentation"]').textContent).toBe(
+                    expectsSheet ? 'sheet' : 'popover'
+                )
+                expect(unmount).not.toHaveBeenCalled()
             }
         })
 
