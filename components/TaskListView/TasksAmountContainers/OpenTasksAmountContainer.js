@@ -12,6 +12,7 @@ import {
 import { setOpenTasksAmountLoaded, setTaskColdStartEmptyToday } from '../../../redux/actions'
 import { scheduleTaskColdStartCachePersist } from '../../../utils/InitialLoad/taskColdStartCache'
 import store from '../../../redux/store'
+import usePageVisibleRefreshGeneration from '../../../hooks/usePageVisibleRefreshGeneration'
 
 /**
  * AT-2445: a Firestore listener that is simply slow must not keep a genuinely empty inbox from ever
@@ -37,6 +38,7 @@ export default function OpenTasksAmountContainer({ projectIds }) {
         ? JSON.stringify(Object.keys(userWorkstreams).sort()) + JSON.stringify(Object.values(userWorkstreams).sort())
         : ''
     const projectIdsString = JSON.stringify(projectIds)
+    const pageVisibleRefreshGeneration = usePageVisibleRefreshGeneration()
 
     useEffect(() => {
         const isUser = !isAssistant && !isContact && !isWorkstream(userId)
@@ -121,7 +123,14 @@ export default function OpenTasksAmountContainer({ projectIds }) {
             unwatchOpenTasksAmount([...normalWatcherKeys, ...observedWatcherKeys, ...userWorkstreamsWatcherKeys])
             amountsByProject.current = { total: 0 }
         }
-    }, [projectIdsString, userId, countLaterTasks, countSomedayTasks, userWorkstreamsString])
+    }, [
+        projectIdsString,
+        userId,
+        countLaterTasks,
+        countSomedayTasks,
+        userWorkstreamsString,
+        pageVisibleRefreshGeneration,
+    ])
 
     return null
 }
