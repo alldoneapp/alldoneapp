@@ -14,12 +14,18 @@ const SHEET_CONTEXT_VALUE = { presentation: 'sheet' }
  * portal container is attached. Changing hosts therefore moves DOM instead of
  * asking React to unmount one form and mount another one at the breakpoint.
  */
-function PreservedContentHost({ contentNode, contentInfo, onContentInfo, onPresenceChange }) {
+function PreservedContentHost({ contentNode, onPresenceChange, onInlinePresenceChange }) {
     const hostRef = useRef(null)
 
     useLayoutEffect(() => {
         const host = hostRef.current
-        if (!host || !contentNode) return
+        // react-test-renderer does not create DOM nodes for host refs. Leave the
+        // content in AppPopover's tree in that renderer instead of creating a
+        // ReactDOM portal into a container it cannot manage.
+        if (!host || typeof host.appendChild !== 'function' || !contentNode) {
+            onInlinePresenceChange(1)
+            return () => onInlinePresenceChange(-1)
+        }
 
         host.appendChild(contentNode)
         onPresenceChange(1)
@@ -29,11 +35,7 @@ function PreservedContentHost({ contentNode, contentInfo, onContentInfo, onPrese
             // node. The retiring host must not detach it again.
             if (contentNode.parentNode === host) host.removeChild(contentNode)
         }
-    }, [contentNode, onPresenceChange])
-
-    useLayoutEffect(() => {
-        if (contentInfo) onContentInfo(contentInfo)
-    }, [contentInfo, onContentInfo])
+    }, [contentNode, onInlinePresenceChange, onPresenceChange])
 
     return <div ref={hostRef} style={{ display: 'contents' }} />
 }
@@ -53,7 +55,7 @@ export default function AppPopover({ content, children, isOpen, onClickOutside, 
     const { isSheet } = useModalSizing()
     const contentNodeRef = useRef(null)
     const [contentHostCount, setContentHostCount] = useState(0)
-    const [popoverContentInfo, setPopoverContentInfo] = useState(null)
+    const [contentRenderer, setContentRenderer] = useState(null)
 
     if (!contentNodeRef.current && typeof document !== 'undefined') {
         contentNodeRef.current = document.createElement('div')
@@ -61,27 +63,20 @@ export default function AppPopover({ content, children, isOpen, onClickOutside, 
     }
 
     const onPresenceChange = useCallback(delta => {
+        if (delta > 0) setContentRenderer('portal')
         setContentHostCount(count => Math.max(0, count + delta))
     }, [])
-    const onContentInfo = useCallback(info => setPopoverContentInfo(current => (current === info ? current : info)), [])
-    const renderPopoverHost = useCallback(
-        info => (
-            <PreservedContentHost
-                contentNode={contentNodeRef.current}
-                contentInfo={info}
-                onContentInfo={onContentInfo}
-                onPresenceChange={onPresenceChange}
-            />
-        ),
-        [onContentInfo, onPresenceChange]
-    )
+    const onInlinePresenceChange = useCallback(delta => {
+        if (delta > 0) setContentRenderer(current => current || 'inline')
+        setContentHostCount(count => Math.max(0, count + delta))
+    }, [])
 
     const fallbackPosition = Array.isArray(popoverProps.position)
         ? popoverProps.position[0]
         : popoverProps.position || 'top'
     const contentInfo = isSheet
         ? SHEET_CONTENT_INFO
-        : popoverContentInfo || { position: fallbackPosition, align: popoverProps.align || 'center' }
+        : { position: fallbackPosition, align: popoverProps.align || 'center' }
     // Keep content through each shell's close animation. While open, isOpen
     // bridges the short interval in which one host has retired and the other
     // has not mounted yet.
@@ -91,6 +86,7 @@ export default function AppPopover({ content, children, isOpen, onClickOutside, 
             ? content(contentInfo)
             : content
         : null
+    const contextValue = isSheet ? SHEET_CONTEXT_VALUE : null
 
     // Keep both the trigger and popup content under stable React ancestors
     // across the breakpoint. Only the content's DOM container moves between
@@ -99,7 +95,15 @@ export default function AppPopover({ content, children, isOpen, onClickOutside, 
         <>
             <Popover
                 {...popoverProps}
-                content={isSheet ? null : renderPopoverHost}
+                content={
+                    isSheet ? null : (
+                        <PreservedContentHost
+                            contentNode={contentNodeRef.current}
+                            onInlinePresenceChange={onInlinePresenceChange}
+                            onPresenceChange={onPresenceChange}
+                        />
+                    )
+                }
                 isOpen={!isSheet && isOpen}
                 onClickOutside={onClickOutside}
             >
@@ -111,19 +115,21 @@ export default function AppPopover({ content, children, isOpen, onClickOutside, 
                 <BottomSheet isOpen={!!isOpen} onRequestClose={onClickOutside} modalId={modalId}>
                     <PreservedContentHost
                         contentNode={contentNodeRef.current}
-                        onContentInfo={onContentInfo}
+                        onInlinePresenceChange={onInlinePresenceChange}
                         onPresenceChange={onPresenceChange}
                     />
                 </BottomSheet>
             )}
             {shouldRenderContent &&
                 contentNodeRef.current &&
-                createPortal(
-                    <ModalShellContext.Provider value={isSheet ? SHEET_CONTEXT_VALUE : null}>
-                        {renderedContent}
-                    </ModalShellContext.Provider>,
-                    contentNodeRef.current
-                )}
+                (contentRenderer === 'portal' ? (
+                    createPortal(
+                        <ModalShellContext.Provider value={contextValue}>{renderedContent}</ModalShellContext.Provider>,
+                        contentNodeRef.current
+                    )
+                ) : contentRenderer === 'inline' ? (
+                    <ModalShellContext.Provider value={contextValue}>{renderedContent}</ModalShellContext.Provider>
+                ) : null)}
         </>
     )
 }
