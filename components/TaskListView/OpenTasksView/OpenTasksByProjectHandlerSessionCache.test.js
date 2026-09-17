@@ -5,6 +5,7 @@ const mockDispatch = jest.fn()
 const mockWatchOpenTasks = jest.fn()
 const mockUnwatchOpenTasks = jest.fn()
 const mockFilterOpenTasks = jest.fn()
+let mockPageVisibleRefreshGeneration = 0
 
 let mockState
 
@@ -48,6 +49,7 @@ jest.mock('../../Workstreams/WorkstreamHelper', () => ({
 jest.mock('../../../hooks/useEffectDebug', () => jest.fn())
 jest.mock('../../HashtagFilters/UseSelectorHashtagFilters', () => () => [new Map(), []])
 jest.mock('../../../utils/editingGuard', () => ({ useIsUserEditing: () => false }))
+jest.mock('../../../hooks/usePageVisibleRefreshGeneration', () => () => mockPageVisibleRefreshGeneration)
 jest.mock('../../../utils/backends/firestore', () => ({ checkIfCalendarConnected: jest.fn() }))
 jest.mock('../../../utils/backends/EmailLine/emailLineBackend', () => ({ fetchEmailLineSummary: jest.fn() }))
 
@@ -84,6 +86,7 @@ describe('OpenTasksByProjectHandler same-session cache lifecycle', () => {
         mockWatchOpenTasks.mockClear()
         mockUnwatchOpenTasks.mockClear()
         mockFilterOpenTasks.mockClear()
+        mockPageVisibleRefreshGeneration = 0
     })
 
     it('retains rendered rows and watcher data while the Tasks page is unmounted', () => {
@@ -168,6 +171,34 @@ describe('OpenTasksByProjectHandler same-session cache lifecycle', () => {
 
         expect(mockWatchOpenTasks).toHaveBeenCalledTimes(1)
         expect(mockUnwatchOpenTasks).toHaveBeenCalledWith('project-1', 'user-1', { preserveData: true })
+        act(() => tree.unmount())
+    })
+
+    it('rebuilds task listeners after a long page-visible gap without dropping rendered rows', () => {
+        mockState = buildState({ withSessionSnapshot: true })
+        const props = {
+            projectIndex: 0,
+            firstProject: false,
+            setProjectsHaveTasksInFirstDay: jest.fn(),
+        }
+        let tree
+
+        act(() => {
+            tree = renderer.create(<OpenTasksByProjectHandler {...props} />)
+        })
+        expect(mockWatchOpenTasks).toHaveBeenCalledTimes(1)
+
+        mockPageVisibleRefreshGeneration = 1
+        act(() => tree.update(<OpenTasksByProjectHandler {...props} />))
+
+        expect(mockWatchOpenTasks).toHaveBeenCalledTimes(2)
+        expect(mockWatchOpenTasks.mock.calls[1][4]).toBe(true)
+        expect(mockUnwatchOpenTasks).toHaveBeenLastCalledWith('project-1', 'user-1', { preserveData: true })
+
+        const actions = mockDispatch.mock.calls.flatMap(([action]) => (Array.isArray(action) ? action : [action]))
+        expect(actions.some(action => action.type === 'Clear open tasks map')).toBe(false)
+        expect(actions.some(action => action.type === 'Clear open subtasks map')).toBe(false)
+
         act(() => tree.unmount())
     })
 })

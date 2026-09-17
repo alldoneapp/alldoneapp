@@ -28,6 +28,7 @@ import store from '../../../redux/store'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 import { useIsUserEditing } from '../../../utils/editingGuard'
+import usePageVisibleRefreshGeneration from '../../../hooks/usePageVisibleRefreshGeneration'
 
 export default function OpenTasksByProjectHandler({
     projectIndex,
@@ -67,6 +68,7 @@ export default function OpenTasksByProjectHandler({
     )
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
+    const pageVisibleRefreshGeneration = usePageVisibleRefreshGeneration({ enabled: taskWatchersEnabled })
 
     const stopTasksWatchers = ({ preserveSessionSnapshot = false } = {}) => {
         if (!preserveSessionSnapshot) {
@@ -211,7 +213,7 @@ export default function OpenTasksByProjectHandler({
                 stopTasksWatchers({ preserveSessionSnapshot: true })
             }
         }
-    }, [taskWatchersEnabled])
+    }, [taskWatchersEnabled, pageVisibleRefreshGeneration])
 
     useEffect(() => {
         const { openTasksStore } = store.getState()
