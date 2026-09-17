@@ -157,13 +157,12 @@ import {
     updateChatPrivacy,
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
-import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, createObjectMessage } from '../Chats/chatsComments'
+import { createObjectMessage } from '../Chats/chatsComments'
 import { updateUserDataDirectly } from '../Users/usersFirestore'
 import NavigationService from '../../NavigationService'
 import { DV_TAB_ROOT_TASKS, DV_TAB_TASK_PROPERTIES } from '../../TabNavigationConstants'
 import { getRoundedStartAndEndDates } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { getCalendarTaskStartAndEndTimestamp } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksIntervals'
-import { getAssistant } from '../../../components/AdminPanel/Assistants/assistantsHelper'
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
 import { TASK_EXECUTION_MODE_DIRECT } from '../../taskExecutionMode'
@@ -984,75 +983,10 @@ export function createGenericTaskWhenMention(
     }
 }
 
-const updateLastAssistantCommentData = (projectId, newTaskId, creatorId, batch) => {
-    const { loggedUser } = store.getState()
-
-    const updateDate = {
-        objectType: 'tasks',
-        objectId: newTaskId,
-        creatorId,
-        creatorType: getAssistant(creatorId) ? 'assistant' : 'user',
-        date: moment().utc().valueOf(),
-    }
-
-    batch.update(getDb().doc(`users/${loggedUser.uid}`), {
-        [`lastAssistantCommentData.${projectId}`]: updateDate,
-        [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-            ...updateDate,
-            projectId,
-        },
-    })
-}
-
-async function copyChatsForFolloupTaskAndGenerateCommentsData(projectId, oldTaskId, newTaskId) {
-    let commentsData = null
-
-    const oldChat = (await getDb().doc(`chatObjects/${projectId}/chats/${oldTaskId}`).get()).data()
-
-    if (oldChat) {
-        let lastCommentOwnerId = ''
-
-        const commentDocs = await getDb().collection(`chatComments/${projectId}/tasks/${oldTaskId}/comments`).get()
-
-        commentsData =
-            commentDocs.docs.length > 0
-                ? {
-                      lastComment: '',
-                      lastCommentType: STAYWARD_COMMENT,
-                      amount: 0,
-                  }
-                : null
-
-        const batch = new BatchWrapper(getDb())
-
-        commentDocs.forEach(doc => {
-            const comment = doc.data()
-            if (!comment.commentText.includes('Follow up task created')) {
-                commentsData.lastComment = comment.commentText
-                commentsData.amount++
-                lastCommentOwnerId = comment.creatorId
-                batch.set(getDb().doc(`chatComments/${projectId}/tasks/${newTaskId}/comments/${doc.id}`), comment)
-            }
-        })
-
-        updateLastAssistantCommentData(projectId, newTaskId, lastCommentOwnerId, batch)
-
-        batch.set(getDb().doc(`chatObjects/${projectId}/chats/${newTaskId}`), {
-            ...oldChat,
-            commentsData: { ...commentsData, lastCommentOwnerId },
-        })
-        await batch.commit()
-    }
-
-    return commentsData
-}
-
 export async function createFollowUpTask(projectId, task, dueDate, comment, newEstimation) {
     const { loggedUser } = store.getState()
 
     const newTaskId = getId()
-
-    const commentsData = await copyChatsForFolloupTaskAndGenerateCommentsData(projectId, task.id, newTaskId)
 
     const followUpTask = {
         ...TasksHelper.getNewDefaultTask(),
@@ -1076,11 +1010,35 @@ export async function createFollowUpTask(projectId, task, dueDate, comment, newE
         parentGoalIsPublicFor: task.parentGoalIsPublicFor,
         lockKey: task.lockKey,
         timesFollowed: task.timesFollowed ? task.timesFollowed + 1 : 1,
-        commentsData,
+        commentsData: null,
+        followUpSourceTaskId: task.id,
         ...(task.noteId && { noteId: task.noteId }),
     }
 
-    await uploadNewTask(projectId, followUpTask, null, null, true, true, true)
+    // The target task must exist before its conversation can be copied: comment rules verify the
+    // stored parent document, and chat access projections are server-owned. The old client-side
+    // batch did the copy first, so any source task that already had a conversation failed before
+    // the follow-up task was ever written.
+    await uploadNewTask(projectId, followUpTask, null, true, true, true)
+
+    if (!isAppOffline()) {
+        try {
+            await runHttpsCallableFunction('copyFollowUpTaskChatSecondGen', {
+                projectId,
+                sourceTaskId: task.id,
+                targetTaskId: newTaskId,
+            })
+        } catch (error) {
+            // Conversation history is useful, but it must never make an already-created follow-up
+            // disappear. This also keeps mixed client/function rollouts backward compatible.
+            console.warn('[FollowUp] Follow-up task was created, but its conversation could not be copied', {
+                projectId,
+                sourceTaskId: task.id,
+                targetTaskId: newTaskId,
+                error,
+            })
+        }
+    }
 
     updateTaskData(projectId, task.id, { timesFollowed: firebase.firestore.FieldValue.increment(1) }, null)
 

@@ -209,7 +209,7 @@ export default function FollowUpModal({ projectId, task, checkBoxId, cancelPopov
                 recurrenceBaseDateOverride
             )
             if (needToCreateFolloUpTask) {
-                createFollowUpTask(projectId, task, dateTimestamp, commentWithAttachments, safeEstimation)
+                await createFollowUpTask(projectId, task, dateTimestamp, commentWithAttachments, safeEstimation)
             }
         } catch (error) {
             // The popup is already gone, so putting the collapsed row back is the only thing that
