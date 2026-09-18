@@ -2,7 +2,7 @@ import moment from 'moment'
 
 import { getDb, mapGoalData, mapMilestoneData, mapProjectData } from './backends/firestore'
 import { mapOKRData } from './backends/OKRs/okrsFirestore'
-import { ALL_USERS } from '../components/GoalsView/GoalsHelper'
+import { ALL_USERS, DYNAMIC_PERCENT } from '../components/GoalsView/GoalsHelper'
 import {
     calculateOkrPace,
     calculateRevenueOkrCurrentValue,
@@ -56,11 +56,25 @@ function normalizeProject(project) {
     }
 }
 
-function normalizeGoal(goal) {
+function normalizeGoalComments(commentsData) {
+    const lastComment = typeof commentsData?.lastComment === 'string' ? commentsData.lastComment.trim() : ''
+    if (!lastComment) return null
+
+    return {
+        lastComment,
+        lastCommentType: typeof commentsData.lastCommentType === 'string' ? commentsData.lastCommentType : '',
+        amount: Math.max(1, Math.round(normalizeOkrNumber(commentsData.amount))),
+    }
+}
+
+export function normalizeRoadmapGoal(goal) {
     return {
         id: goal.id,
         name: goal.name || '',
-        progress: normalizeOkrNumber(goal.progress),
+        // mapGoalData uses this sentinel when progress is calculated from the
+        // goal's live child data. Preserve that meaning for the roadmap
+        // consumer instead of coercing the string to 0.
+        progress: goal.progress === DYNAMIC_PERCENT ? -1 : normalizeOkrNumber(goal.progress),
         dynamicProgress: normalizeOkrNumber(goal.dynamicProgress),
         startingMilestoneDate: normalizeOkrNumber(goal.startingMilestoneDate),
         completionMilestoneDate: normalizeOkrNumber(goal.completionMilestoneDate),
@@ -70,6 +84,7 @@ function normalizeGoal(goal) {
         sortIndexByMilestone: goal.sortIndexByMilestone || {},
         scheduleMode: goal.scheduleMode || '',
         focusAreaId: typeof goal.focusAreaId === 'string' ? goal.focusAreaId : null,
+        commentsData: normalizeGoalComments(goal.commentsData),
     }
 }
 
@@ -208,7 +223,7 @@ export function subscribeToRoadmapProject({ projectId, userId, onSnapshot, onErr
             .where('ownerId', '==', ALL_USERS)
             .onSnapshot(
                 snapshot => {
-                    goals = snapshot.docs.map(doc => normalizeGoal(mapGoalData(doc.id, doc.data())))
+                    goals = snapshot.docs.map(doc => normalizeRoadmapGoal(mapGoalData(doc.id, doc.data())))
                     emit()
                 },
                 error => reportError('goals', error)

@@ -5,7 +5,10 @@ jest.mock('./backends/firestore', () => ({
     mapProjectData: jest.fn(),
 }))
 jest.mock('./backends/OKRs/okrsFirestore', () => ({ mapOKRData: jest.fn() }))
-jest.mock('../components/GoalsView/GoalsHelper', () => ({ ALL_USERS: 'ALL_USERS' }))
+jest.mock('../components/GoalsView/GoalsHelper', () => ({
+    ALL_USERS: 'ALL_USERS',
+    DYNAMIC_PERCENT: 'DYNAMIC_PERCENT',
+}))
 jest.mock('../components/TaskListView/OKRs/okrHelper', () => ({
     calculateOkrPace: () => ({ status: 'onTrack' }),
     calculateRevenueOkrCurrentValue: jest.fn(),
@@ -24,7 +27,7 @@ jest.mock('../Themes/Modern/ProjectColors', () => ({
     },
 }))
 
-const { getActiveRoadmapProjects, getRoadmapNavigationPath } = require('./roadmapSourceBridge')
+const { getActiveRoadmapProjects, getRoadmapNavigationPath, normalizeRoadmapGoal } = require('./roadmapSourceBridge')
 
 describe('roadmap source bridge', () => {
     it('offers only active projects and returns a minimal sorted DTO', () => {
@@ -56,5 +59,30 @@ describe('roadmap source bridge', () => {
             '/projects/p1/user/u1/goals/open'
         )
         expect(getRoadmapNavigationPath({ projectId: 'p1', userId: 'u1', entityType: 'task' })).toBeNull()
+    })
+
+    it('preserves live dynamic progress and exposes the goal comment summary', () => {
+        expect(
+            normalizeRoadmapGoal({
+                id: 'g1',
+                name: 'Live goal',
+                progress: 'DYNAMIC_PERCENT',
+                dynamicProgress: 73,
+                commentsData: {
+                    lastComment: '  Waiting for final approval  ',
+                    lastCommentType: 'comment',
+                    amount: 3,
+                },
+            })
+        ).toMatchObject({
+            id: 'g1',
+            progress: -1,
+            dynamicProgress: 73,
+            commentsData: {
+                lastComment: 'Waiting for final approval',
+                lastCommentType: 'comment',
+                amount: 3,
+            },
+        })
     })
 })
