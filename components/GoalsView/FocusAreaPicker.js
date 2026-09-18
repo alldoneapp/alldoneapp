@@ -13,7 +13,11 @@ import {
     getProjectFocusAreas,
     normalizeFocusAreaName,
 } from '../../functions/shared/goalFocusAreas'
-import { ensureProjectFocusArea, renameProjectFocusArea } from '../../utils/backends/Goals/goalFocusAreas'
+import {
+    deleteProjectFocusArea,
+    ensureProjectFocusArea,
+    renameProjectFocusArea,
+} from '../../utils/backends/Goals/goalFocusAreas'
 import useEscapeKey from '../../hooks/useEscapeKey'
 import useModalSizing from '../../hooks/useModalSizing'
 
@@ -22,11 +26,13 @@ export default function FocusAreaPicker({ projectId, selectedId, onChange, onClo
     const catalog = useSelector(state => state.loggedUserProjectsMap?.[projectId]?.focusAreas)
     const [query, setQuery] = useState('')
     const [renaming, setRenaming] = useState(null)
+    const [deleting, setDeleting] = useState(null)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     const busyRef = useRef(false)
     const modalId = useId()
     const areas = getProjectFocusAreas(catalog)
+    const hasSelectedArea = areas.some(area => area.id === selectedId)
     const name = normalizeFocusAreaName(query)
     const key = focusAreaNameKey(name)
     const exactMatch = areas.find(area => focusAreaNameKey(area.name) === key)
@@ -37,7 +43,7 @@ export default function FocusAreaPicker({ projectId, selectedId, onChange, onClo
         return () => removeModal(modalId)
     }, [modalId])
 
-    const perform = async action => {
+    const perform = async (action, failureMessage = 'Could not save the focus area. Please try again.') => {
         if (busyRef.current) return
         busyRef.current = true
         setBusy(true)
@@ -51,7 +57,7 @@ export default function FocusAreaPicker({ projectId, selectedId, onChange, onClo
                         ? 'A focus area with this name already exists'
                         : error.code === 'focus-area-reserved-name'
                           ? 'General is reserved for goals without a focus area'
-                          : 'Could not save the focus area. Please try again.'
+                          : failureMessage
                 )
             )
         } finally {
@@ -86,8 +92,20 @@ export default function FocusAreaPicker({ projectId, selectedId, onChange, onClo
         setError('')
     }
 
+    const cancelDelete = () => {
+        setDeleting(null)
+        setError('')
+    }
+
+    const remove = () =>
+        perform(async () => {
+            await deleteProjectFocusArea(projectId, deleting.id)
+            setDeleting(null)
+            setQuery('')
+        }, 'Could not delete the focus area. Please try again.')
+
     useEscapeKey(() => {
-        if (!busyRef.current) renaming ? cancelRename() : onClose()
+        if (!busyRef.current) deleting ? cancelDelete() : renaming ? cancelRename() : onClose()
     })
 
     return (
@@ -102,31 +120,63 @@ export default function FocusAreaPicker({ projectId, selectedId, onChange, onClo
                 <ModalHeader
                     disabledEscape
                     closeModal={busy ? () => {} : onClose}
-                    title={translate(renaming ? 'Rename focus area' : 'Focus area')}
-                    description={translate(
-                        renaming
-                            ? 'This name changes for all goals in this project'
-                            : 'Select or create a focus area for this project'
-                    )}
+                    title={translate(deleting ? 'Delete focus area' : renaming ? 'Rename focus area' : 'Focus area')}
+                    description={
+                        deleting
+                            ? translate('Delete focus area named', { name: deleting.name })
+                            : translate(
+                                  renaming
+                                      ? 'This name changes for all goals in this project'
+                                      : 'Select or create a focus area for this project'
+                              )
+                    }
                 />
-                <TextInput
-                    autoFocus
-                    accessibilityLabel={translate(renaming ? 'Focus area name' : 'Select or create a focus area')}
-                    placeholder={translate('Select or create a focus area')}
-                    placeholderTextColor={colors.Text03}
-                    style={localStyles.input}
-                    value={query}
-                    onChangeText={setQuery}
-                    maxLength={MAX_FOCUS_AREA_NAME_LENGTH}
-                    editable={!busy}
-                    onSubmitEditing={() => {
-                        if (renaming && name) rename()
-                        else if (exactMatch) select(exactMatch.id)
-                        else if (key === 'general') select(null)
-                        else if (canCreate) create()
-                    }}
-                />
-                {renaming ? (
+                {!deleting && (
+                    <TextInput
+                        autoFocus
+                        accessibilityLabel={translate(renaming ? 'Focus area name' : 'Select or create a focus area')}
+                        placeholder={translate('Select or create a focus area')}
+                        placeholderTextColor={colors.Text03}
+                        style={localStyles.input}
+                        value={query}
+                        onChangeText={setQuery}
+                        maxLength={MAX_FOCUS_AREA_NAME_LENGTH}
+                        editable={!busy}
+                        onSubmitEditing={() => {
+                            if (renaming && name) rename()
+                            else if (exactMatch) select(exactMatch.id)
+                            else if (key === 'general') select(null)
+                            else if (canCreate) create()
+                        }}
+                    />
+                )}
+                {deleting ? (
+                    <View>
+                        <Text style={localStyles.deleteDescription}>
+                            {translate('Goals in this focus area will appear in General. No goals will be deleted.')}
+                        </Text>
+                        <View style={localStyles.renameActions}>
+                            <TouchableOpacity
+                                accessibilityRole="button"
+                                onPress={cancelDelete}
+                                disabled={busy}
+                                style={localStyles.option}
+                            >
+                                <Text style={localStyles.text}>{translate('Cancel')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                accessibilityRole="button"
+                                onPress={remove}
+                                disabled={busy}
+                                style={localStyles.option}
+                            >
+                                <Text style={[localStyles.text, localStyles.deleteText]}>
+                                    {translate('Delete focus area')}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                ) : renaming ? (
                     <View style={localStyles.renameActions}>
                         <TouchableOpacity
                             accessibilityRole="button"
@@ -154,7 +204,7 @@ export default function FocusAreaPicker({ projectId, selectedId, onChange, onClo
                             onPress={() => select(null)}
                         >
                             <Text style={localStyles.text}>{translate('None (General)')}</Text>
-                            {!selectedId && <Icon name="check" size={20} color={colors.Primary200} />}
+                            {!hasSelectedArea && <Icon name="check" size={20} color={colors.Primary200} />}
                         </TouchableOpacity>
                         {areas
                             .filter(area => focusAreaNameKey(area.name).includes(key))
@@ -184,6 +234,18 @@ export default function FocusAreaPicker({ projectId, selectedId, onChange, onClo
                                     >
                                         <Icon name="edit-2" size={16} color={colors.Text03} />
                                     </TouchableOpacity>
+                                    <TouchableOpacity
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`${translate('Delete focus area')}: ${area.name}`}
+                                        style={localStyles.renameButton}
+                                        disabled={busy}
+                                        onPress={() => {
+                                            setDeleting(area)
+                                            setError('')
+                                        }}
+                                    >
+                                        <Icon name="trash-2" size={16} color={colors.Text03} />
+                                    </TouchableOpacity>
                                 </View>
                             ))}
                         {!!canCreate && (
@@ -206,7 +268,7 @@ export default function FocusAreaPicker({ projectId, selectedId, onChange, onClo
                 )}
                 {busy && (
                     <Text accessibilityLiveRegion="polite" style={localStyles.status}>
-                        {translate('Saving focus area')}
+                        {translate(deleting ? 'Deleting focus area' : 'Saving focus area')}
                     </Text>
                 )}
             </View>
@@ -238,6 +300,8 @@ const localStyles = StyleSheet.create({
     text: { ...styles.subtitle2, color: '#ffffff', flexShrink: 1, marginRight: 8 },
     renameButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
     renameActions: { flexDirection: 'row', justifyContent: 'space-between' },
+    deleteDescription: { ...styles.body2, color: '#ffffff', marginBottom: 8 },
+    deleteText: { color: colors.UtilityRed150 },
     error: { ...styles.body2, color: colors.UtilityRed150, marginTop: 8 },
     status: { ...styles.body2, color: '#ffffff', marginTop: 8 },
 })
