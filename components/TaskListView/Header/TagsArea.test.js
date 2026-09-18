@@ -149,7 +149,7 @@ describe('TagsArea goal actions (AT-2577)', () => {
         const tree = renderTagsArea({ showGoalMore: true })
 
         expect(tree.root.findAllByType('AddGoalTag')).toHaveLength(0)
-        expect(tree.root.findAllByType('GoalMoreButton')).toHaveLength(1)
+        expect(tree.root.findByType('GoalMoreButton').props.projectId).toBe('project-1')
     })
 
     it('does not show the more action outside the open goals tab', () => {
