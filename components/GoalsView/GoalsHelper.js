@@ -293,6 +293,7 @@ export const getNewDefaultGoal = milestoneDate => {
         assistantId: '',
         commentsData: null,
         scheduleMode: GOAL_SCHEDULE_MODE_FIXED,
+        focusAreaId: null,
     }
     return goal
 }

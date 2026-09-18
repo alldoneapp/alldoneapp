@@ -14,6 +14,7 @@ import Project from '../../TaskDetailedView/Properties/Project'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import MilestoneProperty from './MilestoneProperty'
 import ScheduleModeProperty from './ScheduleModeProperty'
+import FocusAreaProperty from './FocusAreaProperty'
 import CreatedBy from '../../TaskDetailedView/Properties/CreatedBy'
 import Backend from '../../../utils/BackendBridge'
 import URLsGoals, { URL_GOAL_DETAILS_PROPERTIES } from '../../../URLSystem/Goals/URLsGoals'
@@ -86,6 +87,11 @@ export default function GoalProperties({ projectId, goal, accessGranted }) {
                         disabled={!accessGranted || !loggedUserCanUpdateObject}
                     />
                     <ScheduleModeProperty
+                        goal={goal}
+                        projectId={projectId}
+                        disabled={!accessGranted || !loggedUserCanUpdateObject}
+                    />
+                    <FocusAreaProperty
                         goal={goal}
                         projectId={projectId}
                         disabled={!accessGranted || !loggedUserCanUpdateObject}

@@ -73,7 +73,7 @@ class FakeQuery {
 
 function createFakeDb() {
     const projects = {
-        'project-1': { name: 'Operations', userIds: ['user-1'] },
+        'project-1': { name: 'Operations', userIds: ['user-1'], focusAreas: { marketing: { name: 'Marketing' } } },
         'project-2': { name: 'Guide Project', userIds: ['user-1'], parentTemplateId: 'template-1' },
         'project-3': { name: 'No Active Milestone', userIds: ['user-1'] },
     }
@@ -84,6 +84,7 @@ function createFakeDb() {
                 id: 'goal-active',
                 data: {
                     extendedName: 'Launch v2',
+                    focusAreaId: 'marketing',
                     description: 'Ship the release',
                     ownerId: 'ALL_USERS',
                     assigneesIds: ['user-1'],
@@ -287,6 +288,21 @@ describe('GoalRetrievalService', () => {
             database: createFakeDb(),
         })
     }
+
+    test('exposes a shared focus area and the completion date once per active source goal', async () => {
+        const result = await createService().getGoals({ userId: 'user-1' })
+        const matching = result.goals.filter(goal => goal.id === 'goal-active')
+        expect(matching).toHaveLength(1)
+        expect(matching[0]).toMatchObject({
+            focusAreaId: 'marketing',
+            focusAreaName: 'Marketing',
+            completionMilestoneDate: 300,
+        })
+        expect(result.goals.find(goal => goal.id === 'goal-backlog')).toMatchObject({
+            focusAreaId: null,
+            focusAreaName: null,
+        })
+    })
 
     test('returns active goals across projects and uses project-specific owner resolution', async () => {
         const service = createService()

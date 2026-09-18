@@ -17,6 +17,7 @@ import GoalsUserGroupHeader from './GoalsUserGroupHeader'
 import TasksHelper from '../TaskListView/Utils/TasksHelper'
 import GoalsList from './GoalsList'
 import GoalListDroppable from '../DragGoalsSystem/GoalListDroppable'
+import FocusAreaGoals from './FocusAreaGoals'
 
 export default function GoalsUserGroup({
     projectId,
@@ -69,27 +70,32 @@ export default function GoalsUserGroup({
             {assigneeId !== currentUserId && (
                 <GoalsUserGroupHeader projectId={projectId} navigateToSection={navigateToSection} userId={assigneeId} />
             )}
-            {activeDragGoalMode ? (
-                <GoalListDroppable
-                    key={assigneeId}
-                    projectId={projectId}
-                    milestoneId={milestoneId}
-                    goalsList={goalsToShow}
-                    userId={assigneeId}
-                    milestoneGoals={milestoneGoals}
-                />
-            ) : (
-                <GoalsList
-                    projectId={projectId}
-                    milestoneId={milestoneId}
-                    setDismissibleRefs={setDismissibleRefs}
-                    openEdition={openEdition}
-                    closeEdition={closeEdition}
-                    inDoneMilestone={inDoneMilestone}
-                    assigneeId={assigneeId}
-                    goals={goalsToShow}
-                />
-            )}
+            <FocusAreaGoals projectId={projectId} goals={goalsToShow} activeDragGoalMode={activeDragGoalMode}>
+                {(groupGoals, focusAreaId) =>
+                    activeDragGoalMode ? (
+                        <GoalListDroppable
+                            key={assigneeId}
+                            projectId={projectId}
+                            milestoneId={milestoneId}
+                            goalsList={groupGoals}
+                            focusAreaId={focusAreaId}
+                            userId={assigneeId}
+                            milestoneGoals={milestoneGoals}
+                        />
+                    ) : (
+                        <GoalsList
+                            projectId={projectId}
+                            milestoneId={milestoneId}
+                            setDismissibleRefs={setDismissibleRefs}
+                            openEdition={openEdition}
+                            closeEdition={closeEdition}
+                            inDoneMilestone={inDoneMilestone}
+                            assigneeId={assigneeId}
+                            goals={groupGoals}
+                        />
+                    )
+                }
+            </FocusAreaGoals>
             {((inAllProjects && needLimitGoals) ||
                 (assigneeId !== currentUserId && !TasksHelper.getContactInProject(projectId, assigneeId))) && (
                 <ShowMoreButton expand={navigateToSection} style={{ marginBottom: 0 }} />

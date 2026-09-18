@@ -27,6 +27,7 @@ import { setSelectedSidebarTab, setSelectedTypeOfProject, storeCurrentUser, swit
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
 import { setGoalDescription } from '../../utils/backends/Goals/goalsFirestore'
 import GoalScheduleModeTag from '../Tags/GoalScheduleModeTag'
+import GoalFocusAreaTag from '../Tags/GoalFocusAreaTag'
 
 export default function GoalItemTagsArea({
     projectId,
@@ -101,6 +102,14 @@ export default function GoalItemTagsArea({
             style={[localStyles.container, containerStyle]}
         >
             <View nativeID={`initial_social_tag_${projectId}_${goal.id}`} />
+            {isInTaskList && (
+                <GoalFocusAreaTag
+                    projectId={projectId}
+                    goal={goal}
+                    style={[{ marginLeft: 8 }, tagStyle]}
+                    disabled={disableTagsActions || !loggedUserCanUpdateObject}
+                />
+            )}
             {!!commentsData && !inCommentPopup && (
                 <GoalCommentsWrapper
                     commentsData={commentsData}

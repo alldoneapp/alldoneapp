@@ -1,6 +1,8 @@
 'use strict'
 
 const admin = require('firebase-admin')
+const { randomUUID } = require('crypto')
+const { resolveFocusAreaForProjectMove } = require('./goalFocusAreas')
 
 const { BACKLOG_DATE_NUMERIC, DEFAULT_WORKSTREAM_ID, generateSortIndex } = require('../Utils/HelperFunctionsCloud')
 const { copyProjectMoveChat } = require('../Chats/copyProjectMoveChat')
@@ -180,6 +182,10 @@ async function moveStoredObject(params) {
         status: 'moving',
     })
     const sourceData = sourceSnapshot.data() || {}
+    const focusAreaId =
+        objectType === 'goal'
+            ? await resolveFocusAreaForProjectMove(database, sourceProject, targetProjectId, sourceData, randomUUID())
+            : null
     await sourceRef.set(
         {
             movingToOtherProjectId: targetProjectId,
@@ -192,7 +198,7 @@ async function moveStoredObject(params) {
 
     const movedData =
         objectType === 'goal'
-            ? prepareGoalForTarget(sourceData, targetProject, actorId, movingState)
+            ? prepareGoalForTarget({ ...sourceData, focusAreaId }, targetProject, actorId, movingState)
             : objectType === 'contact'
               ? prepareContactForTarget(sourceData, actorId, movingState)
               : prepareSkillForTarget(sourceData, targetProject, actorId, movingState)
