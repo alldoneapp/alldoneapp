@@ -3862,6 +3862,7 @@ export function mapGoalData(goalId, goal) {
         commentsData: goal.commentsData ? goal.commentsData : '',
         timesPostponed: goal.timesPostponed ?? 0,
         scheduleMode: normalizeGoalScheduleMode(goal.scheduleMode),
+        focusAreaId: typeof goal.focusAreaId === 'string' ? goal.focusAreaId : null,
         projectMove: goal.projectMove || null,
         movingToOtherProjectId: goal.movingToOtherProjectId || null,
     }
@@ -4257,6 +4258,7 @@ export function mapProjectData(projectId, project, customData) {
         autoEstimation: project.autoEstimation === false ? false : true,
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
         goalMilestonesConfig: normalizeGoalMilestonesConfig(project.goalMilestonesConfig),
+        focusAreas: project.focusAreas || {},
         contactStatuses: project.contactStatuses ? project.contactStatuses : {},
         gitlabRepoUrl: project.gitlabRepoUrl ? project.gitlabRepoUrl : '',
         gitlabBaseBranch: project.gitlabBaseBranch ? project.gitlabBaseBranch : '',

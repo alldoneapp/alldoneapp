@@ -4,6 +4,7 @@ const { ProjectService } = require('./ProjectService')
 const { mapGoalData, mapMilestoneData } = require('../Utils/MapDataFuncions')
 const { ALL_USERS, BACKLOG_DATE_NUMERIC, BACKLOG_MILESTONE_ID } = require('../Utils/HelperFunctionsCloud')
 const { goalIsVisibleInOpenMilestone } = require('./goalMilestonesHelper')
+const { getGoalFocusArea } = require('./goalFocusAreas')
 
 const DEFAULT_GOAL_LIMIT = 100
 const MAX_GOAL_LIMIT = 1000
@@ -225,6 +226,7 @@ class GoalRetrievalService {
     }
 
     buildGoalBase(goal, project) {
+        const focusArea = getGoalFocusArea(goal, project.focusAreas)
         return {
             id: goal.id,
             name: goal.name,
@@ -235,6 +237,10 @@ class GoalRetrievalService {
             ownerId: goal.ownerId,
             assigneesIds: Array.isArray(goal.assigneesIds) ? goal.assigneesIds : [],
             commentsData: goal.commentsData || null,
+            focusAreaId: focusArea?.id || null,
+            focusAreaName: focusArea?.name || null,
+            startingMilestoneDate: goal.startingMilestoneDate,
+            completionMilestoneDate: goal.completionMilestoneDate,
         }
     }
 

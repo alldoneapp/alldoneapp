@@ -43,6 +43,7 @@ import { updateNoteTitleWithoutFeed } from '../../utils/backends/Notes/notesFire
 import { updateChatTitleWithoutFeeds } from '../../utils/backends/Chats/chatsFirestore'
 import GoalIndicator from '../TaskListView/GoalIndicator'
 import useSingleFlightSubmit from '../../hooks/useSingleFlightSubmit'
+import FocusAreaProperty from '../GoalDetailedView/GoalProperties/FocusAreaProperty'
 import {
     GOAL_SCHEDULE_MODE_DYNAMIC,
     GOAL_SCHEDULE_MODE_FIXED,
@@ -106,7 +107,11 @@ export default function EditGoal({
 
     const goalHasValidChanges = () => {
         const cleanedName = tmpGoal.extendedName.trim()
-        return adding ? cleanedName !== '' : cleanedName !== '' && cleanedName !== goal.extendedName.trim()
+        return adding
+            ? cleanedName !== ''
+            : cleanedName !== '' &&
+                  (cleanedName !== goal.extendedName.trim() ||
+                      (tmpGoal.focusAreaId || null) !== (goal.focusAreaId || null))
     }
 
     // Enter reaches this editor through a document listener, Quill's newline
@@ -347,6 +352,14 @@ export default function EditGoal({
                     forceTriggerEnterActionForBreakLines={enterKeyAction}
                 />
             </View>
+            {!isLocked && !loggedUser.isAnonymous && loggedUserCanUpdateObject && (
+                <FocusAreaProperty
+                    compact
+                    projectId={projectId}
+                    goal={tmpGoal}
+                    onChange={focusAreaId => setTmpGoal(previous => ({ ...previous, focusAreaId }))}
+                />
+            )}
             <View style={localStyles.buttonContainer}>
                 <View style={[localStyles.buttonSection]}>
                     {isLocked && !loggedUser.isAnonymous && (

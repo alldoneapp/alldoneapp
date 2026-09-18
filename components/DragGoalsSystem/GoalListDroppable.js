@@ -11,7 +11,14 @@ import Backend from '../../utils/BackendBridge'
 import store from '../../redux/store'
 import { setBoardGoalsByMilestoneInProject } from '../../redux/actions'
 import { BatchWrapper } from '../../functions/BatchWrapper/batchWrapper'
-export default function GoalListDroppable({ projectId, goalsList, milestoneId, userId, milestoneGoals }) {
+export default function GoalListDroppable({
+    projectId,
+    goalsList,
+    milestoneId,
+    userId,
+    milestoneGoals,
+    focusAreaId = '',
+}) {
     const dispatch = useDispatch()
     const sortGoals = (goalsList, startIndex, endIndex) => {
         const sortedList = [...goalsList]
@@ -65,7 +72,7 @@ export default function GoalListDroppable({ projectId, goalsList, milestoneId, u
     return (
         <DragDropContext onDragEnd={onDragEnd}>
             <Droppable
-                droppableId={`${milestoneId}${DROPPABLE_SEPARATOR}${userId}`}
+                droppableId={`${milestoneId}${DROPPABLE_SEPARATOR}${userId}${DROPPABLE_SEPARATOR}${focusAreaId}`}
                 type={`${milestoneId}@${userId}`}
                 renderClone={(provided, snapshot, rubric) => (
                     <DraggableGoalActive
