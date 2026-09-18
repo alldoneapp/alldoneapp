@@ -78,6 +78,22 @@ const renameProjectFocusArea = async (db, projectId, areaId, value) => {
     })
 }
 
+const deleteProjectFocusArea = async (db, projectId, areaId) => {
+    const projectRef = db.doc(`projects/${projectId}`)
+    return db.runTransaction(async transaction => {
+        const snapshot = await transaction.get(projectRef)
+        if (!snapshot.exists) throw invalidFocusArea('focus-area-project-not-found')
+        const catalog = snapshot.data()?.focusAreas || {}
+        if (!Object.prototype.hasOwnProperty.call(catalog, areaId)) return
+        const remaining = { ...catalog }
+        delete remaining[areaId]
+        // The catalog is authoritative. Existing references resolve to General,
+        // including private goals the deleting member cannot read or update.
+        // A transaction preserves simultaneous changes to other catalog entries.
+        transaction.update(projectRef, { focusAreas: remaining })
+    })
+}
+
 const resolveFocusAreaForProjectMove = async (db, sourceProject, targetProjectId, goal, newId) => {
     const area = getGoalFocusArea(goal, sourceProject?.focusAreas)
     if (!area) return null
@@ -93,5 +109,6 @@ module.exports = {
     groupGoalsByFocusArea,
     ensureProjectFocusArea,
     renameProjectFocusArea,
+    deleteProjectFocusArea,
     resolveFocusAreaForProjectMove,
 }
