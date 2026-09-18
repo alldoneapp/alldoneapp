@@ -43,7 +43,7 @@ function ContactListByProject({
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
     const handlesAddContactShortcut = inSelectedProject || firstProject
-    const loggedUser = useSelector(state => (inSelectedProject ? state.loggedUser : null))
+    const loggedUser = useSelector(state => state.loggedUser)
     const projectContacts = useSelector(state => (inSelectedProject ? state.projectContacts : EMPTY_PROJECT_CONTACTS))
     const lastAddNewContact = useSelector(state => (handlesAddContactShortcut ? state.lastAddNewContact : null))
     const [, filtersArray] = useSelectorHashtagFilters()
@@ -130,15 +130,13 @@ function ContactListByProject({
                 projectIndex={project.index}
                 projectId={project.id}
                 customRight={
-                    inSelectedProject ? (
-                        <ContactMoreButton
-                            projectId={project.id}
-                            user={loggedUser}
-                            wrapperStyle={localStyles.moreButtonWrapper}
-                            buttonStyle={localStyles.moreButton}
-                            iconSize={16}
-                        />
-                    ) : null
+                    <ContactMoreButton
+                        projectId={project.id}
+                        user={loggedUser}
+                        wrapperStyle={localStyles.moreButtonWrapper}
+                        buttonStyle={localStyles.moreButton}
+                        iconSize={16}
+                    />
                 }
                 showRootSectionNavigation={inSelectedProject}
             />

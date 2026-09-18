@@ -67,6 +67,7 @@ export default function TagsArea({
             )}
             {showGoalMore && loggedUserCanUpdateObject && accessGranted && (
                 <GoalMoreButton
+                    projectId={projectId}
                     wrapperStyle={localStyles.goalMoreWrapper}
                     buttonStyle={localStyles.goalMoreButton}
                     iconSize={16}

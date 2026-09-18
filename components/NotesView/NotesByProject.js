@@ -643,15 +643,13 @@ export default class NotesByProject extends PureComponent {
                     projectIndex={project.index}
                     projectId={project.id}
                     customRight={
-                        inSelectedProject ? (
-                            <NoteMoreButton
-                                projectId={project.id}
-                                user={currentUser}
-                                wrapperStyle={localStyles.moreButtonWrapper}
-                                buttonStyle={localStyles.moreButton}
-                                iconSize={16}
-                            />
-                        ) : null
+                        <NoteMoreButton
+                            projectId={project.id}
+                            user={currentUser}
+                            wrapperStyle={localStyles.moreButtonWrapper}
+                            buttonStyle={localStyles.moreButton}
+                            iconSize={16}
+                        />
                     }
                     showRootSectionNavigation={inSelectedProject}
                 />

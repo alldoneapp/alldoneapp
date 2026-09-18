@@ -24,6 +24,8 @@ jest.mock('../UIComponents/DismissibleItem', () => 'DismissibleItem')
 jest.mock('../UIControls/ShowMoreButton', () => 'ShowMoreButton')
 jest.mock('../../i18n/TranslationService', () => ({ translate: key => key }))
 
+const mockCheckIfSelectedProject = jest.fn(() => true)
+
 const storeState = { blockShortcuts: false }
 
 jest.mock('../../redux/store', () => ({
@@ -34,7 +36,7 @@ jest.mock('../../redux/store', () => ({
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     __esModule: true,
     default: {},
-    checkIfSelectedProject: () => true,
+    checkIfSelectedProject: (...args) => mockCheckIfSelectedProject(...args),
 }))
 
 jest.mock('./Utils/ContactsHelper', () => ({
@@ -97,6 +99,7 @@ const render = contactsAmount => {
                 contacts={makeContacts(contactsAmount)}
                 onlyMembers={false}
                 maxContactsToRender={10}
+                requestProjectData={false}
             />
         )
     })
@@ -121,6 +124,7 @@ describe('ContactListByProject "Show more" ghosts (AT-2385)', () => {
     let originalCancelRaf
 
     beforeEach(() => {
+        mockCheckIfSelectedProject.mockReturnValue(true)
         frames = []
         originalRaf = global.requestAnimationFrame
         originalCancelRaf = global.cancelAnimationFrame
@@ -140,6 +144,15 @@ describe('ContactListByProject "Show more" ghosts (AT-2385)', () => {
         expect(ghosts(tree)).toHaveLength(0)
         expect(showMore(tree).props.expanded).toBe(false)
         expect(showMore(tree).props.loading).toBeFalsy()
+    })
+
+    it('keeps the project menu on every All Projects row', () => {
+        mockCheckIfSelectedProject.mockReturnValue(false)
+        const tree = render(1)
+        const header = tree.root.findByType('ProjectHeader')
+
+        expect(header.props.customRight.type).toBe('ContactMoreButton')
+        expect(header.props.customRight.props.projectId).toBe('project-1')
     })
 
     it('shows ghosts for the incoming page and dims the button while it is in flight', () => {

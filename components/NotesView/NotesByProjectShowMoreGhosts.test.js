@@ -210,6 +210,23 @@ describe('NotesByProject "Show more" ghosts', () => {
         expect(findGhosts(tree)).toHaveLength(0)
     })
 
+    it('keeps the project menu on every All Projects row', async () => {
+        store.getState.mockReturnValue({ ...baseState, selectedProjectIndex: -1 })
+
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <NotesByProject project={PROJECT} filterBy={0} maxNotesToRender={10} setLastEditNoteDate={jest.fn()} />
+            )
+            await Promise.resolve()
+        })
+        const header = tree.root.findByType('ProjectHeader')
+
+        expect(header.props.customRight.type).toBe('NoteMoreButton')
+        expect(header.props.customRight.props.projectId).toBe('project-1')
+        act(() => tree.unmount())
+    })
+
     it('shows ghosts on expand and keeps them until the expanded watcher delivers', async () => {
         const tree = await render()
         const showMore = tree.root.findByType('ShowMoreButton')

@@ -137,6 +137,13 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                                 containerStyle={localStyles.archiveEmailsInline}
                             />
                             <MarkAsRead projectId={project.id} userId={loggedUser.uid} />
+                            <ChatsMoreButton
+                                projectId={project.id}
+                                userId={loggedUser.uid}
+                                wrapperStyle={localStyles.moreButtonWrapper}
+                                buttonStyle={localStyles.moreButton}
+                                iconSize={16}
+                            />
                         </View>
                     ) : (
                         <View style={localStyles.headerActions}>

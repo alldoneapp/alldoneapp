@@ -33,7 +33,7 @@ jest.mock('./ArchiveUnreadEmailsButton', () => {
     return props => React.createElement(View, { testID: 'archive-unread-emails', projectId: props.projectId })
 })
 jest.mock('../UIControls/ShowMoreButton', () => () => null)
-jest.mock('../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton', () => () => null)
+jest.mock('../UIComponents/FloatModals/MorePopupsOfMainViews/Chats/ChatsMoreButton', () => 'ChatsMoreButton')
 jest.mock('../UIComponents/FloatModals/DateFormatPickerModal', () => ({ getDateFormat: () => 'DD.MM.YYYY' }))
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     __esModule: true,
@@ -206,11 +206,13 @@ describe('ChatsByProject bulk email archive', () => {
         const tree = renderView(buildState(3))
 
         expect(tree.root.findByProps({ testID: 'archive-unread-emails' }).props.projectId).toBe('project-1')
+        expect(tree.root.findByType('ChatsMoreButton').props.projectId).toBe('project-1')
     })
 
     it('offers it on the project line of a single project view too', () => {
         const tree = renderView(buildState(undefined, 0), { isInAllProjects: false })
 
         expect(tree.root.findByProps({ testID: 'archive-unread-emails' }).props.projectId).toBe('project-1')
+        expect(tree.root.findByType('ChatsMoreButton').props.projectId).toBe('project-1')
     })
 })
