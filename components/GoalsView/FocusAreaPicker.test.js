@@ -3,7 +3,11 @@ import renderer, { act } from 'react-test-renderer'
 import { Text, TextInput, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
 import FocusAreaPicker from './FocusAreaPicker'
-import { ensureProjectFocusArea, renameProjectFocusArea } from '../../utils/backends/Goals/goalFocusAreas'
+import {
+    deleteProjectFocusArea,
+    ensureProjectFocusArea,
+    renameProjectFocusArea,
+} from '../../utils/backends/Goals/goalFocusAreas'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
 jest.mock('../Icon', () => 'Icon')
@@ -16,6 +20,7 @@ jest.mock('../ModalsManager/modalsManager', () => ({ storeModal: jest.fn(), remo
 jest.mock('../../utils/backends/Goals/goalFocusAreas', () => ({
     ensureProjectFocusArea: jest.fn(),
     renameProjectFocusArea: jest.fn(),
+    deleteProjectFocusArea: jest.fn(),
 }))
 
 describe('focus area picker', () => {
@@ -93,5 +98,52 @@ describe('focus area picker', () => {
         tree.root.findByType('div').props.onKeyDown(event)
         expect(event.stopPropagation).toHaveBeenCalledTimes(1)
         expect(onClose).not.toHaveBeenCalled()
+    })
+
+    const askToDelete = () =>
+        act(() =>
+            tree.root
+                .findAllByType(TouchableOpacity)
+                .find(node => node.props.accessibilityLabel === 'Delete focus area: Marketing')
+                .props.onPress()
+        )
+
+    test('requires confirmation and lets the user cancel without changing the catalog', () => {
+        askToDelete()
+        expect(deleteProjectFocusArea).not.toHaveBeenCalled()
+        expect(tree.root.findAllByType(TextInput)).toHaveLength(0)
+        expect(tree.root.findAllByType(Text).map(node => node.props.children)).toContain(
+            'Goals in this focus area will appear in General. No goals will be deleted.'
+        )
+        act(() => button('Cancel').props.onPress())
+        expect(tree.root.findAllByType(TextInput)).toHaveLength(1)
+        expect(deleteProjectFocusArea).not.toHaveBeenCalled()
+    })
+
+    test('deletes the shared area without deleting or rewriting any goal', async () => {
+        deleteProjectFocusArea.mockResolvedValue()
+        askToDelete()
+        await act(async () => button('Delete focus area').props.onPress())
+        expect(deleteProjectFocusArea).toHaveBeenCalledWith('p', 'm')
+        expect(onChange).not.toHaveBeenCalled()
+        expect(onClose).not.toHaveBeenCalled()
+        expect(tree.root.findAllByType(TextInput)).toHaveLength(1)
+    })
+
+    test('preserves the deletion confirmation on failure so it can be retried', async () => {
+        deleteProjectFocusArea.mockRejectedValue(new Error('offline'))
+        askToDelete()
+        await act(async () => button('Delete focus area').props.onPress())
+        expect(tree.root.findAllByType(Text).map(node => node.props.children)).toContain(
+            'Could not delete the focus area. Please try again.'
+        )
+        expect(tree.root.findAllByType(TextInput)).toHaveLength(0)
+        expect(onChange).not.toHaveBeenCalled()
+    })
+
+    test('shows General as selected when the assigned catalog entry has been deleted', () => {
+        useSelector.mockImplementation(selector => selector({ loggedUserProjectsMap: { p: { focusAreas: {} } } }))
+        act(() => tree.update(<FocusAreaPicker projectId="p" selectedId="m" onChange={onChange} onClose={onClose} />))
+        expect(button('None (General)').findByType('Icon').props.name).toBe('check')
     })
 })

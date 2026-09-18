@@ -4,6 +4,7 @@ const {
     groupGoalsByFocusArea,
     ensureProjectFocusArea,
     renameProjectFocusArea,
+    deleteProjectFocusArea,
     resolveFocusAreaForProjectMove,
 } = require('./goalFocusAreas')
 
@@ -97,6 +98,39 @@ describe('project focus areas', () => {
             ['General', ['2', '5']],
         ])
         expect(goals.map(goal => goal.id)).toEqual(['1', '2', '3', '4', '5'])
+    })
+
+    test('deletion moves linked goals to General and recreating the name does not reattach them', async () => {
+        const projects = {
+            'projects/p': { name: 'Project', focusAreas: { m: { name: 'Marketing' }, p: { name: 'Product' } } },
+        }
+        const goals = [
+            { id: 'public', focusAreaId: 'm' },
+            { id: 'private', focusAreaId: 'm' },
+        ]
+        const { db, writes } = database(projects)
+        await deleteProjectFocusArea(db, 'p', 'm')
+        const catalog = projects['projects/p'].focusAreas
+        expect(catalog).toEqual({ p: { name: 'Product' } })
+        expect(projects['projects/p'].name).toBe('Project')
+        expect(writes.map(write => write.path)).toEqual(['projects/p'])
+        expect(groupGoalsByFocusArea(goals, catalog)).toEqual([{ id: '', name: 'General', goals }])
+        expect(getGoalFocusArea(goals[0], catalog)).toBeNull()
+        await expect(renameProjectFocusArea(db, 'p', 'm', 'Growth')).rejects.toMatchObject({
+            code: 'focus-area-not-found',
+        })
+        expect(await ensureProjectFocusArea(db, 'p', 'Marketing', 'new')).toEqual({ id: 'new', name: 'Marketing' })
+        expect(getGoalFocusArea(goals[0], projects['projects/p'].focusAreas)).toBeNull()
+        expect(await resolveFocusAreaForProjectMove(db, projects['projects/p'], 'other', goals[0], 'unused')).toBeNull()
+    })
+
+    test('deletion preserves simultaneous catalog edits and is idempotent', async () => {
+        const projects = { 'projects/p': { focusAreas: { m: { name: 'Marketing' } } } }
+        const { db, writes } = database(projects)
+        await Promise.all([ensureProjectFocusArea(db, 'p', 'Product', 'p'), deleteProjectFocusArea(db, 'p', 'm')])
+        expect(projects['projects/p'].focusAreas).toEqual({ p: { name: 'Product' } })
+        await deleteProjectFocusArea(db, 'p', 'm')
+        expect(writes).toHaveLength(2)
     })
 
     test('moving a goal resolves names in the destination instead of carrying a project-local ID', async () => {

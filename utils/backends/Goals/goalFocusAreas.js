@@ -4,6 +4,7 @@ import store from '../../../redux/store'
 import {
     ensureProjectFocusArea as ensureArea,
     renameProjectFocusArea as renameArea,
+    deleteProjectFocusArea as deleteArea,
     getGoalFocusArea,
     resolveFocusAreaForProjectMove as resolveArea,
 } from '../../../functions/shared/goalFocusAreas'
@@ -11,6 +12,8 @@ import {
 export const ensureProjectFocusArea = (projectId, name) => ensureArea(getDb(), projectId, name, v4())
 
 export const renameProjectFocusArea = (projectId, areaId, name) => renameArea(getDb(), projectId, areaId, name)
+
+export const deleteProjectFocusArea = (projectId, areaId) => deleteArea(getDb(), projectId, areaId)
 
 export const setGoalFocusArea = async (projectId, goalId, focusAreaId) => {
     const db = getDb()
