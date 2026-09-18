@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 
 import MoreButtonWrapper from '../Common/MoreButtonWrapper'
 import CopyLinkModalItem from '../../MorePopupsOfEditModals/Common/CopyLinkModalItem'
 import ModalItem from '../../MorePopupsOfEditModals/Common/ModalItem'
-import Line from '../../GoalMilestoneModal/Line'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
+import OpenProjectModalItem from '../Common/OpenProjectModalItem'
 import SyncCalendarModalItem from './SyncCalendarModalItem'
 import DateBarOrganizeModalItem from './DateBarOrganizeModalItem'
 import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -22,8 +22,7 @@ import {
 import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../../../../TaskListView/OKRs/okrHelper'
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../../../utils/NavigationService'
-import { setSelectedNavItem } from '../../../../../redux/actions'
-import { DV_TAB_PROJECT_OKRS, DV_TAB_PROJECT_PROPERTIES } from '../../../../../utils/TabNavigationConstants'
+import { DV_TAB_PROJECT_OKRS } from '../../../../../utils/TabNavigationConstants'
 
 export default function TaskHeaderMoreButton({
     projectIdOverride,
@@ -35,7 +34,6 @@ export default function TaskHeaderMoreButton({
     iconSize,
     iconColor,
 }) {
-    const dispatch = useDispatch()
     const selectedProjectId = useSelector(state => {
         const { selectedProjectIndex, loggedUserProjects } = state
 
@@ -46,7 +44,6 @@ export default function TaskHeaderMoreButton({
               : null
     })
     const projectId = projectIdOverride || selectedProjectId
-    const projectIndex = useSelector(state => state.loggedUserProjectsMap?.[projectId]?.index)
     const projectOKRs = useSelector(state => (projectId ? state.okrsByProjectInTasks[projectId] || [] : []))
     // Organize / Select all act on the "Today" section of this project's task list. The date-section
     // store is keyed by `projectId + userId` and each section carries its own date string, so we find
@@ -135,12 +132,6 @@ export default function TaskHeaderMoreButton({
     const closeAutoPostpone = () => {
         clearOpenAutoPostponeTimeout()
         setShowAutoPostpone(false)
-        dismissModal()
-    }
-
-    const openProject = () => {
-        dispatch(setSelectedNavItem(DV_TAB_PROJECT_PROPERTIES))
-        NavigationService.navigate('ProjectDetailedView', { projectIndex })
         dismissModal()
     }
 
@@ -312,12 +303,7 @@ export default function TaskHeaderMoreButton({
                 ) : null
             }
         >
-            {inSelectedProject && (
-                <>
-                    <ModalItem icon={'folder-open'} text={'Open Project'} shortcut={'1'} onPress={openProject} />
-                    <Line />
-                </>
-            )}
+            {inSelectedProject && <OpenProjectModalItem projectId={projectId} shortcut={'1'} onPress={dismissModal} />}
             {renderItems().map((item, index) => item((index + (inSelectedProject ? 2 : 1)).toString()))}
         </MoreButtonWrapper>
     )
