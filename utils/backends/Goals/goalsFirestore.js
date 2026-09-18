@@ -88,6 +88,7 @@ import {
 } from '../../GoalMilestonesHelper'
 import { handleOptionalSnapshotError } from '../optionalSnapshotError'
 import { withoutServerAccessProjection } from '../accessProjection'
+import { resolveFocusAreaForProjectMove } from './goalFocusAreas'
 
 //ACCESS FUNCTIONS
 
@@ -1392,6 +1393,7 @@ export async function updateGoalProject(oldProject, newProject, goal) {
 
     const updatedGoal = {
         ...goal,
+        focusAreaId: await resolveFocusAreaForProjectMove(oldProjectId, newProjectId, goal),
         assigneesIds,
         assigneesCapacity,
         assigneesReminderDate,

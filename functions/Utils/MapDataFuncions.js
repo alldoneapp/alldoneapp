@@ -92,6 +92,7 @@ function mapGoalData(goalId, goal) {
         assistantId: goal.assistantId ? goal.assistantId : '',
         commentsData: goal.commentsData ? goal.commentsData : '',
         scheduleMode: normalizeGoalScheduleMode(goal.scheduleMode),
+        focusAreaId: typeof goal.focusAreaId === 'string' ? goal.focusAreaId : null,
     }
 }
 
@@ -271,6 +272,7 @@ function mapProjectData(projectId, project, customData) {
         lastActionDate: project.lastActionDate ? project.lastActionDate : Date.now(),
         autoEstimation: project.autoEstimation === false ? false : true,
         goalMilestonesConfig: normalizeGoalMilestonesConfig(project.goalMilestonesConfig),
+        focusAreas: project.focusAreas || {},
         sortIndexByUser: project.sortIndexByUser ? project.sortIndexByUser : {},
         ...customData,
     }
