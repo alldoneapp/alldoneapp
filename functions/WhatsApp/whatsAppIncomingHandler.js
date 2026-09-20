@@ -10,6 +10,7 @@ const { extractTextFromWhatsAppFile } = require('./whatsAppFileExtraction')
 const { buildAttachmentToken, buildImageToken, buildVideoToken, sanitizeTokenText } = require('./whatsAppMediaTokens')
 const { v4: uuidv4 } = require('uuid')
 const { FieldValue } = require('firebase-admin/firestore')
+const { resolveWhatsAppReplyContext } = require('./whatsAppReplyContext')
 
 const RATE_LIMIT_MAX_MESSAGES = 30
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000 // 1 hour
@@ -116,6 +117,19 @@ async function handleIncomingWhatsAppMessage(req, res) {
             )
             return res.status(200).send('OK')
         }
+
+        // A WhatsApp reply webhook contains only the SID of the quoted message.
+        // Resolve its text while the authenticated Twilio client is available,
+        // then carry the normalized context through the async queue.
+        const replyContextStart = Date.now()
+        const replyContext = await resolveWhatsAppReplyContext(req.body, messageSidToFetch =>
+            service.fetchMessageBySid(messageSidToFetch)
+        )
+        markStage('resolveWhatsAppReplyContext', replyContextStart, {
+            hasReplyContext: !!replyContext,
+            replyContextResolved: replyContext?.resolved === true,
+            quotedTextLength: replyContext?.text?.length || 0,
+        })
 
         // Determine message text
         let messageText = ''
@@ -304,6 +318,7 @@ async function handleIncomingWhatsAppMessage(req, res) {
             processedFileCount,
             extractedTextCount,
             mediaProcessingSummary,
+            ...(replyContext ? { replyContext } : {}),
             createdAt: Date.now(),
         }
 

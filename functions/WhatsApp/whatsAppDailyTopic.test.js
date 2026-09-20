@@ -68,7 +68,11 @@ jest.mock('firebase-admin/firestore', () => ({
     Timestamp: { now: () => ({ __timestamp: true }) },
 }))
 
-const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
+const {
+    getConversationHistory,
+    storeAssistantMessageInTopic,
+    storeUserMessageInTopic,
+} = require('./whatsAppDailyTopic')
 
 // The live WhatsApp reply path. Its comment id is random and its writes are best-effort
 // on purpose — the inbound queue's own dedupe is what keeps it single-shot. Pinned here
@@ -118,6 +122,107 @@ describe('storeAssistantMessageInTopic', () => {
 
         expect(mockDocPaths).not.toContain('users/')
         expect(mockDocUpdate).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('WhatsApp quoted reply context', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocPaths.length = 0
+    })
+
+    test('stores reply metadata separately from the visible current message', async () => {
+        await storeUserMessageInTopic('project-1', 'chat-1', 'user-1', 'Yes, book it', false, {
+            replyContext: {
+                messageSid: 'SMoriginal',
+                sender: 'whatsapp:+123',
+                text: 'Thursday at 15:00 works for me.',
+                hasMedia: false,
+                resolved: true,
+            },
+        })
+
+        expect(mockDocSet).toHaveBeenCalledWith(
+            expect.stringMatching(/^chatComments\/project-1\/topics\/chat-1\/comments\//),
+            expect.objectContaining({
+                commentText: 'Yes, book it',
+                whatsAppReplyContext: {
+                    messageSid: 'SMoriginal',
+                    sender: 'whatsapp:+123',
+                    text: 'Thursday at 15:00 works for me.',
+                    hasMedia: false,
+                    resolved: true,
+                },
+            })
+        )
+    })
+
+    test('adds quoted text to the assistant history without changing the current message', async () => {
+        mockGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'reply',
+                    data: () => ({
+                        fromAssistant: false,
+                        created: Date.UTC(2026, 8, 20, 19, 30, 0),
+                        commentText: 'Yes, please do that.',
+                        whatsAppReplyContext: {
+                            messageSid: 'SMoriginal',
+                            text: 'Please move the meeting to Thursday at 15:00.',
+                            resolved: true,
+                        },
+                    }),
+                },
+            ],
+        })
+
+        const history = await getConversationHistory('project-1', 'chat-1', 10, 0)
+
+        expect(history[0][0]).toBe('user')
+        expect(history[0][1]).toContain('Yes, please do that.')
+        expect(history[0][1]).toContain('Please move the meeting to Thursday at 15:00.')
+        expect(history[0][1]).toContain('context for the current message only')
+    })
+
+    test('preserves image content while adding quoted text to its text part', async () => {
+        const storageUrl = 'https://storage.example/image.jpg'
+        mockGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'media-reply',
+                    ref: { set: jest.fn(async () => {}) },
+                    data: () => ({
+                        fromAssistant: false,
+                        created: Date.UTC(2026, 8, 20, 19, 30, 0),
+                        commentText: 'Does this match?',
+                        mediaContext: [
+                            {
+                                kind: 'image',
+                                fileName: 'photo.jpg',
+                                storageUrl,
+                            },
+                        ],
+                        whatsAppReplyContext: {
+                            messageSid: 'SMoriginal',
+                            text: 'Use the blue version from the proposal.',
+                            resolved: true,
+                        },
+                    }),
+                },
+            ],
+        })
+
+        const history = await getConversationHistory('project-1', 'chat-1', 10, 0)
+
+        expect(history[0][1]).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'text',
+                    text: expect.stringContaining('Use the blue version from the proposal.'),
+                }),
+                { type: 'image_url', image_url: { url: storageUrl } },
+            ])
+        )
     })
 })
 

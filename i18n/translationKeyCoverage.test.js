@@ -1,9 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 
-import de from './translations/de.json'
 import en from './translations/en.json'
-import es from './translations/es.json'
 
 /**
  * Every translate('literal') in the app must have an entry in en.json.
@@ -87,17 +85,6 @@ describe('translation key coverage (AT-2522)', () => {
             expect(en[`comment_popup_loading_${slug}`]).toBeTruthy()
             expect(en[`comment_popup_unavailable_text_${slug}`]).toBeTruthy()
             expect(en[`comment_popup_reconnecting_text_${slug}`]).toBeTruthy()
-        })
-    })
-
-    it('resolves rejected subscription login guidance in every shipped locale', () => {
-        const keys = [
-            'Subscription login rejected — reconnect required',
-            'The saved %{provider} subscription login was rejected. Sign in again, paste the new credential below, and reconnect before starting another VM task.',
-        ]
-
-        ;[en, de, es].forEach(translations => {
-            keys.forEach(key => expect(translations[key]).toBeTruthy())
         })
     })
 

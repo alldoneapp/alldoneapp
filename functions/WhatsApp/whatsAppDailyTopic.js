@@ -5,6 +5,7 @@ const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT } = require('../Utils/HelperFuncti
 const { inferMimeTypeFromFileName } = require('../Utils/parseTextUtils')
 const { addTimestampToContextContent, getUserLocalDateContext } = require('../Assistant/contextTimestampHelper')
 const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('../Assistant/contextLimits')
+const { appendWhatsAppReplyContext } = require('./whatsAppReplyContext')
 const { getUserData } = require('../Users/usersFirestore')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
@@ -158,6 +159,16 @@ async function storeUserMessageInTopic(projectId, chatId, userId, messageText, i
             sizeBytes: Number(media.sizeBytes) || 0,
         }))
         comment.mediaContext = normalizeMediaContext(comment.processedMedia)
+    }
+
+    if (options.replyContext && typeof options.replyContext === 'object') {
+        comment.whatsAppReplyContext = {
+            messageSid: String(options.replyContext.messageSid || ''),
+            sender: String(options.replyContext.sender || ''),
+            text: String(options.replyContext.text || ''),
+            hasMedia: options.replyContext.hasMedia === true,
+            resolved: options.replyContext.resolved === true,
+        }
     }
 
     const commentRef = admin.firestore().doc(`chatComments/${projectId}/topics/${chatId}/comments/${commentId}`)
@@ -427,12 +438,13 @@ async function getConversationHistory(
                     .filter(Boolean)
                 const fileContext = buildFileContextForAssistant(mediaContext)
                 const textWithFileContext = appendFileContext(stripImageTokens(data.commentText), fileContext)
+                const textWithReplyContext = appendWhatsAppReplyContext(textWithFileContext, data.whatsAppReplyContext)
                 if (imageUrls.length > 0) {
                     multimodalUserMessages++
                     messages.push([
                         role,
                         addTimestampToContextContent(
-                            buildMultimodalUserContent(textWithFileContext, imageUrls),
+                            buildMultimodalUserContent(textWithReplyContext, imageUrls),
                             messageTimestamp,
                             userTimezoneOffset
                         ),
@@ -441,7 +453,7 @@ async function getConversationHistory(
                 }
                 messages.push([
                     role,
-                    addTimestampToContextContent(textWithFileContext, messageTimestamp, userTimezoneOffset),
+                    addTimestampToContextContent(textWithReplyContext, messageTimestamp, userTimezoneOffset),
                 ])
                 continue
             }

@@ -63,10 +63,30 @@ describe('WhatsApp inbound queue processor', () => {
                 messageText: 'second',
                 storedMessageText: 'second',
                 processedMedia: [],
+                replyContext: {
+                    messageSid: 'SMoriginal',
+                    sender: 'whatsapp:+123',
+                    text: 'Original message',
+                    hasMedia: false,
+                    resolved: true,
+                },
             },
         ])
 
         expect(storeUserMessageInTopic).toHaveBeenCalledTimes(2)
+        expect(storeUserMessageInTopic).toHaveBeenLastCalledWith(
+            'project-1',
+            'chat-1',
+            'user-1',
+            'second',
+            false,
+            expect.objectContaining({
+                replyContext: expect.objectContaining({
+                    messageSid: 'SMoriginal',
+                    text: 'Original message',
+                }),
+            })
+        )
         expect(processWhatsAppAssistantMessage).toHaveBeenCalledWith(
             'user-1',
             'project-1',
