@@ -20,10 +20,7 @@ jest.mock('react-redux', () => ({
     useDispatch: () => mockDispatch,
     useSelector: selector => selector({ loggedUser: { uid: 'user-1', isAnonymous: false } }),
 }))
-jest.mock('../../redux/actions', () => ({
-    startLoadingData: () => ({ type: 'start-loading' }),
-    stopLoadingData: () => ({ type: 'stop-loading' }),
-}))
+jest.mock('../../utils/redux/dispatchBatch', () => ({ batchDispatch: action => mockDispatch(action) }))
 jest.mock('../../components/HashtagFilters/UseSelectorHashtagFilters', () => () => [new Map(), []])
 jest.mock('../../components/HashtagFilters/FilterHelpers/FilterChats', () => ({
     filterChats: chats => chats,
@@ -93,7 +90,7 @@ describe('useGetChats cached-first refresh', () => {
         })
 
         expect(renders[0]).toEqual(cachedChats)
-        expect(mockDispatch).not.toHaveBeenCalledWith({ type: 'start-loading' })
+        expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'Start loading operation' }))
 
         act(() => {
             deliverSnapshot(buildDocs([{ id: 'live-chat', lastEditionDate: 1786000000000, stickyData: { days: 0 } }]))
@@ -120,11 +117,11 @@ describe('useGetChats cached-first refresh', () => {
         act(() => {
             renderer.create(<HookHarness onRender={value => renders.push(value)} />)
         })
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'start-loading' })
+        expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'Start loading operation' }))
 
         act(() => deliverSnapshot(buildDocs([])))
 
         expect(renders[renders.length - 1]).toEqual({})
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'stop-loading' })
+        expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'Finish loading operation' }))
     })
 })

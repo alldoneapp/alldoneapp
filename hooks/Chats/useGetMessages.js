@@ -1,13 +1,12 @@
+import { subscribeWithLoading } from '../../utils/redux/loadingOperation'
 import { useEffect, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import {
-    resetLoadingData,
     setAssistantEnabled,
     setNotEnabledAssistantWhenLoadComments,
     setShowNotificationAboutTheBotBehavior,
-    startLoadingData,
 } from '../../redux/actions'
 import store from '../../redux/store'
 import { getAssistant } from '../../components/AdminPanel/Assistants/assistantsHelper'
@@ -19,10 +18,17 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
     const [state, setState] = useState({ messages: [], loaded: false })
 
     useEffect(() => {
-        if (showSpinner) dispatch(startLoadingData())
         let isFirstFetch = true
         const watcherKey = v4()
-        watchComments(projectId, chatType, objectId, watcherKey, toRender, handleSnapshot)
+        const unsubscribe = subscribeWithLoading(
+            'chat_messages',
+            (next, onError) => {
+                watchComments(projectId, chatType, objectId, watcherKey, toRender, next, { onError })
+                return () => unwatch(watcherKey)
+            },
+            handleSnapshot,
+            { enabled: showSpinner }
+        )
 
         function handleSnapshot(snapshotMessages) {
             const toMillis = value => {
@@ -74,12 +80,9 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
             }
             isFirstFetch = false
             setState({ messages: sortedMessages, loaded: true })
-            if (showSpinner) dispatch(resetLoadingData())
         }
 
-        return () => {
-            unwatch(watcherKey)
-        }
+        return unsubscribe
     }, [toRender, projectId, chatType, objectId])
 
     const messagesWithLoaded = [...state.messages]

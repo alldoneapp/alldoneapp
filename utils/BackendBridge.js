@@ -49,11 +49,11 @@ export default class Backend {
     }
 
     static async setTaskDueDateMultiple(tasks, newDueDate) {
-        bridge.setTaskDueDateMultiple(tasks, newDueDate)
+        return bridge.setTaskDueDateMultiple(tasks, newDueDate)
     }
 
     static async setTaskToBacklogMultiple(tasks) {
-        bridge.setTaskToBacklogMultiple(tasks)
+        return bridge.setTaskToBacklogMultiple(tasks)
     }
 
     static watchNoteInnerTasks(projectId, noteId, watcherKey, callback) {
@@ -396,40 +396,40 @@ export default class Backend {
         return await bridge.getNotesByProject(projectId)
     }
 
-    static watchFollowedTabNotes(projectId, maxNotesToRender, callback) {
-        bridge.watchFollowedTabNotes(projectId, maxNotesToRender, callback)
+    static watchFollowedTabNotes(projectId, maxNotesToRender, callback, options) {
+        return bridge.watchFollowedTabNotes(projectId, maxNotesToRender, callback, options)
     }
 
-    static watchFollowedTabNotesExpanded(projectId, callback) {
-        bridge.watchFollowedTabNotesExpanded(projectId, callback)
+    static watchFollowedTabNotesExpanded(projectId, callback, options) {
+        return bridge.watchFollowedTabNotesExpanded(projectId, callback, options)
     }
 
     static watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
-        bridge.watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
+        return bridge.watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
     }
 
     static watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options) {
-        bridge.watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options)
+        return bridge.watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options)
     }
 
     static watchFollowedTabStickyNotes(projectId, callback) {
         bridge.watchFollowedTabStickyNotes(projectId, callback)
     }
 
-    static watchAllTabNotes(projectId, maxNotesToRender, callback) {
-        bridge.watchAllTabNotes(projectId, maxNotesToRender, callback)
+    static watchAllTabNotes(projectId, maxNotesToRender, callback, options) {
+        return bridge.watchAllTabNotes(projectId, maxNotesToRender, callback, options)
     }
 
-    static watchAllTabNotesExpanded(projectId, callback) {
-        bridge.watchAllTabNotesExpanded(projectId, callback)
+    static watchAllTabNotesExpanded(projectId, callback, options) {
+        return bridge.watchAllTabNotesExpanded(projectId, callback, options)
     }
 
     static watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
-        bridge.watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
+        return bridge.watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
     }
 
     static watchAllTabNotesExpandedInAllProjects(projectId, callback, options) {
-        bridge.watchAllTabNotesExpandedInAllProjects(projectId, callback, options)
+        return bridge.watchAllTabNotesExpandedInAllProjects(projectId, callback, options)
     }
 
     static watchAllTabStickyNotes(projectId, callback) {

@@ -1,5 +1,6 @@
+import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
-import { useDispatch } from 'react-redux'
+
 import Backend from '../../../utils/BackendBridge'
 import TasksHelper from '../../TaskListView/Utils/TasksHelper'
 import { StyleSheet, Text, View } from 'react-native'
@@ -12,7 +13,7 @@ import { FEED_NOTE_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import HighlightWrapper from '../../UIComponents/FloatModals/ManageTaskModal/HighlightWrapper'
 import StickyWrapper from './StickyWrapper'
 import PlusButton from '../Common/PlusButton'
-import { setSelectedNavItem, startLoadingData, stopLoadingData } from '../../../redux/actions'
+import { setSelectedNavItem } from '../../../redux/actions'
 import NavigationService from '../../../utils/NavigationService'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../../../i18n/TranslationService'
@@ -29,7 +30,6 @@ import { uploadNewNote } from '../../../utils/backends/Notes/notesFirestore'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 export default function CreateNote({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
-    const dispatch = useDispatch()
     const [sendingData, setSendingData] = useState(false)
     // AT-2488 — a failed creation used to leave `sendingData` true forever (the
     // promise had no rejection handler at all), so the form stayed locked and the
@@ -91,42 +91,42 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
     // `sendingData` only feeds React state, which is applied asynchronously, so
     // a second Return could still start another note before the first landed.
     const addNote = useSingleFlightSubmit(async (openDetails = false, directNote = null) => {
-        const newNote = directNote || { ...note }
-        newNote.extendedTitle = note.extendedTitle.trim()
-        newNote.title = TasksHelper.getTaskNameWithoutMeta(newNote.extendedTitle)
+        return runWithLoading('create_mentioned_note', async () => {
+            const newNote = directNote || { ...note }
+            newNote.extendedTitle = note.extendedTitle.trim()
+            newNote.title = TasksHelper.getTaskNameWithoutMeta(newNote.extendedTitle)
 
-        if (newNote.extendedTitle.length > 0) {
-            dispatch(startLoadingData())
-            setSendingData(true)
-            setCreationError(null)
+            if (newNote.extendedTitle.length > 0) {
+                setSendingData(true)
+                setCreationError(null)
 
-            return uploadNewNote(projectId, newNote).then(
-                noteDB => {
-                    trySetLinkedObjects(noteDB)
+                return uploadNewNote(projectId, newNote).then(
+                    noteDB => {
+                        trySetLinkedObjects(noteDB)
 
-                    dispatch(stopLoadingData())
-                    setSendingData(false)
+                        setSendingData(false)
 
-                    if (selectItemToMention) {
-                        selectItemToMention(noteDB, MENTION_MODAL_NOTES_TAB, projectId)
+                        if (selectItemToMention) {
+                            selectItemToMention(noteDB, MENTION_MODAL_NOTES_TAB, projectId)
+                        }
+
+                        if (openDetails) {
+                            NavigationService.navigate('NotesDetailedView', {
+                                noteId: noteDB.id,
+                                projectId,
+                            })
+                            store.dispatch(setSelectedNavItem(DV_TAB_NOTE_EDITOR))
+                        }
+                    },
+                    error => {
+                        console.error('[notes] Could not create the note', error)
+
+                        setSendingData(false)
+                        setCreationError(translate('Note could not be created'))
                     }
-
-                    if (openDetails) {
-                        NavigationService.navigate('NotesDetailedView', {
-                            noteId: noteDB.id,
-                            projectId,
-                        })
-                        store.dispatch(setSelectedNavItem(DV_TAB_NOTE_EDITOR))
-                    }
-                },
-                error => {
-                    console.error('[notes] Could not create the note', error)
-                    dispatch(stopLoadingData())
-                    setSendingData(false)
-                    setCreationError(translate('Note could not be created'))
-                }
-            )
-        }
+                )
+            }
+        })
     }, RELEASE_AFTER_SUBMISSION)
 
     const trySetLinkedObjects = note => {

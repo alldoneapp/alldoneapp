@@ -77,6 +77,7 @@ export const createCachedSnapshotGate = (
         trackConnectionHealth = true,
         connectionSource = 'server_snapshot',
         loadingSource,
+        onError,
     } = {}
 ) => {
     let graceTimer
@@ -171,6 +172,7 @@ export const createCachedSnapshotGate = (
             source: loadingSource || connectionSource,
             code: error?.code || 'unknown',
         })
+        onError?.(error)
     }
 
     const deliver = snapshot => {

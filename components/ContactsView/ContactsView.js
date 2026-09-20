@@ -1,3 +1,4 @@
+import { beginLoadingOperation } from '../../utils/redux/loadingOperation'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { orderBy, sortBy } from 'lodash'
@@ -12,7 +13,7 @@ import URLsPeople, {
     URL_PROJECT_PEOPLE_ALL,
     URL_PROJECT_PEOPLE_FOLLOWED,
 } from '../../URLSystem/People/URLsPeople'
-import { setNavigationRoute, startLoadingData, stopLoadingData } from '../../redux/actions'
+import { setNavigationRoute } from '../../redux/actions'
 import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 import { DV_TAB_ROOT_CONTACTS } from '../../utils/TabNavigationConstants'
 import NothingToShow from '../UIComponents/NothingToShow'
@@ -98,17 +99,9 @@ export const buildContactsViewCacheSnapshot = ({
 }
 
 export function ContactsProjectLoader({ projectId, trackInitialLoad, onInitialSnapshot }) {
-    const dispatch = useDispatch()
-
     useEffect(() => {
         let active = true
-        let loadingActive = trackInitialLoad
-        if (trackInitialLoad) dispatch(startLoadingData())
-        const finishLoading = () => {
-            if (!loadingActive) return
-            loadingActive = false
-            dispatch(stopLoadingData())
-        }
+        const finishLoading = beginLoadingOperation('contacts', { enabled: trackInitialLoad })
 
         ensureProjectDataLoaded(projectId, [PROJECT_DATA_USERS, PROJECT_DATA_CONTACTS], {
             trackConnectionHealth: trackInitialLoad,
@@ -370,13 +363,9 @@ export default function ContactsView() {
         })
         projects.forEach(project => {
             if (followedWatchers.current.has(project.id)) return
-            let loadingActive = project.id === trackedProjectId && !cachedProjectIds.includes(project.id)
-            if (loadingActive) dispatch(startLoadingData())
-            const finishLoading = () => {
-                if (!loadingActive) return
-                loadingActive = false
-                dispatch(stopLoadingData())
-            }
+            const finishLoading = beginLoadingOperation('followed_people', {
+                enabled: project.id === trackedProjectId && !cachedProjectIds.includes(project.id),
+            })
             const unsubscribe = watchFollowedPeople(
                 project.id,
                 loggedUser.uid,

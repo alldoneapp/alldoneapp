@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { View } from 'react-native'
-import { useSelector, useDispatch } from 'react-redux'
+import { useSelector } from 'react-redux'
 import AppPopover from '../../ModalShell/AppPopover'
 
 import TaskEditionMode from './TaskEditionMode'
@@ -13,7 +13,7 @@ import TasksHelper, {
     OPEN_STEP,
     TASK_ASSIGNEE_ASSISTANT_TYPE,
 } from '../../../TaskListView/Utils/TasksHelper'
-import { stopLoadingData } from '../../../../redux/actions'
+
 import { WORKSTREAM_ID_PREFIX } from '../../../Workstreams/WorkstreamHelper'
 import { checkIsLimitedByXp } from '../../../Premium/PremiumHelper'
 import { moveTasksFromDone, moveTasksFromOpen, setTaskStatus } from '../../../../utils/backends/Tasks/tasksFirestore'
@@ -36,7 +36,6 @@ export default function TaskArea({
     setTaskBeenEdited,
     objectUrl,
 }) {
-    const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [inEditionMode, setInEditionMode] = useState(startInEditionMode)
@@ -76,7 +75,6 @@ export default function TaskArea({
 
     const closeWorkflowModal = () => {
         setWorkflowModalIsOpen(false)
-        dispatch(stopLoadingData())
     }
 
     const handleWorkflowTaskWorkflowInteraction = (longPress, workflow) => {

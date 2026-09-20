@@ -11,7 +11,6 @@ import {
     setSelectedSidebarTab,
     setTaskInDetailView,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
     unsetSharedMode,
     navigateToAllProjectsTasks,
@@ -176,12 +175,7 @@ const TaskDetailedView = ({ navigation }) => {
                 )
             ) {
                 NavigationService.navigate('Root')
-                dispatch([
-                    resetFloatPopup(),
-                    setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-                    stopLoadingData(),
-                    setShowAccessDeniedPopup(true),
-                ])
+                dispatch([resetFloatPopup(), setSelectedSidebarTab(DV_TAB_ROOT_TASKS), setShowAccessDeniedPopup(true)])
             } else {
                 setTask(taskInDetailView)
             }
@@ -207,14 +201,9 @@ const TaskDetailedView = ({ navigation }) => {
 
             NavigationService.navigate('Root')
             if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+                dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             } else {
-                dispatch([
-                    resetFloatPopup(),
-                    setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-                    stopLoadingData(),
-                    setShowAccessDeniedPopup(true),
-                ])
+                dispatch([resetFloatPopup(), setSelectedSidebarTab(DV_TAB_ROOT_TASKS), setShowAccessDeniedPopup(true)])
             }
         } else if (task !== null) {
             if (
@@ -228,13 +217,12 @@ const TaskDetailedView = ({ navigation }) => {
                     dispatch([
                         resetFloatPopup(),
                         setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-                        stopLoadingData(),
                         setShowAccessDeniedPopup(true),
                     ])
                 }
             } else {
                 setTask(task)
-                dispatch([setTaskInDetailView(task), stopLoadingData()])
+                dispatch([setTaskInDetailView(task)])
             }
         }
     }

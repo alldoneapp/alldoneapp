@@ -13,7 +13,7 @@ import URLsNotes, {
     URL_PROJECT_USER_NOTES_FOLLOWED,
 } from '../../URLSystem/Notes/URLsNotes'
 import { calcNotesAmount } from './NotesHelper'
-import { resetLoadingData, setNavigationRoute, resetNotesAmounts } from '../../redux/actions'
+import { setNavigationRoute, resetNotesAmounts } from '../../redux/actions'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 import moment from 'moment'
 import { DV_TAB_ROOT_NOTES } from '../../utils/TabNavigationConstants'
@@ -113,8 +113,7 @@ function NotesView() {
     )
 
     useEffect(() => {
-        dispatch([resetLoadingData()])
-        return () => dispatch([resetLoadingData(), resetNotesAmounts()])
+        return () => dispatch(resetNotesAmounts())
     }, [])
 
     useEffect(() => {

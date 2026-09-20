@@ -3,12 +3,7 @@ import { cloneDeep } from 'lodash'
 
 import { getDb, globalWatcherUnsub, mapTaskData } from '../firestore'
 import store from '../../../redux/store'
-import {
-    startLoadingData,
-    stopLoadingData,
-    setGoalWorkflowTasksData,
-    setGoalWorkflowSubtasksByParent,
-} from '../../../redux/actions'
+import { setGoalWorkflowTasksData, setGoalWorkflowSubtasksByParent } from '../../../redux/actions'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import TasksHelper, { OPEN_STEP } from '../../../components/TaskListView/Utils/TasksHelper'
 import { chronoEntriesOrder } from '../../HelperFunctions'

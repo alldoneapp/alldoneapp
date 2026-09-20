@@ -1,3 +1,4 @@
+import { subscribeWithLoading } from '../../redux/loadingOperation'
 import { persistNewDayAcknowledgement } from './newDayAcknowledgement'
 import firebase from 'firebase/compat/app'
 import { cloneDeep } from 'lodash'
@@ -350,15 +351,15 @@ export const resetSharedProjectUserWatchersForTests = () => {
 }
 
 export async function watchUserByEmail(email, watcherKey, callback) {
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`users`)
-        .where('email', '==', email)
-        .limit(1)
-        .onSnapshot(userDocs => {
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'user_search',
+        (next, error) => getDb().collection(`users`).where('email', '==', email).limit(1).onSnapshot(next, error),
+        userDocs => {
             const user =
                 userDocs.docs.length > 0 ? mapUserData(userDocs.docs[0].id, userDocs.docs[0].data(), false) : null
             callback(user)
-        })
+        }
+    )
 }
 
 export async function watchProjectUsers(projectId, callback, watcherKey, { onError } = {}) {

@@ -1,6 +1,12 @@
 import { createStore } from 'redux'
 import { reduceLoadingData } from '../../redux/loadingData'
-import { beginLoadingOperation, subscribeWithLoading, INITIAL_LOAD_TIMEOUT_MS } from './loadingOperation'
+import {
+    beginLoadingOperation,
+    subscribeWithLoading,
+    runWithLoading,
+    INITIAL_LOAD_TIMEOUT_MS,
+    ACTION_LOADING_TIMEOUT_MS,
+} from './loadingOperation'
 
 jest.mock('./dispatchBatch', () => ({ batchDispatch: jest.fn() }))
 
@@ -74,7 +80,7 @@ describe('loading operation ownership', () => {
         const finishNew = begin('new')
         jest.advanceTimersByTime(1000)
         expect(store.getState().isLoadingData).toBe(1)
-        expect(warn).toHaveBeenCalledWith('[LoadingData] Initial load timed out', {
+        expect(warn).toHaveBeenCalledWith('[LoadingData] Loading feedback timed out', {
             source: 'stalled',
             timeoutMs: INITIAL_LOAD_TIMEOUT_MS,
         })
@@ -90,6 +96,88 @@ describe('loading operation ownership', () => {
         const finish = beginLoadingOperation('tasks', { deferStart: true, dispatch: () => finish() })
         jest.runAllTimers()
         expect(warn).not.toHaveBeenCalled()
+    })
+
+    it('keeps overlapping writes independent when one rejects', async () => {
+        let rejectFirst
+        let resolveSecond
+        const first = runWithLoading(
+            'first_write',
+            () =>
+                new Promise((resolve, reject) => {
+                    rejectFirst = reject
+                }),
+            { dispatch: store.dispatch }
+        )
+        const second = runWithLoading(
+            'second_write',
+            () =>
+                new Promise(resolve => {
+                    resolveSecond = resolve
+                }),
+            { dispatch: store.dispatch }
+        )
+        expect(store.getState().isLoadingData).toBe(2)
+        const failed = expect(first).rejects.toThrow('write failed')
+        rejectFirst(new Error('write failed'))
+        await failed
+        expect(Object.values(store.getState().loadingDataOperations).map(operation => operation.source)).toEqual([
+            'second_write',
+        ])
+        resolveSecond('saved')
+        await expect(second).resolves.toBe('saved')
+        expect(store.getState().isLoadingData).toBe(0)
+        expect(jest.getTimerCount()).toBe(0)
+    })
+
+    it('releases a synchronous failure without changing the error', async () => {
+        const error = new Error('setup failed')
+        await expect(
+            runWithLoading(
+                'write',
+                () => {
+                    throw error
+                },
+                { dispatch: store.dispatch }
+            )
+        ).rejects.toBe(error)
+        expect(store.getState().isLoadingData).toBe(0)
+        expect(jest.getTimerCount()).toBe(0)
+    })
+
+    it('bounds write feedback without completing the write or clearing newer work on late failure', async () => {
+        let rejectWrite
+        const write = runWithLoading(
+            'stalled_write',
+            () =>
+                new Promise((resolve, reject) => {
+                    rejectWrite = reject
+                }),
+            { dispatch: store.dispatch }
+        )
+        const settled = jest.fn()
+        const completion = write.catch(error => {
+            settled(error)
+        })
+        jest.advanceTimersByTime(INITIAL_LOAD_TIMEOUT_MS)
+        expect(store.getState().isLoadingData).toBe(1)
+        jest.advanceTimersByTime(ACTION_LOADING_TIMEOUT_MS - INITIAL_LOAD_TIMEOUT_MS)
+        await Promise.resolve()
+        expect(store.getState().isLoadingData).toBe(0)
+        expect(settled).not.toHaveBeenCalled()
+        const finishNew = begin('new_load')
+        rejectWrite(new Error('late failure'))
+        await completion
+        expect(settled).toHaveBeenCalledWith(expect.objectContaining({ message: 'late failure' }))
+        expect(store.getState().isLoadingData).toBe(1)
+        finishNew()
+    })
+
+    it('runs background work without foreground feedback or timers', async () => {
+        const dispatch = jest.fn()
+        await expect(runWithLoading('background', () => 'done', { dispatch, enabled: false })).resolves.toBe('done')
+        expect(dispatch).not.toHaveBeenCalled()
+        expect(jest.getTimerCount()).toBe(0)
     })
 })
 

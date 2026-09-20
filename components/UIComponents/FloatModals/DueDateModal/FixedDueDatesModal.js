@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles from '../../../styles/global'
 import Backend from '../../../../utils/BackendBridge'
 import moment from 'moment'
-import { setLastSelectedDueDate, setSelectedTasks, startLoadingData, stopLoadingData } from '../../../../redux/actions'
+import { setLastSelectedDueDate, setSelectedTasks } from '../../../../redux/actions'
 import Shortcut, { SHORTCUT_LIGHT } from '../../../UIControls/Shortcut'
 import Hotkeys from 'react-hot-keys'
 import DateItemSection from './DateItemSection'
@@ -43,8 +43,10 @@ export default function FixedDueDatesModal({
             setToBacklogBeforeSaveTask(isObservedTabActive)
         } else {
             if (multipleTasks) {
-                Backend.setTaskToBacklogMultiple(tasks).then(dispatch(stopLoadingData()))
-                dispatch([setSelectedTasks(null, true), startLoadingData()])
+                Backend.setTaskToBacklogMultiple(tasks).catch(error =>
+                    console.error('[tasks] Could not update task dates', error)
+                )
+                dispatch([setSelectedTasks(null, true)])
                 if (updateParentGoalReminderDate) updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
             } else if (updateParentGoalReminderDate) {
                 updateParentGoalReminderDate(BACKLOG_DATE_NUMERIC)
