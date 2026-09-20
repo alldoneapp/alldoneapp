@@ -101,6 +101,7 @@ async function processBatchForUser(userId, batch) {
                     mediaKinds: [...new Set(processedMedia.map(media => media.kind).filter(Boolean))],
                     fileUnderstandingSummary: buildFileUnderstandingSummary(processedMedia),
                     processedMedia,
+                    replyContext: item.replyContext || null,
                 }
             )
         }

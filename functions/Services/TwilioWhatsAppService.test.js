@@ -1,4 +1,7 @@
 const mockMessagesCreate = jest.fn()
+const mockMessagesFetch = jest.fn()
+const mockMessages = jest.fn(() => ({ fetch: mockMessagesFetch }))
+mockMessages.create = mockMessagesCreate
 
 jest.mock('firebase-admin', () => ({
     app: jest.fn(() => ({
@@ -18,9 +21,7 @@ jest.mock('../envFunctionsHelper', () => ({
 
 jest.mock('twilio', () =>
     jest.fn(() => ({
-        messages: {
-            create: mockMessagesCreate,
-        },
+        messages: mockMessages,
     }))
 )
 
@@ -30,7 +31,21 @@ const { __private__ } = TwilioWhatsAppService
 describe('TwilioWhatsAppService conversation links', () => {
     beforeEach(() => {
         mockMessagesCreate.mockReset()
+        mockMessagesFetch.mockReset()
+        mockMessages.mockClear()
         mockMessagesCreate.mockResolvedValue({ sid: 'SM123', status: 'queued' })
+    })
+
+    test('fetches a message resource so reply webhooks can resolve quoted text', async () => {
+        mockMessagesFetch.mockResolvedValue({ sid: 'SMoriginal', body: 'Original text' })
+        const service = new TwilioWhatsAppService()
+
+        await expect(service.fetchMessageBySid(' SMoriginal ')).resolves.toEqual({
+            sid: 'SMoriginal',
+            body: 'Original text',
+        })
+        expect(mockMessages).toHaveBeenCalledWith('SMoriginal')
+        expect(mockMessagesFetch).toHaveBeenCalledTimes(1)
     })
 
     test('builds task chat URLs for task notifications', () => {
