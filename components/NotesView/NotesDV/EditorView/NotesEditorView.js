@@ -39,7 +39,6 @@ import styles, { colors, getRandomCollabColor } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import {
-    resetLoadingData,
     setQuillEditorProjectId,
     showConfirmPopup,
     setIsLoadingNoteData,
@@ -655,7 +654,7 @@ const NotesEditorView = ({
                 console.warn('Failed to remove note collaboration presence', error)
             })
         }
-        dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
+        dispatch([setIsLoadingNoteData(false)])
         clearTimeout(saveTimeoutHandle.current)
         saveTimeoutHandle.current = null
         clearTimeout(remoteSaveTimeoutHandle.current)
@@ -714,7 +713,6 @@ const NotesEditorView = ({
     }, [editorRevision])
 
     useEffect(() => {
-        dispatch(resetLoadingData())
         return () => {
             dispatch(setNoteEditorScrollDimensions(0, 0))
         }
@@ -959,7 +957,7 @@ const NotesEditorView = ({
                 setContentUnavailableOffline(false)
                 loadingRef.current = false
                 exportLoadingRef = false
-                dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
+                dispatch([setIsLoadingNoteData(false)])
             } catch (error) {
                 if (noteUnmountedRef.current) return
                 binding.current?.destroy()

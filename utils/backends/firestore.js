@@ -1,3 +1,5 @@
+import { runWithLoading, subscribeWithLoading } from '../redux/loadingOperation'
+
 import { readHappinessForSave } from './Projects/happinessRecoveryRead'
 // Config file
 import { runExclusiveFirestoreRestart } from './firestoreRestartLease'
@@ -124,8 +126,6 @@ import {
     setHashtagsColors,
     setNewLocalFeedData,
     setShowNewDayNotification,
-    startLoadingData,
-    stopLoadingData,
     updateAllSelectedTasks,
     setTriggerGoldAnimation,
     setRegisteredNewUser,
@@ -1525,12 +1525,17 @@ export function unwatchBacklinksCount(objectId, watcherKey) {
 export function watchLinkedTasks(projectId, linkedParentObject, callback) {
     const backlinkField = getBacklinkIdsVisibleToField(getLoggedUserAccessReaderId())
     const backlinkToken = buildBacklinkToken(linkedParentObject.idsField, linkedParentObject.id)
-    const unsub = db
-        .collection(`items/${projectId}/tasks`)
-        .where(backlinkField, 'array-contains', backlinkToken)
-        .onSnapshot(snapshot => {
+    const unsub = subscribeWithLoading(
+        'backlink_tasks',
+        (next, error) =>
+            db
+                .collection(`items/${projectId}/tasks`)
+                .where(backlinkField, 'array-contains', backlinkToken)
+                .onSnapshot(next, error),
+        snapshot => {
             callback(snapshot.docs.filter(doc => doc.data().parentId === null))
-        })
+        }
+    )
     linkedTasksUnsub = unsub
 }
 
@@ -2344,23 +2349,25 @@ export const setTaskAlertFeedsChain = async (projectId, taskId, alertEnabled, al
 }
 
 export async function setTaskDueDateMultiple(tasks, dueDate) {
-    const performanceTrace = startPerformanceTrace('bulk_task_update', {
-        object_type: 'task',
-        source: 'due_date',
-        task_count: tasks.length,
-        subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+    return runWithLoading('bulk_due_date', async () => {
+        const performanceTrace = startPerformanceTrace('bulk_task_update', {
+            object_type: 'task',
+            source: 'due_date',
+            task_count: tasks.length,
+            subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+        })
+        const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
+        const batch = new BatchWrapper(db)
+        const promises = []
+        for (let task of sortedTasks) {
+            const newDueDate = dueDate ? dueDate : task.newDueDate
+            promises.push(setTaskDueDate(task.projectId, task.id, newDueDate, task, task.isObservedTask, batch))
+        }
+        await Promise.all(promises)
+        performanceTrace.mark('task_data_prepared')
+        await batch.commit()
+        performanceTrace.end('server_acked', { outcome: 'success' })
     })
-    const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
-    const batch = new BatchWrapper(db)
-    const promises = []
-    for (let task of sortedTasks) {
-        const newDueDate = dueDate ? dueDate : task.newDueDate
-        promises.push(setTaskDueDate(task.projectId, task.id, newDueDate, task, task.isObservedTask, batch))
-    }
-    await Promise.all(promises)
-    performanceTrace.mark('task_data_prepared')
-    await batch.commit()
-    performanceTrace.end('server_acked', { outcome: 'success' })
 }
 
 export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObservedTask, didResetPriority = false) => {
@@ -2392,21 +2399,23 @@ export const setTaskToBacklogFeedsChain = async (projectId, taskId, task, isObse
 }
 
 export async function setTaskToBacklogMultiple(tasks) {
-    const performanceTrace = startPerformanceTrace('bulk_task_update', {
-        object_type: 'task',
-        source: 'backlog',
-        task_count: tasks.length,
-        subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+    return runWithLoading('bulk_backlog', async () => {
+        const performanceTrace = startPerformanceTrace('bulk_task_update', {
+            object_type: 'task',
+            source: 'backlog',
+            task_count: tasks.length,
+            subtask_count: tasks.reduce((total, task) => total + (task.subtaskIds?.length || 0), 0),
+        })
+        const batch = new BatchWrapper(db)
+        const promises = []
+        for (let task of tasks) {
+            promises.push(setTaskToBacklog(task.projectId, task.id, task, task.isObservedTask, batch))
+        }
+        await Promise.all(promises)
+        performanceTrace.mark('task_data_prepared')
+        await batch.commit()
+        performanceTrace.end('server_acked', { outcome: 'success' })
     })
-    const batch = new BatchWrapper(db)
-    const promises = []
-    for (let task of tasks) {
-        promises.push(setTaskToBacklog(task.projectId, task.id, task, task.isObservedTask, batch))
-    }
-    await Promise.all(promises)
-    performanceTrace.mark('task_data_prepared')
-    await batch.commit()
-    performanceTrace.end('server_acked', { outcome: 'success' })
 }
 
 /**
@@ -2537,21 +2546,25 @@ export async function getSubTasksListDirectly(projectId, taskId) {
 }
 
 export function watchGoalLinkedTasks(projectId, goalId, callback, watcherKey) {
-    store.dispatch(startLoadingData())
     const loggedUserId = store.getState().loggedUser.uid
-    globalWatcherUnsub[watcherKey] = db
-        .collection(`/items/${projectId}/tasks`)
-        .where('parentGoalId', '==', goalId)
-        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
-        .orderBy('created', 'desc')
-        .onSnapshot(snapshot => {
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'goal_linked_tasks',
+        (next, error) =>
+            db
+                .collection(`/items/${projectId}/tasks`)
+                .where('parentGoalId', '==', goalId)
+                .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
+                .orderBy('created', 'desc')
+                .onSnapshot(next, error),
+        snapshot => {
             const tasks = []
             for (let doc of snapshot.docs) {
                 tasks.push(mapTaskData(doc.id, doc.data()))
             }
-            store.dispatch(stopLoadingData())
+
             callback(tasks)
-        })
+        }
+    )
 }
 
 export function watchGoalLinkedOpenTasksAmount(projectId, goalId, callback, watcherKey) {
@@ -2571,21 +2584,25 @@ export function watchGoalLinkedOpenTasksAmount(projectId, goalId, callback, watc
 }
 
 export function watchSubtasksList(projectId, taskId, callback) {
-    store.dispatch(startLoadingData())
     const loggedUserId = store.getState().loggedUser.uid
-    watchSubtaskList[taskId] = db
-        .collection(`/items/${projectId}/tasks`)
-        .where('parentId', '==', taskId)
-        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
-        .orderBy('sortIndex', 'desc')
-        .onSnapshot(snapshot => {
+    watchSubtaskList[taskId] = subscribeWithLoading(
+        'subtasks',
+        (next, error) =>
+            db
+                .collection(`/items/${projectId}/tasks`)
+                .where('parentId', '==', taskId)
+                .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
+                .orderBy('sortIndex', 'desc')
+                .onSnapshot(next, error),
+        snapshot => {
             const subTasksList = []
             for (let doc of snapshot.docs) {
                 subTasksList.push(mapTaskData(doc.id, doc.data()))
             }
-            store.dispatch(stopLoadingData())
+
             callback(subTasksList)
-        })
+        }
+    )
 }
 
 export function unwatchSubtasksList(taskId) {
@@ -5258,31 +5275,29 @@ export async function getNotesByProject(projectId) {
     return notesList
 }
 
-export async function watchFollowedTabNotesExpanded(projectId, callback) {
+export async function watchFollowedTabNotesExpanded(projectId, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '==', 0)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-export async function watchFollowedTabNotes(projectId, maxNotesToRender, callback) {
+export async function watchFollowedTabNotes(projectId, maxNotesToRender, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
             .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '==', 0)
             .limit(maxNotesToRender)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
@@ -5290,11 +5305,8 @@ export async function watchFollowedTabNotesExpandedInAllProjects(projectId, call
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
     const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
-        db
-            .collection(`noteItems/${projectId}/notes`)
-            .where('followedReaderIds', 'array-contains', loggedUserId)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
+        db.collection(`noteItems/${projectId}/notes`).where('followedReaderIds', 'array-contains', loggedUserId)
     )
 }
 
@@ -5302,13 +5314,12 @@ export async function watchFollowedTabNotesInAllProjects(projectId, maxNotesToRe
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
     const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
             .where('followedReaderIds', 'array-contains', loggedUserId)
             .limit(maxNotesToRender)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
@@ -5316,40 +5327,37 @@ export async function watchFollowedTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)
     const noteSnapshots = createNotesSnapshotHandler(callback, true)
-    stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
+    stickyNotesUnsubs = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .where('followedReaderIds', 'array-contains', loggedUserId)
             .where('stickyData.days', '>', 0)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-export async function watchAllTabNotesExpanded(projectId, callback) {
+export async function watchAllTabNotesExpanded(projectId, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '==', 0)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-export async function watchAllTabNotes(projectId, maxNotesToRender, callback) {
+export async function watchAllTabNotes(projectId, maxNotesToRender, callback, options) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
-    const noteSnapshots = createNotesSnapshotHandler(callback, false)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
             .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '==', 0)
             .limit(maxNotesToRender)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
@@ -5357,11 +5365,10 @@ export async function watchAllTabNotesExpandedInAllProjects(projectId, callback,
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
     const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
@@ -5369,13 +5376,12 @@ export async function watchAllTabNotesInAllProjects(projectId, maxNotesToRender,
     const loggedUserId = store.getState().loggedUser.uid
     unwatchNotes2(projectId)
     const noteSnapshots = createNotesSnapshotHandler(callback, false, options)
-    notesUnsubs2[projectId] = noteSnapshots.wrapUnsubscribe(
+    notesUnsubs2[projectId] = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .orderBy('lastEditionDate', 'desc')
             .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .limit(maxNotesToRender)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
@@ -5383,20 +5389,20 @@ export async function watchAllTabStickyNotes(projectId, callback) {
     const loggedUserId = store.getState().loggedUser.uid
     unwatchStickyNotes(projectId)
     const noteSnapshots = createNotesSnapshotHandler(callback, true)
-    stickyNotesUnsubs = noteSnapshots.wrapUnsubscribe(
+    stickyNotesUnsubs = noteSnapshots.subscribe(
         db
             .collection(`noteItems/${projectId}/notes`)
             .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
             .where('stickyData.days', '>', 0)
-            .onSnapshot({ includeMetadataChanges: true }, noteSnapshots.handleSnapshot)
     )
 }
 
-const createNotesSnapshotHandler = (callback, isStickyWatcher, { trackConnectionHealth = true } = {}) => {
+const createNotesSnapshotHandler = (callback, isStickyWatcher, { trackConnectionHealth = true, onError } = {}) => {
     let cacheChanges = []
     const gate = createCachedSnapshotGate(() => handleSnapshot, {
         trackConnectionHealth,
         connectionSource: 'notes_snapshot',
+        onError,
     })
     const snapshotPerformance = createFirstSnapshotPerformance(
         {
@@ -5418,7 +5424,7 @@ const createNotesSnapshotHandler = (callback, isStickyWatcher, { trackConnection
         callback(mergedChanges)
         cacheChanges = []
     }
-    return { handleSnapshot, wrapUnsubscribe: gate.wrapUnsubscribe }
+    return { subscribe: gate.subscribe }
 }
 
 export async function watchFollowedTabNotesNeedShowMore(projectId, notesToLoad, callback) {
@@ -5507,7 +5513,9 @@ export async function unwatchNotes(projectId, uid) {
 }
 
 export async function watchNote(objectId, noteId, callback) {
-    const unsub = db.doc(`noteItems/${objectId}/notes/${noteId}`).onSnapshot(
+    const unsub = subscribeWithLoading(
+        'note_detail',
+        (next, error) => db.doc(`noteItems/${objectId}/notes/${noteId}`).onSnapshot(next, error),
         doc => {
             let note = null
             if (doc.data() !== undefined) {
@@ -5515,14 +5523,16 @@ export async function watchNote(objectId, noteId, callback) {
             }
             callback(note)
         },
-        error => {
-            console.error('[note detail] Firestore listener failed', {
-                projectId: objectId,
-                noteId,
-                code: error?.code,
-                message: error?.message,
-            })
-            callback(null, error)
+        {
+            onError: error => {
+                console.error('[note detail] Firestore listener failed', {
+                    projectId: objectId,
+                    noteId,
+                    code: error?.code,
+                    message: error?.message,
+                })
+                callback(null, error)
+            },
         }
     )
 
@@ -5581,18 +5591,17 @@ export function unwatchFeedObjectLastState(watchId) {
 }
 
 export function watchLinkedNotes(projectId, uid, linkedParentObject, callback) {
-    const unsub = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where(linkedParentObject.idsField, 'array-contains', linkedParentObject.id)
-        .onSnapshot(querySnapshot => {
-            db.collection(`noteItems/${projectId}/notes`)
+    const unsub = subscribeWithLoading(
+        'backlink_notes',
+        (next, error) =>
+            db
+                .collection(`noteItems/${projectId}/notes`)
                 .where(linkedParentObject.idsField, 'array-contains', linkedParentObject.id)
-                .get()
-                .then(res => {
-                    callback(res.docs)
-                })
-            // callback(querySnapshot.docChanges())
-        })
+                .onSnapshot(next, error),
+        querySnapshot => {
+            callback(querySnapshot.docs)
+        }
+    )
 
     linkedNotesUnsubs[projectId] = { [uid]: unsub }
 }
@@ -6397,16 +6406,9 @@ function watchNewFeedsTabRedux(
     visibleAmount,
     { manageLoading = true, trackConnectionHealth = true, onInitialSnapshot } = {}
 ) {
-    let loadingActive = manageLoading
     let initialSnapshotDelivered = false
-    if (manageLoading) store.dispatch(startLoadingData())
-    const finishLoading = () => {
-        if (!loadingActive) return
-        loadingActive = false
-        store.dispatch(stopLoadingData())
-    }
+
     const finishInitialSnapshot = () => {
-        finishLoading()
         if (initialSnapshotDelivered) return
         initialSnapshotDelivered = true
         onInitialSnapshot?.(projectId)
@@ -6426,6 +6428,13 @@ function watchNewFeedsTabRedux(
     const gate = createCachedSnapshotGate(() => handleSnapshot, {
         trackConnectionHealth,
         connectionSource: 'updates_snapshot',
+        loadingSource: manageLoading ? `updates_${tab}` : undefined,
+        onError: error => {
+            snapshotPerformance.fail()
+            console.error('watchNewFeedsTabRedux: onSnapshot error', { projectId, tab, error })
+            callback(projectId, [])
+            finishInitialSnapshot()
+        },
     })
     const query = db
         .collection(path)
@@ -6457,17 +6466,8 @@ function watchNewFeedsTabRedux(
         }
     }
 
-    const unsubscribe = query.onSnapshot({ includeMetadataChanges: true }, handleSnapshot, error => {
-        gate.dispose()
-        snapshotPerformance.fail()
-        console.error('watchNewFeedsTabRedux: onSnapshot error', { projectId, tab, error })
-        callback(projectId, [])
-        finishInitialSnapshot()
-    })
-    feedsReduxStoreUnsub[tab][projectId] = gate.wrapUnsubscribe(() => {
-        unsubscribe()
-        finishLoading()
-    })
+    const unsubscribe = gate.subscribe(query)
+    feedsReduxStoreUnsub[tab][projectId] = unsubscribe
 }
 
 export async function getFeedObject(projectId, dateFormated, objectId, feedType, lastChangeDate) {
@@ -7567,11 +7567,15 @@ export async function updateHastagsColors(projectId, text, colorKey, updateColor
 
 export function watchHastagsColors(projectId, hashtagId, text, callback) {
     const parsedText = text.toLowerCase()
-    unsubHastagsColors[hashtagId] = db
-        .collection(`tagsColors/${projectId}/hashtags`)
-        .where('text', '==', parsedText)
-        .limit(1)
-        .onSnapshot(hashtagsDocs => {
+    unsubHastagsColors[hashtagId] = subscribeWithLoading(
+        'hashtag_color',
+        (next, error) =>
+            db
+                .collection(`tagsColors/${projectId}/hashtags`)
+                .where('text', '==', parsedText)
+                .limit(1)
+                .onSnapshot(next, error),
+        hashtagsDocs => {
             let colorKey
             hashtagsDocs.forEach(doc => {
                 const hashtagData = doc.data()
@@ -7584,7 +7588,9 @@ export function watchHastagsColors(projectId, hashtagId, text, callback) {
             }
             dispatchHashtagsColors(projectId, parsedText, colorKey)
             callback?.()
-        })
+        },
+        { enabled: !store.getState().hashtagsColors?.[projectId]?.[parsedText] }
+    )
 }
 
 function dispatchHashtagsColors(projectId, parsedText, colorKey) {
@@ -8016,15 +8022,15 @@ export async function checkIfCalendarConnected(projectId) {
             console.log('[Calendar Sync] 📡 Calling syncCalendarEventsSecondGen:', { projectId, daysAhead: 30 })
         }
 
-        store.dispatch(startLoadingData())
-
         const startTime = Date.now()
 
         // Call the new server-side sync function
-        const result = await runHttpsCallableFunction('syncCalendarEventsSecondGen', {
-            projectId,
-            daysAhead: 30,
-        })
+        const result = await runWithLoading('calendar_sync', () =>
+            runHttpsCallableFunction('syncCalendarEventsSecondGen', {
+                projectId,
+                daysAhead: 30,
+            })
+        )
 
         if (__DEV__) {
             console.log(
@@ -8034,11 +8040,8 @@ export async function checkIfCalendarConnected(projectId) {
                 JSON.stringify(result, null, 2)
             )
         }
-
-        store.dispatch(stopLoadingData())
     } catch (error) {
         console.error('[Calendar Sync] Error syncing calendar events:', error?.message || error)
-        store.dispatch(stopLoadingData())
     }
 }
 

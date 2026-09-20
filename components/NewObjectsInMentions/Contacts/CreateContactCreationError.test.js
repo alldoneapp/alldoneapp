@@ -22,6 +22,7 @@ jest.mock('../../../utils/backends/Contacts/contactsFirestore', () => ({
 }))
 
 const mockDispatch = jest.fn()
+jest.mock('../../../utils/redux/dispatchBatch', () => ({ batchDispatch: action => mockDispatch(action) }))
 jest.mock('react-redux', () => ({
     // The card transitively pulls in `redux/store`, whose module graph reaches a `connect()`
     // call site, so the mock has to carry one even though nothing here uses it.
@@ -48,8 +49,6 @@ jest.mock('../../../redux/store', () => ({
 }))
 
 jest.mock('../../../redux/actions', () => ({
-    startLoadingData: () => ({ type: 'Start loading data' }),
-    stopLoadingData: () => ({ type: 'Stop loading data' }),
     setSelectedNavItem: () => ({ type: 'noop' }),
 }))
 
@@ -116,9 +115,9 @@ describe('CreateContact (mentions card)', () => {
 
         await submitWith(tree, 'David Massanek')
 
-        expect(countDispatches('Start loading data')).toBe(1)
+        expect(countDispatches('Start loading operation')).toBe(1)
         // Was 0 before AT-2508: the stop only ran on success.
-        expect(countDispatches('Stop loading data')).toBe(1)
+        expect(countDispatches('Finish loading operation')).toBe(1)
         tree.unmount()
     })
 
@@ -142,8 +141,8 @@ describe('CreateContact (mentions card)', () => {
 
         await submitWith(tree, 'David Massanek')
 
-        expect(countDispatches('Start loading data')).toBe(1)
-        expect(countDispatches('Stop loading data')).toBe(1)
+        expect(countDispatches('Start loading operation')).toBe(1)
+        expect(countDispatches('Finish loading operation')).toBe(1)
         tree.unmount()
     })
 })

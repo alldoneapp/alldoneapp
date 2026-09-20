@@ -53,14 +53,13 @@ const newImageToken = (uri, name) =>
 const newAttachmentToken = (uri, name) =>
     `${ATTACHMENT_TRIGGER}${uri}${ATTACHMENT_TRIGGER}${name}${ATTACHMENT_TRIGGER}${NEW}`
 
-const loadingDelta = () =>
-    mockDispatch.mock.calls
-        .map(([action]) => action && action.type)
-        .reduce((total, type) => {
-            if (type === 'Start loading data') return total + 1
-            if (type === 'Stop loading data') return total - 1
-            return total
-        }, 0)
+const expectLoadingSettled = () => {
+    const actions = mockDispatch.mock.calls.flatMap(([action]) => [action].flat())
+    const starts = actions.filter(action => action?.type === 'Start loading operation')
+    const finishes = actions.filter(action => action?.type === 'Finish loading operation')
+    expect(starts).toHaveLength(1)
+    expect(finishes.map(action => action.id)).toEqual(starts.map(action => action.id))
+}
 
 describe('updateNewAttachmentsData', () => {
     beforeEach(() => {
@@ -75,7 +74,7 @@ describe('updateNewAttachmentsData', () => {
 
         expect(result).toContain('https://storage/img.png')
         expect(result).not.toContain('blob:img')
-        expect(loadingDelta()).toBe(0)
+        expectLoadingSettled()
     })
 
     it('releases the loading spinner when an upload fails', async () => {
@@ -85,7 +84,7 @@ describe('updateNewAttachmentsData', () => {
             updateNewAttachmentsData('project-1', `hello ${newAttachmentToken('blob:doc', 'notes.pdf')}`)
         ).resolves.toEqual(expect.any(String))
 
-        expect(loadingDelta()).toBe(0)
+        expectLoadingSettled()
     })
 
     it('keeps the rest of the comment when one attachment fails to upload', async () => {
@@ -97,7 +96,7 @@ describe('updateNewAttachmentsData', () => {
         )
 
         expect(result).toContain('keep this text')
-        expect(loadingDelta()).toBe(0)
+        expectLoadingSettled()
     })
 
     it('does not mark a failed image upload as already stored', async () => {
@@ -108,6 +107,6 @@ describe('updateNewAttachmentsData', () => {
         // Stamping OLD_ATTACHMENT ('0') here would persist the local blob uri as a remote
         // one and render as a permanently broken image.
         expect(result.endsWith(`${IMAGE_TRIGGER}${NEW}`)).toBe(true)
-        expect(loadingDelta()).toBe(0)
+        expectLoadingSettled()
     })
 })

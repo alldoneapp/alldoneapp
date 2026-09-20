@@ -1,5 +1,6 @@
+import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useSelector } from 'react-redux'
 import { FEED_CHAT_OBJECT_TYPE, FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 import {
     CREATE_TASK_MODAL_THEME,
@@ -15,7 +16,7 @@ import HighlightWrapper from '../../UIComponents/FloatModals/ManageTaskModal/Hig
 import PlusButton from '../Common/PlusButton'
 import AttachmentWrapper from './AttachmentWrapper'
 import { STAYWARD_COMMENT, updateNewAttachmentsData } from '../../Feeds/Utils/HelperFunctions'
-import { startLoadingData, stopLoadingData } from '../../../redux/actions'
+
 import { translate } from '../../../i18n/TranslationService'
 import store from '../../../redux/store'
 import {
@@ -34,7 +35,6 @@ import { createChat } from '../../../utils/backends/Chats/chatsComments'
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 export default function CreateTopic({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
-    const dispatch = useDispatch()
     const loggedUser = useSelector(state => state.loggedUser)
     const defaultAssistantId = useSelector(state => state.defaultAssistant.uid)
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
@@ -80,32 +80,32 @@ export default function CreateTopic({ projectId, containerStyle, selectItemToMen
     // `sendingData` only feeds React state, which is applied asynchronously, so
     // a second Return could still create another topic before the first landed.
     const addTopic = useSingleFlightSubmit(() => {
-        if (cleanedText.length > 0) {
-            dispatch(startLoadingData())
-            setSendingData(true)
-            return updateNewAttachmentsData(projectId, text).then(async title => {
-                const chatId = getId()
-                return createChat(
-                    chatId,
-                    projectId,
-                    loggedUser.uid,
-                    '',
-                    'topics',
-                    title,
-                    publicFor,
-                    '#FFFFFF',
-                    null,
-                    null,
-                    '',
-                    '',
-                    STAYWARD_COMMENT,
-                    loggedUser.uid
-                ).then(async chat => {
-                    dispatch(stopLoadingData())
-                    selectItemToMention(chat, MENTION_MODAL_TOPICS_TAB, projectId)
+        return runWithLoading('create_mentioned_topic', async () => {
+            if (cleanedText.length > 0) {
+                setSendingData(true)
+                return updateNewAttachmentsData(projectId, text).then(async title => {
+                    const chatId = getId()
+                    return createChat(
+                        chatId,
+                        projectId,
+                        loggedUser.uid,
+                        '',
+                        'topics',
+                        title,
+                        publicFor,
+                        '#FFFFFF',
+                        null,
+                        null,
+                        '',
+                        '',
+                        STAYWARD_COMMENT,
+                        loggedUser.uid
+                    ).then(async chat => {
+                        selectItemToMention(chat, MENTION_MODAL_TOPICS_TAB, projectId)
+                    })
                 })
-            })
-        }
+            }
+        })
     }, RELEASE_AFTER_SUBMISSION)
 
     const addAttachmentTag = (text, uri) => {

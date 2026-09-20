@@ -17,7 +17,6 @@ import {
     setSelectedSidebarTab,
     setTmpInputTextNote,
     showConfirmPopup,
-    startLoadingData,
     unsetActiveEditMode,
 } from '../../redux/actions'
 import NavigationService from '../../utils/NavigationService'
@@ -521,8 +520,6 @@ class EditNote extends Component {
         } else {
             this.dismissEditMode()
             if (note.parentObject) {
-                store.dispatch(startLoadingData())
-
                 const url = getDvNoteTabLink(
                     project.id,
                     note.parentObject.id,

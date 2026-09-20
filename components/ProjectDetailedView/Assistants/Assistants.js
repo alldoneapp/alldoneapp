@@ -9,7 +9,6 @@ import AssistantsList from '../../AdminPanel/Assistants/AssistantsList'
 import store from '../../../redux/store'
 import {
     hideWebSideBar,
-    resetLoadingData,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
     setTaskViewToggleIndex,
@@ -105,12 +104,6 @@ export default function Assistants({ project, accessGranted }) {
             setTimeout(() => {
                 addAssistantWrapperRef.current.openModal()
             }, 100)
-        }
-    }, [])
-
-    useEffect(() => {
-        return () => {
-            store.dispatch(resetLoadingData())
         }
     }, [])
 

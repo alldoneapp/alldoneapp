@@ -4,12 +4,14 @@ import renderer, { act } from 'react-test-renderer'
 import store from '../../redux/store'
 import Backend from '../../utils/BackendBridge'
 import NotesByProject, { getNotesViewCacheKey, limitNotesForViewCache } from './NotesByProject'
-import { startLoadingData, stopLoadingData } from '../../redux/actions'
 import {
     resetSecondaryViewCacheForTests,
     SECONDARY_VIEW_NOTES,
     setSecondaryViewCacheEntry,
 } from '../../utils/InitialLoad/secondaryViewCache'
+
+const loadingActions = type =>
+    store.dispatch.mock.calls.flatMap(([action]) => [action].flat()).filter(action => action.type === type)
 
 /**
  * AT-2382 — the notes list's "Show more" ghosts.
@@ -90,8 +92,6 @@ jest.mock('./noteFilterSubscription', () => ({ getNoteFilterStateUpdate: () => n
 jest.mock('../../redux/actions', () => ({
     setLastAddNewNoteDate: jest.fn(() => ({ type: 'noop' })),
     setNotesAmounts: jest.fn(() => ({ type: 'noop' })),
-    startLoadingData: jest.fn(() => ({ type: 'noop' })),
-    stopLoadingData: jest.fn(() => ({ type: 'noop' })),
 }))
 jest.mock('../Feeds/Utils/FeedsConstants', () => ({ ALL_TAB: 0, FEED_PUBLIC_FOR_ALL: 0 }))
 
@@ -201,7 +201,7 @@ describe('NotesByProject "Show more" ghosts', () => {
             .findAllByType('NotesByDate')
             .filter(node => node.props.notes.some(note => note.id === 'cached-note'))
         expect(cachedSections).toHaveLength(1)
-        expect(startLoadingData).not.toHaveBeenCalled()
+        expect(loadingActions('Start loading operation')).toHaveLength(0)
         act(() => tree.unmount())
     })
 
@@ -299,8 +299,8 @@ describe('NotesByProject "Show more" ghosts', () => {
             await Promise.resolve()
         })
 
-        expect(startLoadingData).toHaveBeenCalledTimes(1)
-        expect(stopLoadingData).not.toHaveBeenCalled()
+        expect(loadingActions('Start loading operation')).toHaveLength(1)
+        expect(loadingActions('Finish loading operation')).toHaveLength(0)
 
         const updateNotes = Backend.watchAllTabNotes.mock.calls[0][2]
         await act(async () => {
@@ -308,7 +308,7 @@ describe('NotesByProject "Show more" ghosts', () => {
             await Promise.resolve()
         })
 
-        expect(stopLoadingData).toHaveBeenCalledTimes(1)
+        expect(loadingActions('Finish loading operation')).toHaveLength(1)
         expect(onInitialSnapshot).toHaveBeenCalledWith('project-1')
         act(() => tree.unmount())
     })
@@ -332,11 +332,12 @@ describe('NotesByProject "Show more" ghosts', () => {
             await Promise.resolve()
         })
 
-        expect(startLoadingData).not.toHaveBeenCalled()
+        expect(loadingActions('Start loading operation')).toHaveLength(0)
         expect(findGhosts(tree)).toHaveLength(1)
         expect(findGhosts(tree)[0].props.showProjectHeader).toBe(true)
         expect(Backend.watchAllTabNotesInAllProjects).toHaveBeenCalledWith('project-1', 3, expect.any(Function), {
             trackConnectionHealth: false,
+            onError: expect.any(Function),
         })
 
         const updateNotes = Backend.watchAllTabNotesInAllProjects.mock.calls[0][2]
@@ -345,9 +346,27 @@ describe('NotesByProject "Show more" ghosts', () => {
             await Promise.resolve()
         })
 
-        expect(stopLoadingData).not.toHaveBeenCalled()
+        expect(loadingActions('Finish loading operation')).toHaveLength(0)
         expect(findGhosts(tree)).toHaveLength(0)
         expect(onInitialSnapshot).toHaveBeenCalledWith('project-1')
         act(() => tree.unmount())
+    })
+
+    it('releases a failed notes load without letting an old error clear the replacement load', async () => {
+        const tree = await render()
+        const oldError = Backend.watchAllTabNotes.mock.calls[0][3].onError
+        const firstId = loadingActions('Start loading operation')[0].id
+
+        act(() => tree.getInstance().watchUserNotes(true, false))
+        const secondId = loadingActions('Start loading operation')[1].id
+        expect(loadingActions('Finish loading operation').map(action => action.id)).toEqual([firstId])
+
+        act(() => oldError(new Error('late error')))
+        expect(loadingActions('Finish loading operation').map(action => action.id)).toEqual([firstId])
+
+        act(() => Backend.watchAllTabNotesExpanded.mock.calls[0][2].onError(new Error('permission denied')))
+        expect(loadingActions('Finish loading operation').map(action => action.id)).toEqual([firstId, secondId])
+        act(() => tree.unmount())
+        expect(loadingActions('Finish loading operation')).toHaveLength(2)
     })
 })

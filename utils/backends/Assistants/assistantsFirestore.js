@@ -1,5 +1,5 @@
+import { runWithLoading, subscribeWithLoading } from '../../redux/loadingOperation'
 import firebase from 'firebase/compat/app'
-import { subscribeWithLoading } from '../../redux/loadingOperation'
 
 import TasksHelper from '../../../components/TaskListView/Utils/TasksHelper'
 import {
@@ -16,7 +16,7 @@ import {
 } from '../firestore'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import store from '../../../redux/store'
-import { setAssistantsInProject, setGlobalAssistants, startLoadingData, stopLoadingData } from '../../../redux/actions'
+import { setAssistantsInProject, setGlobalAssistants } from '../../../redux/actions'
 import {
     DEFAULT_EMAIL_SIGNATURE,
     GLOBAL_PROJECT_ID,
@@ -971,29 +971,29 @@ export function updateAssistantLastVisitedBoardDate(
 }
 
 export async function updateAssistantAvatar(projectId, assistant, pictureFile) {
-    const pictures = await proccessPictureForAvatar(pictureFile)
+    return runWithLoading('update_assistant_avatar', async () => {
+        const pictures = await proccessPictureForAvatar(pictureFile)
 
-    if (pictures.length > 0) {
-        store.dispatch(startLoadingData())
-        await deleteFolderFilesInStorage(`assistants/${projectId}/items/${assistant.uid}`)
-        const urlList = await uploadAvatarPhotos(
-            pictures,
-            `assistants/${projectId}/${assistant.uid}/${assistant.uid}@${Date.now()}`,
-            ''
-        )
+        if (pictures.length > 0) {
+            await deleteFolderFilesInStorage(`assistants/${projectId}/items/${assistant.uid}`)
+            const urlList = await uploadAvatarPhotos(
+                pictures,
+                `assistants/${projectId}/${assistant.uid}/${assistant.uid}@${Date.now()}`,
+                ''
+            )
 
-        const updatedData = {
-            photoURL: urlList[0],
-            photoURL50: urlList[1],
-            photoURL300: urlList[2],
+            const updatedData = {
+                photoURL: urlList[0],
+                photoURL50: urlList[1],
+                photoURL300: urlList[2],
+            }
+
+            await updateAssistantData(projectId, assistant.uid, updatedData, null)
+
+            if (!isGlobalAssistant(assistant.uid))
+                assistantPictureChangedUpdatesChain(projectId, assistant, updatedData.photoURL50)
         }
-
-        await updateAssistantData(projectId, assistant.uid, updatedData, null)
-        store.dispatch(stopLoadingData())
-
-        if (!isGlobalAssistant(assistant.uid))
-            assistantPictureChangedUpdatesChain(projectId, assistant, updatedData.photoURL50)
-    }
+    })
 }
 
 export async function discoverExternalToolsForIframeLink(link) {

@@ -1,19 +1,18 @@
+import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useState, useEffect, useRef } from 'react'
 import { StyleSheet, View, TextInput, Text } from 'react-native'
-import { useSelector, useDispatch } from 'react-redux'
 
 import ModalHeader from './ModalHeader'
 import { applyPopoverWidth } from '../../../utils/HelperFunctions'
 import styles, { colors } from '../../styles/global'
 import Button from '../../UIControls/Button'
 import Backend from '../../../utils/BackendBridge'
-import { startLoadingData, stopLoadingData } from '../../../redux/actions'
+
 import { translate } from '../../../i18n/TranslationService'
 
 export const CURRENT_DAY_VERSION_ID = '-1'
 
 export default function SaveHistoryModal({ projectId, note, closeModal }) {
-    const dispatch = useDispatch()
     const [versionName, setVersionName] = useState('')
     const inputText = useRef(null)
 
@@ -30,11 +29,12 @@ export default function SaveHistoryModal({ projectId, note, closeModal }) {
     }
 
     const saveVersion = async () => {
-        closeModal()
-        const paths = getPaths()
-        dispatch(startLoadingData())
-        await Backend.saveNoteCopy(projectId, note, versionName, paths)
-        dispatch(stopLoadingData())
+        return runWithLoading('save_note_version', async () => {
+            closeModal()
+            const paths = getPaths()
+
+            await Backend.saveNoteCopy(projectId, note, versionName, paths)
+        })
     }
 
     const onKeyDown = event => {

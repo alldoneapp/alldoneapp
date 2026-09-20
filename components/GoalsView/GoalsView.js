@@ -4,12 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { GOALS_OPEN_TAB_INDEX } from './GoalsHelper'
-import {
-    resetLoadingData,
-    setForceCloseGoalEditionId,
-    setGoalsActiveTab,
-    setNavigationRoute,
-} from '../../redux/actions'
+import { setForceCloseGoalEditionId, setGoalsActiveTab, setNavigationRoute } from '../../redux/actions'
 
 import {
     exitsOpenModals,
@@ -97,15 +92,6 @@ export default function GoalsView() {
             dispatch(setForceCloseGoalEditionId(''))
         }
     }, [forceCloseGoalEditionId])
-
-    useEffect(() => {
-        setTimeout(() => {
-            dispatch(resetLoadingData())
-        })
-        return () => {
-            dispatch(resetLoadingData())
-        }
-    }, [loggedUserProjectsAmount, currentUserId, selectedProjectIndex, goalsActiveTab])
 
     useEffect(() => {
         dispatch(setNavigationRoute(DV_TAB_ROOT_GOALS))

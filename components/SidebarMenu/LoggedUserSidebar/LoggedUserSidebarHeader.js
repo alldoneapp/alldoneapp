@@ -7,7 +7,6 @@ import {
     hideGlobalSearchPopup,
     hideWebSideBar,
     navigateToAllProjectsTasks,
-    resetLoadingData,
     resetNotesAmounts,
     setGlobalSearchResults,
     setSearchText,
@@ -30,7 +29,6 @@ export default function LoggedUserSidebarHeader({ navigation, expanded, scrollVi
         navigation.navigate('Root')
         dispatch([
             setSearchText(''),
-            resetLoadingData(),
             setGlobalSearchResults(null),
             hideGlobalSearchPopup(),
             resetNotesAmounts(),

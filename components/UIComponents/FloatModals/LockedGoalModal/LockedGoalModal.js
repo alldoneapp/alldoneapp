@@ -6,7 +6,7 @@ import styles, { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import Button from '../../../UIControls/Button'
 import NavigationService from '../../../../utils/NavigationService'
-import { navigateToSettings, startLoadingData, stopLoadingData } from '../../../../redux/actions'
+import { navigateToSettings } from '../../../../redux/actions'
 import { DV_TAB_SETTINGS_PREMIUM } from '../../../../utils/TabNavigationConstants'
 import UnlockButton from './UnlockButton'
 import { setTaskToBacklogMultiple } from '../../../../utils/backends/firestore'
@@ -27,8 +27,10 @@ export default function LockedGoalModal({ projectId, lockKey, editing, goalId, o
         const tasksToMove = tasks.map(task => {
             return { ...task, projectId }
         })
-        dispatch(startLoadingData())
-        setTaskToBacklogMultiple(tasksToMove).then(dispatch(stopLoadingData()))
+
+        setTaskToBacklogMultiple(tasksToMove).catch(error =>
+            console.error('[tasks] Could not update task dates', error)
+        )
         updateGoalAssigneeReminderDate(projectId, goalId, currentUserId, BACKLOG_DATE_NUMERIC)
     }
 

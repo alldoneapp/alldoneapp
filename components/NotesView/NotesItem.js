@@ -16,7 +16,7 @@ import { dismissAllPopups } from '../../utils/HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import Swipeable from 'react-native-gesture-handler/Swipeable'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
-import { setPrevScreen, setSelectedNavItem, setSelectedNote, startLoadingData } from '../../redux/actions'
+import { setPrevScreen, setSelectedNavItem, setSelectedNote } from '../../redux/actions'
 import { DV_TAB_NOTE_EDITOR } from '../../utils/TabNavigationConstants'
 import NavigationService from '../../utils/NavigationService'
 import SwipeNewTaskWrapper from './SwipeNewTaskWrapper'
@@ -99,8 +99,6 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
     }, [])
 
     const openObjectNote = () => {
-        dispatch(startLoadingData())
-
         const url = getDvNoteTabLink(
             project.id,
             note.parentObject.id,

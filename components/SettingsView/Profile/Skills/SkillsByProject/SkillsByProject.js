@@ -9,12 +9,7 @@ import SkillsList from './SkillsList'
 import AddSkill from '../AddSkill/AddSkill'
 import useActiveDragMode from '../useActiveDragMode'
 import SortModeActiveInfo from '../../../../GoalsView/SortModeActiveInfo'
-import {
-    setSkillsByProject,
-    setSkillsDefaultPrivacy,
-    startLoadingData,
-    stopLoadingData,
-} from '../../../../../redux/actions'
+import { setSkillsByProject, setSkillsDefaultPrivacy } from '../../../../../redux/actions'
 import Backend from '../../../../../utils/BackendBridge'
 import useInProfileSettings from '../../useInProfileSettings'
 import { watchDefaultSkillsPrivacy } from '../../../../../utils/backends/Skills/skillsFirestore'
@@ -41,11 +36,11 @@ export default function SkillsByProject({
 
     useEffect(() => {
         const watcherKey = v4()
-        dispatch(startLoadingData())
+
         Backend.watchSkills(projectId, userId, watcherKey)
         return () => {
             dispatch(setSkillsByProject(projectId, null))
-            dispatch(stopLoadingData())
+
             Backend.unwatch(watcherKey)
         }
     }, [])

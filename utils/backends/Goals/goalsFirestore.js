@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../redux/loadingOperation'
 import firebase from 'firebase/compat/app'
 import { forEach, intersection, isEqual, sortBy, uniq } from 'lodash'
 import moment from 'moment'
@@ -55,8 +56,6 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
-    startLoadingData,
-    stopLoadingData,
     switchProject,
 } from '../../../redux/actions'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
@@ -181,17 +180,9 @@ export function watchAllGoals(
         { object_type: 'goals', scope: 'project', source: 'goals_board' },
         { sampleRate: 0.02 }
     )
-    let loadingActive = manageLoading
     let initialSnapshotDelivered = false
-    if (manageLoading) store.dispatch(startLoadingData())
 
-    const finishLoading = () => {
-        if (!loadingActive) return
-        loadingActive = false
-        store.dispatch(stopLoadingData())
-    }
     const finishInitialSnapshot = () => {
-        finishLoading()
         if (initialSnapshotDelivered) return
         initialSnapshotDelivered = true
         onInitialSnapshot?.(projectId)
@@ -199,6 +190,12 @@ export function watchAllGoals(
     const gate = createCachedSnapshotGate(() => handleSnapshot, {
         trackConnectionHealth,
         connectionSource: 'goals_snapshot',
+        loadingSource: manageLoading ? 'goals' : undefined,
+        onError: err => {
+            snapshotPerformance.fail()
+            console.error('watchAllGoals: onSnapshot error', { projectId, ownerId, watcherKey, err })
+            finishInitialSnapshot()
+        },
     })
 
     function handleSnapshot(goalsData) {
@@ -221,16 +218,8 @@ export function watchAllGoals(
         }
     }
 
-    const unsubscribe = query.onSnapshot({ includeMetadataChanges: true }, handleSnapshot, err => {
-        gate.dispose()
-        snapshotPerformance.fail()
-        console.error('watchAllGoals: onSnapshot error', { projectId, ownerId, watcherKey, err })
-        finishInitialSnapshot()
-    })
-    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(() => {
-        unsubscribe()
-        finishLoading()
-    })
+    const unsubscribe = gate.subscribe(query)
+    globalWatcherUnsub[watcherKey] = unsubscribe
 }
 
 async function getGoalsInDoneMilestone(projectId, milestoneId, idsOfGoalsToExclude) {
@@ -357,17 +346,9 @@ export function watchAllMilestones(
         { object_type: 'milestones', scope: 'project', source: 'goals_board' },
         { sampleRate: 0.02 }
     )
-    let loadingActive = manageLoading
     let initialSnapshotDelivered = false
-    if (manageLoading) store.dispatch(startLoadingData())
 
-    const finishLoading = () => {
-        if (!loadingActive) return
-        loadingActive = false
-        store.dispatch(stopLoadingData())
-    }
     const finishInitialSnapshot = () => {
-        finishLoading()
         if (initialSnapshotDelivered) return
         initialSnapshotDelivered = true
         onInitialSnapshot?.(projectId)
@@ -375,6 +356,12 @@ export function watchAllMilestones(
     const gate = createCachedSnapshotGate(() => handleSnapshot, {
         trackConnectionHealth,
         connectionSource: 'milestones_snapshot',
+        loadingSource: manageLoading ? 'milestones' : undefined,
+        onError: err => {
+            snapshotPerformance.fail()
+            console.error('watchAllMilestones: onSnapshot error', { projectId, ownerId, watcherKey, err })
+            finishInitialSnapshot()
+        },
     })
     const query = getDb()
         .collection(`goalsMilestones/${projectId}/milestonesItems`)
@@ -409,16 +396,8 @@ export function watchAllMilestones(
         }
     }
 
-    const unsubscribe = query.onSnapshot({ includeMetadataChanges: true }, handleSnapshot, err => {
-        gate.dispose()
-        snapshotPerformance.fail()
-        console.error('watchAllMilestones: onSnapshot error', { projectId, ownerId, watcherKey, err })
-        finishInitialSnapshot()
-    })
-    globalWatcherUnsub[watcherKey] = gate.wrapUnsubscribe(() => {
-        unsubscribe()
-        finishLoading()
-    })
+    const unsubscribe = gate.subscribe(query)
+    globalWatcherUnsub[watcherKey] = unsubscribe
 }
 
 export function watchMilestones(projectId, callback, milestonesInDone, watcherKey, ownerId) {
@@ -1275,29 +1254,30 @@ const updateChildTasksDueDate = async (projectId, goalId, newDate) => {
 }
 
 export async function autoPostponeGoal(projectId, goal, userId, cascadeToTasks = true, { background = false } = {}) {
-    if (!background) store.dispatch(startLoadingData())
-    try {
-        const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
-        const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
-        // Routed through the offline-aware funnel (AT-2340): offline this now
-        // fails immediately with `code: 'offline'` instead of hanging for the
-        // SDK's ~70s timeout with the loading indicator up. The postpone is
-        // server-side (it writes the undo action too), so there is nothing
-        // useful to do locally — failing fast is the correct behaviour.
-        const result = await runHttpsCallableFunction('postponeGoalWithUndoSecondGen', {
-            projectId,
-            goalId: goal.id,
-            targetUserId: userId,
-            date: dateTimestamp,
-            endOfToday: moment().endOf('day').valueOf(),
-            cascadeToTasks,
-            requestId: getId(),
-        })
-        logEvent('goal_postponed')
-        return result?.date ?? dateTimestamp
-    } finally {
-        if (!background) store.dispatch(stopLoadingData())
-    }
+    return runWithLoading(
+        'postpone_goal',
+        async () => {
+            const date = getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
+            const dateTimestamp = date === BACKLOG_DATE_NUMERIC ? BACKLOG_DATE_NUMERIC : date.valueOf()
+            // Routed through the offline-aware funnel (AT-2340): offline this now
+            // fails immediately with `code: 'offline'` instead of hanging for the
+            // SDK's ~70s timeout with the loading indicator up. The postpone is
+            // server-side (it writes the undo action too), so there is nothing
+            // useful to do locally — failing fast is the correct behaviour.
+            const result = await runHttpsCallableFunction('postponeGoalWithUndoSecondGen', {
+                projectId,
+                goalId: goal.id,
+                targetUserId: userId,
+                date: dateTimestamp,
+                endOfToday: moment().endOf('day').valueOf(),
+                cascadeToTasks,
+                requestId: getId(),
+            })
+            logEvent('goal_postponed')
+            return result?.date ?? dateTimestamp
+        },
+        { enabled: !background }
+    )
 }
 
 export const updateGoalLastCommentData = async (projectId, goalId, lastComment, lastCommentType) => {

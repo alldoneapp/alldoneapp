@@ -19,7 +19,6 @@ import {
     resetFloatPopup,
     setNavigationRoute,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
 } from '../../redux/actions'
 import store from '../../redux/store'
@@ -63,7 +62,7 @@ const ChatDetailedView = ({ navigation }) => {
         } else {
             const { selectedTypeOfProject } = store.getState()
             NavigationService.navigate('Root')
-            dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+            dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             if (selectedTypeOfProject !== PROJECT_TYPE_SHARED && showAccessDeniedModal)
                 dispatch(setShowAccessDeniedPopup(true))
         }
