@@ -31,7 +31,13 @@ jest.mock('../../styles/global', () => ({
         UtilityRed200: '#f00',
     },
 }))
-jest.mock('../../../i18n/TranslationService', () => ({ translate: value => value }))
+jest.mock('../../../i18n/TranslationService', () => ({
+    translate: (value, interpolations = {}) =>
+        Object.entries(interpolations).reduce(
+            (translated, [key, replacement]) => translated.replace(`%{${key}}`, replacement),
+            value
+        ),
+}))
 jest.mock('../../../utils/backends/firestore', () => ({
     connectVmSubscription: jest.fn(async () => ({})),
     disconnectVmSubscription: jest.fn(async () => ({})),
