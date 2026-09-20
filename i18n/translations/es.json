@@ -2644,8 +2644,6 @@
     "Test saved key": "Probar clave guardada",
     "Remove key": "Eliminar clave",
     "Subscription authentication": "Autenticación por suscripción",
-    "Subscription login rejected — reconnect required": "Inicio de sesión de suscripción rechazado: se requiere reconectar",
-    "The saved %{provider} subscription login was rejected. Sign in again, paste the new credential below, and reconnect before starting another VM task.": "El inicio de sesión guardado para la suscripción de %{provider} fue rechazado. Inicia sesión de nuevo, pega la nueva credencial abajo y vuelve a conectar antes de iniciar otra tarea de VM.",
     "Subscription not connected": "Suscripción no conectada",
     "Optional: connect your own Claude or ChatGPT subscription for execute_task_in_vm. Without a connection, Alldone uses API billing and charges Gold for model tokens.": "Opcional: conecta tu propia suscripción de Claude o ChatGPT para execute_task_in_vm. Sin conexión, Alldone usa la facturación por API y cobra Gold por los tokens del modelo.",
     "Paste the requested credential before connecting.": "Pega la credencial solicitada antes de conectar.",

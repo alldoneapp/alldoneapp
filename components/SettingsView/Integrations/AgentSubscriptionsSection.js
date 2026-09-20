@@ -317,8 +317,7 @@ export function ProviderAuthCard({ provider, connection, onChanged }) {
                             </Text>
                             <Text style={[styles.body2, localStyles.subscriptionAlertBody]}>
                                 {translate(
-                                    'The saved %{provider} subscription login was rejected. Sign in again, paste the new credential below, and reconnect before starting another VM task.',
-                                    { provider: config.label }
+                                    `The saved ${config.label} subscription login was rejected. Sign in again, paste the new credential below, and reconnect before starting another VM task.`
                                 )}
                             </Text>
                         </View>
