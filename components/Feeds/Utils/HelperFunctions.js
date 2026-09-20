@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import {
     URL_FEEDS_FOLLOWED,
     URL_FEEDS_NOT_FOLLOWED,
@@ -46,7 +47,6 @@ import {
 import TasksHelper from '../../TaskListView/Utils/TasksHelper'
 import { getDvMainTabLink, getDvNoteTabLink } from '../../../utils/LinkingHelper'
 import store from '../../../redux/store'
-import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 
 import { LOADED_MODE, NEW_ATTACHMENT, OLD_ATTACHMENT } from '../CommentsTextInput/textInputHelper'
 import Backend from '../../../utils/BackendBridge'
@@ -346,15 +346,12 @@ const searchRecordings = string => {
 }
 
 export const updateNewAttachmentsData = async (projectId, text) => {
-    store.dispatch(startLoadingData())
-    const words = text.split(' ')
+    return runWithLoading('upload_comment_attachments', async () => {
+        const words = text.split(' ')
 
-    // AT-2227: `startLoadingData` bumps a refcount that drives the global
-    // `showLoadingDataSpinner`, and every caller of this helper chains a bare `.then(...)`
-    // with no `.catch`. A single rejected upload therefore used to leave that spinner on
-    // screen forever AND silently drop the comment. Each attachment is now isolated so one
-    // failure cannot abort the submit, and the refcount is released in `finally`.
-    try {
+        // Keep each failed attachment isolated so one failure cannot abort the submit.
+        // The enclosing operation owns feedback for the entire upload, including videos.
+
         for (let i = 0; i < words.length; i++) {
             const word = words[i]
             if (REGEX_ATTACHMENT.test(word)) {
@@ -399,7 +396,6 @@ export const updateNewAttachmentsData = async (projectId, text) => {
             } else if (REGEX_VIDEO.test(word)) {
                 const { videoText, uri, isNew } = getVideoData(word)
                 if (isNew === NEW_ATTACHMENT) {
-                    store.dispatch(startLoadingData())
                     try {
                         const file = await fetch(uri)
                             .then(r => r.blob())
@@ -412,17 +408,13 @@ export const updateNewAttachmentsData = async (projectId, text) => {
                         words[i] = `${VIDEO_TRIGGER}${videoUri}${VIDEO_TRIGGER}${videoText}${VIDEO_TRIGGER}${false}`
                     } catch (error) {
                         // Leave the word untouched: the comment still posts.
-                    } finally {
-                        store.dispatch(stopLoadingData())
                     }
                 }
             }
         }
-    } finally {
-        store.dispatch(stopLoadingData())
-    }
 
-    return words.join(' ')
+        return words.join(' ')
+    })
 }
 
 export const updateNewAttachmentsDataInNotes = async (editor, id, text, uri, source) => {

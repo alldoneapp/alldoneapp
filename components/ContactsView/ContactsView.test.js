@@ -16,6 +16,7 @@ import {
 } from '../../utils/InitialLoad/secondaryViewCache'
 
 const mockDispatch = jest.fn()
+jest.mock('../../utils/redux/dispatchBatch', () => ({ batchDispatch: action => mockDispatch(action) }))
 jest.mock('react-redux', () => ({ useDispatch: () => mockDispatch, useSelector: jest.fn() }))
 jest.mock('../../hooks/useRateLimitedProjectReveal', () => jest.fn())
 jest.mock('../../utils/InitialLoad/projectDataLoader', () => ({
@@ -47,8 +48,6 @@ jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 }))
 jest.mock('../../redux/actions', () => ({
     setNavigationRoute: () => ({ type: 'navigation' }),
-    startLoadingData: () => ({ type: 'start' }),
-    stopLoadingData: () => ({ type: 'stop' }),
 }))
 jest.mock('../../URLSystem/People/URLsPeople', () => ({
     __esModule: true,

@@ -1,3 +1,4 @@
+import { beginLoadingOperation, ACTION_LOADING_TIMEOUT_MS } from '../../../../utils/redux/loadingOperation'
 import { useDispatch, useSelector } from 'react-redux'
 
 import URLsChats, { URL_CHAT_DETAILS_PROPERTIES } from '../../../../URLSystem/Chats/URLsChats'
@@ -7,8 +8,6 @@ import {
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
     showConfirmPopup,
-    startLoadingData,
-    stopLoadingData,
     switchProject,
 } from '../../../../redux/actions'
 import {
@@ -122,7 +121,10 @@ export default function useMoveObjectToProject() {
             (type === 'chat' && route === 'ChatDetailedView') ||
             (type === 'note' && route === 'NotesDetailedView') ||
             (type === 'contact' && route === 'ContactDetailedView')
-        if (keepDetailLoader) dispatch(startLoadingData())
+        const finishLoading = beginLoadingOperation('move_object_project', {
+            enabled: keepDetailLoader,
+            timeoutMs: ACTION_LOADING_TIMEOUT_MS,
+        })
 
         movePromise
             .then(() => waitForProjectMoveCompletion(project.id, newProject.id, type, objectId))
@@ -193,7 +195,7 @@ export default function useMoveObjectToProject() {
                 )
             })
             .finally(() => {
-                if (keepDetailLoader) dispatch(stopLoadingData())
+                finishLoading()
             })
 
         dispatch(hideProjectPicker())

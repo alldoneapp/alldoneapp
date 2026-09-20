@@ -1,3 +1,4 @@
+import { runWithLoading } from './redux/loadingOperation'
 import moment from 'moment'
 
 import { FEED_PUBLIC_FOR_ALL } from '../components/Feeds/Utils/FeedsConstants'
@@ -12,8 +13,6 @@ import {
     setSelectedNavItem,
     setTriggerBotSpinner,
     setPreConfigTaskExecuting,
-    startLoadingData,
-    stopLoadingData,
 } from '../redux/actions'
 import HelperFunctions from './HelperFunctions'
 import ProjectHelper, { checkIfSelectedProject } from '../components/SettingsView/ProjectsSettings/ProjectHelper'
@@ -110,143 +109,142 @@ export const generateUserIdsToNotifyForNewComments = (projectId, isPublicFor, cr
 }
 
 export const createBotDailyTopic = async (projectId, summaryDate) => {
-    console.log('Local part of createBotDailyTopic... there is also a cloud function which sets the follower')
-    if (!projectId) return
+    return runWithLoading('create_daily_topic', async () => {
+        console.log('Local part of createBotDailyTopic... there is also a cloud function which sets the follower')
+        if (!projectId) return
 
-    store.dispatch(startLoadingData())
-    const { loggedUser, defaultAssistant } = store.getState()
+        const { loggedUser, defaultAssistant } = store.getState()
 
-    const chatId = `BotChat${moment().format('YYYYMMDD')}${loggedUser.uid}`
+        const chatId = `BotChat${moment().format('YYYYMMDD')}${loggedUser.uid}`
 
-    const alreadyCreated = (await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).get()).exists
+        const alreadyCreated = (await getDb().doc(`chatObjects/${projectId}/chats/${chatId}`).get()).exists
 
-    if (!alreadyCreated) {
-        const isPublicFor = [FEED_PUBLIC_FOR_ALL]
+        if (!alreadyCreated) {
+            const isPublicFor = [FEED_PUBLIC_FOR_ALL]
 
-        const title = `${translate('Daily Recap')} <> ${HelperFunctions.getFirstName(
-            loggedUser.displayName
-        )} ${moment().format(getDateFormat())}`
+            const title = `${translate('Daily Recap')} <> ${HelperFunctions.getFirstName(
+                loggedUser.displayName
+            )} ${moment().format(getDateFormat())}`
 
-        await createChat(
-            chatId,
-            projectId,
-            loggedUser.uid,
-            '',
-            'topics',
-            title,
-            isPublicFor,
-            '#ffffff',
-            null,
-            null,
-            '',
-            '',
-            STAYWARD_COMMENT,
-            loggedUser.uid
-        )
+            await createChat(
+                chatId,
+                projectId,
+                loggedUser.uid,
+                '',
+                'topics',
+                title,
+                isPublicFor,
+                '#ffffff',
+                null,
+                null,
+                '',
+                '',
+                STAYWARD_COMMENT,
+                loggedUser.uid
+            )
 
-        const startDate = moment(summaryDate).startOf('day').valueOf()
-        const endDate = moment(summaryDate).endOf('day').valueOf()
-        const todayDate = new Date().toLocaleDateString('en-us', { month: 'long', day: 'numeric' })
-        const lastSessionDate = new Date(summaryDate).toLocaleDateString('en-us', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-        })
+            const startDate = moment(summaryDate).startOf('day').valueOf()
+            const endDate = moment(summaryDate).endOf('day').valueOf()
+            const todayDate = new Date().toLocaleDateString('en-us', { month: 'long', day: 'numeric' })
+            const lastSessionDate = new Date(summaryDate).toLocaleDateString('en-us', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+            })
 
-        await runHttpsCallableFunction('generateBotDailyTopicCommentSecondGen', {
-            userId: loggedUser.uid,
-            startDate,
-            endDate,
-            todayDate,
-            lastSessionDate,
-            objectId: chatId,
-            userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, isPublicFor, ''),
-            language: window.navigator.language,
-            assistantId: defaultAssistant.uid,
-        })
-    }
-
-    store.dispatch(stopLoadingData())
+            await runHttpsCallableFunction('generateBotDailyTopicCommentSecondGen', {
+                userId: loggedUser.uid,
+                startDate,
+                endDate,
+                todayDate,
+                lastSessionDate,
+                objectId: chatId,
+                userIdsToNotify: generateUserIdsToNotifyForNewComments(projectId, isPublicFor, ''),
+                language: window.navigator.language,
+                assistantId: defaultAssistant.uid,
+            })
+        }
+    })
 }
 
 export const createBotQuickTopic = async (assistant, initialMessage = '', options = {}) => {
-    store.dispatch(startLoadingData())
-    const { loggedUser, selectedProjectIndex } = store.getState()
+    return runWithLoading('create_assistant_topic', async () => {
+        const { loggedUser, selectedProjectIndex } = store.getState()
 
-    const { enableAssistant = true, skipNavigation = false, projectId: customProjectId = null } = options
+        const { enableAssistant = true, skipNavigation = false, projectId: customProjectId = null } = options
 
-    try {
-        const selectedProjectId = checkIfSelectedProject(selectedProjectIndex)
-            ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
-            : loggedUser.defaultProjectId
-        const assistantProjectId =
-            assistant && assistant.uid ? getAssistantProjectId(assistant.uid, selectedProjectId) : null
-        const projectId = customProjectId || assistantProjectId || selectedProjectId || loggedUser.defaultProjectId
+        try {
+            const selectedProjectId = checkIfSelectedProject(selectedProjectIndex)
+                ? ProjectHelper.getProjectByIndex(selectedProjectIndex).id
+                : loggedUser.defaultProjectId
+            const assistantProjectId =
+                assistant && assistant.uid ? getAssistantProjectId(assistant.uid, selectedProjectId) : null
+            const projectId = customProjectId || assistantProjectId || selectedProjectId || loggedUser.defaultProjectId
 
-        if (!projectId) {
-            store.dispatch(stopLoadingData())
-            return
+            if (!projectId) {
+                return
+            }
+
+            const chatId = getId()
+            const quickDateId = moment().format('YYYYMMDD')
+
+            const titlePrefix = `${assistant.displayName} <> ${HelperFunctions.getFirstName(
+                loggedUser.displayName
+            )} ${moment().format(getDateFormat())}`
+
+            // Creating the chat and then immediately updating it races the server-owned access projection:
+            // until that projection exists, the canonical rules correctly deny the follow-up update/read.
+            // The callable creates the chat with its projection and follower state in one authenticated batch.
+            const topicData = await createBotQuickTopicChat({
+                projectId,
+                chatId,
+                quickDateId,
+                assistantId: assistant.uid,
+                titlePrefix,
+                isAssistantEnabled: enableAssistant,
+            })
+            logEvent('new_chat', { id: chatId })
+
+            // Enable assistant BEFORE creating the message so the trigger condition is met.
+            // Scoped to the chat we just created: `createObjectMessage` below resolves the trigger
+            // from the `isAssistantEnabled: true` we persist on the line above (`getParentObjectData`
+            // returns this chat doc for 'topics'), so the Redux flag is UI state only. With
+            // `skipNavigation` the user stays where they are, and an unscoped flag would follow them
+            // into the next Chat DV they open (AT-2084).
+            if (enableAssistant) {
+                store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, chatId)))
+                console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
+            }
+
+            const trimmedMessage = typeof initialMessage === 'string' ? initialMessage.trim() : ''
+            if (trimmedMessage) {
+                await createObjectMessage(projectId, chatId, trimmedMessage, 'topics', null, null, null)
+            }
+
+            const postCreateActions = []
+            // Only arm the spinner when we actually take the user to this thread. With
+            // `skipNavigation` nobody is watching this chat, and an unscoped trigger would be
+            // picked up by whatever Chat DV the user opens next (AT-2084).
+            if (enableAssistant && trimmedMessage && !skipNavigation) {
+                postCreateActions.push(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, chatId)))
+            }
+            store.dispatch(postCreateActions)
+
+            if (!skipNavigation) {
+                const url = `/projects/${projectId}/chats/${chatId}/chat`
+                URLTrigger.processUrl(NavigationService, url)
+            }
+
+            return {
+                ...topicData,
+                assistantId: topicData.assistantId || assistant.uid,
+            }
+        } catch (error) {
+            console.error('Error creating bot quick topic:', error)
+
+            throw error
         }
-
-        const chatId = getId()
-        const quickDateId = moment().format('YYYYMMDD')
-
-        const titlePrefix = `${assistant.displayName} <> ${HelperFunctions.getFirstName(
-            loggedUser.displayName
-        )} ${moment().format(getDateFormat())}`
-
-        // Creating the chat and then immediately updating it races the server-owned access projection:
-        // until that projection exists, the canonical rules correctly deny the follow-up update/read.
-        // The callable creates the chat with its projection and follower state in one authenticated batch.
-        const topicData = await createBotQuickTopicChat({
-            projectId,
-            chatId,
-            quickDateId,
-            assistantId: assistant.uid,
-            titlePrefix,
-            isAssistantEnabled: enableAssistant,
-        })
-        logEvent('new_chat', { id: chatId })
-
-        // Enable assistant BEFORE creating the message so the trigger condition is met.
-        // Scoped to the chat we just created: `createObjectMessage` below resolves the trigger
-        // from the `isAssistantEnabled: true` we persist on the line above (`getParentObjectData`
-        // returns this chat doc for 'topics'), so the Redux flag is UI state only. With
-        // `skipNavigation` the user stays where they are, and an unscoped flag would follow them
-        // into the next Chat DV they open (AT-2084).
-        if (enableAssistant) {
-            store.dispatch(setAssistantEnabled(true, buildAssistantEnabledScope(projectId, chatId)))
-            console.log('🔧 [createBotQuickTopic] Assistant enabled before message creation')
-        }
-
-        const trimmedMessage = typeof initialMessage === 'string' ? initialMessage.trim() : ''
-        if (trimmedMessage) {
-            await createObjectMessage(projectId, chatId, trimmedMessage, 'topics', null, null, null)
-        }
-
-        const postCreateActions = [stopLoadingData()]
-        // Only arm the spinner when we actually take the user to this thread. With
-        // `skipNavigation` nobody is watching this chat, and an unscoped trigger would be
-        // picked up by whatever Chat DV the user opens next (AT-2084).
-        if (enableAssistant && trimmedMessage && !skipNavigation) {
-            postCreateActions.push(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, chatId)))
-        }
-        store.dispatch(postCreateActions)
-
-        if (!skipNavigation) {
-            const url = `/projects/${projectId}/chats/${chatId}/chat`
-            URLTrigger.processUrl(NavigationService, url)
-        }
-
-        return {
-            ...topicData,
-            assistantId: topicData.assistantId || assistant.uid,
-        }
-    } catch (error) {
-        console.error('Error creating bot quick topic:', error)
-        store.dispatch(stopLoadingData())
-        throw error
-    }
+    })
 }
 
 const createTopicForPreConfigTask = async (

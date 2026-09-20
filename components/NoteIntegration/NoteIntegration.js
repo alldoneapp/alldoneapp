@@ -6,7 +6,7 @@ import useFollowingDataListener from '../UIComponents/FloatModals/MorePopupsOfEd
 import { FOLLOWER_NOTES_TYPE } from '../Followers/FollowerConstants'
 import Button from '../UIControls/Button'
 import Backend from '../../utils/BackendBridge'
-import { setSelectedNote, startLoadingData, stopLoadingData } from '../../redux/actions'
+import { setSelectedNote } from '../../redux/actions'
 import { useDispatch, useSelector } from 'react-redux'
 import { createNoteInObject } from '../../utils/backends/firestore'
 import {
@@ -79,9 +79,8 @@ const NoteIntegration = ({
 
     useEffect(() => {
         if (noteId) {
-            dispatch(startLoadingData())
             Backend.watchNote(project.id, noteId, note => {
-                dispatch([stopLoadingData(), setSelectedNote(note)])
+                dispatch([setSelectedNote(note)])
                 setNote(note)
                 if (note && viewCountedRef.current !== noteId) {
                     viewCountedRef.current = noteId

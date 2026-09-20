@@ -3,7 +3,6 @@ import renderer, { act } from 'react-test-renderer'
 
 import CreateNote from './CreateNote'
 import { uploadNewNote } from '../../../utils/backends/Notes/notesFirestore'
-import { startLoadingData, stopLoadingData } from '../../../redux/actions'
 
 /**
  * AT-2488 — the mentions "create note" card had no rejection handler at all.
@@ -52,6 +51,7 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 }))
 
 const mockDispatch = jest.fn()
+jest.mock('../../../utils/redux/dispatchBatch', () => ({ batchDispatch: action => mockDispatch(action) }))
 // Only `useDispatch` is swapped: the import chain reaches @hello-pangea/dnd, which
 // needs the real `connect`.
 jest.mock('react-redux', () => ({
@@ -123,7 +123,7 @@ describe('CreateNote — failed creation (AT-2488)', () => {
         expect(plusButton(tree).props.processing).toBe(true)
         expect(plusButton(tree).props.disabled).toBe(true)
         expect(tree.root.findByType('CustomTextInput3').props.disabledEdition).toBe(true)
-        expect(mockDispatch).toHaveBeenCalledWith(startLoadingData())
+        expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'Start loading operation' }))
     })
 
     it('unlocks the card, stops the global spinner and explains the failure', async () => {
@@ -138,7 +138,7 @@ describe('CreateNote — failed creation (AT-2488)', () => {
         // The three halves of the stuck state, all of which used to persist forever.
         expect(plusButton(tree).props.processing).toBe(false)
         expect(tree.root.findByType('CustomTextInput3').props.disabledEdition).toBe(false)
-        expect(mockDispatch).toHaveBeenCalledWith(stopLoadingData())
+        expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'Finish loading operation' }))
 
         const error = findByTestID(tree, 'create-note-creation-error')
         expect(error).toHaveLength(1)
@@ -176,7 +176,7 @@ describe('CreateNote — failed creation (AT-2488)', () => {
         await flush()
 
         expect(uploadNewNote).toHaveBeenCalledWith('project-1', expect.objectContaining({ title: 'A mentioned note' }))
-        expect(mockDispatch).toHaveBeenCalledWith(stopLoadingData())
+        expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'Finish loading operation' }))
         expect(findByTestID(tree, 'create-note-creation-error')).toHaveLength(0)
     })
 })

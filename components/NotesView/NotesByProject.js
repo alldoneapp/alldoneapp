@@ -1,3 +1,4 @@
+import { beginLoadingOperation } from '../../utils/redux/loadingOperation'
 import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import React, { PureComponent } from 'react'
 import { View } from 'react-native'
@@ -5,7 +6,7 @@ import Backend from '../../utils/BackendBridge'
 import moment from 'moment'
 import store from '../../redux/store'
 import NotesByDate from './NotesByDate'
-import { setLastAddNewNoteDate, setNotesAmounts, stopLoadingData, startLoadingData } from '../../redux/actions'
+import { setLastAddNewNoteDate, setNotesAmounts } from '../../redux/actions'
 import { calcNotesAmountByProjectIndex, sortNotesFn } from './NotesHelper'
 import { checkIfSelectedAllProjects, checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
@@ -317,15 +318,8 @@ export default class NotesByProject extends PureComponent {
         const { selectedProjectIndex } = store.getState()
         const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
         const trackInitialLoad = (this.props.trackInitialLoad !== false && !this.cacheApplied) || pressedShowMore
-        if (trackInitialLoad) {
-            store.dispatch(startLoadingData())
-            let loadingActive = true
-            this.finishTrackedLoading = () => {
-                if (!loadingActive) return
-                loadingActive = false
-                store.dispatch(stopLoadingData())
-            }
-        }
+        const finishLoading = beginLoadingOperation('notes', { enabled: trackInitialLoad })
+        this.finishTrackedLoading = finishLoading
 
         let lastEditedDate = 0
         let initialSnapshotDelivered = false
@@ -417,8 +411,8 @@ export default class NotesByProject extends PureComponent {
                     if (inAllProjects) {
                         setLastEditNoteDate(project, finalLastEditedDate)
                     }
-                    this.finishTrackedLoading?.()
-                    this.finishTrackedLoading = null
+                    finishLoading()
+                    if (this.finishTrackedLoading === finishLoading) this.finishTrackedLoading = null
                     if (!initialSnapshotDelivered) {
                         initialSnapshotDelivered = true
                         onInitialSnapshot?.(project.id)
@@ -479,8 +473,8 @@ export default class NotesByProject extends PureComponent {
             )
         }
 
+        const watcherOptions = { trackConnectionHealth: trackInitialLoad, onError: finishLoading }
         if (inAllProjects) {
-            const watcherOptions = { trackConnectionHealth: trackInitialLoad }
             if (filterBy === ALL_TAB) {
                 pressedShowMore
                     ? Backend.watchAllTabNotesExpandedInAllProjects(project.id, updateNotes, watcherOptions)
@@ -498,15 +492,15 @@ export default class NotesByProject extends PureComponent {
         } else {
             if (filterBy === ALL_TAB) {
                 pressedShowMore
-                    ? Backend.watchAllTabNotesExpanded(project.id, updateNotes)
-                    : Backend.watchAllTabNotes(project.id, maxNotesToRender, updateNotes)
+                    ? Backend.watchAllTabNotesExpanded(project.id, updateNotes, watcherOptions)
+                    : Backend.watchAllTabNotes(project.id, maxNotesToRender, updateNotes, watcherOptions)
                 if (watchStickyNotes) {
                     Backend.watchAllTabStickyNotes(project.id, updateStickyNotes)
                 }
             } else {
                 pressedShowMore
-                    ? Backend.watchFollowedTabNotesExpanded(project.id, updateNotes)
-                    : Backend.watchFollowedTabNotes(project.id, maxNotesToRender, updateNotes)
+                    ? Backend.watchFollowedTabNotesExpanded(project.id, updateNotes, watcherOptions)
+                    : Backend.watchFollowedTabNotes(project.id, maxNotesToRender, updateNotes, watcherOptions)
                 if (watchStickyNotes) {
                     Backend.watchFollowedTabStickyNotes(project.id, updateStickyNotes)
                 }

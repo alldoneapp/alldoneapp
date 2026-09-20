@@ -1,9 +1,8 @@
+import { runWithLoading } from '../../../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import v4 from 'uuid/v4'
 
-import store from '../../../../redux/store'
-import { startLoadingData } from '../../../../redux/actions'
 import { completeTaskWithMotion } from '../../../TaskListView/TaskItem/TaskPresentation/taskCompletionHandoff'
 import { getWorkflowStepsIdsSorted } from '../../../../utils/HelperFunctions'
 import {
@@ -187,34 +186,35 @@ export default function CommentPopupWorkflowControls({
             // leave), so a plain step advance draws nothing and the hook answers a zero hold —
             // the forward/backward buttons stay exactly as immediate as they are today.
             await completeTaskWithMotion(completionMotion, { isCompletion: stepToMoveId === DONE_STEP }, async () => {
-                store.dispatch(startLoadingData())
-                // AT-2501 — reopening a completed task is its own transition, and it is the one
-                // the other two movers cannot express: only `moveTasksFromDone` clears `done` /
-                // `inDone`, restores the due date and reverses the completion statistics. Same
-                // three-way split `StatusPickerStepItem` and `WorkflowEstimation` already use.
-                if (task.done) {
-                    await moveTasksFromDone(projectId, task, stepToMoveId)
-                } else if (task.userIds.length === 1) {
-                    await moveTasksFromOpen(
-                        projectId,
-                        task,
-                        stepToMoveId,
-                        null,
-                        null,
-                        task.estimations,
-                        checkBoxIdRef.current
-                    )
-                } else {
-                    await moveTasksFromMiddleOfWorkflow(
-                        projectId,
-                        task,
-                        stepToMoveId,
-                        null,
-                        null,
-                        task.estimations,
-                        checkBoxIdRef.current
-                    )
-                }
+                return runWithLoading('move_commented_task', async () => {
+                    // AT-2501 — reopening a completed task is its own transition, and it is the one
+                    // the other two movers cannot express: only `moveTasksFromDone` clears `done` /
+                    // `inDone`, restores the due date and reverses the completion statistics. Same
+                    // three-way split `StatusPickerStepItem` and `WorkflowEstimation` already use.
+                    if (task.done) {
+                        await moveTasksFromDone(projectId, task, stepToMoveId)
+                    } else if (task.userIds.length === 1) {
+                        await moveTasksFromOpen(
+                            projectId,
+                            task,
+                            stepToMoveId,
+                            null,
+                            null,
+                            task.estimations,
+                            checkBoxIdRef.current
+                        )
+                    } else {
+                        await moveTasksFromMiddleOfWorkflow(
+                            projectId,
+                            task,
+                            stepToMoveId,
+                            null,
+                            null,
+                            task.estimations,
+                            checkBoxIdRef.current
+                        )
+                    }
+                })
             })
             return true
         } catch (error) {

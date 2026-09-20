@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../utils/redux/loadingOperation'
 import React, { Component } from 'react'
 import { Image, Keyboard, Modal, StyleSheet, Text, View } from 'react-native'
 import Button from '../UIControls/Button'
@@ -15,8 +16,6 @@ import {
     setSelectedNavItem,
     setTmpInputTextContact,
     showFloatPopup,
-    startLoadingData,
-    stopLoadingData,
 } from '../../redux/actions'
 import ContactsHelper, { PHOTO_SIZE_300, PHOTO_SIZE_50 } from './Utils/ContactsHelper'
 import HelperFunctions, { execShortcutFn } from '../../utils/HelperFunctions'
@@ -800,53 +799,49 @@ export default class EditContact extends Component {
         // until the write is acknowledged, and the optimistic row published by
         // `addContactToProject` carries the rest of the wait (the several seconds until the
         // access projection lands and the list query can finally see the contact).
-        this.setState({ creatingContact: true, creationError: null })
-        store.dispatch(startLoadingData())
+        return runWithLoading('create_contact', async () => {
+            this.setState({ creatingContact: true, creationError: null })
 
-        let createdContact = null
+            let createdContact = null
 
-        try {
-            if (tmpContact.photoURL !== '' && tmpContact.photoURL != null) {
-                const src =
-                    typeof tmpContact.photoURL === 'string'
-                        ? tmpContact.photoURL
-                        : URL.createObjectURL(tmpContact.photoURL)
+            try {
+                if (tmpContact.photoURL !== '' && tmpContact.photoURL != null) {
+                    const src =
+                        typeof tmpContact.photoURL === 'string'
+                            ? tmpContact.photoURL
+                            : URL.createObjectURL(tmpContact.photoURL)
 
-                const resized50 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_50)).uri
-                const resized300 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_300)).uri
+                    const resized50 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_50)).uri
+                    const resized300 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_300)).uri
 
-                tmpContact.photoURL = await HelperFunctions.convertURItoBlob(tmpContact.photoURL)
-                tmpContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
-                tmpContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
+                    tmpContact.photoURL = await HelperFunctions.convertURItoBlob(tmpContact.photoURL)
+                    tmpContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
+                    tmpContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
+                }
+
+                await addContactToProject(projectId, tmpContact, contact => {
+                    createdContact = contact
+                })
+            } catch (error) {
+                this.onFailedAddProjectContact(error)
+                return
             }
 
-            await addContactToProject(projectId, tmpContact, contact => {
-                createdContact = contact
-            })
-        } catch (error) {
-            this.onFailedAddProjectContact(error)
-            return
-        } finally {
-            // Exactly one stop per start, on every path. It used to live inside the completion
-            // callback, which a rejected write never reaches - so a failure pinned the global
-            // loading refcount (and its spinner) for the rest of the session.
-            store.dispatch(stopLoadingData())
-        }
+            // The contact exists now, so the draft that survives a dismissed form is spent. Closing
+            // the editor here - rather than at submit time - is what keeps the progress state on
+            // screen for the whole wait. It is skipped when the form is already gone: `dismiss` runs
+            // `onCancelAction`, which is a toggle, so calling it on a dismissed form would REOPEN it.
+            store.dispatch(setTmpInputTextContact(''))
+            if (this._isMounted) this.dismiss()
 
-        // The contact exists now, so the draft that survives a dismissed form is spent. Closing
-        // the editor here - rather than at submit time - is what keeps the progress state on
-        // screen for the whole wait. It is skipped when the form is already gone: `dismiss` runs
-        // `onCancelAction`, which is a toggle, so calling it on a dismissed form would REOPEN it.
-        store.dispatch(setTmpInputTextContact(''))
-        if (this._isMounted) this.dismiss()
-
-        if (openDetails && createdContact) {
-            NavigationService.navigate('ContactDetailedView', {
-                contact: createdContact,
-                project: { id: projectId, index: ProjectHelper.getProjectIndexById(projectId) },
-            })
-            store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES))
-        }
+            if (openDetails && createdContact) {
+                NavigationService.navigate('ContactDetailedView', {
+                    contact: createdContact,
+                    project: { id: projectId, index: ProjectHelper.getProjectIndexById(projectId) },
+                })
+                store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES))
+            }
+        })
     })
 
     /**

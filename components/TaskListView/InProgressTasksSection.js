@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import OpenTasksByProject from './OpenTasksView/OpenTasksByProject'
-import { resetLoadingData, setLaterTasksExpanded, setSomedayTasksExpanded } from '../../redux/actions'
+import { setLaterTasksExpanded, setSomedayTasksExpanded } from '../../redux/actions'
 
 export default function InProgressTasksSection() {
     const dispatch = useDispatch()
@@ -15,9 +15,8 @@ export default function InProgressTasksSection() {
     const currentUserId = useSelector(state => state.currentUser.uid)
 
     useEffect(() => {
-        dispatch(resetLoadingData())
         return () => {
-            dispatch([resetLoadingData(), setLaterTasksExpanded(false), setSomedayTasksExpanded(false)])
+            dispatch([setLaterTasksExpanded(false), setSomedayTasksExpanded(false)])
         }
     }, [selectedProjectIndex, currentUserId])
 

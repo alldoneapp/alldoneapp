@@ -5,7 +5,7 @@ import ReactQuill from 'react-quill-new'
 
 import HashtagsInteractionPopup from '../../../../NotesView/NotesDV/EditorView/HashtagInteractionPopup/HashtagsInteractionPopup'
 import HashtagTag from './HashtagTag'
-import { setSearchText, showGlobalSearchPopup, startLoadingData, stopLoadingData } from '../../../../../redux/actions'
+import { setSearchText, showGlobalSearchPopup } from '../../../../../redux/actions'
 import { exportRef } from '../../../../NotesView/NotesDV/EditorView/NotesEditorView'
 import { quillTextInputRefs } from '../../CustomTextInput3'
 import { getQuillEditorRef } from '../../textInputHelper'
@@ -103,8 +103,8 @@ export default function HashtagWrapper({ data }) {
     useEffect(() => {
         if (!virtualQuillLoaded) {
             const cleanedText = removeColor(text)
-            dispatch(startLoadingData())
-            Backend.watchHastagsColors(projectId, tagId, cleanedText, () => dispatch(stopLoadingData()))
+
+            Backend.watchHastagsColors(projectId, tagId, cleanedText)
             return () => {
                 Backend.unwatchHastagsColors(tagId)
             }

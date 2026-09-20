@@ -15,7 +15,6 @@ import {
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
     switchProject,
 } from '../../redux/actions'
@@ -97,13 +96,9 @@ export default function GoalDetailedView({ navigation }) {
             const { selectedTypeOfProject } = store.getState()
             NavigationService.navigate('Root')
             if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+                dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             } else {
-                const actionsToDispatch = [
-                    resetFloatPopup(),
-                    setSelectedSidebarTab(DV_TAB_ROOT_GOALS),
-                    stopLoadingData(),
-                ]
+                const actionsToDispatch = [resetFloatPopup(), setSelectedSidebarTab(DV_TAB_ROOT_GOALS)]
                 if (showAccessDeniedModal) actionsToDispatch.push(setShowAccessDeniedPopup(true))
                 dispatch(actionsToDispatch)
             }

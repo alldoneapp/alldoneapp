@@ -10,11 +10,9 @@ import ContactProperties from './ContactProperties/ContactProperties'
 import {
     navigateToAllProjectsTasks,
     resetFloatPopup,
-    resetLoadingData,
     setNavigationRoute,
     setSelectedSidebarTab,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
 } from '../../redux/actions'
 import store from '../../redux/store'
@@ -111,12 +109,11 @@ const ContactDetailedView = ({ navigation }) => {
 
                 NavigationService.navigate('Root')
                 if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                    dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+                    dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
                 } else {
                     dispatch([
                         resetFloatPopup(),
                         setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
-                        resetLoadingData(),
                         setShowAccessDeniedPopup(true),
                     ])
                 }

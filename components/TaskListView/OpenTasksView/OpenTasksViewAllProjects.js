@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 
 import OpenTasksByProject from './OpenTasksByProject'
-import { resetLoadingData, setLaterTasksExpandState } from '../../../redux/actions'
+import { setLaterTasksExpandState } from '../../../redux/actions'
 import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
 import AllProjectsAssistantLine from '../../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import AllProjectsEmptyInbox from './AllProjectsEmptyInbox'
@@ -307,13 +307,6 @@ export default function OpenTasksViewAllProjects() {
         },
         [markProjectNearViewport, mountedProjectIndexes, sortedLoggedUserProjectIds.length]
     )
-
-    useEffect(() => {
-        dispatch(resetLoadingData())
-        return () => {
-            dispatch(resetLoadingData())
-        }
-    }, [])
 
     useEffect(() => {
         return () => {

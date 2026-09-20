@@ -14,7 +14,6 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
 } from '../../redux/actions'
 import CustomScrollView from '../UIControls/CustomScrollView'
@@ -90,7 +89,7 @@ export default function AssistantDetailedView({ navigation }) {
 
             navigation.navigate('Root')
             if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+                dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             } else {
                 dispatch([resetFloatPopup(), setShowAccessDeniedPopup(true), navigateToAllProjectsTasks()])
             }

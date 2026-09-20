@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../redux/loadingOperation'
 import firebase from 'firebase/compat/app'
 
 import {
@@ -35,8 +36,6 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
-    startLoadingData,
-    stopLoadingData,
     switchProject,
 } from '../../../redux/actions'
 import NavigationService from '../../../utils/NavigationService'
@@ -515,37 +514,36 @@ export async function setProjectContactDescription(projectId, contact, contactId
 }
 
 export async function setProjectContactPicture(projectId, contact, contactId, pictureFile) {
-    if (!pictureFile) {
-        store.dispatch(startLoadingData())
-        await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
-        await updateContactData(projectId, contactId, { photoURL: '', photoURL50: '', photoURL300: '' }, null)
-        store.dispatch(stopLoadingData())
-        return
-    }
+    return runWithLoading('update_contact_picture', async () => {
+        if (!pictureFile) {
+            await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
+            await updateContactData(projectId, contactId, { photoURL: '', photoURL50: '', photoURL300: '' }, null)
 
-    const pictures = await proccessPictureForAvatar(pictureFile)
-
-    if (pictures.length > 0) {
-        store.dispatch(startLoadingData())
-        await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
-        const urlList = await uploadAvatarPhotos(
-            pictures,
-            `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
-            `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
-        )
-
-        const contactToStore = {
-            ...contact,
-            photoURL: urlList[0],
-            photoURL50: urlList[1],
-            photoURL300: urlList[2],
+            return
         }
 
-        await updateContactData(projectId, contactId, contactToStore, null)
+        const pictures = await proccessPictureForAvatar(pictureFile)
 
-        updateContactPhotoFeedsChain(projectId, contact, contactId, urlList)
-        store.dispatch(stopLoadingData())
-    }
+        if (pictures.length > 0) {
+            await deleteFolderFilesInStorage(`projectsContacts/${projectId}/${contactId}`)
+            const urlList = await uploadAvatarPhotos(
+                pictures,
+                `projectsContacts/${projectId}/${contactId}/${contactId}@${Date.now()}`,
+                `feeds/${projectId}/${contactId}_${getId()}@${Date.now()}`
+            )
+
+            const contactToStore = {
+                ...contact,
+                photoURL: urlList[0],
+                photoURL50: urlList[1],
+                photoURL300: urlList[2],
+            }
+
+            await updateContactData(projectId, contactId, contactToStore, null)
+
+            updateContactPhotoFeedsChain(projectId, contact, contactId, urlList)
+        }
+    })
 }
 
 export async function setProjectContactPhone(projectId, contact, contactId, newPhoneNumber, oldPhoneNumber) {

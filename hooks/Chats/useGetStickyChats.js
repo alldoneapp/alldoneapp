@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 
-import { startLoadingData, stopLoadingData } from '../../redux/actions'
+import { subscribeWithLoading } from '../../utils/redux/loadingOperation'
 import useSelectorHashtagFilters from '../../components/HashtagFilters/UseSelectorHashtagFilters'
 import { filterStickyChats } from '../../components/HashtagFilters/FilterHelpers/FilterChats'
 import { getDb } from '../../utils/backends/firestore'
@@ -23,8 +23,6 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab, c
         ? getSecondaryViewCacheEntrySync(loggedUserId, SECONDARY_VIEW_CHATS, cacheKey)
         : null
     const [chats, setChats] = useState(() => initialCachedSnapshot?.chats || [])
-    const dispatch = useDispatch()
-    const isLoadingStartedRef = useRef(false)
 
     useEffect(() => {
         // Guard clause: Don't proceed if projectId is invalid
@@ -56,15 +54,15 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab, c
             if (sessionSnapshot) applyCachedSnapshot(sessionSnapshot)
             else getSecondaryViewCacheEntry(loggedUserId, SECONDARY_VIEW_CHATS, cacheKey).then(applyCachedSnapshot)
         }
-        if (!sessionSnapshot) {
-            dispatch(startLoadingData())
-            isLoadingStartedRef.current = true
-        }
 
-        let query = getDb().collection(`chatObjects/${projectId}/chats/`)
-        query = query.where(...getChatAccessQueryArgs({ activeTab: chatsActiveTab, loggedUserId, isAnonymous }))
-        query = query.where('stickyData.days', '>', 0).orderBy('stickyData.days', 'asc').limit(toRender)
-        const unsubscribe = query.onSnapshot(
+        const unsubscribe = subscribeWithLoading(
+            'sticky_chats',
+            (next, error) => {
+                let query = getDb().collection(`chatObjects/${projectId}/chats/`)
+                query = query.where(...getChatAccessQueryArgs({ activeTab: chatsActiveTab, loggedUserId, isAnonymous }))
+                query = query.where('stickyData.days', '>', 0).orderBy('stickyData.days', 'asc').limit(toRender)
+                return query.onSnapshot(next, error)
+            },
             docs => {
                 liveSnapshotDelivered = true
                 const nextChats = []
@@ -83,26 +81,17 @@ export default function useGetStickyChats(projectId, toRender, chatsActiveTab, c
                         chats: filteredChats,
                     })
                 }
-                if (isLoadingStartedRef.current) {
-                    dispatch(stopLoadingData())
-                    isLoadingStartedRef.current = false
-                }
             },
-            error => {
-                console.error('❌ useGetStickyChats: Firebase snapshot error for project:', projectId, error)
-                if (isLoadingStartedRef.current) {
-                    dispatch(stopLoadingData())
-                    isLoadingStartedRef.current = false
-                }
+            {
+                enabled: !sessionSnapshot,
+                onError: error => {
+                    console.error('❌ useGetStickyChats: Firebase snapshot error for project:', projectId, error)
+                },
             }
         )
 
         return () => {
             active = false
-            if (isLoadingStartedRef.current) {
-                dispatch(stopLoadingData())
-                isLoadingStartedRef.current = false
-            }
             unsubscribe()
         }
     }, [projectId, toRender, chatsActiveTab, loggedUserId, isAnonymous, filtersKey, cacheKey, cacheEnabled])

@@ -4,7 +4,7 @@ import { useSelector, useDispatch } from 'react-redux'
 
 import OpenTasksByProjectForAssistants from './OpenTaskViewForAssistants/OpenTasksByProjectForAssistants'
 import OpenTasksByProject from './OpenTasksByProject'
-import { resetLoadingData, setLaterTasksExpanded, setSomedayTasksExpanded } from '../../../redux/actions'
+import { setLaterTasksExpanded, setSomedayTasksExpanded } from '../../../redux/actions'
 
 export default function OpenTasksViewSelectedProject() {
     const dispatch = useDispatch()
@@ -16,9 +16,8 @@ export default function OpenTasksViewSelectedProject() {
     const isAssistant = useSelector(state => !!state.currentUser.temperature)
 
     useEffect(() => {
-        dispatch(resetLoadingData())
         return () => {
-            dispatch([resetLoadingData(), setLaterTasksExpanded(false), setSomedayTasksExpanded(false)])
+            dispatch([setLaterTasksExpanded(false), setSomedayTasksExpanded(false)])
         }
     }, [selectedProjectIndex, currentUserId])
 

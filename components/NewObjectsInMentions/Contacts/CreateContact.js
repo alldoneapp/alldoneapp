@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import styles, { colors } from '../../styles/global'
@@ -13,10 +14,10 @@ import ContactInfoWrapper from './ContactInfoWrapper'
 import { FEED_CONTACT_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import Icon from '../../Icon'
 import Backend from '../../../utils/BackendBridge'
-import { setSelectedNavItem, startLoadingData, stopLoadingData } from '../../../redux/actions'
+import { setSelectedNavItem } from '../../../redux/actions'
 import NavigationService from '../../../utils/NavigationService'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import { useDispatch } from 'react-redux'
+
 import HelperFunctions from '../../../utils/HelperFunctions'
 import { translate } from '../../../i18n/TranslationService'
 import store from '../../../redux/store'
@@ -32,7 +33,6 @@ import { addContactToProject } from '../../../utils/backends/Contacts/contactsFi
 import useSingleFlightSubmit, { RELEASE_AFTER_SUBMISSION } from '../../../hooks/useSingleFlightSubmit'
 
 export default function CreateContact({ projectId, containerStyle, selectItemToMention, modalId, mentionText }) {
-    const dispatch = useDispatch()
     const [sendingData, setSendingData] = useState(false)
     const [contact, setContact] = useState(ContactsHelper.getDefaultContactInfo())
     const inputText = useRef()
@@ -72,52 +72,52 @@ export default function CreateContact({ projectId, containerStyle, selectItemToM
     // `sendingData` only feeds React state, which is applied asynchronously, so
     // a second Return could still start another contact before the first landed.
     const addProjectContact = useSingleFlightSubmit(async (openDetails = false) => {
-        const newContact = { ...contact }
-        newContact.displayName = newContact.displayName.trim()
+        return runWithLoading('create_mentioned_contact', async () => {
+            const newContact = { ...contact }
+            newContact.displayName = newContact.displayName.trim()
 
-        if (newContact.displayName.length > 0) {
-            dispatch(startLoadingData())
-            setSendingData(true)
+            if (newContact.displayName.length > 0) {
+                setSendingData(true)
 
-            // AT-2508 - this cleanup used to live only inside the completion callback below,
-            // which a rejected write never reaches: one failure left `sendingData` true forever
-            // (the card frozen) and the global loading refcount pinned, so the app-wide spinner
-            // span for the rest of the session. Same defect AT-2488 fixed in CreateNote.
-            try {
-                if (newContact.photoURL !== '' && newContact.photoURL != null) {
-                    const src =
-                        typeof newContact.photoURL === 'string'
-                            ? newContact.photoURL
-                            : URL.createObjectURL(newContact.photoURL)
+                // AT-2508 - this cleanup used to live only inside the completion callback below,
+                // which a rejected write never reaches: one failure left `sendingData` true forever
+                // (the card frozen) and the global loading refcount pinned, so the app-wide spinner
+                // span for the rest of the session. Same defect AT-2488 fixed in CreateNote.
+                try {
+                    if (newContact.photoURL !== '' && newContact.photoURL != null) {
+                        const src =
+                            typeof newContact.photoURL === 'string'
+                                ? newContact.photoURL
+                                : URL.createObjectURL(newContact.photoURL)
 
-                    const resized50 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_50)).uri
-                    const resized300 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_300)).uri
+                        const resized50 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_50)).uri
+                        const resized300 = (await HelperFunctions.resizeImage(src, PHOTO_SIZE_300)).uri
 
-                    newContact.photoURL = await HelperFunctions.convertURItoBlob(newContact.photoURL)
-                    newContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
-                    newContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
+                        newContact.photoURL = await HelperFunctions.convertURItoBlob(newContact.photoURL)
+                        newContact.photoURL50 = await HelperFunctions.convertURItoBlob(resized50)
+                        newContact.photoURL300 = await HelperFunctions.convertURItoBlob(resized300)
+                    }
+
+                    await addContactToProject(projectId, newContact, contactDB => {
+                        if (selectItemToMention) {
+                            selectItemToMention(contactDB, MENTION_MODAL_CONTACTS_TAB, projectId)
+                        }
+
+                        if (openDetails) {
+                            NavigationService.navigate('ContactDetailedView', {
+                                contact: contactDB,
+                                project: { id: projectId, index: ProjectHelper.getProjectIndexById(projectId) },
+                            })
+                            store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES))
+                        }
+                    })
+                } catch (error) {
+                    console.error('[contacts] Could not add the person from the mentions card', error)
+                } finally {
+                    setSendingData(false)
                 }
-
-                await addContactToProject(projectId, newContact, contactDB => {
-                    if (selectItemToMention) {
-                        selectItemToMention(contactDB, MENTION_MODAL_CONTACTS_TAB, projectId)
-                    }
-
-                    if (openDetails) {
-                        NavigationService.navigate('ContactDetailedView', {
-                            contact: contactDB,
-                            project: { id: projectId, index: ProjectHelper.getProjectIndexById(projectId) },
-                        })
-                        store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_PROPERTIES))
-                    }
-                })
-            } catch (error) {
-                console.error('[contacts] Could not add the person from the mentions card', error)
-            } finally {
-                dispatch(stopLoadingData())
-                setSendingData(false)
             }
-        }
+        })
     }, RELEASE_AFTER_SUBMISSION)
 
     const enterKeyAction = () => {

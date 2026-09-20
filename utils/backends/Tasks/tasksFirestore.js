@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../redux/loadingOperation'
 import { chunk, cloneDeep, intersection, isEqual, uniq } from 'lodash'
 import firebase from 'firebase/compat/app'
 import moment from 'moment'
@@ -82,8 +83,6 @@ import {
     setSelectedSidebarTab,
     setSelectedTasks,
     setSelectedTypeOfProject,
-    startLoadingData,
-    stopLoadingData,
     switchProject,
     setOptimisticFocusTask,
     clearOptimisticFocusTask,
@@ -2860,64 +2859,78 @@ export async function stopObservingTask(
     selectedNextStepIndex,
     checkBoxId
 ) {
-    store.dispatch(startLoadingData())
-    const { loggedUser } = store.getState()
-    const ownerIsWorkstream = task?.userId?.startsWith(WORKSTREAM_ID_PREFIX)
+    return runWithLoading('stop_observing_task', async () => {
+        const { loggedUser } = store.getState()
+        const ownerIsWorkstream = task?.userId?.startsWith(WORKSTREAM_ID_PREFIX)
 
-    const taskIsMovedInWorkflow = selectedNextStepIndex !== null
+        const taskIsMovedInWorkflow = selectedNextStepIndex !== null
 
-    if (taskIsMovedInWorkflow && ownerIsWorkstream) {
-        const taskOwner = TasksHelper.getTaskOwner(task.userId, projectId)
-        await setTaskAssignee(projectId, task.id, loggedUser.uid, taskOwner, loggedUser, { ...task }, false)
-    }
-
-    if (taskIsMovedInWorkflow) {
-        const { stepHistory } = task
-        const stepsIds = getWorkflowStepsIdsSorted(workflow)
-        const stepToMoveId = getWorkflowStepId(selectedNextStepIndex, stepsIds)
-        const commentType =
-            comment && comment.length > 0
-                ? getCommentDirectionWhenMoveTaskInTheWorklfow(selectedNextStepIndex, stepsIds, stepHistory)
-                : STAYWARD_COMMENT
-        const estimations = { ...task.estimations, [OPEN_STEP]: assigneeEstimation }
-
-        if (task.userIds.length === 1) {
-            const taskToProcess = ownerIsWorkstream
-                ? { ...task, userId: loggedUser.uid, userIds: [loggedUser.uid], currentReviewerId: loggedUser.uid }
-                : task
-            moveTasksFromOpen(projectId, taskToProcess, stepToMoveId, comment, commentType, estimations, checkBoxId)
-        } else {
-            moveTasksFromMiddleOfWorkflow(projectId, task, stepToMoveId, comment, commentType, estimations, checkBoxId)
+        if (taskIsMovedInWorkflow && ownerIsWorkstream) {
+            const taskOwner = TasksHelper.getTaskOwner(task.userId, projectId)
+            await setTaskAssignee(projectId, task.id, loggedUser.uid, taskOwner, loggedUser, { ...task }, false)
         }
-    }
 
-    const updateData = {}
+        if (taskIsMovedInWorkflow) {
+            const { stepHistory } = task
+            const stepsIds = getWorkflowStepsIdsSorted(workflow)
+            const stepToMoveId = getWorkflowStepId(selectedNextStepIndex, stepsIds)
+            const commentType =
+                comment && comment.length > 0
+                    ? getCommentDirectionWhenMoveTaskInTheWorklfow(selectedNextStepIndex, stepsIds, stepHistory)
+                    : STAYWARD_COMMENT
+            const estimations = { ...task.estimations, [OPEN_STEP]: assigneeEstimation }
 
-    const updateEstimation = !taskIsMovedInWorkflow && assigneeEstimation !== task.estimations[OPEN_STEP]
-    if (updateEstimation) {
-        updateData[`estimations.${OPEN_STEP}`] = assigneeEstimation
-    }
+            if (task.userIds.length === 1) {
+                const taskToProcess = ownerIsWorkstream
+                    ? { ...task, userId: loggedUser.uid, userIds: [loggedUser.uid], currentReviewerId: loggedUser.uid }
+                    : task
+                await moveTasksFromOpen(
+                    projectId,
+                    taskToProcess,
+                    stepToMoveId,
+                    comment,
+                    commentType,
+                    estimations,
+                    checkBoxId
+                )
+            } else {
+                await moveTasksFromMiddleOfWorkflow(
+                    projectId,
+                    task,
+                    stepToMoveId,
+                    comment,
+                    commentType,
+                    estimations,
+                    checkBoxId
+                )
+            }
+        }
 
-    if (userIdStopingObserving) {
-        updateData.observersIds = firebase.firestore.FieldValue.arrayRemove(userIdStopingObserving)
-        updateData[`dueDateByObserversIds.${userIdStopingObserving}`] = firebase.firestore.FieldValue.delete()
-        updateData[`estimationsByObserverIds.${userIdStopingObserving}`] = firebase.firestore.FieldValue.delete()
-    }
+        const updateData = {}
 
-    const batch = new BatchWrapper(getDb())
-    updateTaskData(projectId, task.id, { ...updateData }, batch)
-    updateSubtasksState(projectId, task.subtaskIds, updateData, batch)
-    batch.commit()
+        const updateEstimation = !taskIsMovedInWorkflow && assigneeEstimation !== task.estimations[OPEN_STEP]
+        if (updateEstimation) {
+            updateData[`estimations.${OPEN_STEP}`] = assigneeEstimation
+        }
 
-    store.dispatch(stopLoadingData())
+        if (userIdStopingObserving) {
+            updateData.observersIds = firebase.firestore.FieldValue.arrayRemove(userIdStopingObserving)
+            updateData[`dueDateByObserversIds.${userIdStopingObserving}`] = firebase.firestore.FieldValue.delete()
+            updateData[`estimationsByObserverIds.${userIdStopingObserving}`] = firebase.firestore.FieldValue.delete()
+        }
 
-    if (!taskIsMovedInWorkflow && comment) {
-        updateNewAttachmentsData(projectId, comment).then(commentWithAttachments => {
-            createObjectMessage(projectId, task.id, commentWithAttachments, 'tasks', STAYWARD_COMMENT, null, null)
-        })
-    }
+        const batch = new BatchWrapper(getDb())
+        updateTaskData(projectId, task.id, { ...updateData }, batch)
+        updateSubtasksState(projectId, task.subtaskIds, updateData, batch)
+        await batch.commit()
 
-    feedsChainInStopObservingTask(projectId, task, userIdStopingObserving, assigneeEstimation, updateEstimation)
+        if (!taskIsMovedInWorkflow && comment) {
+            const commentWithAttachments = await updateNewAttachmentsData(projectId, comment)
+            await createObjectMessage(projectId, task.id, commentWithAttachments, 'tasks', STAYWARD_COMMENT, null, null)
+        }
+
+        feedsChainInStopObservingTask(projectId, task, userIdStopingObserving, assigneeEstimation, updateEstimation)
+    })
 }
 
 // Root task Done/Open activity is persisted later by onUpdateTaskSecondGen, so those transitions do
@@ -4125,32 +4138,33 @@ const pickNextGeneralFocusTask = ({ projectId, userId, tasks, openMilestones, do
 }
 
 async function callAutoPostponeTasks(tasks, targetUserId, clearSelectedTasks, background) {
-    if (!background) store.dispatch(startLoadingData())
-    try {
-        const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
-        const taskRequests = sortedTasks.map(task => ({
-            projectId: task.projectId,
-            taskId: task.id,
-            isObservedTask: !!task.isObservedTask,
-        }))
-        const result = { requestedCount: 0, updatedCount: 0, updated: [], skipped: [] }
+    return runWithLoading(
+        'postpone_tasks',
+        async () => {
+            const sortedTasks = [...tasks].sort((a, b) => a.sortIndex - b.sortIndex)
+            const taskRequests = sortedTasks.map(task => ({
+                projectId: task.projectId,
+                taskId: task.id,
+                isObservedTask: !!task.isObservedTask,
+            }))
+            const result = { requestedCount: 0, updatedCount: 0, updated: [], skipped: [] }
 
-        for (const taskChunk of chunk(taskRequests, 500)) {
-            const chunkResult = await runHttpsCallableFunction('autoReminderTasksSecondGen', {
-                targetUserId,
-                tasks: taskChunk,
-            })
-            result.requestedCount += chunkResult.requestedCount || 0
-            result.updatedCount += chunkResult.updatedCount || 0
-            result.updated.push(...(chunkResult.updated || []))
-            result.skipped.push(...(chunkResult.skipped || []))
-        }
+            for (const taskChunk of chunk(taskRequests, 500)) {
+                const chunkResult = await runHttpsCallableFunction('autoReminderTasksSecondGen', {
+                    targetUserId,
+                    tasks: taskChunk,
+                })
+                result.requestedCount += chunkResult.requestedCount || 0
+                result.updatedCount += chunkResult.updatedCount || 0
+                result.updated.push(...(chunkResult.updated || []))
+                result.skipped.push(...(chunkResult.skipped || []))
+            }
 
-        if (clearSelectedTasks) store.dispatch(setSelectedTasks(null, true))
-        return result
-    } finally {
-        if (!background) store.dispatch(stopLoadingData())
-    }
+            if (clearSelectedTasks) store.dispatch(setSelectedTasks(null, true))
+            return result
+        },
+        { enabled: !background }
+    )
 }
 
 export async function autoPostponeMultipleTasks(

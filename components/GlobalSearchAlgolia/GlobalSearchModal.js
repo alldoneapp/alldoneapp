@@ -1,3 +1,4 @@
+import { runWithLoading, INITIAL_LOAD_TIMEOUT_MS } from '../../utils/redux/loadingOperation'
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import v4 from 'uuid/v4'
@@ -16,8 +17,6 @@ import {
     setBlockShortcuts,
     setGlobalSearchResults,
     setSearchText,
-    startLoadingData,
-    stopLoadingData,
     unblockBackgroundTabShortcut,
 } from '../../redux/actions'
 import Icon from '../Icon'
@@ -157,73 +156,82 @@ export default function GlobalSearchModal() {
     }
 
     const updateTemporaryProjectsAndUsers = async () => {
-        const { loggedUser, loggedUserProjects, selectedProjectIndex } = store.getState()
-        const realGuideProjectIds = realIdSet(loggedUser.realGuideProjectIds, loggedUser.guideProjectIds)
-        const realTemplateProjectIds = realIdSet(loggedUser.realTemplateProjectIds, loggedUser.templateProjectIds)
-        const realArchivedProjectIds = realIdSet(loggedUser.realArchivedProjectIds, loggedUser.archivedProjectIds)
-        const realProjectIds = realIdSet(loggedUser.realProjectIds, loggedUser.projectIds)
+        return runWithLoading(
+            'search_project_scope',
+            async () => {
+                const { loggedUser, loggedUserProjects, selectedProjectIndex } = store.getState()
+                const realGuideProjectIds = realIdSet(loggedUser.realGuideProjectIds, loggedUser.guideProjectIds)
+                const realTemplateProjectIds = realIdSet(
+                    loggedUser.realTemplateProjectIds,
+                    loggedUser.templateProjectIds
+                )
+                const realArchivedProjectIds = realIdSet(
+                    loggedUser.realArchivedProjectIds,
+                    loggedUser.archivedProjectIds
+                )
+                const realProjectIds = realIdSet(loggedUser.realProjectIds, loggedUser.projectIds)
 
-        dispatch(startLoadingData())
-        let projectsList
-        try {
-            projectsList = await getAllUserProjects(loggedUser.uid)
-        } catch (error) {
-            // Opening search must never become an unhandled rejection. The already-loaded redux
-            // projects keep active-project search usable while a transient/rules failure is being
-            // recovered; the authoritative query normally adds archived/template/guide projects.
-            console.error('[GlobalSearch] Could not refresh the project scope, using loaded projects', error)
-            projectsList = loggedUserProjects
-        } finally {
-            dispatch(stopLoadingData())
-        }
+                let projectsList
+                try {
+                    projectsList = await getAllUserProjects(loggedUser.uid)
+                } catch (error) {
+                    // Opening search must never become an unhandled rejection. The already-loaded redux
+                    // projects keep active-project search usable while a transient/rules failure is being
+                    // recovered; the authoritative query normally adds archived/template/guide projects.
+                    console.error('[GlobalSearch] Could not refresh the project scope, using loaded projects', error)
+                    projectsList = loggedUserProjects
+                }
 
-        // AT-2390: bucket against the REAL id sets, never the masked ones on
-        // `loggedUser`. `updateInactiveProjectsData` (redux/store.js) empties
-        // `archivedProjectIds` whenever `areArchivedActive` is false — which is
-        // the default — so `getArchivedProjects2` returned [] for almost every
-        // user. That is why the picker's Archived tab was empty: archived
-        // projects never entered `projects` at all, and the tab filters that
-        // same list by `realArchivedProjectIds`. The masked guide/template sets
-        // are trimmed the same way for template owners, so they are read from
-        // the real sets too rather than leaving the same bug in place one tab
-        // over. Search scope is an explicit choice here; it must not silently
-        // inherit the sidebar's "archived mode" switch.
-        const archived = ProjectHelper.getArchivedProjectsInList(projectsList, realArchivedProjectIds)
-        const guides = ProjectHelper.getGuideProjectsInList(projectsList, realGuideProjectIds)
-        const templates = ProjectHelper.getTemplateProjectsInList(projectsList, realTemplateProjectIds)
-        const activeProjects = ProjectHelper.getActiveProjectsInList(
-            projectsList,
-            realProjectIds,
-            realArchivedProjectIds,
-            realTemplateProjectIds,
-            realGuideProjectIds
+                // AT-2390: bucket against the REAL id sets, never the masked ones on
+                // `loggedUser`. `updateInactiveProjectsData` (redux/store.js) empties
+                // `archivedProjectIds` whenever `areArchivedActive` is false — which is
+                // the default — so `getArchivedProjects2` returned [] for almost every
+                // user. That is why the picker's Archived tab was empty: archived
+                // projects never entered `projects` at all, and the tab filters that
+                // same list by `realArchivedProjectIds`. The masked guide/template sets
+                // are trimmed the same way for template owners, so they are read from
+                // the real sets too rather than leaving the same bug in place one tab
+                // over. Search scope is an explicit choice here; it must not silently
+                // inherit the sidebar's "archived mode" switch.
+                const archived = ProjectHelper.getArchivedProjectsInList(projectsList, realArchivedProjectIds)
+                const guides = ProjectHelper.getGuideProjectsInList(projectsList, realGuideProjectIds)
+                const templates = ProjectHelper.getTemplateProjectsInList(projectsList, realTemplateProjectIds)
+                const activeProjects = ProjectHelper.getActiveProjectsInList(
+                    projectsList,
+                    realProjectIds,
+                    realArchivedProjectIds,
+                    realTemplateProjectIds,
+                    realGuideProjectIds
+                )
+
+                setProjectBuckets({
+                    activeIds: activeProjects.map(project => project.id),
+                    guideIds: guides.map(project => project.id),
+                    templateIds: templates.map(project => project.id),
+                    archivedIds: archived.map(project => project.id),
+                })
+
+                let sortedProjects = [
+                    ...ProjectHelper.sortProjects(activeProjects, loggedUser.uid),
+                    ...ProjectHelper.sortProjects(guides, loggedUser.uid),
+                    ...ProjectHelper.sortProjects(templates, loggedUser.uid),
+                    ...ProjectHelper.sortProjects(archived, loggedUser.uid),
+                ]
+
+                if (checkIfSelectedProject(selectedProjectIndex)) {
+                    const selectedProject = sortedProjects.find(
+                        project => project.id === loggedUserProjects[selectedProjectIndex].id
+                    )
+                    sortedProjects = [
+                        selectedProject,
+                        ...sortedProjects.filter(project => project.id !== loggedUserProjects[selectedProjectIndex].id),
+                    ]
+                }
+
+                setProjects(sortedProjects)
+            },
+            { timeoutMs: INITIAL_LOAD_TIMEOUT_MS }
         )
-
-        setProjectBuckets({
-            activeIds: activeProjects.map(project => project.id),
-            guideIds: guides.map(project => project.id),
-            templateIds: templates.map(project => project.id),
-            archivedIds: archived.map(project => project.id),
-        })
-
-        let sortedProjects = [
-            ...ProjectHelper.sortProjects(activeProjects, loggedUser.uid),
-            ...ProjectHelper.sortProjects(guides, loggedUser.uid),
-            ...ProjectHelper.sortProjects(templates, loggedUser.uid),
-            ...ProjectHelper.sortProjects(archived, loggedUser.uid),
-        ]
-
-        if (checkIfSelectedProject(selectedProjectIndex)) {
-            const selectedProject = sortedProjects.find(
-                project => project.id === loggedUserProjects[selectedProjectIndex].id
-            )
-            sortedProjects = [
-                selectedProject,
-                ...sortedProjects.filter(project => project.id !== loggedUserProjects[selectedProjectIndex].id),
-            ]
-        }
-
-        setProjects(sortedProjects)
     }
 
     useEffect(() => {
