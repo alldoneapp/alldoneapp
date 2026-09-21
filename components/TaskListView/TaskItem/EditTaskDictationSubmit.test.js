@@ -46,6 +46,7 @@ import renderer, { act } from 'react-test-renderer'
 
 import EditTask from './EditTask'
 import { createTaskWithService } from '../../../utils/backends/Tasks/TaskServiceFrontendHelper'
+import { updateTask } from '../../../utils/backends/Tasks/tasksFirestore'
 
 // Set during the stub input's render, so they always close over the props of the LAST render -
 // exactly like the quill callbacks inside CustomTextInput3.
@@ -279,6 +280,26 @@ describe('existing task editor visibility lock', () => {
         renderAddTaskEditor()
 
         expect(mockUseTaskEditorLock).toHaveBeenCalledWith(false)
+    })
+
+    test('saves a popup comment and exits edit mode when the comment popup closes', async () => {
+        renderExistingTaskEditor()
+
+        await act(async () => {
+            tree.root.findByType('SecondaryButtonsArea').props.setCommentBeforeSave('  Saved comment  ')
+            await Promise.resolve()
+        })
+
+        expect(updateTask).toHaveBeenCalledWith(
+            'project-1',
+            expect.objectContaining({ id: 'task-1', extendedName: 'Existing task' }),
+            expect.objectContaining({ id: 'task-1' }),
+            expect.anything(),
+            'Saved comment',
+            [],
+            undefined
+        )
+        expect(onCancelAction).toHaveBeenCalledWith(true)
     })
 })
 
