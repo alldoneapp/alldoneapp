@@ -31,7 +31,7 @@ const MESSAGE_STATE_LIMIT = 200
 function resolveAccountForProject(accounts, projectId) {
     if (!Array.isArray(accounts) || accounts.length === 0) return null
     return (
-        accounts.find(account => account.projectId === projectId) ||
+        accounts.find(account => account.projectId === projectId || account.connectionProjectId === projectId) ||
         accounts.find(account => account.emailDefault) ||
         accounts[0]
     )

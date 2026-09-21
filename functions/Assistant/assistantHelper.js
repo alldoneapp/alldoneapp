@@ -12130,7 +12130,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. If the user asks to attach a file and you have fileBase64 from an attachment tool, pass it in attachments with fileName and mimeType. Draft emails only; do not claim you sent anything.',
+            'When the user asks you to draft, compose, or prepare an email, use the Gmail draft tools instead of only describing the email. Use create_gmail_reply_draft for replies to existing email threads and create_gmail_draft for brand-new emails. If the user asks to attach a file and you have fileBase64 from an attachment tool, pass it in attachments with fileName and mimeType. Draft emails only; do not claim you sent anything. Email and Calendar integrations belong to the user account and are available across projects. Never claim that an integration must be connected separately to the current project; if an account-selection tool error occurs, report its actual missing/default/ambiguity condition.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('update_gmail_email')) {

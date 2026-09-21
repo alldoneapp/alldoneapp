@@ -215,10 +215,6 @@ function pickLatestResult(results = []) {
     return [...results].sort((a, b) => Number(b.internalDate || 0) - Number(a.internalDate || 0))[0]
 }
 
-function selectProjectAccount(accounts = [], projectId = '') {
-    return accounts.find(account => account.projectId === projectId) || null
-}
-
 function selectDefaultAccount(accounts = []) {
     return accounts.find(account => account.gmailDefault) || null
 }
@@ -517,15 +513,30 @@ async function createGmailDraftForAssistantRequest({ userId, projectId, to, cc, 
         getConnectedGmailAccounts(userId),
         getConnectedMicrosoftEmailAccounts(userId).catch(() => []),
     ])
+    const googleDefault = selectDefaultAccount(accounts)
     const microsoftDefault = microsoftAccounts.find(item => item.emailDefault || item.gmailDefault)
-    if (microsoftDefault || accounts.length === 0) {
-        return createMicrosoftDraftForAssistantRequest({ userId, projectId, to, cc, bcc, subject, body, attachments })
-    }
-    const account = selectDefaultAccount(accounts) || selectProjectAccount(accounts, normalizedProjectId)
-    if (!account) {
+
+    if (googleDefault && microsoftDefault) {
         return {
             success: false,
-            message: 'No connected Gmail account was found for the current project. Please connect Gmail first.',
+            code: 'email_account_ambiguous',
+            message: 'Multiple default email accounts are configured. Please keep exactly one default Email account.',
+        }
+    }
+
+    if (microsoftDefault || (accounts.length === 0 && microsoftAccounts.length === 1)) {
+        return createMicrosoftDraftForAssistantRequest({ userId, projectId, to, cc, bcc, subject, body, attachments })
+    }
+
+    const account = googleDefault || (accounts.length === 1 && microsoftAccounts.length === 0 ? accounts[0] : null)
+    if (!account) {
+        const noAccounts = accounts.length === 0 && microsoftAccounts.length === 0
+        return {
+            success: false,
+            code: noAccounts ? 'email_not_connected' : 'email_account_ambiguous',
+            message: noAccounts
+                ? 'No connected email account was found for this user. Please connect Email first.'
+                : 'Multiple email accounts are connected and no saved default is available. Please set a default Email account.',
         }
     }
 
@@ -795,6 +806,5 @@ module.exports = {
     normalizeDraftData,
     pickLatestResult,
     selectDefaultAccount,
-    selectProjectAccount,
     updateGmailDraftForAssistantRequest,
 }

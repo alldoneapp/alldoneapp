@@ -3,7 +3,11 @@
 const admin = require('firebase-admin')
 const moment = require('moment-timezone')
 const { buildQuery, encodePath, getMicrosoftGraphClient } = require('../../MicrosoftGraph/graphClient')
-const { normalizeEmailAddress, resolveCalendarConnection } = require('../../Integrations/providerConnections')
+const {
+    CALENDAR_PROVIDER_MICROSOFT,
+    listCalendarConnections,
+    normalizeEmailAddress,
+} = require('../../Integrations/providerConnections')
 const { extractMeetingJoinUrl } = require('../meetingJoinUrl')
 const { buildMicrosoftOnlineMeetingFields, isConferencingRejection, shouldAddConferencing } = require('../conferencing')
 
@@ -11,20 +15,6 @@ const DEFAULT_CALENDAR_ID = 'primary'
 const DEFAULT_SEARCH_LIMIT = 10
 const MAX_SEARCH_LIMIT = 20
 const MAX_AVAILABILITY_PAGES_PER_CALENDAR = 100
-
-function getActiveProjectIds(userData = {}) {
-    const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
-    const archivedProjectIds = Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : []
-    const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
-    const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
-    const blockedProjectIds = new Set([...archivedProjectIds, ...templateProjectIds, ...guideProjectIds])
-    const activeProjectIds = projectIds.filter(projectId => !blockedProjectIds.has(projectId))
-    const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
-    if (defaultProjectId && !blockedProjectIds.has(defaultProjectId) && !activeProjectIds.includes(defaultProjectId)) {
-        activeProjectIds.unshift(defaultProjectId)
-    }
-    return activeProjectIds
-}
 
 function safeTrim(value) {
     return typeof value === 'string' ? value.trim() : ''
@@ -129,28 +119,15 @@ async function getConnectedMicrosoftCalendarAccounts(userId) {
     if (!userDoc.exists) throw new Error('User not found')
 
     const userData = userDoc.data() || {}
-    const activeProjectIds = getActiveProjectIds(userData)
-    const seenKeys = new Set()
-    const accounts = []
-
-    activeProjectIds.forEach(projectId => {
-        const resolved = resolveCalendarConnection(userData.apisConnected?.[projectId])
-        if (!resolved.connected || resolved.provider !== 'microsoft') return
-
-        const calendarEmail = normalizeEmailAddress(resolved.emailAddress)
-        const dedupeKey = calendarEmail || projectId
-        if (seenKeys.has(dedupeKey)) return
-        seenKeys.add(dedupeKey)
-
-        accounts.push({
-            projectId,
-            provider: 'microsoft',
-            calendarEmail: calendarEmail || null,
-            calendarDefault: resolved.isDefault,
-        })
-    })
-
-    return accounts
+    return listCalendarConnections(userData)
+        .filter(connection => connection.provider === CALENDAR_PROVIDER_MICROSOFT)
+        .map(connection => ({
+            projectId: connection.connectionId,
+            connectionProjectId: connection.defaultProjectId || '',
+            provider: CALENDAR_PROVIDER_MICROSOFT,
+            calendarEmail: normalizeEmailAddress(connection.emailAddress) || null,
+            calendarDefault: connection.isDefaultAccount,
+        }))
 }
 
 function buildEventPayload(args, { requireRange = true } = {}) {

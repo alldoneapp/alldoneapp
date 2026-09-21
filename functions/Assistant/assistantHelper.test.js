@@ -1965,6 +1965,21 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('retrieve the existing note with get_notes or search')
     })
 
+    test('describes Email and Calendar integrations as global across projects', async () => {
+        const messages = []
+
+        await addBaseInstructions(messages, 'Anna', 'en', 'Be helpful.', ['create_gmail_draft'])
+
+        const systemMessages = messages
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+
+        expect(systemMessages).toContain('Email and Calendar integrations belong to the user account')
+        expect(systemMessages).toContain('available across projects')
+        expect(systemMessages).toContain('Never claim that an integration must be connected separately')
+    })
+
     test('requires proactive task creation to use the suggestion flow with a concrete visible reason', async () => {
         const messages = []
 
