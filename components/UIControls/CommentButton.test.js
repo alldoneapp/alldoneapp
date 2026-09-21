@@ -10,9 +10,10 @@
 // `createBotQuickTopic` / `generateTaskFromPreConfig` (`skipNavigation: true`), so a leak silently
 // changed the button's behavior for an unrelated task.
 //
-// The tests below pin BOTH directions: a foreign scope must be ignored, and the two legitimate
-// shapes (scope matching this task, and an unscoped in-modal flag) must keep behaving exactly as
-// before.
+// The tests below pin BOTH directions: a foreign scope must be ignored for legacy callers, and the
+// submit-time assistant value from RichCommentModal must win whenever it is present. The latter is
+// also the value the modal uses to decide whether it closes, so the popup and task editor cannot
+// disagree (AT-2616).
 
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
@@ -81,7 +82,7 @@ jest.mock('../../hooks/useFloatPopupLock', () => ({
     createFloatPopupLock: () => ({ acquire: jest.fn(), release: jest.fn(), isAcquired: () => false }),
 }))
 
-const submitComment = (task = { id: TASK_ID, name: 'Task', userId: 'user-1' }) => {
+const submitComment = ({ task = { id: TASK_ID, name: 'Task', userId: 'user-1' }, explicitAssistantEnabled } = {}) => {
     const saveCommentBeforeSaveTask = jest.fn()
     const tree = renderer.create(
         <CommentButton
@@ -100,7 +101,7 @@ const submitComment = (task = { id: TASK_ID, name: 'Task', userId: 'user-1' }) =
 
     const { processDone } = tree.root.findByType('RichCommentModal').props
     act(() => {
-        processDone('a comment', [], false, false, /* explicitAssistantEnabled */ true)
+        processDone('a comment', [], false, false, explicitAssistantEnabled)
     })
 
     return { tree, saveCommentBeforeSaveTask }
@@ -154,9 +155,8 @@ describe('CommentButton assistant-enabled scoping (AT-2084)', () => {
         expect(call[1]).toBe(TASK_ID)
         expect(call[2]).toBe('a comment')
         expect(call[3]).toBe('tasks')
-        // The explicit value the modal computed from the PERSISTED thread state must be forwarded
-        // untouched — the scoping fix only gates send-now vs. deferred.
-        expect(call[8]).toBe(true)
+        // Legacy callers without the explicit modal value still forward it untouched.
+        expect(call[8]).toBeUndefined()
 
         tree.unmount()
     })
@@ -194,10 +194,40 @@ describe('CommentButton assistant-enabled scoping (AT-2084)', () => {
         mockState.assistantEnabled = true
         mockState.assistantEnabledScope = buildAssistantEnabledScope(PROJECT_ID, 'some-other-topic')
 
-        const { tree, saveCommentBeforeSaveTask } = submitComment({ id: undefined, name: 'Task', userId: 'user-1' })
+        const { tree, saveCommentBeforeSaveTask } = submitComment({
+            task: { id: undefined, name: 'Task', userId: 'user-1' },
+        })
 
         expect(createObjectMessage).not.toHaveBeenCalled()
         expect(saveCommentBeforeSaveTask).toHaveBeenCalledWith('a comment')
+
+        tree.unmount()
+    })
+
+    it('saves through the task editor when the popup submit says it will close', () => {
+        // Reproduce AT-2616: Redux can still contain a true value while the popup's persisted,
+        // thread-local state is false. The popup closes from the explicit false; saving through
+        // EditTask is what closes the parent editor as part of the same submission.
+        mockState.assistantEnabled = true
+        mockState.assistantEnabledScope = null
+
+        const { tree, saveCommentBeforeSaveTask } = submitComment({ explicitAssistantEnabled: false })
+
+        expect(createObjectMessage).not.toHaveBeenCalled()
+        expect(saveCommentBeforeSaveTask).toHaveBeenCalledWith('a comment')
+
+        tree.unmount()
+    })
+
+    it('keeps the task editor path untouched when the popup submit says it will remain open', () => {
+        mockState.assistantEnabled = false
+        mockState.assistantEnabledScope = null
+
+        const { tree, saveCommentBeforeSaveTask } = submitComment({ explicitAssistantEnabled: true })
+
+        expect(saveCommentBeforeSaveTask).not.toHaveBeenCalled()
+        expect(createObjectMessage).toHaveBeenCalledTimes(1)
+        expect(createObjectMessage.mock.calls[0][8]).toBe(true)
 
         tree.unmount()
     })
