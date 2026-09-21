@@ -30,10 +30,11 @@ import {
 import { REGEX_URL } from '../../../Utils/HelperFunctions'
 import ReactQuill from 'react-quill-new'
 import EditObjectsInLinks from '../../../../EditObjectsInLinks/EditObjectsInLinks'
+import { isLegacyEmailUrlFragment } from './legacyEmailUrlFragment'
 
 const Delta = ReactQuill.Quill.import('delta')
 
-export default function UrlWrapper({ value, objectName, isShared }) {
+export default function UrlWrapper({ value, objectName, isShared, embedNode }) {
     const dispatch = useDispatch()
     const virtualQuillLoaded = useSelector(state => state.virtualQuillLoaded)
     const projectId = useSelector(state => state.quillEditorProjectId)
@@ -50,6 +51,7 @@ export default function UrlWrapper({ value, objectName, isShared }) {
     const [objectProjectId, setObjectProjectId] = useState(null)
     const [isPrivate, setIsPrivate] = useState(false)
     const [showEditObjectPopup, setShowEditObjectPopup] = useState(false)
+    const [renderAsLegacyEmailText, setRenderAsLegacyEmailText] = useState(false)
     const inReadOnlyNote = activeNoteId !== '' && (activeNoteIsReadOnly || loggedUser.isAnonymous)
 
     useEffect(() => {
@@ -57,6 +59,16 @@ export default function UrlWrapper({ value, objectName, isShared }) {
             openModal()
         }
     }, [])
+
+    useEffect(() => {
+        // Older generated notes stored the local part and domain of an email address as separate
+        // URL embeds. The converter now prevents that for new notes; this read-time compatibility
+        // path makes already stored notes render as normal email text without mutating their CRDT.
+        const timeout = setTimeout(() => {
+            setRenderAsLegacyEmailText(isLegacyEmailUrlFragment(embedNode, url))
+        }, 0)
+        return () => clearTimeout(timeout)
+    }, [embedNode, url])
 
     useEffect(() => {
         if (!isOpen && canceled && !virtualQuillLoaded) {
@@ -363,6 +375,10 @@ export default function UrlWrapper({ value, objectName, isShared }) {
                 closeModal()
             }
         }
+    }
+
+    if (renderAsLegacyEmailText) {
+        return <span data-legacy-email-fragment="true">{url}</span>
     }
 
     return (

@@ -55,6 +55,7 @@ import { getGoalData } from './backends/Goals/goalsFirestore'
 import { getChatMeta } from './backends/Chats/chatsFirestore'
 import { SIDEBAR_NAVIGATION_SIMPLE } from './SidebarNavigationModes'
 import URLsBookingTrigger from '../URLSystem/Booking/URLsBookingTrigger'
+import { PLAN_STATUS_FREE } from '../components/Premium/PremiumHelper'
 
 class SharedHelper {
     static createAnonymousResourceUser = userId => ({
@@ -631,6 +632,13 @@ export const ANONYMOUS_USER_DATA = {
     // anonymous loggedUser inherits the creator's gold (via the spread in addAnonymousData), which
     // both leaks it into the UI and can incorrectly enable assistant controls on shared links.
     gold: 0,
+    // Shared-note embeds use the normal traffic-quota hooks while Quill initializes. Anonymous
+    // sessions do not have a private user document to supply these fields, so provide the same
+    // safe free-plan shape a newly created user receives. Missing `premium.status` throws during
+    // image rendering and leaves the note loader retrying behind an endless spinner.
+    premium: { status: PLAN_STATUS_FREE },
+    monthlyTraffic: 0,
+    monthlyXp: 0,
     themeName: COLORS_THEME_MODERN,
     sidebarNavigationMode: SIDEBAR_NAVIGATION_SIMPLE,
     sidebarExpanded: SIDEBAR_COLLAPSED,
