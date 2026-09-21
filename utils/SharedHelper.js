@@ -57,6 +57,17 @@ import { SIDEBAR_NAVIGATION_SIMPLE } from './SidebarNavigationModes'
 import URLsBookingTrigger from '../URLSystem/Booking/URLsBookingTrigger'
 
 class SharedHelper {
+    static createAnonymousResourceUser = userId => ({
+        uid: userId || '',
+        displayName: 'Shared user',
+        email: '',
+        photoURL: '/images/generic-user.svg',
+        projectIds: [],
+        guideProjectIds: [],
+        templateProjectIds: [],
+        archivedProjectIds: [],
+    })
+
     static normalizeInternalUrl = rawUrl => {
         if (typeof rawUrl !== 'string') return '/'
 
@@ -332,7 +343,13 @@ class SharedHelper {
                         promises.push(getProjectData(params.projectId))
                         const [note, project] = await Promise.all(promises)
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(note)) {
-                            const user = await getUserData(note.creatorId, false)
+                            // Anonymous Firebase users intentionally cannot read another person's
+                            // /users document. The note and public project already contain every
+                            // field needed to authorize and render this read-only view, so do not
+                            // make the shared-note boot depend on a private profile read.
+                            const user = SharedHelper.createAnonymousResourceUser(
+                                note.creatorId || note.userId || project.creatorId
+                            )
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.noteId, 'notes')
                             await onIsShared(URL, users, params, commonPath)
