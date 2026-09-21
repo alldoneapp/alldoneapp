@@ -2049,6 +2049,13 @@ repairs existing documents from the goal's current privacy. Pinned by
 `functions/Tasks/recurringTasksCloud.test.js`. The client-side `createRecurrentTask` in
 `tasksFirestore.js` has no callers; the cloud function is the only producer.
 
+The same two-field invariant applies to follow-ups. `createFollowUpTask` builds its copy through
+`followUpTaskBuilder.js`, which carries `parentGoalId`, `parentGoalIsPublicFor`, and the goal lock
+key from the source task. An unlinked task must normalize both goal fields to null rather than
+leaking a stale visibility projection into the new document. A legacy linked task missing the
+visibility projection resolves it from the Goal before the follow-up is written; a failed optional
+read preserves the Goal id and does not block creation. Pinned by `followUpTaskBuilder.test.js`.
+
 ### Day-rate logging: the target is a ceiling as well as a floor — for calendar time
 
 A project with day-rate logging on (`project.dayRateTimeLog`, `utils/DayRateTimeLogHelper.js`) bills
