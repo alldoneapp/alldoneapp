@@ -7,7 +7,7 @@
 
 import { getNoteMeta, getProjectData, loginWithGoogleWebAnonymously } from '../../utils/backends/firestore'
 import { getUserData } from '../../utils/backends/Users/usersFirestore'
-import SharedHelper from '../../utils/SharedHelper'
+import SharedHelper, { ANONYMOUS_USER_DATA } from '../../utils/SharedHelper'
 
 jest.mock('../../utils/backends/firestore', () => ({
     ...jest.createMockFromModule('../../utils/backends/firestore'),
@@ -79,5 +79,15 @@ describe('public note URL routing', () => {
         expect(onIsMember).not.toHaveBeenCalled()
         expect(onNotShared).not.toHaveBeenCalled()
         expect(onNotMatch).not.toHaveBeenCalled()
+    })
+
+    it('gives anonymous embed renderers a complete free-plan user shape', () => {
+        expect(ANONYMOUS_USER_DATA).toEqual(
+            expect.objectContaining({
+                premium: { status: 'free' },
+                monthlyTraffic: 0,
+                monthlyXp: 0,
+            })
+        )
     })
 })

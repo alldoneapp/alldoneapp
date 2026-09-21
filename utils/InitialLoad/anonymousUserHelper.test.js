@@ -70,6 +70,9 @@ jest.mock('../SharedHelper', () => ({
         email: 'anonymous@alldone.com',
         isAnonymous: true,
         gold: 0,
+        premium: { status: 'free' },
+        monthlyTraffic: 0,
+        monthlyXp: 0,
     },
 }))
 
@@ -105,6 +108,7 @@ describe('loadInitialDataForAnonymous', () => {
                 uid: 'note-creator',
                 displayName: 'Anonymous User',
                 isAnonymous: true,
+                premium: { status: 'free' },
                 projectIds: [PROJECT_ID],
                 guideProjectIds: [],
                 templateProjectIds: [],

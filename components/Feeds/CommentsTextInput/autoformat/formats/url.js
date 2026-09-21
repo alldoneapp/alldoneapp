@@ -47,7 +47,12 @@ class Url extends ReactEmbedBlot {
             renderEmbedContent(
                 node,
                 <Provider store={store}>
-                    <UrlWrapper value={value} objectName={taskName || 'Pre-configured Task'} isShared={false} />
+                    <UrlWrapper
+                        value={value}
+                        objectName={taskName || 'Pre-configured Task'}
+                        isShared={false}
+                        embedNode={node}
+                    />
                 </Provider>
             )
         } else if (value.type !== 'plain' && value?.url) {
@@ -65,6 +70,7 @@ class Url extends ReactEmbedBlot {
                             objectName={object ? text : null}
                             isShared={object ? isShared : null}
                             externalContact={object ? externalContact : null}
+                            embedNode={node}
                         />
                     </Provider>
                 )
@@ -73,7 +79,7 @@ class Url extends ReactEmbedBlot {
             renderEmbedContent(
                 node,
                 <Provider store={store}>
-                    <UrlWrapper value={value} />
+                    <UrlWrapper value={value} embedNode={node} />
                 </Provider>
             )
         }
