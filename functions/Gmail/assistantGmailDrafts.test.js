@@ -4,21 +4,29 @@ jest.mock('./assistantGmailSearch', () => ({
     getGmailClient: jest.fn(),
 }))
 
+jest.mock('../Email/providers/microsoftEmailProvider', () => ({
+    createMicrosoftDraftForAssistantRequest: jest.fn(),
+    createMicrosoftReplyDraftForAssistantRequest: jest.fn(),
+    getConnectedMicrosoftEmailAccounts: jest.fn(),
+    updateMicrosoftDraftForAssistantRequest: jest.fn(),
+}))
+
 const {
     buildMimeMessage,
     buildPlainTextMimeMessage,
     buildGmailDraftUrl,
     buildGmailThreadUrl,
     buildReferencesHeader,
+    createGmailDraftForAssistantRequest,
     normalizeAttachmentList,
     normalizeDraftData,
     normalizeRecipientList,
     pickLatestResult,
     selectDefaultAccount,
-    selectProjectAccount,
     updateGmailDraftForAssistantRequest,
 } = require('./assistantGmailDrafts')
 const { getConnectedGmailAccounts, getGmailClient } = require('./assistantGmailSearch')
+const { getConnectedMicrosoftEmailAccounts } = require('../Email/providers/microsoftEmailProvider')
 
 function toBase64Url(value) {
     return Buffer.from(value, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
@@ -174,18 +182,6 @@ describe('assistantGmailDrafts helpers', () => {
         })
     })
 
-    test('selects the project account for new drafts', () => {
-        const account = selectProjectAccount(
-            [
-                { projectId: 'p1', gmailEmail: 'a@example.com' },
-                { projectId: 'p2', gmailEmail: 'b@example.com' },
-            ],
-            'p2'
-        )
-
-        expect(account).toEqual({ projectId: 'p2', gmailEmail: 'b@example.com' })
-    })
-
     test('selects the default account when one is marked', () => {
         const account = selectDefaultAccount([
             { projectId: 'p1', gmailEmail: 'a@example.com', gmailDefault: false },
@@ -203,6 +199,77 @@ describe('assistantGmailDrafts helpers', () => {
         ])
 
         expect(result).toEqual({ messageId: 'm2', internalDate: 5000 })
+    })
+})
+
+describe('assistantGmailDrafts global account selection', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        getConnectedMicrosoftEmailAccounts.mockResolvedValue([])
+    })
+
+    test('creates a draft with the global default account from another project', async () => {
+        const gmail = {
+            users: {
+                drafts: {
+                    create: jest.fn().mockResolvedValue({
+                        data: { id: 'draft-1', message: { id: 'message-1', threadId: 'thread-1' } },
+                    }),
+                },
+            },
+        }
+        getConnectedGmailAccounts.mockResolvedValue([
+            {
+                projectId: 'email_google_default',
+                connectionProjectId: 'integration-home-project',
+                gmailEmail: 'default@example.com',
+                gmailDefault: true,
+            },
+        ])
+        getGmailClient.mockResolvedValue(gmail)
+
+        const result = await createGmailDraftForAssistantRequest({
+            userId: 'user-1',
+            projectId: 'current-chat-project',
+            to: 'recipient@example.com',
+            subject: 'Global integration',
+            body: 'This draft should use the account default.',
+        })
+
+        expect(result.success).toBe(true)
+        expect(result.gmailEmail).toBe('default@example.com')
+        expect(getGmailClient).toHaveBeenCalledWith('user-1', 'email_google_default')
+    })
+
+    test('does not use the current project to choose between global email accounts', async () => {
+        getConnectedGmailAccounts.mockResolvedValue([
+            {
+                projectId: 'email_google_first',
+                connectionProjectId: 'current-chat-project',
+                gmailEmail: 'first@example.com',
+                gmailDefault: false,
+            },
+            {
+                projectId: 'email_google_second',
+                connectionProjectId: 'another-project',
+                gmailEmail: 'second@example.com',
+                gmailDefault: false,
+            },
+        ])
+
+        const result = await createGmailDraftForAssistantRequest({
+            userId: 'user-1',
+            projectId: 'current-chat-project',
+            to: 'recipient@example.com',
+            subject: 'Global integration',
+            body: 'Choose only through the global default.',
+        })
+
+        expect(result).toMatchObject({
+            success: false,
+            code: 'email_account_ambiguous',
+        })
+        expect(getGmailClient).not.toHaveBeenCalled()
     })
 })
 

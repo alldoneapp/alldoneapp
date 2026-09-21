@@ -16,8 +16,10 @@ const admin = require('firebase-admin')
 const { getMicrosoftGraphClient } = require('../../MicrosoftGraph/graphClient')
 const {
     createMicrosoftCalendarEventForAssistantRequest,
+    getConnectedMicrosoftCalendarAccounts,
     getMicrosoftCalendarBusyIntervalsForAssistantRequest,
 } = require('./microsoftCalendarProvider')
+const { buildConnectionId } = require('../../Integrations/providerConnections')
 
 describe('microsoftCalendarProvider availability', () => {
     beforeEach(() => {
@@ -97,6 +99,47 @@ describe('microsoftCalendarProvider availability', () => {
         )
         expect(request.mock.calls[0][0]).toContain('%24select=start%2Cend%2CshowAs%2CisCancelled%2CisAllDay')
         expect(request.mock.calls[1][0]).toBe('/me/calendarView?$skiptoken=private-pagination-token')
+    })
+
+    test('uses the account-level Microsoft Calendar default across projects', async () => {
+        const connectionId = buildConnectionId('calendar', 'microsoft', 'owner@example.com')
+        admin.firestore.mockReturnValue({
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({
+                    get: jest.fn().mockResolvedValue({
+                        exists: true,
+                        data: () => ({
+                            calendarConnections: {
+                                [connectionId]: {
+                                    provider: 'microsoft',
+                                    emailAddress: 'owner@example.com',
+                                    defaultProjectId: 'integration-home-project',
+                                    isDefaultAccount: true,
+                                },
+                            },
+                            apisConnected: {
+                                'integration-home-project': {
+                                    calendar: true,
+                                    calendarProvider: 'microsoft',
+                                    calendarEmail: 'owner@example.com',
+                                    calendarDefault: false,
+                                },
+                            },
+                        }),
+                    }),
+                })),
+            })),
+        })
+
+        await expect(getConnectedMicrosoftCalendarAccounts('user-1')).resolves.toEqual([
+            {
+                projectId: connectionId,
+                connectionProjectId: 'integration-home-project',
+                provider: 'microsoft',
+                calendarEmail: 'owner@example.com',
+                calendarDefault: true,
+            },
+        ])
     })
 
     test('ignores all-day and multi-day events while timed same-day events remain busy', async () => {
