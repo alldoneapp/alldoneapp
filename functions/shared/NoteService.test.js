@@ -112,6 +112,40 @@ describe('NoteService note creation formatting', () => {
             ])
         )
     })
+
+    test('keeps generated meeting email addresses intact in stored note content', () => {
+        const service = createService()
+        const meetingUrl = 'https://meet.google.com/abc-defg-hij'
+        const emailAddresses = ['karsten.wysk@gmail.com', 'jan.gohrke@rmc-consult.de']
+        const content = service.createNoteContent(
+            'Meeting',
+            [
+                '*Calendar-derived details.*',
+                `- **Organizer:** Karsten Wysk <${emailAddresses[0]}>`,
+                `  - Jan Gohrke <${emailAddresses[1]}>`,
+                `- **Location:** Google Meet ${meetingUrl}`,
+            ].join('\n'),
+            { editorId: 'note-1' }
+        )
+        const delta = decodeDelta(content)
+        const text = delta
+            .filter(op => typeof op.insert === 'string')
+            .map(op => op.insert)
+            .join('')
+        const urls = delta.filter(op => op.insert?.url).map(op => op.insert.url.url)
+
+        expect(text).toContain('Calendar-derived details.')
+        expect(
+            delta.some(
+                op =>
+                    typeof op.insert === 'string' &&
+                    op.insert.includes('Calendar-derived details.') &&
+                    op.attributes?.italic === true
+            )
+        ).toBe(true)
+        emailAddresses.forEach(emailAddress => expect(text).toContain(emailAddress))
+        expect(urls).toEqual([meetingUrl])
+    })
 })
 
 describe('NoteService patch planning', () => {
