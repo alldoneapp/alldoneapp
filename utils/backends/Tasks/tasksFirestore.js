@@ -182,6 +182,7 @@ import { isTaskOnUserPlate } from './focusTaskEligibility'
 import { CROSS_PROJECT_DESTINATION_WRITE, withoutServerAccessProjection } from '../accessProjection'
 import { readDocumentDirectlyFromServer } from '../firestoreDirectRead'
 import { captureTaskUndoStates } from './taskUndoCapture'
+import { buildFollowUpTask, resolveFollowUpGoalLink } from './followUpTaskBuilder'
 // getNextTaskId removed - now handled asynchronously in onCreate trigger
 
 const buildTaskProgressRewardKey = (taskId, completedAt, currentReviewerId) => {
@@ -986,33 +987,27 @@ export async function createFollowUpTask(projectId, task, dueDate, comment, newE
     const { loggedUser } = store.getState()
 
     const newTaskId = getId()
+    const goalLink = await resolveFollowUpGoalLink({
+        projectId,
+        sourceTask: task,
+        loadGoal: getGoalData,
+        onGoalReadError: error =>
+            console.warn('[FollowUp] Could not recover the linked Goal visibility', {
+                projectId,
+                sourceTaskId: task.id,
+                parentGoalId: task.parentGoalId,
+                error,
+            }),
+    })
 
-    const followUpTask = {
-        ...TasksHelper.getNewDefaultTask(),
-        id: newTaskId,
+    const followUpTask = buildFollowUpTask({
+        defaultTask: TasksHelper.getNewDefaultTask(),
+        sourceTask: task,
+        taskId: newTaskId,
         creatorId: loggedUser.uid,
-        dueDate: dueDate,
-        hasStar: task.hasStar,
-        isPrivate: task.isPrivate,
-        isPublicFor: task.isPublicFor,
-        name: `#FollowUp ${task.name.replace(/#FollowUp/g, '')}`.toLowerCase(),
-        extendedName: `#FollowUp ${(task.extendedName || task.name).replace(/#FollowUp/g, '')}`,
-        userId: task.userId,
-        userIds: [task.userId],
-        currentReviewerId: task.userId,
-        observersIds: task.observersIds,
-        dueDateByObserversIds: task.dueDateByObserversIds,
-        estimationsByObserverIds: task.estimationsByObserverIds,
-        linkedParentTasksIds: task.linkedParentTasksIds,
-        linkedParentNotesIds: task.linkedParentNotesIds,
-        parentGoalId: task.parentGoalId,
-        parentGoalIsPublicFor: task.parentGoalIsPublicFor,
-        lockKey: task.lockKey,
-        timesFollowed: task.timesFollowed ? task.timesFollowed + 1 : 1,
-        commentsData: null,
-        followUpSourceTaskId: task.id,
-        ...(task.noteId && { noteId: task.noteId }),
-    }
+        dueDate,
+        goalLink,
+    })
 
     // The target task must exist before its conversation can be copied: comment rules verify the
     // stored parent document, and chat access projections are server-owned. The old client-side
