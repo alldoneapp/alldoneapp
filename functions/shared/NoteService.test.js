@@ -87,6 +87,31 @@ describe('NoteService note creation formatting', () => {
             ])
         )
     })
+
+    test('stores generated meeting links as clickable URL embeds', () => {
+        const service = createService()
+        const calendarUrl = 'https://www.google.com/calendar/event?eid=abc123+user%40gmail.com'
+        const content = service.createNoteContent(
+            'Meeting',
+            ['# Summary', '- **Calendar entry:** ' + calendarUrl].join('\n'),
+            { editorId: 'note-1' }
+        )
+        const delta = decodeDelta(content)
+
+        expect(delta).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    insert: {
+                        url: expect.objectContaining({
+                            url: calendarUrl,
+                            type: 'plain',
+                            editorId: 'note-1',
+                        }),
+                    },
+                }),
+            ])
+        )
+    })
 })
 
 describe('NoteService patch planning', () => {
