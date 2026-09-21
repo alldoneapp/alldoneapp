@@ -16,6 +16,7 @@ const admin = require('firebase-admin')
 const { google } = require('googleapis')
 const moment = require('moment-timezone')
 const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+const { buildConnectionId, listCalendarConnections } = require('../Integrations/providerConnections')
 
 const firestoreState = {
     users: {},
@@ -73,9 +74,12 @@ describe('assistantCalendarTools', () => {
         jest.clearAllMocks()
 
         admin.firestore.mockImplementation(() => buildFirestore())
-        getAuthorizedOAuth2Client.mockImplementation((userId, projectId) =>
-            Promise.resolve(createOAuthClient(projectId))
-        )
+        getAuthorizedOAuth2Client.mockImplementation((userId, projectId) => {
+            const connection = listCalendarConnections(firestoreState.users[userId] || {}).find(
+                item => item.connectionId === projectId
+            )
+            return Promise.resolve(createOAuthClient(connection?.defaultProjectId || projectId))
+        })
         google.calendar.mockImplementation(({ auth }) => {
             const client = calendarClients[auth.__projectId]
             if (!client) throw new Error(`Missing mocked calendar client for project ${auth.__projectId}`)
@@ -124,8 +128,48 @@ describe('assistantCalendarTools', () => {
         const accounts = await assistantCalendarTools.__private__.getConnectedCalendarAccounts('user-1')
 
         expect(accounts).toEqual([
-            { projectId: 'p1', calendarEmail: 'me@example.com', calendarDefault: false },
-            { projectId: 'p3', calendarEmail: 'other@example.com', calendarDefault: false },
+            {
+                projectId: buildConnectionId('calendar', 'google', 'me@example.com'),
+                connectionProjectId: 'p1',
+                calendarEmail: 'me@example.com',
+                calendarDefault: false,
+            },
+            {
+                projectId: buildConnectionId('calendar', 'google', 'other@example.com'),
+                connectionProjectId: 'p3',
+                calendarEmail: 'other@example.com',
+                calendarDefault: false,
+            },
+        ])
+    })
+
+    test('uses the global default Calendar account even when legacy project flags disagree', async () => {
+        const connectionId = buildConnectionId('calendar', 'google', 'default@example.com')
+        setUser('user-1', {
+            calendarConnections: {
+                [connectionId]: {
+                    provider: 'google',
+                    emailAddress: 'default@example.com',
+                    defaultProjectId: 'integration-home-project',
+                    isDefaultAccount: true,
+                },
+            },
+            apisConnected: {
+                'integration-home-project': {
+                    calendar: true,
+                    calendarEmail: 'default@example.com',
+                    calendarDefault: false,
+                },
+            },
+        })
+
+        await expect(assistantCalendarTools.__private__.getConnectedCalendarAccounts('user-1')).resolves.toEqual([
+            {
+                projectId: connectionId,
+                connectionProjectId: 'integration-home-project',
+                calendarEmail: 'default@example.com',
+                calendarDefault: true,
+            },
         ])
     })
 
@@ -181,7 +225,7 @@ describe('assistantCalendarTools', () => {
         expect(result.success).toBe(true)
         expect(result.searchedAccounts).toHaveLength(2)
         expect(result.results[0]).toMatchObject({
-            projectId: 'p1',
+            projectId: buildConnectionId('calendar', 'google', 'one@example.com'),
             calendarEmail: 'one@example.com',
             calendarId: 'primary',
             eventId: 'evt-1',
@@ -876,7 +920,7 @@ describe('assistantCalendarTools', () => {
         })
 
         expect(result.success).toBe(true)
-        expect(result.projectId).toBe('p2')
+        expect(result.projectId).toBe(buildConnectionId('calendar', 'google', 'two@example.com'))
         expect(defaultClient.events.insert).toHaveBeenCalled()
         expect(calendarClients.p1.events.insert).not.toHaveBeenCalled()
     })
@@ -910,7 +954,7 @@ describe('assistantCalendarTools', () => {
         })
 
         expect(result.success).toBe(true)
-        expect(result.projectId).toBe('p2')
+        expect(result.projectId).toBe(buildConnectionId('calendar', 'google', 'two@example.com'))
         expect(defaultClient.events.insert).toHaveBeenCalledWith(expect.objectContaining({ calendarId: 'primary' }))
         expect(nonDefaultClient.calendars.get).not.toHaveBeenCalled()
         expect(nonDefaultClient.events.insert).not.toHaveBeenCalled()

@@ -6,6 +6,7 @@ const moment = require('moment-timezone')
 
 const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { extractMeetingJoinUrl } = require('../Calendar/meetingJoinUrl')
+const { CALENDAR_PROVIDER_GOOGLE, listCalendarConnections } = require('../Integrations/providerConnections')
 const {
     GOOGLE_CONFERENCE_DATA_VERSION,
     buildGoogleMeetCreateRequest,
@@ -41,22 +42,6 @@ const MAX_AVAILABILITY_PAGES_PER_CALENDAR = 100
 const DEFAULT_WORKING_HOURS_START = '09:00'
 const DEFAULT_WORKING_HOURS_END = '17:00'
 const PUBLIC_MEETING_LINK_SETTINGS_PATH = userId => `users/${userId}/bookingSettings/default`
-
-function getActiveProjectIds(userData = {}) {
-    const projectIds = Array.isArray(userData.projectIds) ? userData.projectIds : []
-    const archivedProjectIds = Array.isArray(userData.archivedProjectIds) ? userData.archivedProjectIds : []
-    const templateProjectIds = Array.isArray(userData.templateProjectIds) ? userData.templateProjectIds : []
-    const guideProjectIds = Array.isArray(userData.guideProjectIds) ? userData.guideProjectIds : []
-    const blockedProjectIds = new Set([...archivedProjectIds, ...templateProjectIds, ...guideProjectIds])
-
-    const activeProjectIds = projectIds.filter(projectId => !blockedProjectIds.has(projectId))
-    const defaultProjectId = typeof userData.defaultProjectId === 'string' ? userData.defaultProjectId.trim() : ''
-    if (defaultProjectId && !blockedProjectIds.has(defaultProjectId) && !activeProjectIds.includes(defaultProjectId)) {
-        activeProjectIds.unshift(defaultProjectId)
-    }
-
-    return activeProjectIds
-}
 
 function normalizeLimit(limit) {
     const parsed = parseInt(limit, 10)
@@ -236,30 +221,14 @@ async function getConnectedCalendarAccounts(userId) {
     if (!userDoc.exists) throw new Error('User not found')
 
     const userData = userDoc.data() || {}
-    const apisConnected = userData.apisConnected || {}
-    const activeProjectIds = getActiveProjectIds(userData)
-    const seenKeys = new Set()
-    const accounts = []
-
-    activeProjectIds.forEach(projectId => {
-        const connection = apisConnected?.[projectId]
-        if (!connection?.calendar) return
-        if (connection.calendarProvider === 'microsoft') return
-
-        const calendarEmail =
-            typeof connection.calendarEmail === 'string' ? connection.calendarEmail.trim().toLowerCase() : ''
-        const dedupeKey = calendarEmail || projectId
-        if (seenKeys.has(dedupeKey)) return
-        seenKeys.add(dedupeKey)
-
-        accounts.push({
-            projectId,
-            calendarEmail: calendarEmail || null,
-            calendarDefault: connection.calendarDefault === true,
-        })
-    })
-
-    return accounts
+    return listCalendarConnections(userData)
+        .filter(connection => connection.provider === CALENDAR_PROVIDER_GOOGLE)
+        .map(connection => ({
+            projectId: connection.connectionId,
+            connectionProjectId: connection.defaultProjectId || '',
+            calendarEmail: connection.emailAddress || null,
+            calendarDefault: connection.isDefaultAccount,
+        }))
 }
 
 async function getUserDefaultTimeZone(userId) {
@@ -1455,7 +1424,6 @@ module.exports = {
     updateCalendarEventForAssistantRequest,
     deleteCalendarEventForAssistantRequest,
     __private__: {
-        getActiveProjectIds,
         normalizeLimit,
         normalizeEventDateTimeInput,
         validateEventRange,
