@@ -39,6 +39,12 @@ describe('link detection', () => {
             })
         })
 
+        it('keeps an attached trailing question mark as part of the URL (AT-2620)', () => {
+            const url = 'https://jtl-software.atlassian.net/wiki/spaces/AD/pages/edit-v2/1527349338?'
+
+            expect(getUrlTokenParts(url)).toEqual({ prefix: '', url, suffix: '' })
+        })
+
         it('separates sentence punctuation from a plain URL', () => {
             expect(getUrlTokenParts('https://example.com/path,')).toEqual({
                 prefix: '',

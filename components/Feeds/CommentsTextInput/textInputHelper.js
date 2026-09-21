@@ -515,7 +515,9 @@ export const processPastedTextWithBreakLines = (
 
                 // If it's not a formatted link, check for trailing punctuation
                 if (!isFomatedLink) {
-                    const urlMatch = word.match(/^(.*?)([\.,;:!?]*?)$/)
+                    // Keep an attached `?` in the URL: it is a valid empty query delimiter
+                    // (AT-2620), not sentence punctuation.
+                    const urlMatch = word.match(/^(.*?)([\.,;:!]*?)$/)
                     if (urlMatch && urlMatch[2]) {
                         const urlPart = urlMatch[1]
                         const punctuation = urlMatch[2]
@@ -591,7 +593,7 @@ export const getLinkedTasksIdsFromText = (text, projectId) => {
         let urlToProcess = word
 
         // Check for trailing punctuation and remove it for URL processing
-        const urlMatch = word.match(/^(.*?)([\.,;:!?]*?)$/)
+        const urlMatch = word.match(/^(.*?)([\.,;:!]*?)$/)
         if (urlMatch && urlMatch[2] && REGEX_URL.test(urlMatch[1])) {
             urlToProcess = urlMatch[1]
         }
@@ -705,7 +707,9 @@ export const processPastedText = (
             let trailingPunctuation = ''
 
             // Check for trailing punctuation
-            const urlMatch = word.match(/^(.*?)([\.,;:!?]*?)$/)
+            // Keep an attached `?` in the URL: it is a valid empty query delimiter
+            // (AT-2620), not sentence punctuation.
+            const urlMatch = word.match(/^(.*?)([\.,;:!]*?)$/)
             if (urlMatch && urlMatch[2]) {
                 const urlPart = urlMatch[1]
                 const punctuation = urlMatch[2]

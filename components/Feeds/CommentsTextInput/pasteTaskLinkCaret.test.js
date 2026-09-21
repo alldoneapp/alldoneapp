@@ -71,6 +71,7 @@ import {
 
 const PROJECT_ID = 'PROJ1'
 const TASK_URL = `https://alldone.app/projects/${PROJECT_ID}/tasks/TASK9`
+const ATLASSIAN_URL = 'https://jtl-software.atlassian.net/wiki/spaces/AD/pages/edit-v2/1527349338?'
 const NOTE_FORMATS = [...ALLOWED_FORMATS, 'taskTagFormat']
 
 // The real url/taskTagFormat blots render React through redux and the Firebase bridge. This
@@ -130,6 +131,9 @@ const embedIndexOf = (quill, blotName) => {
     }
     return -1
 }
+
+const embedValueOf = (quill, blotName) =>
+    quill.getContents().ops.find(op => typeof op.insert === 'object' && op.insert[blotName])?.insert[blotName]
 
 const pasteInto = (quill, { at, selected = 0, text, html = '' }) => {
     quill.setSelection(at, selected)
@@ -271,6 +275,21 @@ describe('AT-2416 pasting a task link keeps the caret behind the link', () => {
             expect(embedIndexOf(quill, 'url')).toBe(0)
             expect(quill.getSelection().index).toBe(2)
         })
+
+        it.each([
+            ['plain text', { text: ATLASSIAN_URL }],
+            ['HTML text', { text: ATLASSIAN_URL, html: ATLASSIAN_URL }],
+        ])(
+            'keeps a trailing question mark inside a pasted %s URL and places the caret after the link (AT-2620)',
+            (_clipboardType, clipboard) => {
+                const quill = buildEditor('input')
+
+                pasteInto(quill, { at: 0, ...clipboard })
+
+                expect(embedValueOf(quill, 'url').url).toBe(ATLASSIAN_URL)
+                expect(quill.getSelection().index).toBe(embedIndexOf(quill, 'url') + 2)
+            }
+        )
 
         it('keeps the line breaks of a multi-line plain-text paste', () => {
             const quill = buildEditor('input')
