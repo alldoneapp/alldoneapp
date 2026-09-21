@@ -310,7 +310,8 @@ describe('a goal section wearing its exit (AT-2507)', () => {
 
     it('applies the swipe postpone motion to the complete rendered goal section', async () => {
         const tree = await renderSection({ hierarchy: true, postponeMotionEnabled: true })
-        const write = jest.fn()
+        let finishWrite
+        const write = jest.fn(() => new Promise(resolve => (finishWrite = resolve)))
         let operation
 
         act(() => {
@@ -333,9 +334,68 @@ describe('a goal section wearing its exit (AT-2507)', () => {
 
         await act(async () => {
             jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
-            await operation
         })
         expect(write).toHaveBeenCalledTimes(1)
+        expect(flatStyleOf(wrapperOf(tree)).display).toBe('none')
+        // The real outer wrapper releases the entire section while its children and save remain.
+        expect(wrapperOf(tree).findAllByType('TasksList')).toHaveLength(1)
+        await act(async () => {
+            finishWrite()
+            await operation
+            tree.unmount()
+        })
+    })
+
+    it('restores only the remaining tasks when a bulk postpone partially fails', async () => {
+        const firstTask = { id: 'moved-task' }
+        const remainingTask = { id: 'failed-task' }
+        const sectionTree = tasks => (
+            <ParentGoalSection
+                projectId={PROJECT}
+                dateIndex={0}
+                goalId={GOAL}
+                taskList={tasks}
+                taskListIndex={3}
+                instanceKey="instance-1"
+                inMainSection={true}
+                goalIndex={0}
+                amountToRender={tasks.length}
+                containerStyle={{ marginBottom: 32, minHeight: 258 }}
+                postponeMotionEnabled={true}
+            />
+        )
+        let tree
+        await act(async () => {
+            tree = renderer.create(sectionTree([firstTask, remainingTask]))
+        })
+        await act(async () => {
+            mockWatchGoal.mock.calls[mockWatchGoal.mock.calls.length - 1][3](goalDoc)
+        })
+
+        let rejectWrite
+        let operation
+        act(() => {
+            operation = postponeGoalWithMotion(
+                { projectId: PROJECT, goal: goalDoc, targetDate: Number.MAX_SAFE_INTEGER },
+                () => new Promise((resolve, reject) => (rejectWrite = reject))
+            )
+        })
+        await act(async () => {
+            jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
+        })
+        expect(flatStyleOf(wrapperOf(tree)).display).toBe('none')
+
+        // One task's local snapshot has already moved it to another day.
+        await act(async () => tree.update(sectionTree([remainingTask])))
+        expect(flatStyleOf(wrapperOf(tree)).display).toBe('none')
+        await act(async () => {
+            rejectWrite(new Error('second task failed'))
+            await expect(operation).rejects.toThrow('second task failed')
+        })
+        expect(flatStyleOf(wrapperOf(tree))).toMatchObject({ marginBottom: 32, minHeight: 258 })
+        expect(flatStyleOf(wrapperOf(tree)).display).toBeUndefined()
+        expect(tree.root.findByType('TasksList').props.taskList).toEqual([remainingTask])
+        await act(async () => tree.unmount())
     })
 
     it('puts the exit style LAST, so no earlier floor can outrank it', async () => {
@@ -376,6 +436,7 @@ describe('an empty-goal row wearing its exit (AT-2521)', () => {
 
     beforeEach(() => {
         jest.useFakeTimers()
+        resetGoalPostponeMotionRegistry()
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(false))
         AccessibilityInfo.addEventListener = jest.fn(() => ({ remove: jest.fn() }))
         process.env.NODE_ENV = 'development'
@@ -383,19 +444,27 @@ describe('an empty-goal row wearing its exit (AT-2521)', () => {
 
     afterEach(() => {
         jest.useRealTimers()
+        resetGoalPostponeMotionRegistry()
         AccessibilityInfo.isReduceMotionEnabled = originalIsReduceMotionEnabled
         AccessibilityInfo.addEventListener = originalAddEventListener
         process.env.NODE_ENV = originalNodeEnv
     })
 
-    const emptyGoalTree = exitRunId => (
-        <EmptyGoal goal={goalDoc} projectId={PROJECT} dateIndex={0} instanceKey={'instance-1'} exitRunId={exitRunId} />
+    const emptyGoalTree = (exitRunId, postponeMotionEnabled = false) => (
+        <EmptyGoal
+            goal={goalDoc}
+            projectId={PROJECT}
+            dateIndex={0}
+            instanceKey={'instance-1'}
+            exitRunId={exitRunId}
+            postponeMotionEnabled={postponeMotionEnabled}
+        />
     )
 
-    const renderEmptyGoal = async ({ exitRunId = 0 } = {}) => {
+    const renderEmptyGoal = async ({ exitRunId = 0, postponeMotionEnabled = false } = {}) => {
         let tree
         await act(async () => {
-            tree = renderer.create(emptyGoalTree(exitRunId))
+            tree = renderer.create(emptyGoalTree(exitRunId, postponeMotionEnabled))
             await Promise.resolve()
         })
         // jsdom lays nothing out, so the browser's measurement is handed over by hand — without it
@@ -421,6 +490,27 @@ describe('an empty-goal row wearing its exit (AT-2521)', () => {
         expect(style.height).toBeUndefined()
         expect(style.overflow).toBeUndefined()
         expect(style.pointerEvents).toBeUndefined()
+    })
+
+    it('releases an empty goal gap while its save is still pending', async () => {
+        const tree = await renderEmptyGoal({ postponeMotionEnabled: true })
+        let finishWrite
+        let operation
+        act(() => {
+            operation = postponeGoalWithMotion(
+                { projectId: PROJECT, goal: goalDoc, targetDate: Number.MAX_SAFE_INTEGER },
+                () => new Promise(resolve => (finishWrite = resolve))
+            )
+        })
+        await act(async () => {
+            jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
+        })
+        expect(flatStyleOf(wrapperOf(tree)).display).toBe('none')
+        await act(async () => {
+            finishWrite()
+            await operation
+            tree.unmount()
+        })
     })
 
     /** A plain `View` resolves the interpolations once and freezes on the first frame. */
