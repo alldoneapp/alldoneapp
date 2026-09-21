@@ -92,14 +92,16 @@ class CommentButton extends Component {
         const { isQuillTagEditorOpen, openModals } = storeState
         const { projectId, task } = this.props
 
-        // AT-2084: read the assistant flag through THIS task's identity instead of the raw global
-        // `state.assistantEnabled`. CommentButton lives in the inline task editor, outside any Chat
-        // DV, so nothing here re-armed the flag; a `true` left over from a chat created elsewhere
-        // (`createBotQuickTopic` / `generateTaskFromPreConfig` with `skipNavigation: true`) made the
-        // comment get posted immediately instead of being deferred until the task edit is saved.
-        // An UNSCOPED flag is still honored — that is what RichCommentModal itself dispatches for
-        // this very object, and what every in-chat writer produces — so the normal path is unchanged.
-        const assistantEnabled = selectAssistantEnabledFor(storeState, projectId, task ? task.id : null)
+        // RichCommentModal uses its thread-local assistant state to decide whether this submission
+        // keeps the popup open. Use the SAME snapshot here to decide whether the task editor stays
+        // open. Reading Redux independently allowed the two decisions to disagree: the popup could
+        // close while this component took the send-now branch and left the parent task in edit mode
+        // (AT-2616). Keep the scoped Redux lookup only as a defensive fallback for older/direct
+        // callers that do not provide the submit-time value (AT-2084).
+        const assistantEnabled =
+            typeof explicitAssistantEnabled === 'boolean'
+                ? explicitAssistantEnabled
+                : selectAssistantEnabledFor(storeState, projectId, task ? task.id : null)
 
         if (
             !isQuillTagEditorOpen &&
