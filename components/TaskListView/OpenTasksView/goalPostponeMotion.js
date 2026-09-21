@@ -20,8 +20,9 @@ import {
  *
  * The write deliberately starts after the exit has finished. That keeps the section in the tree
  * for the complete run, prevents live task snapshots from tearing rows out halfway through, and
- * gives a rejected write one stable section to restore. Layout dimensions are never animated:
- * siblings keep their slots until the final list update removes this section.
+ * gives a rejected write one stable section to restore. Once the exit finishes, the section leaves
+ * layout immediately while persistence continues. Keeping it mounted lets a rejected write restore
+ * whatever the live list still contains. Layout dimensions are never animated.
  */
 
 const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
@@ -46,6 +47,7 @@ export const postponeGoalWithMotion = async ({ projectId, goal, targetDate }, wr
             : { settled: () => Promise.resolve(), cancel: () => {} }
     try {
         await run.settled()
+        run.releaseSpace?.()
         return await write()
     } catch (error) {
         run.cancel()
@@ -56,6 +58,7 @@ export const postponeGoalWithMotion = async ({ projectId, goal, targetDate }, wr
 export default function useGoalPostponeMotion({ enabled = false, projectId, goalId } = {}) {
     const reducedMotion = useReducedMotion()
     const [exiting, setExiting] = useState(false)
+    const [spaceReleased, setSpaceReleased] = useState(false)
 
     const translateX = useRef(new Animated.Value(0)).current
     const opacity = useRef(new Animated.Value(1)).current
@@ -73,6 +76,7 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
         exitingRef.current = false
         if (mountedRef.current) {
             setExiting(false)
+            setSpaceReleased(false)
         }
     }, [opacity, scaleY, translateX])
 
@@ -113,8 +117,7 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
                         useNativeDriver: false,
                     }),
                 ]),
-                // Visually collapse the departing section without changing its layout slot. The
-                // write performs the single final list closure after the motion has finished.
+                // Keep the slot stable during the motion, then release it once before writing.
                 Animated.timing(scaleY, {
                     toValue: 0,
                     duration: POSTPONE_COLLAPSE_MS,
@@ -135,6 +138,9 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
             settled: () => {
                 const remaining = holdMs - (Date.now() - startedAt)
                 return remaining > 0 ? new Promise(resolve => setTimeout(resolve, remaining)) : Promise.resolve()
+            },
+            releaseSpace: () => {
+                if (mountedRef.current) setSpaceReleased(true)
             },
             cancel: () => {
                 if (cancelled) return
@@ -160,12 +166,15 @@ export default function useGoalPostponeMotion({ enabled = false, projectId, goal
 
     const sectionStyle = useMemo(() => {
         if (!exiting) return undefined
+        // Removing the whole wrapper also removes its padding, margins and any min-height floor.
+        // Only this mounted day section is hidden; another day can show the postponed goal normally.
+        if (spaceReleased) return { display: 'none' }
         const style = { opacity, pointerEvents: 'none' }
         if (!reducedMotion) {
             style.transform = [{ translateX }, { scaleY }]
         }
         return style
-    }, [exiting, opacity, reducedMotion, scaleY, translateX])
+    }, [exiting, opacity, reducedMotion, scaleY, spaceReleased, translateX])
 
     return { sectionStyle, exiting }
 }
