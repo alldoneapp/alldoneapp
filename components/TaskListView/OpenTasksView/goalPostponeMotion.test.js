@@ -114,6 +114,36 @@ describe('whole goal postpone motion (AT-2541)', () => {
         expect(motion.sectionStyle).toBeUndefined()
     })
 
+    it.each([false, true])('releases the gap before a slow save settles (reduced motion: %s)', async reduced => {
+        AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(reduced))
+        const tree = await mount()
+        let finishWrite
+        const write = jest.fn(() => new Promise(resolve => (finishWrite = resolve)))
+        const operation = postpone(write)
+        const duration = reduced ? POSTPONE_REDUCED_FADE_MS : POSTPONE_EXIT_TOTAL_MS
+
+        await act(async () => {
+            jest.advanceTimersByTime(duration - 1)
+        })
+        expect(motion.sectionStyle.display).toBeUndefined()
+        expect(write).not.toHaveBeenCalled()
+
+        await act(async () => {
+            jest.advanceTimersByTime(1)
+        })
+        expect(write).toHaveBeenCalledTimes(1)
+        expect(tree.root.findByProps({ testID: 'goal' }).props.style.display).toBe('none')
+        expect(tree.root.findByProps({ testID: 'sibling-goal-section' }).props.style).toBe(siblingStyle)
+
+        await act(async () => {
+            finishWrite()
+            await operation
+        })
+        // A successful save may still be waiting for the list listener; do not reopen its gap.
+        expect(tree.root.findByProps({ testID: 'goal' }).props.style.display).toBe('none')
+        await act(async () => tree.unmount())
+    })
+
     it('uses only a brief fade under reduced motion', async () => {
         AccessibilityInfo.isReduceMotionEnabled = jest.fn(() => Promise.resolve(true))
         const tree = await mount()
@@ -137,15 +167,22 @@ describe('whole goal postpone motion (AT-2541)', () => {
     })
 
     it('restores the complete section when its write fails', async () => {
-        await mount()
+        const tree = await mount()
         const error = new Error('write failed')
-        const promise = postpone(jest.fn(() => Promise.reject(error)))
+        let rejectWrite
+        const promise = postpone(() => new Promise((resolve, reject) => (rejectWrite = reject)))
 
         await act(async () => {
             jest.advanceTimersByTime(POSTPONE_EXIT_TOTAL_MS)
+        })
+        expect(tree.root.findByProps({ testID: 'goal' }).props.style.display).toBe('none')
+
+        await act(async () => {
+            rejectWrite(error)
             await expect(promise).rejects.toBe(error)
         })
         expect(motion.sectionStyle).toBeUndefined()
+        await act(async () => tree.unmount())
     })
 
     it('writes immediately when no eligible Today section is registered', async () => {
