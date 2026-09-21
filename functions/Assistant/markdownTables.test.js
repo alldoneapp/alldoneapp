@@ -101,4 +101,76 @@ describe('meeting transcript markdown conversion', () => {
             ])
         )
     })
+
+    test('stores generated calendar and meeting URLs as clickable Quill embeds', () => {
+        const ytext = new MockYText()
+        const calendarUrl = 'https://www.google.com/calendar/event?eid=abc123+user%40gmail.com'
+        const meetingUrl =
+            'https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%22Tid%22%3a%22tenant%22%7d'
+
+        insertMarkdownToYjs(
+            ytext,
+            0,
+            [
+                '# Summary',
+                '- **Calendar entry:** ' + calendarUrl,
+                '- **Location:** Microsoft Teams – ' + meetingUrl,
+            ].join('\n'),
+            { editorId: 'note-1' }
+        )
+
+        const urlEmbeds = ytext.ops.filter(op => op.insert?.url).map(op => op.insert.url)
+        expect(urlEmbeds).toEqual([
+            expect.objectContaining({
+                url: calendarUrl,
+                type: 'plain',
+                urlBoundary: 'google.com...',
+                id: expect.any(String),
+                editorId: 'note-1',
+            }),
+            expect.objectContaining({
+                url: meetingUrl,
+                type: 'plain',
+                urlBoundary: 'teams.microsoft.com...',
+                id: expect.any(String),
+                editorId: 'note-1',
+            }),
+        ])
+        expect(containsMarkdown('Calendar: ' + calendarUrl)).toBe(true)
+    })
+
+    test('keeps sentence punctuation outside generated URL embeds', () => {
+        const ytext = new MockYText()
+        const meetingUrl = 'https://teams.microsoft.com/l/meetup-join/abc?context=%7bvalue%7d'
+
+        insertMarkdownToYjs(ytext, 0, `Join ${meetingUrl}.`)
+
+        expect(ytext.ops).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ insert: { url: expect.objectContaining({ url: meetingUrl }) } }),
+                expect.objectContaining({ insert: '.' }),
+            ])
+        )
+    })
+
+    test('linkifies generic bare domains without treating email addresses as links', () => {
+        const ytext = new MockYText()
+
+        insertMarkdownToYjs(ytext, 0, 'Docs: example.com/reference. Contact: user@example.com')
+
+        const urlEmbeds = ytext.ops.filter(op => op.insert?.url).map(op => op.insert.url)
+        expect(urlEmbeds).toEqual([
+            expect.objectContaining({
+                url: 'example.com/reference',
+                type: 'plain',
+                urlBoundary: 'example.com...',
+            }),
+        ])
+        expect(
+            ytext.ops
+                .filter(op => typeof op.insert === 'string')
+                .map(op => op.insert)
+                .join('')
+        ).toContain('user@example.com')
+    })
 })
