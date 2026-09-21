@@ -16,8 +16,11 @@ const REGEX_CHECKBOX_UNCHECKED = /^- \[ \] (.+)$/
 const REGEX_CHECKBOX_CHECKED = /^- \[x\] (.+)$/i
 const REGEX_TABLE_SEPARATOR_CELL = /^:?-{3,}:?$/
 const REGEX_IMAGE = /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))\)$/
+const REGEX_EMAIL_ADDRESS =
+    /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[a-z0-9\u00a1-\uffff](?:[a-z0-9\-\u00a1-\uffff]*[a-z0-9\u00a1-\uffff])?\.)+[a-z\u00a1-\uffff]{2,}/gi
 const REGEX_INLINE_URL =
     /(?:https?|ftp):\/\/[^\s<>]+|www\.[^\s<>]+|(?<![\w@])(?:[a-z0-9\u00a1-\uffff](?:[a-z0-9\-\u00a1-\uffff]*[a-z0-9\u00a1-\uffff])?\.)+[a-z\u00a1-\uffff]{2,}(?::[0-9]+)?(?:[/?#][^\s<>@]*)?/gi
+const REGEX_ASTERISK_ITALIC = /(?<![\w*])\*([^*\n]+?)\*(?![\w*])/
 
 const TRAILING_URL_PUNCTUATION = new Set(['.', ',', ';', ':', '!', '?', '>', '"', "'", '”', '’'])
 const CLOSING_URL_BOUNDARIES = {
@@ -59,17 +62,36 @@ function splitTrailingUrlPunctuation(candidate) {
 }
 
 function containsInlineUrl(text) {
-    REGEX_INLINE_URL.lastIndex = 0
-    return REGEX_INLINE_URL.test(text)
+    return splitInlineUrls(text).some(part => part.type === 'url')
+}
+
+function getEmailAddressRanges(text) {
+    const ranges = []
+    REGEX_EMAIL_ADDRESS.lastIndex = 0
+
+    let match
+    while ((match = REGEX_EMAIL_ADDRESS.exec(text)) !== null) {
+        ranges.push({ start: match.index, end: match.index + match[0].length })
+    }
+    return ranges
+}
+
+function overlapsEmailAddress(start, end, emailAddressRanges) {
+    return emailAddressRanges.some(range => start < range.end && end > range.start)
 }
 
 function splitInlineUrls(text) {
     const parts = []
+    const emailAddressRanges = getEmailAddressRanges(text)
     let textStart = 0
     REGEX_INLINE_URL.lastIndex = 0
 
     let match
     while ((match = REGEX_INLINE_URL.exec(text)) !== null) {
+        const hasExplicitProtocol = /^(?:https?|ftp):\/\//i.test(match[0])
+        const matchEnd = match.index + match[0].length
+        if (!hasExplicitProtocol && overlapsEmailAddress(match.index, matchEnd, emailAddressRanges)) continue
+
         const { url, suffix } = splitTrailingUrlPunctuation(match[0])
         if (!url) continue
 
@@ -179,6 +201,7 @@ function containsMarkdown(text) {
     if (
         /\*\*\*.+?\*\*\*/.test(text) ||
         /\*\*.+?\*\*/.test(text) ||
+        REGEX_ASTERISK_ITALIC.test(text) ||
         /(?<!\w)_.+?_(?!\w)/.test(text) ||
         /~~.+?~~/.test(text) ||
         containsInlineUrl(text)
@@ -399,6 +422,18 @@ function parseInlineFormatting(text) {
                 index: italicMatch.index,
                 length: italicMatch[0].length,
                 text: italicMatch[1],
+                bold: false,
+                italic: true,
+                strike: false,
+            })
+        }
+
+        const asteriskItalicMatch = REGEX_ASTERISK_ITALIC.exec(str)
+        if (asteriskItalicMatch) {
+            matches.push({
+                index: asteriskItalicMatch.index,
+                length: asteriskItalicMatch[0].length,
+                text: asteriskItalicMatch[1],
                 bold: false,
                 italic: true,
                 strike: false,

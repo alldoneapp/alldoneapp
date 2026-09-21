@@ -71,19 +71,28 @@ describe('assistant markdown table conversion', () => {
 })
 
 describe('meeting transcript markdown conversion', () => {
-    test('converts headers, underscore italics, and uploaded screenshots', () => {
+    test('converts headers, underscore italics, asterisk italics, and uploaded screenshots', () => {
         const ytext = new MockYText()
         const imageUrl = 'https://firebasestorage.googleapis.com/example.jpg?token=abc'
 
-        insertMarkdownToYjs(ytext, 0, `# Meeting Notes\n\n_Duration: 1 min_\n\n![Screenshot at 0:04](<${imageUrl}>)`, {
-            editorId: 'note-1',
-        })
+        insertMarkdownToYjs(
+            ytext,
+            0,
+            `# Meeting Notes\n\n_Duration: 1 min_\n\n*Calendar-derived details.*\n\n![Screenshot at 0:04](<${imageUrl}>)`,
+            {
+                editorId: 'note-1',
+            }
+        )
 
         expect(ytext.ops).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ insert: '\n', attributes: { header: 1 } }),
                 expect.objectContaining({
                     insert: 'Duration: 1 min',
+                    attributes: expect.objectContaining({ italic: true }),
+                }),
+                expect.objectContaining({
+                    insert: 'Calendar-derived details.',
                     attributes: expect.objectContaining({ italic: true }),
                 }),
                 expect.objectContaining({
@@ -137,6 +146,7 @@ describe('meeting transcript markdown conversion', () => {
             }),
         ])
         expect(containsMarkdown('Calendar: ' + calendarUrl)).toBe(true)
+        expect(containsMarkdown('*Calendar-derived details.*')).toBe(true)
     })
 
     test('keeps sentence punctuation outside generated URL embeds', () => {
@@ -172,5 +182,37 @@ describe('meeting transcript markdown conversion', () => {
                 .map(op => op.insert)
                 .join('')
         ).toContain('user@example.com')
+    })
+
+    test('preserves dotted email addresses with hyphenated domains while linkifying real URLs', () => {
+        const ytext = new MockYText()
+        const calendarUrl = 'https://calendar.google.com/calendar/event?eid=abc123'
+        const emailAddresses = [
+            'karsten.wysk@gmail.com',
+            'jan.gohrke@rmc-consult.de',
+            'daniel.sommerer+meeting@sub.rmc-consult.de',
+        ]
+
+        insertMarkdownToYjs(
+            ytext,
+            0,
+            [
+                `- **Organizer:** Karsten Wysk <${emailAddresses[0]}>`,
+                '- **Invited participants:**',
+                `  - Jan Gohrke <${emailAddresses[1]}>`,
+                `  - Daniel Sommerer <${emailAddresses[2]}>`,
+                `- **Calendar entry:** ${calendarUrl}`,
+            ].join('\n')
+        )
+
+        const urlEmbeds = ytext.ops.filter(op => op.insert?.url).map(op => op.insert.url.url)
+        const insertedText = ytext.ops
+            .filter(op => typeof op.insert === 'string')
+            .map(op => op.insert)
+            .join('')
+
+        expect(urlEmbeds).toEqual([calendarUrl])
+        emailAddresses.forEach(emailAddress => expect(insertedText).toContain(emailAddress))
+        expect(containsMarkdown(`Contact: ${emailAddresses[0]}`)).toBe(false)
     })
 })
