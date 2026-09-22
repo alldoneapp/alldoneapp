@@ -14,9 +14,9 @@ import { formatTemplateConflictField } from './templateConflictFields'
 export { formatTemplateConflictField }
 
 const MODEL_LABELS = {
-    MODEL_GPT5_6_SOL: 'GPT 5.6 Sol',
+    MODEL_GPT6_SOL: 'GPT 6 Sol',
     MODEL_GPT5_6_TERRA: 'GPT 5.6 Terra',
-    MODEL_GPT5_6_LUNA: 'GPT 5.6 Luna',
+    MODEL_GPT6_LUNA: 'GPT 6 Luna',
     MODEL_DEEPSEEK_V4_FLASH: 'DeepSeek V4 Flash',
 }
 

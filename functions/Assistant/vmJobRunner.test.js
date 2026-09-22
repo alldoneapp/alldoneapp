@@ -72,7 +72,7 @@ jest.mock('./vmJob', () => ({
         return '🔑 Using Alldone API billing. VM tokens will cost Gold.'
     },
     DEFAULT_CLAUDE_MODEL: 'opus',
-    DEFAULT_CODEX_MODEL: 'gpt-5.6-sol',
+    DEFAULT_CODEX_MODEL: 'gpt-6-sol',
     DEFAULT_CLAUDE_EFFORT_LEVEL: 'high',
     DEFAULT_CODEX_REASONING_EFFORT: 'medium',
 }))
@@ -251,7 +251,7 @@ describe('VM runner prompt', () => {
     })
 
     test('an Alldone Gold header is unchanged and quotes no rate (the launch comment owns that)', () => {
-        const header = __private__.renderVmWorkingHeader('Codex', { model: 'gpt-5.6-sol' }, 'api')
+        const header = __private__.renderVmWorkingHeader('Codex', { model: 'gpt-6-sol' }, 'api')
         expect(header).toContain('Using Alldone API billing')
         // Re-deriving a rate here could print a number different from the one frozen on the job.
         expect(header).not.toContain('Sol rate')
@@ -320,7 +320,7 @@ describe('VM runner prompt', () => {
     test('resolveAgentRunDetails falls back to per-agent defaults when the job omits them', () => {
         expect(__private__.resolveAgentRunDetails({ agent: 'claude' })).toEqual({ model: 'opus', effort: 'high' })
         expect(__private__.resolveAgentRunDetails({ agent: 'codex' })).toEqual({
-            model: 'gpt-5.6-sol',
+            model: 'gpt-6-sol',
             effort: 'medium',
         })
     })
@@ -501,7 +501,7 @@ describe('VM interactive agent bridge', () => {
             pendingWebhook: {},
             workdir: '/repo',
             prompt: 'Implement this',
-            runDetails: { model: 'gpt-5.6-sol', effort: 'medium' },
+            runDetails: { model: 'gpt-6-sol', effort: 'medium' },
             agentCredentials: { mode: 'subscription' },
             additionalWritableRoots: ['/home/user/git-metadata'],
         })
@@ -539,7 +539,7 @@ describe('VM interactive agent bridge', () => {
             pendingWebhook,
             workdir: '/home/user/repo',
             prompt: 'Implement this',
-            runDetails: { model: agent === 'claude' ? 'opus' : 'gpt-5.6-sol', effort: 'medium' },
+            runDetails: { model: agent === 'claude' ? 'opus' : 'gpt-6-sol', effort: 'medium' },
             agentCredentials: { mode: 'subscription' },
             additionalWritableRoots: [' /home/user/git-metadata ', '/home/user/git-metadata', '', null],
         })
@@ -1063,10 +1063,10 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
     })
 
     test('uses the native ChatGPT login without the API proxy for subscription runs', () => {
-        const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', undefined, true)
+        const command = __private__.buildCodexRunCommand(false, 'gpt-6-sol', 'medium', undefined, true)
 
         // Shell-quoted since AT-2230: an OpenRouter id carries `/` and may carry `:`.
-        expect(command).toContain(`--model 'gpt-5.6-sol'`)
+        expect(command).toContain(`--model 'gpt-6-sol'`)
         expect(command).toContain('-c model_reasoning_effort=medium')
         expect(command).toContain(`-c 'features.apps=false'`)
         expect(command).not.toContain('alldone_vm_proxy')
@@ -1366,19 +1366,19 @@ describe('VM runner runtime Gold monitor', () => {
     // sandbox and must NOT move with the model — only the token line does.
     test('each model settles token Gold at its own researched rate, with runtime Gold unchanged', () => {
         const args = { runtimeMs: 61000, usage: { totalTokens: 250_000 } }
-        const sol = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-5.6-sol' })
-        const luna = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-5.6-luna' })
+        const sol = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-6-sol' })
+        const luna = __private__.calculateCompletionGoldCharges({ ...args, agentModel: 'gpt-6-luna' })
         const deepSeekPro = __private__.calculateCompletionGoldCharges({
             ...args,
             agentModel: 'openrouter:deepseek/deepseek-v4-pro',
         })
 
-        expect(sol.tokensPerGold).toBe(100)
-        expect(luna.tokensPerGold).toBe(1900)
+        expect(sol.tokensPerGold).toBe(200)
+        expect(luna.tokensPerGold).toBe(4000)
         expect(deepSeekPro.tokensPerGold).toBe(1400)
 
-        expect(sol.tokenGoldTotal).toBe(2500)
-        expect(luna.tokenGoldTotal).toBe(132)
+        expect(sol.tokenGoldTotal).toBe(1250)
+        expect(luna.tokenGoldTotal).toBe(63)
         expect(deepSeekPro.tokenGoldTotal).toBe(179)
 
         // Same sandbox, same compute cost, whichever model the agent talked to.
@@ -3425,9 +3425,9 @@ describe('Codex OpenRouter routing', () => {
     })
 
     test('an OpenAI model still routes to the OpenAI upstream', () => {
-        const command = __private__.buildCodexRunCommand(false, 'gpt-5.6-sol', 'medium', PROXY)
+        const command = __private__.buildCodexRunCommand(false, 'gpt-6-sol', 'medium', PROXY)
 
-        expect(command).toContain(`--model 'gpt-5.6-sol'`)
+        expect(command).toContain(`--model 'gpt-6-sol'`)
         expect(command).toContain('/openai/v1')
         expect(command).not.toContain('/openrouter/v1')
     })
@@ -3443,7 +3443,7 @@ describe('Codex OpenRouter routing', () => {
             apiKey: 'vmpx_token',
             baseUrl: PROXY,
             mode: 'proxy',
-            agentModel: 'gpt-5.6-sol',
+            agentModel: 'gpt-6-sol',
         })
 
         expect(openRouterEnv.OPENAI_BASE_URL).toBe('https://proxy.example/vmLlmProxy/openrouter/v1')

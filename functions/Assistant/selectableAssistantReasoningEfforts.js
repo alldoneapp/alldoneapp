@@ -1,5 +1,5 @@
 /**
- * Values accepted by reasoning.effort for the selectable GPT-5.6 assistant models.
+ * Values accepted by reasoning.effort for the selectable GPT-6 and GPT-5.6 assistant models.
  * A null value represents the product-level "Model default" choice and must be
  * omitted from the API request.
  *

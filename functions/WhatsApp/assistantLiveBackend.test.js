@@ -1,8 +1,8 @@
 jest.mock('firebase-admin', () => ({ firestore: jest.fn() }))
 jest.mock('../Assistant/assistantHelper', () => ({
     getAssistantForChat: jest.fn(),
-    normalizeModelKey: key => key || 'MODEL_GPT5_6_SOL',
-    getTokensPerGold: key => ({ MODEL_GPT5_6_SOL: 100, MODEL_GPT5_6_TERRA: 200, MODEL_DEEPSEEK_V4_FLASH: 2000 })[key],
+    normalizeModelKey: key => key || 'MODEL_GPT6_SOL',
+    getTokensPerGold: key => ({ MODEL_GPT6_SOL: 100, MODEL_GPT5_6_TERRA: 200, MODEL_DEEPSEEK_V4_FLASH: 2000 })[key],
     getOptimizedContextMessages: jest.fn(async () => [['user', 'Find my tasks']]),
     filterAllowedToolsForRuntimeContext: tools => tools,
     interactWithChatStream: jest.fn(async () => 'stream'),
@@ -73,7 +73,7 @@ beforeEach(() => {
         }),
     })
     helper.getAssistantForChat.mockResolvedValue({
-        model: 'MODEL_GPT5_6_SOL',
+        model: 'MODEL_GPT6_SOL',
         temperature: 'TEMPERATURE_BALANCED',
         reasoningEffort: 'high',
         allowedTools: ['create_task', 'create_calendar_event'],
@@ -252,7 +252,7 @@ test('one failed read does not discard the other four concurrent lookup results'
     await expect(runLiveAssistant(request())).resolves.toContain('Four notes loaded')
     expect(savedOperations).toHaveLength(5)
 })
-test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_DEEPSEEK_V4_FLASH'])(
+test.each(['MODEL_GPT6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_DEEPSEEK_V4_FLASH'])(
     'uses configured %s for routing and billing',
     async model => {
         helper.getAssistantForChat.mockResolvedValue({

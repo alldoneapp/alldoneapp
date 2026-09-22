@@ -173,7 +173,7 @@ describe('vmLlmProxy credential scoping in minted tokens', () => {
 
     test('derives the provider from the job when the caller does not pass one', () => {
         const credentials = buildVmAgentCredentials({
-            vmJob: { ...vmJob, agent: 'codex', agentModel: 'gpt-5.6-sol' },
+            vmJob: { ...vmJob, agent: 'codex', agentModel: 'gpt-6-sol' },
             agent: 'codex',
             credentialMode: 'byok',
             realApiKey: 'sk-openai-key',
@@ -303,7 +303,7 @@ describe('vmLlmProxy job authorization', () => {
                     userId: 'owner',
                     credentialMode: 'byok',
                     agent: 'codex',
-                    agentModel: 'gpt-5.6-sol',
+                    agentModel: 'gpt-6-sol',
                     status: 'initiated',
                 })
             )
@@ -396,7 +396,7 @@ describe('vmLlmProxy token Gold charging', () => {
                                         objectId: 'chat-1',
                                         objectType: 'topics',
                                         correlationId: 'cid-1',
-                                        agentModel: 'gpt-5.6-sol',
+                                        agentModel: 'gpt-6-sol',
                                         tokenBillingExempt: false,
                                         ...pendingData,
                                     }),
@@ -440,7 +440,7 @@ describe('vmLlmProxy token Gold charging', () => {
         expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(
             expect.objectContaining({
                 context: expect.objectContaining({
-                    model: 'gpt-5.6-sol',
+                    model: 'gpt-6-sol',
                     billingExempt: false,
                     correlationId: 'cid-1',
                 }),
@@ -526,9 +526,9 @@ describe('vmLlmProxy token Gold charging', () => {
         expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -133 }))
     })
 
-    test('charges a Luna run at 1/19 of the Sol rate', async () => {
-        const { db } = buildFakeDb({ userGold: 100000, pendingData: { agentModel: 'gpt-5.6-luna' } })
-        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 53 }))
+    test('charges a Luna run at 1/20 of the current Sol rate', async () => {
+        const { db } = buildFakeDb({ userGold: 100000, pendingData: { agentModel: 'gpt-6-luna' } })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 25 }))
 
         await chargeProxyTokenGold({
             correlationId: 'cid-1',
@@ -539,14 +539,14 @@ describe('vmLlmProxy token Gold charging', () => {
             applyGoldChangeInTransactionFn,
         })
 
-        // round(100,000 / 1900) = 53 Gold, against 1000 on Sol.
-        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -53 }))
+        // round(100,000 / 4000) = 25 Gold, against 500 on Sol.
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -25 }))
     })
 
     // A job doc written before agentModel was persisted must bill exactly as it did before.
     test('a job doc with no recorded model charges at the standard rate', async () => {
         const { db } = buildFakeDb({ userGold: 1000, pendingData: {} })
-        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 10 }))
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true, amount: 5 }))
 
         await chargeProxyTokenGold({
             correlationId: 'cid-1',
@@ -557,7 +557,7 @@ describe('vmLlmProxy token Gold charging', () => {
             applyGoldChangeInTransactionFn,
         })
 
-        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -10 }))
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -5 }))
     })
 
     // Guards the revenue hole a bigger divisor opens: at 4900 tokens/Gold — the cheapest rate in the

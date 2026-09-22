@@ -35,9 +35,9 @@ const GMAIL_CONSISTENCY_SYSTEM_PROMPT =
     ' If the email and reasoning point to a different configured label, switch to it. Use matched:false only when no configured label is suitable. The reasoning MUST justify both the final label and follow-up type. Return strict JSON only with keys matched, labelKey, followUpType, confidence, reasoning. Never invent labels. followUpType must be either "actionable" or "informational".'
 
 const GPT5_REASONING_MODEL_KEYS = new Set([
-    'MODEL_GPT5_6_SOL',
+    'MODEL_GPT6_SOL',
     'MODEL_GPT5_6_TERRA',
-    'MODEL_GPT5_6_LUNA',
+    'MODEL_GPT6_LUNA',
     'MODEL_GPT5_1',
     'MODEL_GPT5_2',
     'MODEL_GPT5_5',
@@ -56,9 +56,9 @@ function mapAssistantModelToOpenAIModel(modelKey) {
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (normalizedKey === 'MODEL_GPT5_1') return 'gpt-5.1'
     if (normalizedKey === 'MODEL_GPT5_5') return 'gpt-5.5'
-    if (normalizedKey === 'MODEL_GPT5_6_SOL') return 'gpt-5.6-sol'
+    if (normalizedKey === 'MODEL_GPT6_SOL') return 'gpt-6-sol'
     if (normalizedKey === 'MODEL_GPT5_6_TERRA') return 'gpt-5.6-terra'
-    if (normalizedKey === 'MODEL_GPT5_6_LUNA') return 'gpt-5.6-luna'
+    if (normalizedKey === 'MODEL_GPT6_LUNA') return 'gpt-6-luna'
     if (normalizedKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
     if (normalizedKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     return 'gpt-5.2'
@@ -242,7 +242,7 @@ async function runClassifierCompletion(
     // OpenRouter's Chat Completions surface does not define them, so they are omitted rather than
     // sent and hoped-for — an ignored field is luck, a 400 on an unknown field is an outage.
     // DeepSeek caches automatically on its own side, so nothing is actually lost.
-    const supportsExplicitCaching = !isOpenRouter && selectedModel.startsWith('gpt-5.6')
+    const supportsExplicitCaching = !isOpenRouter && /^gpt-(?:5\.6|6)(?:[.-])/.test(selectedModel)
     const usesExplicitCacheBreakpoint = supportsExplicitCaching && enableCacheWrite
     const requestParams = {
         model: selectedModel,

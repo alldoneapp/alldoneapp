@@ -29,23 +29,18 @@ describe('HeartbeatModelProperty', () => {
             <HeartbeatModelProperty
                 disabled={false}
                 projectId="project-1"
-                assistant={{ uid: 'assistant-1', model: 'MODEL_GPT5_6_SOL' }}
+                assistant={{ uid: 'assistant-1', model: 'MODEL_GPT6_SOL' }}
             />
         )
         const labels = component.root.findAllByType(Text).map(node => node.props.children)
 
         expect(labels).toEqual(
-            expect.arrayContaining([
-                '1 Gold = 100 tokens',
-                '1 Gold = 200 tokens',
-                '1 Gold = 500 tokens',
-                '1 Gold = 2,000 tokens',
-            ])
+            expect.arrayContaining(['1 Gold = 200 tokens', '1 Gold = 1,000 tokens', '1 Gold = 2,000 tokens'])
         )
     })
 
     test('stores the selected heartbeat model', () => {
-        const assistant = { uid: 'assistant-1', model: 'MODEL_GPT5_6_SOL' }
+        const assistant = { uid: 'assistant-1', model: 'MODEL_GPT6_SOL' }
         const component = renderer.create(
             <HeartbeatModelProperty disabled={false} projectId="project-1" assistant={assistant} />
         )

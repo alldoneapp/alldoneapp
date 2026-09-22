@@ -17,9 +17,9 @@
  * If they ever did, a higher settlement rate would silently overcharge while a lower one would clamp
  * the subtraction to zero and hide the discrepancy entirely.
  *
- * ## Sol is the baseline, and every other rate is a researched multiple of it
+ * ## The previous Sol price anchors billing, and every rate follows researched upstream prices
  *
- * `BASE_VM_TOKENS_PER_GOLD` (100 tokens = 1 Gold) is the rate for **`gpt-5.6-sol`**, and it is left
+ * `BASE_VM_TOKENS_PER_GOLD` (100 tokens = 1 Gold) is the historical `gpt-5.6-sol` anchor, and it is left
  * exactly where it has always been. Every other model's rate is derived from how its real upstream
  * price compares to Sol's, so the Gold price of a model tracks what it actually costs us to run:
  *
@@ -67,7 +67,7 @@
  *      discovery outage.
  *   3. **A conservative native-provider rate** — a newly discovered OpenAI/Anthropic model whose
  *      official price has not been added yet temporarily uses that provider's most expensive known
- *      rate. A completely unknown selection uses the Sol base rate. Neither path assumes a new model
+ *      rate. A completely unknown selection uses the historical Sol base rate. Neither path assumes a new model
  *      is cheap: under-billing is a silent revenue hole while over-billing is visible and correctable.
  *
  * The resolved rate is persisted on the job docs and preferred by both charge sites, so a run's
@@ -101,8 +101,8 @@
 const { parseOpenRouterSelection } = require('./vmModelRouting')
 
 /**
- * The Sol rate: 100 tokens buy 1 Gold. Unchanged, and the anchor the whole table hangs off — it also
- * matches in-app assistant usage (`assistantHelper.getTokensPerGold`) and WhatsApp call metering.
+ * Historical GPT-5.6 Sol rate: 100 tokens buy 1 Gold. Keeping this anchor prevents a model release
+ * from changing the Gold rates of unrelated providers or old jobs. Current Sol derives to 200.
  */
 const BASE_VM_TOKENS_PER_GOLD = 100
 
@@ -127,15 +127,26 @@ const OBSERVED_TOKEN_MIX = Object.freeze({
 })
 
 /**
- * Official OpenAI list prices in USD per 1M tokens (developers.openai.com/api/docs/models,
- * retrieved 2026-09-10). Sol remains the fixed 100-token Gold baseline; the other OpenAI families
- * are derived from their current blended cost just like every non-OpenAI model.
+ * Official OpenAI Standard short-context list prices in USD per 1M tokens
+ * (developers.openai.com/api/docs/pricing, retrieved 2026-09-22). The older Sol price remains the
+ * billing anchor so releasing a cheaper model does not reprice other providers or existing jobs.
  */
 const CODEX_REFERENCE_PRICES = Object.freeze({
     astra: Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
-    sol: Object.freeze({ input: 4, cachedInput: 0.4, output: 20 }),
+    sol: Object.freeze({ input: 2, cachedInput: 0.2, output: 10 }),
     terra: Object.freeze({ input: 2, cachedInput: 0.2, output: 12 }),
-    luna: Object.freeze({ input: 0.2, cachedInput: 0.02, output: 1.2 }),
+    luna: Object.freeze({ input: 0.1, cachedInput: 0.01, output: 0.5 }),
+})
+
+const CODEX_LEGACY_REFERENCE_PRICES = Object.freeze({
+    'gpt-5.6-sol': Object.freeze({ input: 4, cachedInput: 0.4, output: 20 }),
+    'gpt-5.6-luna': Object.freeze({ input: 0.2, cachedInput: 0.02, output: 1.2 }),
+})
+const CODEX_CURRENT_MODEL_REFERENCE_PRICES = Object.freeze({
+    'gpt-6-astra': CODEX_REFERENCE_PRICES.astra,
+    'gpt-6-sol': CODEX_REFERENCE_PRICES.sol,
+    'gpt-5.6-terra': CODEX_REFERENCE_PRICES.terra,
+    'gpt-6-luna': CODEX_REFERENCE_PRICES.luna,
 })
 
 /**
@@ -244,8 +255,9 @@ function blendedUsdPerMillionTokens(price) {
     return Number.isFinite(blended) && blended > 0 ? blended : null
 }
 
-/** Sol's blended cost — the denominator every multiple in the table is measured against. */
-const SOL_BLENDED_USD_PER_MILLION = blendedUsdPerMillionTokens(CODEX_REFERENCE_PRICES.sol)
+/** Historical Sol blended cost — the denominator every derived rate is measured against. */
+const SOL_BLENDED_USD_PER_MILLION = blendedUsdPerMillionTokens(CODEX_LEGACY_REFERENCE_PRICES['gpt-5.6-sol'])
+const CURRENT_SOL_TOKENS_PER_GOLD = deriveTokensPerGold(CODEX_REFERENCE_PRICES.sol)
 
 /**
  * Round a derived rate DOWN to two significant figures.
@@ -290,8 +302,8 @@ function deriveTokensPerGold(price, baseTokensPerGold = BASE_VM_TOKENS_PER_GOLD)
 // Model selection → price
 // ---------------------------------------------------------------------------
 
-// gpt-<major>[.<minor>]-<family>; the family is the durable tier (astra/sol/terra/luna), the number is the
-// generation, so the rate follows the tier across generations without an edit here.
+// gpt-<major>[.<minor>]-<family>. Recognize unfamiliar native models for conservative pricing;
+// a newly released generation must not inherit a previous generation's cheaper list price.
 const CODEX_MODEL_PATTERN = /^gpt-\d+(?:\.\d+)?-([a-z][a-z0-9]*)$/
 const CLAUDE_MODERN_MODEL_PATTERN = /^claude-[a-z][a-z0-9]*-\d+(?:-\d+)?(?:-\d{8})?$/
 const CLAUDE_LEGACY_MODEL_PATTERN = /^claude-\d+(?:-\d+)?-[a-z][a-z0-9]*(?:-\d{8})?$/
@@ -346,8 +358,9 @@ function resolveUpstreamPrice(agentModel, options = {}) {
     const claudePrice = lookupClaudeReferencePrice(normalized)
     if (claudePrice) return claudePrice
 
-    const codexFamily = CODEX_MODEL_PATTERN.exec(normalized)
-    if (codexFamily) return CODEX_REFERENCE_PRICES[codexFamily[1]] || null
+    if (CODEX_MODEL_PATTERN.test(normalized)) {
+        return CODEX_CURRENT_MODEL_REFERENCE_PRICES[normalized] || CODEX_LEGACY_REFERENCE_PRICES[normalized] || null
+    }
 
     // Anything else intentionally has no researched entry; the rate resolver applies the safe
     // provider-specific fallback below before considering the Sol base rate.
@@ -409,7 +422,7 @@ function resolveEffectiveTokensPerGold(jobState = {}) {
 }
 
 /**
- * This model's Gold cost expressed against Sol's: 25 means the same token count costs 1/25 of the
+ * This model's Gold cost expressed against current Sol: 20 means the same token count costs 1/20 of the
  * Gold it would cost on Sol. Below 1 means the model is dearer than Sol. Used for the status text,
  * and by tests that want to assert a researched ratio rather than a hardcoded rate.
  */
@@ -421,7 +434,7 @@ function resolveSolRelativeGoldFactor(agentModel, options = {}) {
         Number.isFinite(persisted) && persisted > 0
             ? persisted
             : resolveTokensPerGold(agentModel, BASE_VM_TOKENS_PER_GOLD, options)
-    return rate / BASE_VM_TOKENS_PER_GOLD
+    return rate / CURRENT_SOL_TOKENS_PER_GOLD
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +470,7 @@ function calculateTokenGoldForModel(totalTokens, agentModel, options = {}) {
  * Empty string at exactly the Sol rate, which keeps the caller's string concatenation unchanged.
  */
 function formatTokenDiscountNote(agentModel, options = {}) {
+    if (!agentModel) return ''
     const factor = resolveSolRelativeGoldFactor(agentModel, options)
     if (!Number.isFinite(factor) || factor === 1) return ''
 

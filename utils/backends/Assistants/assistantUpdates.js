@@ -39,9 +39,9 @@ import {
     MODEL_GPT4O,
     MODEL_GPT5_1,
     MODEL_GPT5_5,
-    MODEL_GPT5_6_SOL,
+    MODEL_GPT6_SOL,
     MODEL_GPT5_6_TERRA,
-    MODEL_GPT5_6_LUNA,
+    MODEL_GPT6_LUNA,
     MODEL_GPT5_2,
     TEMPERATURE_HIGH,
     TEMPERATURE_LOW,
@@ -476,9 +476,9 @@ const getModelText = modelKey => {
     if (modelKey === MODEL_GPT4O) return 'GPT 4o'
     if (modelKey === MODEL_GPT5_1) return 'GPT 5_1'
     if (modelKey === MODEL_GPT5_5) return 'GPT 5_5'
-    if (modelKey === MODEL_GPT5_6_SOL) return 'GPT 5_6 Sol'
+    if (modelKey === MODEL_GPT6_SOL || modelKey === 'MODEL_GPT5_6_SOL') return 'GPT 6 Sol'
     if (modelKey === MODEL_GPT5_6_TERRA) return 'GPT 5_6 Terra'
-    if (modelKey === MODEL_GPT5_6_LUNA) return 'GPT 5_6 Luna'
+    if (modelKey === MODEL_GPT6_LUNA || modelKey === 'MODEL_GPT5_6_LUNA') return 'GPT 6 Luna'
     if (modelKey === MODEL_GPT5_2) return 'GPT 5_2'
     if (modelKey === MODEL_SONAR) return 'Sonar'
     if (modelKey === MODEL_SONAR_PRO) return 'Sonar Pro'

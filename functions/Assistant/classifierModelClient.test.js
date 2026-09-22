@@ -42,7 +42,7 @@ describe('resolveClassifierClient', () => {
     test('keeps every OpenAI labeling model on the OpenAI client', () => {
         // `model: null` is the contract meaning "use your own key→id mapper"; the classifiers keep
         // theirs, and this module deliberately does not duplicate it.
-        const resolved = resolveClassifierClient('MODEL_GPT5_6_LUNA', KEYS)
+        const resolved = resolveClassifierClient('MODEL_GPT6_LUNA', KEYS)
 
         expect(resolved).toEqual({ client: { kind: 'openai', apiKey: 'sk-openai' }, model: null, isOpenRouter: false })
         expect(getOpenAIClient).toHaveBeenCalledWith('sk-openai')

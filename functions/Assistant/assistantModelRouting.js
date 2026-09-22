@@ -24,7 +24,7 @@
  * The VM harness solved its equivalent problem by encoding the source into the model string
  * (`openrouter:deepseek/...`, see `vmModelRouting.js`), because there the user picks from a live
  * catalog of hundreds of models and no table could keep up. The in-app assistant is the opposite
- * case: it offers a short, curated, product-named list (`MODEL_GPT5_6_SOL`, `MODEL_DEEPSEEK_V4_FLASH`)
+ * case: it offers a short, curated, product-named list (`MODEL_GPT6_SOL`, `MODEL_DEEPSEEK_V4_FLASH`)
  * whose keys are already persisted on assistant docs, Gmail configs and calendar configs. Those keys
  * must keep meaning what they mean, so the mapping stays a table and the key stays opaque.
  *
@@ -114,7 +114,7 @@ function isPerplexityAssistantModel(modelKey) {
  * is exactly the drift this module exists to stop.
  *
  * An unknown key resolves to OpenAI, which is the pre-AT-2238 behaviour: it then flows into the
- * existing `getModel` fallback (`gpt-5.6-sol`) rather than failing the run.
+ * existing `getModel` fallback (`gpt-6-sol`) rather than failing the run.
  */
 /**
  * Whether a model key can be sent image parts.

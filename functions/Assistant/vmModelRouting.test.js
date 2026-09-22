@@ -22,7 +22,7 @@ describe('OpenRouter model selection encoding (AT-2230)', () => {
 
     test('rejects ids that are not vendor/model', () => {
         expect(isValidOpenRouterModelId('deepseek')).toBe(false)
-        expect(isValidOpenRouterModelId('gpt-5.6-sol')).toBe(false)
+        expect(isValidOpenRouterModelId('gpt-6-sol')).toBe(false)
         expect(isValidOpenRouterModelId('')).toBe(false)
         expect(isValidOpenRouterModelId(null)).toBe(false)
     })
@@ -69,10 +69,10 @@ describe('OpenRouter model selection encoding (AT-2230)', () => {
         })
 
         test('leaves native OpenAI and Claude models exactly as before', () => {
-            expect(resolveModelRoute('codex', 'gpt-5.6-sol')).toEqual({
+            expect(resolveModelRoute('codex', 'gpt-6-sol')).toEqual({
                 source: 'openai',
-                model: 'gpt-5.6-sol',
-                selection: 'gpt-5.6-sol',
+                model: 'gpt-6-sol',
+                selection: 'gpt-6-sol',
             })
             expect(resolveModelRoute('claude', 'opus')).toEqual({
                 source: 'anthropic',
@@ -113,7 +113,7 @@ describe('credential provider resolution (AT-2230 BYOK)', () => {
     // Keying credentials on the agent would spend the user's OpenAI key against OpenRouter.
     test('an OpenRouter model resolves its own slot, not the codex one', () => {
         expect(resolveCredentialProvider('codex', 'openrouter:deepseek/deepseek-chat')).toBe('openrouter')
-        expect(resolveCredentialProvider('codex', 'gpt-5.6-sol')).toBe('codex')
+        expect(resolveCredentialProvider('codex', 'gpt-6-sol')).toBe('codex')
         expect(resolveCredentialProvider('claude', 'opus')).toBe('claude')
     })
 
@@ -131,7 +131,7 @@ describe('credential provider resolution (AT-2230 BYOK)', () => {
             expect(
                 resolveJobCredentialProvider({
                     agent: 'codex',
-                    agentModel: 'gpt-5.6-sol',
+                    agentModel: 'gpt-6-sol',
                     credentialProvider: 'openrouter',
                 })
             ).toBe('openrouter')
@@ -142,13 +142,13 @@ describe('credential provider resolution (AT-2230 BYOK)', () => {
             expect(
                 resolveJobCredentialProvider({ agent: 'codex', agentModel: 'openrouter:deepseek/deepseek-chat' })
             ).toBe('openrouter')
-            expect(resolveJobCredentialProvider({ agent: 'codex', agentModel: 'gpt-5.6-sol' })).toBe('codex')
+            expect(resolveJobCredentialProvider({ agent: 'codex', agentModel: 'gpt-6-sol' })).toBe('codex')
             expect(resolveJobCredentialProvider({})).toBe('claude')
         })
 
         test('ignores a persisted value that is not a known provider', () => {
             expect(
-                resolveJobCredentialProvider({ agent: 'codex', agentModel: 'gpt-5.6-sol', credentialProvider: 'evil' })
+                resolveJobCredentialProvider({ agent: 'codex', agentModel: 'gpt-6-sol', credentialProvider: 'evil' })
             ).toBe('codex')
         })
     })

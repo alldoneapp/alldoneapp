@@ -153,7 +153,7 @@ async function startContactProfileEnrichment({
     // `resolveAssistantReasoningEffort` treats a PRESENT key as an override, so the key is only
     // set when the assistant actually has a saved effort; otherwise its own default applies.
     const aiSettings = {
-        model: assistant.model || 'MODEL_GPT5_6_SOL',
+        model: assistant.model || 'MODEL_GPT6_SOL',
         temperature: assistant.temperature || 'TEMPERATURE_NORMAL',
         allowedTools: CONTACT_ENRICHMENT_TOOLS,
         ...(assistant.reasoningEffort ? { reasoningEffort: assistant.reasoningEffort } : {}),

@@ -18,9 +18,9 @@ jest.mock('./assistantHelper', () => ({
     getModel: modelKey =>
         modelKey === 'MODEL_GPT5_6_TERRA'
             ? 'gpt-5.6-terra'
-            : modelKey === 'MODEL_GPT5_6_LUNA'
-              ? 'gpt-5.6-luna'
-              : 'gpt-5.6-sol',
+            : modelKey === 'MODEL_GPT6_LUNA'
+              ? 'gpt-6-luna'
+              : 'gpt-6-sol',
     logOpenAiCacheUsage: (...args) => mockLogOpenAiCacheUsage(...args),
 }))
 
@@ -133,8 +133,8 @@ describe('buildRamblerUserContent', () => {
 
 describe('resolveCleanupModelKey', () => {
     test('defaults to Luna with no stored preference', () => {
-        expect(resolveCleanupModelKey({})).toBe('MODEL_GPT5_6_LUNA')
-        expect(resolveCleanupModelKey(undefined)).toBe('MODEL_GPT5_6_LUNA')
+        expect(resolveCleanupModelKey({})).toBe('MODEL_GPT6_LUNA')
+        expect(resolveCleanupModelKey(undefined)).toBe('MODEL_GPT6_LUNA')
     })
 
     test('uses the user preference when valid, including OpenRouter models', () => {
@@ -148,7 +148,7 @@ describe('resolveCleanupModelKey', () => {
 
     test('an invalid stored value falls back to the default', () => {
         expect(resolveCleanupModelKey({ featureModelPreferences: { rambler: 'MODEL_SONAR_PRO' } })).toBe(
-            'MODEL_GPT5_6_LUNA'
+            'MODEL_GPT6_LUNA'
         )
     })
 })

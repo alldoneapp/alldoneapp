@@ -48,9 +48,9 @@ const ANTHROPIC_LIST = {
 const OPENAI_LIST = {
     data: [
         { id: 'gpt-6-astra' },
-        { id: 'gpt-5.6-sol' },
+        { id: 'gpt-6-sol' },
         { id: 'gpt-5.6-terra' },
-        { id: 'gpt-5.6-luna' },
+        { id: 'gpt-6-luna' },
         { id: 'gpt-5.4-mini' },
         { id: 'gpt-5.4-nano' },
         { id: 'gpt-5.5' },
@@ -103,7 +103,7 @@ describe('parseModelId', () => {
     })
 
     it('parses the OpenAI gpt-<gen>-<tier> scheme', () => {
-        expect(parseModelId('codex', 'gpt-5.6-sol')).toMatchObject({ family: 'sol', major: 5, minor: 6 })
+        expect(parseModelId('codex', 'gpt-6-sol')).toMatchObject({ family: 'sol', major: 6, minor: 0 })
         expect(parseModelId('codex', 'gpt-5.4-mini')).toMatchObject({ family: 'mini', major: 5, minor: 4 })
     })
 
@@ -169,13 +169,13 @@ describe('buildFamilies', () => {
             OPENAI_LIST.data.map(m => m.id)
         )
         expect(families.find(f => f.id === 'sol')).toMatchObject({
-            resolvedModel: 'gpt-5.6-sol',
+            resolvedModel: 'gpt-6-sol',
             isAlias: false,
         })
     })
 
     it('picks up a brand-new tier automatically and appends unknown families after known ones', () => {
-        const families = buildFamilies('codex', ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-nova'])
+        const families = buildFamilies('codex', ['gpt-6-sol', 'gpt-5.6-terra', 'gpt-5.6-nova'])
         expect(families.map(f => f.id)).toEqual(['sol', 'terra', 'nova'])
         expect(families.find(f => f.id === 'nova').label).toBe('Nova')
     })
@@ -185,9 +185,9 @@ describe('buildFamilies', () => {
             'gpt-7-nova',
             'gpt-6-orbit',
             'gpt-6-astra',
-            'gpt-5.6-sol',
+            'gpt-6-sol',
             'gpt-5.6-terra',
-            'gpt-5.6-luna',
+            'gpt-6-luna',
         ])
 
         expect(families.map(family => family.id)).toEqual(['astra', 'sol', 'terra', 'luna', 'nova', 'orbit'])
@@ -218,8 +218,8 @@ describe('buildFamilies', () => {
     })
 
     it('follows a new generation forward without a code change', () => {
-        const families = buildFamilies('codex', ['gpt-5.6-sol', 'gpt-5.7-sol', 'gpt-5.7-terra'])
-        expect(families.find(f => f.id === 'sol').resolvedModel).toBe('gpt-5.7-sol')
+        const families = buildFamilies('codex', ['gpt-6-sol', 'gpt-7-sol', 'gpt-5.7-terra'])
+        expect(families.find(f => f.id === 'sol').resolvedModel).toBe('gpt-7-sol')
     })
 
     it('returns an empty list when nothing parses', () => {
@@ -274,14 +274,14 @@ describe('catalog Gold pricing', () => {
         const codex = decorateCatalogGoldPricing('codex', {
             families: [
                 { id: 'astra', resolvedModel: 'gpt-6-astra' },
-                { id: 'sol', resolvedModel: 'gpt-5.6-sol' },
+                { id: 'sol', resolvedModel: 'gpt-6-sol' },
                 { id: 'terra', resolvedModel: 'gpt-5.6-terra' },
-                { id: 'luna', resolvedModel: 'gpt-5.6-luna' },
+                { id: 'luna', resolvedModel: 'gpt-6-luna' },
             ],
         })
 
         expect(claude.families.map(model => model.tokensPerGold)).toEqual([80, 200, 400, 53, 53])
-        expect(codex.families.map(model => model.tokensPerGold)).toEqual([40, 100, 190, 1900])
+        expect(codex.families.map(model => model.tokensPerGold)).toEqual([40, 200, 190, 4000])
     })
 
     it('prices a newly released Claude alias from its concrete latest model, not a stale alias rate', () => {
@@ -325,7 +325,7 @@ describe('fetchProviderModelIds', () => {
     it('calls the OpenAI models endpoint with a bearer token', async () => {
         const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(OPENAI_LIST))
         const ids = await fetchProviderModelIds('codex', { fetchImpl })
-        expect(ids).toContain('gpt-5.6-sol')
+        expect(ids).toContain('gpt-6-sol')
         const [url, options] = fetchImpl.mock.calls[0]
         expect(url).toContain('api.openai.com/v1/models')
         expect(options.headers.Authorization).toBe('Bearer sk-openai-test')
@@ -423,9 +423,9 @@ describe('getModelCatalog', () => {
         const now = 10 * CATALOG_TTL_MS
         const stale = [
             { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false },
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6-sol', isAlias: false },
             { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
-            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false },
+            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-6-luna', isAlias: false },
         ]
         stubCatalogDoc({
             exists: true,
@@ -436,7 +436,7 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('codex', { fetchImpl, now })
 
         expect(catalog.source).toBe('stale')
-        expect(catalog.families.map(family => family.tokensPerGold)).toEqual([40, 100, 190, 1900])
+        expect(catalog.families.map(family => family.tokensPerGold)).toEqual([40, 200, 190, 4000])
     })
 
     it('uses the complete fallback when live discovery fails behind an obsolete partial Codex cache', async () => {
@@ -564,7 +564,7 @@ describe('isValidFamilyId', () => {
         expect(isValidFamilyId('opus')).toBe(true)
         expect(isValidFamilyId('sol')).toBe(true)
         expect(isValidFamilyId('Opus')).toBe(false)
-        expect(isValidFamilyId('gpt-5.6-sol')).toBe(false)
+        expect(isValidFamilyId('gpt-6-sol')).toBe(false)
         expect(isValidFamilyId('')).toBe(false)
         expect(isValidFamilyId(null)).toBe(false)
         expect(isValidFamilyId('a'.repeat(40))).toBe(false)
@@ -633,7 +633,7 @@ describe('OpenRouter upstream pricing', () => {
             openRouterEntry('qwen/qwen3-coder', { prompt: '0.0000003', completion: '0.000001' }),
             // Excluded from the picker AND from pricing: it cannot drive Codex at all.
             { id: 'someone/no-tools', supported_parameters: [], pricing: { prompt: '0.1', completion: '0.2' } },
-            openRouterEntry('openai/gpt-5.6-sol', { prompt: '0.000005', completion: '0.00003' }),
+            openRouterEntry('openai/gpt-6-sol', { prompt: '0.000005', completion: '0.00003' }),
         ]
 
         const pricing = buildOpenRouterPricing(entries)
@@ -643,7 +643,7 @@ describe('OpenRouter upstream pricing', () => {
         expect(ids).toContain('qwen/qwen3-coder')
         expect(ids).not.toContain('someone/no-tools')
         // openai/* is offered natively, so it is not an OpenRouter option and needs no price here.
-        expect(ids).not.toContain('openai/gpt-5.6-sol')
+        expect(ids).not.toContain('openai/gpt-6-sol')
     })
 
     it('resolves a live price for a model by id, case-insensitively', async () => {

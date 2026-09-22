@@ -162,9 +162,9 @@ describe('serverSideGmailLabelingSync helpers', () => {
     })
 
     test('migrates retired Gmail labeling models to Luna and preserves selectable models', () => {
-        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_4_NANO' }).model).toBe('MODEL_GPT5_6_LUNA')
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_4_NANO' }).model).toBe('MODEL_GPT6_LUNA')
         expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_6_TERRA' }).model).toBe('MODEL_GPT5_6_TERRA')
-        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT5_6_SOL' }).model).toBe('MODEL_GPT5_6_SOL')
+        expect(applyGmailLabelingModelMigration({ model: 'MODEL_GPT6_SOL' }).model).toBe('MODEL_GPT6_SOL')
     })
 
     test('account-wide auto-archive overrides label settings for incoming messages only', () => {
@@ -300,7 +300,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
         ])[0]
 
         expect(resolvePostLabelAssistantModel(defaultDefinition, defaultDefinition.postLabelPrompt)).toBe(
-            'MODEL_GPT5_6_LUNA'
+            'MODEL_GPT6_LUNA'
         )
         expect(resolvePostLabelAssistantModel(defaultDefinition, 'Create a custom follow-up')).toBe(
             'MODEL_GPT5_6_TERRA'

@@ -126,9 +126,9 @@ const MODEL_GPT4O = 'MODEL_GPT4O'
 const MODEL_GPT5 = 'MODEL_GPT5' // Deprecated, maps to MODEL_GPT5_1
 const MODEL_GPT5_1 = 'MODEL_GPT5_1'
 const MODEL_GPT5_5 = 'MODEL_GPT5_5'
-const MODEL_GPT5_6_SOL = 'MODEL_GPT5_6_SOL'
+const MODEL_GPT6_SOL = 'MODEL_GPT6_SOL'
 const MODEL_GPT5_6_TERRA = 'MODEL_GPT5_6_TERRA'
-const MODEL_GPT5_6_LUNA = 'MODEL_GPT5_6_LUNA'
+const MODEL_GPT6_LUNA = 'MODEL_GPT6_LUNA'
 const MODEL_GPT5_4_MINI = 'MODEL_GPT5_4_MINI'
 const MODEL_GPT5_4_NANO = 'MODEL_GPT5_4_NANO'
 const MODEL_GPT5_2 = 'MODEL_GPT5_2'
@@ -1034,6 +1034,7 @@ async function getExternalToolUserIdentity(userId) {
  * @returns {boolean} True if model supports native tool calling
  */
 const modelSupportsNativeTools = modelKey => {
+    modelKey = normalizeModelKey(modelKey)
     // Only GPT models support native tool calling
     return (
         modelKey === MODEL_GPT3_5 ||
@@ -1041,9 +1042,9 @@ const modelSupportsNativeTools = modelKey => {
         modelKey === MODEL_GPT4O ||
         modelKey === MODEL_GPT5_1 ||
         modelKey === MODEL_GPT5_5 ||
-        modelKey === MODEL_GPT5_6_SOL ||
+        modelKey === MODEL_GPT6_SOL ||
         modelKey === MODEL_GPT5_6_TERRA ||
-        modelKey === MODEL_GPT5_6_LUNA ||
+        modelKey === MODEL_GPT6_LUNA ||
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2 ||
@@ -1060,33 +1061,25 @@ const modelSupportsToolSearch = modelKey => {
     const normalizedKey = normalizeModelKey(modelKey)
     return (
         normalizedKey === MODEL_GPT5_5 ||
-        normalizedKey === MODEL_GPT5_6_SOL ||
+        normalizedKey === MODEL_GPT6_SOL ||
         normalizedKey === MODEL_GPT5_6_TERRA ||
-        normalizedKey === MODEL_GPT5_6_LUNA ||
+        normalizedKey === MODEL_GPT6_LUNA ||
         normalizedKey === MODEL_GPT5_4_MINI ||
         normalizedKey === MODEL_GPT5_4_NANO
     )
 }
 
 // The complete product effort set, including max, is an API contract of the
-// selectable GPT-5.6 family. Keep this separate from tool-search support so a
+// selectable GPT-6 and GPT-5.6 families. Keep this separate from tool-search support so a
 // capability added to older models cannot accidentally receive unsupported values.
 const modelSupportsAssistantReasoningEffort = modelKey => {
     const normalizedKey = normalizeModelKey(modelKey)
-    return (
-        normalizedKey === MODEL_GPT5_6_SOL ||
-        normalizedKey === MODEL_GPT5_6_TERRA ||
-        normalizedKey === MODEL_GPT5_6_LUNA
-    )
+    return normalizedKey === MODEL_GPT6_SOL || normalizedKey === MODEL_GPT5_6_TERRA || normalizedKey === MODEL_GPT6_LUNA
 }
 
 const modelSupportsExplicitPromptCaching = modelKey => {
     const normalizedKey = normalizeModelKey(modelKey)
-    return (
-        normalizedKey === MODEL_GPT5_6_SOL ||
-        normalizedKey === MODEL_GPT5_6_TERRA ||
-        normalizedKey === MODEL_GPT5_6_LUNA
-    )
+    return normalizedKey === MODEL_GPT6_SOL || normalizedKey === MODEL_GPT5_6_TERRA || normalizedKey === MODEL_GPT6_LUNA
 }
 
 /**
@@ -1095,13 +1088,14 @@ const modelSupportsExplicitPromptCaching = modelKey => {
  * @returns {boolean} True if model supports custom temperature
  */
 const modelSupportsCustomTemperature = modelKey => {
+    modelKey = normalizeModelKey(modelKey)
     // GPT-5.1 and some newer models only support default temperature (1.0)
     if (
         modelKey === MODEL_GPT5_1 ||
         modelKey === MODEL_GPT5_5 ||
-        modelKey === MODEL_GPT5_6_SOL ||
+        modelKey === MODEL_GPT6_SOL ||
         modelKey === MODEL_GPT5_6_TERRA ||
-        modelKey === MODEL_GPT5_6_LUNA ||
+        modelKey === MODEL_GPT6_LUNA ||
         modelKey === MODEL_GPT5_4_MINI ||
         modelKey === MODEL_GPT5_4_NANO ||
         modelKey === MODEL_GPT5_2
@@ -1112,6 +1106,7 @@ const modelSupportsCustomTemperature = modelKey => {
 }
 
 const getTokensPerGold = modelKey => {
+    modelKey = normalizeModelKey(modelKey)
     // The shared selectable-model list is also the pricing authority for every model exposed in the
     // UI. That keeps assistant, heartbeat, scheduled-task, Gmail and calendar pickers identical to
     // what this billing path actually charges.
@@ -1138,6 +1133,7 @@ const getTokensPerGold = modelKey => {
 }
 
 const getMaxTokensForModel = modelKey => {
+    modelKey = normalizeModelKey(modelKey)
     // Legacy/Low context models
     if (modelKey === MODEL_GPT3_5) return 16000
     if (modelKey === MODEL_GPT4) return 8000
@@ -1146,9 +1142,9 @@ const getMaxTokensForModel = modelKey => {
     if (modelKey === MODEL_GPT4O) return 128000
     if (modelKey === MODEL_GPT5_1) return 128000
     if (modelKey === MODEL_GPT5_5) return 128000
-    if (modelKey === MODEL_GPT5_6_SOL) return 1050000
+    if (modelKey === MODEL_GPT6_SOL) return 1050000
     if (modelKey === MODEL_GPT5_6_TERRA) return 1050000
-    if (modelKey === MODEL_GPT5_6_LUNA) return 400000
+    if (modelKey === MODEL_GPT6_LUNA) return 1050000
     if (modelKey === MODEL_GPT5_4_MINI) return 128000
     if (modelKey === MODEL_GPT5_4_NANO) return 128000
     if (modelKey === MODEL_GPT5_2) return 128000
@@ -1169,8 +1165,11 @@ const normalizeModelKey = modelKey => {
     if (modelKey === MODEL_GPT5 || modelKey === 'MODEL_GPT5') return MODEL_GPT5_1
     // Map deprecated MODEL_GPT5_4 to MODEL_GPT5_5
     if (modelKey === 'MODEL_GPT5_4') return MODEL_GPT5_5
-    // Default to GPT-5.6 Sol if no model is specified.
-    if (!modelKey) return MODEL_GPT5_6_SOL
+    // Existing assistant settings follow the replacement models without a Firestore migration.
+    if (modelKey === 'MODEL_GPT5_6_SOL') return MODEL_GPT6_SOL
+    if (modelKey === 'MODEL_GPT5_6_LUNA') return MODEL_GPT6_LUNA
+    // Default to GPT-6 Sol if no model is specified.
+    if (!modelKey) return MODEL_GPT6_SOL
     return modelKey
 }
 
@@ -1183,9 +1182,9 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_GPT4O) return 'gpt-4o'
     if (normalizedKey === MODEL_GPT5_1) return 'gpt-5.1'
     if (normalizedKey === MODEL_GPT5_5) return 'gpt-5.5'
-    if (normalizedKey === MODEL_GPT5_6_SOL) return 'gpt-5.6-sol'
+    if (normalizedKey === MODEL_GPT6_SOL) return 'gpt-6-sol'
     if (normalizedKey === MODEL_GPT5_6_TERRA) return 'gpt-5.6-terra'
-    if (normalizedKey === MODEL_GPT5_6_LUNA) return 'gpt-5.6-luna'
+    if (normalizedKey === MODEL_GPT6_LUNA) return 'gpt-6-luna'
     if (normalizedKey === MODEL_GPT5_4_MINI) return 'gpt-5.4-mini'
     if (normalizedKey === MODEL_GPT5_4_NANO) return 'gpt-5.4-nano'
     if (normalizedKey === MODEL_GPT5_2) return 'gpt-5.2'
@@ -1198,8 +1197,8 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_SONAR_REASONING_PRO) return 'sonar-reasoning-pro'
     if (normalizedKey === MODEL_SONAR_DEEP_RESEARCH) return 'sonar-deep-research'
 
-    // Default fallback to the explicit GPT-5.6 Sol tier.
-    return 'gpt-5.6-sol'
+    // Default fallback to the explicit GPT-6 Sol tier.
+    return 'gpt-6-sol'
 }
 
 const getTemperature = temperatureKey => {
@@ -2794,7 +2793,7 @@ async function interactWithChatStream(
 
     // Step 1: Get model config and cached environment
     const configStart = Date.now()
-    const model = getModel(modelKey) || 'gpt-5.6-sol'
+    const model = getModel(modelKey) || 'gpt-6-sol'
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart
@@ -4585,7 +4584,7 @@ async function executeDelegatedAssistantRequest({
 
     const targetAssistant = targetAssistantDoc.data() || {}
     const targetAllowedTools = Array.isArray(targetAssistant.allowedTools) ? targetAssistant.allowedTools : []
-    const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT5_6_SOL)
+    const targetModel = normalizeModelKey(targetAssistant.model || MODEL_GPT6_SOL)
     const targetTemperature = targetAssistant.temperature || TEMPERATURE_NORMAL
     const targetReasoningEffort = targetAssistant.reasoningEffort || null
     const targetDisplayName = targetAssistant.displayName || target.displayName || 'Assistant'
@@ -11351,7 +11350,7 @@ const primeDefaultAssistantCache = async () => {
         if (defaultAssistant?.uid) {
             const normalizedAssistant = {
                 ...defaultAssistant,
-                model: normalizeModelKey(defaultAssistant.model || MODEL_GPT5_6_SOL),
+                model: normalizeModelKey(defaultAssistant.model || MODEL_GPT6_SOL),
                 temperature: defaultAssistant.temperature || 'TEMPERATURE_NORMAL',
                 reasoningEffort: normalizeAssistantReasoningEffort(defaultAssistant.reasoningEffort),
                 instructions: defaultAssistant.instructions || 'You are a helpful assistant.',
@@ -11464,7 +11463,7 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
     }
     // Provide fallback defaults for missing fields
     assistant = assistant || {}
-    assistant.model = normalizeModelKey(assistant?.model || MODEL_GPT5_6_SOL)
+    assistant.model = normalizeModelKey(assistant?.model || MODEL_GPT6_SOL)
     assistant.temperature = assistant?.temperature || 'TEMPERATURE_NORMAL'
     assistant.reasoningEffort = normalizeAssistantReasoningEffort(assistant?.reasoningEffort)
     assistant.instructions = assistant?.instructions || 'You are a helpful assistant.'
@@ -11555,7 +11554,7 @@ async function getTaskOrAssistantSettings(projectId, taskId, assistantId, thread
         assistantModel: assistant.model,
     })
     const settings = {
-        model: normalizeModelKey(resolvedModel || MODEL_GPT5_6_SOL),
+        model: normalizeModelKey(resolvedModel || MODEL_GPT6_SOL),
         temperature: assistant.temperature || 'TEMPERATURE_NORMAL',
         reasoningEffort: resolvePreConfigTaskReasoningEffort(task, assistant.reasoningEffort),
         instructions: (task && task.aiSystemMessage) || assistant.instructions || 'You are a helpful assistant.',

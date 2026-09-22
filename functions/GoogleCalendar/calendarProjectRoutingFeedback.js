@@ -20,7 +20,7 @@ const {
     normalizeLearnedSeriesRoutes,
 } = require('./calendarProjectRoutingConfig')
 
-const CALENDAR_FEEDBACK_REVISION_MODEL = 'MODEL_GPT5_6_SOL'
+const CALENDAR_FEEDBACK_REVISION_MODEL = 'MODEL_GPT6_SOL'
 const MAX_RULE_REVISION_ATTEMPTS = 3
 const RULE_REVISION_CONFLICT = 'CALENDAR_RULE_REVISION_CONFLICT'
 
@@ -140,7 +140,7 @@ async function reviseCalendarLearnedRules({ currentRules, projectDefinitions, ev
         ],
     }
     if (!isGpt5ReasoningModel(CALENDAR_FEEDBACK_REVISION_MODEL)) requestParams.temperature = 0.1
-    if (selectedModel.startsWith('gpt-5.6')) {
+    if (/^gpt-(?:5\.6|6)(?:[.-])/.test(selectedModel)) {
         requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
     }
 

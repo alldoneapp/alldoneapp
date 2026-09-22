@@ -4,7 +4,7 @@ const admin = require('firebase-admin')
 const { SELECTABLE_ASSISTANT_MODELS } = require('../Assistant/selectableAssistantModels')
 const { Timestamp } = require('firebase-admin/firestore')
 
-const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_6_LUNA'
+const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT6_LUNA'
 const GMAIL_LABELING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
 // The self-consistency auditor (second pass) deliberately runs on a STRONGER, independent
 // model tier than the first-pass classifier. Re-judging with the same model produces correlated

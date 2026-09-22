@@ -32,7 +32,7 @@ const { resolveTokensPerGold } = require('./vmTokenPricing')
 const CATALOG_COLLECTION = 'vmAgentModelCatalog'
 const CATALOG_TTL_MS = 12 * 60 * 60 * 1000
 const DISCOVERY_TIMEOUT_MS = 8000
-const CODEX_CATALOG_SCHEMA_VERSION = 2
+const CODEX_CATALOG_SCHEMA_VERSION = 3
 
 const VALID_PROVIDERS = ['claude', 'codex']
 
@@ -99,9 +99,9 @@ const FALLBACK_CATALOGS = {
     codex: {
         families: [
             { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false },
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6-sol', isAlias: false },
             { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
-            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false },
+            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-6-luna', isAlias: false },
         ],
     },
     // Only the two long-lived DeepSeek pointer ids, which OpenRouter keeps aimed at the current

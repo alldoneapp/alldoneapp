@@ -51,9 +51,8 @@ const { Timestamp } = require('firebase-admin/firestore')
 //                            + round(totalTokens / resolveTokensPerGold(agentModel))
 // The base reserve is charged up-front (refunded if the run fails); the per-minute
 // (E2B compute) + per-token (LLM usage) top-up is charged by the worker on completion
-// from the agent's actual reported usage. The per-token rate is Sol's (and matches in-app
-// assistant usage) for Sol and Claude; every other model is priced as a researched multiple
-// of Sol from its real upstream cost — vmTokenPricing.js owns that decision for every charge
+// from the agent's actual reported usage. Model rates follow researched upstream prices relative
+// to the historical Sol anchor — vmTokenPricing.js owns that decision for every charge
 // site, and `tokensPerGold` below freezes the resolved rate onto the job.
 const VM_JOB_BASE_GOLD = 20
 const VM_GOLD_PER_MINUTE = 10
@@ -84,7 +83,7 @@ const VALID_VM_EXECUTION_MODES = [DEFAULT_VM_EXECUTION_MODE, 'plan_first', 'inte
 
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
 const DEFAULT_CLAUDE_MODEL = 'opus'
-const DEFAULT_CODEX_MODEL = 'gpt-5.6-sol'
+const DEFAULT_CODEX_MODEL = 'gpt-6-sol'
 const DEFAULT_CLAUDE_EFFORT_LEVEL = 'high'
 const DEFAULT_CODEX_REASONING_EFFORT = 'medium'
 const VALID_CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']

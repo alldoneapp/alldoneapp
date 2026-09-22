@@ -37,10 +37,10 @@ describe('reading a thread model override server-side (AT-2502)', () => {
         ['contacts', 'projectsContacts/project-1/contacts/object-1'],
         ['skills', 'skills/project-1/items/object-1'],
     ])('reads a %s thread from its own document', async (objectType, expectedPath) => {
-        const db = makeDb({ [expectedPath]: { [THREAD_ASSISTANT_MODEL_FIELD]: 'MODEL_GPT5_6_LUNA' } })
+        const db = makeDb({ [expectedPath]: { [THREAD_ASSISTANT_MODEL_FIELD]: 'MODEL_GPT6_LUNA' } })
 
         await expect(readThreadAssistantModelOverride(db, 'project-1', objectType, 'object-1')).resolves.toBe(
-            'MODEL_GPT5_6_LUNA'
+            'MODEL_GPT6_LUNA'
         )
         expect(db.doc).toHaveBeenCalledWith(expectedPath)
     })

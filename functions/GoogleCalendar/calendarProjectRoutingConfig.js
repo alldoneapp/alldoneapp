@@ -21,7 +21,7 @@ const DEFAULT_CALENDAR_PROJECT_ROUTING_PROMPT =
  * of passing any string straight through.
  *
  * The pass-through was load-bearing by accident and actively harmful. Its only special case
- * (`=== 'MODEL_GPT5_6_LUNA'` → `DEFAULT_GMAIL_LABELING_MODEL`) was dead code, because that default
+ * (`=== 'MODEL_GPT6_LUNA'` → `DEFAULT_GMAIL_LABELING_MODEL`) was dead code, because that default
  * *is* Luna. So an arbitrary stored value reached `mapAssistantModelToOpenAIModel`, missed every
  * branch, and silently became `gpt-5.2` — which is exactly what happened in production: the client
  * helper defaulted this field to `MODEL_GPT5_4_NANO`, a key not in the selectable set, so calendar

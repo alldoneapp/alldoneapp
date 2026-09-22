@@ -43,7 +43,7 @@ const {
     startContactProfileEnrichment,
 } = require('./contactProfileEnrichment')
 
-const ASSISTANT = { uid: 'assistant-1', model: 'MODEL_GPT5_6_SOL', temperature: 'TEMPERATURE_LOW' }
+const ASSISTANT = { uid: 'assistant-1', model: 'MODEL_GPT6_SOL', temperature: 'TEMPERATURE_LOW' }
 
 const baseArgs = () => ({
     userId: 'user-1',
@@ -101,7 +101,7 @@ describe('startContactProfileEnrichment', () => {
         expect(args[6]).toContain('contactId "contact-1"')
         expect(args[7]).toBe('de')
         expect(args[8]).toEqual({
-            model: 'MODEL_GPT5_6_SOL',
+            model: 'MODEL_GPT6_SOL',
             temperature: 'TEMPERATURE_LOW',
             allowedTools: CONTACT_ENRICHMENT_TOOLS,
         })
