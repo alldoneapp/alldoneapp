@@ -73,9 +73,9 @@ describe('override corroboration matchers', () => {
     test('requires a model to be named in full unless it is a bare alias', () => {
         expect(isModelRequested('use sonnet', 'sonnet')).toBe(true)
         expect(isModelRequested('use claude-opus-4-8 exactly', 'claude-opus-4-8')).toBe(true)
-        expect(isModelRequested('use gpt-5.6-sol', 'gpt-5.6-sol')).toBe(true)
+        expect(isModelRequested('use gpt-6-sol', 'gpt-6-sol')).toBe(true)
         // A fragment of the id is not enough.
-        expect(isModelRequested('this is about gpt models', 'gpt-5.6-sol')).toBe(false)
+        expect(isModelRequested('this is about gpt models', 'gpt-6-sol')).toBe(false)
         expect(isModelRequested('opusculum is a word', 'opus')).toBe(false)
     })
 
@@ -118,14 +118,14 @@ describe('resolveVmRunOverrides', () => {
         const result = resolveVmRunOverrides({
             requestText: workflowStepPrompt,
             agent: 'codex',
-            agentModel: 'gpt-5.6-sol',
+            agentModel: 'gpt-6-sol',
         })
 
         expect(result.agent).toBeUndefined()
         expect(result.agentModel).toBeUndefined()
         expect(result.ignored).toEqual([
             { field: 'agent', requested: 'codex' },
-            { field: 'agentModel', requested: 'gpt-5.6-sol' },
+            { field: 'agentModel', requested: 'gpt-6-sol' },
         ])
     })
 

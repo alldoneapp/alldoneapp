@@ -90,7 +90,7 @@ async function resolveDefaultProjectAssistant(user, projectsById) {
 
     return {
         ...assistant,
-        model: normalizeModelKey(assistant.model || 'MODEL_GPT5_6_SOL'),
+        model: normalizeModelKey(assistant.model || 'MODEL_GPT6_SOL'),
         temperature: assistant.temperature || 'TEMPERATURE_NORMAL',
         displayName: assistant.displayName || 'Assistant',
         defaultProjectId,

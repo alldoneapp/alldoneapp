@@ -87,7 +87,7 @@ jest.mock('./vmAgentModelCatalog', () => ({
         }
         const catalog = {
             claude: { opus: 'opus', sonnet: 'sonnet', haiku: 'haiku', fable: 'claude-fable-5' },
-            codex: { sol: 'gpt-5.6-sol', terra: 'gpt-5.6-terra', luna: 'gpt-5.6-luna' },
+            codex: { sol: 'gpt-6-sol', terra: 'gpt-5.6-terra', luna: 'gpt-6-luna' },
         }
         return (catalog[provider] || {})[family] || null
     }),
@@ -179,17 +179,17 @@ describe('startVmJob', () => {
                 data: () => ({ defaultVmAgent: 'codex', defaultVmAgentModel: { codex: family } }),
             })
 
-        test('a Codex Luna run is priced at 1/19 of the Sol rate on both documents', async () => {
+        test('a Codex Luna run is priced at 1/20 of the Sol rate on both documents', async () => {
             saveCodexDefault('luna')
 
             await launch({})
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 1900 })
+                expect.objectContaining({ agentModel: 'gpt-6-luna', tokensPerGold: 4000 })
             )
             // The proxy reads its rate from the pendingWebhooks mirror, so the two must agree.
             expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-luna', tokensPerGold: 1900 })
+                expect.objectContaining({ agentModel: 'gpt-6-luna', tokensPerGold: 4000 })
             )
         })
 
@@ -209,7 +209,7 @@ describe('startVmJob', () => {
             await launch({})
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ tokensPerGold: 100 })
+                expect.objectContaining({ tokensPerGold: 200 })
             )
         })
 
@@ -253,7 +253,7 @@ describe('startVmJob', () => {
             await launch({})
 
             const statusText = createInitialStatusMessage.mock.calls[0][4]
-            expect(statusText).toContain('1/19 of the Sol rate')
+            expect(statusText).toContain('1/20 of the Sol rate')
         })
     })
 
@@ -345,13 +345,13 @@ describe('startVmJob', () => {
             requestUserId: 'user-1',
         })
 
-        // No model/effort passed → the per-agent defaults are surfaced, named by tier (Sol 5.6 · medium).
+        // No model/effort passed → the per-agent defaults are surfaced, named by tier (Sol 6.0 · medium).
         expect(createInitialStatusMessage).toHaveBeenCalledWith(
             'project-1',
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (Sol 5.6 · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Codex (Sol 6.0 · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -384,7 +384,7 @@ describe('startVmJob', () => {
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({
                 agent: 'codex',
-                agentModel: 'gpt-5.6-sol',
+                agentModel: 'gpt-6-sol',
                 agentReasoningEffort: 'xhigh',
             })
         )
@@ -416,7 +416,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (Opus latest; resolving version… · xhigh effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 1.3x the Sol rate.',
+            '🖥️ Spinning up Claude (Opus latest; resolving version… · xhigh effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 2.5x the Sol rate.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -440,7 +440,7 @@ describe('startVmJob', () => {
                 objective: 'Implement the task in the connected repository',
                 taskType: 'prototype',
                 agent: 'codex',
-                agentModel: 'gpt-5.6-sol',
+                agentModel: 'gpt-6-sol',
                 requestText: workflowStepPrompt,
                 projectId: 'project-1',
                 objectType: 'tasks',
@@ -473,7 +473,7 @@ describe('startVmJob', () => {
             })
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol', agentReasoningEffort: 'high' })
+                expect.objectContaining({ agent: 'codex', agentModel: 'gpt-6-sol', agentReasoningEffort: 'high' })
             )
         })
 
@@ -604,7 +604,7 @@ describe('startVmJob', () => {
         })
 
         expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-            expect.objectContaining({ agent: 'codex', agentModel: 'gpt-5.6-sol', agentReasoningEffort: 'medium' })
+            expect.objectContaining({ agent: 'codex', agentModel: 'gpt-6-sol', agentReasoningEffort: 'medium' })
         )
     })
 
@@ -729,7 +729,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold. Token Gold for this model is charged at 1/2 of the Sol rate.',
+            '🖥️ Spinning up Claude (Sonnet latest; resolving version… · medium effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -783,9 +783,9 @@ describe('startVmJob', () => {
         ['claude-sonnet-4-6', 'Sonnet 4.6'],
         ['claude-haiku-4-5', 'Haiku 4.5'],
         ['claude-fable-5', 'Fable 5.0'],
-        ['gpt-5.6-sol', 'Sol 5.6'],
+        ['gpt-6-sol', 'Sol 6.0'],
         ['gpt-5.6-terra', 'Terra 5.6'],
-        ['gpt-5.6-luna', 'Luna 5.6'],
+        ['gpt-6-luna', 'Luna 6.0'],
     ])('names the model tier for %s', (model, expectedLabel) => {
         expect(formatAgentModelLabel(model)).toBe(expectedLabel)
     })
@@ -877,7 +877,7 @@ describe('startVmJob', () => {
 
             await startVmJob({ ...baseArgs, agent: 'codex' })
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-sol' })
+                expect.objectContaining({ agentModel: 'gpt-6-sol' })
             )
         })
     })
@@ -1117,7 +1117,7 @@ describe('startVmJob', () => {
             await startVmJob({ ...baseArgs, agent: 'codex', requestText: 'use codex for this' })
 
             expect(mockDocs['vmJobs/correlation-1'].set).toHaveBeenCalledWith(
-                expect.objectContaining({ agentModel: 'gpt-5.6-sol' })
+                expect.objectContaining({ agentModel: 'gpt-6-sol' })
             )
         })
     })
@@ -1141,7 +1141,7 @@ describe('startVmJob', () => {
             'topics',
             'chat-1',
             'assistant-1',
-            '🖥️ Spinning up Codex (Sol 5.6 · low effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
+            '🖥️ Spinning up Codex (Sol 6.0 · low effort) in a VM to work on this…\n\n🔑 Using Alldone API billing. VM tokens will cost Gold.',
             expect.any(Array),
             expect.any(Array),
             expect.any(Array)
@@ -1698,7 +1698,7 @@ describe('VM Gold billing dimensions (AT-2487)', () => {
             20,
             expect.objectContaining({
                 source: 'vm_execution',
-                model: 'gpt-5.6-sol',
+                model: 'gpt-6-sol',
                 billingExempt: false,
                 correlationId: 'correlation-1',
             })
@@ -1743,7 +1743,7 @@ describe('VM Gold billing dimensions (AT-2487)', () => {
             20,
             expect.objectContaining({
                 source: 'vm_execution_refund',
-                model: 'gpt-5.6-sol',
+                model: 'gpt-6-sol',
                 billingExempt: false,
                 correlationId: 'correlation-1',
             })

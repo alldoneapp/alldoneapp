@@ -432,7 +432,7 @@ describe('DeepSeek V4 Flash assistant model (AT-2238)', () => {
         expect(calculateGoldCostFromTokens(2000, MODEL_DEEPSEEK_V4_FLASH)).toBe(1)
         expect(calculateGoldCostFromTokens(20000, MODEL_DEEPSEEK_V4_FLASH)).toBe(10)
         expect(calculateGoldCostFromTokens(20000, MODEL_DEEPSEEK_V4_FLASH)).toBeLessThan(
-            calculateGoldCostFromTokens(20000, 'MODEL_GPT5_6_LUNA')
+            calculateGoldCostFromTokens(20000, 'MODEL_GPT6_LUNA')
         )
     })
 
@@ -604,13 +604,13 @@ describe('Responses API compatibility helpers', () => {
             { type: 'response.completed', response: { output: [] } },
         ])
 
-        const stream = await interactWithChatStream([['user', 'Hello']], 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', [])
+        const stream = await interactWithChatStream([['user', 'Hello']], 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
         const firstChunk = await stream.next()
 
         expect(firstChunk.value).toEqual({ content: 'Hello', additional_kwargs: {} })
         expect(mockResponsesCreate).toHaveBeenCalledWith(
             expect.objectContaining({
-                model: 'gpt-5.6-sol',
+                model: 'gpt-6-sol',
                 input: [{ role: 'user', content: 'Hello' }],
                 stream: true,
                 store: false,
@@ -630,7 +630,7 @@ describe('Responses API compatibility helpers', () => {
 
             const stream = await interactWithChatStream(
                 [['user', 'Consider this carefully']],
-                'MODEL_GPT5_6_SOL',
+                'MODEL_GPT6_SOL',
                 'TEMPERATURE_NORMAL',
                 [],
                 { openAiReasoningEffort: reasoningEffort }
@@ -651,7 +651,7 @@ describe('Responses API compatibility helpers', () => {
 
         const stream = await interactWithChatStream(
             [['user', 'Use the model default']],
-            'MODEL_GPT5_6_SOL',
+            'MODEL_GPT6_SOL',
             'TEMPERATURE_NORMAL',
             [],
             { openAiReasoningEffort: effort }
@@ -679,7 +679,7 @@ describe('Responses API compatibility helpers', () => {
         expect(mockResponsesCreate.mock.calls[0][0]).not.toHaveProperty('reasoning')
     })
 
-    test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA'])(
+    test.each(['MODEL_GPT6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT6_LUNA'])(
         'sends max effort to compatible %s assistants',
         async model => {
             mockResponsesCreate.mockResolvedValue([
@@ -828,7 +828,7 @@ describe('Responses API compatibility helpers', () => {
         logOpenAiCacheUsage({
             usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 50 } },
             route: 'tasks',
-            model: 'gpt-5.6-sol',
+            model: 'gpt-6-sol',
             cacheKey: 'sensitive-cache-key',
             cacheMode: 'explicit',
         })
@@ -887,7 +887,7 @@ describe('Responses API compatibility helpers', () => {
                         },
                     ],
                 },
-                { route: 'assistant', model: 'gpt-5.6-sol' }
+                { route: 'assistant', model: 'gpt-6-sol' }
             )
         ).toThrow(expect.objectContaining({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' }))
 
@@ -911,7 +911,7 @@ describe('Responses API compatibility helpers', () => {
             ['user', 'Volatile request'],
         ]
 
-        const stream = await interactWithChatStream(prompt, 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', [])
+        const stream = await interactWithChatStream(prompt, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [])
         await stream.next()
 
         expect(prompt[0][1]).toBe('Stable instructions')
@@ -940,7 +940,7 @@ describe('Responses API compatibility helpers', () => {
             ['system', 'Current time at run start'],
             ['user', 'Find my tasks'],
         ]
-        await interactWithChatStream(prompt, 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'])
+        await interactWithChatStream(prompt, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'])
         const firstRequest = mockResponsesCreate.mock.calls[0][0]
         const continued = buildConversationAfterToolExecution({
             currentConversation: prompt,
@@ -950,7 +950,7 @@ describe('Responses API compatibility helpers', () => {
             toolCallId: 'call-tasks',
             conversationSafeToolResult: { tasks: [{ title: 'Ship release' }] },
         })
-        await interactWithChatStream(continued, 'MODEL_GPT5_6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'])
+        await interactWithChatStream(continued, 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'])
         const nextRequest = mockResponsesCreate.mock.calls[1][0]
         for (const request of [firstRequest, nextRequest]) {
             expect(request.prompt_cache_options).toEqual({ mode: 'implicit', ttl: '30m' })
@@ -965,7 +965,7 @@ describe('Responses API compatibility helpers', () => {
         expect(nextRequest.tools).toEqual(firstRequest.tools)
     })
 
-    test.each(['MODEL_GPT5_6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT5_6_LUNA', 'MODEL_GPT5_5'])(
+    test.each(['MODEL_GPT6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_GPT6_LUNA', 'MODEL_GPT5_5'])(
         'disables one-off prompt caching only on supported models: %s',
         async model => {
             mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Summary' }])
@@ -1227,7 +1227,7 @@ describe('Responses API compatibility helpers', () => {
                 'user-1',
                 null,
                 [['user', 'Update all project descriptions']],
-                'MODEL_GPT5_6_LUNA',
+                'MODEL_GPT6_LUNA',
                 'TEMPERATURE_NORMAL',
                 ['update_project_description'],
                 {
@@ -1293,7 +1293,7 @@ describe('Responses API compatibility helpers', () => {
             },
         }))
 
-        const result = buildResponsesTools(tools, 'MODEL_GPT5_6_SOL')
+        const result = buildResponsesTools(tools, 'MODEL_GPT6_SOL')
         const namespaces = result.tools.filter(tool => tool.type === 'namespace')
 
         expect(result.toolSearchEnabled).toBe(true)
@@ -1313,9 +1313,9 @@ describe('Responses API compatibility helpers', () => {
             }))
 
         expect(buildResponsesTools(buildTools(12), 'MODEL_GPT5_2').toolSearchEnabled).toBe(false)
-        expect(buildResponsesTools(buildTools(3), 'MODEL_GPT5_6_SOL').toolSearchEnabled).toBe(false)
+        expect(buildResponsesTools(buildTools(3), 'MODEL_GPT6_SOL').toolSearchEnabled).toBe(false)
 
-        const explicitlyDisabled = buildResponsesTools(buildTools(12), 'MODEL_GPT5_6_SOL', {
+        const explicitlyDisabled = buildResponsesTools(buildTools(12), 'MODEL_GPT6_SOL', {
             disableToolSearch: true,
         })
         expect(explicitlyDisabled.toolSearchEnabled).toBe(false)
@@ -1382,7 +1382,7 @@ describe('Responses API compatibility helpers', () => {
         })
 
         test('sends a named tool directly while the rest stay deferred', () => {
-            const result = buildResponsesTools(schemasFor(namedTools), 'MODEL_GPT5_6_SOL', {
+            const result = buildResponsesTools(schemasFor(namedTools), 'MODEL_GPT6_SOL', {
                 alwaysDirectToolNames: new Set(['update_user_description']),
             })
             const directNames = result.tools.filter(tool => tool.type === 'function').map(tool => tool.name)
@@ -1419,7 +1419,7 @@ describe('Responses API compatibility helpers', () => {
                 ['user', 'Please update the global user description based on my tasks, goals and notes.'],
             ]
 
-            const result = buildResponsesTools(schemasFor(productionTools), 'MODEL_GPT5_6_SOL', {
+            const result = buildResponsesTools(schemasFor(productionTools), 'MODEL_GPT6_SOL', {
                 alwaysDirectToolNames: collectPromptReferencedToolNames(messages, productionTools),
             })
 
@@ -1590,15 +1590,19 @@ describe('assistant attachment handoff helpers', () => {
         expect(calculateGoldCostFromTokens(100, 'MODEL_GPT5_5')).toBe(1)
         expect(calculateGoldCostFromTokens(1200, 'MODEL_GPT5_4_NANO')).toBe(1)
         expect(calculateGoldCostFromTokens(2400, 'MODEL_GPT5_4_NANO')).toBe(2)
-        expect(calculateGoldCostFromTokens(500, 'MODEL_GPT5_6_LUNA')).toBe(1)
+        expect(calculateGoldCostFromTokens(500, 'MODEL_GPT6_LUNA')).toBe(1)
         expect(calculateGoldCostFromTokens(200, 'MODEL_GPT5_6_TERRA')).toBe(1)
     })
 
-    test('defaults missing models to GPT-5.6 Sol with its full context window', () => {
-        expect(normalizeModelKey()).toBe('MODEL_GPT5_6_SOL')
-        expect(getMaxTokensForModel('MODEL_GPT5_6_SOL')).toBe(1050000)
+    test('defaults missing models to GPT-6 Sol and upgrades stored Sol and Luna keys', () => {
+        expect(normalizeModelKey()).toBe('MODEL_GPT6_SOL')
+        expect(normalizeModelKey('MODEL_GPT5_6_SOL')).toBe('MODEL_GPT6_SOL')
+        expect(normalizeModelKey('MODEL_GPT5_6_LUNA')).toBe('MODEL_GPT6_LUNA')
+        expect(getTokensPerGold('MODEL_GPT5_6_SOL')).toBe(200)
+        expect(getTokensPerGold('MODEL_GPT5_6_LUNA')).toBe(1000)
+        expect(getMaxTokensForModel('MODEL_GPT6_SOL')).toBe(1050000)
         expect(getMaxTokensForModel('MODEL_GPT5_6_TERRA')).toBe(1050000)
-        expect(getMaxTokensForModel('MODEL_GPT5_6_LUNA')).toBe(400000)
+        expect(getMaxTokensForModel('MODEL_GPT6_LUNA')).toBe(1050000)
     })
 
     test('passes the email meeting-link policy flag into availability execution', async () => {
@@ -2255,7 +2259,7 @@ describe('assistant attachment handoff helpers', () => {
                 'user-1',
                 null,
                 [['user', 'Please answer fully']],
-                'MODEL_GPT5_6_SOL',
+                'MODEL_GPT6_SOL',
                 'TEMPERATURE_NORMAL',
                 [],
                 {
@@ -7384,7 +7388,7 @@ describe('shared chat loop with voice channel controls', () => {
         const result = await collectAssistantTextWithToolCalls({
             stream: toolStream,
             conversationHistory: [['user', 'Goodbye']],
-            modelKey: 'MODEL_GPT5_6_SOL',
+            modelKey: 'MODEL_GPT6_SOL',
             temperatureKey: 'TEMPERATURE_NORMAL',
             allowedTools: [],
             toolRuntimeContext: { additionalToolSchemas: [schema] },
@@ -7405,7 +7409,7 @@ describe('shared chat loop with voice channel controls', () => {
             collectAssistantTextWithToolCalls({
                 stream: toolStream,
                 conversationHistory: [],
-                modelKey: 'MODEL_GPT5_6_SOL',
+                modelKey: 'MODEL_GPT6_SOL',
                 allowedTools: [],
                 localTools: { end_call: { execute } },
                 assertActive: async () => {
@@ -7490,7 +7494,7 @@ describe('parallel tool execution in both assistant paths', () => {
                     ? collectAssistantTextWithToolCalls({
                           stream,
                           conversationHistory: [['user', 'Check five alternatives']],
-                          modelKey: 'MODEL_GPT5_6_SOL',
+                          modelKey: 'MODEL_GPT6_SOL',
                           temperatureKey: 'TEMPERATURE_NORMAL',
                           allowedTools: ['find_calendar_availability'],
                           toolRuntimeContext: runtime,
@@ -7512,7 +7516,7 @@ describe('parallel tool execution in both assistant paths', () => {
                           'parallel-user',
                           null,
                           [['user', 'Check five alternatives']],
-                          'MODEL_GPT5_6_SOL',
+                          'MODEL_GPT6_SOL',
                           'TEMPERATURE_NORMAL',
                           ['find_calendar_availability'],
                           runtime,
@@ -7589,7 +7593,7 @@ test('a multi-call round keeps attachment handoff ordered and strips binary data
             },
         ],
         conversationHistory: [['user', 'Use my file']],
-        modelKey: 'MODEL_GPT5_6_SOL',
+        modelKey: 'MODEL_GPT6_SOL',
         temperatureKey: 'TEMPERATURE_NORMAL',
         allowedTools: [],
         localTools: {
@@ -7663,7 +7667,7 @@ test('a corrected voice request drains active reads and prevents queued reads, w
     const running = collectAssistantTextWithToolCalls({
         stream: [{ additional_kwargs: { tool_calls: calls } }],
         conversationHistory: [],
-        modelKey: 'MODEL_GPT5_6_SOL',
+        modelKey: 'MODEL_GPT6_SOL',
         allowedTools: ['web_search', 'create_task'],
         toolExecutor: execute,
         assertActive: async () => {

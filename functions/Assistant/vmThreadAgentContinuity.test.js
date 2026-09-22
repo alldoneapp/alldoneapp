@@ -229,7 +229,7 @@ describe('vmThreadAgentContinuity', () => {
         test('agentForModelSelection maps model flavours to their agent', () => {
             expect(agentForModelSelection('opus')).toBe('claude')
             expect(agentForModelSelection('claude-fable-5')).toBe('claude')
-            expect(agentForModelSelection('gpt-5.6-sol')).toBe('codex')
+            expect(agentForModelSelection('gpt-6-sol')).toBe('codex')
             expect(agentForModelSelection('o3-mini')).toBe('codex')
             expect(agentForModelSelection('openrouter:deepseek/deepseek-chat')).toBe('codex')
             expect(agentForModelSelection('')).toBeNull()

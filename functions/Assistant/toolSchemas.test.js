@@ -253,9 +253,9 @@ describe('User memory assistant tool schemas', () => {
     test('documents heartbeat settings update fields', () => {
         expect(toolSchemas.update_heartbeat_settings.function.parameters.required).toEqual([])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.model.enum).toEqual([
-            'MODEL_GPT5_6_SOL',
+            'MODEL_GPT6_SOL',
             'MODEL_GPT5_6_TERRA',
-            'MODEL_GPT5_6_LUNA',
+            'MODEL_GPT6_LUNA',
             'MODEL_DEEPSEEK_V4_FLASH',
         ])
         expect(toolSchemas.update_heartbeat_settings.function.parameters.properties.reasoningEffort.enum).toEqual([
@@ -327,7 +327,7 @@ describe('User memory assistant tool schemas', () => {
         expect(properties.assistantId.type).toBe('string')
         expect(properties.assistantName.type).toBe('string')
         expect(properties.projectId.type).toBe('string')
-        expect(properties.model.enum).toContain('MODEL_GPT5_6_SOL')
+        expect(properties.model.enum).toContain('MODEL_GPT6_SOL')
         expect(properties.model.enum).toContain('MODEL_GPT5_5')
         expect(properties.temperature.enum).toContain('TEMPERATURE_NORMAL')
         expect(Object.keys(properties)).not.toContain('allowedTools')

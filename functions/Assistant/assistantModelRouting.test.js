@@ -32,10 +32,10 @@ describe('assistantModelRouting', () => {
     test('leaves OpenAI and Perplexity keys on their existing providers', () => {
         // `model: null` is the contract that says "use your own key→id mapper" — duplicating
         // `getModel` here is the drift this module exists to prevent.
-        expect(resolveAssistantModelProvider('MODEL_GPT5_6_SOL')).toEqual({
+        expect(resolveAssistantModelProvider('MODEL_GPT6_SOL')).toEqual({
             provider: PROVIDER_OPENAI,
             model: null,
-            modelKey: 'MODEL_GPT5_6_SOL',
+            modelKey: 'MODEL_GPT6_SOL',
         })
         expect(resolveAssistantModelProvider('MODEL_SONAR_PRO')).toEqual({
             provider: PROVIDER_PERPLEXITY,
@@ -43,11 +43,11 @@ describe('assistantModelRouting', () => {
             modelKey: 'MODEL_SONAR_PRO',
         })
         expect(isPerplexityAssistantModel('MODEL_SONAR_DEEP_RESEARCH')).toBe(true)
-        expect(isOpenRouterAssistantModel('MODEL_GPT5_6_LUNA')).toBe(false)
+        expect(isOpenRouterAssistantModel('MODEL_GPT6_LUNA')).toBe(false)
     })
 
     test('an unknown or empty key falls back to OpenAI instead of failing the run', () => {
-        // Pre-AT-2238 behaviour: it then flows into `getModel`'s own `gpt-5.6-sol` fallback.
+        // Pre-AT-2238 behaviour: it then flows into `getModel`'s own `gpt-6-sol` fallback.
         expect(resolveAssistantModelProvider('MODEL_SOMETHING_NEW').provider).toBe(PROVIDER_OPENAI)
         expect(resolveAssistantModelProvider('').provider).toBe(PROVIDER_OPENAI)
         expect(resolveAssistantModelProvider(undefined).provider).toBe(PROVIDER_OPENAI)
@@ -55,7 +55,7 @@ describe('assistantModelRouting', () => {
     })
 
     test('asking for a non-OpenRouter model id returns null, never a plausible wrong model', () => {
-        expect(getOpenRouterAssistantModelId('MODEL_GPT5_6_SOL')).toBeNull()
+        expect(getOpenRouterAssistantModelId('MODEL_GPT6_SOL')).toBeNull()
         expect(getOpenRouterAssistantModelId('nonsense')).toBeNull()
         expect(getOpenRouterAssistantModelId(undefined)).toBeNull()
     })
@@ -83,8 +83,8 @@ describe('assistantModelRouting', () => {
         // Fail safe: a stripped image degrades to a note the model can explain, while an image sent
         // to a text-only model takes the entire request down.
         expect(assistantModelSupportsImageInput('MODEL_SONAR_PRO')).toBe(false)
-        expect(assistantModelSupportsImageInput('MODEL_GPT5_6_LUNA')).toBe(true)
-        expect(assistantModelSupportsImageInput('MODEL_GPT5_6_SOL')).toBe(true)
+        expect(assistantModelSupportsImageInput('MODEL_GPT6_LUNA')).toBe(true)
+        expect(assistantModelSupportsImageInput('MODEL_GPT6_SOL')).toBe(true)
     })
 
     test('every OpenRouter id is a legal vendor/model string', () => {

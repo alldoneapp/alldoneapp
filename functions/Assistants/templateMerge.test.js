@@ -81,7 +81,7 @@ describe('templateMerge', () => {
             activatedInProjectIdByUser: { user: 'project-1' },
             completedOneOffUserIds: ['user'],
             activatedUserIds: ['user'],
-            aiModel: 'MODEL_GPT5_6_SOL',
+            aiModel: 'MODEL_GPT6_SOL',
             aiModelOverride: 'MODEL_GPT5_6_TERRA',
         }
         expect(getTaskTemplateState(local)).toEqual({

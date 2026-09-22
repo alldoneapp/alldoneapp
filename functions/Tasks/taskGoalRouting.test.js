@@ -13,7 +13,7 @@ jest.mock('firebase-admin', () => ({
 jest.mock('../Assistant/assistantHelper', () => ({
     calculateGoldCostFromTokens: jest.fn(() => 1),
     getCachedEnvFunctions: jest.fn(() => ({ OPEN_AI_KEY: 'test-key' })),
-    getModel: jest.fn(() => 'gpt-5.6-luna'),
+    getModel: jest.fn(() => 'gpt-6-luna'),
     getOpenAIClient: jest.fn(() => ({
         responses: { create: mockResponsesCreate },
     })),
@@ -248,7 +248,7 @@ describe('taskGoalRouting', () => {
         expect(result.totalTokens).toBe(123)
         expect(mockResponsesCreate).toHaveBeenCalledWith(
             expect.objectContaining({
-                model: 'gpt-5.6-luna',
+                model: 'gpt-6-luna',
                 reasoning: { effort: 'low' },
                 text: expect.objectContaining({
                     format: expect.objectContaining({
@@ -805,7 +805,7 @@ describe('taskGoalRouting', () => {
             expect.objectContaining({
                 goalId: 'goal1',
                 status: 'pending',
-                model: 'gpt-5.6-luna',
+                model: 'gpt-6-luna',
             })
         )
         expect(mockDeductGold).toHaveBeenCalledWith(

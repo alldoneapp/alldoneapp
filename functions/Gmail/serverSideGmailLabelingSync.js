@@ -81,7 +81,7 @@ const DEFAULT_ACTIVE_PROJECTS_PROMPT =
     ' Use the configured confidence threshold for specific non-default project and Ads matches. If project relevance is present but no non-default project reaches that threshold, use the default project label. Confidence for a match means confidence in the selected label; confidence for matched:false means confidence that no configured label applies. Do not use matched:false when your reasoning identifies a configured project, client, sender domain, project-specific link, or clear Ads email; use the matching configured label instead. ' +
     GMAIL_ACTIONABILITY_GUIDANCE
 const DEFAULT_PROJECT_FOLLOW_UP_DIRECTION_SCOPE = GMAIL_DIRECTION_SCOPE_INCOMING
-const DEFAULT_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_LUNA'
+const DEFAULT_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT6_LUNA'
 const CUSTOM_POST_LABEL_ASSISTANT_MODEL = 'MODEL_GPT5_6_TERRA'
 const POST_LABEL_MAX_TOOL_CALL_ROUNDS = 8
 const DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER = "[today's date]"

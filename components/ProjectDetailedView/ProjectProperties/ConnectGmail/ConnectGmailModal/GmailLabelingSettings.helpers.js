@@ -10,7 +10,7 @@ const MIN_SYNC_INTERVAL_MINUTES = 5
 const MAX_SYNC_INTERVAL_MINUTES = 24 * 60
 const GMAIL_LABELING_PROMPT_MODE_DEFAULT = 'default'
 const GMAIL_LABELING_PROMPT_MODE_CUSTOM = 'custom'
-const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT5_6_LUNA'
+const DEFAULT_GMAIL_LABELING_MODEL = 'MODEL_GPT6_LUNA'
 const GMAIL_LABELING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
 // Client mirror of the shared Ads guidance in functions/Gmail/serverSideGmailLabelingSync.js —
 // keep the texts identical, they only exist here for the default-config preview.

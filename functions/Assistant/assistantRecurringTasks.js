@@ -51,7 +51,7 @@ const OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT_ERROR_CODE = 'OPENAI_INPUT_TOKEN_PREFLI
 function buildRecurringTaskAiSettings(task, assistant, assistantId) {
     const taskModelOverride = getPreConfigTaskModelOverride(task)
     return {
-        model: taskModelOverride || assistant?.model || 'MODEL_GPT5_6_SOL',
+        model: taskModelOverride || assistant?.model || 'MODEL_GPT6_SOL',
         temperature: assistant?.temperature || 'TEMPERATURE_NORMAL',
         reasoningEffort: resolvePreConfigTaskReasoningEffort(task, assistant?.reasoningEffort),
         systemMessage: task.aiSystemMessage || assistant?.instructions || 'You are a helpful assistant.',

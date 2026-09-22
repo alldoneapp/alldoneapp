@@ -23,9 +23,9 @@ describe('pre-configured task advanced AI settings', () => {
     test('shows Gold pricing on every explicit model choice', () => {
         expect(getModelOptions().map(option => option.label)).toEqual([
             'Use assistant model',
-            'GPT 5_6 Sol · 1 Gold = 100 tokens',
+            'GPT 6 Sol · 1 Gold = 100 tokens',
             'GPT 5_6 Terra · 1 Gold = 200 tokens',
-            'GPT 5_6 Luna · 1 Gold = 500 tokens',
+            'GPT 6 Luna · 1 Gold = 500 tokens',
             'DeepSeek V4 Flash · 1 Gold = 2,000 tokens',
         ])
     })

@@ -32,7 +32,7 @@ describe('per-thread assistant model override (AT-2502)', () => {
         })
 
         // The whole reason the read validates rather than trusting. `getModel` answers
-        // 'gpt-5.6-sol' for an unknown key while `getTokensPerGold` answers undefined, and
+        // 'gpt-6-sol' for an unknown key while `getTokensPerGold` answers undefined, and
         // `calculateGoldCostFromTokens` turns that into a charge of ZERO — so a thread pinned to
         // a model that is later retired would run free and silently, forever.
         it('ignores a model key that is no longer selectable', () => {
@@ -66,7 +66,7 @@ describe('per-thread assistant model override (AT-2502)', () => {
                 INHERIT_ASSISTANT_MODEL,
                 'MODEL_GPT5_5',
                 '',
-                '  MODEL_GPT5_6_LUNA  ',
+                '  MODEL_GPT6_LUNA  ',
             ]
 
             candidates.forEach(candidate => {
@@ -79,8 +79,8 @@ describe('per-thread assistant model override (AT-2502)', () => {
 
     describe('resolving the model a run uses', () => {
         it('uses the assistant model when the thread pins nothing', () => {
-            expect(resolveThreadAssistantModel({ assistantModel: 'MODEL_GPT5_6_SOL' })).toEqual({
-                model: 'MODEL_GPT5_6_SOL',
+            expect(resolveThreadAssistantModel({ assistantModel: 'MODEL_GPT6_SOL' })).toEqual({
+                model: 'MODEL_GPT6_SOL',
                 source: 'assistant',
             })
         })
@@ -88,10 +88,10 @@ describe('per-thread assistant model override (AT-2502)', () => {
         it('uses the thread override when one is pinned', () => {
             expect(
                 resolveThreadAssistantModel({
-                    threadOverride: 'MODEL_GPT5_6_LUNA',
-                    assistantModel: 'MODEL_GPT5_6_SOL',
+                    threadOverride: 'MODEL_GPT6_LUNA',
+                    assistantModel: 'MODEL_GPT6_SOL',
                 })
-            ).toEqual({ model: 'MODEL_GPT5_6_LUNA', source: 'thread_override' })
+            ).toEqual({ model: 'MODEL_GPT6_LUNA', source: 'thread_override' })
         })
 
         // A pre-configured prompt was configured for its model deliberately; the conversation it
@@ -100,8 +100,8 @@ describe('per-thread assistant model override (AT-2502)', () => {
             expect(
                 resolveThreadAssistantModel({
                     explicitModel: 'MODEL_GPT5_6_TERRA',
-                    threadOverride: 'MODEL_GPT5_6_LUNA',
-                    assistantModel: 'MODEL_GPT5_6_SOL',
+                    threadOverride: 'MODEL_GPT6_LUNA',
+                    assistantModel: 'MODEL_GPT6_SOL',
                 })
             ).toEqual({ model: 'MODEL_GPT5_6_TERRA', source: 'explicit' })
         })
@@ -110,9 +110,9 @@ describe('per-thread assistant model override (AT-2502)', () => {
             expect(
                 resolveThreadAssistantModel({
                     threadOverride: 'MODEL_GPT5_5',
-                    assistantModel: 'MODEL_GPT5_6_SOL',
+                    assistantModel: 'MODEL_GPT6_SOL',
                 })
-            ).toEqual({ model: 'MODEL_GPT5_6_SOL', source: 'assistant' })
+            ).toEqual({ model: 'MODEL_GPT6_SOL', source: 'assistant' })
         })
 
         // Preserving the pre-AT-2502 behaviour exactly: with nothing pinned anywhere the caller
@@ -140,7 +140,7 @@ describe('per-thread assistant model override (AT-2502)', () => {
         })
 
         it('names a model for the summary line, and nothing for an unknown one', () => {
-            expect(getThreadAssistantModelName('MODEL_GPT5_6_SOL')).toBe('Sol')
+            expect(getThreadAssistantModelName('MODEL_GPT6_SOL')).toBe('Sol')
             expect(getThreadAssistantModelName('MODEL_DEEPSEEK_V4_FLASH')).toBe('DeepSeek Flash')
             expect(getThreadAssistantModelName('MODEL_GPT5_5')).toBeNull()
             expect(getThreadAssistantModelName(undefined)).toBeNull()

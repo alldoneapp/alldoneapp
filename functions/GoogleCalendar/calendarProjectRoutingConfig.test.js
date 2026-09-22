@@ -44,7 +44,7 @@ describe('calendarProjectRoutingConfig', () => {
         // Luna was once a temporary first-pass override; stored configs carrying it
         // follow the shared default wherever it moves (currently Luna itself).
         const config = normalizeCalendarProjectRoutingConfigInput('project-1', {
-            model: 'MODEL_GPT5_6_LUNA',
+            model: 'MODEL_GPT6_LUNA',
         })
 
         expect(config.model).toBe(DEFAULT_GMAIL_LABELING_MODEL)

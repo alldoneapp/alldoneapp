@@ -9,7 +9,7 @@ const { SELECTABLE_ASSISTANT_MODELS } = require('../../../../../functions/Assist
  * Coercing to the shared default keeps the saved config and the model actually invoked in step.
  */
 const CALENDAR_ROUTING_MODEL_KEYS = new Set(SELECTABLE_ASSISTANT_MODELS.map(option => option.model))
-const DEFAULT_CALENDAR_ROUTING_MODEL = 'MODEL_GPT5_6_LUNA'
+const DEFAULT_CALENDAR_ROUTING_MODEL = 'MODEL_GPT6_LUNA'
 
 function normalizeCalendarRoutingModel(value) {
     return CALENDAR_ROUTING_MODEL_KEYS.has(value) ? value : DEFAULT_CALENDAR_ROUTING_MODEL
