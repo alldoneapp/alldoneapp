@@ -41,6 +41,7 @@ const baseState = {
     currentUser: { uid: 'user-1' },
     taskViewToggleSection: 'Open',
     taskEditorCount: 0,
+    blockShortcuts: false,
 }
 
 const renderButton = (overrides = {}, callStatus = 'idle') => {
@@ -117,6 +118,7 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
 
         expect(styles).toMatchObject({ position: 'absolute', right: 27, bottom: 29 })
         expect(addTask.props.floating).toBe(true)
+        expect(addTask.props.plusShortcutEnabled).toBe(true)
     })
 
     it('draws the shadow on the circular action itself', () => {
@@ -139,5 +141,12 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
         expect(StyleSheet.flatten(wrapper.props.style).opacity).toBe(0)
         expect(wrapper.props.pointerEvents).toBe('none')
         expect(wrapper.props.accessibilityElementsHidden).toBe(true)
+        expect(tree.root.findByType('AddTaskTag').props.plusShortcutEnabled).toBe(false)
+    })
+
+    it('disables the plus shortcut while global shortcuts are blocked', () => {
+        const addTask = renderButton({ blockShortcuts: true }).root.findByType('AddTaskTag')
+
+        expect(addTask.props.plusShortcutEnabled).toBe(false)
     })
 })

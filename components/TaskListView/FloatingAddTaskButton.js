@@ -35,6 +35,7 @@ export default function FloatingAddTaskButton() {
     const currentUser = useSelector(state => state.currentUser)
     const pendingWebShareTarget = useSelector(state => state.pendingWebShareTarget)
     const taskEditorCount = useSelector(state => state.taskEditorCount)
+    const blockShortcuts = useSelector(state => state.blockShortcuts)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
@@ -89,6 +90,7 @@ export default function FloatingAddTaskButton() {
                 initialTaskName={pendingWebShareTarget?.taskName}
                 autoOpenKey={pendingWebShareTarget?.id}
                 onAutoOpen={consumeWebShareTarget}
+                plusShortcutEnabled={taskEditorCount === 0 && !blockShortcuts}
             />
         </View>
     )
