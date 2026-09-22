@@ -37,7 +37,7 @@
  * the client bundle and from Cloud Functions without pulling in `assistantHelper`.
  */
 
-const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
+const { SELECTABLE_ASSISTANT_MODELS, normalizeSelectableAssistantModelKey } = require('./selectableAssistantModels')
 
 // The field on the thread's host document. Named for what it is rather than reusing the
 // pre-configured task's `aiModelOverride`: that one is a property of a saved prompt and is
@@ -70,16 +70,17 @@ function getThreadAssistantModelName(modelKey) {
  * The model this thread is pinned to, or null when it follows its assistant.
  *
  * `objectData` is the thread's host document (task / chat object / note / goal / contact /
- * skill). Anything that is not a currently-selectable model key — absent, blank, a retired key,
- * a non-string — means "no override" rather than an error: an override is a convenience, and
+ * skill). Replaced 5.6 Sol and Luna keys follow their GPT-6 successors. Anything else that is
+ * not a currently-selectable model key — absent, blank, a retired key, a non-string — means
+ * "no override" rather than an error: an override is a convenience, and
  * losing it costs the user a click, whereas honouring an unknown key costs correct billing.
  */
 function getThreadAssistantModelOverride(objectData) {
     const model = objectData?.[THREAD_ASSISTANT_MODEL_FIELD]
     if (typeof model !== 'string') return null
-    const trimmed = model.trim()
-    if (!trimmed || !isSelectableThreadAssistantModel(trimmed)) return null
-    return trimmed
+    const currentModel = normalizeSelectableAssistantModelKey(model.trim())
+    if (!currentModel || !isSelectableThreadAssistantModel(currentModel)) return null
+    return currentModel
 }
 
 // What the picker should show as selected: the pinned model, else the inherit entry.
@@ -93,7 +94,8 @@ function normalizeThreadAssistantModelSelection(selection) {
     if (typeof selection !== 'string') return null
     const trimmed = selection.trim()
     if (!trimmed || trimmed === INHERIT_ASSISTANT_MODEL) return null
-    return isSelectableThreadAssistantModel(trimmed) ? trimmed : null
+    const currentModel = normalizeSelectableAssistantModelKey(trimmed)
+    return isSelectableThreadAssistantModel(currentModel) ? currentModel : null
 }
 
 /**
