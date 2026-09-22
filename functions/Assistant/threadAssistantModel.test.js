@@ -21,6 +21,17 @@ describe('per-thread assistant model override (AT-2502)', () => {
         })
 
         it.each([
+            ['MODEL_GPT5_6_SOL', 'MODEL_GPT6_SOL'],
+            ['MODEL_GPT5_6_LUNA', 'MODEL_GPT6_LUNA'],
+        ])('keeps a saved %s pin on %s', (savedModel, replacement) => {
+            const thread = { [THREAD_ASSISTANT_MODEL_FIELD]: savedModel }
+
+            expect(getThreadAssistantModelOverride(thread)).toBe(replacement)
+            expect(getThreadAssistantModelSelection(thread)).toBe(replacement)
+            expect(normalizeThreadAssistantModelSelection(savedModel)).toBe(replacement)
+        })
+
+        it.each([
             ['no document at all', undefined],
             ['a document without the field', {}],
             ['an explicitly cleared override', { [THREAD_ASSISTANT_MODEL_FIELD]: null }],
