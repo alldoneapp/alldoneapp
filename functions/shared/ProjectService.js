@@ -95,6 +95,7 @@ class ProjectService {
                 active: typeof data.active === 'boolean' ? data.active : undefined,
                 parentTemplateId: data.parentTemplateId || '',
                 focusAreas: data.focusAreas || {},
+                sortIndexByUser: data.sortIndexByUser || {},
             })
         }
 
