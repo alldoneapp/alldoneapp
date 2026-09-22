@@ -255,6 +255,64 @@ describe('AddTaskTag', () => {
         expect(tree.root.findByType('RichCreateTaskModal').props.initialTaskName).toBe('https://example.com/shared')
     })
 
+    describe('plus keyboard shortcut (AT-2621)', () => {
+        const pressPlus = target =>
+            target.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true }))
+
+        it('uses the same open action as pressing the floating button', () => {
+            const openPopover = jest.fn()
+            const legacyInlineShortcut = jest.fn()
+            document.addEventListener('keydown', legacyInlineShortcut)
+            const tree = renderer.create(
+                <AddTaskTag projectId="project-1" plusShortcutEnabled={true} openPopover={openPopover} />
+            )
+
+            act(() => pressPlus(document.body))
+
+            expect(openPopover).toHaveBeenCalledTimes(1)
+            expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Show float popup')).toHaveLength(1)
+            expect(mockDispatch.mock.calls.filter(([action]) => action.type === 'Start task editor')).toHaveLength(1)
+            expect(legacyInlineShortcut).not.toHaveBeenCalled()
+
+            document.removeEventListener('keydown', legacyInlineShortcut)
+            tree.unmount()
+        })
+
+        it('does not fire while the user is typing', () => {
+            const openPopover = jest.fn()
+            const tree = renderer.create(
+                <AddTaskTag projectId="project-1" plusShortcutEnabled={true} openPopover={openPopover} />
+            )
+            const input = document.createElement('input')
+            document.body.appendChild(input)
+            input.focus()
+
+            act(() => pressPlus(input))
+
+            expect(openPopover).not.toHaveBeenCalled()
+
+            input.remove()
+            tree.unmount()
+        })
+
+        it('leaves the shortcut to the legacy list flow when the floating action is hidden', () => {
+            const openPopover = jest.fn()
+            const legacyInlineShortcut = jest.fn()
+            document.addEventListener('keydown', legacyInlineShortcut)
+            const tree = renderer.create(
+                <AddTaskTag projectId="project-1" plusShortcutEnabled={false} openPopover={openPopover} />
+            )
+
+            act(() => pressPlus(document.body))
+
+            expect(openPopover).not.toHaveBeenCalled()
+            expect(legacyInlineShortcut).toHaveBeenCalledTimes(1)
+
+            document.removeEventListener('keydown', legacyInlineShortcut)
+            tree.unmount()
+        })
+    })
+
     describe('icon-only tap target on mobile', () => {
         it('uses a square mobile target larger than its icon', () => {
             mockState({ smallScreenNavigation: true })

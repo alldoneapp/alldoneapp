@@ -1,5 +1,5 @@
 import { taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
-import React, { useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import styles, {
@@ -24,6 +24,7 @@ import {
     FLOATING_ACTION_SIZE,
     FLOATING_ACTION_VIEWPORT_GAP,
 } from '../UIComponents/floatingActionLayout'
+import { isEditableElementFocused } from '../../utils/editingGuard'
 
 function AddTaskTag({
     projectId,
@@ -50,6 +51,7 @@ function AddTaskTag({
     initialTaskName,
     autoOpenKey,
     onAutoOpen,
+    plusShortcutEnabled,
     openPopover,
     closePopover,
     isOpen,
@@ -96,11 +98,35 @@ function AddTaskTag({
         if (onAutoOpen) onAutoOpen()
     }, [autoOpenKey, initialTaskName, onAutoOpen, openPopover, popupLock, taskEditorLock])
 
-    const handleOpen = () => {
+    const handleOpen = useCallback(() => {
         openPopover()
         popupLock.acquire()
         taskEditorLock.acquire()
-    }
+    }, [openPopover, popupLock, taskEditorLock])
+
+    useEffect(() => {
+        if (!plusShortcutEnabled) return
+
+        const openFromShortcut = event => {
+            if (
+                event.key !== '+' ||
+                isEditableElementFocused() ||
+                document.querySelector('[aria-label="dismissible-edit-item"]')
+            ) {
+                return
+            }
+
+            event.preventDefault()
+            event.stopPropagation()
+            handleOpen()
+        }
+
+        // Capture the key before the legacy inline task sections see it in
+        // their document-level bubble handlers. When the floating action is
+        // visible, keyboard and pointer activation must open this same popup.
+        document.addEventListener('keydown', openFromShortcut, true)
+        return () => document.removeEventListener('keydown', openFromShortcut, true)
+    }, [handleOpen, plusShortcutEnabled])
 
     const handleClose = () => {
         if (!isQuillTagEditorOpen && !openModals[MENTION_MODAL_ID]) {
