@@ -36,8 +36,8 @@ module.exports = {
             maxTokens: 4096,
             temperature: 1.0,
         },
-        MODEL_GPT5_6_SOL: {
-            actual: 'gpt-5.6-sol',
+        MODEL_GPT6_SOL: {
+            actual: 'gpt-6-sol',
             maxTokens: 4096,
             temperature: 1.0,
         },

@@ -27,7 +27,7 @@ function getOpenAIModelFromAssistantModel(modelKey) {
     if (modelKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (modelKey === 'MODEL_GPT5_1' || modelKey === 'MODEL_GPT5') return 'gpt-5.1'
     if (modelKey === 'MODEL_GPT5_5') return 'gpt-5.5'
-    if (modelKey === 'MODEL_GPT5_6_SOL') return 'gpt-5.6-sol'
+    if (modelKey === 'MODEL_GPT6_SOL') return 'gpt-6-sol'
     if (modelKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'
     if (modelKey === 'MODEL_GPT5_4_NANO') return 'gpt-5.4-nano'
     if (modelKey === 'MODEL_GPT5_2') return 'gpt-5.2'
@@ -36,7 +36,7 @@ function getOpenAIModelFromAssistantModel(modelKey) {
     if (modelKey === 'MODEL_SONAR_REASONING') return 'sonar-reasoning'
     if (modelKey === 'MODEL_SONAR_REASONING_PRO') return 'sonar-reasoning-pro'
     if (modelKey === 'MODEL_SONAR_DEEP_RESEARCH') return 'sonar-deep-research'
-    return 'gpt-5.6-sol'
+    return 'gpt-6-sol'
 }
 
 function getTaskExecutionDescriptor(task) {
@@ -297,7 +297,7 @@ async function generateDelegationDescription(inputs, languageCode = 'en') {
                 },
             ],
         }
-        if (selectedModel.startsWith('gpt-5.6')) {
+        if (/^gpt-(?:5\.6|6)(?:[.-])/.test(selectedModel)) {
             // Descriptions are regenerated only when the persisted input hash changes, so a
             // one-off implicit cache write would add cost without a likely subsequent read.
             requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }

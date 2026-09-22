@@ -21,8 +21,8 @@ describe('UpdateFromTemplate formatting', () => {
 
     test('shows readable model names instead of internal constants', () => {
         expect(formatTemplateConflictValue('heartbeatModel', 'MODEL_GPT5_6_TERRA', true)).toBe('GPT 5.6 Terra')
-        expect(formatTemplateConflictValue('model', 'MODEL_GPT5_6_LUNA', true)).toBe('GPT 5.6 Luna')
-        expect(formatTemplateConflictValue('emailModel', 'MODEL_GPT5_6_SOL', true)).toBe('GPT 5.6 Sol')
+        expect(formatTemplateConflictValue('model', 'MODEL_GPT6_LUNA', true)).toBe('GPT 6 Luna')
+        expect(formatTemplateConflictValue('emailModel', 'MODEL_GPT6_SOL', true)).toBe('GPT 6 Sol')
     })
 
     test('preserves the existing removed-value label', () => {

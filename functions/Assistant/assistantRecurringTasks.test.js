@@ -266,7 +266,7 @@ describe('recurring assistant generated task completion', () => {
                 },
                 {
                     uid: 'assistant-1',
-                    model: 'MODEL_GPT5_6_SOL',
+                    model: 'MODEL_GPT6_SOL',
                     temperature: 'TEMPERATURE_NORMAL',
                     reasoningEffort: 'max',
                     instructions: 'Assistant instructions',
@@ -276,7 +276,7 @@ describe('recurring assistant generated task completion', () => {
                 'assistant-1'
             )
         ).toEqual({
-            model: 'MODEL_GPT5_6_SOL',
+            model: 'MODEL_GPT6_SOL',
             temperature: 'TEMPERATURE_NORMAL',
             reasoningEffort: 'max',
             systemMessage: 'Assistant instructions',
@@ -288,12 +288,12 @@ describe('recurring assistant generated task completion', () => {
 
     test('uses a deliberately saved recurring-task model override', () => {
         const settings = __private__.buildRecurringTaskAiSettings(
-            { aiModelOverride: 'MODEL_GPT5_6_LUNA' },
-            { model: 'MODEL_GPT5_6_SOL' },
+            { aiModelOverride: 'MODEL_GPT6_LUNA' },
+            { model: 'MODEL_GPT6_SOL' },
             'assistant-1'
         )
 
-        expect(settings.model).toBe('MODEL_GPT5_6_LUNA')
+        expect(settings.model).toBe('MODEL_GPT6_LUNA')
     })
 
     test('uses a deliberately saved recurring-task reasoning effort override', () => {

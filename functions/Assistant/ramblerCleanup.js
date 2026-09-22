@@ -24,7 +24,7 @@ const { buildVocabularyPromptSection } = require('../shared/transcriptionVocabul
  * The vocabulary block lives in the SYSTEM prompt rather than the per-request user content on
  * purpose: correcting a name is a rule about HOW to write, not context about what was said, and the
  * system prompt stays stable across requests. Older models can cache it automatically;
- * GPT-5.6 cleanup avoids cache writes because each transcript is processed only once.
+ * GPT-5.6 and GPT-6 cleanup avoids cache writes because each transcript is processed only once.
  *
  * Adding per-user terms does not break that caching, because the cache key is already scoped per
  * user (`cacheScope` is `${uid}:${projectId}`) and is derived from the built prompt itself — so it
@@ -174,7 +174,7 @@ async function cleanupRamble({
         ? null
         : buildOpenAiPromptCacheKey('rambler', upstreamModel, cacheScope, systemPrompt)
     if (promptCacheKey) request.prompt_cache_key = promptCacheKey
-    const disablePromptCaching = !isOpenRouter && upstreamModel.startsWith('gpt-5.6')
+    const disablePromptCaching = !isOpenRouter && /^gpt-(?:5\.6|6)(?:[.-])/.test(upstreamModel)
     if (disablePromptCaching) {
         // No breakpoints: do not pay a cache-write premium for a one-off transcript.
         request.prompt_cache_options = { mode: 'explicit', ttl: '30m' }

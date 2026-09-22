@@ -20,6 +20,8 @@ const options = SELECTABLE_ASSISTANT_MODELS.map(({ model, labelKey, tokensPerGol
 
 export default function AssistantModelModal({ closeModal, model, updateModel }) {
     const [, height] = useWindowSize()
+    const selectedModel =
+        model === 'MODEL_GPT5_6_SOL' ? 'MODEL_GPT6_SOL' : model === 'MODEL_GPT5_6_LUNA' ? 'MODEL_GPT6_LUNA' : model
 
     const selectModel = model => {
         updateModel(model)
@@ -38,7 +40,12 @@ export default function AssistantModelModal({ closeModal, model, updateModel }) 
                         description={translate('Select the AI model')}
                     />
                     {options.map(data => (
-                        <OptionItem key={data.model} modelData={data} selectModel={selectModel} selectedModel={model} />
+                        <OptionItem
+                            key={data.model}
+                            modelData={data}
+                            selectModel={selectModel}
+                            selectedModel={selectedModel}
+                        />
                     ))}
                 </CustomScrollView>
             </View>

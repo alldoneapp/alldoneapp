@@ -10,7 +10,7 @@
  * doc, settings map, run details, bridge input — each an independent chance to drift out of sync
  * with `agentModel`), the source is encoded *into* the model string with an `openrouter:` prefix:
  *
- *     'gpt-5.6-sol'                    → OpenAI, model id 'gpt-5.6-sol'
+ *     'gpt-6-sol'                    → OpenAI, model id 'gpt-6-sol'
  *     'openrouter:deepseek/deepseek-v3.2' → OpenRouter, model id 'deepseek/deepseek-v3.2'
  *
  * One value travels end to end, an old job doc without a prefix keeps meaning exactly what it meant

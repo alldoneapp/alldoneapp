@@ -18,7 +18,7 @@ const {
     normalizeLearnedGoalSeriesRoutes,
 } = require('./calendarProjectRoutingConfig')
 
-const CALENDAR_GOAL_FEEDBACK_REVISION_MODEL = 'MODEL_GPT5_6_SOL'
+const CALENDAR_GOAL_FEEDBACK_REVISION_MODEL = 'MODEL_GPT6_SOL'
 const MAX_RULE_REVISION_ATTEMPTS = 3
 const RULE_REVISION_CONFLICT = 'CALENDAR_GOAL_RULE_REVISION_CONFLICT'
 
@@ -144,7 +144,8 @@ async function reviseCalendarGoalLearnedRules({ currentRules, project, event, pr
         ],
     }
     if (!isGpt5ReasoningModel(CALENDAR_GOAL_FEEDBACK_REVISION_MODEL)) requestParams.temperature = 0.1
-    if (selectedModel.startsWith('gpt-5.6')) requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
+    if (/^gpt-(?:5\.6|6)(?:[.-])/.test(selectedModel))
+        requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
 
     const completion = await openai.chat.completions.create(requestParams)
     logOpenAiCacheUsage({

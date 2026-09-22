@@ -35,7 +35,7 @@ describe('AssistantModelModal OptionItem', () => {
                     tokensPerGold: 200,
                     shortcutKey: '',
                 }}
-                selectedModel="MODEL_GPT5_6_SOL"
+                selectedModel="MODEL_GPT6_SOL"
                 selectModel={selectModel}
             />
         )

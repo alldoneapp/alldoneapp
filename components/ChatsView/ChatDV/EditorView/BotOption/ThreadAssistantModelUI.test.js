@@ -62,7 +62,7 @@ describe('the per-thread model UI (AT-2502)', () => {
     describe('the row in the assistant popup', () => {
         it('names the assistant default when the thread pins nothing', () => {
             const tree = renderer.create(
-                <SelectModelOption threadModel={null} assistantModel={'MODEL_GPT5_6_SOL'} onPress={jest.fn()} />
+                <SelectModelOption threadModel={null} assistantModel={'MODEL_GPT6_SOL'} onPress={jest.fn()} />
             )
 
             const texts = textsOf(tree)
@@ -78,7 +78,7 @@ describe('the per-thread model UI (AT-2502)', () => {
             const tree = renderer.create(
                 <SelectModelOption
                     threadModel={'MODEL_DEEPSEEK_V4_FLASH'}
-                    assistantModel={'MODEL_GPT5_6_SOL'}
+                    assistantModel={'MODEL_GPT6_SOL'}
                     onPress={jest.fn()}
                 />
             )
@@ -106,7 +106,7 @@ describe('the per-thread model UI (AT-2502)', () => {
                 <ThreadAssistantModelModal
                     closeModal={jest.fn()}
                     selectedModel={null}
-                    assistantModel={'MODEL_GPT5_6_SOL'}
+                    assistantModel={'MODEL_GPT6_SOL'}
                     updateModel={jest.fn()}
                     {...props}
                 />
@@ -136,9 +136,9 @@ describe('the per-thread model UI (AT-2502)', () => {
 
             expect(options.map(option => option.props.modelData.model)).toEqual([
                 'INHERIT_ASSISTANT_MODEL',
-                'MODEL_GPT5_6_SOL',
+                'MODEL_GPT6_SOL',
                 'MODEL_GPT5_6_TERRA',
-                'MODEL_GPT5_6_LUNA',
+                'MODEL_GPT6_LUNA',
                 'MODEL_DEEPSEEK_V4_FLASH',
             ])
             expect(options.slice(1).every(option => option.props.modelData.tokensPerGold > 0)).toBe(true)
@@ -149,9 +149,9 @@ describe('the per-thread model UI (AT-2502)', () => {
         })
 
         it('shows the pinned model as selected', () => {
-            const options = optionsOf(renderPicker({ selectedModel: 'MODEL_GPT5_6_LUNA' }))
+            const options = optionsOf(renderPicker({ selectedModel: 'MODEL_GPT6_LUNA' }))
 
-            expect(options[0].props.selectedModel).toBe('MODEL_GPT5_6_LUNA')
+            expect(options[0].props.selectedModel).toBe('MODEL_GPT6_LUNA')
         })
 
         // AT-2512. `OptionItem` treats `text` as a translation KEY, so the inherit entry — the one
@@ -172,9 +172,9 @@ describe('the per-thread model UI (AT-2502)', () => {
             }
 
             it.each([
-                ['MODEL_GPT5_6_SOL', 'Use assistant model (Sol)'],
+                ['MODEL_GPT6_SOL', 'Use assistant model (Sol)'],
                 ['MODEL_GPT5_6_TERRA', 'Use assistant model (Terra)'],
-                ['MODEL_GPT5_6_LUNA', 'Use assistant model (Luna)'],
+                ['MODEL_GPT6_LUNA', 'Use assistant model (Luna)'],
                 ['MODEL_DEEPSEEK_V4_FLASH', 'Use assistant model (DeepSeek Flash)'],
             ])('names %s without a missing-translation placeholder', (assistantModel, expected) => {
                 expectLabel(renderPicker({ assistantModel }), expected)
@@ -284,7 +284,7 @@ describe('the per-thread model UI (AT-2502)', () => {
         }
 
         it('reads a thread once however many surfaces are showing it', async () => {
-            readThreadAssistantModelOverride.mockResolvedValue('MODEL_GPT5_6_LUNA')
+            readThreadAssistantModelOverride.mockResolvedValue('MODEL_GPT6_LUNA')
             const seen = []
             await act(async () => {
                 renderer.create(<Harness onRender={state => seen.push(state.model)} />)
@@ -293,7 +293,7 @@ describe('the per-thread model UI (AT-2502)', () => {
             await flush()
 
             expect(readThreadAssistantModelOverride).toHaveBeenCalledTimes(1)
-            expect(seen[seen.length - 1]).toBe('MODEL_GPT5_6_LUNA')
+            expect(seen[seen.length - 1]).toBe('MODEL_GPT6_LUNA')
         })
 
         // The popup closes the moment a model is picked, so the badge behind it has to be right

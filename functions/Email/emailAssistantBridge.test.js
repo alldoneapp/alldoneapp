@@ -24,7 +24,7 @@ jest.mock('../Assistant/assistantHelper', () => ({
         .injectPendingAttachmentIntoToolArgs,
     interactWithChatStream: mockInteractWithChatStream,
     isToolAllowedForExecution: jest.fn().mockResolvedValue(true),
-    normalizeModelKey: jest.fn(model => model || 'MODEL_GPT5_6_SOL'),
+    normalizeModelKey: jest.fn(model => model || 'MODEL_GPT6_SOL'),
     reduceGoldWhenChatWithAI: mockReduceGoldWhenChatWithAI,
     THREAD_CONTEXT_MESSAGE_LIMIT: 20,
 }))
@@ -212,8 +212,8 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             displayName: 'Anna',
             allowedTools: [],
             instructions: '',
-            model: 'MODEL_GPT5_6_SOL',
-            emailModel: 'MODEL_GPT5_6_LUNA',
+            model: 'MODEL_GPT6_SOL',
+            emailModel: 'MODEL_GPT6_LUNA',
             temperature: 'TEMPERATURE_NORMAL',
         })
         mockInteractWithChatStream.mockReturnValueOnce([{ content: 'Done.' }])
@@ -222,7 +222,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
 
         expect(mockInteractWithChatStream).toHaveBeenCalledWith(
             expect.any(Array),
-            'MODEL_GPT5_6_LUNA',
+            'MODEL_GPT6_LUNA',
             'TEMPERATURE_NORMAL',
             expect.any(Array),
             expect.any(Object)
@@ -230,7 +230,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         expect(mockReduceGoldWhenChatWithAI).toHaveBeenCalledWith(
             'user-1',
             100,
-            'MODEL_GPT5_6_LUNA',
+            'MODEL_GPT6_LUNA',
             'Done.',
             expect.any(Array),
             expect.any(Object),
@@ -318,7 +318,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             displayName: 'Anna',
             allowedTools: ['external_tool_bookkeeping_attach_invoice'],
             instructions: '',
-            model: 'MODEL_GPT5_6_SOL',
+            model: 'MODEL_GPT6_SOL',
             temperature: 'TEMPERATURE_NORMAL',
         })
         const fileBase64 = Buffer.alloc(4096, 23).toString('base64')
@@ -380,7 +380,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
             displayName: 'Anna',
             allowedTools: ['external_tools'],
             instructions: '',
-            model: 'MODEL_GPT5_6_LUNA',
+            model: 'MODEL_GPT6_LUNA',
             temperature: 'TEMPERATURE_NORMAL',
         })
         getConversationHistory.mockResolvedValue([['user', 'Subject: Fwd: GitLab receipt']])

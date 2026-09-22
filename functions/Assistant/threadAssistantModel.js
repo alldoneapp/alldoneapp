@@ -22,7 +22,7 @@
  * A stored value is only honoured when it is still a CURRENT selectable model. This is the
  * calendar-routing lesson (see `featureModelPreferences.js`): a model key that was valid when it
  * was written can be retired later, and an unrecognised key does not fail loudly — `getModel`
- * silently answers `gpt-5.6-sol` while `getTokensPerGold` answers `undefined`, which
+ * silently answers `gpt-6-sol` while `getTokensPerGold` answers `undefined`, which
  * `calculateGoldCostFromTokens` turns into a charge of ZERO. A thread pinned to a retired key
  * would therefore run for free forever, invisibly. An override that no longer names a selectable
  * model is treated as absent, so the thread falls back to its assistant.

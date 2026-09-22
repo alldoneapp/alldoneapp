@@ -83,11 +83,11 @@ beforeEach(() => {
     mockProjectGet.mockResolvedValue({ exists: true, data: () => ({ userIds: ['user-1'] }) })
     mockGetAccessibleProjectIds.mockReturnValue(['project-1'])
     mockGetDefaultAssistantIdForProject.mockResolvedValue('assistant-1')
-    mockGetAssistantForChat.mockResolvedValue({ uid: 'assistant-1', model: 'MODEL_GPT5_6_SOL' })
+    mockGetAssistantForChat.mockResolvedValue({ uid: 'assistant-1', model: 'MODEL_GPT6_SOL' })
     mockGetProjectContext.mockResolvedValue('project context')
     mockGetUserContext.mockResolvedValue('user context')
     mockTranscribeAudioBase64.mockResolvedValue({ transcript: 'raw transcript', durationSeconds: 60 })
-    mockCleanupRamble.mockResolvedValue({ text: 'cleaned text', totalTokens: 1000, modelKey: 'MODEL_GPT5_6_SOL' })
+    mockCleanupRamble.mockResolvedValue({ text: 'cleaned text', totalTokens: 1000, modelKey: 'MODEL_GPT6_SOL' })
     mockGetTokensPerGold.mockReturnValue(100)
     mockDeductGold.mockResolvedValue({ success: true })
     mockGetUserVocabularyTerms.mockResolvedValue({ terms: [], cacheState: 'fresh', pendingRebuild: null })
@@ -105,7 +105,7 @@ describe('processRambleSecondGen', () => {
             projectId: 'project-1',
             // The cleanup model the token half of the price came from — recorded so
             // `goldStats.spendByModel` can attribute rambler spend (AT-2487).
-            model: 'MODEL_GPT5_6_SOL',
+            model: 'MODEL_GPT6_SOL',
         })
         expect(result).toEqual({
             text: 'cleaned text',
@@ -211,7 +211,7 @@ describe('processRambleSecondGen', () => {
             source: 'rambler',
             channel: 'generic',
             projectId: 'project-1',
-            model: 'MODEL_GPT5_6_SOL',
+            model: 'MODEL_GPT6_SOL',
         })
     })
 
@@ -240,7 +240,7 @@ describe('processRambleSecondGen', () => {
 describe('calculateRambleGoldCost', () => {
     test('charges at least 1 gold even for tiny rambles', () => {
         mockGetTokensPerGold.mockReturnValue(100)
-        expect(calculateRambleGoldCost({ durationSeconds: 3, totalTokens: 20, modelKey: 'MODEL_GPT5_6_SOL' })).toBe(1)
+        expect(calculateRambleGoldCost({ durationSeconds: 3, totalTokens: 20, modelKey: 'MODEL_GPT6_SOL' })).toBe(1)
     })
 
     test('bills tokens at the executing model rate', () => {
@@ -319,7 +319,7 @@ describe('dictation vocabulary observability', () => {
         mockCleanupRamble.mockResolvedValue({
             text: 'Add this to Alldone.',
             totalTokens: 10,
-            modelKey: 'MODEL_GPT5_6_SOL',
+            modelKey: 'MODEL_GPT6_SOL',
         })
 
         await callHandler()
@@ -335,7 +335,7 @@ describe('dictation vocabulary observability', () => {
         mockCleanupRamble.mockResolvedValue({
             text: 'Add this to Alldone.',
             totalTokens: 10,
-            modelKey: 'MODEL_GPT5_6_SOL',
+            modelKey: 'MODEL_GPT6_SOL',
         })
 
         await callHandler()
@@ -351,7 +351,7 @@ describe('dictation vocabulary observability', () => {
         mockCleanupRamble.mockResolvedValue({
             text: 'Salary negotiation with Daniela.',
             totalTokens: 10,
-            modelKey: 'MODEL_GPT5_6_SOL',
+            modelKey: 'MODEL_GPT6_SOL',
         })
 
         await callHandler()
@@ -464,7 +464,7 @@ describe('per-user dictation vocabulary', () => {
             mockCleanupRamble.mockResolvedValue({
                 text: 'Call Anna Somova about Heyflow.',
                 totalTokens: 10,
-                modelKey: 'MODEL_GPT5_6_SOL',
+                modelKey: 'MODEL_GPT6_SOL',
             })
 
             await callHandler()

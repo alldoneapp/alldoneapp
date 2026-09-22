@@ -17,7 +17,7 @@ describe('CalendarProjectRoutingSettings helpers', () => {
         // mapper did not know, so it fell through to `gpt-5.2`. Calendar routing therefore ran on a
         // model nobody had chosen. The default is now the shared low-cost model, which the server
         // recognises, so the stored value and the model actually invoked agree.
-        expect(config.model).toBe('MODEL_GPT5_6_LUNA')
+        expect(config.model).toBe('MODEL_GPT6_LUNA')
         expect(config.calendarEmail).toBe('person@example.com')
         expect(config.learnedRules).toBe('')
         expect(config.learnedRulesRevision).toBe(0)
@@ -39,7 +39,7 @@ describe('CalendarProjectRoutingSettings helpers', () => {
 
         expect(config.enabled).toBe(true)
         expect(config.confidenceThreshold).toBe(1)
-        expect(config.model).toBe('MODEL_GPT5_6_LUNA')
+        expect(config.model).toBe('MODEL_GPT6_LUNA')
         expect(config.learnedRules).toBe('- Acme weekly routes to Acme')
         expect(config.learnedRulesRevision).toBe(4)
         expect(config.learnedGoalRules).toBe('- Acme weekly goes to Client delivery')
@@ -60,9 +60,9 @@ describe('CalendarProjectRoutingSettings helpers', () => {
     test('coerces an unselectable or missing model to the default rather than passing it through', () => {
         // The pass-through was the bug: an unknown key reached the server, missed every mapper
         // branch and silently became `gpt-5.2`.
-        expect(normalizeCalendarRoutingModel('MODEL_GPT5_4_NANO')).toBe('MODEL_GPT5_6_LUNA')
-        expect(normalizeCalendarRoutingModel('nonsense')).toBe('MODEL_GPT5_6_LUNA')
-        expect(normalizeCalendarRoutingModel(undefined)).toBe('MODEL_GPT5_6_LUNA')
+        expect(normalizeCalendarRoutingModel('MODEL_GPT5_4_NANO')).toBe('MODEL_GPT6_LUNA')
+        expect(normalizeCalendarRoutingModel('nonsense')).toBe('MODEL_GPT6_LUNA')
+        expect(normalizeCalendarRoutingModel(undefined)).toBe('MODEL_GPT6_LUNA')
     })
 
     test('builds active project context and removes project description prefix', () => {

@@ -8,28 +8,39 @@ const {
 
 describe('resolveFeatureModelKey', () => {
     test('every feature resolves to its default (Luna across the board) with no stored preference', () => {
-        expect(resolveFeatureModelKey('rambler', {})).toBe('MODEL_GPT5_6_LUNA')
-        expect(resolveFeatureModelKey('emailDraftReply', {})).toBe('MODEL_GPT5_6_LUNA')
-        expect(resolveFeatureModelKey('emailTaskSummary', {})).toBe('MODEL_GPT5_6_LUNA')
-        expect(resolveFeatureModelKey('taskGoalRouting', {})).toBe('MODEL_GPT5_6_LUNA')
-        expect(resolveFeatureModelKey('rambler', null)).toBe('MODEL_GPT5_6_LUNA')
+        expect(resolveFeatureModelKey('rambler', {})).toBe('MODEL_GPT6_LUNA')
+        expect(resolveFeatureModelKey('emailDraftReply', {})).toBe('MODEL_GPT6_LUNA')
+        expect(resolveFeatureModelKey('emailTaskSummary', {})).toBe('MODEL_GPT6_LUNA')
+        expect(resolveFeatureModelKey('taskGoalRouting', {})).toBe('MODEL_GPT6_LUNA')
+        expect(resolveFeatureModelKey('rambler', null)).toBe('MODEL_GPT6_LUNA')
     })
 
     test('a stored selectable choice wins', () => {
-        const userData = { featureModelPreferences: { rambler: 'MODEL_GPT5_6_SOL' } }
-        expect(resolveFeatureModelKey('rambler', userData)).toBe('MODEL_GPT5_6_SOL')
+        const userData = { featureModelPreferences: { rambler: 'MODEL_GPT6_SOL' } }
+        expect(resolveFeatureModelKey('rambler', userData)).toBe('MODEL_GPT6_SOL')
+    })
+
+    test('saved Sol and Luna 5.6 choices resolve to their replacements', () => {
+        expect(resolveFeatureModelKey('rambler', { featureModelPreferences: { rambler: 'MODEL_GPT5_6_SOL' } })).toBe(
+            'MODEL_GPT6_SOL'
+        )
+        expect(
+            resolveFeatureModelKey('emailDraftReply', {
+                featureModelPreferences: { emailDraftReply: 'MODEL_GPT5_6_LUNA' },
+            })
+        ).toBe('MODEL_GPT6_LUNA')
     })
 
     test('an invalid or retired stored value fails safe to the default', () => {
         expect(resolveFeatureModelKey('rambler', { featureModelPreferences: { rambler: 'MODEL_BOGUS' } })).toBe(
-            'MODEL_GPT5_6_LUNA'
+            'MODEL_GPT6_LUNA'
         )
         // Non-selectable keys (the retired mini/nano defaults) are not valid picker choices.
         expect(
             resolveFeatureModelKey('emailDraftReply', {
                 featureModelPreferences: { emailDraftReply: 'MODEL_GPT5_4_NANO' },
             })
-        ).toBe('MODEL_GPT5_6_LUNA')
+        ).toBe('MODEL_GPT6_LUNA')
     })
 
     test('OpenRouter models are rejected for Responses-API-only features but allowed elsewhere', () => {
@@ -39,7 +50,7 @@ describe('resolveFeatureModelKey', () => {
                 rambler: 'MODEL_DEEPSEEK_V4_FLASH',
             },
         }
-        expect(resolveFeatureModelKey('taskGoalRouting', userData)).toBe('MODEL_GPT5_6_LUNA')
+        expect(resolveFeatureModelKey('taskGoalRouting', userData)).toBe('MODEL_GPT6_LUNA')
         expect(resolveFeatureModelKey('rambler', userData)).toBe('MODEL_DEEPSEEK_V4_FLASH')
     })
 
@@ -53,14 +64,14 @@ describe('isValidFeatureModelChoice', () => {
         expect(isValidFeatureModelChoice('rambler', 'MODEL_GPT5_6_TERRA')).toBe(true)
         expect(isValidFeatureModelChoice('rambler', 'MODEL_SONAR_PRO')).toBe(false)
         expect(isValidFeatureModelChoice('rambler', '')).toBe(false)
-        expect(isValidFeatureModelChoice('nope', 'MODEL_GPT5_6_SOL')).toBe(false)
+        expect(isValidFeatureModelChoice('nope', 'MODEL_GPT6_SOL')).toBe(false)
     })
 })
 
 describe('getFeatureModelOptionInfo', () => {
     test('covers the selectable models and nothing else', () => {
-        expect(getFeatureModelOptionInfo('MODEL_GPT5_6_SOL')).toEqual({ name: 'Sol', tokensPerGold: 100 })
-        expect(getFeatureModelOptionInfo('MODEL_GPT5_6_LUNA')).toEqual({ name: 'Luna', tokensPerGold: 500 })
+        expect(getFeatureModelOptionInfo('MODEL_GPT6_SOL')).toEqual({ name: 'Sol', tokensPerGold: 200 })
+        expect(getFeatureModelOptionInfo('MODEL_GPT6_LUNA')).toEqual({ name: 'Luna', tokensPerGold: 1000 })
         expect(getFeatureModelOptionInfo('MODEL_GPT5_4_MINI')).toBeNull()
         expect(getFeatureModelOptionInfo('MODEL_BOGUS')).toBeNull()
     })

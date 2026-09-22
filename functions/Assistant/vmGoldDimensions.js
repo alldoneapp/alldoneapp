@@ -14,7 +14,7 @@
 // both carry `agentModel`, `tokenBillingExempt` and `correlationId`, so a call site only
 // has to hand over whichever of the two it already holds.
 
-// `agentModel` is the model as REQUESTED (`opus`, `gpt-5.6-sol`, `openrouter:deepseek/...`)
+// `agentModel` is the model as REQUESTED (`opus`, `gpt-6-sol`, `openrouter:deepseek/...`)
 // and is deliberately preferred over the concrete `resolvedAgentModel` the CLI reports
 // mid-run. The base reserve is charged before a sandbox exists, so the resolved id is not
 // yet known there; using it where available would split one run's spend between an `opus`

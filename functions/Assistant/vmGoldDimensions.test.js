@@ -6,7 +6,7 @@ describe('vmGoldDimensions.buildVmGoldBillingDimensions', () => {
     test('reads the three fields a pendingWebhooks / vmJobs document carries', () => {
         expect(
             buildVmGoldBillingDimensions({
-                agentModel: 'gpt-5.6-sol',
+                agentModel: 'gpt-6-sol',
                 tokenBillingExempt: false,
                 correlationId: 'run-1',
                 // Everything else on the doc is irrelevant to billing and must not leak into
@@ -14,7 +14,7 @@ describe('vmGoldDimensions.buildVmGoldBillingDimensions', () => {
                 objective: 'do the thing',
                 userId: 'u1',
             })
-        ).toEqual({ model: 'gpt-5.6-sol', billingExempt: false, correlationId: 'run-1' })
+        ).toEqual({ model: 'gpt-6-sol', billingExempt: false, correlationId: 'run-1' })
     })
 
     test('marks a subscription / BYOK run exempt', () => {

@@ -57,7 +57,7 @@ const AGENT_EVIDENCE_PATTERNS = {
 }
 
 // Bare Claude aliases that count as naming a model on their own. Anything else has to appear in
-// full (e.g. "claude-opus-4-8", "gpt-5.6-sol") — a partial match on a fragment like "gpt" or "5"
+// full (e.g. "claude-opus-4-8", "gpt-6-sol") — a partial match on a fragment like "gpt" or "5"
 // would let an incidental mention pin a model the user never asked for.
 const BARE_MODEL_ALIASES = ['opus', 'sonnet', 'haiku', 'fable']
 

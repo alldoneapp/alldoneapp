@@ -43,8 +43,8 @@ const PROJECT_ROUTING_STATUS_FAILED = 'failed'
 
 // Default only — the routing user can override the model in Settings → Customizations
 // (featureModelPreferences.taskProjectRouting; OpenAI models only, this runs on the Responses API).
-const TASK_PROJECT_ROUTING_MODEL = 'gpt-5.6-luna'
-const TASK_PROJECT_ROUTING_MODEL_KEY = 'MODEL_GPT5_6_LUNA'
+const TASK_PROJECT_ROUTING_MODEL = 'gpt-6-luna'
+const TASK_PROJECT_ROUTING_MODEL_KEY = 'MODEL_GPT6_LUNA'
 
 // Lower than goal routing's auto-assign bar (0.9) on purpose: the user explicitly
 // asked for the project to be chosen for them, and the alternative to acting is

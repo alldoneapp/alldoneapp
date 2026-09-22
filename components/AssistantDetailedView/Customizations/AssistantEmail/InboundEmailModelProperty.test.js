@@ -29,7 +29,7 @@ describe('InboundEmailModelProperty', () => {
             <InboundEmailModelProperty
                 disabled={false}
                 projectId="project-1"
-                assistant={{ uid: 'assistant-1', model: 'MODEL_GPT5_6_SOL' }}
+                assistant={{ uid: 'assistant-1', model: 'MODEL_GPT6_SOL' }}
             />
         )
         const labels = component.root.findAllByType(Text).map(node => node.props.children)
@@ -50,8 +50,8 @@ describe('InboundEmailModelProperty', () => {
     test('stores an explicit override and clears it when inheritance is selected', () => {
         const assistant = {
             uid: 'assistant-1',
-            model: 'MODEL_GPT5_6_SOL',
-            emailModel: 'MODEL_GPT5_6_LUNA',
+            model: 'MODEL_GPT6_SOL',
+            emailModel: 'MODEL_GPT6_LUNA',
         }
         const component = renderer.create(
             <InboundEmailModelProperty disabled={false} projectId="project-1" assistant={assistant} />

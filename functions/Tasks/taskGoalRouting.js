@@ -18,8 +18,8 @@ const TASK_GOAL_ROUTING_SUGGESTIONS = 'suggestions'
 const TASK_GOAL_ROUTING_AUTOMATIC = 'automatic'
 // Default only — the routing user can override the model in Settings → Customizations
 // (featureModelPreferences.taskGoalRouting; OpenAI models only, this runs on the Responses API).
-const TASK_GOAL_ROUTING_MODEL = 'gpt-5.6-luna'
-const TASK_GOAL_ROUTING_MODEL_KEY = 'MODEL_GPT5_6_LUNA'
+const TASK_GOAL_ROUTING_MODEL = 'gpt-6-luna'
+const TASK_GOAL_ROUTING_MODEL_KEY = 'MODEL_GPT6_LUNA'
 const SUGGESTION_CONFIDENCE_THRESHOLD = 0.65
 const AUTO_ASSIGN_CONFIDENCE_THRESHOLD = 0.9
 const AUTO_ASSIGN_MARGIN_THRESHOLD = 0.15

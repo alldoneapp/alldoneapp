@@ -279,7 +279,7 @@ describe('calendarProjectClassifier', () => {
         const result = await classifyCalendarEventProject({
             config: {
                 prompt: 'Route events',
-                model: 'MODEL_GPT5_6_SOL',
+                model: 'MODEL_GPT6_SOL',
                 confidenceThreshold: 0.7,
             },
             event: { id: 'event-1', summary: 'Juno roadmap' },
