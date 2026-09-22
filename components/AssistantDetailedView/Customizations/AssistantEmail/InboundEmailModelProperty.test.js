@@ -38,12 +38,7 @@ describe('InboundEmailModelProperty', () => {
             expect.arrayContaining(['Inherit assistant model (Sol)', 'Inherit assistant model', 'Sol', 'Terra', 'Luna'])
         )
         expect(labels).toEqual(
-            expect.arrayContaining([
-                '1 Gold = 100 tokens',
-                '1 Gold = 200 tokens',
-                '1 Gold = 500 tokens',
-                '1 Gold = 2,000 tokens',
-            ])
+            expect.arrayContaining(['1 Gold = 200 tokens', '1 Gold = 1,000 tokens', '1 Gold = 2,000 tokens'])
         )
     })
 

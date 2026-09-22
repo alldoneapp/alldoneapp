@@ -105,15 +105,15 @@ describe('storing a thread model override on the client (AT-2502)', () => {
             mockUpdate.mockImplementationOnce(() => Promise.reject(new Error('no document')))
 
             await expect(
-                setThreadAssistantModelOverride('project-1', 'object-1', 'tasks', 'MODEL_GPT5_6_SOL')
-            ).resolves.toBe('MODEL_GPT5_6_SOL')
+                setThreadAssistantModelOverride('project-1', 'object-1', 'tasks', 'MODEL_GPT6_SOL')
+            ).resolves.toBe('MODEL_GPT6_SOL')
             expect(console.warn).toHaveBeenCalled()
         })
 
         // A settings choice is not content. Stamping edition data would make every other open
         // client re-download a note and would write an activity feed entry for picking a model.
         it('writes only the override field, with no edition data', async () => {
-            await setThreadAssistantModelOverride('project-1', 'object-1', 'notes', 'MODEL_GPT5_6_LUNA')
+            await setThreadAssistantModelOverride('project-1', 'object-1', 'notes', 'MODEL_GPT6_LUNA')
 
             const [, payload] = mockUpdate.mock.calls[0]
             expect(Object.keys(payload)).toEqual([THREAD_ASSISTANT_MODEL_FIELD])
@@ -122,10 +122,18 @@ describe('storing a thread model override on the client (AT-2502)', () => {
 
     describe('reading', () => {
         it('returns the pinned model', async () => {
+            mockDocs.set('items/project-1/tasks/object-1', { [THREAD_ASSISTANT_MODEL_FIELD]: 'MODEL_GPT6_LUNA' })
+
+            await expect(readThreadAssistantModelOverride('project-1', 'object-1', 'tasks')).resolves.toBe(
+                'MODEL_GPT6_LUNA'
+            )
+        })
+
+        it('reads a saved 5.6 pin as its GPT-6 replacement', async () => {
             mockDocs.set('items/project-1/tasks/object-1', { [THREAD_ASSISTANT_MODEL_FIELD]: 'MODEL_GPT5_6_LUNA' })
 
             await expect(readThreadAssistantModelOverride('project-1', 'object-1', 'tasks')).resolves.toBe(
-                'MODEL_GPT5_6_LUNA'
+                'MODEL_GPT6_LUNA'
             )
         })
 

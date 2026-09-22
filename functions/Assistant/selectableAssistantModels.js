@@ -35,13 +35,16 @@ const SELECTABLE_ASSISTANT_MODELS = [
     },
 ]
 
+function normalizeSelectableAssistantModelKey(modelKey) {
+    return modelKey === 'MODEL_GPT5_6_SOL'
+        ? 'MODEL_GPT6_SOL'
+        : modelKey === 'MODEL_GPT5_6_LUNA'
+          ? 'MODEL_GPT6_LUNA'
+          : modelKey
+}
+
 function getAssistantModelTokensPerGold(modelKey) {
-    const currentModelKey =
-        modelKey === 'MODEL_GPT5_6_SOL'
-            ? 'MODEL_GPT6_SOL'
-            : modelKey === 'MODEL_GPT5_6_LUNA'
-              ? 'MODEL_GPT6_LUNA'
-              : modelKey
+    const currentModelKey = normalizeSelectableAssistantModelKey(modelKey)
     const option = SELECTABLE_ASSISTANT_MODELS.find(model => model.model === currentModelKey)
     const tokens = Number(option?.tokensPerGold)
     return Number.isFinite(tokens) && tokens > 0 ? tokens : undefined
@@ -54,6 +57,7 @@ function formatAssistantModelTokensPerGold(value) {
 
 module.exports = {
     SELECTABLE_ASSISTANT_MODELS,
+    normalizeSelectableAssistantModelKey,
     getAssistantModelTokensPerGold,
     formatAssistantModelTokensPerGold,
 }
