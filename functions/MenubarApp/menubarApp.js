@@ -2,6 +2,7 @@
 
 const crypto = require('crypto')
 const admin = require('firebase-admin')
+const { orderBy } = require('lodash')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { getMenubarAccountSummary } = require('./menubarAccountSummary')
 const { resolveMenubarRichTextLinks } = require('./menubarRichText')
@@ -33,6 +34,14 @@ function getUserDisplayName(userData = {}) {
 function getUserGold(userData = {}) {
     const gold = Number(userData.gold)
     return Number.isFinite(gold) ? Math.floor(gold) : 0
+}
+
+function sortMenubarProjects(projects, userId) {
+    return orderBy(
+        projects,
+        [project => project.sortIndexByUser?.[userId], project => String(project.name || '').toLowerCase()],
+        ['desc', 'asc']
+    )
 }
 
 // In-memory, per-instance rate limiting. Good enough to blunt brute force /
@@ -609,11 +618,12 @@ async function handleMenubarProjects(req, res) {
 
         const defaultProjectId =
             typeof tokenUser.userData.defaultProjectId === 'string' ? tokenUser.userData.defaultProjectId : ''
+        const sortedProjects = sortMenubarProjects(projects, tokenUser.userId)
 
         res.status(200).json({
             success: true,
             defaultProjectId: defaultProjectId || null,
-            projects: projects.map(project => ({
+            projects: sortedProjects.map(project => ({
                 id: project.id,
                 name: project.name || '',
                 description: project.description || '',
@@ -2645,6 +2655,7 @@ module.exports = {
         enableNoteAssistantChat,
         updateExistingMenubarNote,
         resolveMenubarAssistantThread,
+        sortMenubarProjects,
         toMillis,
     },
 }
