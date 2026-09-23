@@ -82,6 +82,7 @@ export default function Header({
                                 openTitleEdition={openTitleEdition}
                                 assistant={assistant}
                                 disabled={isGlobalAsisstant || loggedUser.isAnonymous}
+                                hideLastEdited={isFullscreen}
                             />
                         </View>
                     )}
@@ -93,7 +94,7 @@ export default function Header({
             {!isFullscreen && (
                 <View style={localStyles.bottomHeader}>
                     <View style={{ flex: 1 }} />
-                    <LastEdition assistant={assistant} />
+                    {mobile && <LastEdition assistant={assistant} />}
                     <CopyLinkButton style={{ marginRight: 8 }} />
                     <DvBotButton
                         navItem={DV_TAB_ASSISTANT_CHAT}

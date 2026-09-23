@@ -44,7 +44,7 @@ export default function Header({ projectId, userHasAccessToProject }) {
             {!isFullScreen && (
                 <View style={localStyles.bottomHeader}>
                     <TagList projectId={projectId} />
-                    <LastEdition projectId={projectId} />
+                    {smallScreenNavigation && <LastEdition projectId={projectId} />}
                     <CopyLinkButton style={{ marginRight: 8 }} />
                     <DvBotButton navItem={DV_TAB_SKILL_CHAT} projectId={projectId} assistantId={assistantId} />
                     <OpenInNewWindowButton />

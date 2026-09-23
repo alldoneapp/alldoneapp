@@ -32,9 +32,6 @@ export default function TagList({
     const project = ProjectHelper.getProjectById(projectId)
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
     const useCompactLayout = mobile || tablet
-    const editionText = useLastEditDate(note.lastEditionDate)
-
-    const editor = getUserPresentationDataInProject(project?.id, note.lastEditorId)
 
     return (
         <View style={[localStyles.container, useCompactLayout && localStyles.containerCompact]}>
@@ -53,13 +50,7 @@ export default function TagList({
                 </View>
             </View>
             <View style={[localStyles.actions, useCompactLayout && localStyles.actionsCompact]}>
-                <Text style={localStyles.lastEdited}>
-                    {useCompactLayout
-                        ? `${translate('edited')} ${editionText}\n ${translate('by')} ${
-                              editor.displayName.split(' ')[0]
-                          }`
-                        : `${translate('last edited')} ${editionText}\n ${translate('by')} ${editor.displayName}`}
-                </Text>
+                {mobile && <MobileLastEdited projectId={projectId} note={note} />}
                 <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
                 <DvSearchButton style={{ top: -5 }} />
                 <DvBotButton
@@ -82,6 +73,17 @@ export default function TagList({
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>
         </View>
+    )
+}
+
+function MobileLastEdited({ projectId, note }) {
+    const editionText = useLastEditDate(note.lastEditionDate)
+    const editor = getUserPresentationDataInProject(projectId, note.lastEditorId)
+
+    return (
+        <Text style={localStyles.lastEdited}>
+            {`${translate('edited')} ${editionText}\n ${translate('by')} ${editor.displayName.split(' ')[0]}`}
+        </Text>
     )
 }
 

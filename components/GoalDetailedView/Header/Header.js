@@ -78,6 +78,7 @@ export default function Header({ goal, projectId, navigation, accessGranted, isF
                                 openTitleEdition={openTitleEdition}
                                 goal={goal}
                                 disabled={!accessGranted || !loggedUserCanUpdateObject}
+                                hideLastEdited={isFullscreen}
                             />
                         </View>
                     )}
@@ -95,7 +96,7 @@ export default function Header({ goal, projectId, navigation, accessGranted, isF
                         accessGranted={accessGranted}
                         loggedUserCanUpdateObject={loggedUserCanUpdateObject}
                     />
-                    <LastEdition projectId={projectId} goal={goal} />
+                    {mobile && <LastEdition projectId={projectId} goal={goal} />}
                     <CopyLinkButton style={{ marginRight: 8 }} />
                     <DvSearchButton />
                     <DvBotButton navItem={DV_TAB_GOAL_CHAT} projectId={projectId} assistantId={goal.assistantId} />

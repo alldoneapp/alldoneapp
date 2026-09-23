@@ -1,38 +1,40 @@
 import React from 'react'
-import { StyleSheet, TouchableOpacity, View } from 'react-native'
+import { StyleSheet } from 'react-native'
+import { useSelector } from 'react-redux'
 import styles, { colors } from '../../styles/global'
 import CommentElementsParser from '../../Feeds/TextParser/CommentElementsParser'
-import Indicator from './Indicator'
+import DvTitleLayout from '../../UIComponents/DvTitleLayout'
+import useGetUserPresentationData from '../../ContactsView/Utils/useGetUserPresentationData'
 
-export default function ChatTitle({ openTitleEdition, title, projectId, disabled }) {
+export default function ChatTitle({ openTitleEdition, title, projectId, chat, disabled, hideLastEdited }) {
+    const mobile = useSelector(state => state.smallScreenNavigation)
+    const editor = useGetUserPresentationData(!disabled && !hideLastEdited && !mobile ? chat.lastEditorId : null)
+
     return (
-        <TouchableOpacity style={localStyles.container} onPress={openTitleEdition} disabled={disabled}>
-            <View style={localStyles.titleContainer}>
-                <CommentElementsParser
-                    comment={title}
-                    entryStyle={localStyles.text}
-                    projectId={projectId}
-                    elementSpace={{ marginRight: 4 }}
-                    inDetaliedView={true}
-                />
-            </View>
-            <Indicator />
-        </TouchableOpacity>
+        <DvTitleLayout
+            onPress={openTitleEdition}
+            disabled={disabled}
+            typeLabel="TOPIC"
+            typeIcon="comments-thread"
+            lastEditionDate={chat.lastEditionDate}
+            editorName={editor.displayName}
+            shortEditorName={editor.displayName?.split(' ')[0]}
+            hideLastEdited={hideLastEdited}
+        >
+            <CommentElementsParser
+                comment={title}
+                entryStyle={localStyles.text}
+                projectId={projectId}
+                elementSpace={{ marginRight: 4 }}
+                inDetaliedView={true}
+            />
+        </DvTitleLayout>
     )
 }
 
 const localStyles = StyleSheet.create({
-    container: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        flex: 1,
-        marginTop: 32,
-    },
     text: {
         ...styles.title4,
         color: colors.Text01,
-    },
-    titleContainer: {
-        flex: 1,
     },
 })
