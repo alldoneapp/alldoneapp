@@ -6,7 +6,7 @@ import CommentElementsParser from '../../Feeds/TextParser/CommentElementsParser'
 import DvTitleLayout from '../../UIComponents/DvTitleLayout'
 import useGetUserPresentationData from '../../ContactsView/Utils/useGetUserPresentationData'
 
-export default function ChatTitle({ openTitleEdition, title, projectId, chat, disabled, hideLastEdited }) {
+export default function ChatTitle({ openTitleEdition, title, projectId, chat, disabled, hideLastEdited, maxHeight }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const editor = useGetUserPresentationData(!disabled && !hideLastEdited && !mobile ? chat.lastEditorId : null)
 
@@ -20,6 +20,7 @@ export default function ChatTitle({ openTitleEdition, title, projectId, chat, di
             editorName={editor.displayName}
             shortEditorName={editor.displayName?.split(' ')[0]}
             hideLastEdited={hideLastEdited}
+            maxHeight={maxHeight}
         >
             <CommentElementsParser
                 comment={title}

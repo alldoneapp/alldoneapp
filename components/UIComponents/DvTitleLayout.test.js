@@ -1,5 +1,5 @@
 import React from 'react'
-import renderer from 'react-test-renderer'
+import renderer, { act } from 'react-test-renderer'
 import { Text, TouchableOpacity } from 'react-native-web'
 
 import DvTitleLayout from './DvTitleLayout'
@@ -65,6 +65,18 @@ describe('DvTitleLayout', () => {
 
         expect(visibleText(tree)).toContain('edited 14 hours ago\nby Karsten')
         expect(visibleText(tree)).toContain('NOTE')
+    })
+
+    test('shows an ellipsis only when the title itself overflows', () => {
+        mockState.smallScreenNavigation = true
+        const tree = makeLayout({ maxHeight: 64 })
+        const title = tree.root.findByType(TouchableOpacity)
+
+        act(() => title.props.onLayout({ nativeEvent: { layout: { height: 32 } } }))
+        expect(visibleText(tree)).not.toContain('...')
+
+        act(() => title.props.onLayout({ nativeEvent: { layout: { height: 64 } } }))
+        expect(visibleText(tree)).toContain('...')
     })
 
     test('hides the edit line in fullscreen while keeping the type', () => {
