@@ -7,14 +7,21 @@ import { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import useLastEditDate from '../../hooks/useLastEditDate'
 
-function LastEdited({ lastEditionDate, editorName, shortEditorName, useShortName }) {
+function LastEdited({ lastEditionDate, editorName, shortEditorName, useShortName, mobile }) {
     const editionText = useLastEditDate(lastEditionDate)
     const name = useShortName ? shortEditorName || editorName : editorName
     if (!editionText) return null
+    const text = mobile
+        ? `${translate('edited')} ${editionText}${name ? `\n${translate('by')} ${name}` : ''}`
+        : `${translate('edited')} ${editionText}${name ? ` ${translate('by')} ${name}` : ''}`
 
     return (
-        <Text style={localStyles.lastEdited} numberOfLines={1} ellipsizeMode="tail">
-            {`${translate('edited')} ${editionText}${name ? ` ${translate('by')} ${name}` : ''}`}
+        <Text
+            style={[localStyles.lastEdited, mobile && localStyles.lastEditedMobile]}
+            numberOfLines={mobile ? 2 : 1}
+            ellipsizeMode="tail"
+        >
+            {text}
         </Text>
     )
 }
@@ -38,14 +45,15 @@ export default function DvTitleLayout({
             <TouchableOpacity style={localStyles.title} onPress={onPress} disabled={disabled}>
                 {children}
             </TouchableOpacity>
-            <View style={localStyles.meta}>
-                <DvTypeIndicator label={typeLabel} icon={typeIcon} mobile={mobile} />
-                {!mobile && !hideLastEdited && lastEditionDate && (
+            <View style={[localStyles.meta, mobile && localStyles.metaMobile]}>
+                <DvTypeIndicator label={typeLabel} icon={typeIcon} mobile={false} />
+                {!hideLastEdited && lastEditionDate && (
                     <LastEdited
                         lastEditionDate={lastEditionDate}
                         editorName={editorName}
                         shortEditorName={shortEditorName}
-                        useShortName={tablet}
+                        useShortName={mobile || tablet}
+                        mobile={mobile}
                     />
                 )}
             </View>
@@ -73,6 +81,10 @@ const localStyles = StyleSheet.create({
         marginLeft: 16,
         marginTop: 2,
     },
+    metaMobile: {
+        maxWidth: 128,
+        marginLeft: 8,
+    },
     lastEdited: {
         fontFamily: 'Roboto-Regular',
         fontSize: 11,
@@ -81,5 +93,9 @@ const localStyles = StyleSheet.create({
         textAlign: 'right',
         marginTop: 2,
         maxWidth: '100%',
+    },
+    lastEditedMobile: {
+        fontSize: 10,
+        lineHeight: 11,
     },
 })
