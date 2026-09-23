@@ -4,7 +4,6 @@ import { useSelector, useDispatch } from 'react-redux'
 
 import BackButton from './BackButton'
 import TagList from './TagList'
-import LastEdition from './LastEdition'
 import CopyLinkButton from '../../UIControls/CopyLinkButton'
 import DVHamburgButton from '../../UIControls/DVHamburgButton'
 import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
@@ -44,7 +43,6 @@ export default function Header({ projectId, userHasAccessToProject }) {
             {!isFullScreen && (
                 <View style={localStyles.bottomHeader}>
                     <TagList projectId={projectId} />
-                    {smallScreenNavigation && <LastEdition projectId={projectId} />}
                     <CopyLinkButton style={{ marginRight: 8 }} />
                     <DvBotButton navItem={DV_TAB_SKILL_CHAT} projectId={projectId} assistantId={assistantId} />
                     <OpenInNewWindowButton />
