@@ -8,17 +8,17 @@ import { translate } from '../../i18n/TranslationService'
 import useLastEditDate from '../../hooks/useLastEditDate'
 
 function LastEdited({ lastEditionDate, editorName, shortEditorName, useShortName, mobile }) {
-    const editionText = useLastEditDate(lastEditionDate)
+    const editionText = useLastEditDate(lastEditionDate, 1000, mobile)
     const name = useShortName ? shortEditorName || editorName : editorName
     if (!editionText) return null
     const text = mobile
-        ? `${translate('edited')} ${editionText}${name ? `\n${translate('by')} ${name}` : ''}`
+        ? `${editionText}${name ? ` ${translate('by')} ${name}` : ''}`
         : `${translate('edited')} ${editionText}${name ? ` ${translate('by')} ${name}` : ''}`
 
     return (
         <Text
             style={[localStyles.lastEdited, mobile && localStyles.lastEditedMobile]}
-            numberOfLines={mobile ? 2 : 1}
+            numberOfLines={1}
             ellipsizeMode="tail"
         >
             {text}
@@ -110,7 +110,6 @@ const localStyles = StyleSheet.create({
     metaMobile: {
         maxWidth: 128,
         marginLeft: 8,
-        marginTop: -6,
     },
     lastEdited: {
         fontFamily: 'Roboto-Regular',
