@@ -59,12 +59,12 @@ describe('DvTitleLayout', () => {
         expect(visibleText(tree)).toContain('edited 14 hours ago by Karsten')
     })
 
-    test('leaves the edit line to the existing mobile metadata row', () => {
+    test('keeps the type and short edit line beside the title on mobile', () => {
         mockState.smallScreenNavigation = true
         const tree = makeLayout()
 
-        expect(visibleText(tree)).not.toContain('edited 14 hours ago by Karsten Wysk')
-        expect(visibleText(tree)).not.toContain('NOTE')
+        expect(visibleText(tree)).toContain('edited 14 hours ago\nby Karsten')
+        expect(visibleText(tree)).toContain('NOTE')
     })
 
     test('hides the edit line in fullscreen while keeping the type', () => {
