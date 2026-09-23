@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import BackButton from './BackButton'
 import TagList from './TagList'
 import BotLine from './BotLine/BotLine'
@@ -7,7 +7,6 @@ import ChatTitle from './ChatTitle'
 import ChatTitleEdition from './ChatTitleEdition'
 import { useSelector } from 'react-redux'
 import { DV_TAB_CHAT_BOARD, DV_TAB_CHAT_NOTE } from '../../../utils/TabNavigationConstants'
-import styles, { colors } from '../../styles/global'
 import SharedHelper from '../../../utils/SharedHelper'
 
 const Header = ({ projectId, chat, assistantId, setAssistantId, isFullscreen, setFullscreen }) => {
@@ -17,18 +16,7 @@ const Header = ({ projectId, chat, assistantId, setAssistantId, isFullscreen, se
     const loggedUser = useSelector(state => state.loggedUser)
     const [editionMode, setEditionMode] = useState(false)
     const [title, setTitle] = useState(chat.title)
-    const [showEllipsis, setShowEllipsis] = useState(false)
     const maxHeight = (selectedTab === DV_TAB_CHAT_BOARD || selectedTab === DV_TAB_CHAT_NOTE) && !editionMode ? 64 : 350
-
-    const onTitleLayoutChange = ({ nativeEvent }) => {
-        const { layout } = nativeEvent
-
-        if (layout.height > maxHeight && !showEllipsis) {
-            setShowEllipsis(true)
-        } else if (layout.height <= maxHeight && showEllipsis) {
-            setShowEllipsis(false)
-        }
-    }
 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
@@ -47,19 +35,15 @@ const Header = ({ projectId, chat, assistantId, setAssistantId, isFullscreen, se
                                 closeTitleEdition={() => setEditionMode(false)}
                             />
                         ) : (
-                            <View onLayout={onTitleLayoutChange}>
-                                <ChatTitle
-                                    projectId={projectId}
-                                    title={title}
-                                    chat={chat}
-                                    openTitleEdition={() => setEditionMode(true)}
-                                    disabled={!accessGranted}
-                                    hideLastEdited={isFullscreen}
-                                />
-                            </View>
-                        )}
-                        {showEllipsis && !editionMode && (
-                            <Text style={[localStyles.ellipsis, { right: mobile ? 32 : 80 }]}>...</Text>
+                            <ChatTitle
+                                projectId={projectId}
+                                title={title}
+                                chat={chat}
+                                openTitleEdition={() => setEditionMode(true)}
+                                disabled={!accessGranted}
+                                hideLastEdited={isFullscreen}
+                                maxHeight={maxHeight}
+                            />
                         )}
                     </View>
                 )}
@@ -100,15 +84,6 @@ const localStyles = StyleSheet.create({
     bottomHeader: {
         paddingTop: 32,
         flexDirection: 'row',
-    },
-    ellipsis: {
-        ...styles.title4,
-        color: colors.Text01,
-        backgroundColor: '#ffffff',
-        paddingHorizontal: 8,
-        position: 'absolute',
-        bottom: 0,
-        right: 0,
     },
 })
 

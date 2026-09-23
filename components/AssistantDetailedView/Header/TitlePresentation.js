@@ -5,7 +5,7 @@ import CommentElementsParser from '../../Feeds/TextParser/CommentElementsParser'
 import DvTitleLayout from '../../UIComponents/DvTitleLayout'
 import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
 
-export default function TitlePresentation({ openTitleEdition, assistant, disabled, hideLastEdited }) {
+export default function TitlePresentation({ openTitleEdition, assistant, disabled, hideLastEdited, maxHeight }) {
     const { displayName, lastEditionDate, lastEditorId } = assistant
     const editor = getUserPresentationData(lastEditorId)
 
@@ -19,6 +19,7 @@ export default function TitlePresentation({ openTitleEdition, assistant, disable
             editorName={editor.displayName}
             shortEditorName={editor.shortName}
             hideLastEdited={hideLastEdited}
+            maxHeight={maxHeight}
         >
             <CommentElementsParser
                 comment={displayName}

@@ -5,7 +5,14 @@ import CommentElementsParser from '../../Feeds/TextParser/CommentElementsParser'
 import DvTitleLayout from '../../UIComponents/DvTitleLayout'
 import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 
-export default function TitlePresentation({ openTitleEdition, goal, projectId, disabled = false, hideLastEdited }) {
+export default function TitlePresentation({
+    openTitleEdition,
+    goal,
+    projectId,
+    disabled = false,
+    hideLastEdited,
+    maxHeight,
+}) {
     const { extendedName, lastEditionDate, lastEditorId } = goal
     const { displayName, shortName } = getUserPresentationDataInProject(projectId, lastEditorId)
 
@@ -19,6 +26,7 @@ export default function TitlePresentation({ openTitleEdition, goal, projectId, d
             editorName={displayName}
             shortEditorName={shortName}
             hideLastEdited={hideLastEdited}
+            maxHeight={maxHeight}
         >
             <CommentElementsParser
                 comment={extendedName}
