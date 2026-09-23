@@ -1,5 +1,6 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
+import styles, { colors } from '../../styles/global'
 import { useSelector } from 'react-redux'
 import SharedHelper from '../../../utils/SharedHelper'
 import { FEED_NOTE_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
@@ -8,6 +9,9 @@ import ProjectTag from '../../Tags/ProjectTag'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import PrivacyTag from '../../Tags/PrivacyTag'
 import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
+import { translate } from '../../../i18n/TranslationService'
+import useLastEditDate from '../../../hooks/useLastEditDate'
+import { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 import { DV_TAB_NOTE_CHAT } from '../../../utils/TabNavigationConstants'
 import DvBotButton from '../../UIControls/DvBotButton'
 import DvSearchButton from '../../UIControls/DvSearchButton'
@@ -27,9 +31,10 @@ export default function TagList({
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const project = ProjectHelper.getProjectById(projectId)
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
+    const useCompactLayout = mobile
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, useCompactLayout && localStyles.containerCompact]}>
             <View style={[localStyles.tagList, (mobile || tablet) && localStyles.tagListCompact]}>
                 <View style={{ marginRight: 12 }}>
                     <ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} />
@@ -44,7 +49,8 @@ export default function TagList({
                     />
                 </View>
             </View>
-            <View style={localStyles.actions}>
+            <View style={[localStyles.actions, useCompactLayout && localStyles.actionsCompact]}>
+                {mobile && <MobileLastEdited projectId={projectId} note={note} />}
                 <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
                 <DvSearchButton style={{ top: -5 }} />
                 <DvBotButton
@@ -70,12 +76,26 @@ export default function TagList({
     )
 }
 
+function MobileLastEdited({ projectId, note }) {
+    const editionText = useLastEditDate(note.lastEditionDate)
+    const editor = getUserPresentationDataInProject(projectId, note.lastEditorId)
+
+    return (
+        <Text style={localStyles.lastEdited}>
+            {`${translate('edited')} ${editionText}\n ${translate('by')} ${editor.displayName.split(' ')[0]}`}
+        </Text>
+    )
+}
+
 const localStyles = StyleSheet.create({
     container: {
         flex: 1,
         flexDirection: 'row',
         minWidth: 0,
         alignItems: 'flex-start',
+    },
+    containerCompact: {
+        flexWrap: 'wrap',
     },
     tagList: {
         flex: 1,
@@ -91,5 +111,20 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         flexShrink: 0,
         marginLeft: 8,
+    },
+    actionsCompact: {
+        width: '100%',
+        marginLeft: 0,
+        marginTop: 8,
+        justifyContent: 'flex-end',
+    },
+    lastEdited: {
+        ...styles.body3,
+        position: 'relative',
+        top: -2,
+        color: colors.Text03,
+        marginRight: 8,
+        lineHeight: 14,
+        textAlign: 'right',
     },
 })

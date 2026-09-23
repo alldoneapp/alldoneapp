@@ -280,7 +280,7 @@ describe('catalog Gold pricing', () => {
             ],
         })
 
-        expect(claude.families.map(model => model.tokensPerGold)).toEqual([120, 200, 400, 53, 53])
+        expect(claude.families.map(model => model.tokensPerGold)).toEqual([80, 200, 400, 53, 53])
         expect(codex.families.map(model => model.tokensPerGold)).toEqual([40, 200, 190, 4000])
     })
 
@@ -352,7 +352,7 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('claude', { fetchImpl, now })
 
         expect(catalog.source).toBe('cache')
-        expect(catalog.families).toEqual([{ ...cached[0], tokensPerGold: 120 }])
+        expect(catalog.families).toEqual([{ ...cached[0], tokensPerGold: 80 }])
         expect(fetchImpl).not.toHaveBeenCalled()
     })
 
