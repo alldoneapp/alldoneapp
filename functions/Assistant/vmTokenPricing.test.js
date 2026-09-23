@@ -11,6 +11,7 @@ const {
     deriveTokensPerGold,
     resolveUpstreamPrice,
     resolveConservativeNativeRate,
+    lookupClaudeReferencePrice,
     resolveTokensPerGold,
     resolveEffectiveTokensPerGold,
     resolveSolRelativeGoldFactor,
@@ -39,7 +40,7 @@ describe('Sol is the baseline the whole table hangs off', () => {
     })
 
     test('current Claude aliases use official prices relative to the 100-token Sol baseline', () => {
-        expect(resolveTokensPerGold('opus')).toBe(80)
+        expect(resolveTokensPerGold('opus')).toBe(120)
         expect(resolveTokensPerGold('sonnet')).toBe(200)
         expect(resolveTokensPerGold('haiku')).toBe(400)
         expect(resolveTokensPerGold('fable')).toBe(53)
@@ -50,6 +51,7 @@ describe('Sol is the baseline the whole table hangs off', () => {
     test('concrete Claude versions keep their own official price instead of inheriting an alias', () => {
         expect(resolveTokensPerGold('claude-fable-5-1')).toBe(53)
         expect(resolveTokensPerGold('claude-fable-5')).toBe(40)
+        expect(resolveTokensPerGold('claude-opus-5-5')).toBe(120)
         expect(resolveTokensPerGold('claude-opus-5')).toBe(80)
         expect(resolveTokensPerGold('claude-opus-4-8')).toBe(80)
         expect(resolveTokensPerGold('claude-opus-4-1-20250805')).toBe(26)
@@ -58,6 +60,17 @@ describe('Sol is the baseline the whole table hangs off', () => {
         expect(resolveTokensPerGold('claude-haiku-4-5-20251001')).toBe(400)
         expect(resolveTokensPerGold('claude-3-5-haiku-20241022')).toBe(500)
         expect(resolveTokensPerGold('claude-3-haiku-20240307')).toBe(1400)
+    })
+
+    test('Opus 5.5 (AT-2625) uses its official $4 / $0.20 cache read / $20 price, not the unknown-model fallback', () => {
+        expect(lookupClaudeReferencePrice('claude-opus-5-5')).toEqual({ input: 4, cachedInput: 0.2, output: 20 })
+        // The moving `opus` alias follows the newest Opus release, so it bills at the Opus 5.5 rate.
+        expect(lookupClaudeReferencePrice('opus')).toBe(lookupClaudeReferencePrice('claude-opus-5-5'))
+        // Before AT-2625 the unlisted id fell through to the conservative Claude rate (26).
+        expect(resolveTokensPerGold('claude-opus-5-5')).toBeGreaterThan(
+            resolveConservativeNativeRate('claude-opus-5-5', 100)
+        )
+        expect(resolveTokensPerGold('claude-opus-5-5')).toBeGreaterThan(resolveTokensPerGold('claude-opus-5'))
     })
 
     test('every researched Claude price derives from the same Sol blend', () => {
@@ -375,7 +388,7 @@ describe('the rate is disclosed to the user', () => {
         expect(formatTokenDiscountNote(SOL)).toBe('')
         expect(formatTokenDiscountNote(undefined)).toBe('')
 
-        expect(formatTokenDiscountNote('opus')).toContain('2.5x the Sol rate')
+        expect(formatTokenDiscountNote('opus')).toContain('1.7x the Sol rate')
         expect(formatTokenDiscountNote('sonnet')).toBe('')
         expect(formatTokenDiscountNote('fable')).toContain('3.8x the Sol rate')
         expect(formatTokenDiscountNote(LUNA)).toContain('1/20')
