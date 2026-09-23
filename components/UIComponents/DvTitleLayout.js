@@ -1,9 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import DvTypeIndicator from './DvTypeIndicator'
-import { colors } from '../styles/global'
+import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import useLastEditDate from '../../hooks/useLastEditDate'
 
@@ -36,15 +36,28 @@ export default function DvTitleLayout({
     editorName,
     shortEditorName,
     hideLastEdited,
+    maxHeight,
 }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
     const tablet = useSelector(state => state.isMiddleScreen)
+    const [titleHeight, setTitleHeight] = useState(0)
+    const maxTitleHeight = maxHeight == null ? null : Math.max(0, maxHeight - 32)
 
     return (
         <View style={localStyles.container}>
-            <TouchableOpacity style={localStyles.title} onPress={onPress} disabled={disabled}>
-                {children}
-            </TouchableOpacity>
+            <View style={[localStyles.titleFrame, maxTitleHeight != null && { maxHeight: maxTitleHeight }]}>
+                <TouchableOpacity
+                    style={localStyles.title}
+                    onPress={onPress}
+                    disabled={disabled}
+                    onLayout={({ nativeEvent }) => setTitleHeight(nativeEvent.layout.height)}
+                >
+                    {children}
+                </TouchableOpacity>
+                {maxTitleHeight != null && titleHeight > maxTitleHeight && (
+                    <Text style={localStyles.ellipsis}>...</Text>
+                )}
+            </View>
             <View style={[localStyles.meta, mobile && localStyles.metaMobile]}>
                 <DvTypeIndicator label={typeLabel} icon={typeIcon} mobile={false} />
                 {!hideLastEdited && lastEditionDate && (
@@ -68,9 +81,22 @@ const localStyles = StyleSheet.create({
         marginTop: 32,
         minWidth: 0,
     },
-    title: {
+    titleFrame: {
         flex: 1,
         minWidth: 0,
+        overflow: 'hidden',
+    },
+    title: {
+        minWidth: 0,
+    },
+    ellipsis: {
+        ...styles.title4,
+        color: colors.Text01,
+        backgroundColor: '#ffffff',
+        paddingHorizontal: 8,
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
     },
     meta: {
         alignItems: 'flex-end',
@@ -84,6 +110,7 @@ const localStyles = StyleSheet.create({
     metaMobile: {
         maxWidth: 128,
         marginLeft: 8,
+        marginTop: -6,
     },
     lastEdited: {
         fontFamily: 'Roboto-Regular',
