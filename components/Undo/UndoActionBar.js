@@ -8,6 +8,7 @@ import { translate } from '../../i18n/TranslationService'
 import { reverseUndoAction } from '../../utils/undo/undoActions'
 import { buildUndoActionGroup, reverseUndoActionGroup, UNDO_BURST_SETTLE_MS } from '../../utils/undo/undoActionGrouping'
 import undoActionBarStyles from './undoActionBarStyles'
+import { abbreviateUndoLabel } from './undoActionLabel'
 import useUndoActionBarMotion, { UNDO_DISPLAY_TIME_MS } from './undoActionBarMotion'
 
 // AT-2503 — one constant for the auto-hide timer below and for the countdown line that draws it, so
@@ -186,6 +187,9 @@ export default function UndoActionBar() {
           : isUndone
             ? `${translate('Undone')}: ${action.label}`
             : action.label
+    // AT-2626 — the stored label carries the full task name (often with a pasted link), which is
+    // shortened for display. The dismiss area's accessibility label keeps the full text.
+    const displayMessage = abbreviateUndoLabel(message)
     const actionLabel = translate(isGrouped ? (isUndone ? 'Redo all' : 'Undo all') : isUndone ? 'Redo' : 'Undo')
     const stopPropagation = event => event?.stopPropagation?.()
 
@@ -222,12 +226,18 @@ export default function UndoActionBar() {
                         aria-atomic={true}
                         testID="undo-action-message"
                     >
-                        {message}
+                        {displayMessage}
                     </Animated.Text>
                     {busy ? (
-                        <ActivityIndicator pointerEvents="none" color={colors.UtilityBlue200} size="small" />
+                        <ActivityIndicator
+                            pointerEvents="none"
+                            style={localStyles.actionSlot}
+                            color={colors.UtilityBlue200}
+                            size="small"
+                        />
                     ) : error ? (
                         <TouchableOpacity
+                            style={localStyles.actionSlot}
                             onPress={event => {
                                 stopPropagation(event)
                                 setVisible(false)
@@ -239,6 +249,7 @@ export default function UndoActionBar() {
                         </TouchableOpacity>
                     ) : (
                         <TouchableOpacity
+                            style={localStyles.actionSlot}
                             onPress={event => {
                                 stopPropagation(event)
                                 reverse(group, isUndone ? 'redo' : 'undo')
