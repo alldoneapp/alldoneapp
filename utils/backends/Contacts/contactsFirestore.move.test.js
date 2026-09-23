@@ -1,25 +1,16 @@
-const mockTargetSet = jest.fn(async () => {})
-const mockSourceUpdate = jest.fn(async () => {})
-const mockSourceDelete = jest.fn(async () => {})
-const mockAddContactFeedsChain = jest.fn()
-
-const mockDb = {
-    doc: jest.fn(path => {
-        if (path === 'projectsContacts/project-b/contacts/contact-1') return { set: mockTargetSet }
-        if (path === 'projectsContacts/project-a/contacts/contact-1') {
-            return { update: mockSourceUpdate, delete: mockSourceDelete }
-        }
-        throw new Error(`Unexpected Firestore path: ${path}`)
-    }),
-}
+const mockQueueMove = jest.fn(async () => ({ queued: true }))
+const mockWaitForMove = jest.fn(async () => ({ id: 'contact-1', displayName: 'Erik Bartel' }))
 
 jest.mock('firebase/compat/app', () => ({
     __esModule: true,
     default: {},
 }))
 jest.mock('../firestore', () => ({
-    addContactFeedsChain: (...args) => mockAddContactFeedsChain(...args),
-    getDb: () => mockDb,
+    getDb: jest.fn(),
+}))
+jest.mock('../projectMoves', () => ({
+    queueObjectProjectMove: (...args) => mockQueueMove(...args),
+    waitForProjectMoveCompletion: (...args) => mockWaitForMove(...args),
 }))
 jest.mock('./contactUpdates', () => ({}))
 jest.mock('../../../redux/store', () => ({
@@ -55,27 +46,11 @@ describe('setContactProject', () => {
         jest.clearAllMocks()
     })
 
-    it('preserves the linked note and marks the source as a move before deleting it', async () => {
-        await setContactProject(
-            { id: 'project-a' },
-            { id: 'project-b' },
-            {
-                uid: 'contact-1',
-                displayName: 'Erik Bartel',
-                noteId: 'note-1',
-                isPublicFor: [0, 'user-1'],
-            }
-        )
+    it('queues the cloud move and waits for its completed contact', async () => {
+        const moved = await setContactProject({ id: 'project-a' }, { id: 'project-b' }, { uid: 'contact-1' })
 
-        // Merged, never overwritten: an id the destination project already holds
-        // (a retried move, a calendar object keyed by its event id) would
-        // otherwise strip the destination's server access projection and be
-        // refused by the rules.
-        expect(mockTargetSet).toHaveBeenCalledWith(
-            expect.objectContaining({ noteId: 'note-1', movingToOtherProjectId: null }),
-            { merge: true }
-        )
-        expect(mockSourceUpdate).toHaveBeenCalledWith({ movingToOtherProjectId: 'project-b' })
-        expect(mockSourceUpdate.mock.invocationCallOrder[0]).toBeLessThan(mockSourceDelete.mock.invocationCallOrder[0])
+        expect(mockQueueMove).toHaveBeenCalledWith('project-a', 'project-b', 'contact', 'contact-1')
+        expect(mockWaitForMove).toHaveBeenCalledWith('project-a', 'project-b', 'contact', 'contact-1')
+        expect(moved).toEqual({ id: 'contact-1', displayName: 'Erik Bartel' })
     })
 })

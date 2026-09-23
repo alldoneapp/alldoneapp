@@ -48,7 +48,7 @@ import {
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
-import { CROSS_PROJECT_DESTINATION_WRITE } from '../accessProjection'
+import { queueObjectProjectMove, waitForProjectMoveCompletion } from '../projectMoves'
 import { createCachedSnapshotGate } from '../cachedSnapshotGate'
 import { createFirstSnapshotPerformance } from '../../performance/firestoreSnapshotPerformance'
 import {
@@ -318,64 +318,12 @@ export async function copyContactToProject(targetProjectId, sourceContact, onCom
 export async function setContactProject(currentProject, newProject, contact) {
     const { loggedUser, route } = store.getState()
     const contactId = contact.uid
-
-    const contactData = {
-        displayName: contact.displayName || '',
-        photoURL: contact.photoURL || '',
-        photoURL50: contact.photoURL50 || '',
-        photoURL300: contact.photoURL300 || '',
-        company: contact.company || '',
-        role: contact.role || '',
-        description: contact.description || '',
-        extendedDescription: contact.extendedDescription || '',
-        ...buildContactEmailFields(contact, contact.email, false),
-        phone: contact.phone || '',
-        hasStar: contact.hasStar || '#FFFFFF',
-        isPrivate: contact.isPrivate || false,
-        isPublicFor: contact.isPublicFor || [FEED_PUBLIC_FOR_ALL, loggedUser.uid],
-        recorderUserId: contact.recorderUserId || loggedUser.uid,
-        lastEditorId: loggedUser.uid,
-        lastEditionDate: Date.now(),
-        // A contact note is a project-scoped object. Keep the link on the target
-        // contact and mark the source contact as a move before deleting it; the
-        // onDeleteContact trigger then moves the linked note (metadata, content,
-        // chat and feeds) instead of treating it as an ordinary deletion.
-        noteId: contact.noteId || null,
-        isPremium: contact.isPremium || false,
-        lastVisitBoard: {},
-        lastVisitBoardInGoals: {},
-        assistantId: '',
-        commentsData: null,
-        openTasksAmount: 0,
-        contactStatusId: null,
-        linkedInUrl: contact.linkedInUrl || '',
-    }
-
-    let feedPhotoUrl = contactData.photoURL
-
-    if (contactData.photoURL) {
-        const pictures = [contactData.photoURL, contactData.photoURL50, contactData.photoURL300]
-        const urlList = await uploadAvatarPhotos(
-            pictures,
-            `projectsContacts/${newProject.id}/${contactId}/${contactId}@${Date.now()}`,
-            `feeds/${newProject.id}/${contactId}_${getId()}@${Date.now()}`
-        )
-
-        contactData.photoURL = urlList[0]
-        contactData.photoURL50 = urlList[1]
-        contactData.photoURL300 = urlList[2]
-        feedPhotoUrl = urlList[3]
-    }
-
-    await getDb()
-        .doc(`projectsContacts/${newProject.id}/contacts/${contactId}`)
-        .set({ ...contactData, movingToOtherProjectId: null }, CROSS_PROJECT_DESTINATION_WRITE)
-
-    addContactFeedsChain(newProject.id, contactData, feedPhotoUrl, contactId)
+    await queueObjectProjectMove(currentProject.id, newProject.id, 'contact', contactId)
+    const movedContact = await waitForProjectMoveCompletion(currentProject.id, newProject.id, 'contact', contactId)
 
     if (route === 'ContactDetailedView') {
         NavigationService.navigate('ContactDetailedView', {
-            contact: { uid: contactId, ...contactData },
+            contact: { uid: contactId, ...movedContact },
             project: newProject,
         })
 
@@ -388,9 +336,7 @@ export async function setContactProject(currentProject, newProject, contact) {
         ])
     }
 
-    const sourceContactRef = getDb().doc(`projectsContacts/${currentProject.id}/contacts/${contactId}`)
-    await sourceContactRef.update({ movingToOtherProjectId: newProject.id })
-    await sourceContactRef.delete()
+    return movedContact
 }
 
 export async function deleteProjectContact(projectId, contact, contactId) {

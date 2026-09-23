@@ -86,6 +86,36 @@ describe('copyProjectMoveChat', () => {
         ).rejects.toMatchObject({ name: 'ProjectMoveChatError', code: 'permission-denied' })
     })
 
+    it('limits a moved private contact chat to target members and keeps the mover', async () => {
+        const { adminRef } = createAdmin({
+            'projects/target': { userIds: ['actor', 'target-member'] },
+            'chatObjects/source/chats/contact-1': {
+                isPublicFor: ['actor', 'source-only', 'target-member'],
+                members: ['source-only', 'target-member'],
+                usersFollowing: ['source-only', 'target-member'],
+            },
+        })
+        const copyChat = jest.fn(async () => true)
+
+        await copyProjectMoveChat({
+            adminRef,
+            actorId: 'actor',
+            sourceProjectId: 'source',
+            targetProjectId: 'target',
+            objectType: 'contacts',
+            objectId: 'contact-1',
+            copyChat,
+        })
+
+        expect(copyChat.mock.calls[0][5].chatData).toEqual(
+            expect.objectContaining({
+                isPublicFor: ['actor', 'target-member'],
+                members: ['target-member'],
+                usersFollowing: ['target-member'],
+            })
+        )
+    })
+
     it('returns cleanly when the moved object has no conversation', async () => {
         const { adminRef, updates, deletes } = createAdmin({ 'projects/target': { userIds: ['actor'] } })
 

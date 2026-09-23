@@ -11,6 +11,7 @@ const { moveNoteToDifferentProject } = require('./moveNoteToDifferentProject')
 const { moveTaskToDifferentProject } = require('./moveTaskToDifferentProject')
 const { withoutAccessProjection } = require('./objectAccessProjection')
 const { normalizeProjectMoveType } = require('./projectMoveContract')
+const { filterPrivacyForTarget } = require('./projectMovePrivacy')
 const {
     GOAL_SCHEDULE_MODE_DYNAMIC,
     MILESTONE_TYPE_FIXED,
@@ -36,14 +37,6 @@ function buildProjectMoveState({ requestId, sourceProjectId, targetProjectId, ac
         requestedAt: timestamp,
         status,
     }
-}
-
-function filterPrivacyForTarget(isPublicFor, targetUserIds, actorId) {
-    if (!Array.isArray(isPublicFor) || isPublicFor.includes(0)) return [0]
-    const targetMembers = new Set(targetUserIds || [])
-    const filtered = isPublicFor.filter(id => targetMembers.has(id) || String(id).startsWith('ws@'))
-    if (targetMembers.has(actorId) && !filtered.includes(actorId)) filtered.push(actorId)
-    return filtered
 }
 
 function prepareGoalForTarget(goal, targetProject, actorId, projectMove) {
@@ -79,9 +72,10 @@ function prepareGoalForTarget(goal, targetProject, actorId, projectMove) {
     })
 }
 
-function prepareContactForTarget(contact, actorId, projectMove) {
+function prepareContactForTarget(contact, targetProject, actorId, projectMove) {
     return withoutAccessProjection({
         ...contact,
+        isPublicFor: filterPrivacyForTarget(contact.isPublicFor, targetProject.userIds || [], actorId),
         lastEditorId: actorId,
         lastEditionDate: Date.now(),
         lastVisitBoard: {},
@@ -200,7 +194,7 @@ async function moveStoredObject(params) {
         objectType === 'goal'
             ? prepareGoalForTarget({ ...sourceData, focusAreaId }, targetProject, actorId, movingState)
             : objectType === 'contact'
-              ? prepareContactForTarget(sourceData, actorId, movingState)
+              ? prepareContactForTarget(sourceData, targetProject, actorId, movingState)
               : prepareSkillForTarget(sourceData, targetProject, actorId, movingState)
     await targetRef.set(movedData)
 
@@ -235,6 +229,7 @@ async function moveStoredObject(params) {
                 targetProjectId,
                 noteId: sourceData.noteId,
                 editorId: actorId,
+                targetProjectUserIds: targetProject.userIds || [],
                 requestId: `${requestId}-note`,
                 notesBucketName: getNotesBucketName(),
             })
