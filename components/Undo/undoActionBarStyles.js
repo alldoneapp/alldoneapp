@@ -49,10 +49,25 @@ const undoActionBarStyles = StyleSheet.create({
         left: 0,
         borderRadius: 8,
     },
+    /**
+     * AT-2626 — the message must be able to shrink below its longest unbreakable word. A flex
+     * item's `min-width: auto` resolves to its min-content width, and react-native-web's
+     * `overflow-wrap: break-word` does not lower that, so a label containing a long link grew
+     * wider than the card and the card's `overflow: hidden` clipped the Undo button off the end.
+     * `minWidth: 0` lets the text give way, and `anywhere` lets the link wrap inside the two
+     * clamped lines instead of overflowing them.
+     */
     message: {
         color: '#FFFFFF',
         flex: 1,
+        minWidth: 0,
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word',
         marginRight: 16,
+    },
+    // The action (Undo / Redo / Dismiss / spinner) is never the thing that yields space.
+    actionSlot: {
+        flexShrink: 0,
     },
     action: {
         color: colors.UtilityBlue200,

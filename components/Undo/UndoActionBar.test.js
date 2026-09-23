@@ -73,4 +73,18 @@ describe('UndoActionBar layout', () => {
             expect(undoActionBarStyles.container.boxShadow).toBeDefined()
         })
     })
+
+    describe('a long task name never hides the action (AT-2626)', () => {
+        it('lets the message shrink below its longest unbreakable word', () => {
+            // Without minWidth: 0 a flex item cannot shrink below its min-content width, so a
+            // long link pushed the Undo button past the card's clipped edge.
+            expect(undoActionBarStyles.message.flex).toBe(1)
+            expect(undoActionBarStyles.message.minWidth).toBe(0)
+            expect(undoActionBarStyles.message.overflowWrap).toBe('anywhere')
+        })
+
+        it('never shrinks the action', () => {
+            expect(undoActionBarStyles.actionSlot.flexShrink).toBe(0)
+        })
+    })
 })
