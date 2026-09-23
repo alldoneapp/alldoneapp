@@ -1452,8 +1452,25 @@ describe('Responses API compatibility helpers', () => {
             expect(getToolSearchNamespaceName('update_user_description')).toBe('people_and_projects')
             expect(getToolSearchNamespaceName('search_gmail')).toBe('gmail')
             expect(getToolSearchNamespaceName('get_tasks')).toBe('tasks_and_goals')
+            expect(getToolSearchNamespaceName('update_note')).toBe('alldone_notes')
             expect(getToolSearchNamespaceName('update_assistant_settings')).toBe('assistant_settings')
             expect(getToolSearchNamespaceName('web_search')).toBe('research')
+        })
+
+        test('keeps note tools out of the reserved notes namespace', () => {
+            const toolNames = ['update_note', ...Array.from({ length: 9 }, (_, index) => `get_task_${index}`)]
+            const tools = toolNames.map(name => ({
+                type: 'function',
+                function: { name, description: '', parameters: { type: 'object', properties: {} } },
+            }))
+            const result = buildResponsesTools(tools, 'MODEL_GPT6_SOL')
+            const noteNamespace = result.tools.find(tool => tool.type === 'namespace' && tool.name === 'alldone_notes')
+
+            expect(result.toolSearchEnabled).toBe(true)
+            expect(result.tools.some(tool => tool.type === 'namespace' && tool.name === 'notes')).toBe(false)
+            expect(noteNamespace.tools.map(tool => tool.name)).toEqual(['update_note'])
+            expect(noteNamespace.tools[0].defer_loading).toBe(true)
+            expect(result.fallbackTools.map(tool => tool.name)).toContain('update_note')
         })
     })
 

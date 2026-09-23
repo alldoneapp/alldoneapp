@@ -13040,7 +13040,7 @@ const TOOL_SEARCH_NAMESPACE_DESCRIPTIONS = {
     gmail: 'Search Gmail, inspect attachments, manage messages and drafts, and correct email classification.',
     calendar: 'Find availability and search, create, update, or delete calendar events.',
     chats_and_media: 'Read chats, comments, attachments, recent media, and conversation updates.',
-    notes: 'Find, create, and update notes and note content.',
+    alldone_notes: 'Find, create, and update notes and note content.',
     people_and_projects: 'Work with contacts, users, projects, project health, and project objectives.',
     assistant_settings: 'Manage assistant settings, memory, heartbeat behavior, skills, and thread context.',
     research: 'Search the web and get weather, routes, places, and other external information.',
@@ -13073,7 +13073,8 @@ function getToolSearchNamespaceName(toolName = '') {
     if (/calendar|availability/.test(name)) return 'calendar'
     if (/task|goal|focus|execute_.*vm/.test(name)) return 'tasks_and_goals'
     if (/chat|comment|attachment|media|update\b/.test(name)) return 'chats_and_media'
-    if (/note/.test(name)) return 'notes'
+    // The API reserves `notes`; a namespace with that name rejects `notes.update_note`.
+    if (/note/.test(name)) return 'alldone_notes'
     if (/contact|project|user/.test(name)) return 'people_and_projects'
     if (/assistant|heartbeat|memory|skill|compact_thread/.test(name)) return 'assistant_settings'
     if (/search|weather|route|recommendation|local|fetch_url|profile_photo/.test(name)) return 'research'
