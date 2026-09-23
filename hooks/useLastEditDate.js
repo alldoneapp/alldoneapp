@@ -5,7 +5,7 @@ import store from '../redux/store'
 import Backend from '../utils/BackendBridge'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
 
-const useLastEditDate = (lastEditDate, time = 1000) => {
+const useLastEditDate = (lastEditDate, time = 1000, compact = false) => {
     const tablet = store.getState().isMiddleScreen
     const [relativeDateText, setRelativeDateText] = useState('')
     const interval = useRef()
@@ -19,24 +19,33 @@ const useLastEditDate = (lastEditDate, time = 1000) => {
 
             const secondsDiff = today.diff(lastEdit, 'seconds')
             if (secondsDiff < 60) {
-                if (secondsDiff === 1) {
+                if (compact) {
+                    text = `${secondsDiff}s ago`
+                } else if (secondsDiff === 1) {
                     text = tablet ? '1 sec ago' : '1 second ago'
+                } else {
+                    text = `${secondsDiff} ${tablet ? 'sec ago' : 'seconds ago'}`
                 }
-                text = `${secondsDiff} ${tablet ? 'sec ago' : 'seconds ago'}`
             } else {
                 const minutesDiff = today.diff(lastEdit, 'minutes')
                 if (minutesDiff < 60) {
-                    if (minutesDiff === 1) {
+                    if (compact) {
+                        text = `${minutesDiff}m ago`
+                    } else if (minutesDiff === 1) {
                         text = tablet ? '1 min ago' : '1 minute ago'
+                    } else {
+                        text = `${minutesDiff} ${tablet ? 'min ago' : 'minutes ago'}`
                     }
-                    text = `${minutesDiff} ${tablet ? 'min ago' : 'minutes ago'}`
                 } else {
                     const hoursDiff = today.diff(lastEdit, 'hours')
                     if (hoursDiff < 24) {
-                        if (hoursDiff === 1) {
+                        if (compact) {
+                            text = `${hoursDiff}h ago`
+                        } else if (hoursDiff === 1) {
                             text = '1 hour ago'
+                        } else {
+                            text = `${hoursDiff} hours ago`
                         }
-                        text = `${hoursDiff} hours ago`
                     } else {
                         text = moment(lastEditDate).format(getDateFormat())
                     }
@@ -56,7 +65,7 @@ const useLastEditDate = (lastEditDate, time = 1000) => {
         interval.current = setInterval(callback, time)
 
         return () => cleanInterval()
-    }, [lastEditDate])
+    }, [lastEditDate, compact])
 
     return relativeDateText
 }
