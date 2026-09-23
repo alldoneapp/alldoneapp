@@ -151,39 +151,46 @@ const CODEX_CURRENT_MODEL_REFERENCE_PRICES = Object.freeze({
 
 /**
  * Anthropic list prices, USD per 1M tokens (platform.claude.com/docs/en/about-claude/pricing,
- * retrieved 2026-09-10). Bare names use the current model for that family. Fable/Mythos 5.1 have
- * unusually cheap cache reads (0.025x base input), so they cannot inherit the older 5.0 price.
+ * retrieved 2026-09-23). Bare names use the current model for that family — the `opus` alias moved
+ * to Opus 5.5 when Claude Code started resolving it there (AT-2625). Fable/Mythos 5.1 have unusually
+ * cheap cache reads (0.025x base input), so they cannot inherit the older 5.0 price.
  *
- * Most Anthropic families price cache hits at 0.1x base input; Fable/Mythos 5.1 use 0.025x. Cache
- * writes are not represented because the VM meter folds them into input tokens; see the modelling
- * caveat in the module header.
+ * Most Anthropic families price cache hits at 0.1x base input; Fable/Mythos 5.1 use 0.025x and Opus
+ * 5.5 uses 0.05x. Cache writes are not represented because the VM meter folds them into input
+ * tokens; see the modelling caveat in the module header. Batch and fast-mode prices do not apply:
+ * VM runs are interactive standard-speed Messages requests.
  */
 const CLAUDE_REFERENCE_PRICES = Object.freeze({
     fable: Object.freeze({ input: 10, cachedInput: 0.25, output: 50 }),
     mythos: Object.freeze({ input: 10, cachedInput: 0.25, output: 50 }),
-    opus: Object.freeze({ input: 5, cachedInput: 0.5, output: 25 }),
+    opus: Object.freeze({ input: 4, cachedInput: 0.2, output: 20 }),
     sonnet: Object.freeze({ input: 2, cachedInput: 0.2, output: 10 }),
     haiku: Object.freeze({ input: 1, cachedInput: 0.1, output: 5 }),
 })
 
 const CLAUDE_FABLE_5_REFERENCE_PRICE = Object.freeze({ input: 10, cachedInput: 1, output: 50 })
+const CLAUDE_OPUS_5_REFERENCE_PRICE = Object.freeze({ input: 5, cachedInput: 0.5, output: 25 })
 
 /**
  * Version-specific Anthropic prices. The model API returns concrete ids but no price metadata, and
- * the price is not always constant within a family: Opus 4.1 costs 3x Opus 4.5+, while Sonnet 5 is
- * cheaper than Sonnet 4.6. Exact version matching prevents a retired model from silently inheriting
- * the current alias price. A trailing snapshot date is stripped before lookup.
+ * the price is not always constant within a family: Opus 4.1 costs 3x Opus 4.5–5, Opus 5.5 is
+ * cheaper than Opus 5, and Sonnet 5 is cheaper than Sonnet 4.6. Exact version matching prevents a
+ * retired model from silently inheriting the current alias price — and an unlisted new version from
+ * falling through to the conservative (most expensive) Claude rate, which is what billed pinned
+ * `claude-opus-5-5` runs at 26 tokens/Gold until AT-2625. A trailing snapshot date is stripped
+ * before lookup.
  */
 const CLAUDE_MODEL_REFERENCE_PRICES = Object.freeze({
     'claude-fable-5-1': CLAUDE_REFERENCE_PRICES.fable,
     'claude-mythos-5-1': CLAUDE_REFERENCE_PRICES.mythos,
     'claude-fable-5': CLAUDE_FABLE_5_REFERENCE_PRICE,
     'claude-mythos-5': CLAUDE_FABLE_5_REFERENCE_PRICE,
-    'claude-opus-5': CLAUDE_REFERENCE_PRICES.opus,
-    'claude-opus-4-8': CLAUDE_REFERENCE_PRICES.opus,
-    'claude-opus-4-7': CLAUDE_REFERENCE_PRICES.opus,
-    'claude-opus-4-6': CLAUDE_REFERENCE_PRICES.opus,
-    'claude-opus-4-5': CLAUDE_REFERENCE_PRICES.opus,
+    'claude-opus-5-5': CLAUDE_REFERENCE_PRICES.opus,
+    'claude-opus-5': CLAUDE_OPUS_5_REFERENCE_PRICE,
+    'claude-opus-4-8': CLAUDE_OPUS_5_REFERENCE_PRICE,
+    'claude-opus-4-7': CLAUDE_OPUS_5_REFERENCE_PRICE,
+    'claude-opus-4-6': CLAUDE_OPUS_5_REFERENCE_PRICE,
+    'claude-opus-4-5': CLAUDE_OPUS_5_REFERENCE_PRICE,
     'claude-opus-4-1': Object.freeze({ input: 15, cachedInput: 1.5, output: 75 }),
     'claude-opus-4': Object.freeze({ input: 15, cachedInput: 1.5, output: 75 }),
     'claude-3-opus': Object.freeze({ input: 15, cachedInput: 1.5, output: 75 }),
