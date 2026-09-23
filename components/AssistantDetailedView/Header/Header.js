@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 
 import TitlePresentation from './TitlePresentation'
 import TitleEdition from './TitleEdition'
+import LastEdition from './LastEdition'
 import BackButton from './BackButton'
 import CopyLinkButton from '../../UIControls/CopyLinkButton'
 import DVHamburgButton from '../../UIControls/DVHamburgButton'
@@ -93,6 +94,7 @@ export default function Header({
             {!isFullscreen && (
                 <View style={localStyles.bottomHeader}>
                     <View style={{ flex: 1 }} />
+                    {mobile && <LastEdition assistant={assistant} />}
                     <CopyLinkButton style={{ marginRight: 8 }} />
                     <DvBotButton
                         navItem={DV_TAB_ASSISTANT_CHAT}
