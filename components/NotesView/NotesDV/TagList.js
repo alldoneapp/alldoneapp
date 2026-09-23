@@ -31,11 +31,11 @@ export default function TagList({
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const project = ProjectHelper.getProjectById(projectId)
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
-    const useCompactLayout = mobile || tablet
+    const useCompactLayout = mobile
 
     return (
         <View style={[localStyles.container, useCompactLayout && localStyles.containerCompact]}>
-            <View style={[localStyles.tagList, useCompactLayout && localStyles.tagListCompact]}>
+            <View style={[localStyles.tagList, (mobile || tablet) && localStyles.tagListCompact]}>
                 <View style={{ marginRight: 12 }}>
                     <ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} />
                 </View>
