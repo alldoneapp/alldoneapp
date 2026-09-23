@@ -12,7 +12,7 @@ const mockState = {
 jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
-jest.mock('../../hooks/useLastEditDate', () => () => '14 hours ago')
+jest.mock('../../hooks/useLastEditDate', () => (date, time, compact) => (compact ? '14h ago' : '14 hours ago'))
 jest.mock('../Icon', () => 'Icon')
 jest.mock('../../i18n/TranslationService', () => ({ translate: value => value }))
 
@@ -59,12 +59,15 @@ describe('DvTitleLayout', () => {
         expect(visibleText(tree)).toContain('edited 14 hours ago by Karsten')
     })
 
-    test('keeps the type and short edit line beside the title on mobile', () => {
+    test('keeps the type and compact edit line beside the title on mobile', () => {
         mockState.smallScreenNavigation = true
         const tree = makeLayout()
 
-        expect(visibleText(tree)).toContain('edited 14 hours ago\nby Karsten')
+        expect(visibleText(tree)).toContain('14h ago by Karsten')
         expect(visibleText(tree)).toContain('NOTE')
+        expect(
+            tree.root.findAllByType(Text).find(node => node.props.children === '14h ago by Karsten').props.numberOfLines
+        ).toBe(1)
     })
 
     test('shows an ellipsis only when the title itself overflows', () => {
