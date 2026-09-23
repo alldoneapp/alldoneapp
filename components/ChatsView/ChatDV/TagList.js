@@ -21,9 +21,6 @@ export default function TagList({ projectId, chat }) {
 
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
     const useCompactLayout = mobile || tablet
-    const editionText = useLastEditDate(chat.lastEditionDate)
-
-    const editorData = useGetUserPresentationData(chat.lastEditorId)
     return (
         <View style={[localStyles.container, useCompactLayout && localStyles.containerCompact]}>
             <View style={[localStyles.tagList, useCompactLayout && localStyles.tagListCompact]}>
@@ -38,13 +35,7 @@ export default function TagList({ projectId, chat }) {
                 </View>
             </View>
             <View style={[localStyles.actions, useCompactLayout && localStyles.actionsCompact]}>
-                <Text style={localStyles.lastEdited}>
-                    {useCompactLayout
-                        ? `${translate('edited')} ${editionText}\n ${translate('by')} ${
-                              editorData.displayName.split(' ')[0]
-                          }`
-                        : `${translate('last edited')} ${editionText}\n ${translate('by')} ${editorData.displayName}`}
-                </Text>
+                {mobile && <MobileLastEdited chat={chat} />}
                 <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
                 <DvBotButton
                     style={{ top: -5 }}
@@ -55,6 +46,17 @@ export default function TagList({ projectId, chat }) {
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>
         </View>
+    )
+}
+
+function MobileLastEdited({ chat }) {
+    const editionText = useLastEditDate(chat.lastEditionDate)
+    const editorData = useGetUserPresentationData(chat.lastEditorId)
+
+    return (
+        <Text style={localStyles.lastEdited}>
+            {`${translate('edited')} ${editionText}\n ${translate('by')} ${editorData.displayName.split(' ')[0]}`}
+        </Text>
     )
 }
 

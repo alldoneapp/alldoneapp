@@ -51,8 +51,10 @@ const Header = ({ projectId, chat, assistantId, setAssistantId, isFullscreen, se
                                 <ChatTitle
                                     projectId={projectId}
                                     title={title}
+                                    chat={chat}
                                     openTitleEdition={() => setEditionMode(true)}
                                     disabled={!accessGranted}
+                                    hideLastEdited={isFullscreen}
                                 />
                             </View>
                         )}
