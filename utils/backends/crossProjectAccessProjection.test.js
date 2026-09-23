@@ -16,15 +16,13 @@ describe('cross-project destination writes', () => {
         expect(source).toMatch(/withoutServerAccessProjection/)
     })
 
-    // Stripping the projection only covers a FREE destination id. A calendar task
-    // is keyed by its calendar event id, and any move that failed after the
-    // destination write leaves the id occupied for good — in both cases the same
-    // set() becomes an update that deletes the destination's projection fields and
-    // is refused. Every destination write must therefore merge.
+    // Client writes need merge when a destination id is already occupied: rules
+    // reject deleting the server's access projection fields. Contacts now move
+    // through the Admin SDK; its retry must replace stale target projections
+    // instead (covered by functions/shared/contactProjectMove.test.js).
     it.each([
         ['tasks', 'backends/Tasks/tasksFirestore.js', /items\/\$\{newProject\.id\}\/tasks\//g],
         ['notes', 'backends/Notes/notesFirestore.js', /noteItems\/\$\{newProject\.id\}\/notes\//g],
-        ['contacts', 'backends/Contacts/contactsFirestore.js', /projectsContacts\/\$\{newProject\.id\}\/contacts\//g],
     ])('merges rather than overwrites the destination %s document', (_label, relativePath, destinationPath) => {
         const source = readSource(relativePath)
         const writes = [...source.matchAll(destinationPath)]
