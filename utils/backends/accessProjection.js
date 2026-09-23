@@ -19,7 +19,7 @@ export const withoutServerAccessProjection = data => {
 }
 
 /**
- * Every cross-project destination write must MERGE, never overwrite.
+ * Every client-side cross-project destination write must MERGE, never overwrite.
  *
  * Stripping the projection is only half of what the strict rules ask for. A
  * plain `set()` is a create only while the destination id is free; the moment a
