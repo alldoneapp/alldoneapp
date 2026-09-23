@@ -43,13 +43,13 @@ const action = {
     status: 'applied',
 }
 
-const renderActionBar = () => {
+const renderActionBar = (renderedAction = action) => {
     let tree
     act(() => {
         tree = renderer.create(<UndoActionBar />)
     })
     act(() => {
-        mockOnSnapshot.mock.calls[0][0]({ docs: [{ data: () => action }] })
+        mockOnSnapshot.mock.calls[0][0]({ docs: [{ data: () => renderedAction }] })
     })
     act(() => {
         jest.advanceTimersByTime(UNDO_BURST_SETTLE_MS)
@@ -85,5 +85,20 @@ describe('UndoActionBar interactions', () => {
         expect(event.stopPropagation).toHaveBeenCalledTimes(1)
         expect(reverseUndoAction).toHaveBeenCalledWith('action-1', 'undo')
         expect(tree.root.findByProps({ testID: 'undo-action-bar' })).toBeTruthy()
+    })
+
+    it('abbreviates a long task name but keeps the Undo button and the full name (AT-2626)', () => {
+        const fullLabel =
+            'Completed “Kremer den aktuellen AVV schicken (Y Chi): https://jtl-software.atlassian.net/browse/LEG-257?atlOrigin=eyJpIjoiNWRkNTljNzYxNjVmNDY3MDlhMDU5Y2ZhYzA5YTRkZjUiLCJwIjoiaiJ9”'
+        const tree = renderActionBar({ ...action, label: fullLabel })
+
+        const shownText = tree.root.findByProps({ testID: 'undo-action-message' }).props.children
+        expect(shownText.length).toBeLessThan(fullLabel.length)
+        expect(shownText).toContain('jtl-software')
+        expect(shownText).not.toContain('atlOrigin')
+        expect(tree.root.findByProps({ testID: 'undo-action-button' })).toBeTruthy()
+        expect(tree.root.findByProps({ testID: 'undo-action-bar' }).props.accessibilityLabel).toBe(
+            `Dismiss: ${fullLabel}`
+        )
     })
 })
