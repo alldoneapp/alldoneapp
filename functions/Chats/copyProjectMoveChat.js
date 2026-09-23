@@ -89,6 +89,11 @@ async function copyProjectMoveChat({
         followerIds = sourceFollowerIds.filter(userId => allowedUserIds.has(userId))
         if (allowedUserIds.has(actorId) && !followerIds.includes(actorId)) followerIds.push(actorId)
         chatData = buildMovedTopicChatData(sourceChat, targetUserIds, actorId, followerIds)
+    } else if (objectType === 'contacts') {
+        const targetUserIds = targetProjectDoc.exists ? targetProjectDoc.data()?.userIds || [] : []
+        const targetMembers = new Set(targetUserIds)
+        followerIds = (sourceChat.usersFollowing || []).filter(userId => targetMembers.has(userId))
+        chatData = buildMovedTopicChatData(sourceChat, targetUserIds, actorId, followerIds)
     }
 
     const projectMove = requestId
