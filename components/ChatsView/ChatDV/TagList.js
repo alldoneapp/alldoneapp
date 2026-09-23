@@ -20,10 +20,10 @@ export default function TagList({ projectId, chat }) {
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
 
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
-    const useCompactLayout = mobile || tablet
+    const useCompactLayout = mobile
     return (
         <View style={[localStyles.container, useCompactLayout && localStyles.containerCompact]}>
-            <View style={[localStyles.tagList, useCompactLayout && localStyles.tagListCompact]}>
+            <View style={[localStyles.tagList, (mobile || tablet) && localStyles.tagListCompact]}>
                 <View style={{ marginRight: 12 }}>
                     <PrivacyTag
                         projectId={projectId}
