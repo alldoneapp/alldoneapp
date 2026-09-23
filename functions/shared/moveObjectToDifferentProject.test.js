@@ -18,6 +18,7 @@ describe('generic project move transformations', () => {
     test('limits private visibility to target members and keeps the actor', () => {
         expect(filterPrivacyForTarget(['user-a', 'user-b'], ['user-b', 'actor'], 'actor')).toEqual(['user-b', 'actor'])
         expect(filterPrivacyForTarget([0, 'user-a'], ['actor'], 'actor')).toEqual([0])
+        expect(filterPrivacyForTarget(undefined, ['actor'], 'actor')).toEqual(['actor'])
     })
 
     test('normalizes goal roles and retains its task-linking contract', () => {
@@ -51,9 +52,32 @@ describe('generic project move transformations', () => {
     })
 
     test('clears project-local contact and skill fields', () => {
-        expect(prepareContactForTarget({ contactStatusId: 'status', openTasksAmount: 4 }, 'actor', move)).toEqual(
-            expect.objectContaining({ contactStatusId: null, openTasksAmount: 0, assistantId: '', projectMove: move })
+        expect(
+            prepareContactForTarget(
+                {
+                    contactStatusId: 'status',
+                    openTasksAmount: 4,
+                    isPublicFor: ['source-only', 'target-member'],
+                    readerIds: ['source-only'],
+                    noteId: 'note-1',
+                },
+                { userIds: ['actor', 'target-member'] },
+                'actor',
+                move
+            )
+        ).toEqual(
+            expect.objectContaining({
+                contactStatusId: null,
+                openTasksAmount: 0,
+                assistantId: '',
+                isPublicFor: ['target-member', 'actor'],
+                noteId: 'note-1',
+                projectMove: move,
+            })
         )
+        expect(
+            prepareContactForTarget({ isPublicFor: ['source-only'] }, { userIds: ['actor'] }, 'actor', move)
+        ).not.toHaveProperty('readerIds')
         expect(
             prepareSkillForTarget(
                 { isPublicFor: ['old-user'], readerIds: ['old-user'] },

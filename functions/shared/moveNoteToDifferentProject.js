@@ -2,6 +2,8 @@
 
 const crypto = require('crypto')
 const admin = require('firebase-admin')
+const { withoutAccessProjection } = require('./objectAccessProjection')
+const { filterPrivacyForTarget } = require('./projectMovePrivacy')
 
 async function persistNoteMoveFeed(database, params) {
     const { targetProjectId, noteId, movedNote, feedUser, sourceProjectName, sourceProjectColor } = params
@@ -75,11 +77,14 @@ async function moveNoteToDifferentProject(params) {
         requestedAt: timestamp,
         status: 'moving',
     }
-    const movedNote = {
+    const movedNote = withoutAccessProjection({
         ...(sourceNoteDoc.data() || {}),
         projectId: targetProjectId,
         lastEditionDate: timestamp,
         projectMove,
+    })
+    if (params.targetProjectUserIds) {
+        movedNote.isPublicFor = filterPrivacyForTarget(movedNote.isPublicFor, params.targetProjectUserIds, editorId)
     }
     if (editorId) movedNote.lastEditorId = editorId
     if (editorName) movedNote.lastEditorName = editorName
