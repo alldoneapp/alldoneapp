@@ -916,6 +916,7 @@
     "A": "A",
     "C": "C",
     "Move": "Move",
+    "Moving contact...": "Moving contact...",
     "Task could not be moved": "Task could not be moved",
     "Moving task to projectName": "Moving task to %{projectName}",
     "Task move failed": "Task move failed",

@@ -45,6 +45,7 @@ import { unwatch } from '../../utils/backends/firestore'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
+import { isLocalContactMovePending } from '../../utils/projectMoveState'
 
 const ContactDetailedView = ({ navigation }) => {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -101,6 +102,9 @@ const ContactDetailedView = ({ navigation }) => {
     }, [])
 
     const updateContact = contact => {
+        // The worker deletes the source before the completion poll navigates to
+        // the destination. Keep this view mounted for that short handoff.
+        if (!contact && isLocalContactMovePending(projectId, contactParam.uid)) return
         if (!contact || ContactsHelper.isPrivateContact(contact)) {
             if (loggedUser.isAnonymous) {
                 SharedHelper.redirectToPrivateResource()

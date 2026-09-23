@@ -1,5 +1,6 @@
 import { getDb } from './firestore'
 import { runHttpsCallableFunction } from './firestore'
+import { beginLocalContactMove, finishLocalContactMove } from '../projectMoveState'
 
 const PROJECT_MOVE_PATHS = {
     task: (projectId, objectId) => `items/${projectId}/tasks/${objectId}`,
@@ -11,12 +12,23 @@ const PROJECT_MOVE_PATHS = {
 }
 
 export function queueObjectProjectMove(sourceProjectId, targetProjectId, objectType, objectId) {
-    return runHttpsCallableFunction('moveObjectToProjectSecondGen', {
-        sourceProjectId,
-        targetProjectId,
-        objectType,
-        objectId,
-    })
+    const finishLocalMove = objectType === 'contact' ? beginLocalContactMove(sourceProjectId, objectId) : () => {}
+    try {
+        return Promise.resolve(
+            runHttpsCallableFunction('moveObjectToProjectSecondGen', {
+                sourceProjectId,
+                targetProjectId,
+                objectType,
+                objectId,
+            })
+        ).catch(error => {
+            finishLocalMove()
+            throw error
+        })
+    } catch (error) {
+        finishLocalMove()
+        throw error
+    }
 }
 
 export function waitForProjectMoveCompletion(
@@ -58,5 +70,7 @@ export function waitForProjectMoveCompletion(
             setTimeout(checkMove, 1000)
         }
         checkMove()
+    }).finally(() => {
+        if (objectType === 'contact') finishLocalContactMove(sourceProjectId, objectId)
     })
 }

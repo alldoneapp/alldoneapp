@@ -786,6 +786,7 @@
     "A": "A",
     "C": "C",
     "Move": "Bewegen",
+    "Moving contact...": "Kontakt wird verschoben ...",
     "Task could not be moved": "Aufgabe konnte nicht verschoben werden",
     "Moving task to projectName": "Aufgabe wird nach %{projectName} verschoben",
     "Task move failed": "Aufgabe konnte nicht verschoben werden",

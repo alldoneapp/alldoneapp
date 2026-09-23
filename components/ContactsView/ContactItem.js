@@ -332,7 +332,7 @@ export default class ContactItem extends Component {
                                 },
                             ]}
                         >
-                            <ProjectMoveIndicator object={contact} />
+                            <ProjectMoveIndicator object={contact} projectId={projectId} />
                             <View style={localStyles.mainRow}>
                                 <View style={localStyles.avatarContainer}>
                                     {contact.photoURL != null && contact.photoURL !== '' ? (
