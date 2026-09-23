@@ -26,7 +26,6 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     const project = ProjectHelper.getProjectById(projectId)
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
-    const useCompactLayout = mobile
 
     const loggedUserIsTaskOwner = task.userId === loggedUser.uid
     const loggedUserCanUpdateObject =
@@ -35,7 +34,7 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
     const isAssistant = task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 
     return (
-        <View style={[localStyles.container, useCompactLayout && localStyles.containerCompact]}>
+        <View style={localStyles.container}>
             <View style={[localStyles.tagList, (mobile || tablet) && localStyles.tagListCompact]}>
                 <View style={{ marginRight: 12 }}>
                     <ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} />
@@ -86,7 +85,7 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
                 )}
             </View>
 
-            <View style={[localStyles.actions, useCompactLayout && localStyles.actionsCompact]}>
+            <View style={localStyles.actions}>
                 <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
                 <DvSearchButton style={{ top: -5 }} />
                 <DvBotButton
@@ -115,9 +114,6 @@ const localStyles = StyleSheet.create({
         minWidth: 0,
         alignItems: 'flex-start',
     },
-    containerCompact: {
-        flexWrap: 'wrap',
-    },
     tagList: {
         flex: 1,
         flexGrow: 1,
@@ -132,11 +128,5 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         flexShrink: 0,
         marginLeft: 8,
-    },
-    actionsCompact: {
-        width: '100%',
-        marginLeft: 0,
-        marginTop: 8,
-        justifyContent: 'flex-end',
     },
 })

@@ -6,7 +6,6 @@ import BackButton from './BackButton'
 import TagList from './TagList'
 import TitlePresentation from './TitlePresentation'
 import TitleEdition from './TitleEdition'
-import LastEdition from './LastEdition'
 import CopyLinkButton from '../../UIControls/CopyLinkButton'
 import DVHamburgButton from '../../UIControls/DVHamburgButton'
 import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
@@ -96,7 +95,6 @@ export default function Header({ goal, projectId, navigation, accessGranted, isF
                         accessGranted={accessGranted}
                         loggedUserCanUpdateObject={loggedUserCanUpdateObject}
                     />
-                    {mobile && <LastEdition projectId={projectId} goal={goal} />}
                     <CopyLinkButton style={{ marginRight: 8 }} />
                     <DvSearchButton />
                     <DvBotButton navItem={DV_TAB_GOAL_CHAT} projectId={projectId} assistantId={goal.assistantId} />
