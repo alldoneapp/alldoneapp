@@ -1,20 +1,14 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
-import Icon from '../../Icon'
-import styles, { colors } from '../../styles/global'
-import { translate } from '../../../i18n/TranslationService'
+import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
+import DvTypeIndicator from '../../UIComponents/DvTypeIndicator'
 
-const Indicator = ({}) => {
+const Indicator = () => {
     const mobile = useSelector(state => state.smallScreenNavigation)
+
     return (
-        <View>
-            <View style={localStyles.container}>
-                {!mobile && <Text style={[styles.subtitle1, { color: colors.Text03 }]}>{translate('CONTACT')}</Text>}
-                <View style={{ marginLeft: 14 }}>
-                    <Icon name="user-aster" size={20} color={colors.Text03} />
-                </View>
-            </View>
+        <View style={localStyles.container}>
+            <DvTypeIndicator label="CONTACT" icon="user-aster" mobile={mobile} />
         </View>
     )
 }
@@ -23,10 +17,6 @@ export default Indicator
 
 const localStyles = StyleSheet.create({
     container: {
-        marginTop: 36,
-        backgroundColor: 'white',
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
+        marginTop: 41,
     },
 })

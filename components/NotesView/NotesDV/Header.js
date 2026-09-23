@@ -121,6 +121,7 @@ export default class Header extends Component {
                                     openTitleEdition={this.openTitleEdition}
                                     note={note}
                                     disabled={!accessGranted || disabled}
+                                    hideLastEdited={isFullscreen}
                                 />
                             </View>
                         )}

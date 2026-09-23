@@ -1,38 +1,38 @@
 import React from 'react'
-import { StyleSheet, TouchableOpacity, View } from 'react-native'
-import Indicator from './Indicator'
+import { StyleSheet } from 'react-native'
 import styles, { colors } from '../../styles/global'
 import CommentElementsParser from '../../Feeds/TextParser/CommentElementsParser'
+import DvTitleLayout from '../../UIComponents/DvTitleLayout'
+import { getUserPresentationData } from '../../ContactsView/Utils/ContactsHelper'
 
-export default function TitlePresentation({ openTitleEdition, assistant, disabled }) {
-    const { displayName } = assistant
+export default function TitlePresentation({ openTitleEdition, assistant, disabled, hideLastEdited }) {
+    const { displayName, lastEditionDate, lastEditorId } = assistant
+    const editor = getUserPresentationData(lastEditorId)
+
     return (
-        <TouchableOpacity style={localStyles.container} onPress={openTitleEdition} disabled={disabled}>
-            <View style={localStyles.titleContainer}>
-                <CommentElementsParser
-                    comment={displayName}
-                    entryStyle={localStyles.text}
-                    elementSpace={{ marginRight: 4 }}
-                    inDetaliedView={true}
-                />
-            </View>
-            <Indicator />
-        </TouchableOpacity>
+        <DvTitleLayout
+            onPress={openTitleEdition}
+            disabled={disabled}
+            typeLabel="Assistant"
+            typeIcon="cpu"
+            lastEditionDate={lastEditionDate}
+            editorName={editor.displayName}
+            shortEditorName={editor.shortName}
+            hideLastEdited={hideLastEdited}
+        >
+            <CommentElementsParser
+                comment={displayName}
+                entryStyle={localStyles.text}
+                elementSpace={{ marginRight: 4 }}
+                inDetaliedView={true}
+            />
+        </DvTitleLayout>
     )
 }
 
 const localStyles = StyleSheet.create({
-    container: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        flex: 1,
-        marginTop: 32,
-    },
     text: {
         ...styles.title4,
         color: colors.Text01,
-    },
-    titleContainer: {
-        flex: 1,
     },
 })

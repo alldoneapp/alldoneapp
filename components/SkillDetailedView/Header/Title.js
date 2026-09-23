@@ -11,6 +11,7 @@ export default function Title({ projectId }) {
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const selectedNavItem = useSelector(state => state.selectedNavItem)
+    const isFullScreen = useSelector(state => state.dvIsFullScreen)
     const skill = useSelector(state => state.skillInDv)
     const [editionMode, setEditionMode] = useState(false)
     const [showEllipsis, setShowEllipsis] = useState(false)
@@ -45,7 +46,12 @@ export default function Title({ projectId }) {
                 <TitleEdition skill={skill} projectId={projectId} closeTitleEdition={closeTitleEdition} />
             ) : (
                 <View onLayout={onTitleLayoutChange}>
-                    <TitlePresentation projectId={projectId} openTitleEdition={openTitleEdition} skill={skill} />
+                    <TitlePresentation
+                        projectId={projectId}
+                        openTitleEdition={openTitleEdition}
+                        skill={skill}
+                        hideLastEdited={isFullScreen}
+                    />
                 </View>
             )}
             {showEllipsis && !editionMode && (
