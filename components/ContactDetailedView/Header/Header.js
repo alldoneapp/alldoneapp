@@ -16,6 +16,7 @@ import SharedHelper from '../../../utils/SharedHelper'
 import { DV_TAB_CONTACT_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 import { setProjectContactName } from '../../../utils/backends/Contacts/contactsFirestore'
+import ProjectMoveIndicator from '../../UIComponents/ProjectMoveIndicator'
 
 export default function Header({ contact, disabled, isFullscreen, setFullscreen, projectId }) {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -161,6 +162,7 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
                         </View>
                     </View>
                 )}
+                <ProjectMoveIndicator object={contact} projectId={projectId} showLabel />
             </View>
 
             {!isFullscreen && (

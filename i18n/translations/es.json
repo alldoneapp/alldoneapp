@@ -907,6 +907,7 @@
     "A": "A",
     "C": "P",
     "Move": "Mover",
+    "Moving contact...": "Moviendo contacto...",
     "Task could not be moved": "No se pudo mover la tarea",
     "Moving task to projectName": "Moviendo la tarea a %{projectName}",
     "Task move failed": "No se pudo mover la tarea",

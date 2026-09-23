@@ -31,4 +31,14 @@ describe('AT-2572 project move list indicators', () => {
             expect(mapper).toMatch(/movingToOtherProjectId:/)
         })
     })
+
+    it('renders contact move progress in the detail header and keeps the source view during handoff', () => {
+        const header = fs.readFileSync(path.join(repoRoot, 'components/ContactDetailedView/Header/Header.js'), 'utf8')
+        const detail = fs.readFileSync(
+            path.join(repoRoot, 'components/ContactDetailedView/ContactDetailedView.js'),
+            'utf8'
+        )
+        expect(header).toMatch(/<ProjectMoveIndicator object=\{contact\} projectId=\{projectId\} showLabel/)
+        expect(detail).toMatch(/!contact && isLocalContactMovePending\(projectId, contactParam\.uid\)/)
+    })
 })
