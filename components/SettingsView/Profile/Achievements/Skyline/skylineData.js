@@ -138,8 +138,8 @@ export function getSkylineColor(tasks, scale = 5) {
     return rgbToHex(a.map((v, i) => v + (b[i] - v) * local))
 }
 
-/** The steepest the flyover ever leans away from straight down, in radians (~43°). */
-export const SKYLINE_MAX_TILT = 0.75
+/** The steepest the flyover ever leans away from straight down, in radians (~57°). */
+export const SKYLINE_MAX_TILT = 1.0
 
 /**
  * Where the camera is for a given scroll position — the "plane flying over the city".
