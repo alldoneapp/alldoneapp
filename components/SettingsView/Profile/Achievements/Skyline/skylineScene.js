@@ -24,6 +24,7 @@ import {
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
+    SKYLINE_MAX_TILT,
     SKYLINE_WEEKS,
 } from './skylineData'
 
@@ -353,7 +354,17 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         const tallest = SKYLINE_MAX_HEIGHT * 1.15
         const edgeRoof = ((SKYLINE_WEEKS - 1) / 2 + FOOTPRINT / 2) * (CAMERA_HEIGHT / (CAMERA_HEIGHT - tallest))
         const neededWidth = 2 * Math.max(edgeRoof + 0.4, SKYLINE_WEEKS / 2 + 2.6)
-        const neededDepth = GRID_DAYS + MARGIN_Z * 2
+        // Depth has the same effect plus the lean: at the steepest tilt the camera is offset by
+        // H·tan(tilt), and a roof on the far row is pushed away by that offset times (k - 1). The
+        // near side also carries the month legend. Reserving both means even the tallest building
+        // never reaches the card's edge, which would break the illusion that the city is printed
+        // on it.
+        const k = CAMERA_HEIGHT / (CAMERA_HEIGHT - tallest)
+        const outerRow = (GRID_DAYS - 1) / 2 + FOOTPRINT / 2
+        const maxOffset = CAMERA_HEIGHT * Math.tan(SKYLINE_MAX_TILT)
+        const leaningRoof = outerRow * k + maxOffset * (k - 1)
+        const legend = (GRID_DAYS - 1) / 2 + 1.2 + 0.5
+        const neededDepth = 2 * Math.max(leaningRoof + 0.4, legend)
         viewWidth = Math.max(neededWidth, neededDepth * aspect)
         viewDepth = viewWidth / aspect
     }

@@ -51,7 +51,7 @@ export const buildSkylineWeeks = (emptyInboxDays, todayTimestamp) =>
     buildEmptyInboxActivityWeeks(emptyInboxDays, SKYLINE_WEEKS, todayTimestamp)
 
 /** Tallest building, in scene units (one day is one unit wide). */
-export const SKYLINE_MAX_HEIGHT = 2.6
+export const SKYLINE_MAX_HEIGHT = 2.2
 const FLOOR_HEIGHT = 0.1
 
 /**
