@@ -100,16 +100,19 @@ export const SKYLINE_MAX_TILT = 0.55
  *
  * `progress` is where the card's middle sits in the viewport: 1 at the bottom edge (the card has
  * just scrolled in), 0.5 in the middle, 0 at the top edge (it is about to leave). With the card in
- * the middle of the screen you look straight down on the city; below the middle the plane is still
- * approaching and sees the fronts of the buildings, above it the plane has passed and looks back at
- * their other side. That symmetry is the whole illusion: the scroll IS the flight.
+ * the middle of the screen you look straight down on the city. Scrolling down is flying forward over
+ * it: while the card is still below the middle the plane has not reached it yet and sees the side
+ * of the buildings facing the top of the page; once the card has passed the middle the plane is
+ * beyond it and looks back at the side facing the bottom (the month legend). The first version had
+ * this backwards and read as flying in reverse. That symmetry is the whole illusion: the scroll IS
+ * the flight.
  *
- * @returns {{ tilt: number }} signed radians away from straight down (positive = the camera is
- *   still in front of the city)
+ * @returns {{ tilt: number }} signed radians away from straight down (positive = the camera is on
+ *   the month-legend side of the city)
  */
 export function getFlyoverView(progress) {
     const p = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0.5))
-    return { tilt: (p - 0.5) * 2 * SKYLINE_MAX_TILT }
+    return { tilt: (0.5 - p) * 2 * SKYLINE_MAX_TILT }
 }
 
 export const formatSkylineMinutes = minutes => {
