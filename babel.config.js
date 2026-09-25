@@ -84,6 +84,10 @@ module.exports = function (api) {
             // setPublicClassFields assumption above applies and test semantics
             // match the shipped transform rather than native [[Define]].
             require.resolve('@babel/plugin-transform-class-properties'),
+            // Needed alongside the forced class-properties transform above, which refuses a
+            // `static { }` block otherwise. three.js (transformed for the skyline smoke test) uses
+            // them; Node runs them natively, so this changes no app semantics.
+            require.resolve('@babel/plugin-transform-class-static-block'),
         ],
     }
 }

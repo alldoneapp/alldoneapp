@@ -7,8 +7,8 @@ import styles, { colors } from '../../../../styles/global'
 import { useReducedMotion } from '../../../../UIComponents/Ghosts/ghostAnimation'
 import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes } from './skylineData'
 
-const MIN_HEIGHT = 240
-const MAX_HEIGHT = 420
+const MIN_HEIGHT = 320
+const MAX_HEIGHT = 600
 
 const getActiveProjects = (projects, user) =>
     (projects || []).filter(
@@ -37,6 +37,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
     const [statistics, setStatistics] = useState({})
     const [hoverIndex, setHoverIndex] = useState(-1)
     const [selectedIndex, setSelectedIndex] = useState(-1)
+    const [demolished, setDemolished] = useState(0)
     const reduceMotion = useReducedMotion()
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
 
@@ -103,6 +104,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
                     reduceMotion,
                     onHover: index => setHoverIndex(index),
                     onSelect: index => setSelectedIndex(index),
+                    onDemolish: count => setDemolished(count),
                 })
                 setSceneReady(true)
             })
@@ -131,7 +133,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
 
     const shownIndex = hoverIndex >= 0 ? hoverIndex : selectedIndex >= 0 ? selectedIndex : todayIndex
     const shownDay = days[shownIndex]
-    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.55)))
+    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.9)))
 
     if (sceneFailed) return null
 
@@ -171,7 +173,9 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
                     )}
                 </View>
             ) : null}
-            <Text style={localStyles.hint}>{translate('Skyline hint')}</Text>
+            <Text style={localStyles.hint}>
+                {demolished > 0 ? translate('Skyline demolished', { count: demolished }) : translate('Skyline hint')}
+            </Text>
         </View>
     )
 }

@@ -4,6 +4,9 @@ import {
     buildSkylineDays,
     buildSkylineWeeks,
     getBuildingType,
+    getIntegrity,
+    HIT_POINTS,
+    rollHitPoints,
     formatSkylineMinutes,
     getFlyoverView,
     getSkylineColor,
@@ -114,6 +117,23 @@ describe('skyline data', () => {
         expect(getBuildingType(7, 10)).toBe('tower')
         expect(getBuildingType(9, 10)).toBe('skyscraper')
         expect(getBuildingType(40, 10)).toBe('skyscraper')
+    })
+
+    it("rolls a random number of hits within each building type's range", () => {
+        Object.entries(HIT_POINTS).forEach(([type, [min, max]]) => {
+            expect(rollHitPoints(type, () => 0)).toBe(min)
+            expect(rollHitPoints(type, () => 0.999999)).toBe(max)
+            expect(rollHitPoints(type, () => 1)).toBe(max)
+        })
+        expect(HIT_POINTS.skyscraper[0]).toBeGreaterThan(HIT_POINTS.house[0])
+    })
+
+    it('knocks floors off with every hit and only collapses on the last one', () => {
+        expect(getIntegrity(5, 5)).toBe(1)
+        expect(getIntegrity(3, 5)).toBeLessThan(getIntegrity(4, 5))
+        expect(getIntegrity(1, 5)).toBeGreaterThan(0.3)
+        expect(getIntegrity(0, 5)).toBe(0)
+        expect(getIntegrity(-1, 5)).toBe(0)
     })
 
     it('formats logged time', () => {
