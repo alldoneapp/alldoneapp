@@ -26,13 +26,13 @@ const projects = [
 ]
 
 describe('skyline data', () => {
-    it('covers the last quarter and stops at today', () => {
+    it('covers the last month and stops at today', () => {
         const weeks = buildSkylineWeeks([], TODAY)
         const days = buildSkylineDays(weeks, {}, projects)
 
         expect(weeks).toHaveLength(SKYLINE_WEEKS)
-        // Monday-aligned: 12 full weeks plus Monday..Friday of this one.
-        expect(days).toHaveLength(12 * 7 + 5)
+        // Monday-aligned: 4 full weeks plus Monday..Friday of this one.
+        expect(days).toHaveLength(4 * 7 + 5)
         expect(days[days.length - 1].isToday).toBe(true)
         expect(days[days.length - 1].weekday).toBe(4)
     })

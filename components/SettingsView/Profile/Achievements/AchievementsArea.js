@@ -19,6 +19,46 @@ import { getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPicke
 import EmptyInboxSkyline from './Skyline/EmptyInboxSkyline'
 import { canRenderSkyline } from './Skyline/webglSupport'
 
+// Month (the 3D city) or Year (the 2D grid). Remembered per browser: it is a viewing preference,
+// not account data, and storage may be unavailable (private mode), in which case Month it is.
+const RANGE_STORAGE_KEY = 'alldone.emptyInbox.range'
+export const EMPTY_INBOX_RANGES = ['month', 'year']
+const readStoredRange = () => {
+    try {
+        const stored = window.localStorage.getItem(RANGE_STORAGE_KEY)
+        return EMPTY_INBOX_RANGES.includes(stored) ? stored : 'month'
+    } catch (error) {
+        return 'month'
+    }
+}
+const storeRange = range => {
+    try {
+        window.localStorage.setItem(RANGE_STORAGE_KEY, range)
+    } catch (error) {}
+}
+
+const RangeSwitch = ({ range, onChange }) => (
+    <View style={localStyles.rangeSwitch} accessibilityRole="radiogroup">
+        {EMPTY_INBOX_RANGES.map(option => {
+            const active = option === range
+            return (
+                <TouchableOpacity
+                    key={option}
+                    testID={`empty-inbox-range-${option}`}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => onChange(option)}
+                    style={[localStyles.rangeOption, active && localStyles.rangeOptionActive]}
+                >
+                    <Text style={[localStyles.rangeText, active && localStyles.rangeTextActive]}>
+                        {translate(option === 'month' ? 'Month' : 'Year')}
+                    </Text>
+                </TouchableOpacity>
+            )
+        })}
+    </View>
+)
+
 const CELL_SIZE = 11
 const CELL_GAP = 3
 const CELL_RADIUS = 2
@@ -63,6 +103,14 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
     // The year is drawn as a 3D city wherever the browser can draw one; the 2D grid below remains
     // the fallback (native, no WebGL, jsdom).
     const showSkyline = useMemo(() => canRenderSkyline(), [])
+    const [range, setRange] = useState(readStoredRange)
+    const changeRange = next => {
+        setRange(next)
+        storeRange(next)
+    }
+    // The city draws the last month; the year stays the 2D grid, which is also the fallback
+    // wherever the browser cannot draw the city at all.
+    const showCity = showSkyline && range === 'month'
     const CardContainer = onOpenAchievements ? TouchableOpacity : View
     const emptyInboxDays = useMemo(
         () => getEmptyInboxDaysWithLegacyFallback(user),
@@ -93,7 +141,7 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
               // which is the timezone it was recorded in.
               time: moment(todayEmptyInboxTimestamp).format(getTimeFormat()),
           })
-        : translate(showSkyline ? 'Empty inbox skyline description' : 'Empty inbox achievement description')
+        : translate(showCity ? 'Empty inbox skyline description' : 'Empty inbox achievement description')
     // The hook is always called (it decides nothing when disabled) — a conditional hook would be a
     // rules-of-hooks violation, and letting it run while the caller also owns a run would spend the
     // day twice.
@@ -164,8 +212,10 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                 <Metric label={translate('Total days')} value={stats.totalDays} />
             </View>
 
+            {showSkyline && <RangeSwitch range={range} onChange={changeRange} />}
+
             <View style={localStyles.activityContainer}>
-                {showSkyline ? (
+                {showCity ? (
                     <EmptyInboxSkyline
                         user={user}
                         emptyInboxDays={emptyInboxDays}
@@ -317,6 +367,33 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginTop: 2,
         textAlign: 'center',
+    },
+    rangeSwitch: {
+        flexDirection: 'row',
+        alignSelf: 'center',
+        marginTop: 20,
+        padding: 3,
+        borderRadius: 999,
+        backgroundColor: colors.Grey200,
+    },
+    rangeOption: {
+        paddingHorizontal: 16,
+        paddingVertical: 5,
+        borderRadius: 999,
+    },
+    rangeOptionActive: {
+        backgroundColor: '#FFFFFF',
+        shadowColor: colors.Text01,
+        shadowOpacity: 0.08,
+        shadowRadius: 3,
+        shadowOffset: { width: 0, height: 1 },
+    },
+    rangeText: {
+        ...styles.caption1,
+        color: colors.Text03,
+    },
+    rangeTextActive: {
+        color: colors.Text01,
     },
     activityContainer: {
         marginTop: 24,
