@@ -213,6 +213,10 @@ module.exports = (env, argv) => {
                 'react-native$': 'react-native-web',
                 'process/browser$': processBrowser,
                 'process/browser.js$': processBrowser,
+                // The app's Babel config compiles `import` to `require`, which makes webpack pick
+                // three's `require` export: a deprecated CJS shim that calls Node's
+                // `process.emitWarning` and throws in the browser. Point it at the ES module build.
+                three$: path.join(rootDir, 'node_modules/three/build/three.module.js'),
             },
             fallback: {
                 assert: require.resolve('assert/'),
