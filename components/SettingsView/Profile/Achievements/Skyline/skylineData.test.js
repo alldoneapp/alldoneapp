@@ -5,6 +5,8 @@ import {
     buildSkylineWeeks,
     getBuildingType,
     getDaylight,
+    getSunPosition,
+    guessLocation,
     getIntegrity,
     HIT_POINTS,
     rollHitPoints,
@@ -112,31 +114,58 @@ describe('skyline data', () => {
         expect(getProjectColorAt({ byProject: [] }, 0.5)).toBeNull()
     })
 
-    it('lights the city by the local time of day', () => {
-        const at = (h, m = 0) => getDaylight(new Date(2026, 8, 25, h, m))
-        const noon = at(13, 30)
-        const morning = at(7, 30)
-        const evening = at(19, 30)
-        const night = at(23)
+    describe('light by the real sun where the user is', () => {
+        const BERLIN = { latitude: 52.52, longitude: 13.4 }
+        const utc = (...parts) => new Date(Date.UTC(...parts))
 
-        expect(noon.phase).toBe('day')
-        expect(noon.lightColor).toBe('#FFFFFF')
-        expect(noon.elevation).toBeGreaterThan(morning.elevation)
-        // Low sun is warm and comes from the side it is on.
-        expect(morning.lightColor).not.toBe('#FFFFFF')
-        expect(morning.azimuth).toBeLessThan(0)
-        expect(evening.azimuth).toBeGreaterThan(0)
-        // Night: cool, dimmer, lamps on.
-        expect(night.phase).toBe('night')
-        expect(night.lightColor).toBe('#D6E3FF')
-        expect(night.lightStrength).toBeLessThan(noon.lightStrength)
-        expect(night.lamps).toBe(1)
-        expect(noon.lamps).toBe(0)
-        // Twilight blends rather than jumps.
-        const dusk = at(20, 45)
-        expect(dusk.phase).toBe('dusk')
-        expect(dusk.lightStrength).toBeGreaterThan(night.lightStrength)
-        expect(dusk.lightStrength).toBeLessThan(noon.lightStrength)
+        it('puts the sun where it really is', () => {
+            // Berlin, 21 June: solar noon ~11:12 UTC at ~61° elevation, due south.
+            const summerNoon = getSunPosition(utc(2026, 5, 21, 11, 12), BERLIN)
+            expect(summerNoon.elevation / (Math.PI / 180)).toBeGreaterThan(59)
+            expect(summerNoon.elevation / (Math.PI / 180)).toBeLessThan(62)
+            expect(Math.abs(summerNoon.azimuth - Math.PI)).toBeLessThan(0.1)
+            // 21 December noon is far lower (~14°).
+            const winterNoon = getSunPosition(utc(2026, 11, 21, 11, 12), BERLIN)
+            expect(winterNoon.elevation / (Math.PI / 180)).toBeGreaterThan(12)
+            expect(winterNoon.elevation / (Math.PI / 180)).toBeLessThan(16)
+            // Midnight: below the horizon.
+            expect(getSunPosition(utc(2026, 5, 21, 23, 0), BERLIN).elevation).toBeLessThan(0)
+        })
+
+        it("switches the lights on when it gets dark in the user's city", () => {
+            // 25 September in Berlin: sunrise ~05:05 UTC, sunset ~17:05 UTC.
+            const noon = getDaylight(utc(2026, 8, 25, 11, 10), BERLIN)
+            const morning = getDaylight(utc(2026, 8, 25, 6, 0), BERLIN)
+            const evening = getDaylight(utc(2026, 8, 25, 16, 20), BERLIN)
+            const night = getDaylight(utc(2026, 8, 25, 21, 0), BERLIN)
+
+            expect(noon.phase).toBe('day')
+            expect(noon.lamps).toBe(0)
+            expect(noon.elevation).toBeGreaterThan(morning.elevation)
+            expect(morning.azimuth).toBeLessThan(0) // from the east
+            expect(evening.azimuth).toBeGreaterThan(0) // from the west
+            expect(morning.lightColor).not.toBe('#FFFFFF') // low sun is warm
+
+            expect(night.phase).toBe('night')
+            expect(night.lightColor).toBe('#D6E3FF')
+            expect(night.lamps).toBe(1)
+            expect(night.lightStrength).toBeLessThan(noon.lightStrength)
+
+            // Just after sunset (civil twilight) the lamps are coming on, not yet full.
+            const dusk = getDaylight(utc(2026, 8, 25, 17, 25), BERLIN)
+            expect(dusk.phase).toBe('dusk')
+            expect(dusk.lamps).toBeGreaterThan(0)
+            expect(dusk.lightStrength).toBeGreaterThan(night.lightStrength)
+        })
+
+        it("finds the user's city from the time zone, or estimates it from the offset", () => {
+            expect(guessLocation('Europe/Berlin')).toEqual({ latitude: 52.52, longitude: 13.4 })
+            const unknown = guessLocation('America/Anchorage', 540)
+            expect(unknown.latitude).toBeGreaterThan(0)
+            expect(unknown.longitude).toBe(-135)
+            expect(guessLocation('Australia/Perth', -480).latitude).toBeLessThan(0)
+            expect(guessLocation('', 0)).toEqual({ latitude: 48, longitude: -0 })
+        })
     })
 
     it('formats logged time', () => {
