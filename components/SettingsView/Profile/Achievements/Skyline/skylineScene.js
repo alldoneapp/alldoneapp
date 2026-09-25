@@ -61,8 +61,8 @@ import {
  *    purely local and temporary — kept in memory by date, so a statistics refresh does not undo
  *    it, and a reload brings the whole city back.
  *  - THE LIFE is decoration only and carries no data: a soft light sweep up the facades, cars
- *    on the road grid between the blocks, flocks of birds, a hot-air balloon and a
- *    small plane with its shadow. None of it is interactive, and all of it stops for reduced motion.
+ *    on the road grid between the blocks, a single small flock of birds, and now and then a
+ *    hot-air balloon or a small plane with its shadow. None of it is interactive, and all of it stops for reduced motion.
  *
  * Every colour is an app colour. The canvas is transparent, so the card's own white is the sky.
  * Loaded through a dynamic `import()` from `EmptyInboxSkyline`, so three.js is its own chunk.
@@ -900,8 +900,9 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     )
     const birdMaterial = track(new MeshBasicMaterial({ color: new Color(BIRD), side: DoubleSide }))
     const birdRandom = seeded(211)
-    const flocks = [0, 1, 2].map(f => {
-        const members = Array.from({ length: 5 }, (_, i) => {
+    // Deliberately sparse: the sky is the quiet part of the scene, the city is the busy one.
+    const flocks = [0].map(f => {
+        const members = Array.from({ length: 3 }, (_, i) => {
             const bird = new Group()
             const left = new Mesh(wingGeometry, birdMaterial)
             const right = new Mesh(wingGeometry, birdMaterial)
@@ -968,9 +969,15 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     balloonShadow.rotation.x = -Math.PI / 2
     balloonShadow.position.y = 0.006
     scene.add(balloonShadow)
-    const BALLOON_LOOP = 70
+    // One slow crossing, then a long gap with an empty sky.
+    const BALLOON_CROSSING = 55
+    const BALLOON_LOOP = 150
     const updateBalloon = t => {
-        const progress = (t % BALLOON_LOOP) / BALLOON_LOOP
+        const progress = ((t + 20) % BALLOON_LOOP) / BALLOON_CROSSING
+        const crossing = progress <= 1
+        balloon.visible = crossing
+        balloonShadow.visible = crossing
+        if (!crossing) return
         const x = -CITY_HALF_WIDTH - 2 + progress * (CITY_HALF_WIDTH * 2 + 4)
         const z = -1.6 + Math.sin(t * 0.21) * 1.2
         balloon.position.set(x, 5 + Math.sin(t * 0.7) * 0.18, z)
@@ -1002,7 +1009,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     airplaneShadow.add(shadowBody, shadowWings)
     scene.add(airplaneShadow)
     const FLIGHT_SECONDS = 16
-    const FLIGHT_PAUSE = 12
+    const FLIGHT_PAUSE = 45
     const updateAirplane = t => {
         const cycle = FLIGHT_SECONDS + FLIGHT_PAUSE
         const flightIndex = Math.floor(t / cycle)
