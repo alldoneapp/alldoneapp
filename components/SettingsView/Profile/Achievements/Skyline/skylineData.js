@@ -119,6 +119,25 @@ export function getIntegrity(hitPoints, maxHitPoints) {
     return 0.32 + 0.68 * Math.min(1, hitPoints / maxHitPoints)
 }
 
+/**
+ * The project colour at `fraction` (0..1) of a day's work: projects are laid end to end by how many
+ * tasks each contributed, busiest first. A building split into parts uses this to show the day's
+ * mix — the lower 70% of a stack in the main project's colour, the rest in the next one's.
+ * Returns null for a day with no completed tasks.
+ */
+export function getProjectColorAt(day, fraction) {
+    const entries = (day && day.byProject) || []
+    const total = entries.reduce((sum, entry) => sum + entry.count, 0)
+    if (!total) return null
+    let covered = 0
+    const target = Math.max(0, Math.min(1, fraction)) * total
+    for (const entry of entries) {
+        covered += entry.count
+        if (target < covered) return entry.project.color
+    }
+    return entries[entries.length - 1].project.color
+}
+
 /** The camera's resting view, used for reduced motion and as the centre of the sweep. */
 export const SKYLINE_REST_VIEW = { azimuth: -0.35, elevation: 0.78 }
 
