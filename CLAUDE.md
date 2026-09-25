@@ -1397,9 +1397,13 @@ row and column. Nothing may be drawn on the ground outside the city.
 
 **Light.** Real lighting with soft shadow maps: a hemisphere fill plus one directional sun (or
 moon), both on `MeshLambertMaterial` — so the old contact shadows painted on the ground are gone.
-`getDaylight` follows the user's local clock with a fixed, location-free day (sunrise 6:30, sunset
-20:30): low warm light and long shadows morning and evening, white high light at midday, a dimmer
-cool moon at night with street lamps glowing, blended over 45 minutes of twilight. Intensities are
+`getDaylight` puts the sun where it really is for the user's city (`getSunPosition`, the standard
+low-precision almanac): real sunrise, sunset, noon height and season. The location is inferred
+WITHOUT a permission prompt — IANA time zones are named after cities, so `guessLocation` maps the
+common ones to coordinates and otherwise derives a longitude from the UTC offset. Day blends into
+night through civil twilight (sun between +6° and −6°), which is also when the lamps come on; low
+sun is warm and throws long shadows, the night is a dimmer cool moon. The city faces south, so the
+midday sun lights the side the camera sees. Intensities are
 set for Lambert's 1/π so a sunlit surface shows its exact palette colour and shade sits near 72%.
 Facade detail (faint floor lines, darkening where walls meet the street, and a window grid on
 walls only) is injected into the buildings' material with `onBeforeCompile`. Windows are quiet

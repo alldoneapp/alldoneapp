@@ -175,48 +175,150 @@ const mixHex = (from, to, amount) => {
         .join('')}`.toUpperCase()
 }
 
-// Fixed, location-free day: the app knows the user's clock but not where the sun actually is, and a
-// believable day beats a precise one here.
-const SUNRISE = 6.5
-const SUNSET = 20.5
-const TWILIGHT = 0.75
 const SUN_COLOR = '#FFFFFF'
 const LOW_SUN_COLOR = '#FFCE8F' // UtilityYellow150 — morning and evening light
 const MOON_COLOR = '#D6E3FF' // UtilityDarkBlue125 — cool night light
 const MOON = { azimuth: 0.6, elevation: 0.95 }
+const DEG = Math.PI / 180
 
 /**
- * How the city is lit at `date`'s local time.
+ * Where on earth the user probably is, without asking. IANA time zones are named after a city, so
+ * the common ones map straight to coordinates; anything else falls back to a longitude from the UTC
+ * offset (15° per hour) and a mid-latitude on the right hemisphere. Good to within an hour or so of
+ * sunset, which is all a lighting mood needs — and it never triggers a location-permission prompt.
+ */
+const ZONE_COORDINATES = {
+    'Europe/Berlin': [52.52, 13.4],
+    'Europe/Vienna': [48.21, 16.37],
+    'Europe/Zurich': [47.38, 8.54],
+    'Europe/Amsterdam': [52.37, 4.9],
+    'Europe/Brussels': [50.85, 4.35],
+    'Europe/Paris': [48.86, 2.35],
+    'Europe/London': [51.51, -0.13],
+    'Europe/Dublin': [53.35, -6.26],
+    'Europe/Madrid': [40.42, -3.7],
+    'Europe/Lisbon': [38.72, -9.14],
+    'Europe/Rome': [41.9, 12.5],
+    'Europe/Prague': [50.08, 14.44],
+    'Europe/Warsaw': [52.23, 21.01],
+    'Europe/Copenhagen': [55.68, 12.57],
+    'Europe/Stockholm': [59.33, 18.07],
+    'Europe/Oslo': [59.91, 10.75],
+    'Europe/Helsinki': [60.17, 24.94],
+    'Europe/Athens': [37.98, 23.73],
+    'Europe/Istanbul': [41.01, 28.98],
+    'Europe/Kiev': [50.45, 30.52],
+    'Europe/Kyiv': [50.45, 30.52],
+    'Europe/Moscow': [55.76, 37.62],
+    'America/New_York': [40.71, -74.01],
+    'America/Chicago': [41.88, -87.63],
+    'America/Denver': [39.74, -104.99],
+    'America/Los_Angeles': [34.05, -118.24],
+    'America/Toronto': [43.65, -79.38],
+    'America/Vancouver': [49.28, -123.12],
+    'America/Mexico_City': [19.43, -99.13],
+    'America/Bogota': [4.71, -74.07],
+    'America/Lima': [-12.05, -77.04],
+    'America/Santiago': [-33.45, -70.67],
+    'America/Buenos_Aires': [-34.6, -58.38],
+    'America/Argentina/Buenos_Aires': [-34.6, -58.38],
+    'America/Sao_Paulo': [-23.55, -46.63],
+    'Asia/Dubai': [25.2, 55.27],
+    'Asia/Kolkata': [22.57, 88.36],
+    'Asia/Singapore': [1.35, 103.82],
+    'Asia/Bangkok': [13.76, 100.5],
+    'Asia/Shanghai': [31.23, 121.47],
+    'Asia/Hong_Kong': [22.32, 114.17],
+    'Asia/Tokyo': [35.68, 139.69],
+    'Asia/Seoul': [37.57, 126.98],
+    'Australia/Sydney': [-33.87, 151.21],
+    'Australia/Melbourne': [-37.81, 144.96],
+    'Pacific/Auckland': [-36.85, 174.76],
+    'Africa/Cairo': [30.04, 31.24],
+    'Africa/Lagos': [6.52, 3.38],
+    'Africa/Nairobi': [-1.29, 36.82],
+    'Africa/Johannesburg': [-26.2, 28.05],
+}
+const SOUTHERN_ZONE =
+    /^(Australia|Antarctica)\/|^Pacific\/(Auckland|Fiji|Chatham)|^America\/(Argentina|Santiago|Sao_Paulo|Montevideo|Asuncion|La_Paz|Lima)|^Africa\/(Johannesburg|Maputo|Harare|Windhoek|Lusaka)/
+
+export function guessLocation(timeZone, offsetMinutes = new Date().getTimezoneOffset()) {
+    let zone = timeZone
+    if (zone === undefined) {
+        try {
+            zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+        } catch (error) {
+            zone = ''
+        }
+    }
+    const known = zone && ZONE_COORDINATES[zone]
+    if (known) return { latitude: known[0], longitude: known[1] }
+    return {
+        latitude: zone && SOUTHERN_ZONE.test(zone) ? -35 : 48,
+        longitude: Math.max(-180, Math.min(180, -offsetMinutes / 4)),
+    }
+}
+
+/**
+ * The sun's position in the sky at `date` for a place on earth (the usual low-precision almanac,
+ * accurate to a fraction of a degree — far better than a lighting mood needs).
  *
- * By day the sun rises in the east, stands highest and whitest around midday and sets in the west;
- * low sun is warm and throws long shadows. At night a dimmer, cooler moon takes over and the street
- * lamps come on. Around sunrise and sunset the two blend over `TWILIGHT` hours so the change is
- * never a jump. The card's white stays the sky at every hour: only the light on the city changes.
+ * @returns {{ elevation: number, azimuth: number }} radians; azimuth from north, clockwise (east = π/2)
+ */
+export function getSunPosition(date, { latitude, longitude }) {
+    const days = date.getTime() / 86400000 + 2440587.5 - 2451545.0
+    const meanLongitude = (280.46 + 0.9856474 * days) % 360
+    const meanAnomaly = ((357.528 + 0.9856003 * days) % 360) * DEG
+    const eclipticLongitude = (meanLongitude + 1.915 * Math.sin(meanAnomaly) + 0.02 * Math.sin(2 * meanAnomaly)) * DEG
+    const obliquity = (23.439 - 0.0000004 * days) * DEG
+    const rightAscension = Math.atan2(Math.cos(obliquity) * Math.sin(eclipticLongitude), Math.cos(eclipticLongitude))
+    const declination = Math.asin(Math.sin(obliquity) * Math.sin(eclipticLongitude))
+    const siderealDegrees = ((18.697374558 + 24.06570982441908 * days) % 24) * 15
+    const hourAngle = (siderealDegrees + longitude) * DEG - rightAscension
+    const phi = latitude * DEG
+    const elevation = Math.asin(
+        Math.sin(phi) * Math.sin(declination) + Math.cos(phi) * Math.cos(declination) * Math.cos(hourAngle)
+    )
+    const azimuth = Math.atan2(
+        -Math.sin(hourAngle),
+        Math.tan(declination) * Math.cos(phi) - Math.sin(phi) * Math.cos(hourAngle)
+    )
+    return { elevation, azimuth: (azimuth + 2 * Math.PI) % (2 * Math.PI) }
+}
+
+/**
+ * How the city is lit at `date` where the user is — when it is dark in their city, it is dark here.
+ *
+ * The sun is where it really is (`getSunPosition`): it rises in the east, stands highest at local
+ * solar noon, and sits lower and warmer in winter. Light blends from day to night through civil
+ * twilight — the sun between 6° above and 6° below the horizon — which is also exactly when the
+ * street lamps come on. At night a dimmer, cooler moon takes over. The card's white stays the sky at
+ * every hour: only the light on the city changes.
+ *
+ * The city faces south: its front (the current week's side) is where the sun stands at noon for a
+ * northern-hemisphere user, so the midday sun lights the faces the camera sees.
  *
  * @returns {{ azimuth: number, elevation: number, lightColor: string, lightStrength: number,
  *   ambientColor: string, ambientStrength: number, lamps: number, phase: string }}
- *   azimuth 0 = from the front (the current week's side), negative = east (left); strengths are
- *   0..1 multipliers on the full-daylight setting; lamps 0..1
+ *   azimuth 0 = from the front, negative = east (left); strengths are 0..1 multipliers on full
+ *   daylight; lamps 0..1
  */
-export function getDaylight(date = new Date()) {
-    const hours = date.getHours() + date.getMinutes() / 60
-    const day = clamp01(
-        Math.min((hours - (SUNRISE - TWILIGHT)) / (2 * TWILIGHT), (SUNSET + TWILIGHT - hours) / (2 * TWILIGHT))
-    )
-    const progress = clamp01((hours - SUNRISE) / (SUNSET - SUNRISE))
-    const height = Math.sin(Math.PI * progress)
-    const sun = { azimuth: -Math.PI / 2 + progress * Math.PI, elevation: 0.16 + height * 0.9 }
-    const sunColor = mixHex(SUN_COLOR, LOW_SUN_COLOR, (1 - height) ** 2 * 0.85)
+export function getDaylight(date = new Date(), location = guessLocation()) {
+    const sun = getSunPosition(date, location)
+    const elevationDegrees = sun.elevation / DEG
+    const day = clamp01((elevationDegrees + 6) / 12)
+    const warmth = (1 - clamp01(elevationDegrees / 35)) ** 1.5
+    const sunColor = mixHex(SUN_COLOR, LOW_SUN_COLOR, warmth * 0.85)
     const bySun = day >= 0.5
     return {
-        azimuth: bySun ? sun.azimuth : MOON.azimuth,
-        elevation: bySun ? sun.elevation : MOON.elevation,
+        azimuth: bySun ? sun.azimuth - Math.PI : MOON.azimuth,
+        elevation: bySun ? Math.max(sun.elevation, 0.12) : MOON.elevation,
         lightColor: mixHex(MOON_COLOR, sunColor, day),
         lightStrength: 0.35 + 0.65 * day,
         ambientColor: mixHex(MOON_COLOR, SUN_COLOR, day),
         ambientStrength: 0.62 + 0.38 * day,
         lamps: clamp01((0.6 - day) / 0.6),
-        phase: day >= 1 ? 'day' : day <= 0 ? 'night' : hours < 12 ? 'dawn' : 'dusk',
+        phase: day >= 1 ? 'day' : day <= 0 ? 'night' : sun.azimuth < Math.PI ? 'dawn' : 'dusk',
     }
 }
 
