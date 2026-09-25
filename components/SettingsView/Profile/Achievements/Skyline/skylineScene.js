@@ -80,7 +80,11 @@ const MARGIN_X = 2.2
 const MARGIN_Z = 1.6
 const GROUND_PX_PER_UNIT = 64
 const RISE_DURATION = 1.1
-const CAMERA_HEIGHT = 24
+// Very high on purpose. From a low camera the view "straight down" still sees the outer buildings
+// at an angle, so the ones near the left and right edges lean outwards and show their sides even
+// when the card is centred. From this far up every building is seen from directly above, and the
+// scroll tilt leans the whole city by the same amount — a plane's view, not a fisheye.
+const CAMERA_HEIGHT = 400
 const SPIRE = 0.7
 // Tallest thing that can stand on a plot: the highest building plus spire and beacon. Used to
 // reserve room so nothing ever pokes out of the card.
@@ -193,7 +197,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     container.appendChild(canvas)
 
     const scene = new Scene()
-    const camera = new PerspectiveCamera(30, 1, 1, 80)
+    const camera = new PerspectiveCamera(30, 1, CAMERA_HEIGHT - 40, CAMERA_HEIGHT + 10)
     // Screen-up is "back" in the city, so the view reads weeks left to right and Monday..Sunday top
     // to bottom, like the 2D grid it replaces.
     camera.up.set(0, 0, -1)

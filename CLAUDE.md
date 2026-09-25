@@ -1386,7 +1386,9 @@ projection — the camera always looks straight down, slides parallel to the gro
 is re-aimed each frame so the ground plane lands on the same pixels — which is what keeps the plots
 and the month/weekday legend fixed on the card while only the buildings lean. Do not replace it with
 an ordinary tilted/orbiting camera: a moving ground is exactly what breaks the "printed on the card"
-illusion. Picking still works because `projectionMatrixInverse` is refreshed with the matrix;
+illusion. The camera sits very high (`CAMERA_HEIGHT` 400) so the projection is effectively
+parallel: from a low camera the outer buildings leaned outwards and showed their sides even when
+centred. Picking still works because `projectionMatrixInverse` is refreshed with the matrix;
 there is no drag/zoom, so the city never competes with page scrolling, and
 the only event it stops is `click` (the all-projects card is itself a link). Building TYPE follows the same relative measure as height (`getBuildingType`: park → house →
 mid-rise → tower → skyscraper), and each building is a few parts in shared instanced meshes, so the
