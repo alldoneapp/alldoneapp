@@ -1384,7 +1384,7 @@ flag waving on the building's highest point marks a day in `emptyInboxDays` (the
 grid reads) — it replaced a green roof, which a green project's building made indistinguishable. Everything that decides what a
 building means lives in the pure, unit-tested `skylineData.js`.
 
-**Look.** Drawn straight onto the white card (transparent canvas) in app colours only, with flat
+**Look.** Drawn straight onto the white card (transparent canvas) in app colours only, with lit
 shading. Height is the only thing that carries data; each day otherwise picks one of several designs
 for its height band (cottage, silo, row houses, shop; fan block, round tower, L-block, twisted stack;
 stepped tower, banded cylinder, spiral, twins with a sky bridge, obelisk, spire skyscraper) . Colour
@@ -1392,8 +1392,7 @@ comes from the day's PROJECTS: the body is the busiest project's colour, accents
 project's, and stacked designs colour their slabs by each project's share (`getProjectColorAt`).
 `BODY_PALETTE`/`ACCENT_PALETTE` only fill in what the data leaves open; design and fill-ins are
 seeded by date so a day always looks the same, and the palette picks are always drawn so a second
-project appearing never changes the design. Every design tops out at exactly the day's height. No surface detail: windows, a night sky and cloud shadows were each tried and removed
-(noise, or they revealed the edge of the canvas). Days sit `PITCH` apart with roads between every
+project appearing never changes the design. Every design tops out at exactly the day's height. A night sky and cloud shadows were each tried and removed (they revealed the edge of the canvas). Days sit `PITCH` apart with roads between every
 row and column. Nothing may be drawn on the ground outside the city.
 
 **Light.** Real lighting with soft shadow maps: a hemisphere fill plus one directional sun (or
@@ -1402,10 +1401,13 @@ moon), both on `MeshLambertMaterial` — so the old contact shadows painted on t
 20:30): low warm light and long shadows morning and evening, white high light at midday, a dimmer
 cool moon at night with street lamps glowing, blended over 45 minutes of twilight. Intensities are
 set for Lambert's 1/π so a sunlit surface shows its exact palette colour and shade sits near 72%.
-Facade detail (faint floor lines, darkening where walls meet the street — never lit windows) is
-injected into the buildings' material with `onBeforeCompile`, which keeps three's lighting and
-shadows; the anchors it replaces (`worldpos_vertex`, `color_fragment`) must exist in the Lambert
-shader after a three.js bump. Traffic is deliberately sparse (8 slow cars): the city should feel calm.
+Facade detail (faint floor lines, darkening where walls meet the street, and a window grid on
+walls only) is injected into the buildings' material with `onBeforeCompile`. Windows are quiet
+darker glass by day; a seeded third of them glow warm as emissive light, faded in with the street
+lamps by `getDaylight().lamps` (an early always-lit version read as noise — tie them to the evening).
+The injection keeps three's lighting and shadows; the anchors it replaces (`worldpos_vertex`,
+`color_fragment`, `emissivemap_fragment`) must still exist in the Lambert shader after a three.js
+bump, or the detail silently disappears. Traffic is deliberately sparse (8 slow cars): the city should feel calm.
 
 **Camera.** It flies on its own and ignores the page scroll (`getOrbitView`: a slow ±30° sweep, elevation
 ~38–49°, never round the back so the ground legends are never upside down; a wider sweep turns the
