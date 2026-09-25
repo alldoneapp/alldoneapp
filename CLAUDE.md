@@ -1379,8 +1379,9 @@ UtilityDarkBlue125 → Primary100 → Primary400 height ramp, UtilityGreen200 ro
 selection) with flat shading and deliberately no surface detail — windows and a night sky were tried
 and read as noise. Heights are scaled to the user's own 95th-percentile day (`getSkylineScale`), so
 one 50-task day cannot dwarf the year. The camera is a "plane over the city" driven by the PAGE
-scroll (`getFlyoverView`: straight overhead while the card is in the middle of the viewport, leaning
-to see the building fronts below the middle and their backs above it). It is an **off-axis**
+scroll (`getFlyoverView`: straight overhead while the card is in the middle of the viewport; scrolling
+down is flying forward, so below the middle you see the building sides facing the top of the page
+and past the middle the sides facing the month legend — the first cut had this reversed). It is an **off-axis**
 projection — the camera always looks straight down, slides parallel to the ground, and the frustum
 is re-aimed each frame so the ground plane lands on the same pixels — which is what keeps the plots
 and the month/weekday legend fixed on the card while only the buildings lean. Do not replace it with

@@ -95,12 +95,13 @@ describe('skyline data', () => {
         const centred = getFlyoverView(0.5)
         const leaving = getFlyoverView(0)
         expect(centred.tilt).toBe(0)
-        // Approaching from below the middle, past it above: mirror images of each other.
-        expect(entering.tilt).toBeGreaterThan(0)
-        expect(leaving.tilt).toBeLessThan(0)
+        // Scrolling down flies forward: below the middle the plane is short of the city (camera on
+        // the far side), past the middle it is beyond it (camera on the legend side).
+        expect(entering.tilt).toBeLessThan(0)
+        expect(leaving.tilt).toBeGreaterThan(0)
         expect(entering.tilt).toBeCloseTo(-leaving.tilt)
         expect(Math.abs(entering.tilt)).toBeLessThanOrEqual(SKYLINE_MAX_TILT)
-        expect(getFlyoverView(0.4).tilt).toBeLessThan(0)
+        expect(getFlyoverView(0.4).tilt).toBeGreaterThan(0)
         expect(getFlyoverView(-3)).toEqual(leaving)
         expect(getFlyoverView(NaN)).toEqual(centred)
     })
