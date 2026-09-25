@@ -102,24 +102,14 @@ describe('getTaskRoutingConfirmation — project move', () => {
             },
         })
 
-    it('confirms in the project the task was moved INTO', () => {
-        const confirmation = getTaskRoutingConfirmation(movedTask(), TARGET, NOW)
-
-        expect(confirmation).toMatchObject({ subject: ROUTING_SUBJECT_PROJECT, fromProjectId: HOST })
-    })
-
-    it('stays silent in the project the task was moved OUT of', () => {
-        // The router settles to 'routed' BEFORE the move, so for a moment the source document
-        // carries this exact payload. It must not announce a move to a list it is leaving.
+    it('does not confirm an automatic move in either project', () => {
+        // The router adds a reason comment after the move, so the green badge is redundant.
+        expect(getTaskRoutingConfirmation(movedTask(), TARGET, NOW)).toBeNull()
         expect(getTaskRoutingConfirmation(movedTask(), HOST, NOW)).toBeNull()
     })
 
-    it('stays silent when the move itself failed after the status was settled', () => {
-        // taskProjectRouting.js:380-388 — the move throws, the doc keeps `status: 'routed'` and
-        // `movedFromProjectId` naming the project the task never actually left. Comparing the two
-        // is the only thing standing between that and a false "Moved to …".
-        const stranded = movedTask({ movedFromProjectId: HOST })
-        expect(getTaskRoutingConfirmation(stranded, HOST, NOW)).toBeNull()
+    it('does not treat a user-initiated move as automatic routing', () => {
+        expect(getTaskRoutingConfirmation(task({ movingToOtherProjectId: TARGET }), HOST, NOW)).toBeNull()
     })
 
     it('does not celebrate a decision to keep the task where it is', () => {
@@ -134,20 +124,8 @@ describe('getTaskRoutingConfirmation — project move', () => {
         expect(getTaskRoutingConfirmation(failed, HOST, NOW)).toBeNull()
     })
 
-    it('expires so a reload days later does not replay old moves', () => {
-        const stale = movedTask({ resolvedAt: NOW - ROUTING_CONFIRMATION_WINDOW_MS - 1 })
-        expect(getTaskRoutingConfirmation(stale, TARGET, NOW)).toBeNull()
-    })
-
-    it('tolerates a server clock that ran ahead of the browser', () => {
-        // resolvedAt is the FUNCTION's Date.now(), compared against the BROWSER's. Skew in this
-        // direction must not discard the confirmations that just happened.
-        const skewed = movedTask({ resolvedAt: NOW + 5000 })
-        expect(getTaskRoutingConfirmation(skewed, TARGET, NOW)).not.toBeNull()
-    })
-
-    it('ignores a routing map with no resolvedAt at all', () => {
-        expect(getTaskRoutingConfirmation(movedTask({ resolvedAt: undefined }), TARGET, NOW)).toBeNull()
+    it('does not confirm a project move even with a fresh future timestamp', () => {
+        expect(getTaskRoutingConfirmation(movedTask({ resolvedAt: NOW + 5000 }), TARGET, NOW)).toBeNull()
     })
 })
 
@@ -163,6 +141,18 @@ describe('getTaskRoutingConfirmation — goal auto-assign', () => {
             subject: ROUTING_SUBJECT_GOAL,
             goalId: 'goal-1',
         })
+    })
+
+    it('expires an old goal assignment confirmation', () => {
+        const stale = task({
+            parentGoalId: 'goal-1',
+            goalSuggestion: {
+                status: 'auto_assigned',
+                goalId: 'goal-1',
+                resolvedAt: NOW - ROUTING_CONFIRMATION_WINDOW_MS - 1,
+            },
+        })
+        expect(getTaskRoutingConfirmation(stale, HOST, NOW)).toBeNull()
     })
 
     it('does not confirm a suggestion the user still has to accept', () => {
@@ -193,12 +183,18 @@ describe('getTaskRoutingConfirmation — goal auto-assign', () => {
 describe('signatures', () => {
     it('distinguishes two different decisions on the same task', () => {
         const first = getTaskRoutingConfirmation(
-            task({ projectRouting: { status: 'routed', resolvedAt: NOW - 10, movedFromProjectId: HOST } }),
+            task({
+                parentGoalId: 'goal-1',
+                goalSuggestion: { status: 'auto_assigned', goalId: 'goal-1', resolvedAt: NOW - 10 },
+            }),
             TARGET,
             NOW
         )
         const second = getTaskRoutingConfirmation(
-            task({ projectRouting: { status: 'routed', resolvedAt: NOW - 5, movedFromProjectId: HOST } }),
+            task({
+                parentGoalId: 'goal-1',
+                goalSuggestion: { status: 'auto_assigned', goalId: 'goal-1', resolvedAt: NOW - 5 },
+            }),
             TARGET,
             NOW
         )
@@ -207,10 +203,13 @@ describe('signatures', () => {
     })
 
     it('is stable across re-derivations of the same decision, so the latch can dedupe it', () => {
-        const moved = task({ projectRouting: { status: 'routed', resolvedAt: NOW - 10, movedFromProjectId: HOST } })
+        const assigned = task({
+            parentGoalId: 'goal-1',
+            goalSuggestion: { status: 'auto_assigned', goalId: 'goal-1', resolvedAt: NOW - 10 },
+        })
 
-        expect(getTaskRoutingConfirmation(moved, TARGET, NOW).signature).toBe(
-            getTaskRoutingConfirmation(moved, TARGET, NOW + 250).signature
+        expect(getTaskRoutingConfirmation(assigned, TARGET, NOW).signature).toBe(
+            getTaskRoutingConfirmation(assigned, TARGET, NOW + 250).signature
         )
     })
 })
@@ -246,17 +245,15 @@ describe('contract with the pieces either side', () => {
 })
 
 describe('getTaskRoutingActivity', () => {
-    it('prefers the confirmation when a just-moved task is already being goal-classified', () => {
-        // Real sequence: the task lands in its new project, onCreateTask fires there, and the goal
-        // router claims it. "It just arrived here" is the more useful thing to say first.
+    it('shows goal classification after a project move without a redundant move confirmation', () => {
         const justArrived = task({
             projectRouting: { status: 'routed', resolvedAt: NOW - 200, movedFromProjectId: HOST },
             goalSuggestion: { status: 'classifying', createdAt: NOW - 100 },
         })
 
         expect(getTaskRoutingActivity(justArrived, TARGET, NOW)).toMatchObject({
-            kind: ROUTING_ACTIVITY_CONFIRMED,
-            subject: ROUTING_SUBJECT_PROJECT,
+            kind: ROUTING_ACTIVITY_PROCESSING,
+            subject: ROUTING_SUBJECT_GOAL,
         })
     })
 
@@ -264,6 +261,19 @@ describe('getTaskRoutingActivity', () => {
         expect(
             getTaskRoutingActivity(task({ goalSuggestion: { status: 'classifying', createdAt: NOW - 100 } }), HOST, NOW)
         ).toMatchObject({ kind: ROUTING_ACTIVITY_PROCESSING, subject: ROUTING_SUBJECT_GOAL })
+    })
+
+    it('still confirms an automatically attached goal', () => {
+        expect(
+            getTaskRoutingActivity(
+                task({
+                    parentGoalId: 'goal-1',
+                    goalSuggestion: { status: 'auto_assigned', goalId: 'goal-1', resolvedAt: NOW - 100 },
+                }),
+                HOST,
+                NOW
+            )
+        ).toMatchObject({ kind: ROUTING_ACTIVITY_CONFIRMED, subject: ROUTING_SUBJECT_GOAL })
     })
 
     it('is null for an ordinary task, which is the overwhelmingly common case', () => {

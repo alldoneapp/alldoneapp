@@ -11,7 +11,7 @@ import { ROUTING_PROCESSING_WINDOW_MS } from '../../../../utils/taskRoutingActiv
 /**
  * AT-2381 — the hook's whole job beyond the pure derivation is the once-per-decision latch.
  *
- * That latch matters because the evidence for a confirmation (`status: 'routed'` + `resolvedAt`)
+ * That latch matters because the evidence for a goal confirmation (`status: 'auto_assigned'` + `resolvedAt`)
  * lives on the task document permanently, while the animation is an edge. In a virtualised list
  * a row unmounts and remounts every time it scrolls out of view and back, so without the latch a
  * user scrolling up and down would re-trigger the same celebration indefinitely.
@@ -25,6 +25,12 @@ const movedTask = (resolvedAt = NOW - 500) => ({
     id: 'task-1',
     parentGoalId: null,
     projectRouting: { status: 'routed', resolvedAt, movedFromProjectId: HOST },
+})
+
+const assignedTask = (resolvedAt = NOW - 500) => ({
+    id: 'task-1',
+    parentGoalId: 'goal-1',
+    goalSuggestion: { status: 'auto_assigned', goalId: 'goal-1', resolvedAt },
 })
 
 let latest
@@ -62,15 +68,22 @@ describe('useTaskRoutingActivity', () => {
         AccessibilityInfo.addEventListener = originalAddEventListener
     })
 
-    it('reports a fresh move as a confirmation in the destination project', async () => {
+    it('does not confirm an automatic project move in the destination project', async () => {
         await render(movedTask(), TARGET)
 
-        expect(latest.confirmation).toMatchObject({ subject: 'project', fromProjectId: HOST })
+        expect(latest.confirmation).toBeNull()
         expect(latest.processing).toBeNull()
     })
 
-    it('plays a confirmation only once, however often the row remounts', async () => {
-        const task = movedTask()
+    it('shows goal classification when it starts after an automatic project move', async () => {
+        await render({ ...movedTask(), goalSuggestion: { status: 'classifying', createdAt: NOW } }, TARGET)
+
+        expect(latest.confirmation).toBeNull()
+        expect(latest.processing).toEqual({ subject: 'goal' })
+    })
+
+    it('plays a goal confirmation only once, however often the row remounts', async () => {
+        const task = assignedTask()
 
         await render(task, TARGET)
         expect(latest.confirmation).not.toBeNull()
@@ -80,16 +93,16 @@ describe('useTaskRoutingActivity', () => {
         expect(latest.confirmation).toBeNull()
     })
 
-    it('still plays when the SAME task is routed again later', async () => {
-        await render(movedTask(NOW - 500), TARGET)
+    it('still plays when the SAME task is assigned again later', async () => {
+        await render(assignedTask(NOW - 500), TARGET)
         expect(latest.confirmation).not.toBeNull()
 
-        await render(movedTask(NOW - 100), TARGET)
+        await render(assignedTask(NOW - 100), TARGET)
         expect(latest.confirmation).not.toBeNull()
     })
 
     it('retires the confirmation after its visible lifetime', async () => {
-        await render(movedTask(), TARGET)
+        await render(assignedTask(), TARGET)
         expect(latest.confirmation).not.toBeNull()
 
         await act(async () => {
@@ -121,9 +134,9 @@ describe('useTaskRoutingActivity', () => {
         await render(
             {
                 id: 'task-3',
-                parentGoalId: null,
-                projectRouting: { status: 'routed', resolvedAt: NOW - 200, movedFromProjectId: HOST },
-                goalSuggestion: { status: 'classifying', createdAt: NOW },
+                parentGoalId: 'goal-1',
+                projectRouting: { status: 'classifying', startedAt: NOW },
+                goalSuggestion: { status: 'auto_assigned', goalId: 'goal-1', resolvedAt: NOW - 200 },
             },
             TARGET
         )
@@ -144,7 +157,7 @@ describe('useTaskRoutingActivity', () => {
         // listener per call — so reading the preference here would cost one listener per row of a
         // long list to serve the handful actually being routed. The two presentational components
         // subscribe for themselves, and the row mounts them only when there is something to show.
-        await render(movedTask(), TARGET)
+        await render(assignedTask(), TARGET)
 
         expect(AccessibilityInfo.addEventListener).not.toHaveBeenCalled()
         expect(latest.reducedMotion).toBeUndefined()

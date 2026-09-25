@@ -14,10 +14,10 @@ import {
  * The processing sparkle needs no latch — it is a level, true while the server is deciding. It
  * normally ends when the settled snapshot arrives, with a ten-minute expiry as a backstop for a
  * stranded `classifying` document.
- * The confirmation is the opposite: it is an edge, and the evidence for it (`status: 'routed'`
- * plus `resolvedAt`) stays on the task document forever. Without a latch it would replay every
- * time the row remounted inside the freshness window — which in a virtualised list means every
- * time the user scrolled it off screen and back.
+ * The confirmation is the opposite: it is an edge, and the evidence for a goal assignment
+ * (`status: 'auto_assigned'` plus `resolvedAt`) stays on the task document forever. Without a
+ * latch it would replay every time the row remounted inside the freshness window — which in a
+ * virtualised list means every time the user scrolled it off screen and back.
  *
  * This hook runs on EVERY task row, so it is deliberately cheap: one `useState`, one effect over
  * primitives, and a pure derivation. In particular it does NOT read the reduced-motion
@@ -35,8 +35,7 @@ export const ROUTING_CONFIRMATION_VISIBLE_MS = 4000
 
 /**
  * Signatures of confirmations already played this session. A signature pins the task AND the
- * `resolvedAt` of the decision, so a genuinely new decision on the same task (the task is moved
- * again, or routed into a goal after being routed into a project) still plays.
+ * `resolvedAt` of the decision, so a genuinely new goal assignment on the same task still plays.
  *
  * Bounded because a long dogfooding session on an account with many projects would otherwise
  * grow it without limit. Oldest-first eviction is safe: evicting an entry can at worst replay a
@@ -63,7 +62,7 @@ export const resetPlayedRoutingConfirmations = () => playedConfirmations.clear()
 /**
  * @param {object} task a task as mapped by `mapTaskData`
  * @param {string} projectId the project this row is rendered in
- * @returns {{ processing: null|{subject}, confirmation: null|{subject, fromProjectId, goalId} }}
+ * @returns {{ processing: null|{subject}, confirmation: null|{subject, goalId} }}
  */
 export default function useTaskRoutingActivity(task, projectId) {
     const [confirmation, setConfirmation] = useState(null)
@@ -76,8 +75,6 @@ export default function useTaskRoutingActivity(task, projectId) {
     const projectRoutingStatus = task?.projectRouting?.status
     const projectRoutingRequestedAt = task?.projectRouting?.requestedAt
     const projectRoutingStartedAt = task?.projectRouting?.startedAt
-    const projectRoutingResolvedAt = task?.projectRouting?.resolvedAt
-    const movedFromProjectId = task?.projectRouting?.movedFromProjectId
     const goalSuggestionStatus = task?.goalSuggestion?.status
     const goalSuggestionCreatedAt = task?.goalSuggestion?.createdAt
     const goalSuggestionResolvedAt = task?.goalSuggestion?.resolvedAt
@@ -93,16 +90,7 @@ export default function useTaskRoutingActivity(task, projectId) {
         timeoutRef.current = setTimeout(() => setConfirmation(null), ROUTING_CONFIRMATION_VISIBLE_MS)
         return () => clearTimeout(timeoutRef.current)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        taskId,
-        projectId,
-        projectRoutingStatus,
-        projectRoutingResolvedAt,
-        movedFromProjectId,
-        goalSuggestionStatus,
-        goalSuggestionResolvedAt,
-        parentGoalId,
-    ])
+    }, [taskId, projectId, goalSuggestionStatus, goalSuggestionResolvedAt, parentGoalId])
 
     useEffect(() => {
         const now = Date.now()
