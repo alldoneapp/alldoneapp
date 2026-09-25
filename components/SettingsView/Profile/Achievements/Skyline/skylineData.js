@@ -51,7 +51,7 @@ export const buildSkylineWeeks = (emptyInboxDays, todayTimestamp) =>
     buildEmptyInboxActivityWeeks(emptyInboxDays, SKYLINE_WEEKS, todayTimestamp)
 
 /** Tallest building, in scene units (one day is one unit wide). */
-export const SKYLINE_MAX_HEIGHT = 4.5
+export const SKYLINE_MAX_HEIGHT = 2.6
 const FLOOR_HEIGHT = 0.1
 
 /**
@@ -92,22 +92,24 @@ export function getSkylineColor(tasks, scale = 5) {
     return rgbToHex(a.map((v, i) => v + (b[i] - v) * local))
 }
 
+/** The steepest the flyover ever leans away from straight down, in radians (~30°). */
+export const SKYLINE_MAX_TILT = 0.55
+
 /**
  * Where the camera is for a given scroll position — the "plane flying over the city".
  *
  * `progress` is where the card's middle sits in the viewport: 1 at the bottom edge (the card has
- * just scrolled in), 0 at the top edge (it is about to leave). Coming in, you see the skyline from
- * ahead and at an angle; as you scroll on you pass over it until you look straight down on the map.
+ * just scrolled in), 0.5 in the middle, 0 at the top edge (it is about to leave). With the card in
+ * the middle of the screen you look straight down on the city; below the middle the plane is still
+ * approaching and sees the fronts of the buildings, above it the plane has passed and looks back at
+ * their other side. That symmetry is the whole illusion: the scroll IS the flight.
  *
- * @returns {{ tilt: number, forward: number }} tilt = radians away from straight down,
- *   forward = how far along the city (scene units) the camera is looking
+ * @returns {{ tilt: number }} signed radians away from straight down (positive = the camera is
+ *   still in front of the city)
  */
 export function getFlyoverView(progress) {
     const p = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0.5))
-    return {
-        tilt: 0.08 + p * 0.82,
-        forward: (p - 0.5) * 3,
-    }
+    return { tilt: (p - 0.5) * 2 * SKYLINE_MAX_TILT }
 }
 
 export const formatSkylineMinutes = minutes => {

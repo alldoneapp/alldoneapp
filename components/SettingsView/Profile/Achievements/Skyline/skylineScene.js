@@ -4,7 +4,6 @@ import {
     Color,
     ConeGeometry,
     InstancedMesh,
-    MathUtils,
     Mesh,
     MeshBasicMaterial,
     Object3D,
@@ -15,12 +14,18 @@ import {
     ShaderMaterial,
     SRGBColorSpace,
     Vector2,
-    Vector3,
     WebGLRenderer,
 } from 'three'
 
 import { colors } from '../../../../styles/global'
-import { getFlyoverView, getSkylineColor, getSkylineHeight, getSkylineScale, SKYLINE_WEEKS } from './skylineData'
+import {
+    getFlyoverView,
+    getSkylineColor,
+    getSkylineHeight,
+    getSkylineScale,
+    SKYLINE_MAX_HEIGHT,
+    SKYLINE_WEEKS,
+} from './skylineData'
 
 /**
  * The imperative half of the Empty inbox skyline: a three.js city where every building is one day,
@@ -46,8 +51,8 @@ const MARGIN_X = 3.5
 const MARGIN_Z = 3
 const GROUND_PX_PER_UNIT = 48
 const RISE_DURATION = 0.9
-const FOV = 30
-const REDUCED_MOTION_PROGRESS = 0.55
+// Straight overhead, the calm resting view.
+const REDUCED_MOTION_PROGRESS = 0.5
 
 const WHITE = '#FFFFFF'
 const PLOT = colors.Grey200
@@ -107,7 +112,7 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     container.appendChild(canvas)
 
     const scene = new Scene()
-    const camera = new PerspectiveCamera(FOV, 1, 0.5, 500)
+    const camera = new PerspectiveCamera(30, 1, 1, 80)
     // Screen-up is "back" in the city, so looking straight down still reads weeks left to right and
     // Monday..Sunday top to bottom, like the 2D grid it replaces.
     camera.up.set(0, 0, -1)
@@ -156,7 +161,7 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         context.fillStyle = SHADOW
         days.forEach(day => {
             if (day.tasks <= 0) return
-            const length = Math.min(1, getSkylineHeight(day.tasks, scale) / 4) * 0.45 * px
+            const length = Math.min(1, getSkylineHeight(day.tasks, scale) / SKYLINE_MAX_HEIGHT) * 0.35 * px
             roundRect(
                 cx(posX(day.week)) - plot / 2 + length * 0.4,
                 cz(posZ(day.weekday)) - plot / 2 - length,
@@ -192,8 +197,8 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         new ShaderMaterial({
             uniforms: {
                 uFog: { value: new Color(WHITE) },
-                uFogNear: { value: 40 },
-                uFogFar: { value: 140 },
+                uFogNear: { value: 60 },
+                uFogFar: { value: 120 },
             },
             vertexShader: buildingVertexShader,
             fragmentShader: buildingFragmentShader,
@@ -299,11 +304,16 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         if (done) animating = false
     }
 
-    // Camera: the flyover. Distance is fixed so the whole year always fits the card's width; only
-    // the angle and how far along the city we look follow the scroll.
-    let radius = 60
+    // Camera: the flyover, as an OFF-AXIS projection. The camera always looks straight down and
+    // slides parallel to the ground as the page scrolls; the frustum is re-aimed every frame so the
+    // ground plane (y = 0) always lands on exactly the same pixels. The plots and the month/weekday
+    // legend are therefore fixed on the card like print, and only what stands up from it — the
+    // buildings — leans with the scroll. That fixed ground is what sells the illusion that the city
+    // is part of the page rather than a 3D view inside a box.
+    const CAMERA_HEIGHT = 26
+    let viewWidth = SKYLINE_WEEKS + MARGIN_X * 2
+    let viewDepth = GRID_DAYS + MARGIN_Z * 2
     let flight = null
-    const target = new Vector3()
     const readScrollProgress = () => {
         if (reduceMotion) return REDUCED_MOTION_PROGRESS
         const rect = container.getBoundingClientRect()
@@ -313,17 +323,22 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     const placeCamera = () => {
         const wanted = getFlyoverView(readScrollProgress())
         if (!flight || reduceMotion) flight = { ...wanted }
-        else {
-            flight.tilt += (wanted.tilt - flight.tilt) * 0.12
-            flight.forward += (wanted.forward - flight.forward) * 0.12
-        }
-        target.set(0, 0.6, flight.forward)
-        camera.position.set(
-            target.x,
-            target.y + radius * Math.cos(flight.tilt),
-            target.z + radius * Math.sin(flight.tilt)
-        )
-        camera.lookAt(target)
+        else flight.tilt += (wanted.tilt - flight.tilt) * 0.12
+
+        // Positive tilt = the plane is still in front of the city (towards the month legend).
+        const offsetZ = CAMERA_HEIGHT * Math.tan(flight.tilt)
+        camera.position.set(0, CAMERA_HEIGHT, offsetZ)
+        camera.lookAt(0, 0, offsetZ)
+
+        // The window onto the ground, in camera space at the near plane. Screen-up is world -z.
+        const near = camera.near
+        const toNear = near / CAMERA_HEIGHT
+        const left = (-viewWidth / 2) * toNear
+        const right = (viewWidth / 2) * toNear
+        const top = (viewDepth / 2 + offsetZ) * toNear
+        const bottom = (-viewDepth / 2 + offsetZ) * toNear
+        camera.projectionMatrix.makePerspective(left, right, top, bottom, near, camera.far)
+        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert()
     }
 
     const resize = () => {
@@ -331,13 +346,16 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         const height = container.clientHeight
         if (!width || !height) return
         renderer.setSize(width, height, false)
-        camera.aspect = width / height
-        camera.updateProjectionMatrix()
-        const vfov = MathUtils.degToRad(FOV)
-        const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect)
-        const byWidth = (SKYLINE_WEEKS / 2 + 2.2) / Math.tan(hfov / 2)
-        const byDepth = (GRID_DAYS / 2 + 3) / Math.tan(vfov / 2)
-        radius = Math.max(byWidth, byDepth)
+        const aspect = width / height
+        // Fit the whole year plus its legend, keeping the card's aspect ratio. Seen from straight
+        // above, a roof sits further out than its base (by H / (H - h)), so the outermost weeks
+        // need that much room or the tallest building on the edge would be cut off by the card.
+        const tallest = SKYLINE_MAX_HEIGHT * 1.15
+        const edgeRoof = ((SKYLINE_WEEKS - 1) / 2 + FOOTPRINT / 2) * (CAMERA_HEIGHT / (CAMERA_HEIGHT - tallest))
+        const neededWidth = 2 * Math.max(edgeRoof + 0.4, SKYLINE_WEEKS / 2 + 2.6)
+        const neededDepth = GRID_DAYS + MARGIN_Z * 2
+        viewWidth = Math.max(neededWidth, neededDepth * aspect)
+        viewDepth = viewWidth / aspect
     }
 
     // Interaction: hover (mouse) and tap only. Page scrolling is never intercepted; the one event
