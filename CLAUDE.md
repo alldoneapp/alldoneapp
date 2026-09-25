@@ -1377,8 +1377,9 @@ web bundle aliases `three` to its ES module build because the app's Babel config
 `statistics/{projectId}/{userId}` (one `day` range read per project; the past is cached per session,
 only today is re-read — `utils/backends/Users/skylineStatistics.js`), scaled to the user's own
 95th-percentile day (`getSkylineScale`) so one extreme day cannot dwarf the rest. Building TYPE
-follows the same measure (`getBuildingType`: park → house → mid-rise → tower → skyscraper). A green
-roof marks a day in `emptyInboxDays`, the same array the grid reads. Everything that decides what a
+follows the same measure (`getBuildingType`: park → house → mid-rise → tower → skyscraper). A gold
+flag waving on the building's highest point marks a day in `emptyInboxDays` (the same array the
+grid reads) — it replaced a green roof, which a green project's building made indistinguishable. Everything that decides what a
 building means lives in the pure, unit-tested `skylineData.js`.
 
 **Look.** Drawn straight onto the white card (transparent canvas) in app colours only, with flat
@@ -1389,8 +1390,7 @@ comes from the day's PROJECTS: the body is the busiest project's colour, accents
 project's, and stacked designs colour their slabs by each project's share (`getProjectColorAt`).
 `BODY_PALETTE`/`ACCENT_PALETTE` only fill in what the data leaves open; design and fill-ins are
 seeded by date so a day always looks the same, and the palette picks are always drawn so a second
-project appearing never changes the design. Every design tops out at exactly the day's height. Greens are kept out of the building
-palettes because UtilityGreen200 means an empty-inbox roof. No surface detail: windows, a night sky and cloud shadows were each tried and removed
+project appearing never changes the design. Every design tops out at exactly the day's height. No surface detail: windows, a night sky and cloud shadows were each tried and removed
 (noise, or they revealed the edge of the canvas). Days sit `PITCH` apart with roads between every
 row and column. Nothing may be drawn on the ground outside the city.
 
@@ -1410,7 +1410,8 @@ random number of hits per building (`rollHitPoints`, bigger types take more, 15%
 criticals), floors knocked off per hit (`getIntegrity` keeps a third standing until the final blow,
 so the collapse stays an event), then a dust-cloud collapse leaving rubble. Memory-only and keyed by
 date — a statistics refresh must not resurrect a demolished day, a reload brings everything back.
-The celebration run that pops the 2D today dot pops today's roof instead.
+The celebration run that pops the 2D today dot pops today's flag instead, and the first hit on
+a building knocks its flag and rooftop equipment off.
 
 **Life and cost.** The decorative layer (facade light sweep, cars on the roads, a small flock of
 birds, an occasional balloon or plane) carries no data, is not interactive, and is switched off under

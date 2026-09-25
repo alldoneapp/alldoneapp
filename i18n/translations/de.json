@@ -177,7 +177,7 @@
     "Empty inbox reached on": "Empty Inbox erreicht am %{date}",
     "Empty inbox streak day added": "Heute wurde zu deiner Empty-Inbox-Serie hinzugefügt · Tag %{count}.",
     "Empty inbox day badge": "Tag %{count}",
-    "Empty inbox skyline description": "Dein letztes Quartal als Stadt: Jedes Gebäude ist ein Tag, je höher, desto mehr Aufgaben hast du erledigt. Ein grünes Dach markiert Empty Inbox.",
+    "Empty inbox skyline description": "Dein letztes Quartal als Stadt: Jedes Gebäude ist ein Tag, je höher, desto mehr Aufgaben hast du erledigt. Eine goldene Flagge markiert Empty Inbox.",
     "Skyline tasks done": "%{count} Aufgaben erledigt",
     "Skyline inbox cleared": "Inbox geleert",
     "Skyline inbox not cleared": "Inbox nicht geleert",
