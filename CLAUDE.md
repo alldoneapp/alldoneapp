@@ -1391,9 +1391,18 @@ there is no drag/zoom, so the city never competes with page scrolling, and
 the only event it stops is `click` (the all-projects card is itself a link). Building TYPE follows the same relative measure as height (`getBuildingType`: park → house →
 mid-rise → tower → skyscraper), and each building is a few parts in shared instanced meshes, so the
 whole city is a handful of draw calls rebuilt per frame. The "life" layer (facade light sweep,
-drifting cloud shadows, cars, birds, balloon, airplane) carries no data, is never interactive, and
+cars on the road grid, birds, balloon, airplane) carries no data, is never interactive, and
 is switched off entirely under reduced motion; the render loop only runs while the card intersects
-the viewport. The celebration
+the viewport. Days sit `PITCH` apart with a road between every row and column (asphalt under the city, blocks
+on top, dashed centre lines), which is what makes the city fill the card. Nothing may be drawn on
+the ground outside the city — cloud shadows were tried and removed because they revealed the edge
+of the canvas. Tapping a building is also a hit in a small DEMOLITION toy: a random number of hits per building
+(`rollHitPoints`, bigger types take more, 15% double-damage criticals), floors knocked off per hit
+(`getIntegrity` never drops below a third before the final blow, so the collapse stays an event),
+then a dust-cloud collapse that leaves rubble. It is memory-only and keyed by date — a statistics
+refresh must not resurrect a demolished day, a reload brings everything back — and it writes
+nothing anywhere. The scroll tilt goes up to ~43° (`SKYLINE_MAX_TILT`), which is why the canvas is
+~0.9× its width tall: the lean of the tallest building at that tilt is reserved, never clipped. The celebration
 run that popsThe celebration
 run that pops the 2D today dot makes today's roof pop instead. `skylineScene.js` is imperative and
 untestable in jsdom (no WebGL); `skylineData.js` holds everything that decides what a building means

@@ -91,6 +91,35 @@ export function getBuildingType(tasks, scale = 5) {
 }
 
 /**
+ * Demolition: how many taps a building takes. Deliberately a range, rolled per building per visit,
+ * so the player never quite knows which tap will bring it down — and bigger buildings take longer.
+ */
+export const HIT_POINTS = {
+    park: [1, 2],
+    house: [2, 4],
+    midrise: [3, 5],
+    tower: [4, 7],
+    skyscraper: [5, 9],
+}
+/** A lucky tap counts double (and looks it). */
+export const CRITICAL_HIT_CHANCE = 0.15
+
+export function rollHitPoints(type, random = Math.random) {
+    const [min, max] = HIT_POINTS[type] || HIT_POINTS.house
+    return min + Math.min(max - min, Math.floor(random() * (max - min + 1)))
+}
+
+/**
+ * How much of a building is still standing after a hit, 0..1. Each hit knocks a chunk of floors
+ * off, but a building never shrinks below a third before the final blow — the collapse is the
+ * payoff and must stay a visible event, not the last step of a slow melt.
+ */
+export function getIntegrity(hitPoints, maxHitPoints) {
+    if (hitPoints <= 0) return 0
+    return 0.32 + 0.68 * Math.min(1, hitPoints / maxHitPoints)
+}
+
+/**
  * The app's blue ramp, light to deep: UtilityDarkBlue125 → Primary100 → Primary400. A building's
  * colour says the same thing as its height, so the city reads from straight above too, where heights
  * cannot be seen.
@@ -109,8 +138,8 @@ export function getSkylineColor(tasks, scale = 5) {
     return rgbToHex(a.map((v, i) => v + (b[i] - v) * local))
 }
 
-/** The steepest the flyover ever leans away from straight down, in radians (~24°). */
-export const SKYLINE_MAX_TILT = 0.42
+/** The steepest the flyover ever leans away from straight down, in radians (~43°). */
+export const SKYLINE_MAX_TILT = 0.75
 
 /**
  * Where the camera is for a given scroll position — the "plane flying over the city".
