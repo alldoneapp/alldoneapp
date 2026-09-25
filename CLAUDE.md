@@ -1364,51 +1364,53 @@ AT-2418's flow suite, opts out of BOTH jest's inert-animation convention and red
 the predecessor's only test mocked `isReduceMotionEnabled` to `true` and therefore exercised the
 static branch forever.
 
-### The Empty inbox year is a 3D city (skyline)
+### The Empty inbox card draws the last quarter as a 3D city (skyline)
 
 Wherever WebGL exists, `EmptyInboxOverview` draws the last quarter (13 weeks) as a three.js city
 (`Achievements/Skyline/`) instead of the 2D grid; the grid stays as the fallback for native, no-WebGL
-and jsdom (`canRenderSkyline` in `webglSupport.js`, which must never import three). Each building is
-one day: height = `doneTasks` summed over the user's **active** projects from
+and jsdom (`canRenderSkyline` in `webglSupport.js`, which must never import three). three.js is
+loaded with a dynamic `import()` into its own `skyline` chunk and never enters the main bundle; the
+web bundle aliases `three` to its ES module build because the app's Babel config turns imports into
+`require`, which otherwise picks three's CJS shim and throws on `process.emitWarning` in a browser.
+
+**Data.** One building per day: height = `doneTasks` summed over the user's **active** projects from
 `statistics/{projectId}/{userId}` (one `day` range read per project; the past is cached per session,
-only today is re-read — `utils/backends/Users/skylineStatistics.js`), colour = the busiest project's
-marker colour, green roof = a day in `emptyInboxDays` (the same array the grid reads). three.js is
-loaded with a dynamic `import()` into its own `skyline` chunk, so it never enters the main bundle.
-It is drawn straight onto the white card in app colours only (Grey200 plots, a
-UtilityDarkBlue125 → Primary100 → Primary400 height ramp, UtilityGreen200 roofs, UtilityYellow200
-selection) with flat shading and deliberately no surface detail — windows and a night sky were tried
-and read as noise. Heights are scaled to the user's own 95th-percentile day (`getSkylineScale`), so
-one 50-task day cannot dwarf the year. The camera is a "plane over the city" driven by the PAGE
-scroll (`getFlyoverView`: straight overhead while the card is in the middle of the viewport; scrolling
-down is flying forward, so below the middle you see the building sides facing the top of the page
-and past the middle the sides facing the month legend — the first cut had this reversed). It is an **off-axis**
-projection — the camera always looks straight down, slides parallel to the ground, and the frustum
-is re-aimed each frame so the ground plane lands on the same pixels — which is what keeps the plots
-and the month/weekday legend fixed on the card while only the buildings lean. Do not replace it with
-an ordinary tilted/orbiting camera: a moving ground is exactly what breaks the "printed on the card"
-illusion. The camera sits very high (`CAMERA_HEIGHT` 400) so the projection is effectively
-parallel: from a low camera the outer buildings leaned outwards and showed their sides even when
-centred. Picking still works because `projectionMatrixInverse` is refreshed with the matrix;
-there is no drag/zoom, so the city never competes with page scrolling, and
-the only event it stops is `click` (the all-projects card is itself a link). Building TYPE follows the same relative measure as height (`getBuildingType`: park → house →
-mid-rise → tower → skyscraper), and each building is a few parts in shared instanced meshes, so the
-whole city is a handful of draw calls rebuilt per frame. The "life" layer (facade light sweep,
-cars on the road grid, birds, balloon, airplane) carries no data, is never interactive, and
-is switched off entirely under reduced motion; the render loop only runs while the card intersects
-the viewport. Days sit `PITCH` apart with a road between every row and column (asphalt under the city, blocks
-on top, dashed centre lines), which is what makes the city fill the card. Nothing may be drawn on
-the ground outside the city — cloud shadows were tried and removed because they revealed the edge
-of the canvas. Tapping a building is also a hit in a small DEMOLITION toy: a random number of hits per building
-(`rollHitPoints`, bigger types take more, 15% double-damage criticals), floors knocked off per hit
-(`getIntegrity` never drops below a third before the final blow, so the collapse stays an event),
-then a dust-cloud collapse that leaves rubble. It is memory-only and keyed by date — a statistics
-refresh must not resurrect a demolished day, a reload brings everything back — and it writes
-nothing anywhere. The scroll tilt goes up to ~57° (`SKYLINE_MAX_TILT`), which is why the canvas is
-~0.9× its width tall: the lean of the tallest building at that tilt is reserved, never clipped. The celebration
-run that popsThe celebration
-run that pops the 2D today dot makes today's roof pop instead. `skylineScene.js` is imperative and
-untestable in jsdom (no WebGL); `skylineData.js` holds everything that decides what a building means
-and is unit-tested.
+only today is re-read — `utils/backends/Users/skylineStatistics.js`), scaled to the user's own
+95th-percentile day (`getSkylineScale`) so one extreme day cannot dwarf the rest. Building TYPE
+follows the same measure (`getBuildingType`: park → house → mid-rise → tower → skyscraper). A green
+roof marks a day in `emptyInboxDays`, the same array the grid reads. Everything that decides what a
+building means lives in the pure, unit-tested `skylineData.js`.
+
+**Look.** Drawn straight onto the white card (transparent canvas) in app colours only — Grey plots
+and roads, a UtilityDarkBlue125 → Primary100 → Primary400 ramp, UtilityGreen200 roofs — with flat
+shading and no surface detail: windows, a night sky and cloud shadows were each tried and removed
+(noise, or they revealed the edge of the canvas). Days sit `PITCH` apart with roads between every
+row and column. Nothing may be drawn on the ground outside the city.
+
+**Camera.** It flies on its own and ignores the page scroll (`getOrbitView`: a slow ±55° sweep around
+the front, elevation ~35–50°, never round the back so the ground legends are never upside down).
+Every frame `fitDistance` bisects the closest distance at which the whole city — outer roads,
+legends and the tallest possible building — projects inside the canvas with a margin, and the
+camera never sits closer than that, so the city can never be clipped by the canvas edge; a clipped
+city is what breaks the illusion that it stands on the card. Flying objects stay over the city and
+appear/disappear by scale, never by crossing the edge. Two earlier designs were dropped: a
+scroll-driven off-axis "flyover" with a fixed ground (looked wrong in practice), and a low camera
+(outer buildings fanned outwards).
+
+**Interaction.** Hover/tap shows a day; there is no drag or zoom, and the only event the canvas stops
+is `click` (the all-projects card is itself a link). Tapping is also a hit in a DEMOLITION toy: a
+random number of hits per building (`rollHitPoints`, bigger types take more, 15% double-damage
+criticals), floors knocked off per hit (`getIntegrity` keeps a third standing until the final blow,
+so the collapse stays an event), then a dust-cloud collapse leaving rubble. Memory-only and keyed by
+date — a statistics refresh must not resurrect a demolished day, a reload brings everything back.
+The celebration run that pops the 2D today dot pops today's roof instead.
+
+**Life and cost.** The decorative layer (facade light sweep, cars on the roads, a small flock of
+birds, an occasional balloon or plane) carries no data, is not interactive, and is switched off under
+reduced motion (which also freezes the camera at `SKYLINE_REST_VIEW`). The render loop only runs
+while the card intersects the viewport. `skylineScene.test.js` drives the real scene in jsdom with
+only the WebGL renderer and the 2D canvas stubbed — it is the one test that executes this module,
+which needs `three` in Jest's transform allowlist and the class-static-block Babel transform.
 
 ### Per-project empty inbox — the completed sweep (AT-2492)
 
