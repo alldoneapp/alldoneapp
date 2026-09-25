@@ -395,7 +395,7 @@ const restartTransport = async trigger => {
         const db = getDbSafe()
         if (!db || typeof db.disableNetwork !== 'function') return
         await db.disableNetwork()
-        await db.enableNetwork()
+        if (!browserIsOffline() && !manualOffline) await db.enableNetwork()
     })
 
     let timeoutTimer
@@ -413,9 +413,9 @@ const restartTransport = async trigger => {
     const reason = outcome === 'timeout' ? 'restart_timeout' : 'restart_failed'
     console.warn(`[ConnectionHealth] Firestore transport ${outcome}; replacing the client (${trigger}).`)
     let reloadRequested = false
-    if (!browserIsOffline()) {
+    if (!browserIsOffline() && !manualOffline) {
         const serverReachable = await probeServerOutsideClient()
-        if (serverReachable) {
+        if (serverReachable && !browserIsOffline() && !manualOffline) {
             const requestReload = deps.requestClientReload || requestFirestoreClientReload
             try {
                 reloadRequested = requestReload(reason)
@@ -610,6 +610,19 @@ export const reconnectNow = async () => {
     const outcome = await evaluateConnectionHealth({ trigger: 'manual_reconnect' })
     track('connection_manual_reconnect', { state_from: stateBefore, outcome })
     return outcome
+}
+
+/**
+ * A successful Listen/read probe cannot establish that the separate Write
+ * stream is progressing. The task-write monitor supplies actual unacknowledged
+ * write age and throttles calls; use the shared restart lease without declaring
+ * the write healthy from another read. Only its acknowledgement settles it.
+ */
+export const recoverStalledTaskWrites = async () => {
+    if (manualOffline || browserIsOffline()) return false
+    const restart = await restartTransport('pending_task_write')
+    if (!restart.ok && !manualOffline) finishFailedRestart('pending_task_write', restart)
+    return restart.ok
 }
 
 /**
