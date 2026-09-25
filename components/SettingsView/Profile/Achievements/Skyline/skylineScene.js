@@ -1,8 +1,5 @@
 import {
-    AdditiveBlending,
     BoxGeometry,
-    BufferAttribute,
-    BufferGeometry,
     CanvasTexture,
     Color,
     ConeGeometry,
@@ -13,8 +10,6 @@ import {
     Object3D,
     PerspectiveCamera,
     PlaneGeometry,
-    Points,
-    PointsMaterial,
     Raycaster,
     Scene,
     ShaderMaterial,
@@ -25,48 +20,51 @@ import {
 } from 'three'
 
 import { colors } from '../../../../styles/global'
-import { getSkylineHeight, SKYLINE_WEEKS } from './skylineData'
+import { getFlyoverView, getSkylineColor, getSkylineHeight, getSkylineScale, SKYLINE_WEEKS } from './skylineData'
 
 /**
- * The imperative half of the Empty inbox skyline: a three.js city where every building is one day.
+ * The imperative half of the Empty inbox skyline: a three.js city where every building is one day,
+ * drawn straight onto the white achievements card and seen from above.
  *
- * Loaded through a dynamic `import()` from `EmptyInboxSkyline`, so three.js lands in its own chunk
- * and is only downloaded by a browser that can actually draw it. React never touches anything in
- * here; the component hands over plain day records and gets hover/select callbacks back.
+ * The camera is a plane flying over the year, and the page scroll is its throttle: while the card
+ * scrolls up through the viewport the view swings from an angled approach to straight overhead
+ * (`getFlyoverView`). There is deliberately no drag-to-orbit — the page scroll is the only camera
+ * control, so the city never fights the page for a gesture.
  *
- * Palette is Alldone's own: the night is the sidebar navy (`Secondary400`), a cleared inbox is the
- * same `UtilityGreen200` the 2D grid uses for an achieved cell, today is `Primary100` like the 2D
- * today outline, and each building takes its busiest project's marker colour.
+ * The look is kept quiet on purpose: solid blocks with flat, paper-like shading and no surface
+ * detail (no windows, no glow, no sky). Every colour is an app colour: white card, Grey200/300
+ * ground, the UtilityDarkBlue125 → Primary100 → Primary400 ramp for buildings, UtilityGreen200 roofs
+ * for empty-inbox days (the 2D grid's green), UtilityYellow200 for the selected day and today's
+ * marker, Text03 labels.
+ *
+ * Loaded through a dynamic `import()` from `EmptyInboxSkyline`, so three.js is its own chunk.
  */
 
-const FOOTPRINT = 0.78
+const FOOTPRINT = 0.8
 const GRID_DAYS = 7
 const MARGIN_X = 3.5
-const MARGIN_Z = 3.2
-const GROUND_PX_PER_UNIT = 40
+const MARGIN_Z = 3
+const GROUND_PX_PER_UNIT = 48
 const RISE_DURATION = 0.9
-const MIN_RADIUS = 10
-const MAX_RADIUS = 150
+const FOV = 30
+const REDUCED_MOTION_PROGRESS = 0.55
 
-const NIGHT = colors.Secondary400
-const HORIZON = colors.Secondary300
-const EMPTY_DAY = '#1d2c66'
+const WHITE = '#FFFFFF'
+const PLOT = colors.Grey200
+const SHADOW = colors.Grey300
+const LABEL = colors.Text03
 const INBOX_GREEN = colors.UtilityGreen200
-const INBOX_GLOW = colors.UtilityGreen150
-const TODAY = colors.Primary100
-const LABEL = 'rgba(169,180,214,0.7)'
+const HIGHLIGHT = colors.UtilityYellow200
 
 const posX = week => week - (SKYLINE_WEEKS - 1) / 2
 const posZ = weekday => weekday - (GRID_DAYS - 1) / 2
 
 const buildingVertexShader = `
-    varying vec3 vWorld; varying vec3 vN; varying vec3 vColor; varying vec3 vLocal; varying float vH;
+    varying vec3 vWorld; varying vec3 vN; varying vec3 vColor;
     void main() {
         vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
         vWorld = world.xyz;
         vN = normalize(mat3(modelMatrix * instanceMatrix) * normal);
-        vLocal = position;
-        vH = instanceMatrix[1][1];
         #ifdef USE_INSTANCING_COLOR
             vColor = instanceColor;
         #else
@@ -75,64 +73,20 @@ const buildingVertexShader = `
         gl_Position = projectionMatrix * viewMatrix * world;
     }`
 
-// Lit sides, brighter roofs and a grid of windows, a random share of them lit. Plain GLSL rather
-// than a lit built-in material so a year of buildings is one draw call with no lights to manage.
+// Flat, paper-like shading: the roof carries the full colour (it is what you see from above), each
+// side steps down by which way it faces, and distance fades gently toward the white card.
 const buildingFragmentShader = `
-    uniform vec3 uFog; uniform float uFogNear; uniform float uFogFar; uniform vec3 uLight;
-    varying vec3 vWorld; varying vec3 vN; varying vec3 vColor; varying vec3 vLocal; varying float vH;
-    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    uniform vec3 uFog; uniform float uFogNear; uniform float uFogFar;
+    varying vec3 vWorld; varying vec3 vN; varying vec3 vColor;
     void main() {
         vec3 n = normalize(vN);
-        float diff = max(dot(n, normalize(uLight)), 0.0);
-        vec3 col = vColor * (0.45 + 0.65 * diff);
-        float isSide = 1.0 - step(0.5, abs(n.y));
-        if (n.y > 0.5) col = vColor * 1.2;
-        float across = abs(n.x) > 0.5 ? vLocal.z : vLocal.x;
-        vec2 g = vec2((across + ${(FOOTPRINT / 2).toFixed(3)}) / ${FOOTPRINT.toFixed(3)} * 4.0, vWorld.y * 4.2);
-        vec2 f = fract(g); vec2 id = floor(g);
-        float win = step(0.26, f.x) * step(f.x, 0.74) * step(0.3, f.y) * step(f.y, 0.72);
-        vec2 building = floor(vWorld.xz + 0.5);
-        float lit = step(0.52, hash(id + building * 13.0 + (n.x + n.z * 3.0)));
-        float inside = step(0.25, vWorld.y) * step(vWorld.y, vH - 0.2);
-        vec3 warm = mix(vec3(1.0, 0.86, 0.6), vColor + 0.4, 0.3);
-        col = mix(col, warm, win * lit * inside * isSide * 0.9);
-        col = mix(col, col * 0.6, win * (1.0 - lit) * inside * isSide);
+        float shade = n.y > 0.5 ? 1.0 : (abs(n.x) > 0.5 ? (n.x < 0.0 ? 0.86 : 0.74) : (n.z > 0.0 ? 0.8 : 0.9));
+        vec3 col = vColor * shade;
         float d = length(vWorld - cameraPosition);
-        col = mix(col, uFog, smoothstep(uFogNear, uFogFar, d) * 0.85);
+        col = mix(col, uFog, smoothstep(uFogNear, uFogFar, d) * 0.55);
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
     }`
-
-function makeSkyTexture() {
-    const canvas = document.createElement('canvas')
-    canvas.width = 4
-    canvas.height = 256
-    const context = canvas.getContext('2d')
-    const gradient = context.createLinearGradient(0, 0, 0, 256)
-    gradient.addColorStop(0, '#050c2a')
-    gradient.addColorStop(0.6, NIGHT)
-    gradient.addColorStop(1, HORIZON)
-    context.fillStyle = gradient
-    context.fillRect(0, 0, 4, 256)
-    const texture = new CanvasTexture(canvas)
-    texture.colorSpace = SRGBColorSpace
-    return texture
-}
-
-function makeGlowTexture() {
-    const canvas = document.createElement('canvas')
-    canvas.width = canvas.height = 64
-    const context = canvas.getContext('2d')
-    const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32)
-    gradient.addColorStop(0, INBOX_GLOW)
-    gradient.addColorStop(0.35, 'rgba(0,194,130,0.45)')
-    gradient.addColorStop(1, 'rgba(0,194,130,0)')
-    context.fillStyle = gradient
-    context.fillRect(0, 0, 64, 64)
-    const texture = new CanvasTexture(canvas)
-    texture.colorSpace = SRGBColorSpace
-    return texture
-}
 
 /**
  * @param {HTMLElement} container an empty element the canvas is appended to; it must have a size
@@ -142,30 +96,29 @@ function makeGlowTexture() {
  * @param {boolean} options.reduceMotion
  */
 export function createSkylineScene(container, { onHover, onSelect, reduceMotion = false }) {
-    const renderer = new WebGLRenderer({ antialias: true, alpha: false })
+    const renderer = new WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.outputColorSpace = SRGBColorSpace
+    renderer.setClearColor(new Color(WHITE), 0)
     const canvas = renderer.domElement
     canvas.style.display = 'block'
     canvas.style.width = '100%'
     canvas.style.height = '100%'
-    canvas.style.cursor = 'grab'
-    // Vertical swipes keep scrolling the page this card sits in; horizontal drags orbit the city.
-    canvas.style.touchAction = 'pan-y'
     container.appendChild(canvas)
 
     const scene = new Scene()
-    const skyTexture = makeSkyTexture()
-    scene.background = skyTexture
-    const camera = new PerspectiveCamera(36, 1, 0.5, 500)
+    const camera = new PerspectiveCamera(FOV, 1, 0.5, 500)
+    // Screen-up is "back" in the city, so looking straight down still reads weeks left to right and
+    // Monday..Sunday top to bottom, like the 2D grid it replaces.
+    camera.up.set(0, 0, -1)
 
-    const disposables = [skyTexture]
+    const disposables = []
     const track = item => {
         disposables.push(item)
         return item
     }
 
-    // Ground: a canvas texture carrying the plot grid and the month/weekday labels.
+    // Ground: plots, a soft contact shadow per building, month and weekday labels.
     const groundWidth = SKYLINE_WEEKS + MARGIN_X * 2
     const groundDepth = GRID_DAYS + MARGIN_Z * 2
     const groundCanvas = document.createElement('canvas')
@@ -176,76 +129,61 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     groundTexture.anisotropy = renderer.capabilities.getMaxAnisotropy()
     const ground = new Mesh(
         track(new PlaneGeometry(groundWidth, groundDepth)),
-        track(new MeshBasicMaterial({ map: groundTexture }))
+        track(new MeshBasicMaterial({ map: groundTexture, transparent: true }))
     )
     ground.rotation.x = -Math.PI / 2
     scene.add(ground)
 
+    let days = []
     let labels = { months: [], weekdays: [] }
+    let scale = 5
+
     const drawGround = () => {
         const context = groundCanvas.getContext('2d')
         const px = GROUND_PX_PER_UNIT
         const cx = x => (x + groundWidth / 2) * px
         const cz = z => (z + groundDepth / 2) * px
-        const gradient = context.createRadialGradient(cx(0), cz(0), 20, cx(0), cz(0), groundWidth * px * 0.55)
-        gradient.addColorStop(0, '#0f1f5c')
-        gradient.addColorStop(1, '#060e33')
-        context.fillStyle = gradient
-        context.fillRect(0, 0, groundCanvas.width, groundCanvas.height)
-        context.fillStyle = 'rgba(169,180,214,0.07)'
-        const plot = 0.9 * px
+        context.clearRect(0, 0, groundCanvas.width, groundCanvas.height)
+        const plot = FOOTPRINT * px
+        const radius = 0.08 * px
+        const roundRect = (x, y, w, h) => {
+            context.beginPath()
+            if (context.roundRect) context.roundRect(x, y, w, h, radius)
+            else context.rect(x, y, w, h)
+            context.fill()
+        }
+        // Contact shadows first, so plots sit on top of them; longer for taller buildings.
+        context.fillStyle = SHADOW
+        days.forEach(day => {
+            if (day.tasks <= 0) return
+            const length = Math.min(1, getSkylineHeight(day.tasks, scale) / 4) * 0.45 * px
+            roundRect(
+                cx(posX(day.week)) - plot / 2 + length * 0.4,
+                cz(posZ(day.weekday)) - plot / 2 - length,
+                plot,
+                plot
+            )
+        })
+        context.fillStyle = PLOT
         for (let week = 0; week < SKYLINE_WEEKS; week++) {
             for (let weekday = 0; weekday < GRID_DAYS; weekday++) {
-                context.fillRect(cx(posX(week)) - plot / 2, cz(posZ(weekday)) - plot / 2, plot, plot)
+                roundRect(cx(posX(week)) - plot / 2, cz(posZ(weekday)) - plot / 2, plot, plot)
             }
         }
         context.fillStyle = LABEL
         context.textBaseline = 'middle'
         context.textAlign = 'left'
-        context.font = `600 ${0.62 * px}px sans-serif`
+        const font = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        context.font = `500 ${0.5 * px}px ${font}`
         labels.months.forEach(({ week, text }) => {
-            context.fillText(text, cx(posX(week) - 0.4), cz(posZ(GRID_DAYS - 1) + 1.3))
+            context.fillText(text, cx(posX(week) - 0.4), cz(posZ(GRID_DAYS - 1) + 1.2))
         })
         context.textAlign = 'right'
-        context.font = `500 ${0.44 * px}px sans-serif`
+        context.font = `500 ${0.42 * px}px ${font}`
         labels.weekdays.forEach(({ weekday, text }) => {
             context.fillText(text, cx(posX(0) - 0.8), cz(posZ(weekday)))
         })
         groundTexture.needsUpdate = true
-    }
-
-    // Stars — fixed seed so the sky does not rearrange itself between visits.
-    {
-        let seed = 7
-        const random = () => {
-            seed = (seed * 16807) % 2147483647
-            return seed / 2147483647
-        }
-        const count = 600
-        const positions = new Float32Array(count * 3)
-        for (let i = 0; i < count; i++) {
-            const theta = random() * Math.PI * 2
-            const phi = random() * 1.2
-            positions[i * 3] = Math.sin(phi) * Math.cos(theta) * 220
-            positions[i * 3 + 1] = Math.cos(phi) * 154 + 10
-            positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * 220
-        }
-        const geometry = track(new BufferGeometry())
-        geometry.setAttribute('position', new BufferAttribute(positions, 3))
-        scene.add(
-            new Points(
-                geometry,
-                track(
-                    new PointsMaterial({
-                        color: 0xc8d4ff,
-                        size: 1.4,
-                        sizeAttenuation: false,
-                        transparent: true,
-                        opacity: 0.7,
-                    })
-                )
-            )
-        )
     }
 
     const boxGeometry = track(new BoxGeometry(FOOTPRINT, 1, FOOTPRINT))
@@ -253,41 +191,27 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     const buildingMaterial = track(
         new ShaderMaterial({
             uniforms: {
-                uFog: { value: new Color(HORIZON) },
-                uFogNear: { value: 55 },
-                uFogFar: { value: 170 },
-                uLight: { value: new Vector3(-0.5, 0.9, 0.6) },
+                uFog: { value: new Color(WHITE) },
+                uFogNear: { value: 40 },
+                uFogFar: { value: 140 },
             },
             vertexShader: buildingVertexShader,
             fragmentShader: buildingFragmentShader,
         })
     )
-    const roofGeometry = track(new BoxGeometry(FOOTPRINT + 0.04, 0.07, FOOTPRINT + 0.04))
+    const roofGeometry = track(new BoxGeometry(FOOTPRINT + 0.02, 0.06, FOOTPRINT + 0.02))
     const roofMaterial = track(new MeshBasicMaterial({ color: new Color(INBOX_GREEN) }))
-    const glowTexture = track(makeGlowTexture())
-    const glowMaterial = track(
-        new PointsMaterial({
-            map: glowTexture,
-            size: 2.2,
-            transparent: true,
-            depthWrite: false,
-            blending: AdditiveBlending,
-        })
-    )
     const marker = new Mesh(
-        track(new ConeGeometry(0.28, 0.6, 4)),
-        track(new MeshBasicMaterial({ color: new Color(TODAY) }))
+        track(new ConeGeometry(0.26, 0.55, 4)),
+        track(new MeshBasicMaterial({ color: new Color(HIGHLIGHT) }))
     )
     marker.rotation.x = Math.PI
     marker.visible = false
     scene.add(marker)
 
     // Per-day state, rebuilt by setDays.
-    let days = []
     let buildings = null
     let roofs = null
-    let glows = null
-    let glowGeometry = null
     let roofIndices = []
     let baseColors = []
     let from = new Float32Array(0)
@@ -302,25 +226,35 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     let celebrationStart = -1
 
     const dummy = new Object3D()
-    const white = new Color('#ffffff')
+    const white = new Color(WHITE)
+    const highlight = new Color(HIGHLIGHT)
 
     const disposeDayMeshes = () => {
-        ;[buildings, roofs, glows].forEach(mesh => {
+        ;[buildings, roofs].forEach(mesh => {
             if (!mesh) return
             scene.remove(mesh)
-            if (mesh.dispose) mesh.dispose()
+            mesh.dispose()
         })
-        if (glowGeometry) glowGeometry.dispose()
-        buildings = roofs = glows = glowGeometry = null
+        buildings = roofs = null
     }
 
     const paint = index => {
         if (!buildings || index < 0 || index >= days.length) return
-        const color = baseColors[index].clone()
-        if (index === selectedIndex) color.lerp(white, 0.5)
-        else if (index === hoverIndex) color.lerp(white, 0.3)
+        let color = baseColors[index]
+        if (index === selectedIndex) color = highlight
+        else if (index === hoverIndex) color = baseColors[index].clone().lerp(white, 0.35)
         buildings.setColorAt(index, color)
         buildings.instanceColor.needsUpdate = true
+    }
+
+    // Today's green roof popping in, on the same celebration run as the 2D dot.
+    const CELEBRATION_SECONDS = 1.6
+    const celebrationScale = () => {
+        if (celebrationStart < 0) return 1
+        const t = (performance.now() / 1000 - celebrationStart) / CELEBRATION_SECONDS
+        if (t >= 1) return 1
+        if (t < 0.35) return (t / 0.35) * 1.6
+        return 1.6 - 0.6 * ((t - 0.35) / 0.65)
     }
 
     const applyHeights = () => {
@@ -332,36 +266,20 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
             buildings.setMatrixAt(i, dummy.matrix)
         }
         buildings.instanceMatrix.needsUpdate = true
-        const positions = glowGeometry.attributes.position.array
         roofIndices.forEach((i, k) => {
             const pop = i === todayIndex ? celebrationScale() : 1
-            dummy.position.set(posX(days[i].week), current[i] + 0.035, posZ(days[i].weekday))
-            dummy.scale.set(pop, current[i] > 0.02 ? 1 : 0.001, pop)
+            dummy.position.set(posX(days[i].week), current[i] + 0.03, posZ(days[i].weekday))
+            dummy.scale.set(pop, 1, pop)
             dummy.updateMatrix()
             roofs.setMatrixAt(k, dummy.matrix)
-            positions[k * 3] = posX(days[i].week)
-            positions[k * 3 + 1] = current[i] + 0.2 + (pop - 1) * 0.6
-            positions[k * 3 + 2] = posZ(days[i].weekday)
         })
         roofs.instanceMatrix.needsUpdate = true
-        glowGeometry.attributes.position.needsUpdate = true
-    }
-
-    // Today's roof lighting up: scales in from nothing, overshoots and settles. Driven by the same
-    // celebration run the 2D dot uses, so the two can never both play.
-    const CELEBRATION_SECONDS = 1.6
-    const celebrationScale = () => {
-        if (celebrationStart < 0) return 1
-        const t = (performance.now() / 1000 - celebrationStart) / CELEBRATION_SECONDS
-        if (t >= 1) return 1
-        if (t < 0.35) return (t / 0.35) * 1.8
-        return 1.8 - 0.8 * ((t - 0.35) / 0.65)
     }
 
     const setTargets = stagger => {
         for (let i = 0; i < days.length; i++) {
             from[i] = current[i]
-            to[i] = getSkylineHeight(days[i].tasks)
+            to[i] = getSkylineHeight(days[i].tasks, scale)
             delay[i] = reduceMotion ? 0 : days[i].week * stagger + days[i].weekday * 0.008
         }
         animationStart = performance.now() / 1000
@@ -381,28 +299,29 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         if (done) animating = false
     }
 
-    // Camera: a simple orbit around the middle of the year.
-    const target = new Vector3(0, 1.5, 0)
-    const orbit = { theta: -0.32, phi: 1.05, radius: 60 }
-    let interacted = false
-    let defaultView = { ...orbit }
-    const computeDefaultView = () => {
-        const aspect = camera.aspect
-        const vfov = MathUtils.degToRad(camera.fov)
-        const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect)
-        const radius = (SKYLINE_WEEKS / 2 + 3) / Math.tan(hfov / 2)
-        return {
-            theta: aspect < 1.2 ? -0.9 : -0.32,
-            phi: 1.02,
-            radius: MathUtils.clamp(aspect < 1.2 ? radius * 0.55 : radius, 24, MAX_RADIUS),
-        }
+    // Camera: the flyover. Distance is fixed so the whole year always fits the card's width; only
+    // the angle and how far along the city we look follow the scroll.
+    let radius = 60
+    let flight = null
+    const target = new Vector3()
+    const readScrollProgress = () => {
+        if (reduceMotion) return REDUCED_MOTION_PROGRESS
+        const rect = container.getBoundingClientRect()
+        const viewport = window.innerHeight || document.documentElement.clientHeight || 1
+        return (rect.top + rect.height / 2) / viewport
     }
     const placeCamera = () => {
-        const s = Math.sin(orbit.phi)
+        const wanted = getFlyoverView(readScrollProgress())
+        if (!flight || reduceMotion) flight = { ...wanted }
+        else {
+            flight.tilt += (wanted.tilt - flight.tilt) * 0.12
+            flight.forward += (wanted.forward - flight.forward) * 0.12
+        }
+        target.set(0, 0.6, flight.forward)
         camera.position.set(
-            target.x + orbit.radius * s * Math.sin(orbit.theta),
-            target.y + orbit.radius * Math.cos(orbit.phi),
-            target.z + orbit.radius * s * Math.cos(orbit.theta)
+            target.x,
+            target.y + radius * Math.cos(flight.tilt),
+            target.z + radius * Math.sin(flight.tilt)
         )
         camera.lookAt(target)
     }
@@ -414,17 +333,17 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         renderer.setSize(width, height, false)
         camera.aspect = width / height
         camera.updateProjectionMatrix()
-        defaultView = computeDefaultView()
-        if (!interacted) Object.assign(orbit, defaultView)
+        const vfov = MathUtils.degToRad(FOV)
+        const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect)
+        const byWidth = (SKYLINE_WEEKS / 2 + 2.2) / Math.tan(hfov / 2)
+        const byDepth = (GRID_DAYS / 2 + 3) / Math.tan(vfov / 2)
+        radius = Math.max(byWidth, byDepth)
     }
 
-    // Interaction. Every pointer event the canvas handles is stopped here, so a drag across the
-    // city can never reach the achievements card's own press handler underneath it.
+    // Interaction: hover (mouse) and tap only. Page scrolling is never intercepted; the one event
+    // stopped here is the click, so a tap on the city is not also a press on the card around it.
     const raycaster = new Raycaster()
     const pointerNdc = new Vector2()
-    const pointers = new Map()
-    let moved = 0
-    let pinchDistance = 0
     let downAt = null
 
     const pick = (clientX, clientY) => {
@@ -441,93 +360,9 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         hoverIndex = index
         paint(previous)
         paint(index)
-        canvas.style.cursor = index >= 0 ? 'pointer' : 'grab'
+        canvas.style.cursor = index >= 0 ? 'pointer' : 'default'
         onHover(index)
     }
-
-    const stop = event => event.stopPropagation()
-    const onPointerDown = event => {
-        event.stopPropagation()
-        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, type: event.pointerType })
-        if (pointers.size === 1) {
-            moved = 0
-            downAt = { x: event.clientX, y: event.clientY }
-            try {
-                canvas.setPointerCapture(event.pointerId)
-            } catch (error) {}
-        }
-        if (pointers.size === 2) {
-            const [a, b] = [...pointers.values()]
-            pinchDistance = Math.hypot(a.x - b.x, a.y - b.y)
-        }
-    }
-    const onPointerMove = event => {
-        const pointer = pointers.get(event.pointerId)
-        if (!pointer) {
-            if (event.pointerType === 'mouse') setHover(pick(event.clientX, event.clientY))
-            return
-        }
-        event.stopPropagation()
-        const dx = event.clientX - pointer.x
-        const dy = event.clientY - pointer.y
-        pointer.x = event.clientX
-        pointer.y = event.clientY
-        if (pointers.size === 1) {
-            moved += Math.abs(dx) + Math.abs(dy)
-            if (moved > 6) {
-                interacted = true
-                canvas.style.cursor = 'grabbing'
-            }
-            orbit.theta -= dx * 0.005
-            // Only a mouse tilts: on touch the vertical axis belongs to page scrolling.
-            if (pointer.type === 'mouse') orbit.phi = MathUtils.clamp(orbit.phi - dy * 0.004, 0.3, 1.42)
-        } else if (pointers.size === 2) {
-            moved = 99
-            interacted = true
-            const [a, b] = [...pointers.values()]
-            const distance = Math.hypot(a.x - b.x, a.y - b.y)
-            if (pinchDistance) {
-                orbit.radius = MathUtils.clamp(orbit.radius * (pinchDistance / distance), MIN_RADIUS, MAX_RADIUS)
-            }
-            pinchDistance = distance
-        }
-    }
-    const onPointerUp = event => {
-        if (!pointers.has(event.pointerId)) return
-        event.stopPropagation()
-        pointers.delete(event.pointerId)
-        if (pointers.size === 0) {
-            canvas.style.cursor = hoverIndex >= 0 ? 'pointer' : 'grab'
-            if (moved <= 6 && downAt) {
-                const index = pick(event.clientX, event.clientY)
-                selectIndex(index)
-                onSelect(index)
-            }
-            downAt = null
-        }
-        if (pointers.size < 2) pinchDistance = 0
-    }
-    const onPointerLeave = event => {
-        if (event.pointerType === 'mouse' && pointers.size === 0) setHover(-1)
-    }
-    // Plain wheel scrolls the page the card lives in; ctrl/cmd + wheel (and trackpad pinch,
-    // which browsers report as ctrl + wheel) zooms the city.
-    const onWheel = event => {
-        if (!event.ctrlKey && !event.metaKey) return
-        event.preventDefault()
-        event.stopPropagation()
-        interacted = true
-        orbit.radius = MathUtils.clamp(orbit.radius * (1 + event.deltaY * 0.01), MIN_RADIUS, MAX_RADIUS)
-    }
-
-    canvas.addEventListener('pointerdown', onPointerDown)
-    canvas.addEventListener('pointermove', onPointerMove)
-    canvas.addEventListener('pointerup', onPointerUp)
-    canvas.addEventListener('pointercancel', onPointerUp)
-    canvas.addEventListener('pointerleave', onPointerLeave)
-    canvas.addEventListener('wheel', onWheel, { passive: false })
-    ;['click', 'mousedown', 'mouseup', 'touchstart', 'touchend'].forEach(type => canvas.addEventListener(type, stop))
-
     const selectIndex = index => {
         const previous = selectedIndex
         selectedIndex = index
@@ -535,25 +370,57 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         paint(index)
     }
 
+    const onPointerDown = event => {
+        downAt = { x: event.clientX, y: event.clientY }
+    }
+    const onPointerMove = event => {
+        if (event.pointerType === 'mouse') setHover(pick(event.clientX, event.clientY))
+    }
+    const onPointerUp = event => {
+        if (!downAt) return
+        const moved = Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y)
+        downAt = null
+        if (moved > 8) return
+        const index = pick(event.clientX, event.clientY)
+        selectIndex(index)
+        onSelect(index)
+    }
+    const onPointerCancel = () => {
+        downAt = null
+    }
+    const onPointerLeave = event => {
+        if (event.pointerType === 'mouse') setHover(-1)
+    }
+    const stopClick = event => event.stopPropagation()
+
+    canvas.addEventListener('pointerdown', onPointerDown)
+    canvas.addEventListener('pointermove', onPointerMove)
+    canvas.addEventListener('pointerup', onPointerUp)
+    canvas.addEventListener('pointercancel', onPointerCancel)
+    canvas.addEventListener('pointerleave', onPointerLeave)
+    canvas.addEventListener('click', stopClick)
+
     const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null
     if (resizeObserver) resizeObserver.observe(container)
     resize()
 
+    // Only draw while the card is on screen: the loop reads the scroll position every frame, which
+    // is exactly the work to skip when nobody can see the city.
     let frameId = 0
     let disposed = false
-    const startTime = performance.now() / 1000
+    let visible = true
     const frame = () => {
-        if (disposed) return
+        frameId = 0
+        if (disposed || !visible) return
         const now = performance.now() / 1000
         stepHeights(now)
-        if (buildings) applyHeights()
-        if (!interacted && !reduceMotion) orbit.theta = defaultView.theta + Math.sin((now - startTime) * 0.09) * 0.3
+        applyHeights()
         if (todayIndex >= 0) {
             const day = days[todayIndex]
             marker.visible = true
             marker.position.set(
                 posX(day.week),
-                current[todayIndex] + 1.1 + (reduceMotion ? 0 : Math.sin(now * 2.2) * 0.15),
+                current[todayIndex] + 0.9 + (reduceMotion ? 0 : Math.sin(now * 2.2) * 0.12),
                 posZ(day.weekday)
             )
             marker.rotation.y = reduceMotion ? 0 : now * 0.8
@@ -562,7 +429,18 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         renderer.render(scene, camera)
         frameId = requestAnimationFrame(frame)
     }
-    frameId = requestAnimationFrame(frame)
+    const startLoop = () => {
+        if (!frameId && !disposed) frameId = requestAnimationFrame(frame)
+    }
+    const intersectionObserver =
+        typeof IntersectionObserver !== 'undefined'
+            ? new IntersectionObserver(entries => {
+                  visible = entries.some(entry => entry.isIntersecting)
+                  if (visible) startLoop()
+              })
+            : null
+    if (intersectionObserver) intersectionObserver.observe(container)
+    startLoop()
 
     return {
         /**
@@ -576,6 +454,7 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
             disposeDayMeshes()
             days = nextDays
             labels = nextLabels || labels
+            scale = getSkylineScale(days)
             drawGround()
 
             const count = days.length
@@ -590,14 +469,12 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
             if (selectedIndex >= count) selectedIndex = -1
             hoverIndex = -1
 
-            baseColors = days.map(day =>
-                day.dominantColor ? new Color(day.dominantColor).multiplyScalar(0.62) : new Color(EMPTY_DAY)
-            )
+            baseColors = days.map(day => new Color(day.tasks > 0 ? getSkylineColor(day.tasks, scale) : PLOT))
             buildings = new InstancedMesh(boxGeometry, buildingMaterial, Math.max(count, 1))
             buildings.count = count
             buildings.frustumCulled = false
             baseColors.forEach((color, i) => buildings.setColorAt(i, color))
-            if (count === 0) buildings.setColorAt(0, new Color(EMPTY_DAY))
+            if (count === 0) buildings.setColorAt(0, new Color(PLOT))
             scene.add(buildings)
 
             roofIndices = days.map((day, i) => (day.achieved ? i : -1)).filter(i => i >= 0)
@@ -605,15 +482,11 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
             roofs.count = roofIndices.length
             roofs.frustumCulled = false
             scene.add(roofs)
-            glowGeometry = new BufferGeometry()
-            glowGeometry.setAttribute('position', new BufferAttribute(new Float32Array(roofIndices.length * 3), 3))
-            glows = new Points(glowGeometry, glowMaterial)
-            glows.frustumCulled = false
-            scene.add(glows)
 
             days.forEach((_, i) => paint(i))
-            setTargets(firstBuild ? 0.035 : 0.004)
+            setTargets(firstBuild ? 0.03 : 0.004)
             applyHeights()
+            startLoop()
         },
         select(index) {
             selectIndex(index)
@@ -621,23 +494,17 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         celebrateToday() {
             if (!reduceMotion) celebrationStart = performance.now() / 1000
         },
-        resetView() {
-            interacted = false
-            Object.assign(orbit, defaultView)
-        },
         destroy() {
             disposed = true
-            cancelAnimationFrame(frameId)
+            if (frameId) cancelAnimationFrame(frameId)
             if (resizeObserver) resizeObserver.disconnect()
+            if (intersectionObserver) intersectionObserver.disconnect()
             canvas.removeEventListener('pointerdown', onPointerDown)
             canvas.removeEventListener('pointermove', onPointerMove)
             canvas.removeEventListener('pointerup', onPointerUp)
-            canvas.removeEventListener('pointercancel', onPointerUp)
+            canvas.removeEventListener('pointercancel', onPointerCancel)
             canvas.removeEventListener('pointerleave', onPointerLeave)
-            canvas.removeEventListener('wheel', onWheel)
-            ;['click', 'mousedown', 'mouseup', 'touchstart', 'touchend'].forEach(type =>
-                canvas.removeEventListener(type, stop)
-            )
+            canvas.removeEventListener('click', stopClick)
             disposeDayMeshes()
             disposables.forEach(item => item.dispose())
             renderer.dispose()
