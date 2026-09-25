@@ -98,8 +98,12 @@ describe('skyline scene (smoke)', () => {
         const canvas = container.querySelector('canvas')
         canvas.getBoundingClientRect = () => ({ left: 0, top: 100, width: 600, height: 540 })
         const tap = (x, y) => {
-            canvas.dispatchEvent(Object.assign(new Event('pointerdown'), { clientX: x, clientY: y, pointerType: 'mouse' }))
-            canvas.dispatchEvent(Object.assign(new Event('pointerup'), { clientX: x, clientY: y, pointerType: 'mouse' }))
+            canvas.dispatchEvent(
+                Object.assign(new Event('pointerdown'), { clientX: x, clientY: y, pointerType: 'mouse' })
+            )
+            canvas.dispatchEvent(
+                Object.assign(new Event('pointerup'), { clientX: x, clientY: y, pointerType: 'mouse' })
+            )
             runFrames(3)
         }
         for (let i = 0; i < 30; i++) tap(300, 370)
