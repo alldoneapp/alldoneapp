@@ -193,15 +193,37 @@ const FACADE_FRAGMENT = `
     float floorLine = smoothstep(0.86, 0.93, fract(vFacadeWorld.y / 0.26)) * step(0.3, vFacadeWorld.y);
     diffuseColor.rgb *= 1.0 - floorLine * 0.09 * facadeSide;
     float groundOcclusion = mix(0.74, 1.0, smoothstep(0.0, 0.45, vFacadeWorld.y));
-    diffuseColor.rgb *= mix(1.0, groundOcclusion, facadeSide);`
+    diffuseColor.rgb *= mix(1.0, groundOcclusion, facadeSide);
+    // Windows: a grid on the walls only (never roofs, domes or the ground floor), between the floor
+    // lines. By day they are quiet glass, a little darker than the wall; as evening falls a seeded
+    // third of them glow warm, faded in with the street lamps.
+    float wallOnly = 1.0 - step(0.2, abs(vFacadeNormal.y));
+    float across = abs(vFacadeNormal.x) > abs(vFacadeNormal.z) ? vFacadeWorld.z : vFacadeWorld.x;
+    vec2 windowCell = vec2(across / 0.17, vFacadeWorld.y / 0.26);
+    vec2 windowIn = fract(windowCell);
+    float windowMask = step(0.24, windowIn.x) * step(windowIn.x, 0.76) * step(0.22, windowIn.y) * step(windowIn.y, 0.7);
+    windowMask *= wallOnly * step(0.26, vFacadeWorld.y);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.74, windowMask);
+    float windowLit = step(0.66, fract(sin(dot(floor(windowCell) + floor(vFacadeWorld.xz * 1.3) * 7.0, vec2(127.1, 311.7))) * 43758.5453));`
+// Added to the emitted light, so a lit window glows independently of how the wall is lit.
+const WINDOW_GLOW_FRAGMENT = `
+    totalEmissiveRadiance += uWindowColor * windowMask * windowLit * uWindowGlow * 0.9;`
+const windowGlow = { value: 0 }
+const windowColor = { value: new Color(colors.UtilityYellow150) }
 const withFacadeDetail = material => {
     material.onBeforeCompile = shader => {
+        shader.uniforms.uWindowGlow = windowGlow
+        shader.uniforms.uWindowColor = windowColor
         shader.vertexShader = shader.vertexShader
             .replace('void main() {', 'varying vec3 vFacadeWorld;\nvarying vec3 vFacadeNormal;\nvoid main() {')
             .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>\n${FACADE_VERTEX}`)
         shader.fragmentShader = shader.fragmentShader
-            .replace('void main() {', 'varying vec3 vFacadeWorld;\nvarying vec3 vFacadeNormal;\nvoid main() {')
+            .replace(
+                'void main() {',
+                'uniform float uWindowGlow;\nuniform vec3 uWindowColor;\nvarying vec3 vFacadeWorld;\nvarying vec3 vFacadeNormal;\nvoid main() {'
+            )
             .replace('#include <color_fragment>', `#include <color_fragment>\n${FACADE_FRAGMENT}`)
+            .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${WINDOW_GLOW_FRAGMENT}`)
     }
     return material
 }
@@ -308,6 +330,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             Math.cos(daylight.elevation) * Math.cos(daylight.azimuth) * 30
         )
         lampGlow = daylight.lamps
+        windowGlow.value = daylight.lamps
     }
     applyDaylight(getDaylight())
 
