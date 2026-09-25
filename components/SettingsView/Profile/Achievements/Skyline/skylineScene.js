@@ -27,7 +27,10 @@ import {
 
 import { colors } from '../../../../styles/global'
 import {
+    CRITICAL_HIT_CHANCE,
     getBuildingType,
+    getIntegrity,
+    rollHitPoints,
     getFlyoverView,
     getSkylineColor,
     getSkylineHeight,
@@ -51,8 +54,14 @@ import {
  *    (`getBuildingType`): a little park for a day with nothing done, then a house, a mid-rise with a
  *    spinning rooftop fan, a stepped tower, and a skyscraper with an antenna and a beacon. A green
  *    roof (the 2D grid's UtilityGreen200) marks an empty-inbox day.
- *  - THE LIFE is decoration only and carries no data: a soft light sweep up the facades, cloud
- *    shadows drifting over the city, cars on the streets, flocks of birds, a hot-air balloon and a
+ *  - DEMOLITION is the toy on top: every tap on a building is a hit. A building takes a random
+ *    number of hits (`rollHitPoints`, more for bigger types, sometimes a double-damage critical);
+ *    each hit shakes it, flashes it, knocks floors off in a burst of debris and sparks, and the
+ *    last one collapses it into a cloud of dust with a little camera shake, leaving rubble. It is
+ *    purely local and temporary — kept in memory by date, so a statistics refresh does not undo
+ *    it, and a reload brings the whole city back.
+ *  - THE LIFE is decoration only and carries no data: a soft light sweep up the facades, cars
+ *    on the road grid between the blocks, flocks of birds, a hot-air balloon and a
  *    small plane with its shadow. None of it is interactive, and all of it stops for reduced motion.
  *
  * Every colour is an app colour. The canvas is transparent, so the card's own white is the sky.
@@ -61,8 +70,14 @@ import {
 
 const FOOTPRINT = 0.72
 const GRID_DAYS = 7
-const MARGIN_X = 2.6
-const MARGIN_Z = 2.4
+// Centre-to-centre distance between two days. Wider than a building so a road runs between every
+// row and column: the city fills more of the card, and the lean of a tall building is a smaller
+// share of the whole, so less room has to be reserved for it.
+const PITCH = 1.55
+const ROAD_WIDTH = 0.5
+const BLOCK = PITCH - ROAD_WIDTH
+const MARGIN_X = 2.2
+const MARGIN_Z = 1.6
 const GROUND_PX_PER_UNIT = 64
 const RISE_DURATION = 1.1
 const CAMERA_HEIGHT = 24
@@ -73,10 +88,12 @@ const TALLEST = SKYLINE_MAX_HEIGHT * 1.15 + 0.1 + SPIRE + 0.12
 const REDUCED_MOTION_PROGRESS = 0.5
 const FROZEN_TIME = 20
 
-const PLOT = colors.Grey200
+const PLOT = colors.Grey100
+const ROAD = colors.Grey300
+const LANE = '#FFFFFF'
 const PARK = colors.UtilityGreen100
 const TREE = colors.UtilityGreen125
-const SHADOW = colors.Grey300
+const SHADOW = colors.Grey200
 const LABEL = colors.Text03
 const INBOX_GREEN = colors.UtilityGreen200
 const HIGHLIGHT = colors.UtilityYellow200
@@ -99,9 +116,11 @@ const CAR_COLORS = [
     colors.UtilityGreen200,
 ]
 
-const posX = week => week - (SKYLINE_WEEKS - 1) / 2
-const posZ = weekday => weekday - (GRID_DAYS - 1) / 2
-const CITY_HALF_WIDTH = SKYLINE_WEEKS / 2 + 0.5
+const posX = week => (week - (SKYLINE_WEEKS - 1) / 2) * PITCH
+const posZ = weekday => (weekday - (GRID_DAYS - 1) / 2) * PITCH
+// Roads run along the outside of the city too, so these are the centre lines of the outer roads.
+const CITY_HALF_WIDTH = (SKYLINE_WEEKS * PITCH) / 2
+const CITY_HALF_DEPTH = (GRID_DAYS * PITCH) / 2
 
 // Deterministic pseudo-random numbers: the city must look the same on every visit and every
 // re-render, so nothing here may use Math.random.
@@ -114,18 +133,9 @@ const seeded = seed => {
     }
 }
 
-const NOISE_GLSL = `
+const HASH_GLSL = `
     uniform float uTime;
-    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-    float noise(vec2 p) {
-        vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-    }
-    float cloudShadow(vec2 p) {
-        p = p * 0.16 + vec2(uTime * 0.03, uTime * 0.011);
-        float n = noise(p) * 0.65 + noise(p * 2.3 + 3.7) * 0.35;
-        return smoothstep(0.55, 0.8, n);
-    }`
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`
 
 const solidVertexShader = `
     varying vec3 vWorld; varying vec3 vN; varying vec3 vColor; varying float vLocalY; varying vec2 vOrigin;
@@ -143,12 +153,13 @@ const solidVertexShader = `
         gl_Position = projectionMatrix * viewMatrix * world;
     }`
 
-// Soft, matte shading; a slow band of light sweeping up the facades (one per building, each on its
-// own phase, so the city shimmers rather than flashes); and the drifting cloud shadows.
+// Soft, matte shading and a slow band of light sweeping up the facades (one per building, each on its
+// own phase, so the city shimmers rather than flashes). No cloud shadows: anything drawn on the
+// ground beyond the city reveals the edge of the canvas and breaks the "printed on the card" look.
 const solidFragmentShader = `
     uniform float uMotion;
     varying vec3 vWorld; varying vec3 vN; varying vec3 vColor; varying float vLocalY; varying vec2 vOrigin;
-    ${NOISE_GLSL}
+    ${HASH_GLSL}
     void main() {
         vec3 n = normalize(vN);
         vec3 light = normalize(vec3(-0.35, 1.0, 0.45));
@@ -158,25 +169,7 @@ const solidFragmentShader = `
         float band = fract(uTime * 0.08 + hash(floor(vOrigin * 2.0 + 0.5))) * 3.4 - 1.2;
         float sheen = smoothstep(0.14, 0.0, abs(vLocalY - band)) * side * uMotion;
         col = mix(col, vec3(1.0), sheen * 0.24);
-        col *= 1.0 - cloudShadow(vWorld.xz) * 0.13;
         gl_FragColor = vec4(col, 1.0);
-        #include <colorspace_fragment>
-    }`
-
-const cloudVertexShader = `
-    varying vec3 vWorld;
-    void main() {
-        vec4 world = modelMatrix * vec4(position, 1.0);
-        vWorld = world.xyz;
-        gl_Position = projectionMatrix * viewMatrix * world;
-    }`
-
-const cloudFragmentShader = `
-    uniform vec3 uShade;
-    varying vec3 vWorld;
-    ${NOISE_GLSL}
-    void main() {
-        gl_FragColor = vec4(uShade, cloudShadow(vWorld.xz) * 0.08);
         #include <colorspace_fragment>
     }`
 
@@ -185,9 +178,10 @@ const cloudFragmentShader = `
  * @param {Object} options
  * @param {(index: number) => void} options.onHover  -1 when the pointer leaves every building
  * @param {(index: number) => void} options.onSelect -1 for a tap on empty ground
+ * @param {(count: number) => void} [options.onDemolish] called with the running total after each collapse
  * @param {boolean} options.reduceMotion
  */
-export function createSkylineScene(container, { onHover, onSelect, reduceMotion = false }) {
+export function createSkylineScene(container, { onHover, onSelect, onDemolish = () => {}, reduceMotion = false }) {
     const renderer = new WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.outputColorSpace = SRGBColorSpace
@@ -239,8 +233,8 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     )
 
     // ---------------------------------------------------------------- ground
-    const groundWidth = SKYLINE_WEEKS + MARGIN_X * 2
-    const groundDepth = GRID_DAYS + MARGIN_Z * 2
+    const groundWidth = CITY_HALF_WIDTH * 2 + MARGIN_X * 2
+    const groundDepth = CITY_HALF_DEPTH * 2 + MARGIN_Z * 2
     const groundCanvas = document.createElement('canvas')
     groundCanvas.width = Math.round(groundWidth * GROUND_PX_PER_UNIT)
     groundCanvas.height = Math.round(groundDepth * GROUND_PX_PER_UNIT)
@@ -253,23 +247,6 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     )
     ground.rotation.x = -Math.PI / 2
     scene.add(ground)
-
-    // Cloud shadows passing over the ground (the buildings darken by the same function).
-    const cloudLayer = new Mesh(
-        track(new PlaneGeometry(groundWidth + 8, groundDepth + 8)),
-        track(
-            new ShaderMaterial({
-                uniforms: { uTime: time, uShade: { value: new Color(colors.Secondary300) } },
-                vertexShader: cloudVertexShader,
-                fragmentShader: cloudFragmentShader,
-                transparent: true,
-                depthWrite: false,
-            })
-        )
-    )
-    cloudLayer.rotation.x = -Math.PI / 2
-    cloudLayer.position.y = 0.004
-    scene.add(cloudLayer)
 
     let days = []
     let labels = { months: [], weekdays: [] }
@@ -289,40 +266,68 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
             else context.rect(x, y, w, h)
             context.fill()
         }
-        // Contact shadows under the buildings, longer for taller ones.
-        context.fillStyle = SHADOW
-        days.forEach(day => {
-            if (day.tasks <= 0) return
-            const length = Math.min(1, getSkylineHeight(day.tasks, scale) / SKYLINE_MAX_HEIGHT) * 0.4 * px
-            roundRect(
-                cx(posX(day.week)) - plot / 2 + length * 0.45,
-                cz(posZ(day.weekday)) - plot / 2 - length,
-                plot,
-                plot
-            )
-        })
-        // Every plot of the quarter; parks for the days nothing got done, empty plots for the rest
-        // of the current week.
+        // Asphalt under the whole city; the blocks are laid on it, so what shows between them is the
+        // road grid.
+        const roadHalf = ROAD_WIDTH / 2
+        context.fillStyle = ROAD
+        context.beginPath()
+        const extentX = CITY_HALF_WIDTH + roadHalf
+        const extentZ = CITY_HALF_DEPTH + roadHalf
+        if (context.roundRect)
+            context.roundRect(cx(-extentX), cz(-extentZ), extentX * 2 * px, extentZ * 2 * px, 0.3 * px)
+        else context.rect(cx(-extentX), cz(-extentZ), extentX * 2 * px, extentZ * 2 * px)
+        context.fill()
+        // Dashed centre lines, one dash per block edge so they break at every junction.
+        context.fillStyle = LANE
+        const dash = 0.22 * px
+        const dashWidth = 0.035 * px
+        for (let row = 0; row <= GRID_DAYS; row++) {
+            const z = -CITY_HALF_DEPTH + row * PITCH
+            for (let week = 0; week < SKYLINE_WEEKS; week++) {
+                const from = posX(week) - BLOCK / 2
+                for (let x = from + 0.08; x + 0.22 <= from + BLOCK; x += 0.42) {
+                    context.fillRect(cx(x), cz(z) - dashWidth / 2, dash, dashWidth)
+                }
+            }
+        }
+        for (let column = 0; column <= SKYLINE_WEEKS; column++) {
+            const x = -CITY_HALF_WIDTH + column * PITCH
+            for (let weekday = 0; weekday < GRID_DAYS; weekday++) {
+                const from = posZ(weekday) - BLOCK / 2
+                for (let z = from + 0.08; z + 0.22 <= from + BLOCK; z += 0.42) {
+                    context.fillRect(cx(x) - dashWidth / 2, cz(z), dashWidth, dash)
+                }
+            }
+        }
+        // One block per day of the quarter: a park for the days nothing got done.
+        const block = BLOCK * px
         const byCell = new Map(days.map(day => [`${day.week}:${day.weekday}`, day]))
         for (let week = 0; week < SKYLINE_WEEKS; week++) {
             for (let weekday = 0; weekday < GRID_DAYS; weekday++) {
                 const day = byCell.get(`${week}:${weekday}`)
                 context.fillStyle = day && day.tasks <= 0 ? PARK : PLOT
-                roundRect(cx(posX(week)) - plot / 2, cz(posZ(weekday)) - plot / 2, plot, plot)
+                roundRect(cx(posX(week)) - block / 2, cz(posZ(weekday)) - block / 2, block, block)
             }
         }
+        // Contact shadows on the blocks, longer for taller buildings.
+        context.fillStyle = SHADOW
+        days.forEach(day => {
+            if (day.tasks <= 0) return
+            const length = Math.min(1, getSkylineHeight(day.tasks, scale) / SKYLINE_MAX_HEIGHT) * 0.14 * px
+            roundRect(cx(posX(day.week)) - plot / 2 + length, cz(posZ(day.weekday)) - plot / 2 - length, plot, plot)
+        })
         context.fillStyle = LABEL
         context.textBaseline = 'middle'
         const font = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
         context.textAlign = 'left'
-        context.font = `500 ${0.42 * px}px ${font}`
+        context.font = `500 ${0.46 * px}px ${font}`
         labels.months.forEach(({ week, text }) => {
-            context.fillText(text, cx(posX(week) - FOOTPRINT / 2), cz(posZ(GRID_DAYS - 1) + 1.0))
+            context.fillText(text, cx(posX(week) - BLOCK / 2), cz(CITY_HALF_DEPTH + roadHalf + 0.5))
         })
         context.textAlign = 'right'
-        context.font = `500 ${0.34 * px}px ${font}`
+        context.font = `500 ${0.38 * px}px ${font}`
         labels.weekdays.forEach(({ weekday, text }) => {
-            context.fillText(text, cx(posX(0) - 0.7), cz(posZ(weekday)))
+            context.fillText(text, cx(-CITY_HALF_WIDTH - roadHalf - 0.25), cz(posZ(weekday)))
         })
         groundTexture.needsUpdate = true
     }
@@ -353,6 +358,11 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     let hoverIndex = -1
     let selectedIndex = -1
     let celebrationStart = -1
+    // Demolition state, keyed by date so it survives a statistics refresh rebuilding the parts.
+    const damage = new Map()
+    let demolished = 0
+    let cameraShake = 0
+    const damageOf = b => (b >= 0 && b < days.length ? damage.get(days[b].dateKey) : null)
 
     const disposeBuildingMeshes = () => {
         Object.values(meshes).forEach(mesh => {
@@ -492,14 +502,13 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     }
 
     const white = new Color('#FFFFFF')
-    const highlight = new Color(HIGHLIGHT)
+    const flashColor = new Color()
     const paint = b => {
         if (b < 0 || b >= partsByBuilding.length) return
         partsByBuilding[b].forEach(part => {
             if (!KINDS[part.kind].pickable || part.isRoof || part.color === METAL) return
             let color = part.base
-            if (b === selectedIndex) color = highlight
-            else if (b === hoverIndex) color = part.base.clone().lerp(white, 0.35)
+            if (b === hoverIndex) color = part.base.clone().lerp(white, 0.3)
             meshes[part.kind].setColorAt(part.index, color)
             meshes[part.kind].instanceColor.needsUpdate = true
         })
@@ -520,10 +529,24 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         if (!parts.length) return
         const pop = celebrationScale(now)
         parts.forEach(part => {
-            const r = rise[part.b]
+            const state = damageOf(part.b)
+            const integrity = state ? state.integrity : 1
+            const r = rise[part.b] * integrity
             let { w, d } = part
             let h = part.h * r
             let rotation = part.rot
+            let jitterX = 0
+            let jitterZ = 0
+            if (state) {
+                // Rooftop equipment is the first thing a hit knocks off.
+                if (state.stripped && (part.kind === 'fan' || part.kind === 'spire' || part.kind === 'beacon')) h = 0
+                if (state.collapsed && integrity < 0.02) h = 0
+                const shake = Math.max(0, 1 - (now - state.shakeStart) / 0.35)
+                if (shake > 0 && !reduceMotion) {
+                    jitterX = Math.sin(now * 90 + part.b) * 0.06 * shake
+                    jitterZ = Math.cos(now * 77 + part.b) * 0.06 * shake
+                }
+            }
             if (part.kind === 'fan' && !reduceMotion) rotation += t * part.spin
             if (part.kind === 'beacon') {
                 const blink = reduceMotion ? 1 : 0.55 + 0.75 * Math.max(0, Math.sin(t * 2.6 + part.blink)) ** 6
@@ -535,11 +558,29 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
                 w *= pop
                 d *= pop
             }
-            dummy.position.set(part.x, part.y * r, part.z)
+            dummy.position.set(part.x + jitterX, part.y * r, part.z + jitterZ)
             dummy.rotation.set(0, rotation, 0)
             dummy.scale.set(w, Math.max(h, 0.0001), d)
             dummy.updateMatrix()
             meshes[part.kind].setMatrixAt(part.index, dummy.matrix)
+        })
+        // Hit flash: the struck building blinks white and fades back to its colour.
+        damage.forEach(state => {
+            if (!state.flashing) return
+            const b = days.findIndex(day => day.dateKey === state.dateKey)
+            const amount = Math.max(0, 1 - (now - state.flashStart) / 0.22)
+            if (b < 0) return
+            if (amount <= 0) {
+                state.flashing = false
+                paint(b)
+                return
+            }
+            partsByBuilding[b].forEach(part => {
+                if (!KINDS[part.kind].pickable || part.isRoof || part.color === METAL) return
+                flashColor.copy(part.base).lerp(white, amount * 0.85)
+                meshes[part.kind].setColorAt(part.index, flashColor)
+                meshes[part.kind].instanceColor.needsUpdate = true
+            })
         })
         Object.values(meshes).forEach(mesh => {
             mesh.instanceMatrix.needsUpdate = true
@@ -566,17 +607,266 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     marker.visible = false
     scene.add(marker)
 
+    // ---------------------------------------------------------------- demolition effects
+    // Three fixed pools (debris chunks, sparks, dust puffs) recycled round-robin, plus the rubble
+    // left behind. Pools, not per-hit objects, so hammering the city never allocates.
+    const makePool = (geometry, material, size, colored) => {
+        const mesh = new InstancedMesh(geometry, material, size)
+        mesh.frustumCulled = false
+        if (colored) for (let i = 0; i < size; i++) mesh.setColorAt(i, new Color(PLOT))
+        dummy.scale.set(0, 0, 0)
+        dummy.updateMatrix()
+        for (let i = 0; i < size; i++) mesh.setMatrixAt(i, dummy.matrix)
+        scene.add(mesh)
+        return { mesh, items: Array.from({ length: size }, () => ({ age: 1, life: 0 })), next: 0 }
+    }
+    const debris = makePool(unitBox, solidMaterial, 360, true)
+    const sparks = makePool(unitSphere, basic(HIGHLIGHT), 90, false)
+    const dust = makePool(
+        unitSphere,
+        track(
+            new MeshBasicMaterial({
+                color: new Color(colors.Grey300),
+                transparent: true,
+                opacity: 0.6,
+                depthWrite: false,
+            })
+        ),
+        140,
+        false
+    )
+    const rubble = makePool(unitBox, solidMaterial, 91 * 6, true)
+    const emit = (pool, item) => {
+        const index = pool.next
+        pool.next = (pool.next + 1) % pool.items.length
+        pool.items[index] = { age: 0, ...item }
+        if (item.color && pool.mesh.instanceColor) {
+            pool.mesh.setColorAt(index, new Color(item.color))
+            pool.mesh.instanceColor.needsUpdate = true
+        }
+        return index
+    }
+    const GRAVITY = 11
+    const updatePools = dt => {
+        ;[debris, sparks, dust].forEach(pool => {
+            let changed = false
+            pool.items.forEach((p, i) => {
+                if (p.age >= p.life) {
+                    if (!p.cleared) {
+                        p.cleared = true
+                        dummy.scale.set(0, 0, 0)
+                        dummy.position.set(0, -10, 0)
+                        dummy.updateMatrix()
+                        pool.mesh.setMatrixAt(i, dummy.matrix)
+                        changed = true
+                    }
+                    return
+                }
+                p.age += dt
+                changed = true
+                if (pool === dust) {
+                    p.x += p.vx * dt
+                    p.y += p.vy * dt
+                    p.z += p.vz * dt
+                    p.vx *= 0.94
+                    p.vz *= 0.94
+                    const k = p.age / p.life
+                    const size = p.size * (0.4 + 0.9 * Math.sqrt(k)) * (1 - k * k)
+                    dummy.position.set(p.x, p.y, p.z)
+                    dummy.rotation.set(0, 0, 0)
+                    dummy.scale.set(size, size, size)
+                } else {
+                    p.vy -= GRAVITY * (pool === sparks ? 0.35 : 1) * dt
+                    p.x += p.vx * dt
+                    p.y += p.vy * dt
+                    p.z += p.vz * dt
+                    if (p.y < 0) {
+                        p.y = 0
+                        p.vy *= -0.3
+                        p.vx *= 0.55
+                        p.vz *= 0.55
+                        p.spin *= 0.5
+                    }
+                    p.rot += p.spin * dt
+                    const fade = Math.min(1, (p.life - p.age) / 0.35)
+                    const size = p.size * fade
+                    dummy.position.set(p.x, p.y, p.z)
+                    dummy.rotation.set(p.rot, p.rot * 0.7, p.rot * 0.3)
+                    dummy.scale.set(size, size * (p.flat || 1), size)
+                }
+                dummy.updateMatrix()
+                pool.mesh.setMatrixAt(i, dummy.matrix)
+            })
+            if (changed) pool.mesh.instanceMatrix.needsUpdate = true
+        })
+    }
+
+    const burst = (b, strength, top) => {
+        const day = days[b]
+        const x = posX(day.week)
+        const z = posZ(day.weekday)
+        const color = getSkylineColor(day.tasks, scale)
+        const chunks = Math.round(8 * strength)
+        for (let i = 0; i < chunks; i++) {
+            const angle = Math.random() * Math.PI * 2
+            const speed = 1.2 + Math.random() * 2.4 * strength
+            emit(debris, {
+                x: x + (Math.random() - 0.5) * FOOTPRINT * 0.6,
+                y: top * (0.6 + Math.random() * 0.4),
+                z: z + (Math.random() - 0.5) * FOOTPRINT * 0.6,
+                vx: Math.cos(angle) * speed,
+                vy: 2 + Math.random() * 3.5 * strength,
+                vz: Math.sin(angle) * speed,
+                rot: Math.random() * 6,
+                spin: (Math.random() - 0.5) * 18,
+                size: 0.06 + Math.random() * 0.1,
+                flat: 0.5 + Math.random() * 0.6,
+                life: 1.4 + Math.random() * 0.9,
+                color: Math.random() < 0.25 ? METAL : color,
+            })
+        }
+        const sparkCount = Math.round(6 * strength)
+        for (let i = 0; i < sparkCount; i++) {
+            const angle = Math.random() * Math.PI * 2
+            const speed = 2.5 + Math.random() * 3
+            emit(sparks, {
+                x,
+                y: top,
+                z,
+                vx: Math.cos(angle) * speed,
+                vy: 1 + Math.random() * 3,
+                vz: Math.sin(angle) * speed,
+                rot: 0,
+                spin: 0,
+                size: 0.05 + Math.random() * 0.04,
+                life: 0.25 + Math.random() * 0.25,
+            })
+        }
+    }
+
+    const dustCloud = (b, amount) => {
+        const day = days[b]
+        const x = posX(day.week)
+        const z = posZ(day.weekday)
+        for (let i = 0; i < amount; i++) {
+            const angle = (i / amount) * Math.PI * 2 + Math.random() * 0.4
+            const speed = 0.8 + Math.random() * 1.4
+            emit(dust, {
+                x: x + Math.cos(angle) * 0.2,
+                y: 0.1 + Math.random() * 0.4,
+                z: z + Math.sin(angle) * 0.2,
+                vx: Math.cos(angle) * speed,
+                vy: 0.3 + Math.random() * 0.5,
+                vz: Math.sin(angle) * speed,
+                size: 0.35 + Math.random() * 0.35,
+                life: 1.1 + Math.random() * 0.9,
+            })
+        }
+    }
+
+    const leaveRubble = b => {
+        const day = days[b]
+        const x = posX(day.week)
+        const z = posZ(day.weekday)
+        const color = getSkylineColor(day.tasks, scale)
+        for (let i = 0; i < 6; i++) {
+            const size = 0.12 + Math.random() * 0.16
+            const index = emit(rubble, {
+                life: Infinity,
+                color: i % 3 === 0 ? METAL : color,
+            })
+            dummy.position.set(
+                x + (Math.random() - 0.5) * FOOTPRINT * 0.7,
+                0,
+                z + (Math.random() - 0.5) * FOOTPRINT * 0.7
+            )
+            dummy.rotation.set(0, Math.random() * Math.PI, (Math.random() - 0.5) * 0.4)
+            dummy.scale.set(size, size * (0.4 + Math.random() * 0.5), size * (0.7 + Math.random() * 0.5))
+            dummy.updateMatrix()
+            rubble.mesh.setMatrixAt(index, dummy.matrix)
+        }
+        rubble.mesh.instanceMatrix.needsUpdate = true
+    }
+
+    const currentTop = b => getSkylineHeight(days[b].tasks, scale) * rise[b] * (damageOf(b) ? damageOf(b).integrity : 1)
+
+    /** One tap on building `b`. */
+    const hit = b => {
+        const day = days[b]
+        if (!day) return
+        let state = damage.get(day.dateKey)
+        if (!state) {
+            const maxHitPoints = rollHitPoints(getBuildingType(day.tasks, scale))
+            state = {
+                dateKey: day.dateKey,
+                hitPoints: maxHitPoints,
+                maxHitPoints,
+                integrity: 1,
+                target: 1,
+                shakeStart: -10,
+                flashStart: -10,
+                flashing: false,
+                stripped: false,
+                collapsed: false,
+            }
+            damage.set(day.dateKey, state)
+        }
+        if (state.collapsed) return
+        const now = performance.now() / 1000
+        const critical = Math.random() < CRITICAL_HIT_CHANCE
+        const top = currentTop(b)
+        state.hitPoints -= critical ? 2 : 1
+        state.shakeStart = now
+        state.flashStart = now
+        state.flashing = true
+        state.stripped = true
+        state.target = getIntegrity(state.hitPoints, state.maxHitPoints)
+        if (!reduceMotion) burst(b, critical ? 1.8 : 1, Math.max(top, 0.2))
+        if (critical && !reduceMotion) cameraShake = Math.max(cameraShake, 0.12)
+        if (state.hitPoints <= 0) {
+            state.collapsed = true
+            state.target = 0
+            if (!reduceMotion) {
+                burst(b, 2.4, Math.max(top, 0.2))
+                dustCloud(b, 16)
+                cameraShake = Math.max(cameraShake, 0.3)
+            }
+            leaveRubble(b)
+            demolished += 1
+            onDemolish(demolished)
+        }
+        if (reduceMotion) state.integrity = state.target
+    }
+
+    const stepDamage = dt => {
+        damage.forEach(state => {
+            if (state.integrity === state.target) return
+            // A hit knocks floors off quickly; a collapse sinks a little slower, into its dust.
+            const speed = state.collapsed ? 2.6 : 12
+            const next = state.integrity + (state.target - state.integrity) * Math.min(1, dt * speed)
+            state.integrity = Math.abs(next - state.target) < 0.002 ? state.target : next
+        })
+        cameraShake = Math.max(0, cameraShake - dt * 0.9)
+    }
+
     // ---------------------------------------------------------------- life: cars
-    const CAR_COUNT = 16
+    // Cars on every road, both directions, driving on the right. Cars along the weeks use the
+    // long east-west roads; cars along the days use the short north-south ones.
+    const CAR_COUNT = 44
     const carRandom = seeded(97)
     const cars = Array.from({ length: CAR_COUNT }, (_, i) => {
-        const street = Math.floor(carRandom() * (GRID_DAYS - 1))
+        const alongX = carRandom() < 0.6
         const direction = carRandom() < 0.5 ? 1 : -1
+        const road = alongX
+            ? -CITY_HALF_DEPTH + Math.floor(carRandom() * (GRID_DAYS + 1)) * PITCH
+            : -CITY_HALF_WIDTH + Math.floor(carRandom() * (SKYLINE_WEEKS + 1)) * PITCH
         return {
-            z: posZ(street) + 0.5 + direction * 0.045,
+            alongX,
             direction,
-            speed: 0.55 + carRandom() * 0.6,
-            offset: carRandom() * CITY_HALF_WIDTH * 2,
+            lane: road + direction * 0.11 * (alongX ? 1 : -1),
+            half: alongX ? CITY_HALF_WIDTH : CITY_HALF_DEPTH,
+            speed: 0.7 + carRandom() * 0.9,
+            offset: carRandom() * 100,
             color: CAR_COLORS[i % CAR_COLORS.length],
         }
     })
@@ -586,15 +876,16 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     carMesh.visible = !reduceMotion
     scene.add(carMesh)
     const updateCars = t => {
-        const span = CITY_HALF_WIDTH * 2
         cars.forEach((car, i) => {
+            const span = car.half * 2
             const travelled = (car.offset + t * car.speed) % span
-            const x = car.direction > 0 ? -CITY_HALF_WIDTH + travelled : CITY_HALF_WIDTH - travelled
+            const along = car.direction > 0 ? -car.half + travelled : car.half - travelled
             // Cars shrink in and out at the city limits instead of popping.
-            const edge = Math.min(1, (CITY_HALF_WIDTH - Math.abs(x)) / 0.5)
-            dummy.position.set(x, 0, car.z)
-            dummy.rotation.set(0, 0, 0)
-            dummy.scale.set(0.24 * edge, 0.09 * edge, 0.1 * edge)
+            const edge = Math.min(1, (car.half - Math.abs(along)) / 0.5)
+            if (car.alongX) dummy.position.set(along, 0, car.lane)
+            else dummy.position.set(car.lane, 0, along)
+            dummy.rotation.set(0, car.alongX ? 0 : Math.PI / 2, 0)
+            dummy.scale.set(0.3 * edge, 0.11 * edge, 0.15 * edge)
             dummy.updateMatrix()
             carMesh.setMatrixAt(i, dummy.matrix)
         })
@@ -630,7 +921,7 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         return {
             members,
             radiusX: CITY_HALF_WIDTH * (0.55 + f * 0.18),
-            radiusZ: 2.2 + f * 0.9,
+            radiusZ: (2.2 + f * 0.9) * PITCH,
             speed: (0.12 + birdRandom() * 0.06) * (f % 2 ? -1 : 1),
             phase: birdRandom() * Math.PI * 2,
             altitude: 6.2 + f * 0.9,
@@ -764,11 +1055,14 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         camera.position.set(0, CAMERA_HEIGHT, offsetZ)
         camera.lookAt(0, 0, offsetZ)
         const toNear = camera.near / CAMERA_HEIGHT
+        const t = performance.now() / 1000
+        const shakeX = cameraShake * Math.sin(t * 61) * 0.6
+        const shakeZ = cameraShake * Math.cos(t * 53) * 0.6
         camera.projectionMatrix.makePerspective(
-            (-viewWidth / 2) * toNear,
-            (viewWidth / 2) * toNear,
-            (viewDepth / 2 + offsetZ) * toNear,
-            (-viewDepth / 2 + offsetZ) * toNear,
+            (-viewWidth / 2 + shakeX) * toNear,
+            (viewWidth / 2 + shakeX) * toNear,
+            (viewDepth / 2 + offsetZ + shakeZ) * toNear,
+            (-viewDepth / 2 + offsetZ + shakeZ) * toNear,
             camera.near,
             camera.far
         )
@@ -786,10 +1080,10 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         // the tallest possible building, plus the legends, so nothing ever reaches the card edge.
         const k = CAMERA_HEIGHT / (CAMERA_HEIGHT - TALLEST)
         const maxOffset = CAMERA_HEIGHT * Math.tan(SKYLINE_MAX_TILT)
-        const outerWeek = (SKYLINE_WEEKS - 1) / 2 + FOOTPRINT / 2
-        const outerRow = (GRID_DAYS - 1) / 2 + FOOTPRINT / 2
-        const weekdayLegend = (SKYLINE_WEEKS - 1) / 2 + 0.7 + 1.3
-        const monthLegend = (GRID_DAYS - 1) / 2 + 1.0 + 0.45
+        const outerWeek = posX(SKYLINE_WEEKS - 1) + FOOTPRINT / 2
+        const outerRow = posZ(GRID_DAYS - 1) + FOOTPRINT / 2
+        const weekdayLegend = CITY_HALF_WIDTH + ROAD_WIDTH / 2 + 0.25 + 1.4
+        const monthLegend = CITY_HALF_DEPTH + ROAD_WIDTH / 2 + 0.5 + 0.45
         const neededWidth = 2 * Math.max(outerWeek * k + 0.3, weekdayLegend)
         const neededDepth = 2 * Math.max(outerRow * k + maxOffset * (k - 1) + 0.3, monthLegend)
         viewWidth = Math.max(neededWidth, neededDepth * aspect)
@@ -819,7 +1113,7 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         hoverIndex = index
         paint(previous)
         paint(index)
-        canvas.style.cursor = index >= 0 ? 'pointer' : 'default'
+        canvas.style.cursor = index >= 0 && !(damageOf(index) && damageOf(index).collapsed) ? 'crosshair' : 'default'
         onHover(index)
     }
     const selectIndex = index => {
@@ -842,6 +1136,7 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
         const index = pick(event.clientX, event.clientY)
         selectIndex(index)
         onSelect(index)
+        if (index >= 0) hit(index)
     }
     const onPointerCancel = () => {
         downAt = null
@@ -868,13 +1163,18 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
     let disposed = false
     let visible = true
     const startTime = performance.now() / 1000
+    let lastFrame = startTime
     const frame = () => {
         frameId = 0
         if (disposed || !visible) return
         const now = performance.now() / 1000
+        const dt = Math.min(0.05, now - lastFrame)
+        lastFrame = now
         const t = reduceMotion ? FROZEN_TIME : now - startTime
         time.value = t
         stepRise(now)
+        stepDamage(dt)
+        updatePools(dt)
         updateBuildings(now, t)
         if (!reduceMotion) {
             updateCars(t)
@@ -882,12 +1182,15 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
             updateBalloon(t)
             updateAirplane(t)
         }
-        if (todayIndex >= 0) {
+        const todayState = damageOf(todayIndex)
+        marker.visible = false
+        if (todayIndex >= 0 && !(todayState && todayState.collapsed)) {
             const day = days[todayIndex]
             const type = getBuildingType(day.tasks, scale)
             const top =
                 (type === 'park' ? 0.2 : getSkylineHeight(day.tasks, scale) + (type === 'skyscraper' ? SPIRE : 0.2)) *
-                rise[todayIndex]
+                rise[todayIndex] *
+                (todayState ? todayState.integrity : 1)
             marker.visible = true
             marker.position.set(
                 posX(day.week),
@@ -966,6 +1269,7 @@ export function createSkylineScene(container, { onHover, onSelect, reduceMotion 
             canvas.removeEventListener('click', stopClick)
             disposeBuildingMeshes()
             carMesh.dispose()
+            ;[debris, sparks, dust, rubble].forEach(pool => pool.mesh.dispose())
             disposables.forEach(item => item.dispose())
             renderer.dispose()
             if (renderer.forceContextLoss) renderer.forceContextLoss()

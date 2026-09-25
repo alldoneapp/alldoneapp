@@ -44,7 +44,7 @@
             "components/Feeds/CommentsTextInput/WrapperMentionsModal.js"
         ],
         "transformIgnorePatterns": [
-            "node_modules/(?!(quill[^/]*|parchment|react-quill-new|lodash-es|lib0|y-quill|y-protocols|y-websocket|y-indexeddb|yjs|react-native[^/]*|expo[^/]*|@expo|@react-native|@react-navigation|@unimodules)/)"
+            "node_modules/(?!(quill[^/]*|parchment|react-quill-new|lodash-es|lib0|y-quill|y-protocols|y-websocket|y-indexeddb|yjs|three|react-native[^/]*|expo[^/]*|@expo|@react-native|@react-navigation|@unimodules)/)"
         ],
         "modulePathIgnorePatterns": [
             "<rootDir>/.claude/"
