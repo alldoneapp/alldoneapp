@@ -1381,9 +1381,13 @@ follows the same measure (`getBuildingType`: park → house → mid-rise → tow
 roof marks a day in `emptyInboxDays`, the same array the grid reads. Everything that decides what a
 building means lives in the pure, unit-tested `skylineData.js`.
 
-**Look.** Drawn straight onto the white card (transparent canvas) in app colours only — Grey plots
-and roads, a UtilityDarkBlue125 → Primary100 → Primary400 ramp, UtilityGreen200 roofs — with flat
-shading and no surface detail: windows, a night sky and cloud shadows were each tried and removed
+**Look.** Drawn straight onto the white card (transparent canvas) in app colours only, with flat
+shading. Height is the only thing that carries data; each day otherwise picks one of several designs
+for its height band (cottage, silo, row houses, shop; fan block, round tower, L-block, twisted stack;
+stepped tower, banded cylinder, spiral, twins with a sky bridge, obelisk, spire skyscraper) and its
+own body/accent colours from `BODY_PALETTE`/`ACCENT_PALETTE`, seeded by date so a day always looks
+the same. Every design tops out at exactly the day's height. Greens are kept out of the building
+palettes because UtilityGreen200 means an empty-inbox roof. No surface detail: windows, a night sky and cloud shadows were each tried and removed
 (noise, or they revealed the edge of the canvas). Days sit `PITCH` apart with roads between every
 row and column. Nothing may be drawn on the ground outside the city.
 
