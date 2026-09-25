@@ -3,6 +3,7 @@ import moment from 'moment'
 import {
     buildSkylineDays,
     buildSkylineWeeks,
+    getBuildingType,
     formatSkylineMinutes,
     getFlyoverView,
     getSkylineColor,
@@ -23,13 +24,13 @@ const projects = [
 ]
 
 describe('skyline data', () => {
-    it('covers a full year of weeks and stops at today', () => {
+    it('covers the last quarter and stops at today', () => {
         const weeks = buildSkylineWeeks([], TODAY)
         const days = buildSkylineDays(weeks, {}, projects)
 
         expect(weeks).toHaveLength(SKYLINE_WEEKS)
-        // Monday-aligned: 52 full weeks plus Monday..Friday of this one.
-        expect(days).toHaveLength(52 * 7 + 5)
+        // Monday-aligned: 12 full weeks plus Monday..Friday of this one.
+        expect(days).toHaveLength(12 * 7 + 5)
         expect(days[days.length - 1].isToday).toBe(true)
         expect(days[days.length - 1].weekday).toBe(4)
     })
@@ -104,6 +105,15 @@ describe('skyline data', () => {
         expect(getFlyoverView(0.4).tilt).toBeGreaterThan(0)
         expect(getFlyoverView(-3)).toEqual(leaving)
         expect(getFlyoverView(NaN)).toEqual(centred)
+    })
+
+    it('turns busier days into taller kinds of building', () => {
+        expect(getBuildingType(0, 10)).toBe('park')
+        expect(getBuildingType(2, 10)).toBe('house')
+        expect(getBuildingType(4, 10)).toBe('midrise')
+        expect(getBuildingType(7, 10)).toBe('tower')
+        expect(getBuildingType(9, 10)).toBe('skyscraper')
+        expect(getBuildingType(40, 10)).toBe('skyscraper')
     })
 
     it('formats logged time', () => {
