@@ -1396,6 +1396,17 @@ project appearing never changes the design. Every design tops out at exactly the
 (noise, or they revealed the edge of the canvas). Days sit `PITCH` apart with roads between every
 row and column. Nothing may be drawn on the ground outside the city.
 
+**Light.** Real lighting with soft shadow maps: a hemisphere fill plus one directional sun (or
+moon), both on `MeshLambertMaterial` — so the old contact shadows painted on the ground are gone.
+`getDaylight` follows the user's local clock with a fixed, location-free day (sunrise 6:30, sunset
+20:30): low warm light and long shadows morning and evening, white high light at midday, a dimmer
+cool moon at night with street lamps glowing, blended over 45 minutes of twilight. Intensities are
+set for Lambert's 1/π so a sunlit surface shows its exact palette colour and shade sits near 72%.
+Facade detail (faint floor lines, darkening where walls meet the street — never lit windows) is
+injected into the buildings' material with `onBeforeCompile`, which keeps three's lighting and
+shadows; the anchors it replaces (`worldpos_vertex`, `color_fragment`) must exist in the Lambert
+shader after a three.js bump. Traffic is deliberately sparse (8 slow cars): the city should feel calm.
+
 **Camera.** It flies on its own and ignores the page scroll (`getOrbitView`: a slow ±30° sweep, elevation
 ~38–49°, never round the back so the ground legends are never upside down; a wider sweep turns the
 wide calendar diagonal to the camera and shrinks the city).
@@ -1417,8 +1428,8 @@ date — a statistics refresh must not resurrect a demolished day, a reload brin
 The celebration run that pops the 2D today dot pops today's flag instead, and the first hit on
 a building knocks its flag and rooftop equipment off.
 
-**Life and cost.** The decorative layer (facade light sweep, cars on the roads, a small flock of
-birds, an occasional balloon or plane) carries no data, is not interactive, and is switched off under
+**Life and cost.** The decorative layer (a few slow cars, street trees and lamps, zebra crossings,
+a small flock of birds, an occasional balloon or plane) carries no data, is not interactive, and is switched off under
 reduced motion (which also freezes the camera at `SKYLINE_REST_VIEW`). The render loop only runs
 while the card intersects the viewport. `skylineScene.test.js` drives the real scene in jsdom with
 only the WebGL renderer and the 2D canvas stubbed — it is the one test that executes this module,
