@@ -1,6 +1,7 @@
 import { buildEmptyInboxActivityWeeks } from '../AchievementsHelper'
 
-export const SKYLINE_WEEKS = 53
+/** The last quarter: 13 Monday-aligned weeks ending with the current one. */
+export const SKYLINE_WEEKS = 13
 
 /**
  * Turns the empty-inbox weeks and the per-project statistics into one record per building.
@@ -51,7 +52,7 @@ export const buildSkylineWeeks = (emptyInboxDays, todayTimestamp) =>
     buildEmptyInboxActivityWeeks(emptyInboxDays, SKYLINE_WEEKS, todayTimestamp)
 
 /** Tallest building, in scene units (one day is one unit wide). */
-export const SKYLINE_MAX_HEIGHT = 2.2
+export const SKYLINE_MAX_HEIGHT = 3.2
 const FLOOR_HEIGHT = 0.1
 
 /**
@@ -74,6 +75,22 @@ export const getSkylineHeight = (tasks, scale = 5) =>
     tasks > 0 ? FLOOR_HEIGHT + Math.min(tasks / scale, 1.15) * SKYLINE_MAX_HEIGHT : FLOOR_HEIGHT * 0.4
 
 /**
+ * What kind of building a day becomes. The type follows the same relative measure as the height,
+ * so the skyline reads as a skyline — houses on quiet days, skyscrapers on the busiest — rather
+ * than as a bar chart of identical boxes.
+ */
+export const BUILDING_TYPES = ['park', 'house', 'midrise', 'tower', 'skyscraper']
+
+export function getBuildingType(tasks, scale = 5) {
+    if (!(tasks > 0)) return 'park'
+    const t = tasks / scale
+    if (t < 0.3) return 'house'
+    if (t < 0.6) return 'midrise'
+    if (t < 0.85) return 'tower'
+    return 'skyscraper'
+}
+
+/**
  * The app's blue ramp, light to deep: UtilityDarkBlue125 → Primary100 → Primary400. A building's
  * colour says the same thing as its height, so the city reads from straight above too, where heights
  * cannot be seen.
@@ -92,8 +109,8 @@ export function getSkylineColor(tasks, scale = 5) {
     return rgbToHex(a.map((v, i) => v + (b[i] - v) * local))
 }
 
-/** The steepest the flyover ever leans away from straight down, in radians (~30°). */
-export const SKYLINE_MAX_TILT = 0.55
+/** The steepest the flyover ever leans away from straight down, in radians (~24°). */
+export const SKYLINE_MAX_TILT = 0.42
 
 /**
  * Where the camera is for a given scroll position — the "plane flying over the city".
