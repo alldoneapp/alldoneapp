@@ -33,6 +33,7 @@ import {
     getIntegrity,
     rollHitPoints,
     getOrbitView,
+    getProjectColorAt,
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
@@ -413,8 +414,16 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             const H = getSkylineHeight(day.tasks, scale)
             const random = seeded(day.week * 31 + day.weekday * 7 + 11)
             const pick = list => list[Math.floor(random() * list.length) % list.length]
-            const body = pick(BODY_PALETTE)
-            const accent = pick(ACCENT_PALETTE.filter(color => color !== body))
+            // Project colours first: the building wears the colour of the project that got the most
+            // done that day, and the second project (if any) its accents. The palette only fills
+            // in what the data does not decide — the picks are always drawn so the seeded sequence,
+            // and with it the design, does not change when a second project appears.
+            const paletteBody = pick(BODY_PALETTE)
+            const paletteAccent = pick(ACCENT_PALETTE.filter(color => color !== paletteBody))
+            const body = getProjectColorAt(day, 0) || paletteBody
+            const second = day.byProject && day.byProject[1] ? day.byProject[1].project.color : null
+            const accent = second || (paletteAccent !== body ? paletteAccent : colors.Grey300)
+            const shareColor = fraction => getProjectColorAt(day, fraction) || body
             buildingColors[b] = body
             const F = FOOTPRINT
             const add = (kind, part) => {
@@ -438,7 +447,11 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             const stack = (count, width, depth, twist, color = body) => {
                 const slab = H / count
                 for (let i = 0; i < count; i++) {
-                    box({ y: i * slab, w: width, h: slab * 0.94, d: depth, rot: i * twist }, i % 2 ? color : body)
+                    // Each slab takes the colour of the project covering its share of the day, so a
+                    // stack is a little bar chart of the day's projects from the ground up.
+                    const slabColor =
+                        day.byProject && day.byProject.length > 1 ? shareColor((i + 0.5) / count) : i % 2 ? color : body
+                    box({ y: i * slab, w: width, h: slab * 0.94, d: depth, rot: i * twist }, slabColor)
                 }
                 flatRoof(width, depth, H - slab * 0.06, { rot: (count - 1) * twist })
             }

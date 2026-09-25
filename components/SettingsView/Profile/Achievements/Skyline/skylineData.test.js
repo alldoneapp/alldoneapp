@@ -9,6 +9,7 @@ import {
     rollHitPoints,
     formatSkylineMinutes,
     getOrbitView,
+    getProjectColorAt,
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
@@ -94,6 +95,20 @@ describe('skyline data', () => {
             expect(elevation).toBeLessThan(0.95)
         }
         expect(getOrbitView(10)).not.toEqual(getOrbitView(40))
+    })
+
+    it("lays the day's projects end to end by their share of the tasks", () => {
+        const day = {
+            byProject: [
+                { project: { color: '#AAAAAA' }, count: 7 },
+                { project: { color: '#BBBBBB' }, count: 3 },
+            ],
+        }
+        expect(getProjectColorAt(day, 0)).toBe('#AAAAAA')
+        expect(getProjectColorAt(day, 0.69)).toBe('#AAAAAA')
+        expect(getProjectColorAt(day, 0.71)).toBe('#BBBBBB')
+        expect(getProjectColorAt(day, 1)).toBe('#BBBBBB')
+        expect(getProjectColorAt({ byProject: [] }, 0.5)).toBeNull()
     })
 
     it('formats logged time', () => {
