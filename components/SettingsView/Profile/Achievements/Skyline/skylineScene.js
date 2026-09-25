@@ -22,6 +22,7 @@ import {
     SRGBColorSpace,
     TorusGeometry,
     Vector2,
+    Vector3,
     WebGLRenderer,
 } from 'three'
 
@@ -31,25 +32,26 @@ import {
     getBuildingType,
     getIntegrity,
     rollHitPoints,
-    getFlyoverView,
+    getOrbitView,
     getSkylineColor,
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
-    SKYLINE_MAX_TILT,
     SKYLINE_WEEKS,
 } from './skylineData'
 
 /**
  * The imperative half of the Empty inbox skyline: a small living city on the white achievements
- * card, one building per day of the last quarter, seen from a plane flying over it.
+ * card, one building per day of the last quarter, seen from a camera slowly flying around it.
  *
  * Three layers, each with one job:
  *
- *  - THE GROUND is printed on the card. The camera is an off-axis projection that always looks
- *    straight down and slides with the page scroll; its frustum is re-aimed every frame so the
- *    ground plane lands on the same pixels. Plots, streets and the month/weekday legend therefore
- *    never move — only what stands up from the ground leans.
+ *  - THE CAMERA flies on its own (`getOrbitView`): a slow sweep around the front of the city
+ *    with a gently rising and dipping elevation. It is independent of the page scroll. Every frame
+ *    it computes how far back it has to be for the WHOLE city — tallest possible building and the
+ *    legends included — to sit inside the canvas with a margin (`fitDistance`), so the city never
+ *    touches the canvas edge. A city cut off by the edge of an invisible box is what breaks the
+ *    illusion that it stands on the card.
  *  - THE BUILDINGS say how busy a day was, by height, colour (the app's blue ramp) and TYPE
  *    (`getBuildingType`): a little park for a day with nothing done, then a house, a mid-rise with a
  *    spinning rooftop fan, a stepped tower, and a skyscraper with an antenna and a beacon. A green
@@ -80,16 +82,13 @@ const MARGIN_X = 2.2
 const MARGIN_Z = 1.6
 const GROUND_PX_PER_UNIT = 64
 const RISE_DURATION = 1.1
-// Very high on purpose. From a low camera the view "straight down" still sees the outer buildings
-// at an angle, so the ones near the left and right edges lean outwards and show their sides even
-// when the card is centred. From this far up every building is seen from directly above, and the
-// scroll tilt leans the whole city by the same amount — a plane's view, not a fisheye.
-const CAMERA_HEIGHT = 400
+const CAMERA_FOV = 32
+// How far inside the canvas edge (in normalized device coordinates) the city has to stay.
+const FRAME_MARGIN = 0.88
 const SPIRE = 0.7
 // Tallest thing that can stand on a plot: the highest building plus spire and beacon. Used to
 // reserve room so nothing ever pokes out of the card.
 const TALLEST = SKYLINE_MAX_HEIGHT * 1.15 + 0.1 + SPIRE + 0.12
-const REDUCED_MOTION_PROGRESS = 0.5
 const FROZEN_TIME = 20
 
 const PLOT = colors.Grey100
@@ -197,10 +196,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     container.appendChild(canvas)
 
     const scene = new Scene()
-    const camera = new PerspectiveCamera(30, 1, CAMERA_HEIGHT - 40, CAMERA_HEIGHT + 10)
-    // Screen-up is "back" in the city, so the view reads weeks left to right and Monday..Sunday top
-    // to bottom, like the 2D grid it replaces.
-    camera.up.set(0, 0, -1)
+    const camera = new PerspectiveCamera(CAMERA_FOV, 1, 0.5, 400)
 
     const disposables = []
     const track = item => {
@@ -929,7 +925,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             radiusZ: (2.2 + f * 0.9) * PITCH,
             speed: (0.12 + birdRandom() * 0.06) * (f % 2 ? -1 : 1),
             phase: birdRandom() * Math.PI * 2,
-            altitude: 6.2 + f * 0.9,
+            altitude: 3.6 + f * 0.5,
         }
     })
     const updateBirds = t => {
@@ -982,9 +978,14 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         balloon.visible = crossing
         balloonShadow.visible = crossing
         if (!crossing) return
-        const x = -CITY_HALF_WIDTH - 2 + progress * (CITY_HALF_WIDTH * 2 + 4)
+        // Everything that flies stays over the city and fades in and out by scale, never by crossing
+        // the canvas edge: something sliding in from nowhere would reveal the frame around the city.
+        const x = (progress * 2 - 1) * (CITY_HALF_WIDTH - 1)
+        const appear = Math.min(1, progress / 0.08, (1 - progress) / 0.08)
+        balloon.scale.setScalar(appear)
+        balloonShadow.scale.setScalar(appear)
         const z = -1.6 + Math.sin(t * 0.21) * 1.2
-        balloon.position.set(x, 5 + Math.sin(t * 0.7) * 0.18, z)
+        balloon.position.set(x, 3.2 + Math.sin(t * 0.7) * 0.15, z)
         balloonShadow.position.set(x + 0.6, 0.006, z - 0.9)
     }
 
@@ -1023,16 +1024,19 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         airplaneShadow.visible = flying
         if (!flying) return
         const reverse = flightIndex % 2 === 1
-        const span = CITY_HALF_WIDTH + 6
+        const span = CITY_HALF_WIDTH - 0.5
         const x = (reverse ? 1 - progress : progress) * span * 2 - span
+        const appear = Math.min(1, progress / 0.1, (1 - progress) / 0.1)
+        airplane.scale.setScalar(appear)
+        airplaneShadow.scale.setScalar(appear)
         const drift = reverse ? -2 : 2.4
         const z = (reverse ? 1.8 : -2.6) + (progress - 0.5) * drift
         // Nose is local -z, the same convention as the birds.
         const vx = reverse ? -span * 2 : span * 2
         const heading = Math.atan2(-vx, -drift)
-        airplane.position.set(x, 8.5, z)
+        airplane.position.set(x, 4.3, z)
         airplane.rotation.set(0, heading, 0)
-        airplaneShadow.position.set(x + 1.2, 0.007, z - 1.6)
+        airplaneShadow.position.set(x + 0.6, 0.007, z - 0.8)
         airplaneShadow.rotation.set(0, heading, 0)
     }
 
@@ -1045,39 +1049,58 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         })
     )
 
-    // ---------------------------------------------------------------- camera: the flyover
-    // Off-axis projection: the camera looks straight down and slides parallel to the ground as the
-    // page scrolls; the frustum is re-aimed so y = 0 always maps to the same pixels. See the file
-    // header for why this — and not an orbiting camera — is what makes the city part of the card.
-    let viewWidth = SKYLINE_WEEKS + MARGIN_X * 2
-    let viewDepth = GRID_DAYS + MARGIN_Z * 2
-    let flight = null
-    const readScrollProgress = () => {
-        if (reduceMotion) return REDUCED_MOTION_PROGRESS
-        const rect = container.getBoundingClientRect()
-        const viewport = window.innerHeight || document.documentElement.clientHeight || 1
-        return (rect.top + rect.height / 2) / viewport
+    // ---------------------------------------------------------------- camera: the flight
+    // The corners of everything that must stay in view: the city block incl. its outer roads, the
+    // legends printed beside it, and the tallest building that could stand there.
+    const boundsX = CITY_HALF_WIDTH + ROAD_WIDTH / 2 + 0.25 + 1.4
+    const boundsZ = CITY_HALF_DEPTH + ROAD_WIDTH / 2 + 0.5 + 0.45
+    const bounds = []
+    ;[-1, 1].forEach(sx =>
+        [-1, 1].forEach(sz => [0, TALLEST].forEach(y => bounds.push(new Vector3(sx * boundsX, y, sz * boundsZ))))
+    )
+    const target = new Vector3(0, TALLEST * 0.18, 0)
+    const direction = new Vector3()
+    const projected = new Vector3()
+    const fits = distance => {
+        camera.position.copy(target).addScaledVector(direction, distance)
+        camera.lookAt(target)
+        camera.updateMatrixWorld()
+        return bounds.every(corner => {
+            projected.copy(corner).project(camera)
+            return Math.abs(projected.x) <= FRAME_MARGIN && Math.abs(projected.y) <= FRAME_MARGIN && projected.z < 1
+        })
     }
-    const placeCamera = () => {
-        const wanted = getFlyoverView(readScrollProgress())
-        if (!flight || reduceMotion) flight = { ...wanted }
-        else flight.tilt += (wanted.tilt - flight.tilt) * 0.12
-        const offsetZ = CAMERA_HEIGHT * Math.tan(flight.tilt)
-        camera.position.set(0, CAMERA_HEIGHT, offsetZ)
-        camera.lookAt(0, 0, offsetZ)
-        const toNear = camera.near / CAMERA_HEIGHT
-        const t = performance.now() / 1000
-        const shakeX = cameraShake * Math.sin(t * 61) * 0.6
-        const shakeZ = cameraShake * Math.cos(t * 53) * 0.6
-        camera.projectionMatrix.makePerspective(
-            (-viewWidth / 2 + shakeX) * toNear,
-            (viewWidth / 2 + shakeX) * toNear,
-            (viewDepth / 2 + offsetZ + shakeZ) * toNear,
-            (-viewDepth / 2 + offsetZ + shakeZ) * toNear,
-            camera.near,
-            camera.far
+    // Closest distance at which the whole city fits, by bisection (the fit is monotonic in distance).
+    const fitDistance = () => {
+        let near = 4
+        let far = 200
+        for (let i = 0; i < 22; i++) {
+            const middle = (near + far) / 2
+            if (fits(middle)) far = middle
+            else near = middle
+        }
+        return far
+    }
+    let distance = null
+    const placeCamera = t => {
+        const { azimuth, elevation } = getOrbitView(reduceMotion ? null : t)
+        direction.set(
+            Math.cos(elevation) * Math.sin(azimuth),
+            Math.sin(elevation),
+            Math.cos(elevation) * Math.cos(azimuth)
         )
-        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert()
+        const wanted = fitDistance()
+        // Follow the fitted distance smoothly, but never sit closer than it: a lag in that direction
+        // would clip the city for a moment.
+        distance = distance == null ? wanted : Math.max(wanted, distance + (wanted - distance) * 0.05)
+        camera.position.copy(target).addScaledVector(direction, distance)
+        const shake = cameraShake * 0.35
+        camera.lookAt(
+            target.x + shake * Math.sin(t * 61),
+            target.y + shake * Math.cos(t * 47),
+            target.z + shake * Math.cos(t * 53)
+        )
+        camera.updateMatrixWorld()
     }
 
     const resize = () => {
@@ -1085,20 +1108,9 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const height = container.clientHeight
         if (!width || !height) return
         renderer.setSize(width, height, false)
-        const aspect = width / height
-        // Seen from above a roof sits further out than its base (by k = H / (H - h)), and at the
-        // steepest tilt it is pushed further by the camera offset times (k - 1). Reserve both for
-        // the tallest possible building, plus the legends, so nothing ever reaches the card edge.
-        const k = CAMERA_HEIGHT / (CAMERA_HEIGHT - TALLEST)
-        const maxOffset = CAMERA_HEIGHT * Math.tan(SKYLINE_MAX_TILT)
-        const outerWeek = posX(SKYLINE_WEEKS - 1) + FOOTPRINT / 2
-        const outerRow = posZ(GRID_DAYS - 1) + FOOTPRINT / 2
-        const weekdayLegend = CITY_HALF_WIDTH + ROAD_WIDTH / 2 + 0.25 + 1.4
-        const monthLegend = CITY_HALF_DEPTH + ROAD_WIDTH / 2 + 0.5 + 0.45
-        const neededWidth = 2 * Math.max(outerWeek * k + 0.3, weekdayLegend)
-        const neededDepth = 2 * Math.max(outerRow * k + maxOffset * (k - 1) + 0.3, monthLegend)
-        viewWidth = Math.max(neededWidth, neededDepth * aspect)
-        viewDepth = viewWidth / aspect
+        camera.aspect = width / height
+        camera.updateProjectionMatrix()
+        distance = null
     }
 
     // ---------------------------------------------------------------- interaction
@@ -1210,7 +1222,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             )
             marker.rotation.y = reduceMotion ? 0 : t * 0.8
         }
-        placeCamera()
+        placeCamera(t)
         renderer.render(scene, camera)
         frameId = requestAnimationFrame(frame)
     }

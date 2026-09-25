@@ -138,27 +138,26 @@ export function getSkylineColor(tasks, scale = 5) {
     return rgbToHex(a.map((v, i) => v + (b[i] - v) * local))
 }
 
-/** The steepest the flyover ever leans away from straight down, in radians (~57°). */
-export const SKYLINE_MAX_TILT = 1.0
+/** The camera's resting view, used for reduced motion and as the centre of the sweep. */
+export const SKYLINE_REST_VIEW = { azimuth: -0.35, elevation: 0.78 }
 
 /**
- * Where the camera is for a given scroll position — the "plane flying over the city".
+ * Where the camera is at time `t` (seconds) — a slow flight around the front of the city.
  *
- * `progress` is where the card's middle sits in the viewport: 1 at the bottom edge (the card has
- * just scrolled in), 0.5 in the middle, 0 at the top edge (it is about to leave). With the card in
- * the middle of the screen you look straight down on the city. Scrolling down is flying forward over
- * it: while the card is still below the middle the plane has not reached it yet and sees the side
- * of the buildings facing the top of the page; once the card has passed the middle the plane is
- * beyond it and looks back at the side facing the bottom (the month legend). The first version had
- * this backwards and read as flying in reverse. That symmetry is the whole illusion: the scroll IS
- * the flight.
+ * The azimuth sweeps about ±55° either side of straight-on and never goes round the back, so the
+ * month and weekday legends printed on the ground are never seen upside down. The elevation rises
+ * and dips between roughly 35° and 50° above the horizon on a different period, so the flight does
+ * not repeat as a simple back-and-forth. `t == null` (reduced motion) is the resting view.
  *
- * @returns {{ tilt: number }} signed radians away from straight down (positive = the camera is on
- *   the month-legend side of the city)
+ * @returns {{ azimuth: number, elevation: number }} radians; azimuth 0 = looking from the month
+ *   legend side, elevation = angle above the ground plane
  */
-export function getFlyoverView(progress) {
-    const p = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0.5))
-    return { tilt: (0.5 - p) * 2 * SKYLINE_MAX_TILT }
+export function getOrbitView(t) {
+    if (t == null || !Number.isFinite(t)) return { ...SKYLINE_REST_VIEW }
+    return {
+        azimuth: SKYLINE_REST_VIEW.azimuth + Math.sin(t * 0.045) * 0.95,
+        elevation: 0.74 + Math.sin(t * 0.031 + 1.1) * 0.13,
+    }
 }
 
 export const formatSkylineMinutes = minutes => {
