@@ -47,6 +47,7 @@ import {
 import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
 import { installFirestoreNetworkGate } from './firestoreNetworkGate'
+import { installTaskWriteMonitor } from './taskWriteMonitor'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
 import { startPerformanceTrace } from '../performance/performanceLogger'
@@ -610,6 +611,10 @@ export async function initFirebase(onComplete) {
         .catch(error => {
             console.error('❌ Error getting redirect result:', error.code, error.message)
         })
+
+    // Restore pending-write monitoring after persistence/emulator configuration,
+    // before the authenticated UI can create tasks.
+    installTaskWriteMonitor(db, firebase.auth())
 
     firebase.auth().onAuthStateChanged(firebaseUser => {
         if (__DEV__) console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')

@@ -55,6 +55,7 @@ import {
 } from '../firestore'
 import store from '../../../redux/store'
 import { awaitWriteAck, isAppOffline } from '../offlineWriteAck'
+import { trackTaskWrite } from '../taskWriteMonitor'
 import { queueObjectActivityFeedUnreadClear } from '../Feeds/activityFeedReadState'
 import { startPerformanceTrace } from '../../performance/performanceLogger'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
@@ -664,14 +665,13 @@ export async function uploadNewTask(
             throw error
         }
 
+        const taskWrite = trackTaskWrite(getDb().doc(`items/${projectId}/tasks/${taskId}`).set(safeTaskCopy), {
+            userId: loggedUser.uid,
+            taskId,
+        })
         awaitForTaskCreation
-            ? await getDb()
-                  .doc(`items/${projectId}/tasks/${taskId}`)
-                  .set(safeTaskCopy)
-                  .then(onTaskWritten(true), onTaskWriteFailed)
-            : getDb()
-                  .doc(`items/${projectId}/tasks/${taskId}`)
-                  .set(safeTaskCopy)
+            ? await taskWrite.then(onTaskWritten(true), onTaskWriteFailed)
+            : taskWrite
                   .then(onTaskWritten(false), onTaskWriteFailed)
                   // The non-awaited branch has no caller to reject to; without this the rollback
                   // above would surface as an unhandled rejection.

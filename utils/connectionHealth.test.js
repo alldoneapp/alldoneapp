@@ -17,6 +17,7 @@ import {
     markServerContact,
     nextStaleRetryDelay,
     reconnectNow,
+    recoverStalledTaskWrites,
     resetConnectionHealthForTests,
     startConnectionLatencySample,
 } from './connectionHealth'
@@ -463,6 +464,75 @@ describe('connectionHealth', () => {
             await handleAppResume({ hiddenMs: 120000, probeAfterMs: 30000 })
 
             expect(db.calls.get).toBe(1)
+            stop()
+        })
+    })
+
+    describe('recoverStalledTaskWrites', () => {
+        it('restarts even when reads work, without using a read as proof of write progress', async () => {
+            const db = createFakeDb(['ok'])
+            const { stop } = install({ db })
+            expect(await recoverStalledTaskWrites()).toBe(true)
+            expect(db.calls).toEqual({ get: 0, disableNetwork: 1, enableNetwork: 1 })
+            stop()
+        })
+
+        it('respects manual offline and browser offline states', async () => {
+            const db = createFakeDb(['ok'])
+            const { stop } = install({ db })
+            await continueOffline()
+            expect(await recoverStalledTaskWrites()).toBe(false)
+            expect(db.calls.enableNetwork).toBe(0)
+            stop()
+            resetConnectionHealthForTests()
+            const offline = install({ db, offline: true })
+            const previousDisables = db.calls.disableNetwork
+            expect(await recoverStalledTaskWrites()).toBe(false)
+            expect(db.calls.disableNetwork).toBe(previousDisables)
+            offline.stop()
+        })
+
+        it('does not re-enable the network if the browser goes offline during the restart', async () => {
+            const db = createFakeDb(['ok'])
+            let offline = false
+            db.disableNetwork = async () => {
+                offline = true
+            }
+            const { stop } = install({ db, isOffline: () => offline })
+            await recoverStalledTaskWrites()
+            expect(db.calls.enableNetwork).toBe(0)
+            stop()
+        })
+
+        it('replaces a blocked client only after an independent server check', async () => {
+            const db = createFakeDb(['ok'], { disableNetwork: 'hang' })
+            const requestClientReload = jest.fn(() => true)
+            const { stop } = install({
+                db,
+                firestoreRestartTimeoutMs: 5,
+                probeServerDirectly: () => Promise.resolve({ exists: true }),
+                requestClientReload,
+            })
+            expect(await recoverStalledTaskWrites()).toBe(false)
+            expect(requestClientReload).toHaveBeenCalledWith('restart_timeout')
+            stop()
+        })
+
+        it('does not reload if Continue offline is selected during the independent check', async () => {
+            const db = createFakeDb(['ok'], { enableNetwork: 'fail' })
+            const requestClientReload = jest.fn(() => true)
+            const { stop } = install({
+                db,
+                probeServerDirectly: async () => {
+                    await continueOffline()
+                    return { exists: true }
+                },
+                requestClientReload,
+            })
+            expect(await recoverStalledTaskWrites()).toBe(false)
+            expect(requestClientReload).not.toHaveBeenCalled()
+            expect(isManualOfflineMode()).toBe(true)
+            expect(getConnectionHealth()).toBe(CONNECTION_HEALTH_OFFLINE)
             stop()
         })
     })
