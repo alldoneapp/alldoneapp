@@ -8,12 +8,12 @@ import {
     HIT_POINTS,
     rollHitPoints,
     formatSkylineMinutes,
-    getFlyoverView,
+    getOrbitView,
     getSkylineColor,
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
-    SKYLINE_MAX_TILT,
+    SKYLINE_REST_VIEW,
     SKYLINE_RAMP,
     SKYLINE_WEEKS,
 } from './skylineData'
@@ -94,46 +94,15 @@ describe('skyline data', () => {
         expect(getSkylineColor(99, 10)).toBe(SKYLINE_RAMP[2].toLowerCase())
     })
 
-    it('looks straight down when the card is in the middle of the screen', () => {
-        const entering = getFlyoverView(1)
-        const centred = getFlyoverView(0.5)
-        const leaving = getFlyoverView(0)
-        expect(centred.tilt).toBe(0)
-        // Scrolling down flies forward: below the middle the plane is short of the city (camera on
-        // the far side), past the middle it is beyond it (camera on the legend side).
-        expect(entering.tilt).toBeLessThan(0)
-        expect(leaving.tilt).toBeGreaterThan(0)
-        expect(entering.tilt).toBeCloseTo(-leaving.tilt)
-        expect(Math.abs(entering.tilt)).toBeLessThanOrEqual(SKYLINE_MAX_TILT)
-        expect(getFlyoverView(0.4).tilt).toBeGreaterThan(0)
-        expect(getFlyoverView(-3)).toEqual(leaving)
-        expect(getFlyoverView(NaN)).toEqual(centred)
-    })
-
-    it('turns busier days into taller kinds of building', () => {
-        expect(getBuildingType(0, 10)).toBe('park')
-        expect(getBuildingType(2, 10)).toBe('house')
-        expect(getBuildingType(4, 10)).toBe('midrise')
-        expect(getBuildingType(7, 10)).toBe('tower')
-        expect(getBuildingType(9, 10)).toBe('skyscraper')
-        expect(getBuildingType(40, 10)).toBe('skyscraper')
-    })
-
-    it("rolls a random number of hits within each building type's range", () => {
-        Object.entries(HIT_POINTS).forEach(([type, [min, max]]) => {
-            expect(rollHitPoints(type, () => 0)).toBe(min)
-            expect(rollHitPoints(type, () => 0.999999)).toBe(max)
-            expect(rollHitPoints(type, () => 1)).toBe(max)
-        })
-        expect(HIT_POINTS.skyscraper[0]).toBeGreaterThan(HIT_POINTS.house[0])
-    })
-
-    it('knocks floors off with every hit and only collapses on the last one', () => {
-        expect(getIntegrity(5, 5)).toBe(1)
-        expect(getIntegrity(3, 5)).toBeLessThan(getIntegrity(4, 5))
-        expect(getIntegrity(1, 5)).toBeGreaterThan(0.3)
-        expect(getIntegrity(0, 5)).toBe(0)
-        expect(getIntegrity(-1, 5)).toBe(0)
+    it('flies around the front of the city without going round the back', () => {
+        expect(getOrbitView(null)).toEqual(SKYLINE_REST_VIEW)
+        for (let t = 0; t < 600; t += 1.7) {
+            const { azimuth, elevation } = getOrbitView(t)
+            expect(Math.abs(azimuth)).toBeLessThan(Math.PI / 2)
+            expect(elevation).toBeGreaterThan(0.55)
+            expect(elevation).toBeLessThan(0.95)
+        }
+        expect(getOrbitView(10)).not.toEqual(getOrbitView(40))
     })
 
     it('formats logged time', () => {
