@@ -1364,11 +1364,13 @@ AT-2418's flow suite, opts out of BOTH jest's inert-animation convention and red
 the predecessor's only test mocked `isReduceMotionEnabled` to `true` and therefore exercised the
 static branch forever.
 
-### The Empty inbox card draws the last quarter as a 3D city (skyline)
+### The Empty inbox card draws the last month as a 3D city (skyline)
 
-Wherever WebGL exists, `EmptyInboxOverview` draws the last quarter (13 weeks) as a three.js city
-(`Achievements/Skyline/`) instead of the 2D grid; the grid stays as the fallback for native, no-WebGL
-and jsdom (`canRenderSkyline` in `webglSupport.js`, which must never import three). three.js is
+The card has a Month/Year switch (remembered in localStorage, `alldone.emptyInbox.range`). Month
+draws the last 5 weeks as a three.js city (`Achievements/Skyline/`), laid out like a calendar page —
+weekdays as columns, weeks as rows, the current week nearest the camera; Year is the original 2D
+grid for the whole year. Without WebGL (native, jsdom, `canRenderSkyline` in `webglSupport.js`,
+which must never import three) there is no switch and the grid is all there is. three.js is
 loaded with a dynamic `import()` into its own `skyline` chunk and never enters the main bundle; the
 web bundle aliases `three` to its ES module build because the app's Babel config turns imports into
 `require`, which otherwise picks three's CJS shim and throws on `process.emitWarning` in a browser.
@@ -1394,10 +1396,12 @@ project appearing never changes the design. Every design tops out at exactly the
 (noise, or they revealed the edge of the canvas). Days sit `PITCH` apart with roads between every
 row and column. Nothing may be drawn on the ground outside the city.
 
-**Camera.** It flies on its own and ignores the page scroll (`getOrbitView`: a slow ±55° sweep around
-the front, elevation ~35–50°, never round the back so the ground legends are never upside down).
-Every frame `fitDistance` bisects the closest distance at which the whole city — outer roads,
-legends and the tallest possible building — projects inside the canvas with a margin, and the
+**Camera.** It flies on its own and ignores the page scroll (`getOrbitView`: a slow ±30° sweep, elevation
+~38–49°, never round the back so the ground legends are never upside down; a wider sweep turns the
+wide calendar diagonal to the camera and shrinks the city).
+Every frame `fitDistance` bisects the closest distance at which the ground with its legends and
+the tallest possible building on the outermost blocks project inside the canvas with a margin
+(bounds kept asymmetric and tight so no room is reserved where nothing can be), and the
 camera never sits closer than that, so the city can never be clipped by the canvas edge; a clipped
 city is what breaks the illusion that it stands on the card. Flying objects stay over the city and
 appear/disappear by scale, never by crossing the edge. Two earlier designs were dropped: a

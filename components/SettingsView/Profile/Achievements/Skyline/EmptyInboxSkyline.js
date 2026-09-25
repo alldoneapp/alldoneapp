@@ -7,8 +7,8 @@ import styles, { colors } from '../../../../styles/global'
 import { useReducedMotion } from '../../../../UIComponents/Ghosts/ghostAnimation'
 import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes } from './skylineData'
 
-const MIN_HEIGHT = 260
-const MAX_HEIGHT = 460
+const MIN_HEIGHT = 240
+const MAX_HEIGHT = 440
 
 const getActiveProjects = (projects, user) =>
     (projects || []).filter(
@@ -24,7 +24,7 @@ const getActiveProjects = (projects, user) =>
  * The Empty inbox card's year, drawn as a 3D city (replaces the 2D grid wherever WebGL exists; the
  * caller keeps the grid as the fallback).
  *
- * Each building is one day of the last quarter (13 weeks). Height is the tasks completed that day across the
+ * Each building is one day of the last month (5 weeks, laid out like a calendar page). Height is the tasks completed that day across the
  * user's active projects (`statistics/{projectId}/{userId}`), colour is the project that got most of
  * them, and a glowing green roof is a day the inbox was cleared — the same `emptyInboxDays` the grid
  * reads, so the two can never disagree about which days count.
@@ -56,18 +56,12 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
     const days = useMemo(() => buildSkylineDays(weeks, statistics, projects), [weeks, statistics, projects])
     const todayIndex = useMemo(() => days.findIndex(day => day.isToday), [days])
 
+    // Calendar legends, in the user's moment locale: two-letter weekday names across the top, and
+    // each week's Monday (e.g. "22 Sep") at the start of its row.
     const labels = useMemo(
         () => ({
-            months: weeks
-                .map((week, index) =>
-                    week.monthName ? { week: index, text: translate(week.monthName).slice(0, 3) } : null
-                )
-                .filter(Boolean),
-            weekdays: [
-                { weekday: 0, text: translate('Monday short') },
-                { weekday: 2, text: translate('Wednesday short') },
-                { weekday: 4, text: translate('Friday short') },
-            ],
+            columns: weeks.length ? weeks[0].days.map((day, column) => ({ column, text: day.date.format('dd') })) : [],
+            rows: weeks.map((week, row) => ({ row, text: week.days[0].date.format('D MMM') })),
         }),
         [weeks]
     )
@@ -133,7 +127,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
 
     const shownIndex = hoverIndex >= 0 ? hoverIndex : selectedIndex >= 0 ? selectedIndex : todayIndex
     const shownDay = days[shownIndex]
-    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.6)))
+    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.56)))
 
     if (sceneFailed) return null
 

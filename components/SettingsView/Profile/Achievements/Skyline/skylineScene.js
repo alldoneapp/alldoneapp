@@ -87,7 +87,7 @@ const GROUND_PX_PER_UNIT = 64
 const RISE_DURATION = 1.1
 const CAMERA_FOV = 32
 // How far inside the canvas edge (in normalized device coordinates) the city has to stay.
-const FRAME_MARGIN = 0.88
+const FRAME_MARGIN = 0.94
 const SPIRE = 0.7
 // Tallest thing that can stand on a plot: the highest building plus spire and beacon. Used to
 // reserve room so nothing ever pokes out of the card.
@@ -148,11 +148,17 @@ const CAR_COLORS = [
 
 const STRIPPED_KINDS = new Set(['fan', 'spire', 'beacon', 'flag', 'flagPole'])
 
-const posX = week => (week - (SKYLINE_WEEKS - 1) / 2) * PITCH
-const posZ = weekday => (weekday - (GRID_DAYS - 1) / 2) * PITCH
+// Laid out like a calendar page: weekdays are the columns (x), weeks the rows (z), the oldest week
+// furthest from the camera and the current week nearest to it.
+const COLUMNS = GRID_DAYS
+const ROWS = SKYLINE_WEEKS
+const colX = column => (column - (COLUMNS - 1) / 2) * PITCH
+const rowZ = row => (row - (ROWS - 1) / 2) * PITCH
+const cellX = day => colX(day.weekday)
+const cellZ = day => rowZ(day.week)
 // Roads run along the outside of the city too, so these are the centre lines of the outer roads.
-const CITY_HALF_WIDTH = (SKYLINE_WEEKS * PITCH) / 2
-const CITY_HALF_DEPTH = (GRID_DAYS * PITCH) / 2
+const CITY_HALF_WIDTH = (COLUMNS * PITCH) / 2
+const CITY_HALF_DEPTH = (ROWS * PITCH) / 2
 
 // Deterministic pseudo-random numbers: the city must look the same on every visit and every
 // re-render, so nothing here may use Math.random.
@@ -280,7 +286,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     scene.add(ground)
 
     let days = []
-    let labels = { months: [], weekdays: [] }
+    let labels = { columns: [], rows: [] }
     let scale = 5
 
     const drawGround = () => {
@@ -312,32 +318,32 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         context.fillStyle = LANE
         const dash = 0.22 * px
         const dashWidth = 0.035 * px
-        for (let row = 0; row <= GRID_DAYS; row++) {
+        for (let row = 0; row <= ROWS; row++) {
             const z = -CITY_HALF_DEPTH + row * PITCH
-            for (let week = 0; week < SKYLINE_WEEKS; week++) {
-                const from = posX(week) - BLOCK / 2
+            for (let column = 0; column < COLUMNS; column++) {
+                const from = colX(column) - BLOCK / 2
                 for (let x = from + 0.08; x + 0.22 <= from + BLOCK; x += 0.42) {
                     context.fillRect(cx(x), cz(z) - dashWidth / 2, dash, dashWidth)
                 }
             }
         }
-        for (let column = 0; column <= SKYLINE_WEEKS; column++) {
+        for (let column = 0; column <= COLUMNS; column++) {
             const x = -CITY_HALF_WIDTH + column * PITCH
-            for (let weekday = 0; weekday < GRID_DAYS; weekday++) {
-                const from = posZ(weekday) - BLOCK / 2
+            for (let row = 0; row < ROWS; row++) {
+                const from = rowZ(row) - BLOCK / 2
                 for (let z = from + 0.08; z + 0.22 <= from + BLOCK; z += 0.42) {
                     context.fillRect(cx(x) - dashWidth / 2, cz(z), dashWidth, dash)
                 }
             }
         }
-        // One block per day of the quarter: a park for the days nothing got done.
+        // One block per day: a park for the days nothing got done, a bare plot for days to come.
         const block = BLOCK * px
         const byCell = new Map(days.map(day => [`${day.week}:${day.weekday}`, day]))
-        for (let week = 0; week < SKYLINE_WEEKS; week++) {
-            for (let weekday = 0; weekday < GRID_DAYS; weekday++) {
-                const day = byCell.get(`${week}:${weekday}`)
+        for (let row = 0; row < ROWS; row++) {
+            for (let column = 0; column < COLUMNS; column++) {
+                const day = byCell.get(`${row}:${column}`)
                 context.fillStyle = day && day.tasks <= 0 ? PARK : PLOT
-                roundRect(cx(posX(week)) - block / 2, cz(posZ(weekday)) - block / 2, block, block)
+                roundRect(cx(colX(column)) - block / 2, cz(rowZ(row)) - block / 2, block, block)
             }
         }
         // Contact shadows on the blocks, longer for taller buildings.
@@ -345,20 +351,21 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         days.forEach(day => {
             if (day.tasks <= 0) return
             const length = Math.min(1, getSkylineHeight(day.tasks, scale) / SKYLINE_MAX_HEIGHT) * 0.14 * px
-            roundRect(cx(posX(day.week)) - plot / 2 + length, cz(posZ(day.weekday)) - plot / 2 - length, plot, plot)
+            roundRect(cx(cellX(day)) - plot / 2 + length, cz(cellZ(day)) - plot / 2 - length, plot, plot)
         })
+        // The calendar's legends: weekday names across the top, each week's first date on the left.
         context.fillStyle = LABEL
         context.textBaseline = 'middle'
         const font = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-        context.textAlign = 'left'
-        context.font = `500 ${0.46 * px}px ${font}`
-        labels.months.forEach(({ week, text }) => {
-            context.fillText(text, cx(posX(week) - BLOCK / 2), cz(CITY_HALF_DEPTH + roadHalf + 0.5))
+        context.textAlign = 'center'
+        context.font = `500 ${0.44 * px}px ${font}`
+        labels.columns.forEach(({ column, text }) => {
+            context.fillText(text, cx(colX(column)), cz(-CITY_HALF_DEPTH - roadHalf - 0.45))
         })
         context.textAlign = 'right'
-        context.font = `500 ${0.38 * px}px ${font}`
-        labels.weekdays.forEach(({ weekday, text }) => {
-            context.fillText(text, cx(-CITY_HALF_WIDTH - roadHalf - 0.25), cz(posZ(weekday)))
+        context.font = `500 ${0.4 * px}px ${font}`
+        labels.rows.forEach(({ row, text }) => {
+            context.fillText(text, cx(-CITY_HALF_WIDTH - roadHalf - 0.25), cz(rowZ(row)))
         })
         groundTexture.needsUpdate = true
     }
@@ -420,8 +427,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const byBuilding = days.map(() => [])
         buildingColors = days.map(() => PLOT)
         days.forEach((day, b) => {
-            const x = posX(day.week)
-            const z = posZ(day.weekday)
+            const x = cellX(day)
+            const z = cellZ(day)
             const type = getBuildingType(day.tasks, scale)
             const H = getSkylineHeight(day.tasks, scale)
             const random = seeded(day.week * 31 + day.weekday * 7 + 11)
@@ -892,8 +899,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
 
     const burst = (b, strength, top) => {
         const day = days[b]
-        const x = posX(day.week)
-        const z = posZ(day.weekday)
+        const x = cellX(day)
+        const z = cellZ(day)
         const color = buildingColors[b] || PLOT
         const chunks = Math.round(8 * strength)
         for (let i = 0; i < chunks; i++) {
@@ -935,8 +942,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
 
     const dustCloud = (b, amount) => {
         const day = days[b]
-        const x = posX(day.week)
-        const z = posZ(day.weekday)
+        const x = cellX(day)
+        const z = cellZ(day)
         for (let i = 0; i < amount; i++) {
             const angle = (i / amount) * Math.PI * 2 + Math.random() * 0.4
             const speed = 0.8 + Math.random() * 1.4
@@ -955,8 +962,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
 
     const leaveRubble = b => {
         const day = days[b]
-        const x = posX(day.week)
-        const z = posZ(day.weekday)
+        const x = cellX(day)
+        const z = cellZ(day)
         const color = buildingColors[b] || PLOT
         for (let i = 0; i < 6; i++) {
             const size = 0.12 + Math.random() * 0.16
@@ -1047,8 +1054,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const alongX = carRandom() < 0.6
         const direction = carRandom() < 0.5 ? 1 : -1
         const road = alongX
-            ? -CITY_HALF_DEPTH + Math.floor(carRandom() * (GRID_DAYS + 1)) * PITCH
-            : -CITY_HALF_WIDTH + Math.floor(carRandom() * (SKYLINE_WEEKS + 1)) * PITCH
+            ? -CITY_HALF_DEPTH + Math.floor(carRandom() * (ROWS + 1)) * PITCH
+            : -CITY_HALF_WIDTH + Math.floor(carRandom() * (COLUMNS + 1)) * PITCH
         return {
             alongX,
             direction,
@@ -1241,13 +1248,26 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     // ---------------------------------------------------------------- camera: the flight
     // The corners of everything that must stay in view: the city block incl. its outer roads, the
     // legends printed beside it, and the tallest building that could stand there.
-    const boundsX = CITY_HALF_WIDTH + ROAD_WIDTH / 2 + 0.25 + 1.4
-    const boundsZ = CITY_HALF_DEPTH + ROAD_WIDTH / 2 + 0.5 + 0.45
+    // What has to stay in view: the ground with its legends (weekday names above the city, week
+    // dates to its left), and the tallest building that could stand on the outermost blocks. Kept
+    // asymmetric, and building tops only over the city itself, so no space is reserved where
+    // nothing can ever be — that is what lets the city fill the card.
+    const roadHalf = ROAD_WIDTH / 2
+    const groundMinX = -(CITY_HALF_WIDTH + roadHalf + 0.25 + 1.7)
+    const groundMaxX = CITY_HALF_WIDTH + roadHalf + 0.05
+    const groundMinZ = -(CITY_HALF_DEPTH + roadHalf + 0.8)
+    const groundMaxZ = CITY_HALF_DEPTH + roadHalf + 0.05
+    const outerBuilding = PITCH / 2 - FOOTPRINT / 2
     const bounds = []
+    ;[groundMinX, groundMaxX].forEach(x => [groundMinZ, groundMaxZ].forEach(z => bounds.push(new Vector3(x, 0, z))))
     ;[-1, 1].forEach(sx =>
-        [-1, 1].forEach(sz => [0, TALLEST].forEach(y => bounds.push(new Vector3(sx * boundsX, y, sz * boundsZ))))
+        [-1, 1].forEach(sz =>
+            bounds.push(
+                new Vector3(sx * (CITY_HALF_WIDTH - outerBuilding), TALLEST, sz * (CITY_HALF_DEPTH - outerBuilding))
+            )
+        )
     )
-    const target = new Vector3(0, TALLEST * 0.18, 0)
+    const target = new Vector3((groundMinX + groundMaxX) / 2, TALLEST * 0.15, (groundMinZ + groundMaxZ) / 2)
     const direction = new Vector3()
     const projected = new Vector3()
     const fits = distance => {
@@ -1404,11 +1424,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 rise[todayIndex] *
                 (todayState ? todayState.integrity : 1)
             marker.visible = true
-            marker.position.set(
-                posX(day.week),
-                top + 0.55 + (reduceMotion ? 0 : Math.sin(t * 2.2) * 0.1),
-                posZ(day.weekday)
-            )
+            marker.position.set(cellX(day), top + 0.55 + (reduceMotion ? 0 : Math.sin(t * 2.2) * 0.1), cellZ(day))
             marker.rotation.y = reduceMotion ? 0 : t * 0.8
         }
         placeCamera(t)

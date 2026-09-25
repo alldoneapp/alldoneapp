@@ -1,7 +1,7 @@
 import { buildEmptyInboxActivityWeeks } from '../AchievementsHelper'
 
-/** The last quarter: 13 Monday-aligned weeks ending with the current one. */
-export const SKYLINE_WEEKS = 13
+/** The last month: 5 Monday-aligned weeks ending with the current one. */
+export const SKYLINE_WEEKS = 5
 
 /**
  * Turns the empty-inbox weeks and the per-project statistics into one record per building.
@@ -144,9 +144,10 @@ export const SKYLINE_REST_VIEW = { azimuth: -0.35, elevation: 0.78 }
 /**
  * Where the camera is at time `t` (seconds) — a slow flight around the front of the city.
  *
- * The azimuth sweeps about ±55° either side of straight-on and never goes round the back, so the
+ * The azimuth sweeps about ±30° either side of its resting angle (a wider sweep turns the wide
+ * calendar diagonal to the camera and shrinks the whole city to fit) and never goes round the back, so the
  * month and weekday legends printed on the ground are never seen upside down. The elevation rises
- * and dips between roughly 35° and 50° above the horizon on a different period, so the flight does
+ * and dips between roughly 38° and 49° above the horizon on a different period, so the flight does
  * not repeat as a simple back-and-forth. `t == null` (reduced motion) is the resting view.
  *
  * @returns {{ azimuth: number, elevation: number }} radians; azimuth 0 = looking from the month
@@ -155,8 +156,8 @@ export const SKYLINE_REST_VIEW = { azimuth: -0.35, elevation: 0.78 }
 export function getOrbitView(t) {
     if (t == null || !Number.isFinite(t)) return { ...SKYLINE_REST_VIEW }
     return {
-        azimuth: SKYLINE_REST_VIEW.azimuth + Math.sin(t * 0.045) * 0.95,
-        elevation: 0.74 + Math.sin(t * 0.031 + 1.1) * 0.13,
+        azimuth: SKYLINE_REST_VIEW.azimuth + Math.sin(t * 0.045) * 0.55,
+        elevation: 0.76 + Math.sin(t * 0.031 + 1.1) * 0.1,
     }
 }
 
