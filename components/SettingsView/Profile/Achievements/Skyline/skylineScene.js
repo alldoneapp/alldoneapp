@@ -54,8 +54,11 @@ import {
  *    illusion that it stands on the card.
  *  - THE BUILDINGS say how busy a day was, by height, colour (the app's blue ramp) and TYPE
  *    (`getBuildingType`): a little park for a day with nothing done, then a house, a mid-rise with a
- *    spinning rooftop fan, a stepped tower, and a skyscraper with an antenna and a beacon. A green
- *    roof (the 2D grid's UtilityGreen200) marks an empty-inbox day.
+ *    spinning rooftop fan, a stepped tower, and a skyscraper with an antenna and a beacon. An empty-inbox
+ *    day plants a small gold flag on the building's highest point, waving in the wind. (It used
+ *    to be a green roof, which clashed as soon as buildings took their projects' colours — a green
+ *    project's building was indistinguishable from an inbox-zero one. A flag on a pole reads the
+ *    same on any colour.)
  *  - DEMOLITION is the toy on top: every tap on a building is a hit. A building takes a random
  *    number of hits (`rollHitPoints`, more for bigger types, sometimes a double-damage critical);
  *    each hit shakes it, flashes it, knocks floors off in a burst of debris and sparks, and the
@@ -98,7 +101,9 @@ const PARK = colors.UtilityGreen100
 const TREE = colors.UtilityGreen125
 const SHADOW = colors.Grey200
 const LABEL = colors.Text03
-const INBOX_GREEN = colors.UtilityGreen200
+const FLAG = colors.UtilityYellow200
+const FLAG_POLE = colors.Text02
+const FLAG_POLE_HEIGHT = 0.55
 const HIGHLIGHT = colors.UtilityYellow200
 const METAL = colors.Grey400
 const BEACON = colors.UtilityOrange200
@@ -110,7 +115,7 @@ const AIRPLANE = colors.Secondary200
 const AIRPLANE_TAIL = colors.Primary100
 const GROUND_SHADE = colors.Text01
 // Building colours: all app colours. Blues dominate (listed more than once) so the city still reads
-// as Alldone; violets and warm tones are the occasional accent. No greens — green means inbox zero.
+// as Alldone; violets and warm tones are the occasional accent.
 const BODY_PALETTE = [
     colors.Primary100,
     colors.Primary100,
@@ -140,6 +145,8 @@ const CAR_COLORS = [
     colors.Grey400,
     colors.UtilityGreen200,
 ]
+
+const STRIPPED_KINDS = new Set(['fan', 'spire', 'beacon', 'flag', 'flagPole'])
 
 const posX = week => (week - (SKYLINE_WEEKS - 1) / 2) * PITCH
 const posZ = weekday => (weekday - (GRID_DAYS - 1) / 2) * PITCH
@@ -247,7 +254,9 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         })
     )
     const basic = color => track(new MeshBasicMaterial({ color: new Color(color) }))
-    const roofMaterial = basic(INBOX_GREEN)
+    // The flag's geometry has its origin at the pole edge, so it waves around the pole.
+    const unitFlag = track(new BoxGeometry(1, 1, 1))
+    unitFlag.translate(0.5, 0.5, 0)
     const fanMaterial = basic(METAL)
     const beaconMaterial = basic(BEACON)
     const groundShadeMaterial = track(
@@ -364,8 +373,11 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         cylinder: { geometry: unitCylinder, material: solidMaterial, colored: true, pickable: true },
         dome: { geometry: unitSphere, material: solidMaterial, colored: true, pickable: true },
         spire: { geometry: unitCylinder, material: solidMaterial, colored: true },
-        roof: { geometry: unitBox, material: roofMaterial },
-        roofDisc: { geometry: unitCylinder, material: roofMaterial },
+        flagPole: { geometry: unitCylinder, material: basic(FLAG_POLE) },
+        flag: {
+            geometry: unitFlag,
+            material: track(new MeshBasicMaterial({ color: new Color(FLAG), side: DoubleSide })),
+        },
         fan: { geometry: unitBox, material: fanMaterial },
         beacon: { geometry: unitSphere, material: beaconMaterial },
     }
@@ -433,14 +445,17 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 return entry
             }
             const box = (part, color = body) => add('box', { color, ...part })
+            // Where an empty-inbox flag would be planted: the design's highest flat point.
+            let summit = { x, z, top: H, w: F * 0.5, spire: false }
             const flatRoof = (w, d, top, offset = {}) => {
-                if (day.achieved) add('roof', { y: top, w: w + 0.03, h: 0.05, d: d + 0.03, isRoof: true, ...offset })
+                if (top >= summit.top - 0.001 || summit.top === H) {
+                    summit = { ...summit, x: offset.x ?? x, z: offset.z ?? z, top, w: Math.min(w, d) }
+                }
             }
-            const discRoof = (w, top) => {
-                if (day.achieved) add('roofDisc', { y: top, w: w + 0.03, h: 0.05, d: w + 0.03, isRoof: true })
-            }
-            const roofColor = color => (day.achieved ? INBOX_GREEN : color)
+            const discRoof = (w, top) => flatRoof(w, w, top)
+            const roofColor = color => color
             const spireOnTop = top => {
+                summit.spire = true
                 add('spire', { y: top, w: 0.05, h: SPIRE, d: 0.05, color: METAL })
                 add('beacon', { y: top + SPIRE - 0.03, w: 0.12, h: 0.12, d: 0.12, blink: random() * Math.PI * 2 })
             }
@@ -484,7 +499,6 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                         d: F * 0.92,
                         color: roofColor(accent),
                         rot: random() < 0.5 ? 0 : Math.PI / 2,
-                        isRoof: day.achieved,
                     })
                 },
                 silo: () => {
@@ -496,7 +510,6 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                         h: domeHeight,
                         d: F * 0.72,
                         color: roofColor(accent),
-                        isRoof: day.achieved,
                     })
                 },
                 rowHouses: () => {
@@ -512,9 +525,10 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                             h: top - wall,
                             d: F * 0.86,
                             color: roofColor(i ? accent : body),
-                            isRoof: day.achieved,
                         })
                     })
+                    // The flag goes on the ridge of the taller house, not in the gap between them.
+                    flatRoof(0.1, 0.1, H, { x: x + F * 0.24 })
                 },
                 shop: () => {
                     box({ w: F * 0.9, h: H, d: F * 0.8 })
@@ -549,7 +563,6 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                         h: domeHeight,
                         d: F * 0.86,
                         color: roofColor(accent),
-                        isRoof: day.achieved,
                     })
                 },
                 lShape: () => {
@@ -591,7 +604,6 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                         h: H - shaft,
                         d: F * 0.66,
                         color: roofColor(accent),
-                        isRoof: day.achieved,
                     })
                 },
                 spireScraper: () => {
@@ -618,6 +630,23 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 ],
             }
             pick(byType[type])()
+            if (day.achieved) {
+                // Off-centre when the centre already carries an antenna.
+                const inset = summit.spire ? Math.max(0.08, summit.w * 0.32) : 0
+                const poleX = summit.x - inset
+                const poleZ = summit.z + inset
+                add('flagPole', { x: poleX, z: poleZ, y: summit.top, w: 0.035, h: FLAG_POLE_HEIGHT, d: 0.035 })
+                add('flag', {
+                    x: poleX,
+                    z: poleZ,
+                    y: summit.top + FLAG_POLE_HEIGHT - 0.2,
+                    w: 0.3,
+                    h: 0.18,
+                    d: 0.012,
+                    isFlag: true,
+                    phase: random() * Math.PI * 2,
+                })
+            }
         })
         return { list, byBuilding }
     }
@@ -661,7 +690,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     const paint = b => {
         if (b < 0 || b >= partsByBuilding.length) return
         partsByBuilding[b].forEach(part => {
-            if (!KINDS[part.kind].pickable || part.isRoof || part.color === METAL) return
+            if (!KINDS[part.kind].pickable || part.color === METAL) return
             let color = part.base
             if (b === hoverIndex) color = part.base.clone().lerp(white, 0.3)
             meshes[part.kind].setColorAt(part.index, color)
@@ -669,7 +698,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         })
     }
 
-    // Today's green roof popping in, on the same celebration run as the 2D dot.
+    // Today's flag popping up, on the same celebration run as the 2D dot.
     const CELEBRATION_SECONDS = 1.6
     const celebrationScale = now => {
         if (celebrationStart < 0) return 1
@@ -694,7 +723,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             let jitterZ = 0
             if (state) {
                 // Rooftop equipment is the first thing a hit knocks off.
-                if (state.stripped && (part.kind === 'fan' || part.kind === 'spire' || part.kind === 'beacon')) h = 0
+                // Rooftop equipment — and the flag — is the first thing a hit knocks off.
+                if (state.stripped && STRIPPED_KINDS.has(part.kind)) h = 0
                 if (state.collapsed && integrity < 0.02) h = 0
                 const shake = Math.max(0, 1 - (now - state.shakeStart) / 0.35)
                 if (shake > 0 && !reduceMotion) {
@@ -709,7 +739,11 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 d *= blink
                 h = part.h * blink * (r > 0.98 ? 1 : 0)
             }
-            if (part.isRoof && part.b === todayIndex && pop !== 1) {
+            if (part.kind === 'flag' && !reduceMotion) {
+                rotation += Math.sin(t * 3.1 + part.phase) * 0.45
+                w *= 0.88 + 0.12 * Math.sin(t * 6.3 + part.phase)
+            }
+            if (part.isFlag && part.b === todayIndex && pop !== 1) {
                 w *= pop
                 d *= pop
             }
@@ -731,7 +765,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 return
             }
             partsByBuilding[b].forEach(part => {
-                if (!KINDS[part.kind].pickable || part.isRoof || part.color === METAL) return
+                if (!KINDS[part.kind].pickable || part.color === METAL) return
                 flashColor.copy(part.base).lerp(white, amount * 0.85)
                 meshes[part.kind].setColorAt(part.index, flashColor)
                 meshes[part.kind].instanceColor.needsUpdate = true

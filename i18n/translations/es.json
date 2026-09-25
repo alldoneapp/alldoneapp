@@ -185,7 +185,7 @@
     "Empty inbox reached on": "Bandeja de entrada vacía alcanzada el %{date}",
     "Empty inbox streak day added": "Hoy se añadió a tu racha de bandeja vacía · Día %{count}.",
     "Empty inbox day badge": "Día %{count}",
-    "Empty inbox skyline description": "Tu último trimestre como una ciudad: cada edificio es un día, cuanto más alto, más tareas completaste. Un tejado verde marca la bandeja de entrada vacía.",
+    "Empty inbox skyline description": "Tu último trimestre como una ciudad: cada edificio es un día, cuanto más alto, más tareas completaste. Una bandera dorada marca la bandeja de entrada vacía.",
     "Skyline tasks done": "%{count} tareas completadas",
     "Skyline inbox cleared": "Bandeja vaciada",
     "Skyline inbox not cleared": "Bandeja no vaciada",
