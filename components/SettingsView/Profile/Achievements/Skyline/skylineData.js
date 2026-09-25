@@ -119,25 +119,6 @@ export function getIntegrity(hitPoints, maxHitPoints) {
     return 0.32 + 0.68 * Math.min(1, hitPoints / maxHitPoints)
 }
 
-/**
- * The app's blue ramp, light to deep: UtilityDarkBlue125 → Primary100 → Primary400. A building's
- * colour says the same thing as its height, so the city reads from straight above too, where heights
- * cannot be seen.
- */
-export const SKYLINE_RAMP = ['#D6E3FF', '#007FFF', '#0A44A5']
-
-const hexToRgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
-const rgbToHex = rgb => `#${rgb.map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`
-
-export function getSkylineColor(tasks, scale = 5) {
-    const t = Math.max(0, Math.min(1, tasks / scale))
-    const [from, to, local] =
-        t < 0.5 ? [SKYLINE_RAMP[0], SKYLINE_RAMP[1], t / 0.5] : [SKYLINE_RAMP[1], SKYLINE_RAMP[2], (t - 0.5) / 0.5]
-    const a = hexToRgb(from)
-    const b = hexToRgb(to)
-    return rgbToHex(a.map((v, i) => v + (b[i] - v) * local))
-}
-
 /** The camera's resting view, used for reduced motion and as the centre of the sweep. */
 export const SKYLINE_REST_VIEW = { azimuth: -0.35, elevation: 0.78 }
 
