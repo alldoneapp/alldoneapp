@@ -13,6 +13,7 @@ jest.mock('three', () => {
         constructor() {
             this.domElement = global.document.createElement('canvas')
             this.capabilities = { getMaxAnisotropy: () => 1 }
+            this.shadowMap = {}
             this.renderCount = 0
         }
         setPixelRatio() {}

@@ -4,6 +4,7 @@ import {
     buildSkylineDays,
     buildSkylineWeeks,
     getBuildingType,
+    getDaylight,
     getIntegrity,
     HIT_POINTS,
     rollHitPoints,
@@ -109,6 +110,33 @@ describe('skyline data', () => {
         expect(getProjectColorAt(day, 0.71)).toBe('#BBBBBB')
         expect(getProjectColorAt(day, 1)).toBe('#BBBBBB')
         expect(getProjectColorAt({ byProject: [] }, 0.5)).toBeNull()
+    })
+
+    it('lights the city by the local time of day', () => {
+        const at = (h, m = 0) => getDaylight(new Date(2026, 8, 25, h, m))
+        const noon = at(13, 30)
+        const morning = at(7, 30)
+        const evening = at(19, 30)
+        const night = at(23)
+
+        expect(noon.phase).toBe('day')
+        expect(noon.lightColor).toBe('#FFFFFF')
+        expect(noon.elevation).toBeGreaterThan(morning.elevation)
+        // Low sun is warm and comes from the side it is on.
+        expect(morning.lightColor).not.toBe('#FFFFFF')
+        expect(morning.azimuth).toBeLessThan(0)
+        expect(evening.azimuth).toBeGreaterThan(0)
+        // Night: cool, dimmer, lamps on.
+        expect(night.phase).toBe('night')
+        expect(night.lightColor).toBe('#D6E3FF')
+        expect(night.lightStrength).toBeLessThan(noon.lightStrength)
+        expect(night.lamps).toBe(1)
+        expect(noon.lamps).toBe(0)
+        // Twilight blends rather than jumps.
+        const dusk = at(20, 45)
+        expect(dusk.phase).toBe('dusk')
+        expect(dusk.lightStrength).toBeGreaterThan(night.lightStrength)
+        expect(dusk.lightStrength).toBeLessThan(noon.lightStrength)
     })
 
     it('formats logged time', () => {

@@ -161,6 +161,65 @@ export function getOrbitView(t) {
     }
 }
 
+const clamp01 = value => Math.max(0, Math.min(1, value))
+const mixHex = (from, to, amount) => {
+    const a = [1, 3, 5].map(i => parseInt(from.slice(i, i + 2), 16))
+    const b = [1, 3, 5].map(i => parseInt(to.slice(i, i + 2), 16))
+    const t = clamp01(amount)
+    return `#${a
+        .map((v, i) =>
+            Math.round(v + (b[i] - v) * t)
+                .toString(16)
+                .padStart(2, '0')
+        )
+        .join('')}`.toUpperCase()
+}
+
+// Fixed, location-free day: the app knows the user's clock but not where the sun actually is, and a
+// believable day beats a precise one here.
+const SUNRISE = 6.5
+const SUNSET = 20.5
+const TWILIGHT = 0.75
+const SUN_COLOR = '#FFFFFF'
+const LOW_SUN_COLOR = '#FFCE8F' // UtilityYellow150 — morning and evening light
+const MOON_COLOR = '#D6E3FF' // UtilityDarkBlue125 — cool night light
+const MOON = { azimuth: 0.6, elevation: 0.95 }
+
+/**
+ * How the city is lit at `date`'s local time.
+ *
+ * By day the sun rises in the east, stands highest and whitest around midday and sets in the west;
+ * low sun is warm and throws long shadows. At night a dimmer, cooler moon takes over and the street
+ * lamps come on. Around sunrise and sunset the two blend over `TWILIGHT` hours so the change is
+ * never a jump. The card's white stays the sky at every hour: only the light on the city changes.
+ *
+ * @returns {{ azimuth: number, elevation: number, lightColor: string, lightStrength: number,
+ *   ambientColor: string, ambientStrength: number, lamps: number, phase: string }}
+ *   azimuth 0 = from the front (the current week's side), negative = east (left); strengths are
+ *   0..1 multipliers on the full-daylight setting; lamps 0..1
+ */
+export function getDaylight(date = new Date()) {
+    const hours = date.getHours() + date.getMinutes() / 60
+    const day = clamp01(
+        Math.min((hours - (SUNRISE - TWILIGHT)) / (2 * TWILIGHT), (SUNSET + TWILIGHT - hours) / (2 * TWILIGHT))
+    )
+    const progress = clamp01((hours - SUNRISE) / (SUNSET - SUNRISE))
+    const height = Math.sin(Math.PI * progress)
+    const sun = { azimuth: -Math.PI / 2 + progress * Math.PI, elevation: 0.16 + height * 0.9 }
+    const sunColor = mixHex(SUN_COLOR, LOW_SUN_COLOR, (1 - height) ** 2 * 0.85)
+    const bySun = day >= 0.5
+    return {
+        azimuth: bySun ? sun.azimuth : MOON.azimuth,
+        elevation: bySun ? sun.elevation : MOON.elevation,
+        lightColor: mixHex(MOON_COLOR, sunColor, day),
+        lightStrength: 0.35 + 0.65 * day,
+        ambientColor: mixHex(MOON_COLOR, SUN_COLOR, day),
+        ambientStrength: 0.62 + 0.38 * day,
+        lamps: clamp01((0.6 - day) / 0.6),
+        phase: day >= 1 ? 'day' : day <= 0 ? 'night' : hours < 12 ? 'dawn' : 'dusk',
+    }
+}
+
 export const formatSkylineMinutes = minutes => {
     const total = Math.round(minutes || 0)
     if (!total) return null
