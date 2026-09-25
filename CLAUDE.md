@@ -1364,6 +1364,22 @@ AT-2418's flow suite, opts out of BOTH jest's inert-animation convention and red
 the predecessor's only test mocked `isReduceMotionEnabled` to `true` and therefore exercised the
 static branch forever.
 
+### The Empty inbox year is a 3D city (skyline)
+
+Wherever WebGL exists, `EmptyInboxOverview` draws the 53-week year as a three.js city
+(`Achievements/Skyline/`) instead of the 2D grid; the grid stays as the fallback for native, no-WebGL
+and jsdom (`canRenderSkyline` in `webglSupport.js`, which must never import three). Each building is
+one day: height = `doneTasks` summed over the user's **active** projects from
+`statistics/{projectId}/{userId}` (one `day` range read per project; the past is cached per session,
+only today is re-read — `utils/backends/Users/skylineStatistics.js`), colour = the busiest project's
+marker colour, green roof = a day in `emptyInboxDays` (the same array the grid reads). three.js is
+loaded with a dynamic `import()` into its own `skyline` chunk, so it never enters the main bundle.
+The canvas stops its own pointer/click events because the all-projects card is itself a link, plain
+wheel scrolls the page (ctrl/cmd + wheel zooms) and touch uses `touch-action: pan-y`. The celebration
+run that pops the 2D today dot makes today's roof pop instead. `skylineScene.js` is imperative and
+untestable in jsdom (no WebGL); `skylineData.js` holds everything that decides what a building means
+and is unit-tested.
+
 ### Per-project empty inbox — the completed sweep (AT-2492)
 
 **Clearing one project is celebrated too, and the difference from the all-projects moment is one of

@@ -16,6 +16,8 @@ import {
     getTodayEmptyInboxTimestamp,
 } from './AchievementsHelper'
 import { getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
+import EmptyInboxSkyline from './Skyline/EmptyInboxSkyline'
+import { canRenderSkyline } from './Skyline/webglSupport'
 
 const CELL_SIZE = 11
 const CELL_GAP = 3
@@ -58,6 +60,9 @@ const Metric = ({ label, value, celebration }) => (
  */
 export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateNewDay = false, celebrationRunId }) {
     const [contentWidth, setContentWidth] = useState(0)
+    // The year is drawn as a 3D city wherever the browser can draw one; the 2D grid below remains
+    // the fallback (native, no WebGL, jsdom).
+    const showSkyline = useMemo(() => canRenderSkyline(), [])
     const CardContainer = onOpenAchievements ? TouchableOpacity : View
     const emptyInboxDays = useMemo(
         () => getEmptyInboxDaysWithLegacyFallback(user),
@@ -88,7 +93,7 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
               // which is the timezone it was recorded in.
               time: moment(todayEmptyInboxTimestamp).format(getTimeFormat()),
           })
-        : translate('Empty inbox achievement description')
+        : translate(showSkyline ? 'Empty inbox skyline description' : 'Empty inbox achievement description')
     // The hook is always called (it decides nothing when disabled) — a conditional hook would be a
     // rules-of-hooks violation, and letting it run while the caller also owns a run would spend the
     // day twice.
@@ -160,74 +165,83 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
             </View>
 
             <View style={localStyles.activityContainer}>
-                <View style={[localStyles.activityGrid, { width: getGridWidth(numberOfWeeks) }]}>
-                    <View style={localStyles.monthLabels}>
-                        <View style={{ width: DAY_LABEL_WIDTH }} />
-                        {monthSegments.map((segment, index) => (
-                            <View
-                                key={`${segment.monthName}-${index}`}
-                                style={[localStyles.monthLabelSlot, { width: WEEK_WIDTH * segment.numberOfWeeks }]}
-                            >
-                                <Text numberOfLines={1} style={localStyles.monthLabel}>
-                                    {translate(segment.monthName).slice(0, 3)}
-                                </Text>
-                            </View>
-                        ))}
-                    </View>
-                    <View style={localStyles.activityRows}>
-                        <View style={localStyles.dayLabels}>
-                            {dayLabels.map((label, index) => (
-                                <Text key={index} style={localStyles.dayLabel}>
-                                    {label}
-                                </Text>
-                            ))}
-                        </View>
-                        <View style={localStyles.weeks}>
-                            {weeks.map((week, weekIndex) => (
-                                <View key={weekIndex} style={localStyles.week}>
-                                    {week.days.map(day => {
-                                        const achievedLabel = day.achieved
-                                            ? translate('Empty inbox reached on', { date: day.date.format('LL') })
-                                            : undefined
-
-                                        // AT-2418: only today's cell, only on the run that is
-                                        // celebrating it. Every other cell keeps the plain View it
-                                        // has always rendered, so the 370 squares around it cost
-                                        // nothing extra.
-                                        return resolvedRunId && day.isToday && day.achieved ? (
-                                            <EmptyInboxTodayDot
-                                                key={day.dateKey}
-                                                celebration={celebration}
-                                                size={CELL_SIZE}
-                                                gap={CELL_GAP}
-                                                radius={CELL_RADIUS}
-                                                accessibilityLabel={achievedLabel}
-                                                // AT-2460: names what the dot is worth right next
-                                                // to it, a beat before the "Current streak" metric
-                                                // below flips to the same number.
-                                                streakLabel={translate('Empty inbox day badge', {
-                                                    count: stats.currentStreak,
-                                                })}
-                                            />
-                                        ) : (
-                                            <View
-                                                key={day.dateKey}
-                                                accessible={day.achieved}
-                                                accessibilityLabel={achievedLabel}
-                                                style={[
-                                                    localStyles.activityCell,
-                                                    day.achieved && localStyles.achievedCell,
-                                                    day.isFuture && localStyles.futureCell,
-                                                    day.isToday && !day.achieved && localStyles.todayCell,
-                                                ]}
-                                            />
-                                        )
-                                    })}
+                {showSkyline ? (
+                    <EmptyInboxSkyline
+                        user={user}
+                        emptyInboxDays={emptyInboxDays}
+                        celebrationRunId={resolvedRunId}
+                        width={contentWidth}
+                    />
+                ) : (
+                    <View style={[localStyles.activityGrid, { width: getGridWidth(numberOfWeeks) }]}>
+                        <View style={localStyles.monthLabels}>
+                            <View style={{ width: DAY_LABEL_WIDTH }} />
+                            {monthSegments.map((segment, index) => (
+                                <View
+                                    key={`${segment.monthName}-${index}`}
+                                    style={[localStyles.monthLabelSlot, { width: WEEK_WIDTH * segment.numberOfWeeks }]}
+                                >
+                                    <Text numberOfLines={1} style={localStyles.monthLabel}>
+                                        {translate(segment.monthName).slice(0, 3)}
+                                    </Text>
                                 </View>
                             ))}
                         </View>
+                        <View style={localStyles.activityRows}>
+                            <View style={localStyles.dayLabels}>
+                                {dayLabels.map((label, index) => (
+                                    <Text key={index} style={localStyles.dayLabel}>
+                                        {label}
+                                    </Text>
+                                ))}
+                            </View>
+                            <View style={localStyles.weeks}>
+                                {weeks.map((week, weekIndex) => (
+                                    <View key={weekIndex} style={localStyles.week}>
+                                        {week.days.map(day => {
+                                            const achievedLabel = day.achieved
+                                                ? translate('Empty inbox reached on', { date: day.date.format('LL') })
+                                                : undefined
+
+                                            // AT-2418: only today's cell, only on the run that is
+                                            // celebrating it. Every other cell keeps the plain View it
+                                            // has always rendered, so the 370 squares around it cost
+                                            // nothing extra.
+                                            return resolvedRunId && day.isToday && day.achieved ? (
+                                                <EmptyInboxTodayDot
+                                                    key={day.dateKey}
+                                                    celebration={celebration}
+                                                    size={CELL_SIZE}
+                                                    gap={CELL_GAP}
+                                                    radius={CELL_RADIUS}
+                                                    accessibilityLabel={achievedLabel}
+                                                    // AT-2460: names what the dot is worth right next
+                                                    // to it, a beat before the "Current streak" metric
+                                                    // below flips to the same number.
+                                                    streakLabel={translate('Empty inbox day badge', {
+                                                        count: stats.currentStreak,
+                                                    })}
+                                                />
+                                            ) : (
+                                                <View
+                                                    key={day.dateKey}
+                                                    accessible={day.achieved}
+                                                    accessibilityLabel={achievedLabel}
+                                                    style={[
+                                                        localStyles.activityCell,
+                                                        day.achieved && localStyles.achievedCell,
+                                                        day.isFuture && localStyles.futureCell,
+                                                        day.isToday && !day.achieved && localStyles.todayCell,
+                                                    ]}
+                                                />
+                                            )
+                                        })}
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
                     </View>
-                </View>
+                )}
             </View>
         </CardContainer>
     )
