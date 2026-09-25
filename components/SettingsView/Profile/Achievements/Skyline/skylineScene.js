@@ -33,7 +33,6 @@ import {
     getIntegrity,
     rollHitPoints,
     getOrbitView,
-    getSkylineColor,
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
@@ -100,7 +99,6 @@ const SHADOW = colors.Grey200
 const LABEL = colors.Text03
 const INBOX_GREEN = colors.UtilityGreen200
 const HIGHLIGHT = colors.UtilityYellow200
-const ROOF_DARK = colors.Primary400
 const METAL = colors.Grey400
 const BEACON = colors.UtilityOrange200
 const BIRD = colors.Text02
@@ -110,6 +108,29 @@ const BASKET = colors.Secondary300
 const AIRPLANE = colors.Secondary200
 const AIRPLANE_TAIL = colors.Primary100
 const GROUND_SHADE = colors.Text01
+// Building colours: all app colours. Blues dominate (listed more than once) so the city still reads
+// as Alldone; violets and warm tones are the occasional accent. No greens — green means inbox zero.
+const BODY_PALETTE = [
+    colors.Primary100,
+    colors.Primary100,
+    colors.Primary300,
+    colors.Secondary100,
+    colors.Secondary200,
+    colors.UtilityDarkBlue125,
+    colors.UtilityDarkBlue125,
+    colors.ProjectColor300,
+    colors.UtilityViolet150,
+    colors.Grey400,
+]
+const ACCENT_PALETTE = [
+    colors.UtilityDarkBlue125,
+    colors.Primary100,
+    colors.Secondary200,
+    colors.UtilityViolet125,
+    colors.UtilityYellow150,
+    colors.UtilityOrange150,
+    colors.Grey300,
+]
 const CAR_COLORS = [
     colors.UtilityYellow200,
     colors.Primary100,
@@ -339,8 +360,11 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         box: { geometry: unitBox, material: solidMaterial, colored: true, pickable: true },
         pyramid: { geometry: unitPyramid, material: solidMaterial, colored: true, pickable: true },
         tree: { geometry: unitSphere, material: solidMaterial, colored: true },
+        cylinder: { geometry: unitCylinder, material: solidMaterial, colored: true, pickable: true },
+        dome: { geometry: unitSphere, material: solidMaterial, colored: true, pickable: true },
         spire: { geometry: unitCylinder, material: solidMaterial, colored: true },
         roof: { geometry: unitBox, material: roofMaterial },
+        roofDisc: { geometry: unitCylinder, material: roofMaterial },
         fan: { geometry: unitBox, material: fanMaterial },
         beacon: { geometry: unitSphere, material: beaconMaterial },
     }
@@ -372,97 +396,215 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         meshes = {}
     }
 
+    // Architecture. Height always means "tasks done that day"; everything else is free, so each
+    // day picks one of several designs for its height band and its own colours from the app
+    // palette (seeded by date, so a day always looks the same). Green stays reserved for the
+    // empty-inbox roofs, and every design tops out at exactly the day's height so the skyline
+    // still reads as data.
+    let buildingColors = []
     const buildParts = () => {
         const list = []
         const byBuilding = days.map(() => [])
+        buildingColors = days.map(() => PLOT)
         days.forEach((day, b) => {
             const x = posX(day.week)
             const z = posZ(day.weekday)
             const type = getBuildingType(day.tasks, scale)
-            const height = getSkylineHeight(day.tasks, scale)
-            const color = getSkylineColor(day.tasks, scale)
+            const H = getSkylineHeight(day.tasks, scale)
             const random = seeded(day.week * 31 + day.weekday * 7 + 11)
+            const pick = list => list[Math.floor(random() * list.length) % list.length]
+            const body = pick(BODY_PALETTE)
+            const accent = pick(ACCENT_PALETTE.filter(color => color !== body))
+            buildingColors[b] = body
+            const F = FOOTPRINT
             const add = (kind, part) => {
                 const entry = { kind, b, x, z, y: 0, rot: 0, ...part }
                 list.push(entry)
                 byBuilding[b].push(entry)
                 return entry
             }
-            const F = FOOTPRINT
-            const greenRoof = (w, top) => {
-                if (day.achieved) add('roof', { y: top, w: w + 0.03, h: 0.05, d: w + 0.03, isRoof: true })
+            const box = (part, color = body) => add('box', { color, ...part })
+            const flatRoof = (w, d, top, offset = {}) => {
+                if (day.achieved) add('roof', { y: top, w: w + 0.03, h: 0.05, d: d + 0.03, isRoof: true, ...offset })
             }
-            if (type === 'park') {
-                // A flat plaza (so the day can still be hovered and tapped) with a few trees.
-                add('box', { w: F, h: 0.03, d: F, color: PARK })
-                const trees = 2 + Math.floor(random() * 2)
-                for (let i = 0; i < trees; i++) {
-                    const size = 0.16 + random() * 0.1
-                    add('tree', {
-                        x: x + (random() - 0.5) * (F - size),
-                        z: z + (random() - 0.5) * (F - size),
-                        w: size,
-                        h: size,
-                        d: size,
-                        color: TREE,
-                    })
+            const discRoof = (w, top) => {
+                if (day.achieved) add('roofDisc', { y: top, w: w + 0.03, h: 0.05, d: w + 0.03, isRoof: true })
+            }
+            const roofColor = color => (day.achieved ? INBOX_GREEN : color)
+            const spireOnTop = top => {
+                add('spire', { y: top, w: 0.05, h: SPIRE, d: 0.05, color: METAL })
+                add('beacon', { y: top + SPIRE - 0.03, w: 0.12, h: 0.12, d: 0.12, blink: random() * Math.PI * 2 })
+            }
+            const stack = (count, width, depth, twist, color = body) => {
+                const slab = H / count
+                for (let i = 0; i < count; i++) {
+                    box({ y: i * slab, w: width, h: slab * 0.94, d: depth, rot: i * twist }, i % 2 ? color : body)
                 }
-                greenRoof(F, 0.03)
-                return
+                flatRoof(width, depth, H - slab * 0.06, { rot: (count - 1) * twist })
             }
-            if (type === 'house') {
-                const body = Math.max(0.26, height - 0.28)
-                add('box', { w: F * 0.84, h: body, d: F * 0.84, color })
-                const roofColor = day.achieved
-                    ? INBOX_GREEN
-                    : new Color(color).lerp(new Color(ROOF_DARK), 0.45).getHexString()
-                add('pyramid', {
-                    y: body,
-                    w: F * 0.92,
-                    h: 0.28,
-                    d: F * 0.92,
-                    color: day.achieved ? INBOX_GREEN : `#${roofColor}`,
-                    rot: random() < 0.5 ? 0 : Math.PI / 2,
-                    isRoof: day.achieved,
-                })
-                return
+
+            const designs = {
+                park: () => {
+                    // A flat plaza (so the day can still be hovered and tapped) with a few trees.
+                    box({ w: F, h: 0.03, d: F }, PARK)
+                    const trees = 2 + Math.floor(random() * 2)
+                    for (let i = 0; i < trees; i++) {
+                        const size = 0.16 + random() * 0.1
+                        add('tree', {
+                            x: x + (random() - 0.5) * (F - size),
+                            z: z + (random() - 0.5) * (F - size),
+                            w: size,
+                            h: size,
+                            d: size,
+                            color: TREE,
+                        })
+                    }
+                    flatRoof(F, F, 0.03)
+                },
+                gable: () => {
+                    const wall = Math.max(0.2, H - 0.28)
+                    box({ w: F * 0.84, h: wall, d: F * 0.84 })
+                    add('pyramid', {
+                        y: wall,
+                        w: F * 0.92,
+                        h: H - wall,
+                        d: F * 0.92,
+                        color: roofColor(accent),
+                        rot: random() < 0.5 ? 0 : Math.PI / 2,
+                        isRoof: day.achieved,
+                    })
+                },
+                silo: () => {
+                    const domeHeight = Math.min(0.36, H * 0.45)
+                    add('cylinder', { w: F * 0.72, h: H - domeHeight / 2, d: F * 0.72, color: body })
+                    add('dome', {
+                        y: H - domeHeight,
+                        w: F * 0.72,
+                        h: domeHeight,
+                        d: F * 0.72,
+                        color: roofColor(accent),
+                        isRoof: day.achieved,
+                    })
+                },
+                rowHouses: () => {
+                    ;[-1, 1].forEach((side, i) => {
+                        const top = i ? H : H * 0.82
+                        const wall = Math.max(0.16, top - 0.22)
+                        const offset = { x: x + side * F * 0.24 }
+                        box({ ...offset, w: F * 0.44, h: wall, d: F * 0.84 }, i ? body : accent)
+                        add('pyramid', {
+                            ...offset,
+                            y: wall,
+                            w: F * 0.46,
+                            h: top - wall,
+                            d: F * 0.86,
+                            color: roofColor(i ? accent : body),
+                            isRoof: day.achieved,
+                        })
+                    })
+                },
+                shop: () => {
+                    box({ w: F * 0.9, h: H, d: F * 0.8 })
+                    box({ z: z + F * 0.45, y: H * 0.42, w: F * 0.9, h: 0.035, d: 0.18 }, accent)
+                    flatRoof(F * 0.9, F * 0.8, H)
+                },
+                fanBlock: () => {
+                    box({ w: F, h: H, d: F })
+                    flatRoof(F, F, H)
+                    const unit = F * 0.34
+                    const ux = x + (random() - 0.5) * F * 0.3
+                    const uz = z + (random() - 0.5) * F * 0.3
+                    box({ x: ux, z: uz, y: H + 0.05, w: unit, h: 0.12, d: unit }, METAL)
+                    add('fan', {
+                        x: ux,
+                        z: uz,
+                        y: H + 0.17,
+                        w: unit * 0.95,
+                        h: 0.015,
+                        d: 0.05,
+                        spin: 2 + random() * 2,
+                        rot: random() * Math.PI,
+                    })
+                },
+                roundTower: () => {
+                    const domeHeight = Math.min(0.4, H * 0.18)
+                    add('cylinder', { w: F * 0.86, h: H - domeHeight / 2, d: F * 0.86, color: body })
+                    add('cylinder', { y: H * 0.45, w: F * 0.96, h: 0.06, d: F * 0.96, color: accent })
+                    add('dome', {
+                        y: H - domeHeight,
+                        w: F * 0.86,
+                        h: domeHeight,
+                        d: F * 0.86,
+                        color: roofColor(accent),
+                        isRoof: day.achieved,
+                    })
+                },
+                lShape: () => {
+                    box({ z: z - F * 0.26, w: F, h: H, d: F * 0.48 })
+                    box({ x: x - F * 0.26, z: z + F * 0.24, w: F * 0.48, h: H * 0.62, d: F * 0.52 }, accent)
+                    flatRoof(F, F * 0.48, H, { z: z - F * 0.26 })
+                },
+                twistedStack: () => stack(4, F * 0.82, F * 0.82, 0.28, accent),
+                stepped: () => {
+                    const split = H * 0.7
+                    box({ w: F * 0.92, h: split, d: F * 0.92 })
+                    box({ y: split, w: F * 0.66, h: H - split, d: F * 0.66 }, accent)
+                    flatRoof(F * 0.66, F * 0.66, H)
+                    box({ y: H + 0.05, w: F * 0.34, h: 0.14, d: F * 0.34 }, METAL)
+                },
+                banded: withSpire => () => {
+                    add('cylinder', { w: F * 0.8, h: H, d: F * 0.8, color: body })
+                    for (let y = 0.5; y < H - 0.2; y += 0.55) {
+                        add('cylinder', { y, w: F * 0.86, h: 0.045, d: F * 0.86, color: accent })
+                    }
+                    discRoof(F * 0.8, H)
+                    if (withSpire) spireOnTop(H)
+                },
+                spiral: () => stack(Math.max(5, Math.round(H / 0.32)), F * 0.8, F * 0.5, 0.2, accent),
+                twins: () => {
+                    ;[-1, 1].forEach((side, i) => {
+                        const top = i ? H : H * 0.86
+                        box({ x: x + side * F * 0.26, w: F * 0.38, h: top, d: F * 0.6 }, i ? body : accent)
+                        flatRoof(F * 0.38, F * 0.6, top, { x: x + side * F * 0.26 })
+                    })
+                    box({ y: H * 0.58, w: F * 0.3, h: 0.1, d: F * 0.22 }, METAL)
+                },
+                obelisk: () => {
+                    const shaft = H * 0.74
+                    box({ w: F * 0.66, h: shaft, d: F * 0.66 })
+                    add('pyramid', {
+                        y: shaft,
+                        w: F * 0.66,
+                        h: H - shaft,
+                        d: F * 0.66,
+                        color: roofColor(accent),
+                        isRoof: day.achieved,
+                    })
+                },
+                spireScraper: () => {
+                    const first = H * 0.42
+                    const second = H * 0.82
+                    box({ w: F, h: first, d: F })
+                    box({ y: first, w: F * 0.76, h: second - first, d: F * 0.76 })
+                    box({ y: second, w: F * 0.54, h: H - second, d: F * 0.54 }, accent)
+                    flatRoof(F * 0.54, F * 0.54, H)
+                    spireOnTop(H)
+                },
             }
-            if (type === 'midrise') {
-                add('box', { w: F, h: height, d: F, color })
-                greenRoof(F, height)
-                const unit = F * 0.34
-                const ux = x + (random() - 0.5) * F * 0.3
-                const uz = z + (random() - 0.5) * F * 0.3
-                add('box', { x: ux, z: uz, y: height + 0.05, w: unit, h: 0.12, d: unit, color: METAL })
-                add('fan', {
-                    x: ux,
-                    z: uz,
-                    y: height + 0.17,
-                    w: unit * 0.95,
-                    h: 0.015,
-                    d: 0.05,
-                    spin: 2 + random() * 2,
-                    rot: random() * Math.PI,
-                })
-                return
+            const byType = {
+                park: [designs.park],
+                house: [designs.gable, designs.silo, designs.rowHouses, designs.shop],
+                midrise: [designs.fanBlock, designs.roundTower, designs.lShape, designs.twistedStack],
+                tower: [designs.stepped, designs.banded(false), designs.spiral, designs.obelisk, designs.twins],
+                skyscraper: [
+                    designs.spireScraper,
+                    designs.banded(true),
+                    designs.twins,
+                    designs.spiral,
+                    designs.obelisk,
+                ],
             }
-            if (type === 'tower') {
-                const split = height * 0.7
-                add('box', { w: F * 0.92, h: split, d: F * 0.92, color })
-                add('box', { y: split, w: F * 0.66, h: height - split, d: F * 0.66, color })
-                greenRoof(F * 0.66, height)
-                add('box', { y: height + 0.05, w: F * 0.34, h: 0.14, d: F * 0.34, color: METAL })
-                return
-            }
-            // skyscraper
-            const first = height * 0.42
-            const second = height * 0.82
-            add('box', { w: F, h: first, d: F, color })
-            add('box', { y: first, w: F * 0.76, h: second - first, d: F * 0.76, color })
-            add('box', { y: second, w: F * 0.54, h: height - second, d: F * 0.54, color })
-            greenRoof(F * 0.54, height)
-            add('spire', { y: height, w: 0.05, h: SPIRE, d: 0.05, color: METAL })
-            add('beacon', { y: height + SPIRE - 0.03, w: 0.12, h: 0.12, d: 0.12, blink: random() * Math.PI * 2 })
+            pick(byType[type])()
         })
         return { list, byBuilding }
     }
@@ -705,7 +847,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const day = days[b]
         const x = posX(day.week)
         const z = posZ(day.weekday)
-        const color = getSkylineColor(day.tasks, scale)
+        const color = buildingColors[b] || PLOT
         const chunks = Math.round(8 * strength)
         for (let i = 0; i < chunks; i++) {
             const angle = Math.random() * Math.PI * 2
@@ -768,7 +910,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const day = days[b]
         const x = posX(day.week)
         const z = posZ(day.weekday)
-        const color = getSkylineColor(day.tasks, scale)
+        const color = buildingColors[b] || PLOT
         for (let i = 0; i < 6; i++) {
             const size = 0.12 + Math.random() * 0.16
             const index = emit(rubble, {

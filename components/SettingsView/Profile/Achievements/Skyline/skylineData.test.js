@@ -9,12 +9,10 @@ import {
     rollHitPoints,
     formatSkylineMinutes,
     getOrbitView,
-    getSkylineColor,
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
     SKYLINE_REST_VIEW,
-    SKYLINE_RAMP,
     SKYLINE_WEEKS,
 } from './skylineData'
 
@@ -85,13 +83,6 @@ describe('skyline data', () => {
         expect(getSkylineScale(Array.from({ length: 100 }, (_, i) => ({ tasks: i < 99 ? 10 : 200 })))).toBe(10)
         expect(getSkylineScale([{ tasks: 0 }])).toBe(5)
         expect(getSkylineScale([{ tasks: 1 }, { tasks: 2 }])).toBe(5)
-    })
-
-    it("colours buildings only with the app's blue ramp", () => {
-        expect(getSkylineColor(0, 10)).toBe(SKYLINE_RAMP[0].toLowerCase())
-        expect(getSkylineColor(5, 10)).toBe(SKYLINE_RAMP[1].toLowerCase())
-        expect(getSkylineColor(10, 10)).toBe(SKYLINE_RAMP[2].toLowerCase())
-        expect(getSkylineColor(99, 10)).toBe(SKYLINE_RAMP[2].toLowerCase())
     })
 
     it('flies around the front of the city without going round the back', () => {
