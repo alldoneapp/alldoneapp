@@ -89,7 +89,7 @@ describe('skyline scene (smoke)', () => {
 
         const scene = createSkylineScene(container, { onHover: () => {}, onSelect, onDemolish })
         const days = makeDays()
-        scene.setDays(days, { months: [{ week: 0, text: 'Jul' }], weekdays: [{ weekday: 0, text: 'Mon' }] })
+        scene.setDays(days, { columns: [{ column: 0, text: 'Mo' }], rows: [{ row: 0, text: '25 Aug' }] })
         runFrames(120)
         scene.celebrateToday()
         runFrames(30)
@@ -106,7 +106,33 @@ describe('skyline scene (smoke)', () => {
             )
             runFrames(3)
         }
-        for (let i = 0; i < 30; i++) tap(300, 370)
+        // Find a point on screen that lands on a building (the camera moves, so probe for one).
+        let spot = null
+        for (let y = 140; y < 620 && !spot; y += 20) {
+            for (let x = 40; x < 580 && !spot; x += 20) {
+                onSelect.mockClear()
+                tap(x, y)
+                if (onSelect.mock.calls.some(([index]) => index >= 0)) spot = { x, y }
+            }
+        }
+        expect(spot).not.toBeNull()
+        const target = onSelect.mock.calls.find(([index]) => index >= 0)[0]
+        // Keep hitting that building. It loses floors with every hit, so its top sinks on screen;
+        // follow it downwards the way a player would.
+        for (let i = 0; i < 60 && !onDemolish.mock.calls.length; i++) {
+            onSelect.mockClear()
+            tap(spot.x, spot.y)
+            if (!onSelect.mock.calls.some(([index]) => index === target)) {
+                for (let dy = 4; dy <= 80; dy += 4) {
+                    onSelect.mockClear()
+                    tap(spot.x, spot.y + dy)
+                    if (onSelect.mock.calls.some(([index]) => index === target)) {
+                        spot = { x: spot.x, y: spot.y + dy }
+                        break
+                    }
+                }
+            }
+        }
         runFrames(200)
 
         expect(onSelect).toHaveBeenCalled()
@@ -116,7 +142,7 @@ describe('skyline scene (smoke)', () => {
         // A statistics refresh must not resurrect the demolished building.
         scene.setDays(makeDays())
         runFrames(20)
-        tap(300, 370)
+        tap(spot.x, spot.y)
         expect(onDemolish).toHaveBeenCalledTimes(1)
 
         scene.destroy()
@@ -129,7 +155,7 @@ describe('skyline scene (smoke)', () => {
         Object.defineProperty(container, 'clientHeight', { value: 360 })
         container.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 360 })
         const scene = createSkylineScene(container, { onHover: () => {}, onSelect: () => {}, reduceMotion: true })
-        scene.setDays(makeDays(), { months: [], weekdays: [] })
+        scene.setDays(makeDays(), { columns: [], rows: [] })
         runFrames(10)
         scene.destroy()
     })
