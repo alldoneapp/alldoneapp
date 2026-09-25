@@ -156,6 +156,7 @@
         "react-tiny-popover": "4.0.0",
         "react-tooltip": "4.2.18",
         "redux": "^5.0.1",
+        "three": "0.186.1",
         "tinycolor2": "^1.6.0",
         "uuid": "3.4.0",
         "y-indexeddb": "^9.0.12",
