@@ -10,19 +10,9 @@
  *     offers it as a suggestion.
  *
  * Both leave their whole state machine on the task document, so this module is pure: it
- * reads a mapped task and answers "is something still being decided, or did something just
- * change?" with no redux, no firebase and no clock of its own beyond the `now` it is handed.
- * That is what lets the row component stay dumb and the tests stay fast.
- *
- * The single most useful property of the server design is that a MOVED task carries its own
- * confirmation evidence into its new project. `taskProjectRouting` settles `projectRouting`
- * to `routed` — including `movedFromProjectId` and `resolvedAt` — *before* calling the move,
- * deliberately, so the copy that lands in the target project already reads terminal and its
- * own `onCreateTask` skips it. A move is a create-in-target + delete-from-source, so there is
- * no "task moved" event and no redux action to listen for: the source project's watcher sees
- * a `removed` and the target's sees an `added`. Deriving the confirmation from the document
- * therefore needs no cross-project plumbing at all — the task simply arrives already knowing
- * it was moved, and by whom.
+ * reads a mapped task and answers whether classification is still running or a goal was
+ * just attached. Automatic project moves already get a reason comment on the task, so
+ * they need no separate confirmation badge or row animation.
  */
 
 // How long after the server settled a decision the confirmation is still worth playing.
@@ -102,36 +92,16 @@ export const getTaskRoutingProcessingExpiresAt = (task, now = Date.now()) =>
     getProcessingCandidate(task, now)?.expiresAt || null
 
 /**
- * True just after a server check actually CHANGED the task. A decision that left the task
- * where it was ('kept', 'none', a suggestion the user still has to accept) is not a change
- * and deliberately gets no confirmation — celebrating a no-op is how this kind of feedback
- * stops meaning anything.
+ * True just after the goal router attached a goal. Project moves are deliberately omitted:
+ * the automatic router writes a reason comment, and user-initiated moves use a separate flow.
  *
  * @param {object} task a task as mapped by `mapTaskData`
  * @param {string} projectId the project the row is currently being rendered in
  * @param {number} now
- * @returns {null | { subject: 'project'|'goal', fromProjectId?: string, goalId?: string, signature: string }}
+ * @returns {null | { subject: 'goal', goalId: string, signature: string }}
  */
 export const getTaskRoutingConfirmation = (task, projectId, now = Date.now()) => {
     if (!task) return null
-
-    const projectRouting = task.projectRouting
-    if (projectRouting?.status === 'routed' && isFresh(projectRouting.resolvedAt, now)) {
-        const fromProjectId = projectRouting.movedFromProjectId
-        // `movedFromProjectId !== projectId` is load-bearing, not defensive. The router
-        // settles to 'routed' BEFORE attempting the move, so a move that then throws
-        // (taskProjectRouting.js:380-388) leaves a task sitting in its ORIGINAL project
-        // with `status: 'routed'` and `movedFromProjectId` naming that same project.
-        // Comparing the two is what stops a failed move from claiming "Moved to …" about
-        // a task that never went anywhere.
-        if (fromProjectId && fromProjectId !== projectId) {
-            return {
-                subject: ROUTING_SUBJECT_PROJECT,
-                fromProjectId,
-                signature: `project:${task.id}:${projectRouting.resolvedAt}`,
-            }
-        }
-    }
 
     const goalSuggestion = task.goalSuggestion
     if (goalSuggestion?.status === 'auto_assigned' && isFresh(goalSuggestion.resolvedAt, now)) {
@@ -154,8 +124,8 @@ export const getTaskRoutingConfirmation = (task, projectId, now = Date.now()) =>
 
 /**
  * The row's whole routing state in one call. Confirmation wins over processing: a task that
- * was just moved into this project can still carry a `classifying` goal suggestion from the
- * router that runs next, and "it just landed here" is the more useful thing to say first.
+ * has just been assigned a goal can still carry a processing state, but the settled result
+ * is more useful to show first.
  *
  * @returns {null | { kind: 'processing'|'confirmed', subject: 'project'|'goal', ... }}
  */
