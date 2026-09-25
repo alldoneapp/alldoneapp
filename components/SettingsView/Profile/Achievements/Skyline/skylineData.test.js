@@ -9,6 +9,7 @@ import {
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
+    SKYLINE_MAX_TILT,
     SKYLINE_RAMP,
     SKYLINE_WEEKS,
 } from './skylineData'
@@ -89,14 +90,17 @@ describe('skyline data', () => {
         expect(getSkylineColor(99, 10)).toBe(SKYLINE_RAMP[2].toLowerCase())
     })
 
-    it('flies from an angled approach to straight overhead as the card scrolls up', () => {
+    it('looks straight down when the card is in the middle of the screen', () => {
         const entering = getFlyoverView(1)
         const centred = getFlyoverView(0.5)
         const leaving = getFlyoverView(0)
-        expect(entering.tilt).toBeGreaterThan(centred.tilt)
-        expect(centred.tilt).toBeGreaterThan(leaving.tilt)
-        expect(leaving.tilt).toBeLessThan(0.1)
-        expect(entering.forward).toBeGreaterThan(leaving.forward)
+        expect(centred.tilt).toBe(0)
+        // Approaching from below the middle, past it above: mirror images of each other.
+        expect(entering.tilt).toBeGreaterThan(0)
+        expect(leaving.tilt).toBeLessThan(0)
+        expect(entering.tilt).toBeCloseTo(-leaving.tilt)
+        expect(Math.abs(entering.tilt)).toBeLessThanOrEqual(SKYLINE_MAX_TILT)
+        expect(getFlyoverView(0.4).tilt).toBeLessThan(0)
         expect(getFlyoverView(-3)).toEqual(leaving)
         expect(getFlyoverView(NaN)).toEqual(centred)
     })

@@ -1379,8 +1379,14 @@ UtilityDarkBlue125 → Primary100 → Primary400 height ramp, UtilityGreen200 ro
 selection) with flat shading and deliberately no surface detail — windows and a night sky were tried
 and read as noise. Heights are scaled to the user's own 95th-percentile day (`getSkylineScale`), so
 one 50-task day cannot dwarf the year. The camera is a "plane over the city" driven by the PAGE
-scroll (`getFlyoverView`: angled approach while the card enters from the bottom, straight overhead
-as it leaves at the top); there is no drag/zoom, so the city never competes with page scrolling, and
+scroll (`getFlyoverView`: straight overhead while the card is in the middle of the viewport, leaning
+to see the building fronts below the middle and their backs above it). It is an **off-axis**
+projection — the camera always looks straight down, slides parallel to the ground, and the frustum
+is re-aimed each frame so the ground plane lands on the same pixels — which is what keeps the plots
+and the month/weekday legend fixed on the card while only the buildings lean. Do not replace it with
+an ordinary tilted/orbiting camera: a moving ground is exactly what breaks the "printed on the card"
+illusion. Picking still works because `projectionMatrixInverse` is refreshed with the matrix;
+there is no drag/zoom, so the city never competes with page scrolling, and
 the only event it stops is `click` (the all-projects card is itself a link). The celebration
 run that popsThe celebration
 run that pops the 2D today dot makes today's roof pop instead. `skylineScene.js` is imperative and

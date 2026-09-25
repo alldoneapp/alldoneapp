@@ -7,8 +7,8 @@ import styles, { colors } from '../../../../styles/global'
 import { useReducedMotion } from '../../../../UIComponents/Ghosts/ghostAnimation'
 import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes } from './skylineData'
 
-const MIN_HEIGHT = 200
-const MAX_HEIGHT = 320
+const MIN_HEIGHT = 150
+const MAX_HEIGHT = 240
 
 const getActiveProjects = (projects, user) =>
     (projects || []).filter(
@@ -131,7 +131,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
 
     const shownIndex = hoverIndex >= 0 ? hoverIndex : selectedIndex >= 0 ? selectedIndex : todayIndex
     const shownDay = days[shownIndex]
-    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.38)))
+    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.3)))
 
     if (sceneFailed) return null
 
