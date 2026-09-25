@@ -1408,6 +1408,12 @@ lamps by `getDaylight().lamps` (an early always-lit version read as noise — ti
 The injection keeps three's lighting and shadows; the anchors it replaces (`worldpos_vertex`,
 `color_fragment`, `emissivemap_fragment`) must still exist in the Lambert shader after a three.js
 bump, or the detail silently disappears. Traffic is deliberately sparse (8 slow cars): the city should feel calm.
+After dark the city gets its own light, all of it faded in with `lamps` and absent by day: warm
+light pools under the street lamps, car headlights with a beam on the road and red tail lights, the
+plane's red/green/strobe navigation lights, the balloon's flickering burner, brighter skyscraper
+beacons, and a helicopter that only flies at night, sweeping a searchlight cone over the streets
+(birds roost then). These are additive glow sprites and meshes, not real lights — a real point
+light per lamp would multiply the per-fragment cost of every building.
 
 **Camera.** It flies on its own and ignores the page scroll (`getOrbitView`: a slow ±30° sweep, elevation
 ~38–49°, never round the back so the ground legends are never upside down; a wider sweep turns the

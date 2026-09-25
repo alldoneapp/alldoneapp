@@ -14,8 +14,10 @@ import {
     Mesh,
     MeshBasicMaterial,
     MeshLambertMaterial,
+    AdditiveBlending,
     Object3D,
     PCFSoftShadowMap,
+    Quaternion,
     PerspectiveCamera,
     PlaneGeometry,
     Raycaster,
@@ -118,6 +120,13 @@ const AIRPLANE = colors.Secondary200
 const AIRPLANE_TAIL = colors.Primary100
 const LAMP_POST = colors.Grey400
 const LAMP_LIGHT = colors.UtilityYellow150
+// Night lights. Warm white for lamps and headlights, the app's red for tail and port lights, its
+// green for the starboard light.
+const WARM_LIGHT = colors.UtilityYellow100
+const TAIL_LIGHT = colors.Red200
+const PORT_LIGHT = colors.Red200
+const STARBOARD_LIGHT = colors.UtilityGreen200
+const HELICOPTER = colors.Secondary300
 // Building colours: all app colours. Blues dominate (listed more than once) so the city still reads
 // as Alldone; violets and warm tones are the occasional accent.
 const BODY_PALETTE = [
@@ -802,7 +811,9 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             }
             if (part.kind === 'fan' && !reduceMotion) rotation += t * part.spin
             if (part.kind === 'beacon') {
-                const blink = reduceMotion ? 1 : 0.55 + 0.75 * Math.max(0, Math.sin(t * 2.6 + part.blink)) ** 6
+                const blink =
+                    (reduceMotion ? 1 : 0.55 + 0.75 * Math.max(0, Math.sin(t * 2.6 + part.blink)) ** 6) *
+                    (1 + lampGlow * 0.9)
                 w *= blink
                 d *= blink
                 h = part.h * blink * (r > 0.98 ? 1 : 0)
@@ -1163,6 +1174,52 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         dummy.updateMatrix()
         lampPosts.setMatrixAt(i, dummy.matrix)
     })
+    // Light that is not real light: soft additive glows laid on the street or hung in the air. They
+    // only mean anything once the city is dark, so everything built from them scales with the
+    // evening (`lampGlow`) and is simply not there by day.
+    const glowTexture = (() => {
+        const glowCanvas = document.createElement('canvas')
+        glowCanvas.width = glowCanvas.height = 64
+        const context = glowCanvas.getContext('2d')
+        const gradient = context && context.createRadialGradient && context.createRadialGradient(32, 32, 0, 32, 32, 32)
+        if (gradient) {
+            gradient.addColorStop(0, 'rgba(255,255,255,1)')
+            gradient.addColorStop(0.4, 'rgba(255,255,255,0.45)')
+            gradient.addColorStop(1, 'rgba(255,255,255,0)')
+            context.fillStyle = gradient
+            context.fillRect(0, 0, 64, 64)
+        }
+        const texture = track(new CanvasTexture(glowCanvas))
+        texture.colorSpace = SRGBColorSpace
+        return texture
+    })()
+    const glowMaterial = (color, opacity, withTexture = true) =>
+        track(
+            new MeshBasicMaterial({
+                color: new Color(color),
+                map: withTexture ? glowTexture : null,
+                transparent: true,
+                opacity,
+                blending: AdditiveBlending,
+                depthWrite: false,
+                side: DoubleSide,
+            })
+        )
+    const unitDisc = track(new PlaneGeometry(1, 1))
+    unitDisc.rotateX(-Math.PI / 2)
+    const hideAll = mesh => {
+        dummy.position.set(0, -50, 0)
+        dummy.rotation.set(0, 0, 0)
+        dummy.scale.set(0, 0, 0)
+        dummy.updateMatrix()
+        for (let i = 0; i < mesh.count; i++) mesh.setMatrixAt(i, dummy.matrix)
+        mesh.instanceMatrix.needsUpdate = true
+    }
+    const lampPools = new InstancedMesh(unitDisc, glowMaterial(LAMP_LIGHT, 0.55), lamps.length)
+    lampPools.frustumCulled = false
+    lampPools.renderOrder = 2
+    scene.add(lampPools)
+
     let shownGlow = -1
     const updateLamps = () => {
         if (Math.abs(shownGlow - lampGlow) < 0.01) return
@@ -1174,8 +1231,14 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             dummy.scale.set(size, size, size)
             dummy.updateMatrix()
             lampLights.setMatrixAt(i, dummy.matrix)
+            const pool = 1.1 * lampGlow
+            dummy.position.set(lamp.x, 0.012, lamp.z)
+            dummy.scale.set(pool, 1, pool)
+            dummy.updateMatrix()
+            lampPools.setMatrixAt(i, dummy.matrix)
         })
         lampLights.instanceMatrix.needsUpdate = true
+        lampPools.instanceMatrix.needsUpdate = true
     }
     updateLamps()
 
@@ -1207,6 +1270,16 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     cars.forEach((car, i) => carMesh.setColorAt(i, new Color(car.color)))
     carMesh.visible = !reduceMotion
     scene.add(carMesh)
+    // Headlights, their beam on the road ahead, and tail lights — at night only.
+    const headlights = new InstancedMesh(unitSphere, basic(WARM_LIGHT), CAR_COUNT * 2)
+    const tailLights = new InstancedMesh(unitSphere, basic(TAIL_LIGHT), CAR_COUNT * 2)
+    const headBeams = new InstancedMesh(unitDisc, glowMaterial(WARM_LIGHT, 0.5), CAR_COUNT)
+    ;[headlights, tailLights, headBeams].forEach(mesh => {
+        mesh.frustumCulled = false
+        hideAll(mesh)
+        scene.add(mesh)
+    })
+    headBeams.renderOrder = 2
     const updateCars = t => {
         cars.forEach((car, i) => {
             const span = car.half * 2
@@ -1220,8 +1293,35 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             dummy.scale.set(0.3 * edge, 0.11 * edge, 0.15 * edge)
             dummy.updateMatrix()
             carMesh.setMatrixAt(i, dummy.matrix)
+
+            const cx = car.alongX ? along : car.lane
+            const cz = car.alongX ? car.lane : along
+            const fx = car.alongX ? car.direction : 0
+            const fz = car.alongX ? 0 : car.direction
+            const light = lampGlow * edge
+            dummy.rotation.set(0, 0, 0)
+            ;[-1, 1].forEach((side, k) => {
+                const sx = -fz * side * 0.05
+                const sz = fx * side * 0.05
+                const bulb = 0.035 * light
+                dummy.position.set(cx + fx * 0.15 + sx, 0.045, cz + fz * 0.15 + sz)
+                dummy.scale.set(bulb, bulb, bulb)
+                dummy.updateMatrix()
+                headlights.setMatrixAt(i * 2 + k, dummy.matrix)
+                dummy.position.set(cx - fx * 0.15 + sx, 0.05, cz - fz * 0.15 + sz)
+                dummy.scale.set(bulb * 0.8, bulb * 0.8, bulb * 0.8)
+                dummy.updateMatrix()
+                tailLights.setMatrixAt(i * 2 + k, dummy.matrix)
+            })
+            dummy.position.set(cx + fx * 0.52, 0.014, cz + fz * 0.52)
+            dummy.scale.set((car.alongX ? 0.7 : 0.3) * light, 1, (car.alongX ? 0.3 : 0.7) * light)
+            dummy.updateMatrix()
+            headBeams.setMatrixAt(i, dummy.matrix)
         })
         carMesh.instanceMatrix.needsUpdate = true
+        headlights.instanceMatrix.needsUpdate = true
+        tailLights.instanceMatrix.needsUpdate = true
+        headBeams.instanceMatrix.needsUpdate = true
     }
 
     // ---------------------------------------------------------------- life: birds
@@ -1265,6 +1365,12 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     })
     const updateBirds = t => {
         flocks.forEach(flock => {
+            // Birds roost at night; the helicopter has the sky then.
+            const awake = lampGlow < 0.5
+            flock.members.forEach(bird => {
+                bird.visible = awake
+            })
+            if (!awake) return
             const angle = flock.phase + t * flock.speed
             const cx = Math.cos(angle) * flock.radiusX
             const cz = Math.sin(angle * 2) * flock.radiusZ * 0.5
@@ -1298,7 +1404,9 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     stripe.position.y = 0.62
     const basket = new Mesh(unitBox, basic(BASKET))
     basket.scale.set(0.16, 0.12, 0.16)
-    balloon.add(envelope, stripe, basket)
+    const burner = new Mesh(unitSphere, basic(colors.UtilityOrange200))
+    burner.position.y = 0.16
+    balloon.add(envelope, stripe, basket, burner)
     balloon.traverse(object => {
         object.castShadow = true
     })
@@ -1318,6 +1426,9 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         balloon.scale.setScalar(appear)
         const z = -1.6 + Math.sin(t * 0.21) * 1.2
         balloon.position.set(x, 3.2 + Math.sin(t * 0.7) * 0.15, z)
+        // At night the burner flickers under the envelope.
+        const flame = lampGlow * (0.09 + 0.04 * Math.abs(Math.sin(t * 17) * Math.sin(t * 7.3)))
+        burner.scale.setScalar(Math.max(flame, 0.0001))
     }
 
     // ---------------------------------------------------------------- life: airplane
@@ -1334,7 +1445,13 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     const fin = new Mesh(unitBox, basic(AIRPLANE_TAIL))
     fin.scale.set(0.03, 0.2, 0.12)
     fin.position.set(0, 0, 0.4)
-    airplane.add(fuselage, wings, tailplane, fin)
+    const portLight = new Mesh(unitSphere, basic(PORT_LIGHT))
+    portLight.position.set(-0.53, -0.02, -0.05)
+    const starboardLight = new Mesh(unitSphere, basic(STARBOARD_LIGHT))
+    starboardLight.position.set(0.53, -0.02, -0.05)
+    const strobe = new Mesh(unitSphere, basic(WARM_LIGHT))
+    strobe.position.set(0, 0.1, 0.46)
+    airplane.add(fuselage, wings, tailplane, fin, portLight, starboardLight, strobe)
     airplane.traverse(object => {
         object.castShadow = true
     })
@@ -1360,8 +1477,77 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const heading = Math.atan2(-vx, -drift)
         airplane.position.set(x, 4.3, z)
         airplane.rotation.set(0, heading, 0)
+        // Navigation lights: steady red and green wingtips, a white strobe on the tail.
+        const nav = Math.max(0.0001, 0.07 * lampGlow)
+        portLight.scale.setScalar(nav)
+        starboardLight.scale.setScalar(nav)
+        strobe.scale.setScalar(Math.sin(t * 7) > 0.85 ? nav * 1.3 : 0.0001)
     }
 
+    // ---------------------------------------------------------------- life: the night helicopter
+    // Only out after dark: circles the city slowly and sweeps a searchlight over the streets.
+    const helicopter = new Group()
+    const cabin = new Mesh(unitSphere, basic(HELICOPTER))
+    cabin.scale.set(0.24, 0.18, 0.36)
+    cabin.position.y = -0.09
+    const boom = new Mesh(unitBox, basic(HELICOPTER))
+    boom.scale.set(0.04, 0.04, 0.42)
+    boom.position.set(0, 0, 0.3)
+    const rotor = new Mesh(unitBox, basic(METAL))
+    rotor.scale.set(0.95, 0.012, 0.04)
+    rotor.position.y = 0.11
+    const tailRotor = new Mesh(unitBox, basic(METAL))
+    tailRotor.scale.set(0.01, 0.16, 0.03)
+    tailRotor.position.set(0.03, -0.06, 0.5)
+    const helicopterLight = new Mesh(unitSphere, basic(PORT_LIGHT))
+    helicopterLight.position.set(0, 0.08, 0.5)
+    helicopter.add(cabin, boom, rotor, tailRotor, helicopterLight)
+    scene.add(helicopter)
+    const beam = new Mesh(track(new ConeGeometry(0.55, 1, 28, 1, true)), glowMaterial(WARM_LIGHT, 0.14, false))
+    const spot = new Mesh(unitDisc, glowMaterial(WARM_LIGHT, 0.8))
+    beam.renderOrder = 3
+    spot.renderOrder = 3
+    scene.add(beam, spot)
+    const up = new Vector3(0, 1, 0)
+    const beamDirection = new Vector3()
+    const beamQuaternion = new Quaternion()
+    const updateHelicopter = t => {
+        const present = Math.min(1, Math.max(0, (lampGlow - 0.25) / 0.35))
+        const shown = present > 0.01
+        helicopter.visible = shown
+        beam.visible = shown
+        spot.visible = shown
+        if (!shown) return
+        const angle = t * 0.07
+        const hx = Math.cos(angle) * CITY_HALF_WIDTH * 0.55
+        const hz = Math.sin(angle) * CITY_HALF_DEPTH * 0.55
+        const hy = 3.4 + Math.sin(t * 0.5) * 0.1
+        helicopter.position.set(hx, hy, hz)
+        helicopter.rotation.set(
+            0.12,
+            Math.atan2(Math.sin(angle), -Math.cos(angle) * (CITY_HALF_DEPTH / CITY_HALF_WIDTH)),
+            0
+        )
+        helicopter.scale.setScalar(present)
+        rotor.rotation.y = t * 24
+        tailRotor.rotation.x = t * 30
+        helicopterLight.scale.setScalar(Math.sin(t * 5) > 0.6 ? 0.06 : 0.0001)
+        // The searchlight wanders over the streets below and ahead of it.
+        const sx = hx * 0.6 + Math.sin(t * 0.43) * 1.4
+        const sz = hz * 0.6 + Math.cos(t * 0.31) * 1.1
+        beamDirection.set(hx - sx, hy - 0.1, hz - sz)
+        const length = beamDirection.length()
+        beamQuaternion.setFromUnitVectors(up, beamDirection.normalize())
+        beam.quaternion.copy(beamQuaternion)
+        beam.position.set((hx + sx) / 2, (hy - 0.1) / 2 + 0.05, (hz + sz) / 2)
+        beam.scale.set(present, length, present)
+        spot.position.set(sx, 0.016, sz)
+        spot.scale.set(1.3 * present, 1, 1.3 * present)
+    }
+
+    ;[helicopter, beam, spot].forEach(object => {
+        object.visible = false
+    })
     ;[balloon, airplane].forEach(object => {
         object.visible = !reduceMotion
     })
@@ -1547,6 +1733,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             updateBirds(t)
             updateBalloon(t)
             updateAirplane(t)
+            updateHelicopter(t)
         }
         const todayState = damageOf(todayIndex)
         marker.visible = false
@@ -1631,7 +1818,9 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             canvas.removeEventListener('click', stopClick)
             disposeBuildingMeshes()
             carMesh.dispose()
-            ;[treeMesh, lampPosts, lampLights].forEach(mesh => mesh.dispose())
+            ;[treeMesh, lampPosts, lampLights, lampPools, headlights, tailLights, headBeams].forEach(mesh =>
+                mesh.dispose()
+            )
             ;[debris, sparks, dust, rubble].forEach(pool => pool.mesh.dispose())
             disposables.forEach(item => item.dispose())
             renderer.dispose()

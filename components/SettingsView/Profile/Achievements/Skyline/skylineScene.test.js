@@ -150,6 +150,23 @@ describe('skyline scene (smoke)', () => {
         expect(container.querySelector('canvas')).toBeNull()
     })
 
+    it('runs a night — lamps, headlights, helicopter and searchlight — without throwing', () => {
+        jest.useFakeTimers({ doNotFake: ['performance', 'requestAnimationFrame', 'cancelAnimationFrame'] })
+        jest.setSystemTime(new Date(2026, 8, 25, 23, 0))
+        try {
+            const container = document.createElement('div')
+            Object.defineProperty(container, 'clientWidth', { value: 600 })
+            Object.defineProperty(container, 'clientHeight', { value: 340 })
+            container.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 340 })
+            const scene = createSkylineScene(container, { onHover: () => {}, onSelect: () => {} })
+            scene.setDays(makeDays(), { columns: [], rows: [] })
+            runFrames(400)
+            scene.destroy()
+        } finally {
+            jest.useRealTimers()
+        }
+    })
+
     it('stays static under reduced motion', () => {
         const container = document.createElement('div')
         Object.defineProperty(container, 'clientWidth', { value: 400 })
