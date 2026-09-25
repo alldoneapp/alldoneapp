@@ -1,6 +1,17 @@
 import moment from 'moment'
 
-import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes, getSkylineHeight, SKYLINE_WEEKS } from './skylineData'
+import {
+    buildSkylineDays,
+    buildSkylineWeeks,
+    formatSkylineMinutes,
+    getFlyoverView,
+    getSkylineColor,
+    getSkylineHeight,
+    getSkylineScale,
+    SKYLINE_MAX_HEIGHT,
+    SKYLINE_RAMP,
+    SKYLINE_WEEKS,
+} from './skylineData'
 
 const TODAY = moment('2026-09-25T12:00:00').valueOf() // a Friday
 const dayNumber = key => parseInt(key.replace(/-/g, ''), 10)
@@ -49,9 +60,10 @@ describe('skyline data', () => {
         expect(day.tasks).toBe(0)
         expect(day.dominantColor).toBeNull()
         expect(getSkylineHeight(0)).toBeGreaterThan(0)
-        expect(getSkylineHeight(10)).toBeGreaterThan(getSkylineHeight(1))
-        // One absurd day must not turn the rest of the city into a flat line.
-        expect(getSkylineHeight(500)).toBe(getSkylineHeight(40))
+        expect(getSkylineHeight(10, 20)).toBeGreaterThan(getSkylineHeight(1, 20))
+        // One absurd day must not tower over the rest of the city.
+        expect(getSkylineHeight(500, 20)).toBe(getSkylineHeight(40, 20))
+        expect(getSkylineHeight(500, 20)).toBeLessThan(SKYLINE_MAX_HEIGHT * 1.2)
     })
 
     it('ignores statistics of projects that are not passed in', () => {
@@ -60,6 +72,33 @@ describe('skyline data', () => {
         const days = buildSkylineDays(weeks, { archived: { [key]: { doneTasks: 9, doneTime: 0 } } }, projects)
 
         expect(days.find(entry => entry.dateKey === '2026-09-24').tasks).toBe(0)
+    })
+
+    it("scales heights to the user's own year", () => {
+        const days = [0, 2, 3, 4, 5, 6, 8, 10, 12, 50].map(tasks => ({ tasks }))
+        expect(getSkylineScale(days)).toBe(50)
+        expect(getSkylineScale(Array.from({ length: 100 }, (_, i) => ({ tasks: i < 99 ? 10 : 200 })))).toBe(10)
+        expect(getSkylineScale([{ tasks: 0 }])).toBe(5)
+        expect(getSkylineScale([{ tasks: 1 }, { tasks: 2 }])).toBe(5)
+    })
+
+    it("colours buildings only with the app's blue ramp", () => {
+        expect(getSkylineColor(0, 10)).toBe(SKYLINE_RAMP[0].toLowerCase())
+        expect(getSkylineColor(5, 10)).toBe(SKYLINE_RAMP[1].toLowerCase())
+        expect(getSkylineColor(10, 10)).toBe(SKYLINE_RAMP[2].toLowerCase())
+        expect(getSkylineColor(99, 10)).toBe(SKYLINE_RAMP[2].toLowerCase())
+    })
+
+    it('flies from an angled approach to straight overhead as the card scrolls up', () => {
+        const entering = getFlyoverView(1)
+        const centred = getFlyoverView(0.5)
+        const leaving = getFlyoverView(0)
+        expect(entering.tilt).toBeGreaterThan(centred.tilt)
+        expect(centred.tilt).toBeGreaterThan(leaving.tilt)
+        expect(leaving.tilt).toBeLessThan(0.1)
+        expect(entering.forward).toBeGreaterThan(leaving.forward)
+        expect(getFlyoverView(-3)).toEqual(leaving)
+        expect(getFlyoverView(NaN)).toEqual(centred)
     })
 
     it('formats logged time', () => {

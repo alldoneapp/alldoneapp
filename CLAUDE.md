@@ -1374,8 +1374,15 @@ one day: height = `doneTasks` summed over the user's **active** projects from
 only today is re-read — `utils/backends/Users/skylineStatistics.js`), colour = the busiest project's
 marker colour, green roof = a day in `emptyInboxDays` (the same array the grid reads). three.js is
 loaded with a dynamic `import()` into its own `skyline` chunk, so it never enters the main bundle.
-The canvas stops its own pointer/click events because the all-projects card is itself a link, plain
-wheel scrolls the page (ctrl/cmd + wheel zooms) and touch uses `touch-action: pan-y`. The celebration
+It is drawn straight onto the white card in app colours only (Grey200 plots, a
+UtilityDarkBlue125 → Primary100 → Primary400 height ramp, UtilityGreen200 roofs, UtilityYellow200
+selection) with flat shading and deliberately no surface detail — windows and a night sky were tried
+and read as noise. Heights are scaled to the user's own 95th-percentile day (`getSkylineScale`), so
+one 50-task day cannot dwarf the year. The camera is a "plane over the city" driven by the PAGE
+scroll (`getFlyoverView`: angled approach while the card enters from the bottom, straight overhead
+as it leaves at the top); there is no drag/zoom, so the city never competes with page scrolling, and
+the only event it stops is `click` (the all-projects card is itself a link). The celebration
+run that popsThe celebration
 run that pops the 2D today dot makes today's roof pop instead. `skylineScene.js` is imperative and
 untestable in jsdom (no WebGL); `skylineData.js` holds everything that decides what a building means
 and is unit-tested.

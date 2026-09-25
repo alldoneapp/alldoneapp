@@ -7,8 +7,8 @@ import styles, { colors } from '../../../../styles/global'
 import { useReducedMotion } from '../../../../UIComponents/Ghosts/ghostAnimation'
 import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes } from './skylineData'
 
-const MIN_HEIGHT = 220
-const MAX_HEIGHT = 340
+const MIN_HEIGHT = 200
+const MAX_HEIGHT = 320
 
 const getActiveProjects = (projects, user) =>
     (projects || []).filter(
@@ -131,7 +131,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
 
     const shownIndex = hoverIndex >= 0 ? hoverIndex : selectedIndex >= 0 ? selectedIndex : todayIndex
     const shownDay = days[shownIndex]
-    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.42)))
+    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.38)))
 
     if (sceneFailed) return null
 
@@ -145,21 +145,6 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
             testID="empty-inbox-skyline"
         >
             <View ref={containerRef} style={[localStyles.canvas, { height }]} />
-            {sceneReady && selectedIndex >= 0 && (
-                <TouchableOpacity
-                    style={localStyles.reset}
-                    onPress={() => {
-                        setSelectedIndex(-1)
-                        if (sceneRef.current) {
-                            sceneRef.current.select(-1)
-                            sceneRef.current.resetView()
-                        }
-                    }}
-                    accessibilityRole="button"
-                >
-                    <Text style={localStyles.resetText}>{translate('Skyline back to today')}</Text>
-                </TouchableOpacity>
-            )}
             {shownDay ? (
                 <View style={localStyles.dayLine}>
                     <Text style={localStyles.dayDate}>{shownDay.date.format('dddd, LL')}</Text>
@@ -173,6 +158,17 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
                             {translate(shownDay.achieved ? 'Skyline inbox cleared' : 'Skyline inbox not cleared')}
                         </Text>
                     </View>
+                    {selectedIndex >= 0 && hoverIndex < 0 && (
+                        <TouchableOpacity
+                            onPress={() => {
+                                setSelectedIndex(-1)
+                                if (sceneRef.current) sceneRef.current.select(-1)
+                            }}
+                            accessibilityRole="button"
+                        >
+                            <Text style={localStyles.resetText}>{translate('Skyline back to today')}</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             ) : null}
             <Text style={localStyles.hint}>{translate('Skyline hint')}</Text>
@@ -186,24 +182,11 @@ const localStyles = StyleSheet.create({
     },
     canvas: {
         width: '100%',
-        borderRadius: 8,
-        overflow: 'hidden',
-        backgroundColor: colors.Secondary400,
-    },
-    reset: {
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 999,
-        backgroundColor: 'rgba(9,21,64,0.72)',
-        borderWidth: 1,
-        borderColor: 'rgba(169,180,214,0.3)',
+        backgroundColor: '#FFFFFF',
     },
     resetText: {
         ...styles.caption1,
-        color: '#FFFFFF',
+        color: colors.Primary100,
     },
     dayLine: {
         flexDirection: 'row',
