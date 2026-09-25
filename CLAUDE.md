@@ -1366,7 +1366,7 @@ static branch forever.
 
 ### The Empty inbox year is a 3D city (skyline)
 
-Wherever WebGL exists, `EmptyInboxOverview` draws the 53-week year as a three.js city
+Wherever WebGL exists, `EmptyInboxOverview` draws the last quarter (13 weeks) as a three.js city
 (`Achievements/Skyline/`) instead of the 2D grid; the grid stays as the fallback for native, no-WebGL
 and jsdom (`canRenderSkyline` in `webglSupport.js`, which must never import three). Each building is
 one day: height = `doneTasks` summed over the user's **active** projects from
@@ -1388,7 +1388,12 @@ and the month/weekday legend fixed on the card while only the buildings lean. Do
 an ordinary tilted/orbiting camera: a moving ground is exactly what breaks the "printed on the card"
 illusion. Picking still works because `projectionMatrixInverse` is refreshed with the matrix;
 there is no drag/zoom, so the city never competes with page scrolling, and
-the only event it stops is `click` (the all-projects card is itself a link). The celebration
+the only event it stops is `click` (the all-projects card is itself a link). Building TYPE follows the same relative measure as height (`getBuildingType`: park → house →
+mid-rise → tower → skyscraper), and each building is a few parts in shared instanced meshes, so the
+whole city is a handful of draw calls rebuilt per frame. The "life" layer (facade light sweep,
+drifting cloud shadows, cars, birds, balloon, airplane) carries no data, is never interactive, and
+is switched off entirely under reduced motion; the render loop only runs while the card intersects
+the viewport. The celebration
 run that popsThe celebration
 run that pops the 2D today dot makes today's roof pop instead. `skylineScene.js` is imperative and
 untestable in jsdom (no WebGL); `skylineData.js` holds everything that decides what a building means

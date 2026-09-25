@@ -7,8 +7,8 @@ import styles, { colors } from '../../../../styles/global'
 import { useReducedMotion } from '../../../../UIComponents/Ghosts/ghostAnimation'
 import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes } from './skylineData'
 
-const MIN_HEIGHT = 130
-const MAX_HEIGHT = 210
+const MIN_HEIGHT = 240
+const MAX_HEIGHT = 420
 
 const getActiveProjects = (projects, user) =>
     (projects || []).filter(
@@ -24,7 +24,7 @@ const getActiveProjects = (projects, user) =>
  * The Empty inbox card's year, drawn as a 3D city (replaces the 2D grid wherever WebGL exists; the
  * caller keeps the grid as the fallback).
  *
- * Each building is one day of the last 53 weeks. Height is the tasks completed that day across the
+ * Each building is one day of the last quarter (13 weeks). Height is the tasks completed that day across the
  * user's active projects (`statistics/{projectId}/{userId}`), colour is the project that got most of
  * them, and a glowing green roof is a day the inbox was cleared — the same `emptyInboxDays` the grid
  * reads, so the two can never disagree about which days count.
@@ -131,7 +131,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
 
     const shownIndex = hoverIndex >= 0 ? hoverIndex : selectedIndex >= 0 ? selectedIndex : todayIndex
     const shownDay = days[shownIndex]
-    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.26)))
+    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.55)))
 
     if (sceneFailed) return null
 
