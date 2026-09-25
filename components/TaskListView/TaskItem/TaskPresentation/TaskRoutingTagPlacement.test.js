@@ -272,7 +272,7 @@ describe('routing badge placement (AT-2453)', () => {
         it('moves the confirmation badge too, not only the processing sparkle', async () => {
             mockRoutingActivity = {
                 processing: null,
-                confirmation: { subject: 'project', fromProjectId: 'project-2' },
+                confirmation: { subject: 'goal', goalId: 'goal-1' },
             }
 
             const tree = await renderRow()
@@ -355,13 +355,13 @@ describe('routing badge placement (AT-2453)', () => {
         })
 
         it('still plays the one-shot confirmation once the decision landed', async () => {
-            mockRoutingActivity = { processing: null, confirmation: { subject: 'project' } }
+            mockRoutingActivity = { processing: null, confirmation: { subject: 'goal' } }
 
             const tree = await renderRow()
             const overlays = tree.root.findAllByType('TaskRoutingActivityOverlay')
 
             expect(overlays).toHaveLength(1)
-            expect(overlays[0].props.confirmation).toEqual({ subject: 'project' })
+            expect(overlays[0].props.confirmation).toEqual({ subject: 'goal' })
             // The prop that used to drive the sweep is no longer handed down at all.
             expect(overlays[0].props.processing).toBeUndefined()
         })
