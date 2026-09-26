@@ -48,13 +48,13 @@ export const processInitialFeeds = async (
     setFeedsOrderedArray,
     setDisplayedFeedsOrdered,
     newFeedsIds,
-    setNewFeedsIds
+    setNewFeedsIds,
+    isCurrent = () => true
 ) => {
     const counterNewFeedsIds = []
     let showLikeNew = false
     if (activeMode === NEW_FEEDS_MODE) {
         showLikeNew = true
-        Backend.resetAllNewFeeds(projectId, feedActiveTab)
     }
 
     const feedsByDate = {}
@@ -91,6 +91,7 @@ export const processInitialFeeds = async (
     })
 
     const objects = await Promise.all(promises)
+    if (!isCurrent()) return
 
     for (let i = 0; i < objects.length; i++) {
         const object = objects[i]
@@ -108,6 +109,12 @@ export const processInitialFeeds = async (
         setNewFeedsIds([...newFeedsIds, ...counterNewFeedsIds])
     }
     updateFeedsState(feedsByDate, feeds, setFeedsByDate, setDisplayedFeedsOrdered, setFeedsOrderedArray, feedActiveTab)
+    // Feed counters and feed documents are committed together, but the readerIds needed to read
+    // projectsFeeds are projected by a later Cloud Function. A failed read must leave the unread
+    // counter in place so the list can retry when that projection arrives.
+    if (activeMode === NEW_FEEDS_MODE) {
+        Backend.resetAllNewFeeds(projectId, feedActiveTab)
+    }
 }
 
 export const updateFeedsState = (
