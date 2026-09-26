@@ -9,6 +9,7 @@ const {
     normalizeEmailAddress,
 } = require('../../Integrations/providerConnections')
 const { extractMeetingJoinUrl } = require('../meetingJoinUrl')
+const { toMicrosoftRecurrence, resolveRecurringTarget, validateScope } = require('../calendarRecurrence')
 const { buildMicrosoftOnlineMeetingFields, isConferencingRejection, shouldAddConferencing } = require('../conferencing')
 
 const DEFAULT_CALENDAR_ID = 'primary'
@@ -111,6 +112,8 @@ function normalizeCalendarEvent(event = {}, account = {}, calendarId = DEFAULT_C
         creator: event.organizer?.emailAddress || null,
         conferenceData: event.onlineMeeting || null,
         recurringEventId: event.seriesMasterId || null,
+        recurrence: event.recurrence || null,
+        recurrenceType: event.type || null,
     }
 }
 
@@ -144,8 +147,12 @@ function buildEventPayload(args, { requireRange = true } = {}) {
     if (!requireRange && hasStart !== hasEnd) throw new Error('When updating event times, provide both start and end.')
 
     if (hasStart && hasEnd) {
+        const startIsAllDay = !!args.start && typeof args.start === 'object' && !!args.start.date
+        const endIsAllDay = !!args.end && typeof args.end === 'object' && !!args.end.date
+        if (startIsAllDay !== endIsAllDay) throw new Error('All-day events must provide start.date and end.date.')
         payload.start = normalizeEventDateTimeInput(args.start, args.timeZone)
         payload.end = normalizeEventDateTimeInput(args.end, args.timeZone)
+        if (startIsAllDay) payload.isAllDay = true
         if (!moment(payload.end.dateTime).isAfter(moment(payload.start.dateTime))) {
             throw new Error('Event end must be after event start.')
         }
@@ -174,7 +181,7 @@ async function searchConnectedAccount({
             $top: limit,
             $orderby: 'start/dateTime',
             $select:
-                'id,subject,bodyPreview,body,location,isCancelled,webLink,start,end,attendees,organizer,onlineMeeting,seriesMasterId',
+                'id,subject,bodyPreview,body,location,isCancelled,webLink,start,end,attendees,organizer,onlineMeeting,seriesMasterId,type,recurrence',
         })}`,
         { headers: { Prefer: 'outlook.body-content-type="text",outlook.timezone="UTC"' } }
     )
@@ -459,6 +466,9 @@ async function createMicrosoftCalendarEventForAssistantRequest(args) {
     if (!resolution.success) return { success: false, ...resolution }
 
     const payload = buildEventPayload({ ...args, summary }, { requireRange: true })
+    if (args.recurrence !== undefined) {
+        payload.recurrence = toMicrosoftRecurrence(args.recurrence, args.start, args.timeZone)
+    }
     const client = await getMicrosoftGraphClient(args.userId, resolution.account.projectId, 'calendar')
     // Decide from the caller's own start value: buildEventPayload flattens an
     // all-day `{ date }` into a Graph `{ dateTime }`, which would hide it.
@@ -513,12 +523,26 @@ async function updateMicrosoftCalendarEventForAssistantRequest(args) {
     if (!eventId) return { success: false, message: 'An eventId is required to update a calendar event.' }
     const resolution = await findEventAccount(args.userId, eventId, args.calendarId)
     if (!resolution.success) return { success: false, ...resolution }
+    validateScope(args.scope)
+    if (args.recurrence !== undefined && args.scope !== 'series') {
+        throw new Error('Changing recurrence requires scope: series.')
+    }
+    const target = resolveRecurringTarget(resolution.event, eventId, args.scope, 'microsoft')
+    if (target.error) return target.error
 
     const payload = buildEventPayload(args, { requireRange: false })
+    const client = await getMicrosoftGraphClient(args.userId, resolution.account.projectId, 'calendar')
+    if (args.recurrence !== undefined) {
+        const masterEvent =
+            target.eventId === eventId
+                ? resolution.event
+                : await client.request(`/me/events/${encodePath(target.eventId)}`)
+        const recurrenceStart = args.start || masterEvent.start
+        payload.recurrence = toMicrosoftRecurrence(args.recurrence, recurrenceStart, args.timeZone)
+    }
     if (Object.keys(payload).length === 0)
         return { success: false, message: 'No calendar event changes were provided.' }
-    const client = await getMicrosoftGraphClient(args.userId, resolution.account.projectId, 'calendar')
-    const event = await client.request(`/me/events/${encodePath(eventId)}`, {
+    const event = await client.request(`/me/events/${encodePath(target.eventId)}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
     })
@@ -538,20 +562,22 @@ async function updateMicrosoftCalendarEventForAssistantRequest(args) {
     }
 }
 
-async function deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId, calendarId }) {
+async function deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId, calendarId, scope }) {
     const trimmedEventId = safeTrim(eventId)
     if (!trimmedEventId) return { success: false, message: 'An eventId is required to delete a calendar event.' }
     const resolution = await findEventAccount(userId, trimmedEventId, calendarId)
     if (!resolution.success) return { success: false, ...resolution }
+    const target = resolveRecurringTarget(resolution.event, trimmedEventId, scope, 'microsoft')
+    if (target.error) return target.error
     const client = await getMicrosoftGraphClient(userId, resolution.account.projectId, 'calendar')
-    await client.request(`/me/events/${encodePath(trimmedEventId)}`, { method: 'DELETE' })
+    await client.request(`/me/events/${encodePath(target.eventId)}`, { method: 'DELETE' })
     return {
         success: true,
         provider: 'microsoft',
         calendarEmail: resolution.account.calendarEmail,
         projectId: resolution.account.projectId,
         calendarId: resolution.calendarId,
-        eventId: trimmedEventId,
+        eventId: target.eventId,
         message: 'Calendar event deleted successfully.',
     }
 }

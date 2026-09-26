@@ -9629,6 +9629,7 @@ async function executeToolNatively(
                     location: toolArgs.location,
                     attendees: toolArgs.attendees,
                     calendarId: toolArgs.calendarId,
+                    recurrence: toolArgs.recurrence,
                 })
 
                 console.log('📅 CREATE_CALENDAR_EVENT TOOL: Create completed', {
@@ -9681,6 +9682,8 @@ async function executeToolNatively(
                     timeZone: toolArgs.timeZone,
                     location: toolArgs.location,
                     attendees: toolArgs.attendees,
+                    recurrence: toolArgs.recurrence,
+                    scope: toolArgs.scope,
                 })
 
                 console.log('📅 UPDATE_CALENDAR_EVENT TOOL: Update completed', {
@@ -9724,6 +9727,7 @@ async function executeToolNatively(
                     userId: targetUserId,
                     eventId: toolArgs.eventId,
                     calendarId: toolArgs.calendarId,
+                    scope: toolArgs.scope,
                 })
 
                 console.log('📅 DELETE_CALENDAR_EVENT TOOL: Delete completed', {
@@ -12152,7 +12156,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. Pass allowSameDayBooking=true only when the current user message explicitly asks for a meeting today or another same-day option; otherwise omit it so the saved setting remains in force. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account. find_calendar_availability already protects the minimum free calendar time the user wants to keep each day, so do not pass minFreeHoursPerDay unless the user explicitly asks for a different limit. If the result reports minFreeHours.applied as false, every day was already at that limit: still offer the options, but say that they cut into the free time the user wanted to protect.',
+            'When the user asks for free meeting times or availability options, use find_calendar_availability. It is privacy-safe and returns only free options, never event details. If the user does not specify a date range, search the next 7 days during normal working hours. Pass allowSameDayBooking=true only when the current user message explicitly asks for a meeting today or another same-day option; otherwise omit it so the saved setting remains in force. When the user asks about calendar history or specific meetings, use search_calendar_events. For calendar writes, use the appropriate create/update/delete tool and ask the tool for disambiguation rather than assuming the right calendar account. For recurring calendar events, clarify the cadence, end condition, and whether an edit or deletion should affect one occurrence or the whole series before writing; pass scope explicitly. find_calendar_availability already protects the minimum free calendar time the user wants to keep each day, so do not pass minFreeHoursPerDay unless the user explicitly asks for a different limit. If the result reports minFreeHours.applied as false, every day was already at that limit: still offer the options, but say that they cut into the free time the user wanted to protect.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_chat_attachment')) {
