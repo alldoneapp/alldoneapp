@@ -37,6 +37,18 @@ describe('UserDescriptionField', () => {
         const tree = renderer.create(<UserDescriptionField description="Current bio" onSave={jest.fn()} />)
 
         expect(tree.root.findByType('CustomTextInput3').props.initialTextExtended).toEqual('Current bio')
+        expect(tree.root.findByType('CustomTextInput3').props.focusOnInitialText).toBe(true)
+    })
+
+    it('keeps a prefilled description unfocused when requested', () => {
+        const tree = renderer.create(
+            <UserDescriptionField description="Current bio" focusOnInitialText={false} onSave={jest.fn()} />
+        )
+
+        const input = tree.root.findByType('CustomTextInput3')
+        expect(input.props.initialTextExtended).toBe('Current bio')
+        expect(input.props.focusOnInitialText).toBe(false)
+        expect(input.props.autoFocus).toBeUndefined()
     })
 
     it('renders helper text when provided', () => {
