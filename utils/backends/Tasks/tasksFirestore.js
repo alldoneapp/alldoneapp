@@ -1,4 +1,5 @@
 import { runWithLoading } from '../../redux/loadingOperation'
+import { celebrateTaskEarnings } from '../../../components/RootView/GoldCoins/cashReward'
 import { chunk, cloneDeep, intersection, isEqual, uniq } from 'lodash'
 import firebase from 'firebase/compat/app'
 import moment from 'moment'
@@ -3059,6 +3060,13 @@ export async function moveTasksFromMiddleOfWorkflow(
             })
         }
         updateTaskTransitionStatistics(projectId, userId, taskEstimation, false, false, null, batch)
+        celebrateTaskEarnings({
+            project: loggedUserProjectsMap?.[projectId],
+            userId,
+            loggedUserId: loggedUser.uid,
+            estimationMinutes: taskEstimation,
+            checkBoxId,
+        })
 
         logDoneTasks(task.userId, loggedUser.uid, true)
     }
@@ -3308,6 +3316,13 @@ export async function moveTasksFromOpen(
                 })
             }
             updateTaskTransitionStatistics(projectId, newUserId, taskEstimation, false, false, null, batch)
+            celebrateTaskEarnings({
+                project: loggedUserProjectsMap?.[projectId],
+                userId: newUserId,
+                loggedUserId: loggedUser.uid,
+                estimationMinutes: taskEstimation,
+                checkBoxId,
+            })
         }
 
         logDoneTasks(task.userId, loggedUser.uid, workflow ? true : false)
