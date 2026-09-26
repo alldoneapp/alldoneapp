@@ -16,6 +16,7 @@ export default function UserDescriptionField({
     disabled = false,
     placeholder = 'Type the user description here',
     helperText = '',
+    focusOnInitialText = true,
 }) {
     const blockShortcuts = useSelector(state => state.blockShortcuts)
     const smallScreen = useSelector(state => state.smallScreen)
@@ -70,6 +71,7 @@ export default function UserDescriptionField({
                     externalTextStyle={localStyles.textInputText}
                     externalAlignment={{ paddingLeft: 0, paddingRight: 0 }}
                     initialTextExtended={descriptionText}
+                    focusOnInitialText={focusOnInitialText}
                     styleTheme={TASK_THEME}
                     projectId={projectId}
                     projectIndex={projectIndex >= 0 ? projectIndex : undefined}
