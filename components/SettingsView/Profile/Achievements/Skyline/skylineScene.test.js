@@ -7,6 +7,7 @@
  */
 import moment from 'moment'
 
+jest.spyOn(console, 'warn').mockImplementation(() => {})
 jest.mock('three', () => {
     const actual = jest.requireActual('three')
     class FakeRenderer {
