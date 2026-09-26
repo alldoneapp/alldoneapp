@@ -44,6 +44,16 @@ describe('Calendar assistant tool schemas', () => {
         expect(toolSchemas.delete_calendar_event.function.parameters.required).toEqual(['eventId'])
     })
 
+    test('exposes recurrence and occurrence-or-series scope without changing single-event required fields', () => {
+        const create = toolSchemas.create_calendar_event.function.parameters.properties
+        const update = toolSchemas.update_calendar_event.function.parameters.properties
+        const remove = toolSchemas.delete_calendar_event.function.parameters.properties
+        expect(create.recurrence.properties.frequency.enum).toEqual(['daily', 'weekly', 'monthly', 'yearly'])
+        expect(update.recurrence).toBe(create.recurrence)
+        expect(update.scope.enum).toEqual(['occurrence', 'series'])
+        expect(remove.scope.enum).toEqual(['occurrence', 'series'])
+    })
+
     test('tells calendar writes to omit primary and use the saved default account', () => {
         const calendarWriteToolNames = ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event']
         calendarWriteToolNames.forEach(toolName => {

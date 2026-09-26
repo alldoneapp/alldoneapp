@@ -16,6 +16,8 @@ const admin = require('firebase-admin')
 const { getMicrosoftGraphClient } = require('../../MicrosoftGraph/graphClient')
 const {
     createMicrosoftCalendarEventForAssistantRequest,
+    updateMicrosoftCalendarEventForAssistantRequest,
+    deleteMicrosoftCalendarEventForAssistantRequest,
     getConnectedMicrosoftCalendarAccounts,
     getMicrosoftCalendarBusyIntervalsForAssistantRequest,
 } = require('./microsoftCalendarProvider')
@@ -320,5 +322,89 @@ describe('microsoftCalendarProvider automatic Teams conferencing', () => {
         })
 
         expect(parseBody(request).isOnlineMeeting).toBeUndefined()
+        expect(parseBody(request).isAllDay).toBe(true)
+    })
+
+    test('creates a counted recurring series in Graph format', async () => {
+        const request = jest.fn().mockResolvedValue({ id: 'master', type: 'seriesMaster' })
+        getMicrosoftGraphClient.mockResolvedValue({ request })
+        const result = await createMicrosoftCalendarEventForAssistantRequest({
+            ...TIMED_EVENT,
+            start: '2026-10-05T09:00:00+02:00',
+            end: '2026-10-05T10:00:00+02:00',
+            recurrence: { frequency: 'weekly', daysOfWeek: ['monday', 'wednesday'], count: 8 },
+        })
+        expect(result.success).toBe(true)
+        expect(parseBody(request).recurrence).toEqual({
+            pattern: { type: 'weekly', interval: 1, daysOfWeek: ['monday', 'wednesday'], firstDayOfWeek: 'monday' },
+            range: {
+                type: 'numbered',
+                startDate: '2026-10-05',
+                numberOfOccurrences: 8,
+                recurrenceTimeZone: 'Europe/Berlin',
+            },
+        })
+    })
+
+    test('requires scope and sends series writes to its master', async () => {
+        const instance = {
+            id: 'instance',
+            type: 'occurrence',
+            seriesMasterId: 'master',
+            start: { dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' },
+        }
+        const request = jest.fn().mockResolvedValue(instance)
+        getMicrosoftGraphClient.mockResolvedValue({ request })
+        const args = { userId: 'user-1', eventId: 'instance', summary: 'New title' }
+        expect((await updateMicrosoftCalendarEventForAssistantRequest(args)).code).toBe(
+            'calendar_recurrence_scope_required'
+        )
+        expect(request).toHaveBeenCalledTimes(1)
+        await updateMicrosoftCalendarEventForAssistantRequest({ ...args, scope: 'series' })
+        expect(request.mock.calls[2][0]).toBe('/me/events/master')
+        expect(request.mock.calls[2][1].method).toBe('PATCH')
+        await deleteMicrosoftCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            eventId: 'instance',
+            scope: 'occurrence',
+        })
+        expect(request.mock.calls[4][0]).toBe('/me/events/instance')
+        await deleteMicrosoftCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            eventId: 'instance',
+            scope: 'series',
+        })
+        expect(request.mock.calls[6][0]).toBe('/me/events/master')
+    })
+
+    test('updates a series recurrence from an occurrence ID', async () => {
+        const request = jest.fn((path, options) => {
+            if (options?.method === 'PATCH') return Promise.resolve({ id: 'master', type: 'seriesMaster' })
+            if (path === '/me/events/master')
+                return Promise.resolve({
+                    id: 'master',
+                    type: 'seriesMaster',
+                    start: { dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' },
+                })
+            return Promise.resolve({ id: 'instance', type: 'occurrence', seriesMasterId: 'master' })
+        })
+        getMicrosoftGraphClient.mockResolvedValue({ request })
+        await updateMicrosoftCalendarEventForAssistantRequest({
+            userId: 'user-1',
+            eventId: 'instance',
+            scope: 'series',
+            timeZone: 'Europe/Berlin',
+            recurrence: { frequency: 'daily', count: 3 },
+        })
+        expect(request.mock.calls[2][0]).toBe('/me/events/master')
+        expect(JSON.parse(request.mock.calls[2][1].body).recurrence).toEqual({
+            pattern: { type: 'daily', interval: 1 },
+            range: {
+                type: 'numbered',
+                startDate: '2026-10-05',
+                numberOfOccurrences: 3,
+                recurrenceTimeZone: 'Europe/Berlin',
+            },
+        })
     })
 })

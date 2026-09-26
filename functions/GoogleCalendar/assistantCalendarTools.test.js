@@ -1165,4 +1165,112 @@ describe('assistantCalendarTools', () => {
         expect(result.success).toBe(false)
         expect(result.message).toMatch(/Please connect Calendar first/)
     })
+
+    describe('recurring event writes', () => {
+        function connectedCalendar() {
+            setUser('user-1', {
+                projectIds: ['p1'],
+                preferredTimezone: 'Europe/Berlin',
+                apisConnected: { p1: { calendar: true, calendarEmail: 'one@example.com' } },
+            })
+            return setCalendarClient('p1')
+        }
+
+        test('creates a weekly series and exposes its recurrence', async () => {
+            const client = connectedCalendar()
+            client.events.insert.mockResolvedValue({
+                data: { id: 'master', recurrence: ['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE'] },
+            })
+            const result = await assistantCalendarTools.createCalendarEventForAssistantRequest({
+                userId: 'user-1',
+                summary: 'Standup',
+                start: '2026-10-05T09:00:00',
+                end: '2026-10-05T09:30:00',
+                recurrence: { frequency: 'weekly', daysOfWeek: ['monday', 'wednesday'] },
+            })
+            expect(result.success).toBe(true)
+            expect(result.event.recurrence).toEqual(['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE'])
+            expect(client.events.insert.mock.calls[0][0].requestBody.recurrence).toEqual(result.event.recurrence)
+        })
+
+        test('rejects invalid recurrence before inserting', async () => {
+            const client = connectedCalendar()
+            await expect(
+                assistantCalendarTools.createCalendarEventForAssistantRequest({
+                    userId: 'user-1',
+                    summary: 'Standup',
+                    start: '2026-10-05T09:00:00',
+                    end: '2026-10-05T09:30:00',
+                    recurrence: { frequency: 'weekly', daysOfWeek: ['tuesday'] },
+                })
+            ).rejects.toThrow('first event weekday')
+            expect(client.events.insert).not.toHaveBeenCalled()
+        })
+
+        test('requires scope for a recurring instance and targets the right ID', async () => {
+            const client = connectedCalendar()
+            client.events.get.mockResolvedValue({
+                data: {
+                    id: 'instance',
+                    recurringEventId: 'master',
+                    start: { dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' },
+                },
+            })
+            client.events.patch.mockResolvedValue({ data: { id: 'master' } })
+            const args = { userId: 'user-1', eventId: 'instance', summary: 'New title' }
+            const ambiguous = await assistantCalendarTools.updateCalendarEventForAssistantRequest(args)
+            expect(ambiguous.code).toBe('calendar_recurrence_scope_required')
+            expect(client.events.patch).not.toHaveBeenCalled()
+            await assistantCalendarTools.updateCalendarEventForAssistantRequest({ ...args, scope: 'series' })
+            expect(client.events.patch.mock.calls[0][0].eventId).toBe('master')
+            await assistantCalendarTools.updateCalendarEventForAssistantRequest({ ...args, scope: 'occurrence' })
+            expect(client.events.patch.mock.calls[1][0].eventId).toBe('instance')
+        })
+
+        test('updates the master recurrence using the master start date', async () => {
+            const client = connectedCalendar()
+            client.events.get.mockImplementation(({ eventId }) =>
+                Promise.resolve({
+                    data:
+                        eventId === 'master'
+                            ? {
+                                  id: 'master',
+                                  recurrence: ['RRULE:FREQ=WEEKLY'],
+                                  start: { dateTime: '2026-10-05T09:00:00', timeZone: 'Europe/Berlin' },
+                              }
+                            : {
+                                  id: 'instance',
+                                  recurringEventId: 'master',
+                                  start: { dateTime: '2026-10-07T09:00:00', timeZone: 'Europe/Berlin' },
+                              },
+                })
+            )
+            client.events.patch.mockResolvedValue({ data: { id: 'master' } })
+            await assistantCalendarTools.updateCalendarEventForAssistantRequest({
+                userId: 'user-1',
+                eventId: 'instance',
+                scope: 'series',
+                recurrence: { frequency: 'weekly', daysOfWeek: ['monday', 'wednesday'], count: 4 },
+            })
+            expect(client.events.patch).toHaveBeenCalledWith({
+                calendarId: 'primary',
+                eventId: 'master',
+                requestBody: { recurrence: ['RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=4'] },
+            })
+        })
+
+        test('deletes one occurrence or the entire series only with scope', async () => {
+            const client = connectedCalendar()
+            client.events.get.mockResolvedValue({ data: { id: 'instance', recurringEventId: 'master' } })
+            client.events.delete.mockResolvedValue({})
+            const args = { userId: 'user-1', eventId: 'instance' }
+            expect((await assistantCalendarTools.deleteCalendarEventForAssistantRequest(args)).code).toBe(
+                'calendar_recurrence_scope_required'
+            )
+            expect(client.events.delete).not.toHaveBeenCalled()
+            await assistantCalendarTools.deleteCalendarEventForAssistantRequest({ ...args, scope: 'occurrence' })
+            await assistantCalendarTools.deleteCalendarEventForAssistantRequest({ ...args, scope: 'series' })
+            expect(client.events.delete.mock.calls.map(call => call[0].eventId)).toEqual(['instance', 'master'])
+        })
+    })
 })
