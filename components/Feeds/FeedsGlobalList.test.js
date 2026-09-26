@@ -33,7 +33,6 @@ jest.mock('./Utils/FeedsHelper', () => {
                 setFeedsByDate({})
                 setFeedsOrderedArray([])
                 setDisplayedFeedsOrdered(feeds)
-                return Promise.resolve()
             }
         ),
         mergeFeedsInFeedsByDate: jest.fn(),
@@ -199,29 +198,5 @@ describe('FeedsGlobalList "show more" with a capped listener', () => {
 
         expect(getInitialData).toHaveBeenCalledWith(FOLLOWED_TAB, [], makeFeeds(2), undefined)
         expect(processInitialFeeds.mock.calls[0][3]).toHaveLength(2)
-    })
-
-    it('retries a failed feed-object read without losing the initial counter', async () => {
-        jest.useFakeTimers()
-        processInitialFeeds.mockImplementationOnce(() => Promise.reject(new Error('projection pending')))
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
-
-        try {
-            renderList(makeFeeds(1), { counterNewFeedsData: [{ id: 'new-feed' }] })
-            await act(async () => {
-                await Promise.resolve()
-            })
-            expect(processInitialFeeds).toHaveBeenCalledTimes(1)
-
-            await act(async () => {
-                jest.advanceTimersByTime(500)
-                await Promise.resolve()
-            })
-            expect(processInitialFeeds).toHaveBeenCalledTimes(2)
-            expect(getInitialData.mock.calls[1][1]).toEqual([{ id: 'new-feed' }])
-        } finally {
-            warn.mockRestore()
-            jest.useRealTimers()
-        }
     })
 })

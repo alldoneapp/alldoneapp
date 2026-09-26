@@ -1,4 +1,34 @@
+const moment = require('moment-timezone')
 const { TaskRetrievalService } = require('./TaskRetrievalService')
+const { NoteRetrievalService } = require('./NoteRetrievalService')
+const { UpdateRetrievalService } = require('./UpdateRetrievalService')
+
+describe('rolling 24-hour date filters', () => {
+    test('uses the same rolling window for tasks, notes, and updates', () => {
+        const clock = (...args) => (args.length ? moment(...args) : moment('2026-09-26T04:35:00Z'))
+        const expected = {
+            start: Date.parse('2026-09-25T04:35:00Z'),
+            end: Date.parse('2026-09-26T04:35:00Z'),
+        }
+
+        const tasks = new TaskRetrievalService({ moment: clock })
+        const notes = new NoteRetrievalService({ moment: clock })
+        const updates = new UpdateRetrievalService({ moment: clock })
+
+        expect(tasks.buildDateFilters('last 24 hours', 'done', 120)).toEqual({
+            field: 'completed',
+            operator: 'range',
+            value: expected,
+        })
+        expect(tasks.buildDateFilters('past 24 hours', 'open', 120)).toEqual({
+            field: 'dueDate',
+            operator: 'range',
+            value: expected,
+        })
+        expect(notes.buildDateRange('last 24 hours', 120)).toEqual(expected)
+        expect(updates.buildDateRange('last 24 hours', 120)).toEqual(expected)
+    })
+})
 
 describe('TaskRetrievalService all-status date support', () => {
     test('sorts mixed open and done tasks by their relevant date', () => {

@@ -579,6 +579,11 @@ class TaskRetrievalService {
             return makeRange(startOfNextMonth, endOfNextMonth)
         }
 
+        if (normalizedSpaced === 'last 24 hours' || normalizedSpaced === 'past 24 hours') {
+            const end = momentFactory()
+            return makeRange(end.clone().subtract(24, 'hours'), end)
+        }
+
         const rollingPastMatch = normalizedSpaced.match(/^(last|past)\s+(\d+)\s+days?$/)
         if (rollingPastMatch) {
             const days = parseInt(rollingPastMatch[2], 10)
