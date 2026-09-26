@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import moment from 'moment'
 import { useSelector } from 'react-redux'
@@ -51,6 +51,12 @@ export default function FeedsGlobalList({
     const [feedsOrderedArray, setFeedsOrderedArray] = useState([])
     const [activeMode, setActiveMode] = useState(LOADING_MODE)
     const [expandRequested, setExpandRequested] = useState(false)
+    const [initialLoadRetry, setInitialLoadRetry] = useState(0)
+    const initialLoadRetryCount = useRef(0)
+    const initialLoadRetryTimer = useRef(null)
+    const mounted = useRef(true)
+    const currentTab = useRef(feedActiveTab)
+    currentTab.current = feedActiveTab
 
     // AT-2382 - the widened listener replaces this array on delivery, so its identity is
     // the "the extra feeds arrived" edge that retires the ghosts. Deliberately NOT keyed on
@@ -122,6 +128,7 @@ export default function FeedsGlobalList({
 
     const processInitialFeedsInTab = () => {
         const { mode, feedsToProcess } = getInitialData(feedActiveTab, counterNewFeedsData, followedFeeds, allFeeds)
+        const isCurrent = () => mounted.current && currentTab.current === feedActiveTab
         setActiveMode(mode)
         setMaxAmountOfFeedToDisplay(
             mode === NEW_FEEDS_MODE ? MAX_FEEDS_AMOUNT_TO_DISPLAY : getLimitFeedAmountToDisplay()
@@ -136,8 +143,27 @@ export default function FeedsGlobalList({
             setFeedsOrderedArray,
             setDisplayedFeedsOrdered,
             [],
-            setNewFeedsIds
+            setNewFeedsIds,
+            isCurrent
         )
+            .then(() => {
+                if (!isCurrent()) return
+                initialLoadRetryCount.current = 0
+                clearTimeout(initialLoadRetryTimer.current)
+            })
+            .catch(error => {
+                if (!isCurrent()) return
+                // A new feed can reach feedsCount before the access-projection trigger makes its
+                // projectsFeeds object readable. Keep the counter and try again after projection.
+                if (initialLoadRetryCount.current === 0) {
+                    console.warn('Could not load Updates feed object; retrying', { projectId, error })
+                }
+                setActiveMode(LOADING_MODE)
+                const delay = Math.min(500 * 2 ** initialLoadRetryCount.current, 10000)
+                initialLoadRetryCount.current += 1
+                clearTimeout(initialLoadRetryTimer.current)
+                initialLoadRetryTimer.current = setTimeout(() => setInitialLoadRetry(retry => retry + 1), delay)
+            })
     }
 
     const changeTab = () => {
@@ -283,7 +309,15 @@ export default function FeedsGlobalList({
         if (feedsForActiveTab && counterNewFeedsData && activeMode === LOADING_MODE) {
             processInitialFeedsInTab()
         }
-    }, [feedsForActiveTab, counterNewFeedsData])
+    }, [feedsForActiveTab, counterNewFeedsData, initialLoadRetry])
+
+    useEffect(
+        () => () => {
+            mounted.current = false
+            clearTimeout(initialLoadRetryTimer.current)
+        },
+        []
+    )
 
     // Top the expanded list up once the widened listener delivers the feeds that were beyond the
     // first page. Only runs after "show more" was pressed, and only while the incoming snapshot
