@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import { hideGoldChain, hideGoldCoin, setTriggerGoldAnimation } from '../../../redux/actions'
 import { coinLanded, expectCoins } from './goldCounterBridge'
+import { loadGoldCoinsOverlay } from './loadGoldCoinsOverlay'
 
 // `GoldAnimationsContainer` is mounted by the root view AND by every detailed view, so several
 // copies of this can be listening to the same trigger. Each trigger object flies exactly once.
@@ -52,7 +53,7 @@ export default function GoldCoinFlight() {
         const from = centreOf(checkBox)
         const to = findTarget(smallScreenNavigation, sidebarExpanded)
         expectCoins(gold, goldEarned)
-        import(/* webpackChunkName: "gold-coins" */ './goldCoinsOverlay')
+        loadGoldCoinsOverlay()
             .then(({ launchGoldCoins }) =>
                 launchGoldCoins({ from, to, count: goldEarned, onLanded: () => coinLanded() })
             )

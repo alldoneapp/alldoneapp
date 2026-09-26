@@ -1325,6 +1325,19 @@ container is mounted by the root view AND every detailed view, so each trigger o
 exactly once (a `WeakSet` in `GoldCoinFlight`). The overlay runs in parallel to the completion
 motion and never delays the task write.
 
+**A task that earned real money throws cash as well.** When the project has an hourly rate for the
+logged-in user (`project.hourlyRatesData = { currency, hourlyRates }`) and the task has an estimate,
+`celebrateTaskEarnings` (`GoldCoins/cashReward.js`, called next to the done-time statistics update in
+both completion paths of `tasksFirestore.js`) throws banknotes out of the checkbox on the same overlay
+and floats the amount above it (`+37,50 €`, in the user's locale). The sum is `estimate / 60 * rate`
+(`getTaskEarnings`) — the same number the Statistics view and revenue OKRs count, so the animation
+never claims money the statistics do not. Notes are thrown away from the nearer screen edge, drawn
+unlit (lit paper washes out on the white app) with a correctly oriented back, and flutter down like
+paper (`cashFlight.js`). No rate, no estimate, someone else's task, no WebGL or reduced motion: no
+cash, and it never throws into the completion path. Both overlays load through
+`loadGoldCoinsOverlay` so tests can replace the dynamic `import()`, which Jest's Babel does not
+transform.
+
 ### Empty-inbox celebration (AT-2445)
 
 **A count of 0 does not mean "empty" — it also means "not counted yet", and telling them apart is
