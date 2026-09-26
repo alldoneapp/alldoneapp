@@ -6,7 +6,10 @@ jest.mock('../SettingsView/Profile/Achievements/Skyline/webglSupport', () => ({ 
 jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({ currentReducedMotionPreference: jest.fn(() => false) }))
 jest.mock('../TopBar/GoldChain', () => () => 'lottie-chain')
 jest.mock('./GoldEarnedAnimation', () => () => 'lottie-coins')
-jest.mock('./GoldCoins/goldCoinsOverlay', () => ({ launchGoldCoins: jest.fn() }))
+const mockLaunchGoldCoins = jest.fn()
+jest.mock('./GoldCoins/loadGoldCoinsOverlay', () => ({
+    loadGoldCoinsOverlay: () => Promise.resolve({ launchGoldCoins: mockLaunchGoldCoins }),
+}))
 
 const mockDispatch = jest.fn()
 let mockState
@@ -41,6 +44,22 @@ describe('gold reward animation', () => {
         expect(tree.toJSON()).toBeNull()
         const types = mockDispatch.mock.calls.map(([action]) => action.type)
         expect(types).toEqual(expect.arrayContaining(['Hide gold chain', 'Hide gold coin']))
+    })
+
+    it('launches one coin per gold earned from the checkbox to the Gold icon', async () => {
+        canRenderSkyline.mockReturnValue(true)
+        mockLaunchGoldCoins.mockClear()
+        document.body.innerHTML = '<div check-box-id="task-1"></div><div id="goldArea"></div>'
+        mockState.goldEarnedData = { goldEarned: 4, checkBoxId: 'task-1' }
+        render()
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(mockLaunchGoldCoins).toHaveBeenCalledTimes(1)
+        expect(mockLaunchGoldCoins.mock.calls[0][0].count).toBe(4)
+        // A second mounted container (a detailed view) must not launch the same trigger again.
+        render()
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(mockLaunchGoldCoins).toHaveBeenCalledTimes(1)
+        document.body.innerHTML = ''
     })
 
     it('keeps the Lottie animations without WebGL', () => {
