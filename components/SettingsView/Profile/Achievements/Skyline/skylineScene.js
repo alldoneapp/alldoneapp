@@ -13,10 +13,12 @@ import {
     InstancedMesh,
     Mesh,
     MeshBasicMaterial,
-    MeshLambertMaterial,
+    MeshStandardMaterial,
+    NeutralToneMapping,
     AdditiveBlending,
     Object3D,
-    PCFSoftShadowMap,
+    PCFShadowMap,
+    PMREMGenerator,
     Quaternion,
     PerspectiveCamera,
     PlaneGeometry,
@@ -29,6 +31,7 @@ import {
     Vector3,
     WebGLRenderer,
 } from 'three'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 
 import { colors } from '../../../../styles/global'
 import {
@@ -99,18 +102,24 @@ const SPIRE = 0.7
 const TALLEST = SKYLINE_MAX_HEIGHT * 1.15 + 0.1 + SPIRE + 0.12
 const FROZEN_TIME = 20
 
-const PLOT = colors.Grey100
-const ROAD = colors.Grey300
+// Ground. Light, slightly warm concrete for pavements, a pale asphalt, real grass — muted enough to
+// sit on the white card, realistic enough to read as a city.
+const PLOT = '#ECEAE5'
+const CURB = '#D8D5CE'
+const ROAD = '#C9CDD1'
+const ASPHALT_SPECKLE = 'rgba(90,96,104,0.06)'
 const LANE = '#FFFFFF'
-const PARK = colors.UtilityGreen100
-const TREE = colors.UtilityGreen125
-const SHADOW = colors.Grey200
+const PARK = '#B9D3A6'
+const PARK_SPECKLE = 'rgba(70,120,60,0.10)'
 const LABEL = colors.Text03
 const FLAG = colors.UtilityYellow200
 const FLAG_POLE = colors.Text02
 const FLAG_POLE_HEIGHT = 0.55
 const HIGHLIGHT = colors.UtilityYellow200
-const METAL = colors.Grey400
+const METAL = '#9AA1A8'
+const ROOF_CAP = '#A7ADB3'
+const WATER_TANK = '#8F7F70'
+const COPPER = '#7FA697'
 const BEACON = colors.UtilityOrange200
 const BIRD = colors.Text02
 const BALLOON = colors.UtilityYellow200
@@ -118,48 +127,29 @@ const BALLOON_STRIPE = colors.UtilityOrange200
 const BASKET = colors.Secondary300
 const AIRPLANE = colors.Secondary200
 const AIRPLANE_TAIL = colors.Primary100
-const LAMP_POST = colors.Grey400
+const LAMP_POST = '#6E757C'
 const LAMP_LIGHT = colors.UtilityYellow150
-// Night lights. Warm white for lamps and headlights, the app's red for tail and port lights, its
-// green for the starboard light.
+// Night lights. Warm white for lamps and headlights, red for tail and port lights, green starboard.
 const WARM_LIGHT = colors.UtilityYellow100
 const TAIL_LIGHT = colors.Red200
 const PORT_LIGHT = colors.Red200
 const STARBOARD_LIGHT = colors.UtilityGreen200
 const HELICOPTER = colors.Secondary300
-// Building colours: all app colours. Blues dominate (listed more than once) so the city still reads
-// as Alldone; violets and warm tones are the occasional accent.
-const BODY_PALETTE = [
-    colors.Primary100,
-    colors.Primary100,
-    colors.Primary300,
-    colors.Secondary100,
-    colors.Secondary200,
-    colors.UtilityDarkBlue125,
-    colors.UtilityDarkBlue125,
-    colors.ProjectColor300,
-    colors.UtilityViolet150,
-    colors.Grey400,
-]
-const ACCENT_PALETTE = [
-    colors.UtilityDarkBlue125,
-    colors.Primary100,
-    colors.Secondary200,
-    colors.UtilityViolet125,
-    colors.UtilityYellow150,
-    colors.UtilityOrange150,
-    colors.Grey300,
-]
-const CAR_COLORS = [
-    colors.UtilityYellow200,
-    colors.Primary100,
-    colors.UtilityOrange200,
-    colors.Secondary100,
-    colors.Grey400,
-    colors.UtilityGreen200,
-]
+// Trees: trunk and three canopy greens.
+const TRUNK = '#7A6552'
+const CANOPY = ['#6E9F62', '#7FAE6E', '#5E8F57']
 
-const STRIPPED_KINDS = new Set(['fan', 'spire', 'beacon', 'flag', 'flagPole'])
+// Facades: real building materials. Stone, plaster and brick for the low and mid-rise city, tinted
+// glass for the towers. The data speaks through height; the projects speak through small touches
+// (lobby bands, awnings, small roofs, tower bands, bridges) in their own colours.
+const MASONRY_PALETTE = ['#EDE8DF', '#E3DDD2', '#D9D2C5', '#F2F0EB', '#CDBBA6', '#B98B72', '#E6E1D8']
+const GLASS_PALETTE = ['#8FA6BF', '#9AAFC4', '#7F96B0', '#A7B7C8', '#8A9DB3']
+// Accents when the day has no second project to lend its colour.
+const NEUTRAL_ACCENT = ['#6F7A86', '#8C7B6B', '#5F6F7F']
+const CAR_COLORS = ['#F4F4F2', '#2B2F36', '#B7BCC2', '#2D4A7A', '#A63D3D', '#D9D6CF', '#44505C']
+const CAR_GLASS = '#3A4350'
+
+const STRIPPED_KINDS = new Set(['fan', 'spire', 'beacon', 'flag', 'flagPole', 'tank'])
 
 // Laid out like a calendar page: weekdays are the columns (x), weeks the rows (z), the oldest week
 // furthest from the camera and the current week nearest to it.
@@ -197,29 +187,40 @@ const FACADE_VERTEX = `
     #endif
     vFacadeWorld = (modelMatrix * facadeWorld).xyz;
     vFacadeNormal = normalize(mat3(modelMatrix) * facadeNormal);`
-const FACADE_FRAGMENT = `
+// Two facade styles on the same idea. MASONRY: punched windows in a wall, deep and regular. GLASS:
+// a curtain wall — nearly all window, thin mullions, a darker spandrel band at each floor. In both,
+// the windows are a real reflective glass surface (low roughness, some metalness, so they pick up
+// the environment and the sun), the wall darkens a little where it meets the street, and at night a
+// seeded share of the windows glows warm.
+const facadeFragment = style => `
     float facadeSide = 1.0 - step(0.6, abs(vFacadeNormal.y));
-    float floorLine = smoothstep(0.86, 0.93, fract(vFacadeWorld.y / 0.26)) * step(0.3, vFacadeWorld.y);
-    diffuseColor.rgb *= 1.0 - floorLine * 0.09 * facadeSide;
-    float groundOcclusion = mix(0.74, 1.0, smoothstep(0.0, 0.45, vFacadeWorld.y));
-    diffuseColor.rgb *= mix(1.0, groundOcclusion, facadeSide);
-    // Windows: a grid on the walls only (never roofs, domes or the ground floor), between the floor
-    // lines. By day they are quiet glass, a little darker than the wall; as evening falls a seeded
-    // third of them glow warm, faded in with the street lamps.
     float wallOnly = 1.0 - step(0.2, abs(vFacadeNormal.y));
     float across = abs(vFacadeNormal.x) > abs(vFacadeNormal.z) ? vFacadeWorld.z : vFacadeWorld.x;
-    vec2 windowCell = vec2(across / 0.17, vFacadeWorld.y / 0.26);
+    vec2 windowCell = vec2(across / ${style === 'glass' ? '0.13' : '0.16'}, vFacadeWorld.y / 0.25);
     vec2 windowIn = fract(windowCell);
-    float windowMask = step(0.24, windowIn.x) * step(windowIn.x, 0.76) * step(0.22, windowIn.y) * step(windowIn.y, 0.7);
-    windowMask *= wallOnly * step(0.26, vFacadeWorld.y);
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.74, windowMask);
-    float windowLit = step(0.66, fract(sin(dot(floor(windowCell) + floor(vFacadeWorld.xz * 1.3) * 7.0, vec2(127.1, 311.7))) * 43758.5453));`
+    ${
+        style === 'glass'
+            ? 'float windowMask = step(0.07, windowIn.x) * step(windowIn.x, 0.93) * step(0.2, windowIn.y) * step(windowIn.y, 0.94);'
+            : 'float windowMask = step(0.26, windowIn.x) * step(windowIn.x, 0.74) * step(0.24, windowIn.y) * step(windowIn.y, 0.74);'
+    }
+    windowMask *= wallOnly * step(0.2, vFacadeWorld.y);
+    float groundOcclusion = mix(0.7, 1.0, smoothstep(0.0, 0.5, vFacadeWorld.y));
+    diffuseColor.rgb *= mix(1.0, groundOcclusion, facadeSide);
+    ${
+        style === 'glass'
+            ? 'diffuseColor.rgb = mix(diffuseColor.rgb * 0.82, diffuseColor.rgb * 0.62, windowMask);'
+            : 'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.19, 0.23, 0.29), windowMask * 0.85);'
+    }
+    float windowLit = step(0.64, fract(sin(dot(floor(windowCell) + floor(vFacadeWorld.xz * 1.3) * 7.0, vec2(127.1, 311.7))) * 43758.5453));`
+const FACADE_SURFACE = `
+    roughnessFactor = mix(roughnessFactor, 0.12, windowMask);
+    metalnessFactor = mix(metalnessFactor, 0.55, windowMask);`
 // Added to the emitted light, so a lit window glows independently of how the wall is lit.
 const WINDOW_GLOW_FRAGMENT = `
-    totalEmissiveRadiance += uWindowColor * windowMask * windowLit * uWindowGlow * 0.9;`
+    totalEmissiveRadiance += uWindowColor * windowMask * windowLit * uWindowGlow * 1.4;`
 const windowGlow = { value: 0 }
 const windowColor = { value: new Color(colors.UtilityYellow150) }
-const withFacadeDetail = material => {
+const withFacadeDetail = (material, style) => {
     material.onBeforeCompile = shader => {
         shader.uniforms.uWindowGlow = windowGlow
         shader.uniforms.uWindowColor = windowColor
@@ -231,9 +232,11 @@ const withFacadeDetail = material => {
                 'void main() {',
                 'uniform float uWindowGlow;\nuniform vec3 uWindowColor;\nvarying vec3 vFacadeWorld;\nvarying vec3 vFacadeNormal;\nvoid main() {'
             )
-            .replace('#include <color_fragment>', `#include <color_fragment>\n${FACADE_FRAGMENT}`)
+            .replace('#include <color_fragment>', `#include <color_fragment>\n${facadeFragment(style)}`)
+            .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>\n${FACADE_SURFACE}`)
             .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${WINDOW_GLOW_FRAGMENT}`)
     }
+    material.customProgramCacheKey = () => `facade-${style}`
     return material
 }
 
@@ -251,7 +254,10 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     renderer.outputColorSpace = SRGBColorSpace
     renderer.setClearColor(new Color('#FFFFFF'), 0)
     renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = PCFSoftShadowMap
+    renderer.shadowMap.type = PCFShadowMap
+    // Neutral tone mapping keeps the palette honest while rolling highlights off softly.
+    renderer.toneMapping = NeutralToneMapping
+    renderer.toneMappingExposure = 1
     const canvas = renderer.domElement
     canvas.style.display = 'block'
     canvas.style.width = '100%'
@@ -278,9 +284,16 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     const unitCylinder = track(new CylinderGeometry(0.5, 0.5, 1, 8))
     unitCylinder.translate(0, 0.5, 0)
 
-    // Lit materials (colour comes per instance). Buildings get the facade detail; props do not.
-    const buildingMaterial = track(withFacadeDetail(new MeshLambertMaterial({ color: 0xffffff })))
-    const propMaterial = track(new MeshLambertMaterial({ color: 0xffffff }))
+    // Physically based materials (colour comes per instance). Masonry is matte stone and plaster;
+    // glass is smoother and a little metallic so the towers pick up the sky; both get the facade
+    // detail. Props (trees, cars, rubble) are plain.
+    const masonryMaterial = track(
+        withFacadeDetail(new MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, metalness: 0 }), 'masonry')
+    )
+    const glassMaterial = track(
+        withFacadeDetail(new MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.3 }), 'glass')
+    )
+    const propMaterial = track(new MeshStandardMaterial({ color: 0xffffff, roughness: 0.75, metalness: 0 }))
     const basic = color => track(new MeshBasicMaterial({ color: new Color(color) }))
     // The flag's geometry has its origin at the pole edge, so it waves around the pole.
     const unitFlag = track(new BoxGeometry(1, 1, 1))
@@ -299,38 +312,56 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     groundTexture.anisotropy = renderer.capabilities.getMaxAnisotropy()
     const ground = new Mesh(
         track(new PlaneGeometry(groundWidth, groundDepth)),
-        track(new MeshLambertMaterial({ map: groundTexture, transparent: true }))
+        track(new MeshStandardMaterial({ map: groundTexture, transparent: true, roughness: 0.95, metalness: 0 }))
     )
     ground.rotation.x = -Math.PI / 2
     ground.receiveShadow = true
     scene.add(ground)
 
     // ---------------------------------------------------------------- light: the time of day
-    // A sky/ground fill plus one sun (or moon) that casts real soft shadows. Intensities are chosen
-    // for three's Lambert (which divides by pi) so a sunlit roof or street at midday shows its exact
-    // palette colour and shade sits at about 72% of it — visible, never heavy. `getDaylight` moves
-    // and tints both with the user's local time.
-    const FILL = Math.PI * 0.72
-    const SUN = 1.13
-    const fill = new HemisphereLight(0xffffff, new Color(colors.Grey300), FILL)
+    // Three sources. An environment (three's neutral studio room, prefiltered) gives soft ambient
+    // light from every direction and something for glass to reflect. A sky/ground fill tints it with
+    // the hour. One sun — or moon — casts real soft shadows. `getDaylight` moves, tints and dims all
+    // of them with the real sun where the user is.
+    // Prefiltering needs float render targets; a device that cannot do it just goes without the
+    // environment (the fill light still lights the city, the glass just reflects less).
+    try {
+        const pmrem = new PMREMGenerator(renderer)
+        const environment = pmrem.fromScene(new RoomEnvironment(), 0.04)
+        pmrem.dispose()
+        track(environment)
+        scene.environment = environment.texture
+    } catch (error) {
+        console.warn('[skyline] No environment lighting on this device', error)
+    }
+    const ENVIRONMENT = 0.38
+    const FILL = 0.72
+    const SUN = 3.6
+    const fill = new HemisphereLight(0xffffff, new Color('#C9CDD1'), FILL)
     const sun = new DirectionalLight(0xffffff, SUN)
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.mapSize.set(3072, 3072)
     sun.shadow.bias = -0.0004
     sun.shadow.normalBias = 0.02
-    sun.shadow.radius = 4
+    sun.shadow.radius = 3
     const shadowCamera = sun.shadow.camera
-    shadowCamera.left = -CITY_HALF_WIDTH - 3
-    shadowCamera.right = CITY_HALF_WIDTH + 3
-    shadowCamera.top = CITY_HALF_DEPTH + 5
-    shadowCamera.bottom = -CITY_HALF_DEPTH - 5
+    // Wide enough for the long shadows of a low sun, which otherwise fall outside the shadow map and
+    // simply vanish at exactly the hour they should be most dramatic.
+    shadowCamera.left = -CITY_HALF_WIDTH - 7
+    shadowCamera.right = CITY_HALF_WIDTH + 7
+    shadowCamera.top = CITY_HALF_DEPTH + 9
+    shadowCamera.bottom = -CITY_HALF_DEPTH - 9
     shadowCamera.near = 1
-    shadowCamera.far = 80
+    shadowCamera.far = 90
     scene.add(fill, sun, sun.target)
     let lampGlow = 0
     const applyDaylight = daylight => {
         fill.color.set(daylight.ambientColor)
-        fill.intensity = FILL * daylight.ambientStrength
+        // How much of the day is left, 0 (night) to 1 (full day). Night is properly dark: the fill and
+        // the environment fall much further than the moon does, so the lit windows and lamps carry it.
+        const dayness = (daylight.lightStrength - 0.35) / 0.65
+        fill.intensity = FILL * daylight.ambientStrength * (0.45 + 0.55 * dayness)
+        scene.environmentIntensity = ENVIRONMENT * (0.12 + 0.88 * dayness)
         sun.color.set(daylight.lightColor)
         sun.intensity = SUN * daylight.lightStrength
         sun.position.set(
@@ -371,6 +402,18 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             context.roundRect(cx(-extentX), cz(-extentZ), extentX * 2 * px, extentZ * 2 * px, 0.3 * px)
         else context.rect(cx(-extentX), cz(-extentZ), extentX * 2 * px, extentZ * 2 * px)
         context.fill()
+        // A fine aggregate in the asphalt, so the roads read as a surface rather than a fill.
+        const grain = seeded(1301)
+        context.fillStyle = ASPHALT_SPECKLE
+        for (let i = 0; i < 2600; i++) {
+            const size = 1 + grain() * 2
+            context.fillRect(
+                cx(-extentX) + grain() * extentX * 2 * px,
+                cz(-extentZ) + grain() * extentZ * 2 * px,
+                size,
+                size
+            )
+        }
         // Dashed centre lines, one dash per block edge so they break at every junction.
         context.fillStyle = LANE
         const dash = 0.22 * px
@@ -393,14 +436,32 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 }
             }
         }
-        // One block per day: a park for the days nothing got done, a bare plot for days to come.
+        // One block per day, with a kerb: pavement for buildings, grass for the days nothing got done.
         const block = BLOCK * px
+        const kerb = 0.035 * px
         const byCell = new Map(days.map(day => [`${day.week}:${day.weekday}`, day]))
+        const grassGrain = seeded(907)
         for (let row = 0; row < ROWS; row++) {
             for (let column = 0; column < COLUMNS; column++) {
                 const day = byCell.get(`${row}:${column}`)
-                context.fillStyle = day && day.tasks <= 0 ? PARK : PLOT
-                roundRect(cx(colX(column)) - block / 2, cz(rowZ(row)) - block / 2, block, block)
+                const left = cx(colX(column)) - block / 2
+                const top = cz(rowZ(row)) - block / 2
+                context.fillStyle = CURB
+                roundRect(left, top, block, block)
+                const park = day && day.tasks <= 0
+                context.fillStyle = park ? PARK : PLOT
+                roundRect(left + kerb, top + kerb, block - kerb * 2, block - kerb * 2)
+                if (park) {
+                    context.fillStyle = PARK_SPECKLE
+                    for (let i = 0; i < 90; i++) {
+                        context.fillRect(
+                            left + kerb + grassGrain() * (block - kerb * 2),
+                            top + kerb + grassGrain() * (block - kerb * 2),
+                            2,
+                            2
+                        )
+                    }
+                }
             }
         }
         // Zebra crossings on every approach to a junction, just before the lanes meet.
@@ -421,14 +482,15 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 }
             }
         }
-        // The calendar's legends: weekday names across the top, each week's first date on the left.
+        // The calendar's legends: weekday names along the front edge (at the back the towers would
+        // hide them), each week's first date on the left.
         context.fillStyle = LABEL
         context.textBaseline = 'middle'
         const font = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
         context.textAlign = 'center'
         context.font = `500 ${0.44 * px}px ${font}`
         labels.columns.forEach(({ column, text }) => {
-            context.fillText(text, cx(colX(column)), cz(-CITY_HALF_DEPTH - roadHalf - 0.45))
+            context.fillText(text, cx(colX(column)), cz(CITY_HALF_DEPTH + roadHalf + 0.45))
         })
         context.textAlign = 'right'
         context.font = `500 ${0.4 * px}px ${font}`
@@ -442,12 +504,16 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     // Every building is a handful of PARTS, each an instance in one of a few instanced meshes, so a
     // quarter of varied architecture is still only seven draw calls.
     const KINDS = {
-        box: { geometry: unitBox, material: buildingMaterial, colored: true, pickable: true },
-        pyramid: { geometry: unitPyramid, material: buildingMaterial, colored: true, pickable: true },
+        box: { geometry: unitBox, material: masonryMaterial, colored: true, pickable: true },
+        glass: { geometry: unitBox, material: glassMaterial, colored: true, pickable: true },
+        pyramid: { geometry: unitPyramid, material: masonryMaterial, colored: true, pickable: true },
+        cylinder: { geometry: unitCylinder, material: masonryMaterial, colored: true, pickable: true },
+        glassCylinder: { geometry: unitCylinder, material: glassMaterial, colored: true, pickable: true },
+        dome: { geometry: unitSphere, material: masonryMaterial, colored: true, pickable: true },
         tree: { geometry: unitSphere, material: propMaterial, colored: true },
-        cylinder: { geometry: unitCylinder, material: buildingMaterial, colored: true, pickable: true },
-        dome: { geometry: unitSphere, material: buildingMaterial, colored: true, pickable: true },
+        trunk: { geometry: unitCylinder, material: propMaterial, colored: true },
         spire: { geometry: unitCylinder, material: propMaterial, colored: true },
+        tank: { geometry: unitCylinder, material: propMaterial, colored: true },
         flagPole: { geometry: unitCylinder, material: basic(FLAG_POLE) },
         flag: {
             geometry: unitFlag,
@@ -484,11 +550,12 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         meshes = {}
     }
 
-    // Architecture. Height always means "tasks done that day"; everything else is free, so each
-    // day picks one of several designs for its height band and its own colours from the app
-    // palette (seeded by date, so a day always looks the same). Green stays reserved for the
-    // empty-inbox roofs, and every design tops out at exactly the day's height so the skyline
-    // still reads as data.
+    // Architecture. Height always means "tasks done that day"; everything else is free. Each day
+    // picks one of several designs for its height band and its materials — stone, plaster and brick
+    // for the low and mid-rise city, tinted glass for the towers — seeded by date, so a day always
+    // looks the same. The day's projects appear as small touches in their own colours: a lobby band,
+    // an awning, a small roof, the bands of a round tower, a sky bridge. Every design tops out at
+    // exactly the day's height so the skyline still reads as data.
     let buildingColors = []
     const buildParts = () => {
         const list = []
@@ -501,17 +568,13 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             const H = getSkylineHeight(day.tasks, scale)
             const random = seeded(day.week * 31 + day.weekday * 7 + 11)
             const pick = list => list[Math.floor(random() * list.length) % list.length]
-            // Project colours first: the building wears the colour of the project that got the most
-            // done that day, and the second project (if any) its accents. The palette only fills
-            // in what the data does not decide — the picks are always drawn so the seeded sequence,
-            // and with it the design, does not change when a second project appears.
-            const paletteBody = pick(BODY_PALETTE)
-            const paletteAccent = pick(ACCENT_PALETTE.filter(color => color !== paletteBody))
-            const body = getProjectColorAt(day, 0) || paletteBody
-            const second = day.byProject && day.byProject[1] ? day.byProject[1].project.color : null
-            const accent = second || (paletteAccent !== body ? paletteAccent : colors.Grey300)
-            const shareColor = fraction => getProjectColorAt(day, fraction) || body
-            buildingColors[b] = body
+            // Always drawn in the same order, so the design never changes when the data does.
+            const stone = pick(MASONRY_PALETTE)
+            const tint = pick(GLASS_PALETTE)
+            const neutral = pick(NEUTRAL_ACCENT)
+            const touch = getProjectColorAt(day, 0) || neutral
+            const secondTouch = day.byProject && day.byProject[1] ? day.byProject[1].project.color : touch
+            buildingColors[b] = stone
             const F = FOOTPRINT
             const add = (kind, part) => {
                 const entry = { kind, b, x, z, y: 0, rot: 0, ...part }
@@ -519,108 +582,134 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 byBuilding[b].push(entry)
                 return entry
             }
-            const box = (part, color = body) => add('box', { color, ...part })
+            const box = (part, color = stone) => add('box', { color, ...part })
+            const glass = (part, color = tint) => add('glass', { color, ...part })
             // Where an empty-inbox flag would be planted: the design's highest flat point.
             let summit = { x, z, top: H, w: F * 0.5, spire: false }
             const flatRoof = (w, d, top, offset = {}) => {
-                if (top >= summit.top - 0.001 || summit.top === H) {
-                    summit = { ...summit, x: offset.x ?? x, z: offset.z ?? z, top, w: Math.min(w, d) }
+                // A slim parapet cap on every flat roof.
+                add('box', {
+                    ...offset,
+                    y: top,
+                    w: w + 0.02,
+                    h: 0.035,
+                    d: d + 0.02,
+                    color: ROOF_CAP,
+                })
+                const capped = top + 0.035
+                if (capped >= summit.top - 0.001 || summit.top === H) {
+                    summit = { ...summit, x: offset.x ?? x, z: offset.z ?? z, top: capped, w: Math.min(w, d) }
                 }
             }
-            const discRoof = (w, top) => flatRoof(w, w, top)
-            const roofColor = color => color
+            const discRoof = (w, top) => {
+                add('cylinder', { y: top, w: w + 0.02, h: 0.035, d: w + 0.02, color: ROOF_CAP })
+                if (top + 0.035 >= summit.top - 0.001 || summit.top === H) {
+                    summit = { ...summit, x, z, top: top + 0.035, w }
+                }
+            }
+            // Rooftop plant: a water tank or a couple of air-handling units, off-centre.
+            const rooftop = (w, d, top, offset = {}) => {
+                const ox = (offset.x ?? x) + (random() - 0.5) * w * 0.4
+                const oz = (offset.z ?? z) + (random() - 0.5) * d * 0.4
+                if (random() < 0.45) {
+                    add('tank', { x: ox, z: oz, y: top + 0.035, w: 0.13, h: 0.15, d: 0.13, color: WATER_TANK })
+                } else {
+                    add('box', { x: ox, z: oz, y: top + 0.035, w: w * 0.3, h: 0.09, d: d * 0.22, color: METAL })
+                    add('box', {
+                        x: ox + w * 0.2,
+                        z: oz - d * 0.18,
+                        y: top + 0.035,
+                        w: w * 0.18,
+                        h: 0.07,
+                        d: d * 0.18,
+                        color: METAL,
+                    })
+                }
+            }
+            // The project's colour at street level: a lobby band around the ground floor.
+            const lobby = (w, d, color = touch, offset = {}) =>
+                box({ ...offset, w: w + 0.03, h: 0.12, d: d + 0.03 }, color)
             const spireOnTop = top => {
                 summit.spire = true
                 add('spire', { y: top, w: 0.05, h: SPIRE, d: 0.05, color: METAL })
                 add('beacon', { y: top + SPIRE - 0.03, w: 0.12, h: 0.12, d: 0.12, blink: random() * Math.PI * 2 })
             }
-            const stack = (count, width, depth, twist, color = body) => {
+            const tree = (tx, tz, size) => {
+                add('trunk', { x: tx, z: tz, w: 0.035, h: size * 0.55, d: 0.035, color: TRUNK })
+                add('tree', { x: tx, z: tz, y: size * 0.35, w: size, h: size * 1.1, d: size, color: pick(CANOPY) })
+            }
+            const stack = (count, width, depth, twist) => {
                 const slab = H / count
                 for (let i = 0; i < count; i++) {
-                    // Each slab takes the colour of the project covering its share of the day, so a
-                    // stack is a little bar chart of the day's projects from the ground up.
-                    const slabColor =
-                        day.byProject && day.byProject.length > 1 ? shareColor((i + 0.5) / count) : i % 2 ? color : body
-                    box({ y: i * slab, w: width, h: slab * 0.94, d: depth, rot: i * twist }, slabColor)
+                    glass({ y: i * slab, w: width, h: slab * 0.94, d: depth, rot: i * twist })
                 }
                 flatRoof(width, depth, H - slab * 0.06, { rot: (count - 1) * twist })
             }
 
             const designs = {
                 park: () => {
-                    // A flat plaza (so the day can still be hovered and tapped) with a few trees.
-                    box({ w: F, h: 0.03, d: F }, PARK)
-                    const trees = 2 + Math.floor(random() * 2)
+                    // A lawn (so the day can still be hovered and tapped) with a few trees.
+                    box({ w: F, h: 0.02, d: F }, PARK)
+                    const trees = 2 + Math.floor(random() * 3)
                     for (let i = 0; i < trees; i++) {
-                        const size = 0.16 + random() * 0.1
-                        add('tree', {
-                            x: x + (random() - 0.5) * (F - size),
-                            z: z + (random() - 0.5) * (F - size),
-                            w: size,
-                            h: size,
-                            d: size,
-                            color: TREE,
-                        })
+                        const size = 0.18 + random() * 0.12
+                        tree(x + (random() - 0.5) * (F - size), z + (random() - 0.5) * (F - size), size)
                     }
-                    flatRoof(F, F, 0.03)
+                    summit = { x, z, top: 0.02, w: F * 0.5, spire: false }
                 },
                 gable: () => {
                     const wall = Math.max(0.2, H - 0.28)
-                    box({ w: F * 0.84, h: wall, d: F * 0.84 })
+                    box({ w: F * 0.84, h: wall, d: F * 0.8 })
                     add('pyramid', {
                         y: wall,
                         w: F * 0.92,
                         h: H - wall,
-                        d: F * 0.92,
-                        color: roofColor(accent),
+                        d: F * 0.88,
+                        color: touch,
                         rot: random() < 0.5 ? 0 : Math.PI / 2,
                     })
                 },
                 silo: () => {
                     const domeHeight = Math.min(0.36, H * 0.45)
-                    add('cylinder', { w: F * 0.72, h: H - domeHeight / 2, d: F * 0.72, color: body })
-                    add('dome', {
-                        y: H - domeHeight,
-                        w: F * 0.72,
-                        h: domeHeight,
-                        d: F * 0.72,
-                        color: roofColor(accent),
-                    })
+                    add('cylinder', { w: F * 0.72, h: H - domeHeight / 2, d: F * 0.72, color: stone })
+                    add('dome', { y: H - domeHeight, w: F * 0.72, h: domeHeight, d: F * 0.72, color: COPPER })
                 },
                 rowHouses: () => {
                     ;[-1, 1].forEach((side, i) => {
                         const top = i ? H : H * 0.82
                         const wall = Math.max(0.16, top - 0.22)
                         const offset = { x: x + side * F * 0.24 }
-                        box({ ...offset, w: F * 0.44, h: wall, d: F * 0.84 }, i ? body : accent)
+                        box({ ...offset, w: F * 0.44, h: wall, d: F * 0.8 }, i ? stone : pick(MASONRY_PALETTE))
                         add('pyramid', {
                             ...offset,
                             y: wall,
                             w: F * 0.46,
                             h: top - wall,
-                            d: F * 0.86,
-                            color: roofColor(i ? accent : body),
+                            d: F * 0.84,
+                            color: i ? touch : neutral,
                         })
                     })
                     // The flag goes on the ridge of the taller house, not in the gap between them.
-                    flatRoof(0.1, 0.1, H, { x: x + F * 0.24 })
+                    summit = { x: x + F * 0.24, z, top: H, w: 0.1, spire: false }
                 },
                 shop: () => {
                     box({ w: F * 0.9, h: H, d: F * 0.8 })
-                    box({ z: z + F * 0.45, y: H * 0.42, w: F * 0.9, h: 0.035, d: 0.18 }, accent)
+                    box({ z: z + F * 0.44, y: H * 0.36, w: F * 0.86, h: 0.03, d: 0.16 }, touch)
                     flatRoof(F * 0.9, F * 0.8, H)
+                    rooftop(F * 0.9, F * 0.8, H)
                 },
                 fanBlock: () => {
+                    lobby(F, F)
                     box({ w: F, h: H, d: F })
                     flatRoof(F, F, H)
                     const unit = F * 0.34
                     const ux = x + (random() - 0.5) * F * 0.3
                     const uz = z + (random() - 0.5) * F * 0.3
-                    box({ x: ux, z: uz, y: H + 0.05, w: unit, h: 0.12, d: unit }, METAL)
+                    box({ x: ux, z: uz, y: H + 0.035, w: unit, h: 0.12, d: unit }, METAL)
                     add('fan', {
                         x: ux,
                         z: uz,
-                        y: H + 0.17,
+                        y: H + 0.16,
                         w: unit * 0.95,
                         h: 0.015,
                         d: 0.05,
@@ -630,65 +719,70 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 },
                 roundTower: () => {
                     const domeHeight = Math.min(0.4, H * 0.18)
-                    add('cylinder', { w: F * 0.86, h: H - domeHeight / 2, d: F * 0.86, color: body })
-                    add('cylinder', { y: H * 0.45, w: F * 0.96, h: 0.06, d: F * 0.96, color: accent })
-                    add('dome', {
-                        y: H - domeHeight,
-                        w: F * 0.86,
-                        h: domeHeight,
-                        d: F * 0.86,
-                        color: roofColor(accent),
-                    })
+                    add('cylinder', { w: F * 0.86, h: H - domeHeight / 2, d: F * 0.86, color: stone })
+                    add('cylinder', { y: H * 0.45, w: F * 0.93, h: 0.05, d: F * 0.93, color: touch })
+                    add('dome', { y: H - domeHeight, w: F * 0.86, h: domeHeight, d: F * 0.86, color: COPPER })
                 },
                 lShape: () => {
                     box({ z: z - F * 0.26, w: F, h: H, d: F * 0.48 })
-                    box({ x: x - F * 0.26, z: z + F * 0.24, w: F * 0.48, h: H * 0.62, d: F * 0.52 }, accent)
+                    box({ x: x - F * 0.26, z: z + F * 0.24, w: F * 0.48, h: H * 0.62, d: F * 0.52 })
+                    flatRoof(F * 0.48, F * 0.52, H * 0.62, { x: x - F * 0.26, z: z + F * 0.24 })
                     flatRoof(F, F * 0.48, H, { z: z - F * 0.26 })
+                    rooftop(F, F * 0.48, H, { z: z - F * 0.26 })
+                    lobby(F, F * 0.48, touch, { z: z - F * 0.26 })
                 },
-                twistedStack: () => stack(4, F * 0.82, F * 0.82, 0.28, accent),
+                twistedStack: () => {
+                    lobby(F * 0.82, F * 0.82)
+                    stack(4, F * 0.82, F * 0.82, 0.28)
+                },
                 stepped: () => {
-                    const split = H * 0.7
+                    const split = H * 0.66
+                    lobby(F * 0.92, F * 0.92)
                     box({ w: F * 0.92, h: split, d: F * 0.92 })
-                    box({ y: split, w: F * 0.66, h: H - split, d: F * 0.66 }, accent)
-                    flatRoof(F * 0.66, F * 0.66, H)
-                    box({ y: H + 0.05, w: F * 0.34, h: 0.14, d: F * 0.34 }, METAL)
+                    flatRoof(F * 0.92, F * 0.92, split)
+                    glass({ y: split + 0.035, w: F * 0.64, h: H - split - 0.035, d: F * 0.64 })
+                    flatRoof(F * 0.64, F * 0.64, H)
+                    rooftop(F * 0.64, F * 0.64, H)
                 },
                 banded: withSpire => () => {
-                    add('cylinder', { w: F * 0.8, h: H, d: F * 0.8, color: body })
+                    add('glassCylinder', { w: F * 0.8, h: H, d: F * 0.8, color: tint })
                     for (let y = 0.5; y < H - 0.2; y += 0.55) {
-                        add('cylinder', { y, w: F * 0.86, h: 0.045, d: F * 0.86, color: accent })
+                        add('cylinder', { y, w: F * 0.84, h: 0.035, d: F * 0.84, color: touch })
                     }
                     discRoof(F * 0.8, H)
-                    if (withSpire) spireOnTop(H)
+                    if (withSpire) spireOnTop(H + 0.035)
                 },
-                spiral: () => stack(Math.max(5, Math.round(H / 0.32)), F * 0.8, F * 0.5, 0.2, accent),
+                spiral: () => {
+                    lobby(F * 0.8, F * 0.5)
+                    stack(Math.max(5, Math.round(H / 0.32)), F * 0.8, F * 0.5, 0.2)
+                },
                 twins: () => {
                     ;[-1, 1].forEach((side, i) => {
                         const top = i ? H : H * 0.86
-                        box({ x: x + side * F * 0.26, w: F * 0.38, h: top, d: F * 0.6 }, i ? body : accent)
-                        flatRoof(F * 0.38, F * 0.6, top, { x: x + side * F * 0.26 })
+                        const offset = { x: x + side * F * 0.26 }
+                        lobby(F * 0.38, F * 0.6, touch, offset)
+                        glass({ ...offset, w: F * 0.38, h: top, d: F * 0.6 })
+                        flatRoof(F * 0.38, F * 0.6, top, offset)
                     })
-                    box({ y: H * 0.58, w: F * 0.3, h: 0.1, d: F * 0.22 }, METAL)
+                    box({ y: H * 0.58, w: F * 0.3, h: 0.1, d: F * 0.22 }, secondTouch)
                 },
                 obelisk: () => {
                     const shaft = H * 0.74
+                    lobby(F * 0.66, F * 0.66)
                     box({ w: F * 0.66, h: shaft, d: F * 0.66 })
-                    add('pyramid', {
-                        y: shaft,
-                        w: F * 0.66,
-                        h: H - shaft,
-                        d: F * 0.66,
-                        color: roofColor(accent),
-                    })
+                    add('pyramid', { y: shaft, w: F * 0.66, h: H - shaft, d: F * 0.66, color: '#B8BEC4' })
                 },
                 spireScraper: () => {
                     const first = H * 0.42
                     const second = H * 0.82
-                    box({ w: F, h: first, d: F })
-                    box({ y: first, w: F * 0.76, h: second - first, d: F * 0.76 })
-                    box({ y: second, w: F * 0.54, h: H - second, d: F * 0.54 }, accent)
+                    lobby(F, F)
+                    glass({ w: F, h: first, d: F })
+                    flatRoof(F, F, first)
+                    glass({ y: first + 0.035, w: F * 0.76, h: second - first - 0.035, d: F * 0.76 })
+                    flatRoof(F * 0.76, F * 0.76, second)
+                    glass({ y: second + 0.035, w: F * 0.54, h: H - second - 0.035, d: F * 0.54 })
                     flatRoof(F * 0.54, F * 0.54, H)
-                    spireOnTop(H)
+                    spireOnTop(H + 0.035)
                 },
             }
             const byType = {
@@ -1137,22 +1231,33 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         }
     }
     const treeMesh = new InstancedMesh(unitSphere, propMaterial, Math.max(streetTrees.length, 1))
-    treeMesh.count = streetTrees.length
-    treeMesh.castShadow = true
-    treeMesh.frustumCulled = false
+    const trunkMesh = new InstancedMesh(unitCylinder, propMaterial, Math.max(streetTrees.length, 1))
+    ;[treeMesh, trunkMesh].forEach(mesh => {
+        mesh.count = streetTrees.length
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        mesh.frustumCulled = false
+        scene.add(mesh)
+    })
     streetTrees.forEach((tree, i) => {
-        dummy.position.set(tree.x, 0.02, tree.z)
         dummy.rotation.set(0, 0, 0)
+        dummy.position.set(tree.x, 0, tree.z)
+        dummy.scale.set(0.03, tree.size * 0.6, 0.03)
+        dummy.updateMatrix()
+        trunkMesh.setMatrixAt(i, dummy.matrix)
+        trunkMesh.setColorAt(i, new Color(TRUNK))
+        dummy.position.set(tree.x, tree.size * 0.4, tree.z)
         dummy.scale.set(tree.size, tree.size * 1.15, tree.size)
         dummy.updateMatrix()
         treeMesh.setMatrixAt(i, dummy.matrix)
-        treeMesh.setColorAt(i, new Color(TREE).lerp(new Color(colors.UtilityGreen150), furnitureRandom() * 0.35))
+        treeMesh.setColorAt(i, new Color(CANOPY[Math.floor(furnitureRandom() * CANOPY.length) % CANOPY.length]))
     })
-    scene.add(treeMesh)
 
     const lamps = []
-    for (let row = 0; row <= ROWS; row++) {
-        for (let column = 0; column <= COLUMNS; column++) {
+    // Interior junctions only: a lamp on the city's outer edge would throw its light pool past the
+    // pavement onto the card.
+    for (let row = 1; row < ROWS; row++) {
+        for (let column = 1; column < COLUMNS; column++) {
             if ((row + column) % 2) continue
             lamps.push({
                 x: -CITY_HALF_WIDTH + column * PITCH + ROAD_WIDTH / 2 + 0.06,
@@ -1231,7 +1336,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             dummy.scale.set(size, size, size)
             dummy.updateMatrix()
             lampLights.setMatrixAt(i, dummy.matrix)
-            const pool = 1.1 * lampGlow
+            const pool = 0.8 * lampGlow
             dummy.position.set(lamp.x, 0.012, lamp.z)
             dummy.scale.set(pool, 1, pool)
             dummy.updateMatrix()
@@ -1265,6 +1370,13 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         }
     })
     const carMesh = new InstancedMesh(unitBox, propMaterial, CAR_COUNT)
+    // A darker glass cabin on each car body.
+    const cabinMesh = new InstancedMesh(unitBox, propMaterial, CAR_COUNT)
+    cabinMesh.frustumCulled = false
+    cabinMesh.castShadow = true
+    for (let i = 0; i < CAR_COUNT; i++) cabinMesh.setColorAt(i, new Color(CAR_GLASS))
+    cabinMesh.visible = !reduceMotion
+    scene.add(cabinMesh)
     carMesh.frustumCulled = false
     carMesh.castShadow = true
     cars.forEach((car, i) => carMesh.setColorAt(i, new Color(car.color)))
@@ -1290,9 +1402,13 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             if (car.alongX) dummy.position.set(along, 0, car.lane)
             else dummy.position.set(car.lane, 0, along)
             dummy.rotation.set(0, car.alongX ? 0 : Math.PI / 2, 0)
-            dummy.scale.set(0.3 * edge, 0.11 * edge, 0.15 * edge)
+            dummy.scale.set(0.3 * edge, 0.07 * edge, 0.15 * edge)
             dummy.updateMatrix()
             carMesh.setMatrixAt(i, dummy.matrix)
+            dummy.position.y = 0.07 * edge
+            dummy.scale.set(0.16 * edge, 0.05 * edge, 0.13 * edge)
+            dummy.updateMatrix()
+            cabinMesh.setMatrixAt(i, dummy.matrix)
 
             const cx = car.alongX ? along : car.lane
             const cz = car.alongX ? car.lane : along
@@ -1319,6 +1435,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             headBeams.setMatrixAt(i, dummy.matrix)
         })
         carMesh.instanceMatrix.needsUpdate = true
+        cabinMesh.instanceMatrix.needsUpdate = true
         headlights.instanceMatrix.needsUpdate = true
         tailLights.instanceMatrix.needsUpdate = true
         headBeams.instanceMatrix.needsUpdate = true
@@ -1559,27 +1676,50 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
 
     // ---------------------------------------------------------------- camera: the flight
     // The corners of everything that must stay in view: the city block incl. its outer roads, the
-    // legends printed beside it, and the tallest building that could stand there.
-    // What has to stay in view: the ground with its legends (weekday names above the city, week
-    // dates to its left), and the tallest building that could stand on the outermost blocks. Kept
-    // asymmetric, and building tops only over the city itself, so no space is reserved where
-    // nothing can ever be — that is what lets the city fill the card.
+    // What has to stay in view: the ground with its legends (weekday names in front of the city,
+    // week dates to its left), and the top of every building that rises above the ground floor, where
+    // it actually stands (`setBuildingTops`). Fitting the real skyline rather than the tallest
+    // possible building at every corner is what lets the city fill the card: a tower in the middle
+    // needs no room at the edge.
     const roadHalf = ROAD_WIDTH / 2
     const groundMinX = -(CITY_HALF_WIDTH + roadHalf + 0.25 + 1.7)
     const groundMaxX = CITY_HALF_WIDTH + roadHalf + 0.05
-    const groundMinZ = -(CITY_HALF_DEPTH + roadHalf + 0.8)
-    const groundMaxZ = CITY_HALF_DEPTH + roadHalf + 0.05
+    const groundMinZ = -(CITY_HALF_DEPTH + roadHalf + 0.05)
+    const groundMaxZ = CITY_HALF_DEPTH + roadHalf + 0.8
     const outerBuilding = PITCH / 2 - FOOTPRINT / 2
-    const bounds = []
-    ;[groundMinX, groundMaxX].forEach(x => [groundMinZ, groundMaxZ].forEach(z => bounds.push(new Vector3(x, 0, z))))
-    ;[-1, 1].forEach(sx =>
-        [-1, 1].forEach(sz =>
-            bounds.push(
-                new Vector3(sx * (CITY_HALF_WIDTH - outerBuilding), TALLEST, sz * (CITY_HALF_DEPTH - outerBuilding))
+    const groundBounds = []
+    ;[groundMinX, groundMaxX].forEach(x =>
+        [groundMinZ, groundMaxZ].forEach(z => groundBounds.push(new Vector3(x, 0, z)))
+    )
+    // Until the data arrives, assume the tallest building on every outer corner.
+    let bounds = groundBounds.concat(
+        [-1, 1].flatMap(sx =>
+            [-1, 1].map(
+                sz =>
+                    new Vector3(sx * (CITY_HALF_WIDTH - outerBuilding), TALLEST, sz * (CITY_HALF_DEPTH - outerBuilding))
             )
         )
     )
     const target = new Vector3((groundMinX + groundMaxX) / 2, TALLEST * 0.15, (groundMinZ + groundMaxZ) / 2)
+    const setBuildingTops = () => {
+        const tops = []
+        let highest = 0.5
+        partsByBuilding.forEach(buildingParts => {
+            let top = 0
+            buildingParts.forEach(part => {
+                top = Math.max(top, part.y + part.h)
+            })
+            if (top < 0.6 || !buildingParts.length) return
+            highest = Math.max(highest, top)
+            const { x, z } = buildingParts[0]
+            const half = FOOTPRINT / 2 + 0.05
+            ;[-1, 1].forEach(sx =>
+                [-1, 1].forEach(sz => tops.push(new Vector3(x + sx * half, top + 0.05, z + sz * half)))
+            )
+        })
+        bounds = groundBounds.concat(tops)
+        target.y = highest * 0.15
+    }
     const direction = new Vector3()
     const projected = new Vector3()
     const fits = distance => {
@@ -1603,7 +1743,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         return far
     }
     let distance = null
-    const placeCamera = t => {
+    const placeCamera = (t, dt = 1 / 60) => {
         const { azimuth, elevation } = getOrbitView(reduceMotion ? null : t)
         direction.set(
             Math.cos(elevation) * Math.sin(azimuth),
@@ -1613,7 +1753,9 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const wanted = fitDistance()
         // Follow the fitted distance smoothly, but never sit closer than it: a lag in that direction
         // would clip the city for a moment.
-        distance = distance == null ? wanted : Math.max(wanted, distance + (wanted - distance) * 0.05)
+        // Time-based easing, so a slow device converges as quickly as a fast one.
+        const ease = 1 - Math.exp(-dt * 3)
+        distance = distance == null ? wanted : Math.max(wanted, distance + (wanted - distance) * ease)
         camera.position.copy(target).addScaledVector(direction, distance)
         const shake = cameraShake * 0.35
         camera.lookAt(
@@ -1748,7 +1890,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             marker.position.set(cellX(day), top + 0.55 + (reduceMotion ? 0 : Math.sin(t * 2.2) * 0.1), cellZ(day))
             marker.rotation.y = reduceMotion ? 0 : t * 0.8
         }
-        placeCamera(t)
+        placeCamera(t, dt)
         renderer.render(scene, camera)
         frameId = requestAnimationFrame(frame)
     }
@@ -1778,6 +1920,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             drawGround()
             ;({ list: parts, byBuilding: partsByBuilding } = buildParts())
             createMeshes()
+            setBuildingTops()
 
             rise = new Float32Array(days.length)
             riseFrom = new Float32Array(days.length)
@@ -1818,7 +1961,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
             canvas.removeEventListener('click', stopClick)
             disposeBuildingMeshes()
             carMesh.dispose()
-            ;[treeMesh, lampPosts, lampLights, lampPools, headlights, tailLights, headBeams].forEach(mesh =>
+            cabinMesh.dispose()
+            ;[treeMesh, trunkMesh, lampPosts, lampLights, lampPools, headlights, tailLights, headBeams].forEach(mesh =>
                 mesh.dispose()
             )
             ;[debris, sparks, dust, rubble].forEach(pool => pool.mesh.dispose())
