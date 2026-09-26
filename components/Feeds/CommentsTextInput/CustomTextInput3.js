@@ -139,6 +139,7 @@ function CustomTextInput3(
         chatAssistantData,
         setAssistantId,
         autoFocus,
+        focusOnInitialText = true,
         onMentionSelected,
         insertAssistantAsMention = false,
         onContentSizeChange,
@@ -886,7 +887,9 @@ function CustomTextInput3(
             }
 
             quillRef.current.updateContents(delta)
-            quillRef.current.setSelection(initialTextExtended.length, 0)
+            // setSelection also focuses Quill. Some prefilled editors, such as the
+            // description in Settings, must stay unfocused when their view opens.
+            if (focusOnInitialText) quillRef.current.setSelection(initialTextExtended.length, 0)
             setInitialLinkedObject && getLinkedUrlInitialText()
         }
     }
