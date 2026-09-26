@@ -1395,22 +1395,29 @@ seeded by date so a day always looks the same, and the palette picks are always 
 project appearing never changes the design. Every design tops out at exactly the day's height. A night sky and cloud shadows were each tried and removed (they revealed the edge of the canvas). Days sit `PITCH` apart with roads between every
 row and column. Nothing may be drawn on the ground outside the city.
 
-**Light.** Real lighting with soft shadow maps: a hemisphere fill plus one directional sun (or
-moon), both on `MeshLambertMaterial` — so the old contact shadows painted on the ground are gone.
+**Light and materials.** Physically based (`MeshStandardMaterial`): masonry (stone, plaster, brick)
+and tinted glass for towers, whose windows are real low-roughness, slightly metallic glass that
+reflects a prefiltered `RoomEnvironment` (skipped gracefully where float render targets are
+missing). Neutral tone mapping keeps the palette honest. Light is that environment, a hemisphere
+fill and one shadow-casting sun (or moon); the shadow camera is deliberately wide so a low sun's long
+shadows are not cut off, and the light never comes from below ~17° so golden hour stays lit. Project
+colours are small touches only (lobby bands, awnings, small roofs, tower bands, sky bridges).
+Framing fits the camera to the real building tops where they stand (`setBuildingTops`), eased by
+time rather than per frame. Tuning was done by rendering the real scene headless in Chromium
+(Playwright + SwiftShader, bundled with esbuild, a frozen `Date` for day/golden hour/night) — jsdom
+cannot show any of this, so do the same before changing materials or light.
 `getDaylight` puts the sun where it really is for the user's city (`getSunPosition`, the standard
 low-precision almanac): real sunrise, sunset, noon height and season. The location is inferred
 WITHOUT a permission prompt — IANA time zones are named after cities, so `guessLocation` maps the
 common ones to coordinates and otherwise derives a longitude from the UTC offset. Day blends into
 night through civil twilight (sun between +6° and −6°), which is also when the lamps come on; low
 sun is warm and throws long shadows, the night is a dimmer cool moon. The city faces south, so the
-midday sun lights the side the camera sees. Intensities are
-set for Lambert's 1/π so a sunlit surface shows its exact palette colour and shade sits near 72%.
-Facade detail (faint floor lines, darkening where walls meet the street, and a window grid on
+midday sun lights the side the camera sees. Facade detail (faint floor lines, darkening where walls meet the street, and a window grid on
 walls only) is injected into the buildings' material with `onBeforeCompile`. Windows are quiet
 darker glass by day; a seeded third of them glow warm as emissive light, faded in with the street
 lamps by `getDaylight().lamps` (an early always-lit version read as noise — tie them to the evening).
 The injection keeps three's lighting and shadows; the anchors it replaces (`worldpos_vertex`,
-`color_fragment`, `emissivemap_fragment`) must still exist in the Lambert shader after a three.js
+`color_fragment`, `metalnessmap_fragment`, `emissivemap_fragment`) must still exist in the Standard (physical) shader after a three.js
 bump, or the detail silently disappears. Traffic is deliberately sparse (8 slow cars): the city should feel calm.
 After dark the city gets its own light, all of it faded in with `lamps` and absent by day: warm
 light pools under the street lamps, car headlights with a beam on the road and red tail lights, the

@@ -308,14 +308,17 @@ export function getDaylight(date = new Date(), location = guessLocation()) {
     const elevationDegrees = sun.elevation / DEG
     const day = clamp01((elevationDegrees + 6) / 12)
     const warmth = (1 - clamp01(elevationDegrees / 35)) ** 1.5
-    const sunColor = mixHex(SUN_COLOR, LOW_SUN_COLOR, warmth * 0.85)
+    const sunColor = mixHex(SUN_COLOR, LOW_SUN_COLOR, Math.min(1, warmth * 1.1))
     const bySun = day >= 0.5
     return {
         azimuth: bySun ? sun.azimuth - Math.PI : MOON.azimuth,
-        elevation: bySun ? Math.max(sun.elevation, 0.12) : MOON.elevation,
+        // The light never comes from lower than ~17°: a truer grazing sun leaves the whole city in
+        // gloom at exactly the golden hour. Its shadows are still ~3x as long as the buildings.
+        elevation: bySun ? Math.max(sun.elevation, 0.3) : MOON.elevation,
         lightColor: mixHex(MOON_COLOR, sunColor, day),
         lightStrength: 0.35 + 0.65 * day,
-        ambientColor: mixHex(MOON_COLOR, SUN_COLOR, day),
+        // Golden hour: when the sun is low the whole sky, not just the sun, turns a little warm.
+        ambientColor: mixHex(MOON_COLOR, mixHex(SUN_COLOR, '#FFF6EB', warmth), day),
         ambientStrength: 0.62 + 0.38 * day,
         lamps: clamp01((0.6 - day) / 0.6),
         phase: day >= 1 ? 'day' : day <= 0 ? 'night' : sun.azimuth < Math.PI ? 'dawn' : 'dusk',
