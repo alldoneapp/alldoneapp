@@ -6,6 +6,12 @@ const moment = require('moment-timezone')
 
 const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
 const { extractMeetingJoinUrl } = require('../Calendar/meetingJoinUrl')
+const {
+    toGoogleRecurrence,
+    validateRecurrence,
+    resolveRecurringTarget,
+    validateScope,
+} = require('../Calendar/calendarRecurrence')
 const { CALENDAR_PROVIDER_GOOGLE, listCalendarConnections } = require('../Integrations/providerConnections')
 const {
     GOOGLE_CONFERENCE_DATA_VERSION,
@@ -824,6 +830,7 @@ function normalizeCalendarEvent(event, account, calendarId, includeDescription =
         hangoutLink: event?.hangoutLink || '',
         conferenceData: event?.conferenceData || null,
         recurringEventId: event?.recurringEventId || null,
+        recurrence: event?.recurrence || null,
     }
 }
 
@@ -1242,6 +1249,7 @@ async function createCalendarEventForAssistantRequest({
     attendees,
     calendarId,
     addConferencing,
+    recurrence,
 }) {
     const trimmedSummary = safeTrim(summary)
     if (!trimmedSummary) {
@@ -1252,6 +1260,7 @@ async function createCalendarEventForAssistantRequest({
     }
 
     const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
+    if (recurrence !== undefined) validateRecurrence(recurrence, start, resolvedTimeZone)
     const microsoftAccounts = await getConnectedMicrosoftCalendarAccounts(userId).catch(() => [])
     const googleAccounts = await getConnectedCalendarAccounts(userId).catch(() => [])
     if (microsoftAccounts.find(account => account.calendarDefault) || googleAccounts.length === 0) {
@@ -1266,6 +1275,7 @@ async function createCalendarEventForAssistantRequest({
             attendees,
             calendarId,
             addConferencing,
+            recurrence,
         })
     }
     const resolution = await resolveCalendarAccountForWrite({ userId, calendarId })
@@ -1290,6 +1300,7 @@ async function createCalendarEventForAssistantRequest({
         },
         { requireRange: true }
     )
+    if (recurrence !== undefined) payload.recurrence = toGoogleRecurrence(recurrence, payload.start, resolvedTimeZone)
 
     const calendar = await getCalendarClient(userId, resolution.account.projectId)
     const inserted = await insertGoogleEventWithConferencing(calendar, resolution.calendarId, payload, addConferencing)
@@ -1324,6 +1335,8 @@ async function updateCalendarEventForAssistantRequest({
     timeZone,
     location,
     attendees,
+    recurrence,
+    scope,
 }) {
     const trimmedEventId = safeTrim(eventId)
     if (!trimmedEventId) {
@@ -1334,6 +1347,8 @@ async function updateCalendarEventForAssistantRequest({
     }
 
     const resolvedTimeZone = safeTrim(timeZone) || (await getUserDefaultTimeZone(userId))
+    validateScope(scope)
+    if (recurrence !== undefined && scope !== 'series') throw new Error('Changing recurrence requires scope: series.')
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
     if (!resolution.success) {
         return updateMicrosoftCalendarEventForAssistantRequest({
@@ -1347,6 +1362,8 @@ async function updateCalendarEventForAssistantRequest({
             timeZone: resolvedTimeZone,
             location,
             attendees,
+            recurrence,
+            scope,
         })
     }
 
@@ -1363,6 +1380,24 @@ async function updateCalendarEventForAssistantRequest({
         { requireRange: false }
     )
 
+    const calendar = await getCalendarClient(userId, resolution.account.projectId)
+    const currentEvent =
+        resolution.event ||
+        (await calendar.events.get({ calendarId: resolution.calendarId, eventId: trimmedEventId }))?.data ||
+        {}
+    const target = resolveRecurringTarget(currentEvent, trimmedEventId, scope, 'google')
+    if (target.error) return target.error
+    if (recurrence !== undefined) {
+        const masterEvent =
+            target.eventId === trimmedEventId
+                ? currentEvent
+                : (await calendar.events.get({ calendarId: resolution.calendarId, eventId: target.eventId }))?.data ||
+                  {}
+        const recurrenceStart = payload.start || masterEvent.start
+        if (!recurrenceStart) throw new Error('The series start date is required to change recurrence.')
+        payload.recurrence = toGoogleRecurrence(recurrence, recurrenceStart, resolvedTimeZone)
+    }
+
     if (Object.keys(payload).length === 0) {
         return {
             success: false,
@@ -1370,10 +1405,9 @@ async function updateCalendarEventForAssistantRequest({
         }
     }
 
-    const calendar = await getCalendarClient(userId, resolution.account.projectId)
     const response = await calendar.events.patch({
         calendarId: resolution.calendarId,
-        eventId: trimmedEventId,
+        eventId: target.eventId,
         requestBody: payload,
     })
 
@@ -1387,7 +1421,7 @@ async function updateCalendarEventForAssistantRequest({
     }
 }
 
-async function deleteCalendarEventForAssistantRequest({ userId, eventId, calendarId }) {
+async function deleteCalendarEventForAssistantRequest({ userId, eventId, calendarId, scope }) {
     const trimmedEventId = safeTrim(eventId)
     if (!trimmedEventId) {
         return {
@@ -1397,14 +1431,21 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
     }
 
     const resolution = await resolveEventTargetForWrite({ userId, eventId: trimmedEventId, calendarId })
+    validateScope(scope)
     if (!resolution.success) {
-        return deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId: trimmedEventId, calendarId })
+        return deleteMicrosoftCalendarEventForAssistantRequest({ userId, eventId: trimmedEventId, calendarId, scope })
     }
 
     const calendar = await getCalendarClient(userId, resolution.account.projectId)
+    const currentEvent =
+        resolution.event ||
+        (await calendar.events.get({ calendarId: resolution.calendarId, eventId: trimmedEventId }))?.data ||
+        {}
+    const target = resolveRecurringTarget(currentEvent, trimmedEventId, scope, 'google')
+    if (target.error) return target.error
     await calendar.events.delete({
         calendarId: resolution.calendarId,
-        eventId: trimmedEventId,
+        eventId: target.eventId,
     })
 
     return {
@@ -1412,7 +1453,7 @@ async function deleteCalendarEventForAssistantRequest({ userId, eventId, calenda
         calendarEmail: resolution.account.calendarEmail,
         projectId: resolution.account.projectId,
         calendarId: resolution.calendarId,
-        eventId: trimmedEventId,
+        eventId: target.eventId,
         message: 'Calendar event deleted successfully.',
     }
 }

@@ -27,6 +27,40 @@ const LEGACY_ASSISTANT_SETTINGS_MODEL_KEYS = [
     'MODEL_SONAR_REASONING_PRO',
 ]
 
+const calendarRecurrenceSchema = {
+    type: 'object',
+    description:
+        'Optional repeat schedule. End date is inclusive in the event timezone. Omit endDate and count for an open-ended series.',
+    properties: {
+        frequency: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'yearly'] },
+        interval: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 999,
+            description: 'Repeat every N days, weeks, months, or years. Defaults to 1.',
+        },
+        daysOfWeek: {
+            type: 'array',
+            items: {
+                type: 'string',
+                enum: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'],
+            },
+            description: 'Weekly only. Must include the first event weekday.',
+        },
+        endDate: {
+            type: 'string',
+            description: 'Optional inclusive last date, YYYY-MM-DD. Cannot be combined with count.',
+        },
+        count: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 9999,
+            description: 'Optional total number of occurrences. Cannot be combined with endDate.',
+        },
+    },
+    required: ['frequency'],
+}
+
 const toolSchemas = {
     show_workspace: require('./annaWorkspaceContract').showWorkspaceSchema,
     highlight_workspace: require('./annaWorkspaceContract').highlightWorkspaceSchema,
@@ -2203,7 +2237,7 @@ const toolSchemas = {
         function: {
             name: 'create_calendar_event',
             description:
-                'Create a Google Calendar event in a connected account. Use ISO 8601 times only. For timed events provide start/end as ISO strings or {dateTime,timeZone}; for all-day events provide {date}. Timed events automatically get a video conferencing link (Google Meet, or Microsoft Teams on Outlook calendars) — never put a placeholder meeting link in the description or location, and read the returned joinUrl to tell the user where to join.',
+                'Create a Google or Microsoft Calendar event, optionally as a recurring series. Use ISO 8601 times only. For timed events provide start/end as ISO strings or {dateTime,timeZone}; for all-day events provide {date}. For recurring events, use a structured recurrence schedule and clarify any missing cadence or end condition with the user. Timed events automatically get a video conferencing link (Google Meet or Microsoft Teams) — never put a placeholder meeting link in the description or location, and read the returned joinUrl to tell the user where to join.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -2272,6 +2306,7 @@ const toolSchemas = {
                             ],
                         },
                     },
+                    recurrence: calendarRecurrenceSchema,
                     calendarId: {
                         type: 'string',
                         description:
@@ -2288,7 +2323,7 @@ const toolSchemas = {
         function: {
             name: 'update_calendar_event',
             description:
-                'Update an existing Google Calendar event by eventId. Provide calendarId when needed to disambiguate multiple connected accounts. If updating times, provide both start and end.',
+                'Update an existing Google or Microsoft Calendar event by eventId. For a recurring event, ask whether to change only this occurrence or the entire series, then pass scope. A series edit can also change recurrence. Provide calendarId when needed to disambiguate accounts. If updating times, provide both start and end.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -2360,6 +2395,13 @@ const toolSchemas = {
                             ],
                         },
                     },
+                    recurrence: calendarRecurrenceSchema,
+                    scope: {
+                        type: 'string',
+                        enum: ['occurrence', 'series'],
+                        description:
+                            'Required for recurring events. Use occurrence to edit one instance or series to edit the full series. A recurrence change requires series.',
+                    },
                     calendarId: {
                         type: 'string',
                         description:
@@ -2376,13 +2418,19 @@ const toolSchemas = {
         function: {
             name: 'delete_calendar_event',
             description:
-                'Delete an existing Google Calendar event by exact eventId only. Provide calendarId when needed to disambiguate multiple connected accounts.',
+                'Delete an existing Google or Microsoft Calendar event by exact eventId. For a recurring event, ask whether to delete only this occurrence or the entire series, then pass scope. Provide calendarId when needed to disambiguate accounts.',
             parameters: {
                 type: 'object',
                 properties: {
                     eventId: {
                         type: 'string',
                         description: 'The Google Calendar event ID to delete.',
+                    },
+                    scope: {
+                        type: 'string',
+                        enum: ['occurrence', 'series'],
+                        description:
+                            'Required for recurring events. Use occurrence to delete one instance or series to delete the full series.',
                     },
                     calendarId: {
                         type: 'string',
