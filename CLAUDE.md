@@ -1309,6 +1309,22 @@ yields two bars" are assertions about the code rather than restatements of a stu
 answers for whatever element it is handed cannot tell that the wrong element is being measured;
 that is exactly how the empty-marker defect passed a green suite.
 
+### Gold earned for a task flies into the counter as 3D coins
+
+`earnGold` dispatches `setTriggerGoldAnimation(goldEarned, checkBoxId)` as before; what plays is
+decided by `GoldAnimationsContainer`. Where WebGL is available and motion is welcome, `GoldCoinFlight`
+launches that many metallic coins from the checkbox on the shared full-app overlay
+(`RootView/GoldCoins/goldCoinsOverlay.js` — one fixed, transparent, `pointer-events: none` canvas,
+created on first use, whose loop runs only while coins are in the air), along the burst-and-arc path
+in the pure `coinFlight.js`, into the top bar's Gold icon. The Gold counter counts up one coin per
+landing through `goldCounterBridge.js`: it shows `base + landed` while coins fly, then the higher of
+that and the real balance until the server's reward arrives (or `SETTLE_MS` passes, if it never
+does). Everywhere else — no WebGL, reduced motion, or the overlay failing to load
+(`goldCoinsUnavailable`) — the original Lottie pair (`GoldEarnedAnimation` + `GoldChain`) plays. The
+container is mounted by the root view AND every detailed view, so each trigger object is launched
+exactly once (a `WeakSet` in `GoldCoinFlight`). The overlay runs in parallel to the completion
+motion and never delays the task write.
+
 ### Empty-inbox celebration (AT-2445)
 
 **A count of 0 does not mean "empty" — it also means "not counted yet", and telling them apart is

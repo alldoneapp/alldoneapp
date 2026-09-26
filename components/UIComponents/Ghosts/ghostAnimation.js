@@ -51,7 +51,7 @@ const animationsAreDisabled = () => process.env.NODE_ENV === 'test'
  * react-native-web's own `isReduceMotionEnabled`, which resolves to TRUE when `matchMedia` is
  * missing — would silently disable animation for an environment that merely could not answer.
  */
-const currentReducedMotionPreference = () => {
+export const currentReducedMotionPreference = () => {
     try {
         return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
             ? !!window.matchMedia('(prefers-reduced-motion: reduce)').matches
