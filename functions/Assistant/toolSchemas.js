@@ -198,7 +198,7 @@ const toolSchemas = {
                     date: {
                         type: 'string',
                         description:
-                            'Filter tasks by date. Use "today" for today\'s tasks, YYYY-MM-DD for a single day, or "YYYY-MM-DD to YYYY-MM-DD" for a date range. Also supports keywords like "yesterday", "this week", "last month", "last 7 days".',
+                            'Filter tasks by date. Use "today" for today\'s tasks, YYYY-MM-DD for a single day, or "YYYY-MM-DD to YYYY-MM-DD" for a date range. Also supports keywords like "yesterday", "this week", "last month", "last 7 days", and "last 24 hours".',
                     },
                     recentHours: {
                         type: 'number',
@@ -531,7 +531,7 @@ const toolSchemas = {
                     date: {
                         type: 'string',
                         description:
-                            'Optional: filter updates by timeframe. Supports "today", "yesterday", "last week", "last 7 days", "last 30 days", "this week", "this month", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD".',
+                            'Optional: filter updates by timeframe. Supports "today", "yesterday", "last week", "last 7 days", "last 30 days", "last 24 hours", "this week", "this month", YYYY-MM-DD, or "YYYY-MM-DD to YYYY-MM-DD".',
                     },
                     recentHours: {
                         type: 'number',
@@ -2422,7 +2422,7 @@ const toolSchemas = {
                     date: {
                         type: 'string',
                         description:
-                            'Optional: filter notes by last-edited date. Supports: "today", "yesterday", "last week", "last 7 days", "last 30 days", "this week", "this month", "YYYY-MM-DD", or "YYYY-MM-DD to YYYY-MM-DD" for a custom range.',
+                            'Optional: filter notes by last-edited date. Supports: "today", "yesterday", "last week", "last 7 days", "last 30 days", "last 24 hours", "this week", "this month", "YYYY-MM-DD", or "YYYY-MM-DD to YYYY-MM-DD" for a custom range.',
                     },
                     allProjects: {
                         type: 'boolean',
