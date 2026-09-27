@@ -151,17 +151,6 @@ const CAR_GLASS = '#3A4350'
 
 const STRIPPED_KINDS = new Set(['fan', 'spire', 'beacon', 'flag', 'flagPole', 'tank'])
 
-// Laid out like a calendar page: weekdays are the columns (x), weeks the rows (z), the oldest week
-// furthest from the camera and the current week nearest to it.
-const COLUMNS = GRID_DAYS
-const ROWS = SKYLINE_WEEKS
-const colX = column => (column - (COLUMNS - 1) / 2) * PITCH
-const rowZ = row => (row - (ROWS - 1) / 2) * PITCH
-const cellX = day => colX(day.weekday)
-const cellZ = day => rowZ(day.week)
-// Roads run along the outside of the city too, so these are the centre lines of the outer roads.
-const CITY_HALF_WIDTH = (COLUMNS * PITCH) / 2
-const CITY_HALF_DEPTH = (ROWS * PITCH) / 2
 
 // Deterministic pseudo-random numbers: the city must look the same on every visit and every
 // re-render, so nothing here may use Math.random.
@@ -248,7 +237,27 @@ const withFacadeDetail = (material, style) => {
  * @param {(count: number) => void} [options.onDemolish] called with the running total after each collapse
  * @param {boolean} options.reduceMotion
  */
-export function createSkylineScene(container, { onHover, onSelect, onDemolish = () => {}, reduceMotion = false }) {
+export function createSkylineScene(
+    container,
+    { onHover, onSelect, onDemolish = () => {}, reduceMotion = false, weeks = SKYLINE_WEEKS }
+) {
+    // Laid out like a calendar page: weekdays are the columns (x), weeks the rows (z), the oldest
+    // week furthest from the camera and the current week nearest to it. `weeks` is 5 for the month
+    // and 1 for the week view; everything below (ground, roads, traffic, framing) follows from it.
+    const COLUMNS = GRID_DAYS
+    const ROWS = Math.max(1, weeks)
+    const colX = column => (column - (COLUMNS - 1) / 2) * PITCH
+    const rowZ = row => (row - (ROWS - 1) / 2) * PITCH
+    const cellX = day => colX(day.weekday)
+    const cellZ = day => rowZ(day.week)
+    // Roads run along the outside of the city too, so these are the centre lines of the outer roads.
+    const CITY_HALF_WIDTH = (COLUMNS * PITCH) / 2
+    const CITY_HALF_DEPTH = (ROWS * PITCH) / 2
+    // Things that fly were placed for the month's depth; a single week is a fifth as deep, so their
+    // north-south reach shrinks with it and they stay over the strip.
+    const DEPTH_SCALE = ROWS / SKYLINE_WEEKS
+    // A strip turned diagonal loses most of its width, so the week view flies a narrower arc.
+    const ORBIT_SWEEP = ROWS === 1 ? 0.45 : 1
     const renderer = new WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.outputColorSpace = SRGBColorSpace
@@ -376,6 +385,13 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
 
     let days = []
     let labels = { columns: [], rows: [] }
+    // The single week's sky: a strip is framed tightly around its own towers, so there is no room
+    // above them. Things that fly keep below the highest roof there (updated in `setBuildingTops`),
+    // and the month flies at its usual heights.
+    let skylineTop = TALLEST
+    const flightHeight = height => (ROWS === 1 ? Math.min(height, Math.max(1.2, skylineTop * 0.6 + 0.2)) : height)
+    // How far the week-date legend reaches left of the city, in scene units; measured when it is drawn.
+    let rowLabelWidth = 1.7
     let scale = 5
 
     const drawGround = () => {
@@ -494,8 +510,10 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         })
         context.textAlign = 'right'
         context.font = `500 ${0.4 * px}px ${font}`
+        rowLabelWidth = 0
         labels.rows.forEach(({ row, text }) => {
             context.fillText(text, cx(-CITY_HALF_WIDTH - roadHalf - 0.25), cz(rowZ(row)))
+            rowLabelWidth = Math.max(rowLabelWidth, context.measureText(text).width / px)
         })
         groundTexture.needsUpdate = true
     }
@@ -1255,10 +1273,12 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
 
     const lamps = []
     // Interior junctions only: a lamp on the city's outer edge would throw its light pool past the
-    // pavement onto the card.
-    for (let row = 1; row < ROWS; row++) {
+    // pavement onto the card. A single week has no interior junctions, so there the lamps stand on
+    // the back road's junctions, on the side facing into the strip.
+    const lampRows = ROWS === 1 ? [0] : Array.from({ length: ROWS - 1 }, (_, i) => i + 1)
+    for (const row of lampRows) {
         for (let column = 1; column < COLUMNS; column++) {
-            if ((row + column) % 2) continue
+            if (ROWS > 1 ? (row + column) % 2 : column % 2 === 0) continue
             lamps.push({
                 x: -CITY_HALF_WIDTH + column * PITCH + ROAD_WIDTH / 2 + 0.06,
                 z: -CITY_HALF_DEPTH + row * PITCH + ROAD_WIDTH / 2 + 0.06,
@@ -1474,7 +1494,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         return {
             members,
             radiusX: CITY_HALF_WIDTH * (0.55 + f * 0.18),
-            radiusZ: (2.2 + f * 0.9) * PITCH,
+            radiusZ: (2.2 + f * 0.9) * PITCH * DEPTH_SCALE,
             speed: (0.12 + birdRandom() * 0.06) * (f % 2 ? -1 : 1),
             phase: birdRandom() * Math.PI * 2,
             altitude: 3.6 + f * 0.5,
@@ -1500,7 +1520,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
                 const { side, rank, phase, left, right } = bird.userData
                 bird.position.set(
                     cx - forward.x * rank * 0.35 + sideways.x * side * rank * 0.3,
-                    flock.altitude + Math.sin(t * 1.3 + phase) * 0.08,
+                    flightHeight(flock.altitude) + Math.sin(t * 1.3 + phase) * 0.08,
                     cz - forward.z * rank * 0.35 + sideways.z * side * rank * 0.3
                 )
                 bird.rotation.set(0, heading, 0)
@@ -1540,9 +1560,10 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         // the canvas edge: something sliding in from nowhere would reveal the frame around the city.
         const x = (progress * 2 - 1) * (CITY_HALF_WIDTH - 1)
         const appear = Math.min(1, progress / 0.08, (1 - progress) / 0.08)
-        balloon.scale.setScalar(appear)
-        const z = -1.6 + Math.sin(t * 0.21) * 1.2
-        balloon.position.set(x, 3.2 + Math.sin(t * 0.7) * 0.15, z)
+        // Smaller over a single week, where it would otherwise be as big as a building.
+        balloon.scale.setScalar(appear * (ROWS === 1 ? 0.7 : 1))
+        const z = (-1.6 + Math.sin(t * 0.21) * 1.2) * DEPTH_SCALE
+        balloon.position.set(x, flightHeight(3.2) + Math.sin(t * 0.7) * 0.15, z)
         // At night the burner flickers under the envelope.
         const flame = lampGlow * (0.09 + 0.04 * Math.abs(Math.sin(t * 17) * Math.sin(t * 7.3)))
         burner.scale.setScalar(Math.max(flame, 0.0001))
@@ -1579,7 +1600,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const cycle = FLIGHT_SECONDS + FLIGHT_PAUSE
         const flightIndex = Math.floor(t / cycle)
         const progress = (t % cycle) / FLIGHT_SECONDS
-        const flying = progress <= 1
+        // No plane over a single week: its altitude is above every roof, and that sky is not framed.
+        const flying = progress <= 1 && ROWS > 1
         airplane.visible = flying
         if (!flying) return
         const reverse = flightIndex % 2 === 1
@@ -1587,8 +1609,8 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const x = (reverse ? 1 - progress : progress) * span * 2 - span
         const appear = Math.min(1, progress / 0.1, (1 - progress) / 0.1)
         airplane.scale.setScalar(appear)
-        const drift = reverse ? -2 : 2.4
-        const z = (reverse ? 1.8 : -2.6) + (progress - 0.5) * drift
+        const drift = (reverse ? -2 : 2.4) * DEPTH_SCALE
+        const z = (reverse ? 1.8 : -2.6) * DEPTH_SCALE + (progress - 0.5) * drift
         // Nose is local -z, the same convention as the birds.
         const vx = reverse ? -span * 2 : span * 2
         const heading = Math.atan2(-vx, -drift)
@@ -1638,7 +1660,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         const angle = t * 0.07
         const hx = Math.cos(angle) * CITY_HALF_WIDTH * 0.55
         const hz = Math.sin(angle) * CITY_HALF_DEPTH * 0.55
-        const hy = 3.4 + Math.sin(t * 0.5) * 0.1
+        const hy = flightHeight(3.4) + Math.sin(t * 0.5) * 0.1
         helicopter.position.set(hx, hy, hz)
         helicopter.rotation.set(
             0.12,
@@ -1687,10 +1709,24 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     const groundMinZ = -(CITY_HALF_DEPTH + roadHalf + 0.05)
     const groundMaxZ = CITY_HALF_DEPTH + roadHalf + 0.8
     const outerBuilding = PITCH / 2 - FOOTPRINT / 2
-    const groundBounds = []
-    ;[groundMinX, groundMaxX].forEach(x =>
-        [groundMinZ, groundMaxZ].forEach(z => groundBounds.push(new Vector3(x, 0, z)))
-    )
+    // The ground that has to stay in view is the city block with its outer roads plus the legends
+    // exactly where they are painted — not a rectangle around all of it. A rectangle's front-left
+    // corner is nearer the camera than the week-date legend and projects well to the left of it, so
+    // it reserved an empty margin; with a single week that margin was a tenth of the card.
+    let groundBounds = []
+    const updateGroundBounds = () => {
+        const cityX = CITY_HALF_WIDTH + roadHalf
+        const cityZ = CITY_HALF_DEPTH + roadHalf
+        groundBounds = []
+        ;[-cityX, cityX].forEach(x => [-cityZ, cityZ].forEach(z => groundBounds.push(new Vector3(x, 0, z))))
+        const labelLeft = -(cityX + 0.25 + rowLabelWidth + 0.05)
+        for (let row = 0; row < ROWS; row++) {
+            ;[-0.25, 0.25].forEach(dz => groundBounds.push(new Vector3(labelLeft, 0, rowZ(row) + dz)))
+        }
+        const labelFront = CITY_HALF_DEPTH + roadHalf + 0.45 + 0.28
+        ;[colX(0) - 0.4, colX(COLUMNS - 1) + 0.4].forEach(x => groundBounds.push(new Vector3(x, 0, labelFront)))
+    }
+    updateGroundBounds()
     // Until the data arrives, assume the tallest building on every outer corner.
     let bounds = groundBounds.concat(
         [-1, 1].flatMap(sx =>
@@ -1702,6 +1738,7 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
     )
     const target = new Vector3((groundMinX + groundMaxX) / 2, TALLEST * 0.15, (groundMinZ + groundMaxZ) / 2)
     const setBuildingTops = () => {
+        updateGroundBounds()
         const tops = []
         let highest = 0.5
         partsByBuilding.forEach(buildingParts => {
@@ -1719,23 +1756,43 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         })
         bounds = groundBounds.concat(tops)
         target.y = highest * 0.15
+        skylineTop = highest
     }
     const direction = new Vector3()
     const projected = new Vector3()
-    const fits = distance => {
+    // Where everything that has to stay in view lands on the canvas (normalized device coordinates),
+    // seen from `distance` along the current direction with the lens centred. Null when something is
+    // behind the camera.
+    const measure = distance => {
         camera.position.copy(target).addScaledVector(direction, distance)
         camera.lookAt(target)
         camera.updateMatrixWorld()
-        return bounds.every(corner => {
+        const box = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }
+        for (const corner of bounds) {
             projected.copy(corner).project(camera)
-            return Math.abs(projected.x) <= FRAME_MARGIN && Math.abs(projected.y) <= FRAME_MARGIN && projected.z < 1
-        })
+            if (projected.z >= 1) return null
+            box.minX = Math.min(box.minX, projected.x)
+            box.maxX = Math.max(box.maxX, projected.x)
+            box.minY = Math.min(box.minY, projected.y)
+            box.maxY = Math.max(box.maxY, projected.y)
+        }
+        return box
+    }
+    // The camera looks at a fixed point on the ground, but what has to fit is lopsided — towers
+    // rise above that point and the weekday legend lies in front of it — so fitting the distance
+    // alone leaves an empty band along one edge (for a single week, most of the canvas below the
+    // strip). A lens shift (`setViewOffset`) slides the picture so the city's projected box is
+    // centred, and the distance then only has to fit the box's SIZE. A shift moves the image without
+    // changing the perspective, so the city looks the same; it just stops wasting the card.
+    const fits = distance => {
+        const box = measure(distance)
+        return Boolean(box) && box.maxX - box.minX <= FRAME_MARGIN * 2 && box.maxY - box.minY <= FRAME_MARGIN * 2
     }
     // Closest distance at which the whole city fits, by bisection (the fit is monotonic in distance).
     const fitDistance = () => {
-        let near = 4
+        let near = 1
         let far = 200
-        for (let i = 0; i < 22; i++) {
+        for (let i = 0; i < 24; i++) {
             const middle = (near + far) / 2
             if (fits(middle)) far = middle
             else near = middle
@@ -1743,19 +1800,40 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         return far
     }
     let distance = null
+    const lensShift = { x: 0, y: 0, ready: false }
+    let viewWidth = 0
+    let viewHeight = 0
     const placeCamera = (t, dt = 1 / 60) => {
-        const { azimuth, elevation } = getOrbitView(reduceMotion ? null : t)
+        const { azimuth, elevation } = getOrbitView(reduceMotion ? null : t, ORBIT_SWEEP)
         direction.set(
             Math.cos(elevation) * Math.sin(azimuth),
             Math.sin(elevation),
             Math.cos(elevation) * Math.cos(azimuth)
         )
+        // Everything is measured through the centred lens; the shift is applied afterwards.
+        camera.clearViewOffset()
         const wanted = fitDistance()
         // Follow the fitted distance smoothly, but never sit closer than it: a lag in that direction
         // would clip the city for a moment.
         // Time-based easing, so a slow device converges as quickly as a fast one.
         const ease = 1 - Math.exp(-dt * 3)
         distance = distance == null ? wanted : Math.max(wanted, distance + (wanted - distance) * ease)
+        const box = measure(distance)
+        if (box && viewWidth && viewHeight) {
+            const centerX = (box.minX + box.maxX) / 2
+            const centerY = (box.minY + box.maxY) / 2
+            lensShift.x = lensShift.ready ? lensShift.x + (centerX - lensShift.x) * ease : centerX
+            lensShift.y = lensShift.ready ? lensShift.y + (centerY - lensShift.y) * ease : centerY
+            lensShift.ready = true
+            camera.setViewOffset(
+                viewWidth,
+                viewHeight,
+                (lensShift.x * viewWidth) / 2,
+                (-lensShift.y * viewHeight) / 2,
+                viewWidth,
+                viewHeight
+            )
+        }
         camera.position.copy(target).addScaledVector(direction, distance)
         const shake = cameraShake * 0.35
         camera.lookAt(
@@ -1773,7 +1851,10 @@ export function createSkylineScene(container, { onHover, onSelect, onDemolish = 
         renderer.setSize(width, height, false)
         camera.aspect = width / height
         camera.updateProjectionMatrix()
+        viewWidth = width
+        viewHeight = height
         distance = null
+        lensShift.ready = false
     }
 
     // ---------------------------------------------------------------- interaction

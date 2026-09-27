@@ -16,6 +16,7 @@ import {
     getSkylineHeight,
     getSkylineScale,
     SKYLINE_MAX_HEIGHT,
+    SKYLINE_RANGE_WEEKS,
     SKYLINE_REST_VIEW,
     SKYLINE_WEEKS,
 } from './skylineData'
@@ -38,6 +39,19 @@ describe('skyline data', () => {
         expect(days).toHaveLength(4 * 7 + 5)
         expect(days[days.length - 1].isToday).toBe(true)
         expect(days[days.length - 1].weekday).toBe(4)
+    })
+
+    it('draws only the current week for the week view', () => {
+        const weeks = buildSkylineWeeks(['2026-09-24'], TODAY, SKYLINE_RANGE_WEEKS.week)
+        const days = buildSkylineDays(weeks, {}, projects)
+
+        expect(weeks).toHaveLength(1)
+        // Monday..Friday of this week, all in the one row, today last.
+        expect(days.map(day => day.weekday)).toEqual([0, 1, 2, 3, 4])
+        expect(days.every(day => day.week === 0)).toBe(true)
+        expect(days[days.length - 1].isToday).toBe(true)
+        expect(days.find(day => day.date.format('YYYY-MM-DD') === '2026-09-24').achieved).toBe(true)
+        expect(SKYLINE_RANGE_WEEKS.month).toBe(SKYLINE_WEEKS)
     })
 
     it('sums every project into one building and colours it by the busiest project', () => {
@@ -98,6 +112,14 @@ describe('skyline data', () => {
             expect(elevation).toBeLessThan(0.95)
         }
         expect(getOrbitView(10)).not.toEqual(getOrbitView(40))
+    })
+
+    it('flies a narrower arc when asked, e.g. over a single week', () => {
+        expect(getOrbitView(null, 0.45).azimuth).toBeCloseTo(SKYLINE_REST_VIEW.azimuth * 0.45)
+        for (let t = 0; t < 600; t += 1.7) {
+            expect(Math.abs(getOrbitView(t, 0.45).azimuth)).toBeCloseTo(Math.abs(getOrbitView(t).azimuth) * 0.45)
+            expect(getOrbitView(t, 0.45).elevation).toBe(getOrbitView(t).elevation)
+        }
     })
 
     it("lays the day's projects end to end by their share of the tasks", () => {

@@ -5,10 +5,15 @@ import { useSelector } from 'react-redux'
 import { translate } from '../../../../../i18n/TranslationService'
 import styles, { colors } from '../../../../styles/global'
 import { useReducedMotion } from '../../../../UIComponents/Ghosts/ghostAnimation'
-import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes } from './skylineData'
+import { buildSkylineDays, buildSkylineWeeks, formatSkylineMinutes, SKYLINE_WEEKS } from './skylineData'
 
-const MIN_HEIGHT = 240
-const MAX_HEIGHT = 440
+// Canvas height as a share of its width, and its bounds. The month is a 7×5 block; a single week is
+// a 7×1 strip whose buildings stand up out of it, so it is wider than tall and gets a flatter canvas —
+// the camera fits the city to whatever it is given, so a canvas the city cannot fill is wasted card.
+const CANVAS_SHAPE = {
+    month: { ratio: 0.56, min: 240, max: 440 },
+    week: { ratio: 0.46, min: 220, max: 380 },
+}
 
 const getActiveProjects = (projects, user) =>
     (projects || []).filter(
@@ -24,12 +29,14 @@ const getActiveProjects = (projects, user) =>
  * The Empty inbox card's year, drawn as a 3D city (replaces the 2D grid wherever WebGL exists; the
  * caller keeps the grid as the fallback).
  *
- * Each building is one day of the last month (5 weeks, laid out like a calendar page). Height is the tasks completed that day across the
+ * Each building is one day of the last month (5 weeks, laid out like a calendar page) or, with
+ * `weeks={1}`, of the current week alone. The scene is built for one layout, so the caller remounts
+ * this component (a `key`) when the range changes. Height is the tasks completed that day across the
  * user's active projects (`statistics/{projectId}/{userId}`), colour is the project that got most of
  * them, and a glowing green roof is a day the inbox was cleared — the same `emptyInboxDays` the grid
  * reads, so the two can never disagree about which days count.
  */
-export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRunId, width }) {
+export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRunId, width, weeks: weekCount = SKYLINE_WEEKS }) {
     const containerRef = useRef(null)
     const sceneRef = useRef(null)
     const [sceneReady, setSceneReady] = useState(false)
@@ -52,7 +59,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
     )
     const projectIdsKey = projects.map(project => project.id).join('|')
 
-    const weeks = useMemo(() => buildSkylineWeeks(emptyInboxDays), [emptyInboxDays])
+    const weeks = useMemo(() => buildSkylineWeeks(emptyInboxDays, undefined, weekCount), [emptyInboxDays, weekCount])
     const days = useMemo(() => buildSkylineDays(weeks, statistics, projects), [weeks, statistics, projects])
     const todayIndex = useMemo(() => days.findIndex(day => day.isToday), [days])
 
@@ -96,6 +103,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
                 if (cancelled) return
                 sceneRef.current = createSkylineScene(container, {
                     reduceMotion,
+                    weeks: weekCount,
                     onHover: index => setHoverIndex(index),
                     onSelect: index => setSelectedIndex(index),
                     onDemolish: count => setDemolished(count),
@@ -127,7 +135,8 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
 
     const shownIndex = hoverIndex >= 0 ? hoverIndex : selectedIndex >= 0 ? selectedIndex : todayIndex
     const shownDay = days[shownIndex]
-    const height = Math.round(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, (width || 0) * 0.56)))
+    const shape = weekCount === 1 ? CANVAS_SHAPE.week : CANVAS_SHAPE.month
+    const height = Math.round(Math.max(shape.min, Math.min(shape.max, (width || 0) * shape.ratio)))
 
     if (sceneFailed) return null
 

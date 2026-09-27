@@ -32,7 +32,8 @@ import { buildSkylineDays, buildSkylineWeeks } from './skylineData'
 import { createSkylineScene } from './skylineScene'
 
 const context2d = new Proxy(
-    {},
+    // The legend width is measured to frame it, so this one call has to answer.
+    { measureText: text => ({ width: String(text).length * 12 }) },
     {
         get: (target, key) => (key in target ? target[key] : () => {}),
         set: (target, key, value) => {
@@ -166,6 +167,24 @@ describe('skyline scene (smoke)', () => {
         } finally {
             jest.useRealTimers()
         }
+    })
+
+    it('builds a single-week strip and frames it without throwing', () => {
+        const container = document.createElement('div')
+        Object.defineProperty(container, 'clientWidth', { value: 700 })
+        Object.defineProperty(container, 'clientHeight', { value: 320 })
+        container.getBoundingClientRect = () => ({ left: 0, top: 0, width: 700, height: 320 })
+        const scene = createSkylineScene(container, { onHover: () => {}, onSelect: () => {}, weeks: 1 })
+        const today = moment('2026-09-25T12:00:00').valueOf()
+        const weeks = buildSkylineWeeks(['2026-09-24'], today, 1)
+        const days = buildSkylineDays(weeks, {}, [{ id: 'p', name: 'P', color: '#007FFF' }])
+        scene.setDays(days, {
+            columns: weeks[0].days.map((day, column) => ({ column, text: day.date.format('dd') })),
+            rows: [{ row: 0, text: '21 Sep' }],
+        })
+        runFrames(200)
+        scene.destroy()
+        expect(container.querySelector('canvas')).toBeNull()
     })
 
     it('stays static under reduced motion', () => {

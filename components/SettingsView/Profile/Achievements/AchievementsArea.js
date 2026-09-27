@@ -18,17 +18,21 @@ import {
 import { getTimeFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import EmptyInboxSkyline from './Skyline/EmptyInboxSkyline'
 import { canRenderSkyline } from './Skyline/webglSupport'
+import { SKYLINE_RANGE_WEEKS } from './Skyline/skylineData'
 
-// Month (the 3D city) or Year (the 2D grid). Remembered per browser: it is a viewing preference,
-// not account data, and storage may be unavailable (private mode), in which case Month it is.
+// Week or Month (the 3D city) or Year (the 2D grid). Remembered per browser: it is a viewing
+// preference, not account data. Until the user picks one — or where storage is unavailable
+// (private mode) — the card opens on the week, the range whose buildings are big enough to read.
 const RANGE_STORAGE_KEY = 'alldone.emptyInbox.range'
-export const EMPTY_INBOX_RANGES = ['month', 'year']
+export const EMPTY_INBOX_RANGES = ['week', 'month', 'year']
+export const DEFAULT_EMPTY_INBOX_RANGE = 'week'
+const RANGE_LABELS = { week: 'Week', month: 'Month', year: 'Year' }
 const readStoredRange = () => {
     try {
         const stored = window.localStorage.getItem(RANGE_STORAGE_KEY)
-        return EMPTY_INBOX_RANGES.includes(stored) ? stored : 'month'
+        return EMPTY_INBOX_RANGES.includes(stored) ? stored : DEFAULT_EMPTY_INBOX_RANGE
     } catch (error) {
-        return 'month'
+        return DEFAULT_EMPTY_INBOX_RANGE
     }
 }
 const storeRange = range => {
@@ -51,7 +55,7 @@ const RangeSwitch = ({ range, onChange }) => (
                     style={[localStyles.rangeOption, active && localStyles.rangeOptionActive]}
                 >
                     <Text style={[localStyles.rangeText, active && localStyles.rangeTextActive]}>
-                        {translate(option === 'month' ? 'Month' : 'Year')}
+                        {translate(RANGE_LABELS[option])}
                     </Text>
                 </TouchableOpacity>
             )
@@ -108,9 +112,9 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
         setRange(next)
         storeRange(next)
     }
-    // The city draws the last month; the year stays the 2D grid, which is also the fallback
-    // wherever the browser cannot draw the city at all.
-    const showCity = showSkyline && range === 'month'
+    // The city draws the current week or the last month; the year stays the 2D grid, which is also
+    // the fallback wherever the browser cannot draw the city at all.
+    const showCity = showSkyline && range !== 'year'
     const CardContainer = onOpenAchievements ? TouchableOpacity : View
     const emptyInboxDays = useMemo(
         () => getEmptyInboxDaysWithLegacyFallback(user),
@@ -141,7 +145,13 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
               // which is the timezone it was recorded in.
               time: moment(todayEmptyInboxTimestamp).format(getTimeFormat()),
           })
-        : translate(showCity ? 'Empty inbox skyline description' : 'Empty inbox achievement description')
+        : translate(
+              showCity
+                  ? range === 'week'
+                      ? 'Empty inbox skyline week description'
+                      : 'Empty inbox skyline description'
+                  : 'Empty inbox achievement description'
+          )
     // The hook is always called (it decides nothing when disabled) — a conditional hook would be a
     // rules-of-hooks violation, and letting it run while the caller also owns a run would spend the
     // day twice.
@@ -217,6 +227,9 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
             <View style={localStyles.activityContainer}>
                 {showCity ? (
                     <EmptyInboxSkyline
+                        // The scene is built for one layout (5 rows or 1), so a range change remounts it.
+                        key={range}
+                        weeks={SKYLINE_RANGE_WEEKS[range]}
                         user={user}
                         emptyInboxDays={emptyInboxDays}
                         celebrationRunId={resolvedRunId}
