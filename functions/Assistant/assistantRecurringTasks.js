@@ -1,3 +1,10 @@
+const {
+    hasActiveAttempt,
+    claimScheduledPromptAttempt,
+    failedScheduledAttempt,
+    updateScheduledAttempt,
+} = require('./scheduledAssistantContinuation')
+const { readWorkflowState, getWorkflowProgress, assertWorkflowComplete } = require('./assistantWorkflowProgress')
 const admin = require('firebase-admin')
 const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
 
@@ -159,7 +166,7 @@ async function shouldExecuteTask(task, projectId, userDataCache = null, options 
 
     const userLastExecuted = task?.lastExecutedByUser?.[userId] ?? task.lastExecuted
     const executionStatus = task?.executionByUser?.[userId]?.status
-    if (executionStatus === 'in_progress') return false
+    if (hasActiveAttempt(task?.executionByUser?.[userId])) return false
     if (
         recurrenceForUser === RECURRENCE_ONCE &&
         (executionStatus === 'succeeded' || (executionStatus === undefined && userLastExecuted))
@@ -411,11 +418,26 @@ async function ensureTaskChatExists(
     prompt,
     activatorUserId,
     executionProjectId = projectId,
-    executionModeOverride = null
+    executionModeOverride = null,
+    reservedTaskId = null
 ) {
     try {
         const assistantTasksProjectId = projectId
-        console.log('KW Special Always creating new chat for task:', { taskId, assistantId })
+        if (reservedTaskId) {
+            const existingChat = await admin
+                .firestore()
+                .doc(`chatObjects/${executionProjectId}/chats/${reservedTaskId}`)
+                .get()
+            const existingTask = await admin
+                .firestore()
+                .doc(`items/${executionProjectId}/tasks/${reservedTaskId}`)
+                .get()
+            const existingPrompt = await admin
+                .firestore()
+                .doc(`chatComments/${executionProjectId}/tasks/${reservedTaskId}/comments/scheduled-prompt`)
+                .get()
+            if (existingChat.exists && existingTask.exists && existingPrompt.exists) return { uniqueId: reservedTaskId }
+        }
 
         // Get the task data to set proper metadata
         const taskDoc = await admin.firestore().doc(`assistantTasks/${projectId}/${assistantId}/${taskId}`).get()
@@ -455,7 +477,7 @@ async function ensureTaskChatExists(
         }
 
         // Create chat object
-        const uniqueId = getId()
+        const uniqueId = reservedTaskId || getId()
         const chat = {
             id: uniqueId,
             title: task.extendedName || task.name,
@@ -670,7 +692,7 @@ async function ensureTaskChatExists(
                     errorMessage: error.message,
                     errorCode: error.code,
                 })
-                // Continue execution even if task creation fails
+                throw error
             }
         }
 
@@ -690,7 +712,9 @@ async function ensureTaskChatExists(
 
         // Create initial comment with the prompt
         if (prompt) {
-            const commentId = Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
+            const commentId = reservedTaskId
+                ? 'scheduled-prompt'
+                : Date.now().toString() + '-' + Math.random().toString(36).substring(2, 10)
 
             const comment = {
                 creatorId: activatorUserId || task.creatorUserId || task.userId,
@@ -845,20 +869,32 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         activatorGold: activatorData.gold,
     })
 
+    let scheduledAttempt = null
     try {
         const startTimestamp = Timestamp.now()
-        await taskDocRef.update({
-            lastExecutionStarted: startTimestamp,
-            lastExecutionCompleted: null,
-            executionStatus: 'in_progress',
-            lastExecutionError: null,
-            [`executionByUser.${activatorUserId}`]: {
-                status: 'in_progress',
-                startedAt: startTimestamp.toMillis(),
-                completedAt: null,
-                error: null,
-            },
-        })
+        if (executionMode === TASK_EXECUTION_MODE_DIRECT) {
+            scheduledAttempt = await claimScheduledPromptAttempt({
+                taskRef: taskDocRef,
+                userId: activatorUserId,
+                task,
+                executionProjectId,
+                newTaskId: getId(),
+            })
+            if (!scheduledAttempt) return
+        }
+        if (!scheduledAttempt)
+            await taskDocRef.update({
+                lastExecutionStarted: startTimestamp,
+                lastExecutionCompleted: null,
+                executionStatus: 'in_progress',
+                lastExecutionError: null,
+                [`executionByUser.${activatorUserId}`]: {
+                    status: 'in_progress',
+                    startedAt: startTimestamp.toMillis(),
+                    completedAt: null,
+                    error: null,
+                },
+            })
 
         console.log('Marked recurring assistant task as in-progress:', {
             projectId,
@@ -875,7 +911,8 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             task.prompt,
             activatorUserId,
             executionProjectId,
-            executionMode
+            executionMode,
+            scheduledAttempt?.taskId || null
         )
         if (!uniqueId) throw new Error('Could not create the scheduled assistant task')
 
@@ -952,6 +989,7 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
                 // the tool as missing, spends the Gold and is marked done. Send every
                 // schema up front and trade the prompt-size saving for determinism.
                 disableToolSearch: true,
+                resumeScheduledWorkflow: scheduledAttempt?.resume === true,
             }
         )
 
@@ -960,6 +998,12 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         if (!taskResult || taskResult.success !== true) {
             throw new Error('Scheduled assistant prompt did not return a successful execution result')
         }
+
+        await assertWorkflowComplete(
+            admin.firestore(),
+            { projectId: executionProjectId, objectType: 'tasks', objectId: uniqueId, assistantId },
+            taskResult
+        )
 
         await finalizeGeneratedAssistantTask({
             taskResult,
@@ -993,7 +1037,11 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             successPayload.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
             successPayload[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
         }
-        await taskDocRef.update(successPayload)
+        if (scheduledAttempt) {
+            await updateScheduledAttempt(taskDocRef, activatorUserId, scheduledAttempt, successPayload)
+        } else {
+            await taskDocRef.update(successPayload)
+        }
 
         const nextExecutionAfterRun =
             taskWithActivator.recurrence === RECURRENCE_NEVER ||
@@ -1034,6 +1082,33 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
             attemptCompletedAt,
         })
 
+        if (scheduledAttempt) {
+            const state = await readWorkflowState(admin.firestore(), {
+                projectId: executionProjectId,
+                objectType: 'tasks',
+                objectId: scheduledAttempt.taskId,
+                assistantId,
+            }).catch(() => null)
+            const signature = state
+                ? getWorkflowProgress(state)?.signature || (state.projectWorkflow?.completedIds || []).join(',')
+                : scheduledAttempt.progressSignature
+            const failedAttempt = failedScheduledAttempt(scheduledAttempt, error, signature, attemptCompletedAt)
+            if (isTokenCeilingFailure) failedAttempt.retryExhausted = true
+            updatePayload[`executionByUser.${activatorUserId}`] = failedAttempt
+            if (failedAttempt.retryExhausted) {
+                // Stop charging for repeated failures without progress. Leave this task failed;
+                // the next scheduled occurrence starts fresh rather than looping every 5 minutes.
+                updatePayload.lastExecuted = attemptCompletedAt
+                updatePayload[`lastExecutedByUser.${activatorUserId}`] = attemptCompletedAt
+                updatePayload.lastExecutionCompleted = attemptCompletedAt
+                if (taskWithActivator.recurrence === RECURRENCE_ONCE) {
+                    updatePayload.completedOneOffUserIds = FieldValue.arrayUnion(activatorUserId)
+                    updatePayload.activatedUserIds = FieldValue.arrayRemove(activatorUserId)
+                    updatePayload[`recurrenceByUser.${activatorUserId}`] = FieldValue.delete()
+                }
+            }
+        }
+
         if (isTokenCeilingFailure) {
             console.warn('🚨 RECURRING ASSISTANT TOKEN CEILING: Retry deferred until next scheduled occurrence', {
                 projectId,
@@ -1048,7 +1123,11 @@ async function executeAssistantTask(projectId, assistantId, task, userDataCache 
         }
 
         try {
-            await taskDocRef.update(updatePayload)
+            if (scheduledAttempt) {
+                await updateScheduledAttempt(taskDocRef, activatorUserId, scheduledAttempt, updatePayload)
+            } else {
+                await taskDocRef.update(updatePayload)
+            }
         } catch (restoreError) {
             console.error('Failed to update task execution metadata after error:', {
                 projectId,
@@ -1598,6 +1677,7 @@ module.exports = {
     shouldExecuteTask, // Exported for testing
     getNextExecutionTime, // Exported for testing
     __private__: {
+        executeAssistantTask,
         completeGeneratedAssistantTask,
         finalizeGeneratedAssistantTask,
         getActivatedUserIdsForTask,

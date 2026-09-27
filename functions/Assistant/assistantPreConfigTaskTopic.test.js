@@ -308,6 +308,31 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
         })
     })
 
+    test('a task time limit cannot return success or send a completion notification', async () => {
+        mockStoreBotAnswerStream.mockImplementationOnce(async (...args) => {
+            args[args.length - 2].guardrailStopped = { reason: 'time_budget', message: 'Time limit reached' }
+            return 'Partially completed.'
+        })
+        await expect(
+            generatePreConfigTaskResult(
+                'user-1',
+                'project-1',
+                'task-1',
+                ['user-1'],
+                ['PUBLIC'],
+                'assistant-1',
+                'Finish the workflow',
+                'en',
+                aiSettings,
+                { sendWhatsApp: true, name: 'Scheduled workflow' },
+                null,
+                'tasks'
+            )
+        ).rejects.toMatchObject({ code: 'ASSISTANT_WORKFLOW_INCOMPLETE' })
+        expect(mockSendTaskCompletionNotification).not.toHaveBeenCalled()
+        expect(mockSendWhatsAppMessageWithConversationLink).not.toHaveBeenCalled()
+    })
+
     test('injects optional open tasks context before the prompt', async () => {
         mockGetOpenTasksContextMessage.mockResolvedValue({
             message: 'Today (including overdue) the user has 4 open tasks in total.',

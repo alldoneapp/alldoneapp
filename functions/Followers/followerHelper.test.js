@@ -1,14 +1,10 @@
 let mockArrayUnion
 
-jest.mock(
-    'firebase-admin/firestore',
-    () => ({
-        FieldValue: {
-            arrayUnion: (...values) => mockArrayUnion(...values),
-        },
-    }),
-    { virtual: true }
-)
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: {
+        arrayUnion: (...values) => mockArrayUnion(...values),
+    },
+}))
 
 jest.mock('../Feeds/tasksFeeds', () => ({
     createTaskFollowedFeed: jest.fn().mockResolvedValue(undefined),

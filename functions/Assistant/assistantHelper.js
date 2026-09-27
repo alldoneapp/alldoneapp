@@ -1,3 +1,15 @@
+const {
+    compactionArgumentError,
+    readWorkflowState,
+    recordProjectCatalog,
+    projectCompletionWrite,
+    reconcileProjectWorkflow,
+    getWorkflowProgress,
+    getPendingWorkflowProgress,
+    workflowContinuationMessage,
+    createWorkflowContinuationGuard,
+    executeWithCompactionRepair,
+} = require('./assistantWorkflowProgress')
 const { v4: uuidv4 } = require('uuid')
 const admin = require('firebase-admin')
 const crypto = require('crypto')
@@ -313,7 +325,9 @@ function getToolResultFollowUpPrompt(options = {}) {
     } = options
 
     const intro = usePlural ? 'Based on the tool results above' : 'Based on the tool result above'
-    const responseInstruction = finalReply ? 'provide the final email reply.' : 'provide your response to the user.'
+    const responseInstruction = finalReply
+        ? 'provide the final email reply.'
+        : 'continue the original user request until all requested work is complete; only then provide your final response.'
     const toolSentence = allowAdditionalTools
         ? ` If needed, call ${toolPhrase}${finalReply ? ' before finalizing the reply' : ''}.`
         : ''
@@ -453,8 +467,15 @@ function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = 
 
 function normalizeCompactThreadContextInteger(value, fieldName) {
     const numericValue = Number(value)
-    if (!Number.isInteger(numericValue) || numericValue < 0) {
-        throw new Error(`${fieldName} must be a non-negative integer for compact_thread_context.`)
+    if (
+        value === null ||
+        value === undefined ||
+        value === '' ||
+        typeof value === 'boolean' ||
+        !Number.isInteger(numericValue) ||
+        numericValue < 0
+    ) {
+        throw compactionArgumentError(`${fieldName} must be a non-negative integer for compact_thread_context.`)
     }
     return numericValue
 }
@@ -493,6 +514,8 @@ function buildCompactThreadContextMessage(compactedState) {
         )
     }
 
+    const progress = getWorkflowProgress(compactedState)
+    if (progress && progress.completed < progress.total) lines.push(workflowContinuationMessage(progress))
     lines.push('- Summary:', compactedState.summary.trim())
 
     return lines.join('\n')
@@ -549,8 +572,9 @@ async function loadAssistantThreadState(db, projectId, objectType, objectId, ass
 
     return {
         summary,
-        progressCompleted,
-        progressTotal,
+        progressCompleted: getWorkflowProgress(data)?.completed ?? progressCompleted,
+        progressTotal: getWorkflowProgress(data)?.total ?? progressTotal,
+        ...(data.projectWorkflow ? { projectWorkflow: data.projectWorkflow } : {}),
         currentProjectId: normalizeOptionalCompactThreadContextText(data.currentProjectId),
         currentProjectName: normalizeOptionalCompactThreadContextText(data.currentProjectName),
         nextProjectId: normalizeOptionalCompactThreadContextText(data.nextProjectId),
@@ -578,16 +602,17 @@ async function persistAssistantThreadState({
     currentProjectName = '',
     nextProjectId = '',
     nextProjectName = '',
+    projectIds = null,
 }) {
     const normalizedSummary = normalizeOptionalCompactThreadContextText(summary)
     if (!normalizedSummary) {
-        throw new Error('summary is required for compact_thread_context.')
+        throw compactionArgumentError('summary is required for compact_thread_context.')
     }
 
     const normalizedProgressCompleted = normalizeCompactThreadContextInteger(progressCompleted, 'progressCompleted')
     const normalizedProgressTotal = normalizeCompactThreadContextInteger(progressTotal, 'progressTotal')
     if (normalizedProgressCompleted > normalizedProgressTotal) {
-        throw new Error('progressCompleted cannot exceed progressTotal for compact_thread_context.')
+        throw compactionArgumentError('progressCompleted cannot exceed progressTotal for compact_thread_context.')
     }
 
     const stateRef = getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId)
@@ -600,20 +625,30 @@ async function persistAssistantThreadState({
         const snapshot = await transaction.get(stateRef)
         const currentState = snapshot?.exists ? snapshot.data() || {} : {}
         const currentRevision = Number(currentState.compactionRevision)
+        const projectWorkflow = reconcileProjectWorkflow(currentState, {
+            progressTotal: normalizedProgressTotal,
+            projectIds,
+        })
+        const verifiedProgress = projectWorkflow ? getWorkflowProgress({ projectWorkflow }) : null
         const nextState = {
             summary: normalizedSummary,
-            progressCompleted: normalizedProgressCompleted,
-            progressTotal: normalizedProgressTotal,
+            progressCompleted: verifiedProgress?.completed ?? normalizedProgressCompleted,
+            progressTotal: verifiedProgress?.total ?? normalizedProgressTotal,
+            ...(projectWorkflow ? { projectWorkflow } : {}),
             currentProjectId: normalizeOptionalCompactThreadContextText(currentProjectId),
             currentProjectName: normalizeOptionalCompactThreadContextText(currentProjectName),
-            nextProjectId: normalizeOptionalCompactThreadContextText(nextProjectId),
-            nextProjectName: normalizeOptionalCompactThreadContextText(nextProjectName),
+            nextProjectId: verifiedProgress
+                ? verifiedProgress.next
+                : normalizeOptionalCompactThreadContextText(nextProjectId),
+            nextProjectName: verifiedProgress
+                ? projectWorkflow.catalog.find(project => project.id === verifiedProgress.next)?.name || ''
+                : normalizeOptionalCompactThreadContextText(nextProjectName),
             trimHistoryBeforeMs: Math.max(Number(currentState.trimHistoryBeforeMs) || 0, trimHistoryBeforeMs),
             trimHistoryBeforeMessageId: '',
             compactionRevision: Number.isInteger(currentRevision) && currentRevision >= 0 ? currentRevision + 1 : 1,
             updatedAt: Timestamp.now(),
         }
-        transaction.set(stateRef, nextState)
+        transaction.set(stateRef, nextState, { merge: true })
         return nextState
     })
 
@@ -621,7 +656,7 @@ async function persistAssistantThreadState({
         success: true,
         compactedState,
         compactedContextMessage: buildCompactThreadContextMessage(compactedState),
-        message: `Thread context compacted at ${normalizedProgressCompleted}/${normalizedProgressTotal}.`,
+        message: `Thread context compacted at ${compactedState.progressCompleted}/${compactedState.progressTotal}.`,
     }
 }
 
@@ -2476,17 +2511,19 @@ async function collectAssistantTextWithToolCalls({
                     localTool || (await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext))
                 if (!isAllowed) throw new Error(`Tool not permitted: ${toolName}`)
 
-                const toolResult = localTool
-                    ? await localTool.execute(toolArgs)
-                    : await toolExecutor(
-                          toolName,
-                          toolArgs,
-                          toolRuntimeContext?.projectId,
-                          toolRuntimeContext?.assistantId,
-                          toolRuntimeContext?.requestUserId,
-                          userContext,
-                          toolRuntimeContext
-                      )
+                const toolResult = await executeWithCompactionRepair(toolRuntimeContext, toolName, async () =>
+                    localTool
+                        ? await localTool.execute(toolArgs)
+                        : await toolExecutor(
+                              toolName,
+                              toolArgs,
+                              toolRuntimeContext?.projectId,
+                              toolRuntimeContext?.assistantId,
+                              toolRuntimeContext?.requestUserId,
+                              userContext,
+                              toolRuntimeContext
+                          )
+                )
                 executedToolCallsCount++
                 executedToolNames.push(toolName)
                 if (
@@ -6515,6 +6552,7 @@ async function executeToolNatively(
                 includeCommunity,
             })
 
+            await recordProjectCatalog(admin.firestore(), toolRuntimeContext, projects)
             return {
                 projects: projects.map(p => ({
                     id: p.id,
@@ -7560,7 +7598,20 @@ async function executeToolNatively(
                 creatorId
             )
 
+            if (toolRuntimeContext?.resumeScheduledWorkflow) {
+                const state = await readWorkflowState(db, toolRuntimeContext)
+                if (state.projectWorkflow?.completedIds?.includes(targetProject.id)) {
+                    return {
+                        success: true,
+                        updated: false,
+                        alreadyCompleted: true,
+                        project: { id: targetProject.id },
+                        message: 'Already updated in this workflow. Continue with the next unfinished project.',
+                    }
+                }
+            }
             return await updateProjectDescription({
+                completionWrite: projectCompletionWrite(db, toolRuntimeContext, targetProject.id),
                 db,
                 projectId: targetProject.id,
                 userId: creatorId,
@@ -8030,6 +8081,7 @@ async function executeToolNatively(
                 currentProjectName: toolArgs.currentProjectName,
                 nextProjectId: toolArgs.nextProjectId,
                 nextProjectName: toolArgs.nextProjectName,
+                projectIds: toolArgs.projectIds,
             })
 
             return {
@@ -10454,10 +10506,12 @@ async function storeChunks(
                 let currentToolCalls = chunk.additional_kwargs.tool_calls
                 let toolCallIteration = 0
                 let pendingAttachmentPayload = null
+                let pendingContinuation = null
+                const continuationGuard = createWorkflowContinuationGuard()
 
                 while (
                     currentToolCalls &&
-                    currentToolCalls.length > 0 &&
+                    (currentToolCalls.length > 0 || pendingContinuation) &&
                     toolCallIteration < MAX_NATIVE_TOOL_CALL_ITERATIONS &&
                     Date.now() - runWallClockStart < maxRunWallClockMs
                 ) {
@@ -10541,7 +10595,13 @@ async function storeChunks(
                                         error.code = 'ASSISTANT_TOOL_TIME_BUDGET'
                                         throw error
                                     }
-                                    let toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
+                                    let toolArgs
+                                    try {
+                                        toolArgs = JSON.parse(toolCall?.function?.arguments || '{}')
+                                    } catch (error) {
+                                        if (toolName !== COMPACT_THREAD_CONTEXT_TOOL_KEY) throw error
+                                        toolArgs = {}
+                                    }
                                     const enriched = injectPendingAttachmentIntoToolArgs(
                                         toolName,
                                         toolArgs,
@@ -10565,14 +10625,19 @@ async function storeChunks(
                                     )
                                         throw new Error(`Tool not permitted: ${toolName}`)
                                     await throwIfCancelled(true)
-                                    const toolResult = await executeToolNatively(
+                                    const toolResult = await executeWithCompactionRepair(
+                                        runtimeContextForTools,
                                         toolName,
-                                        toolArgs,
-                                        projectId,
-                                        assistantId,
-                                        runtimeContextForTools.requestUserId || requestUserId,
-                                        userContext,
-                                        runtimeContextForTools
+                                        () =>
+                                            executeToolNatively(
+                                                toolName,
+                                                toolArgs,
+                                                projectId,
+                                                assistantId,
+                                                runtimeContextForTools.requestUserId || requestUserId,
+                                                userContext,
+                                                runtimeContextForTools
+                                            )
                                     )
                                     await throwIfCancelled(true)
                                     if (toolName === 'create_note' && toolResult?.success !== false) {
@@ -10644,13 +10709,16 @@ async function storeChunks(
                         clearInterval(toolProgressInterval)
                         await progressWrites
                     }
-                    const updatedConversation = buildConversationAfterToolExecutions({
-                        currentConversation,
-                        responseText: commentText.replace(toolStatusMessage, '').trim(),
-                        toolExecutions,
-                        userContext,
-                    })
+                    const updatedConversation = pendingContinuation
+                        ? [...currentConversation, { role: 'user', content: pendingContinuation }]
+                        : buildConversationAfterToolExecutions({
+                              currentConversation,
+                              responseText: commentText.replace(toolStatusMessage, '').trim(),
+                              toolExecutions,
+                              userContext,
+                          })
 
+                    pendingContinuation = null
                     // Update currentConversation for next iteration
                     currentConversation = updatedConversation
 
@@ -10804,7 +10872,35 @@ async function storeChunks(
                         currentToolCalls = nextToolCalls
                         // Continue the while loop
                     } else {
-                        // No more tool calls, we're done
+                        if (runtimeContextForTools.trackWorkflowProgress) {
+                            const progress = getPendingWorkflowProgress(
+                                await readWorkflowState(admin.firestore(), runtimeContextForTools),
+                                runtimeContextForTools
+                            )
+                            try {
+                                pendingContinuation = continuationGuard(progress)
+                            } catch (error) {
+                                fatalToolExecutionError = error
+                            }
+                            if (pendingContinuation) {
+                                console.log('ASSISTANT WORKFLOW: Continuing unfinished work', {
+                                    completed: progress.completed,
+                                    total: progress.total,
+                                    next: progress.next,
+                                })
+                                // Keep the model's early response as context, but remove it from the
+                                // visible final answer before the next round resumes actual work.
+                                const earlyReply = commentText.slice(commentText.length - totalContentReceived)
+                                currentConversation = [
+                                    ...currentConversation,
+                                    { role: 'assistant', content: earlyReply },
+                                ]
+                                commentText = commentText.slice(0, commentText.length - totalContentReceived)
+                                currentToolCalls = []
+                                continue
+                            }
+                        }
+                        // No more tool calls, and no unfinished tracked workflow.
                         if (ENABLE_DETAILED_LOGGING) {
                             console.log('🔧 NATIVE TOOL CALL: No more tool calls, exiting loop', {
                                 totalIterations: toolCallIteration,
@@ -10822,7 +10918,7 @@ async function storeChunks(
                 const hitTimeBudget =
                     !hitMaxIterations &&
                     !!currentToolCalls &&
-                    currentToolCalls.length > 0 &&
+                    (currentToolCalls.length > 0 || pendingContinuation) &&
                     Date.now() - runWallClockStart >= maxRunWallClockMs
                 if (hitMaxIterations || hitTimeBudget) {
                     await flushPendingUpdate() // Flush any pending updates first
@@ -12315,7 +12411,7 @@ async function addBaseInstructions(
     ) {
         messages.push([
             'system',
-            'When you are doing a long-running workflow across multiple projects or other repeated units, use compact_thread_context after finishing a unit whenever the earlier detailed reasoning is no longer needed in full. Preserve the important results, progress, and next-step state in the summary so the thread can continue from compacted working memory.',
+            'When you are doing a long-running workflow across multiple projects or other repeated units, use compact_thread_context after finishing a unit whenever the earlier detailed reasoning is no longer needed in full. Preserve the important results, progress, and next-step state in the summary so the thread can continue from compacted working memory. Compaction is an intermediate step: immediately continue the original request while units remain. For project-description batches, read get_user_projects first and supply the full intended projectIds on the first compaction; keep that scope fixed. Server-verified progress takes precedence over counts in the summary.',
         ])
     }
     const preConfiguredTasksContext = await getPreConfiguredTasksContextMessage(
