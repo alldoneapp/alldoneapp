@@ -23,8 +23,8 @@ import {
 } from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 
-import { coinPositionAt, planCoinFlights } from './coinFlight'
-import { notePositionAt, planCashBurst } from './cashFlight'
+import { COIN_STYLE_NAMES, coinPositionAt, pickStyle, planCoinFlights } from './coinFlight'
+import { CASH_STYLE_NAMES, notePositionAt, planCashBurst } from './cashFlight'
 
 /**
  * The full-app layer the earned gold coins fly across: one transparent, fixed canvas over the whole
@@ -128,6 +128,9 @@ const labelTexture = text => {
 }
 
 let overlay = null
+// The last choreography of each kind, so the next reward always looks different.
+let lastCoinStyle = null
+let lastCashStyle = null
 
 function createOverlay() {
     const renderer = new WebGLRenderer({ antialias: true, alpha: true })
@@ -304,9 +307,11 @@ function createOverlay() {
     }
 
     return {
-        launch({ from, to, count, onLanded = () => {}, random = Math.random }) {
+        launch({ from, to, count, onLanded = () => {}, random = Math.random, style }) {
             const now = performance.now() / 1000
-            planCoinFlights(from, to, count, random).forEach(flight => {
+            const chosen = style || pickStyle(COIN_STYLE_NAMES, lastCoinStyle)
+            lastCoinStyle = chosen
+            planCoinFlights(from, to, count, random, chosen).forEach(flight => {
                 const coin = makeCoin()
                 coin.visible = false
                 scene.add(coin)
@@ -314,13 +319,15 @@ function createOverlay() {
             })
             start()
         },
-        launchCash({ from, amount, currency, label, random = Math.random }) {
+        launchCash({ from, amount, currency, label, random = Math.random, style }) {
             const now = performance.now() / 1000
+            const chosen = style || pickStyle(CASH_STYLE_NAMES, lastCashStyle)
+            lastCashStyle = chosen
             // Unlit on purpose: lit paper washes out to near-white on the app's white background.
             // Each note is two single-sided planes back to back, so its back reads the right way
             // round instead of mirrored.
             const texture = noteTexture(currency || 'EUR')
-            planCashBurst(from, amount, random, window.innerWidth).forEach(note => {
+            planCashBurst(from, amount, random, window.innerWidth, chosen).forEach(note => {
                 const material = new MeshBasicMaterial({ map: texture, transparent: true })
                 const mesh = new Group()
                 const front = new Mesh(noteGeometry, material)
