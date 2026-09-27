@@ -357,7 +357,14 @@ describe('User memory assistant tool schemas', () => {
             'summary',
             'progressCompleted',
             'progressTotal',
+            'currentProjectId',
+            'currentProjectName',
+            'nextProjectId',
+            'nextProjectName',
+            'projectIds',
         ])
+        expect(toolSchemas.compact_thread_context.function.strict).toBe(true)
+        expect(toolSchemas.compact_thread_context.function.parameters.additionalProperties).toBe(false)
         expect(toolSchemas.compact_thread_context.function.description).toContain('long-running')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.summary.type).toBe('string')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.summary.description).toContain(
@@ -365,10 +372,22 @@ describe('User memory assistant tool schemas', () => {
         )
         expect(toolSchemas.compact_thread_context.function.parameters.properties.progressCompleted.type).toBe('integer')
         expect(toolSchemas.compact_thread_context.function.parameters.properties.progressTotal.type).toBe('integer')
-        expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectId.type).toBe('string')
-        expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectName.type).toBe('string')
-        expect(toolSchemas.compact_thread_context.function.parameters.properties.nextProjectId.type).toBe('string')
-        expect(toolSchemas.compact_thread_context.function.parameters.properties.nextProjectName.type).toBe('string')
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectId.type).toEqual([
+            'string',
+            'null',
+        ])
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.currentProjectName.type).toEqual([
+            'string',
+            'null',
+        ])
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.nextProjectId.type).toEqual([
+            'string',
+            'null',
+        ])
+        expect(toolSchemas.compact_thread_context.function.parameters.properties.nextProjectName.type).toEqual([
+            'string',
+            'null',
+        ])
     })
 })
 

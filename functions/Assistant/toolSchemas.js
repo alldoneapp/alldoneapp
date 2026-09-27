@@ -1181,15 +1181,23 @@ const toolSchemas = {
         type: 'function',
         function: {
             name: 'compact_thread_context',
+            strict: true,
             description:
                 'Compacts the current assistant thread context for a long-running multi-step workflow. Use this after finishing a project or another large batch segment when earlier project-by-project detail is no longer needed in full. Preserve the important results, progress, and next-step state in the summary so future tool calls and replies can continue from the compacted working memory.',
             parameters: {
                 type: 'object',
+                additionalProperties: false,
                 properties: {
                     summary: {
                         type: 'string',
                         description:
                             'A concise but durable cumulative Markdown summary using these sections: User intent and current objective; Important facts and context; Decisions made; Work completed; Open questions; Commitments and next steps; Referenced entities, files, links and code paths; User preferences and corrections. Merge prior still-relevant compacted context, preserve exact IDs, dates, names, URLs and numbers, and remove filler/repetition. This becomes the compacted working memory for the thread.',
+                    },
+                    projectIds: {
+                        type: ['array', 'null'],
+                        items: { type: 'string' },
+                        description:
+                            'For a project-description batch, the exact ordered IDs of ALL intended projects (completed and pending) from get_user_projects. Provide on the first compaction and keep the scope fixed; null is allowed when processing the entire returned catalog or a non-project workflow.',
                     },
                     progressCompleted: {
                         type: 'integer',
@@ -1202,23 +1210,32 @@ const toolSchemas = {
                             'The total number of projects or batch units in the workflow. Use an integer such as 8 when processing 8 total projects.',
                     },
                     currentProjectId: {
-                        type: 'string',
+                        type: ['string', 'null'],
                         description: 'Optional current project ID being processed when the compaction is created.',
                     },
                     currentProjectName: {
-                        type: 'string',
+                        type: ['string', 'null'],
                         description: 'Optional current project name being processed when the compaction is created.',
                     },
                     nextProjectId: {
-                        type: 'string',
+                        type: ['string', 'null'],
                         description: 'Optional next project ID the assistant should continue with after compaction.',
                     },
                     nextProjectName: {
-                        type: 'string',
+                        type: ['string', 'null'],
                         description: 'Optional next project name the assistant should continue with after compaction.',
                     },
                 },
-                required: ['summary', 'progressCompleted', 'progressTotal'],
+                required: [
+                    'summary',
+                    'progressCompleted',
+                    'progressTotal',
+                    'currentProjectId',
+                    'currentProjectName',
+                    'nextProjectId',
+                    'nextProjectName',
+                    'projectIds',
+                ],
             },
         },
     },

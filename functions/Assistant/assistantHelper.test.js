@@ -275,15 +275,12 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     })),
 }))
 
-jest.mock(
-    'openai',
-    () =>
-        jest.fn().mockImplementation(() => ({
-            responses: {
-                create: mockResponsesCreate,
-            },
-        })),
-    { virtual: true }
+jest.mock('openai', () =>
+    jest.fn().mockImplementation(() => ({
+        responses: {
+            create: mockResponsesCreate,
+        },
+    }))
 )
 const mockTiktokenEncode = jest.fn(() => [])
 jest.mock(
@@ -5687,7 +5684,8 @@ describe('assistant thread compaction tool', () => {
                 trimHistoryBeforeMessageId: '',
                 compactionRevision: 1,
                 updatedAt: expect.any(Object),
-            }
+            },
+            { merge: true }
         )
         expect(result).toMatchObject({
             success: true,
@@ -7712,4 +7710,181 @@ test('a corrected voice request drains active reads and prevents queued reads, w
     expect((await outcome).message).toBe('voice_request_superseded')
     expect(execute).toHaveBeenCalledTimes(5)
     expect(mockResponsesCreate).not.toHaveBeenCalled()
+})
+
+describe('unfinished scheduled workflow continuation', () => {
+    const { storeChunks } = require('./assistantHelper')
+    const ids = Array.from({ length: 13 }, (_, i) => `project-${i + 1}`)
+    const call = durationMinutes => ({
+        id: `call-${durationMinutes}`,
+        type: 'function',
+        function: { name: 'find_calendar_availability', arguments: JSON.stringify({ durationMinutes }) },
+    })
+    const textResponse = text => [
+        { type: 'response.output_text.delta', delta: text },
+        { type: 'response.completed', response: { output: [] } },
+    ]
+    const run = runtime =>
+        storeChunks(
+            'wf-project',
+            'tasks',
+            'wf-task',
+            [],
+            [{ additional_kwargs: { tool_calls: [call(30)] } }],
+            null,
+            'wf-assistant',
+            [],
+            [],
+            'Workflow',
+            'Assistant',
+            'Project',
+            '',
+            'wf-user',
+            { message: 'Update all thirteen projects' },
+            [['user', 'Update all thirteen projects']],
+            'MODEL_GPT6_SOL',
+            'TEMPERATURE_NORMAL',
+            ['find_calendar_availability'],
+            runtime
+        )
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocUpdate.mockResolvedValue(undefined)
+        mockDocSet.mockResolvedValue(undefined)
+        mockFirestoreGetAll.mockResolvedValue([
+            { exists: true, id: 'wf-assistant', data: () => ({ allowedTools: ['find_calendar_availability'] }) },
+            { exists: false },
+        ])
+    })
+    test('a normal final response at six of thirteen resumes, completes the remaining work, and replaces the early reply', async () => {
+        let completed = 6
+        mockDocGet.mockImplementation(async function () {
+            return {
+                exists: true,
+                data: () =>
+                    this.path?.startsWith('assistantThreadState/')
+                        ? {
+                              projectWorkflow: { expectedIds: ids, completedIds: ids.slice(0, completed) },
+                          }
+                        : {},
+            }
+        })
+        mockFindCalendarAvailabilityForAssistantRequest.mockImplementation(async ({ durationMinutes }) => {
+            if (durationMinutes === 45) completed = 13
+            return { success: true, options: [] }
+        })
+        mockResponsesCreate
+            .mockReset()
+            .mockResolvedValueOnce(textResponse('Only six projects are complete.'))
+            .mockResolvedValueOnce([
+                {
+                    type: 'response.output_item.done',
+                    item: {
+                        id: 'item-45',
+                        type: 'function_call',
+                        call_id: 'call-45',
+                        name: 'find_calendar_availability',
+                        arguments: '{"durationMinutes":45}',
+                    },
+                },
+                { type: 'response.completed', response: { output: [] } },
+            ])
+            .mockResolvedValueOnce(textResponse('All thirteen projects are complete.'))
+        const answer = await run({
+            projectId: 'wf-project',
+            objectType: 'tasks',
+            objectId: 'wf-task',
+            assistantId: 'wf-assistant',
+            requestUserId: 'wf-user',
+            trackWorkflowProgress: true,
+            failOnToolExecutionError: true,
+        })
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(3)
+        expect(JSON.stringify(mockResponsesCreate.mock.calls[1][0].input)).toContain('project-7')
+        expect(answer).toContain('All thirteen')
+        expect(answer).not.toContain('Only six')
+    })
+    test('repeated progress-only answers fail rather than looping forever or reporting success', async () => {
+        mockDocGet.mockImplementation(async function () {
+            return {
+                exists: true,
+                data: () =>
+                    this.path?.startsWith('assistantThreadState/')
+                        ? {
+                              projectWorkflow: { expectedIds: ids, completedIds: ids.slice(0, 6) },
+                          }
+                        : {},
+            }
+        })
+        mockFindCalendarAvailabilityForAssistantRequest.mockResolvedValue({ success: true, options: [] })
+        mockResponsesCreate.mockReset().mockResolvedValue(textResponse('Six are complete; seven remain.'))
+        await expect(
+            run({
+                projectId: 'wf-project',
+                objectType: 'tasks',
+                objectId: 'wf-task',
+                assistantId: 'wf-assistant',
+                requestUserId: 'wf-user',
+                trackWorkflowProgress: true,
+                failOnToolExecutionError: true,
+            })
+        ).rejects.toMatchObject({ code: 'ASSISTANT_WORKFLOW_INCOMPLETE' })
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(3)
+    })
+})
+
+test('the tool loop returns invalid compact arguments to the model and executes the corrected call', async () => {
+    const { collectAssistantTextWithToolCalls } = require('./assistantHelper')
+    const { compactionArgumentError } = require('./assistantWorkflowProgress')
+    const execute = jest.fn(async args => {
+        if (!Number.isInteger(args.progressCompleted)) throw compactionArgumentError('progressCompleted is required')
+        return {
+            success: true,
+            compactedContextMessage: 'Compacted thread state for this ongoing workflow:\n13 of 13 completed.',
+        }
+    })
+    mockDocGet.mockResolvedValue({ exists: false })
+    mockResponsesCreate
+        .mockReset()
+        .mockResolvedValueOnce([
+            {
+                type: 'response.output_item.done',
+                item: {
+                    id: 'corrected',
+                    type: 'function_call',
+                    call_id: 'corrected',
+                    name: 'compact_thread_context',
+                    arguments: JSON.stringify({ summary: 'All done', progressCompleted: 13, progressTotal: 13 }),
+                },
+            },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+        .mockResolvedValueOnce([
+            { type: 'response.output_text.delta', delta: 'All thirteen completed.' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+    const result = await collectAssistantTextWithToolCalls({
+        stream: [
+            {
+                additional_kwargs: {
+                    tool_calls: [
+                        {
+                            id: 'invalid',
+                            type: 'function',
+                            function: { name: 'compact_thread_context', arguments: '{"summary":"All done"}' },
+                        },
+                    ],
+                },
+            },
+        ],
+        conversationHistory: [['user', 'Update all descriptions']],
+        modelKey: 'MODEL_GPT6_SOL',
+        temperatureKey: 'TEMPERATURE_NORMAL',
+        allowedTools: ['compact_thread_context'],
+        toolRuntimeContext: { projectId: 'p', objectType: 'tasks', objectId: 't', assistantId: 'a' },
+        localTools: { compact_thread_context: { execute } },
+    })
+    expect(execute).toHaveBeenCalledTimes(2)
+    expect(JSON.stringify(mockResponsesCreate.mock.calls[0][0].input)).toContain('progressCompleted is required')
+    expect(result.finalResponseText).toBe('All thirteen completed.')
 })

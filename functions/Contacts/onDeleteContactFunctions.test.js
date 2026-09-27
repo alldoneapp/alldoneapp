@@ -16,8 +16,8 @@ jest.mock('firebase-admin', () => ({
     firestore: () => mockFirestore,
     storage: () => mockStorage,
 }))
-jest.mock('firebase-functions/params', () => ({
-    defineString: () => ({ value: () => 'notescontentprod' }),
+jest.mock('../shared/notesStorageBucket', () => ({
+    getNotesBucketName: () => 'notescontentprod',
 }))
 jest.mock('../AlgoliaGlobalSearchHelper', () => ({
     CONTACTS_OBJECTS_TYPE: 'contacts',

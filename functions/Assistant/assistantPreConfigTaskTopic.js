@@ -1,4 +1,10 @@
 const {
+    readWorkflowState,
+    getWorkflowProgress,
+    workflowContinuationMessage,
+    assertWorkflowComplete,
+} = require('./assistantWorkflowProgress')
+const {
     interactWithChatStream,
     storeBotAnswerStream,
     addBaseInstructions,
@@ -397,6 +403,25 @@ async function generatePreConfigTaskResult(
             contextMessages.push(['user', parseTextForUseLiKePrompt(finalPrompt)])
         }
 
+        if (options?.resumeScheduledWorkflow) {
+            const state = await readWorkflowState(admin.firestore(), {
+                projectId,
+                objectType,
+                objectId,
+                assistantId: settings.uid || assistantId,
+            })
+            const progress = getWorkflowProgress(state)
+            contextMessages.push([
+                'system',
+                'Resume this same authorized workflow. Successful updates are already persisted; do not repeat them. ' +
+                    (state.summary ? `Saved working memory: ${state.summary}\n` : '') +
+                    `Verified completed project IDs: ${JSON.stringify(state.projectWorkflow?.completedIds || [])}.\n` +
+                    (progress && progress.completed < progress.total
+                        ? workflowContinuationMessage(progress)
+                        : 'Complete the remaining original request.'),
+            ])
+        }
+
         if (additionalContextMessages.length > 0) {
             const latestUserMessageIndex = contextMessages.map(message => message[0]).lastIndexOf('user')
             const insertionIndex = latestUserMessageIndex >= 0 ? latestUserMessageIndex : contextMessages.length
@@ -447,6 +472,8 @@ async function generatePreConfigTaskResult(
             // wrote a visible error and stopped. storeChunks persists the error first, then
             // propagates it so the recurring-task lifecycle can record a real failure and retry.
             failOnToolExecutionError: true,
+            trackWorkflowProgress: objectType === 'tasks' && allowedTools.includes('compact_thread_context'),
+            resumeScheduledWorkflow: options?.resumeScheduledWorkflow === true,
         }
         const latestUserMessage = contextMessages
             .slice()
@@ -562,6 +589,8 @@ async function generatePreConfigTaskResult(
         } else {
             console.log('🤖 ASSISTANT TASK EXECUTION: No AI comment text generated, skipping gold reduction')
         }
+
+        if (objectType === 'tasks') await assertWorkflowComplete(admin.firestore(), toolRuntimeContext, streamOutput)
 
         const totalDuration = Date.now() - functionStartTime
         console.log('🎯 [TIMING] generatePreConfigTaskResult COMPLETE', {
