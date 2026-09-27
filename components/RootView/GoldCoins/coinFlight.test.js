@@ -1,36 +1,56 @@
-import { COIN_STAGGER, coinPositionAt, planCoinFlights } from './coinFlight'
+import { COIN_STYLE_NAMES, coinPositionAt, pickStyle, planCoinFlights } from './coinFlight'
 
 const from = { x: 300, y: 500 }
 const to = { x: 900, y: 40 }
-const fixed = () => 0.5
+
+const seeded = () => {
+    let state = 11
+    return () => ((state = (state * 16807) % 2147483647) - 1) / 2147483646
+}
 
 describe('gold coin flight', () => {
-    it('plans one coin per gold earned, launched one after another', () => {
-        const flights = planCoinFlights(from, to, 4, fixed)
-        expect(flights).toHaveLength(4)
-        expect(flights.map(f => f.delay)).toEqual([0, 1, 2, 3].map(i => i * COIN_STAGGER))
-        expect(planCoinFlights(from, to, 0, fixed)).toHaveLength(1)
-        expect(planCoinFlights(from, to, 99, fixed)).toHaveLength(8)
+    it('has ten choreographies', () => {
+        expect(COIN_STYLE_NAMES).toHaveLength(10)
     })
 
-    it('starts at the checkbox, pops out, arcs above the straight line and lands in the counter', () => {
-        const [flight] = planCoinFlights(from, to, 1, fixed)
-        expect(coinPositionAt(flight, -0.1).started).toBe(false)
-        const start = coinPositionAt(flight, 0)
-        expect(start).toMatchObject({ started: true, landed: false, x: from.x, y: from.y })
-        // Mid-flight it is above the straight line between the two points.
-        const middle = coinPositionAt(flight, flight.duration * 0.6)
-        const lineY = from.y + ((middle.x - from.x) / (to.x - from.x)) * (to.y - from.y)
-        expect(middle.y).toBeLessThan(lineY)
-        expect(middle.scale).toBeGreaterThan(0.7)
-        const end = coinPositionAt(flight, flight.duration + 0.01)
-        expect(end).toMatchObject({ landed: true, x: to.x, y: to.y })
+    it.each(COIN_STYLE_NAMES)('%s: every coin starts at the checkbox and lands exactly on the counter', style => {
+        const flights = planCoinFlights(from, to, 5, seeded(), style)
+        expect(flights).toHaveLength(5)
+        flights.forEach(flight => {
+            expect(flight.style).toBe(style)
+            const start = coinPositionAt(flight, flight.delay)
+            expect(start.started).toBe(true)
+            expect(Math.hypot(start.x - from.x, start.y - from.y)).toBeLessThan(2)
+            // Continuous and finite all the way through.
+            for (let s = 0; s < flight.duration; s += flight.duration / 40) {
+                const p = coinPositionAt(flight, flight.delay + s)
+                expect(Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.scale)).toBe(true)
+            }
+            const almost = coinPositionAt(flight, flight.delay + flight.duration - 0.001)
+            expect(Math.hypot(almost.x - to.x, almost.y - to.y)).toBeLessThan(12)
+            const end = coinPositionAt(flight, flight.delay + flight.duration)
+            expect(end).toMatchObject({ landed: true, x: to.x, y: to.y })
+            // A reward, not a wait: every coin is home within two seconds.
+            expect(flight.delay + flight.duration).toBeLessThan(2)
+        })
     })
 
-    it('keeps each flight short and bounded', () => {
-        const near = planCoinFlights({ x: 0, y: 0 }, { x: 10, y: 0 }, 1, fixed)[0]
-        const far = planCoinFlights({ x: 0, y: 0 }, { x: 4000, y: 3000 }, 1, fixed)[0]
-        expect(near.duration).toBeGreaterThanOrEqual(0.75)
-        expect(far.duration).toBeLessThanOrEqual(1.25)
+    it('keeps the coin count within bounds', () => {
+        expect(planCoinFlights(from, to, 0, seeded(), 'arc')).toHaveLength(1)
+        expect(planCoinFlights(from, to, 99, seeded(), 'arc')).toHaveLength(8)
+        // An unknown style falls back to the arc rather than failing.
+        expect(planCoinFlights(from, to, 2, seeded(), 'nope')[0].duration).toBeGreaterThan(0)
+    })
+
+    it('never picks the same style twice in a row', () => {
+        let previous = null
+        const random = seeded()
+        for (let i = 0; i < 200; i++) {
+            const next = pickStyle(COIN_STYLE_NAMES, previous, random)
+            expect(COIN_STYLE_NAMES).toContain(next)
+            expect(next).not.toBe(previous)
+            previous = next
+        }
+        expect(pickStyle(['only'], 'only')).toBe('only')
     })
 })

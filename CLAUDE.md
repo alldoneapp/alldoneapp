@@ -1336,7 +1336,13 @@ throws cash, estimate or not, but with NO figure: the day is billed as a whole, 
 count is only the signal that the day counts as worked, so no task earns a share worth showing. The
 generated "Time log for day rate" task never throws cash (`generatedTimeLog`). Notes are thrown away from the nearer screen edge, drawn
 unlit (lit paper washes out on the white app) with a correctly oriented back, and flutter down like
-paper (`cashFlight.js`). No rate, no estimate, someone else's task, no WebGL or reduced motion: no
+paper (`cashFlight.js`). Each reward picks one of ten choreographies at random, never the same
+one twice in a row: `COIN_STYLES` (arc, fountain, spiral, lineUp, bounce, comet, helix, hover,
+slingshot, pinball) and `CASH_STYLES` (fountain, rain, explosion, moneyGun, tornado, cardFan,
+geyser, wave, floatUp, stack), chosen by `pickStyle` in `goldCoinsOverlay.js`. Every coin style
+must start at the checkbox and land exactly on the counter (the counter ticks on landing), and
+every cash style must fade in from 0 and out before `life` ends — `coinFlight.test.js` /
+`cashFlight.test.js` run each style against those rules, so a new style only has to pass them. No rate, no estimate, someone else's task, no WebGL or reduced motion: no
 cash, and it never throws into the completion path. Both overlays load through
 `loadGoldCoinsOverlay` so tests can replace the dynamic `import()`, which Jest's Babel does not
 transform.
