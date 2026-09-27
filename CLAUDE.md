@@ -1404,10 +1404,15 @@ static branch forever.
 
 ### The Empty inbox card draws the last month as a 3D city (skyline)
 
-The card has a Month/Year switch (remembered in localStorage, `alldone.emptyInbox.range`). Month
-draws the last 5 weeks as a three.js city (`Achievements/Skyline/`), laid out like a calendar page —
-weekdays as columns, weeks as rows, the current week nearest the camera; Year is the original 2D
-grid for the whole year. Without WebGL (native, jsdom, `canRenderSkyline` in `webglSupport.js`,
+The card has a Week/Month/Year switch (remembered in localStorage, `alldone.emptyInbox.range`; Week
+until the user picks one). Week and Month draw the current week or the last 5 weeks as a three.js
+city (`Achievements/Skyline/`), laid out like a calendar page — weekdays as columns, weeks as rows,
+the current week nearest the camera; Year is the original 2D grid for the whole year. The scene is
+built for one layout (`createSkylineScene(…, { weeks })`, `SKYLINE_RANGE_WEEKS`), so the card
+remounts it with `key={range}`. A single week is a 7×1 strip, so it gets a flatter canvas, a
+narrower orbit (`getOrbitView(t, sweep)` — turning a strip diagonal costs most of its width), no
+plane, and a balloon, birds and helicopter kept below its roofs, because its frame has no sky above
+them. Without WebGL (native, jsdom, `canRenderSkyline` in `webglSupport.js`,
 which must never import three) there is no switch and the grid is all there is. three.js is
 loaded with a dynamic `import()` into its own `skyline` chunk and never enters the main bundle; the
 web bundle aliases `three` to its ES module build because the app's Babel config turns imports into
@@ -1469,7 +1474,11 @@ light per lamp would multiply the per-fragment cost of every building.
 wide calendar diagonal to the camera and shrinks the city).
 Every frame `fitDistance` bisects the closest distance at which the ground with its legends and
 the tallest possible building on the outermost blocks project inside the canvas with a margin
-(bounds kept asymmetric and tight so no room is reserved where nothing can be), and the
+(bounds kept asymmetric and tight so no room is reserved where nothing can be — the legends are
+bounded where they are painted, with the week-date width measured, not by a rectangle whose
+near corner projects far outside them), and a lens shift (`setViewOffset`) centres the projected
+box, so only its SIZE has to fit: the camera looks at a fixed ground point while the towers rise
+above it, and fitting the distance alone left an empty band along one edge. The
 camera never sits closer than that, so the city can never be clipped by the canvas edge; a clipped
 city is what breaks the illusion that it stands on the card. Flying objects stay over the city and
 appear/disappear by scale, never by crossing the edge. Two earlier designs were dropped: a

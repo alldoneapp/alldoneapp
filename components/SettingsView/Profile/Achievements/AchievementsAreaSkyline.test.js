@@ -32,11 +32,13 @@ describe('Empty inbox card: 3D skyline vs 2D grid', () => {
 
         expect(skyline).toHaveLength(1)
         expect(skyline[0].props.emptyInboxDays).toEqual(['2026-01-02'])
-        expect(texts(tree)).toContain('Empty inbox skyline description')
+        // Until the user picks a range, the card opens on the current week.
+        expect(skyline[0].props.weeks).toBe(1)
+        expect(texts(tree)).toContain('Empty inbox skyline week description')
         expect(texts(tree)).not.toContain('Monday short')
     })
 
-    it('switches between the month city and the year grid, and remembers the choice', () => {
+    it('switches between the week and month cities and the year grid, and remembers the choice', () => {
         canRenderSkyline.mockReturnValue(true)
         localStorage.clear()
         const tree = render()
@@ -55,7 +57,14 @@ describe('Empty inbox card: 3D skyline vs 2D grid', () => {
         expect(render().root.findAllByProps({ testID: 'skyline-double' })).toHaveLength(0)
 
         press('empty-inbox-range-month')
-        expect(tree.root.findAllByProps({ testID: 'skyline-double' }, { deep: false })).toHaveLength(1)
+        const month = tree.root.findAllByProps({ testID: 'skyline-double' }, { deep: false })
+        expect(month).toHaveLength(1)
+        expect(month[0].props.weeks).toBe(5)
+        expect(texts(tree)).toContain('Empty inbox skyline description')
+        expect(localStorage.getItem('alldone.emptyInbox.range')).toBe('month')
+
+        press('empty-inbox-range-week')
+        expect(tree.root.findAllByProps({ testID: 'skyline-double' }, { deep: false })[0].props.weeks).toBe(1)
         localStorage.clear()
     })
 

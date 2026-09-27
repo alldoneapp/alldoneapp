@@ -4,6 +4,12 @@ import { buildEmptyInboxActivityWeeks } from '../AchievementsHelper'
 export const SKYLINE_WEEKS = 5
 
 /**
+ * How many Monday-aligned weeks each city range draws: the current week alone, or the last month.
+ * The Year range is the 2D grid and has no city.
+ */
+export const SKYLINE_RANGE_WEEKS = { week: 1, month: SKYLINE_WEEKS }
+
+/**
  * Turns the empty-inbox weeks and the per-project statistics into one record per building.
  *
  * Pure on purpose: the scene only draws what this returns, so everything that decides what a
@@ -48,8 +54,8 @@ export function buildSkylineDays(weeks, statisticsByProject = {}, projects = [])
     return days
 }
 
-export const buildSkylineWeeks = (emptyInboxDays, todayTimestamp) =>
-    buildEmptyInboxActivityWeeks(emptyInboxDays, SKYLINE_WEEKS, todayTimestamp)
+export const buildSkylineWeeks = (emptyInboxDays, todayTimestamp, numberOfWeeks = SKYLINE_WEEKS) =>
+    buildEmptyInboxActivityWeeks(emptyInboxDays, numberOfWeeks, todayTimestamp)
 
 /** Tallest building, in scene units (one day is one unit wide). */
 export const SKYLINE_MAX_HEIGHT = 3.2
@@ -150,13 +156,17 @@ export const SKYLINE_REST_VIEW = { azimuth: -0.35, elevation: 0.78 }
  * and dips between roughly 38° and 49° above the horizon on a different period, so the flight does
  * not repeat as a simple back-and-forth. `t == null` (reduced motion) is the resting view.
  *
+ * `sweep` scales the azimuth (resting angle and swing alike). A single week is a long thin strip,
+ * and turning a strip diagonal to the camera costs far more of its size than turning a 7×5 block,
+ * so the week view flies a narrower arc and stays closer to frontal.
+ *
  * @returns {{ azimuth: number, elevation: number }} radians; azimuth 0 = looking from the month
  *   legend side, elevation = angle above the ground plane
  */
-export function getOrbitView(t) {
-    if (t == null || !Number.isFinite(t)) return { ...SKYLINE_REST_VIEW }
+export function getOrbitView(t, sweep = 1) {
+    if (t == null || !Number.isFinite(t)) return { ...SKYLINE_REST_VIEW, azimuth: SKYLINE_REST_VIEW.azimuth * sweep }
     return {
-        azimuth: SKYLINE_REST_VIEW.azimuth + Math.sin(t * 0.045) * 0.55,
+        azimuth: (SKYLINE_REST_VIEW.azimuth + Math.sin(t * 0.045) * 0.55) * sweep,
         elevation: 0.76 + Math.sin(t * 0.031 + 1.1) * 0.1,
     }
 }
