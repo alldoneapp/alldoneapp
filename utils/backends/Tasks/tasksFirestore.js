@@ -3066,6 +3066,7 @@ export async function moveTasksFromMiddleOfWorkflow(
             loggedUserId: loggedUser.uid,
             estimationMinutes: taskEstimation,
             checkBoxId,
+            generatedTimeLog: isDayRateTimeLogTask(task),
         })
 
         logDoneTasks(task.userId, loggedUser.uid, true)
@@ -3322,6 +3323,7 @@ export async function moveTasksFromOpen(
                 loggedUserId: loggedUser.uid,
                 estimationMinutes: taskEstimation,
                 checkBoxId,
+                generatedTimeLog: isDayRateTimeLogTask(task),
             })
         }
 

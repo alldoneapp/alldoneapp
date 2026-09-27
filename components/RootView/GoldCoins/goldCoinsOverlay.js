@@ -319,7 +319,7 @@ function createOverlay() {
             // Unlit on purpose: lit paper washes out to near-white on the app's white background.
             // Each note is two single-sided planes back to back, so its back reads the right way
             // round instead of mirrored.
-            const texture = noteTexture(currency)
+            const texture = noteTexture(currency || 'EUR')
             planCashBurst(from, amount, random, window.innerWidth).forEach(note => {
                 const material = new MeshBasicMaterial({ map: texture, transparent: true })
                 const mesh = new Group()

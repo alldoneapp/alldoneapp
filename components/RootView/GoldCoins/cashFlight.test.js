@@ -4,8 +4,8 @@ const project = { hourlyRatesData: { currency: 'EUR', hourlyRates: { me: 90, oth
 
 describe('money earned by a completed task', () => {
     it("is the estimate at the user's hourly rate, like the statistics count it", () => {
-        expect(getTaskEarnings(project, 'me', 25)).toEqual({ amount: 37.5, currency: 'EUR' })
-        expect(getTaskEarnings(project, 'me', 60)).toEqual({ amount: 90, currency: 'EUR' })
+        expect(getTaskEarnings(project, 'me', 25)).toEqual({ amount: 37.5, currency: 'EUR', dayRate: false })
+        expect(getTaskEarnings(project, 'me', 60)).toEqual({ amount: 90, currency: 'EUR', dayRate: false })
     })
 
     it('is nothing without a rate, an estimate or a currency', () => {
@@ -14,6 +14,19 @@ describe('money earned by a completed task', () => {
         expect(getTaskEarnings(project, 'me', 0)).toBeNull()
         expect(getTaskEarnings({ hourlyRatesData: { hourlyRates: { me: 90 } } }, 'me', 60)).toBeNull()
         expect(getTaskEarnings(undefined, 'me', 60)).toBeNull()
+    })
+
+    it('on a day-rate project, gives every task its share of the day', () => {
+        const dayRateProject = { ...project, dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 } }
+        // 8h at 90 = 720 a day, made by 5 tasks: 144 each — with or without an estimate.
+        expect(getTaskEarnings(dayRateProject, 'me', 0)).toEqual({ amount: 144, currency: 'EUR', dayRate: true })
+        expect(getTaskEarnings(dayRateProject, 'me', 120)).toEqual({ amount: 144, currency: 'EUR', dayRate: true })
+        // Defaults when the config leaves them out.
+        expect(getTaskEarnings({ ...project, dayRateTimeLog: { enabled: true } }, 'me', 0).amount).toBe(144)
+        // A day rate without an hourly rate still earns, just without a figure.
+        expect(getTaskEarnings(dayRateProject, 'other', 0)).toEqual({ amount: null, currency: 'EUR', dayRate: true })
+        // Switched off: back to billing by the hour.
+        expect(getTaskEarnings({ ...project, dayRateTimeLog: { enabled: false } }, 'me', 0)).toBeNull()
     })
 
     it("shows the amount in the project's currency", () => {
@@ -26,6 +39,7 @@ describe('money earned by a completed task', () => {
         expect(getNoteCount(1)).toBe(3)
         expect(getNoteCount(100)).toBeGreaterThan(getNoteCount(20))
         expect(getNoteCount(100000)).toBe(12)
+        expect(getNoteCount(null)).toBe(5)
     })
 
     it('throws the notes up, lets them flutter down slowly, and fades them out', () => {

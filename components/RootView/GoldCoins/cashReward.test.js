@@ -25,6 +25,47 @@ describe('celebrating money earned', () => {
         expect(launchCash.mock.calls[0][0].label).toMatch(/40/)
     })
 
+    it('throws cash for every task on a day-rate project, even without an estimate', async () => {
+        const dayRate = { ...project, dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 4 } }
+        celebrateTaskEarnings({
+            project: dayRate,
+            userId: 'me',
+            loggedUserId: 'me',
+            estimationMinutes: 0,
+            checkBoxId: 'box-1',
+        })
+        await flush()
+        expect(launchCash).toHaveBeenCalledTimes(1)
+        expect(launchCash.mock.calls[0][0].amount).toBe(160)
+    })
+
+    it('throws the cash without a figure when a day-rate project has no rate for the user', async () => {
+        const dayRate = { hourlyRatesData: { currency: 'EUR', hourlyRates: {} }, dayRateTimeLog: { enabled: true } }
+        celebrateTaskEarnings({
+            project: dayRate,
+            userId: 'me',
+            loggedUserId: 'me',
+            estimationMinutes: 0,
+            checkBoxId: 'box-1',
+        })
+        await flush()
+        expect(launchCash).toHaveBeenCalledTimes(1)
+        expect(launchCash.mock.calls[0][0].label).toBeNull()
+    })
+
+    it('ignores the generated day-rate time log task', async () => {
+        celebrateTaskEarnings({
+            project: { ...project, dayRateTimeLog: { enabled: true } },
+            userId: 'me',
+            loggedUserId: 'me',
+            estimationMinutes: 0,
+            checkBoxId: 'box-1',
+            generatedTimeLog: true,
+        })
+        await flush()
+        expect(launchCash).not.toHaveBeenCalled()
+    })
+
     it("does nothing for someone else's money, no rate, or no checkbox on screen", async () => {
         celebrateTaskEarnings({
             project,
