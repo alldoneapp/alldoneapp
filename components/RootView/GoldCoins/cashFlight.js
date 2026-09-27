@@ -9,41 +9,25 @@
 
 const clamp01 = value => Math.max(0, Math.min(1, value))
 
-// Mirrors `normalizeDayRateTimeLogConfig` in utils/DayRateTimeLogHelper.js (defaults included). Not
-// imported: that module pulls in the store and Firestore, and this one must stay pure.
-const DEFAULT_DAY_RATE_TARGET_MINUTES = 480
-const DEFAULT_DAY_RATE_TRIGGER_TASKS = 5
-const readDayRate = config => {
-    if (!config || config.enabled !== true) return null
-    const targetMinutes = Number(config.targetMinutes)
-    const triggerTasks = Number(config.triggerTasks)
-    return {
-        targetMinutes: targetMinutes > 0 ? targetMinutes : DEFAULT_DAY_RATE_TARGET_MINUTES,
-        triggerTasks: triggerTasks > 0 ? Math.floor(triggerTasks) : DEFAULT_DAY_RATE_TRIGGER_TASKS,
-    }
-}
+// A project billed by the day (`dayRateTimeLog.enabled`, see utils/DayRateTimeLogHelper.js).
+const billsByTheDay = project => !!(project && project.dayRateTimeLog && project.dayRateTimeLog.enabled === true)
 
 /**
  * What completing this task earned `userId`, or null when it earned nothing.
  *
- * Two billing models. By the HOUR (the default), the task earned its estimate at the user's rate.
- * By the DAY (`project.dayRateTimeLog` enabled), the project bills a whole day — its target time at
- * the user's rate — once enough tasks are done, so EVERY task earns and each is shown its share:
- * day rate / tasks that make the day. A day-rate project without an hourly rate still earns (the
- * cash flies) but has no figure to show, so `amount` is null.
+ * Two billing models. By the HOUR (the default), the task earned its estimate at the user's rate,
+ * and that figure is shown. By the DAY (`project.dayRateTimeLog` enabled), the project bills a whole
+ * day, and the number of completed tasks is only the signal that the day counts as worked — no
+ * single task earns a share of it. So every task throws cash, but `amount` is null: there is no
+ * honest per-task figure to show.
  *
  * @returns {{ amount: number|null, currency: string|null, dayRate: boolean } | null}
  */
 export function getTaskEarnings(project, userId, estimationMinutes) {
     const data = project && project.hourlyRatesData
     const currency = (data && data.currency) || null
+    if (billsByTheDay(project)) return { amount: null, currency, dayRate: true }
     const rate = Number(data && data.hourlyRates && data.hourlyRates[userId])
-    const dayRate = readDayRate(project && project.dayRateTimeLog)
-    if (dayRate) {
-        if (!currency || !(rate > 0)) return { amount: null, currency, dayRate: true }
-        const amount = Math.round(((dayRate.targetMinutes / 60) * rate * 100) / dayRate.triggerTasks) / 100
-        return { amount, currency, dayRate: true }
-    }
     const minutes = Number(estimationMinutes)
     if (!currency || !(rate > 0) || !(minutes > 0)) return null
     const amount = Math.round((minutes / 60) * rate * 100) / 100

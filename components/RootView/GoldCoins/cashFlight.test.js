@@ -16,14 +16,10 @@ describe('money earned by a completed task', () => {
         expect(getTaskEarnings(undefined, 'me', 60)).toBeNull()
     })
 
-    it('on a day-rate project, gives every task its share of the day', () => {
+    it('on a day-rate project, throws cash for every task but names no amount', () => {
         const dayRateProject = { ...project, dayRateTimeLog: { enabled: true, targetMinutes: 480, triggerTasks: 5 } }
-        // 8h at 90 = 720 a day, made by 5 tasks: 144 each — with or without an estimate.
-        expect(getTaskEarnings(dayRateProject, 'me', 0)).toEqual({ amount: 144, currency: 'EUR', dayRate: true })
-        expect(getTaskEarnings(dayRateProject, 'me', 120)).toEqual({ amount: 144, currency: 'EUR', dayRate: true })
-        // Defaults when the config leaves them out.
-        expect(getTaskEarnings({ ...project, dayRateTimeLog: { enabled: true } }, 'me', 0).amount).toBe(144)
-        // A day rate without an hourly rate still earns, just without a figure.
+        expect(getTaskEarnings(dayRateProject, 'me', 0)).toEqual({ amount: null, currency: 'EUR', dayRate: true })
+        expect(getTaskEarnings(dayRateProject, 'me', 120)).toEqual({ amount: null, currency: 'EUR', dayRate: true })
         expect(getTaskEarnings(dayRateProject, 'other', 0)).toEqual({ amount: null, currency: 'EUR', dayRate: true })
         // Switched off: back to billing by the hour.
         expect(getTaskEarnings({ ...project, dayRateTimeLog: { enabled: false } }, 'me', 0)).toBeNull()

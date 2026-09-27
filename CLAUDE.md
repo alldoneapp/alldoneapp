@@ -1332,11 +1332,9 @@ both completion paths of `tasksFirestore.js`) throws banknotes out of the checkb
 and floats the amount above it (`+37,50 €`, in the user's locale). The sum is `estimate / 60 * rate`
 (`getTaskEarnings`) — the same number the Statistics view and revenue OKRs count, so the animation
 never claims money the statistics do not. On a DAY-RATE project (`dayRateTimeLog.enabled`) every task
-throws cash, estimate or not, and shows its share of the day: target time × rate ÷ the configured
-tasks that make the day (8h at 90 over 5 tasks = +144 each); without an hourly rate the notes fly
-with no figure. The generated "Time log for day rate" task never does (`generatedTimeLog`).
-`cashFlight.js` repeats `normalizeDayRateTimeLogConfig`'s defaults rather than importing them,
-because `DayRateTimeLogHelper` pulls in the store and Firestore. Notes are thrown away from the nearer screen edge, drawn
+throws cash, estimate or not, but with NO figure: the day is billed as a whole, and the completed-task
+count is only the signal that the day counts as worked, so no task earns a share worth showing. The
+generated "Time log for day rate" task never throws cash (`generatedTimeLog`). Notes are thrown away from the nearer screen edge, drawn
 unlit (lit paper washes out on the white app) with a correctly oriented back, and flutter down like
 paper (`cashFlight.js`). No rate, no estimate, someone else's task, no WebGL or reduced motion: no
 cash, and it never throws into the completion path. Both overlays load through
