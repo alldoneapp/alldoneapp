@@ -9,15 +9,45 @@
 
 const clamp01 = value => Math.max(0, Math.min(1, value))
 
-/** What completing this task earned `userId`, or null when it earned nothing we can name. */
+// Mirrors `normalizeDayRateTimeLogConfig` in utils/DayRateTimeLogHelper.js (defaults included). Not
+// imported: that module pulls in the store and Firestore, and this one must stay pure.
+const DEFAULT_DAY_RATE_TARGET_MINUTES = 480
+const DEFAULT_DAY_RATE_TRIGGER_TASKS = 5
+const readDayRate = config => {
+    if (!config || config.enabled !== true) return null
+    const targetMinutes = Number(config.targetMinutes)
+    const triggerTasks = Number(config.triggerTasks)
+    return {
+        targetMinutes: targetMinutes > 0 ? targetMinutes : DEFAULT_DAY_RATE_TARGET_MINUTES,
+        triggerTasks: triggerTasks > 0 ? Math.floor(triggerTasks) : DEFAULT_DAY_RATE_TRIGGER_TASKS,
+    }
+}
+
+/**
+ * What completing this task earned `userId`, or null when it earned nothing.
+ *
+ * Two billing models. By the HOUR (the default), the task earned its estimate at the user's rate.
+ * By the DAY (`project.dayRateTimeLog` enabled), the project bills a whole day — its target time at
+ * the user's rate — once enough tasks are done, so EVERY task earns and each is shown its share:
+ * day rate / tasks that make the day. A day-rate project without an hourly rate still earns (the
+ * cash flies) but has no figure to show, so `amount` is null.
+ *
+ * @returns {{ amount: number|null, currency: string|null, dayRate: boolean } | null}
+ */
 export function getTaskEarnings(project, userId, estimationMinutes) {
     const data = project && project.hourlyRatesData
-    const currency = data && data.currency
+    const currency = (data && data.currency) || null
     const rate = Number(data && data.hourlyRates && data.hourlyRates[userId])
+    const dayRate = readDayRate(project && project.dayRateTimeLog)
+    if (dayRate) {
+        if (!currency || !(rate > 0)) return { amount: null, currency, dayRate: true }
+        const amount = Math.round(((dayRate.targetMinutes / 60) * rate * 100) / dayRate.triggerTasks) / 100
+        return { amount, currency, dayRate: true }
+    }
     const minutes = Number(estimationMinutes)
     if (!currency || !(rate > 0) || !(minutes > 0)) return null
     const amount = Math.round((minutes / 60) * rate * 100) / 100
-    return amount > 0 ? { amount, currency } : null
+    return amount > 0 ? { amount, currency, dayRate: false } : null
 }
 
 export function formatEarnings(amount, currency, locale) {
@@ -29,7 +59,7 @@ export function formatEarnings(amount, currency, locale) {
 }
 
 /** More money, more notes — one per ~25 of the currency, between 3 and 12. */
-export const getNoteCount = amount => Math.max(3, Math.min(12, Math.round(amount / 25) + 2))
+export const getNoteCount = amount => (amount == null ? 5 : Math.max(3, Math.min(12, Math.round(amount / 25) + 2)))
 
 export const NOTE_LIFE = 1.9
 const GRAVITY = 900

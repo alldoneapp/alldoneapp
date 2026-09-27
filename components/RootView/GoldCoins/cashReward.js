@@ -3,15 +3,25 @@ import { loadGoldCoinsOverlay } from './loadGoldCoinsOverlay'
 
 /**
  * Called from the task completion paths, next to the done-time statistics update. When the task
- * earned the logged-in user real money (the project has an hourly rate for them and the task an
- * estimate), banknotes burst out of the task's checkbox on the shared 3D overlay. Everything that
+ * earned the logged-in user real money — the project has an hourly rate for them and the task an
+ * estimate, or the project bills by the day, where every task counts — banknotes burst out of the
+ * task's checkbox on the shared 3D overlay. Everything that
  * could make this cost anything on the completion path is deferred: the overlay and its WebGL check
  * are loaded lazily, nothing is awaited, and every failure is silent — it is a flourish, and the
  * gold coins still play either way.
  */
-export function celebrateTaskEarnings({ project, userId, loggedUserId, estimationMinutes, checkBoxId }) {
+export function celebrateTaskEarnings({
+    project,
+    userId,
+    loggedUserId,
+    estimationMinutes,
+    checkBoxId,
+    generatedTimeLog,
+}) {
     try {
-        if (!userId || userId !== loggedUserId || !checkBoxId || typeof document === 'undefined') return
+        // The generated "Time log for day rate" task is bookkeeping, not work anyone did.
+        if (generatedTimeLog || !userId || userId !== loggedUserId || !checkBoxId || typeof document === 'undefined')
+            return
         const earnings = getTaskEarnings(project, userId, estimationMinutes)
         if (!earnings) return
         const { canRenderSkyline } = require('../../SettingsView/Profile/Achievements/Skyline/webglSupport')
@@ -28,7 +38,7 @@ export function celebrateTaskEarnings({ project, userId, loggedUserId, estimatio
                     from,
                     amount: earnings.amount,
                     currency: earnings.currency,
-                    label: formatEarnings(earnings.amount, earnings.currency, locale),
+                    label: earnings.amount == null ? null : formatEarnings(earnings.amount, earnings.currency, locale),
                 })
             )
             .catch(() => {})
