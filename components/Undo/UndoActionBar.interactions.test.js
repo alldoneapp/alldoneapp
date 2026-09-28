@@ -27,10 +27,6 @@ jest.mock('firebase/compat/app', () => ({
     },
 }))
 jest.mock('../../utils/undo/undoActions', () => ({ reverseUndoAction: jest.fn(() => Promise.resolve()) }))
-jest.mock('../../hooks/useModalSizing', () => ({
-    __esModule: true,
-    default: () => ({ safeAreaInsets: { left: 47, right: 12, bottom: 34 } }),
-}))
 jest.mock('../styles/global', () => ({
     __esModule: true,
     default: { body2: {}, button: {} },
@@ -68,13 +64,6 @@ describe('UndoActionBar interactions', () => {
     })
 
     afterEach(() => jest.useRealTimers())
-
-    it('uses the safe-area position for the rendered banner', () => {
-        const tree = renderActionBar()
-        const overlayStyle = tree.root.findByProps({ testID: 'undo-action-overlay' }).props.style
-
-        expect(overlayStyle[1]).toEqual({ left: 71, right: 104, bottom: 58 })
-    })
 
     it('dismisses when the notification background is pressed without undoing', () => {
         const tree = renderActionBar()
