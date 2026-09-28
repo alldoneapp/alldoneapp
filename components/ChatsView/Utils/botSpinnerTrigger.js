@@ -29,3 +29,29 @@ export const shouldConsumeBotSpinnerTrigger = (trigger, projectId, chatId, now =
 
     return true
 }
+
+// The trigger only says "start waiting"; this says "stop waiting". The code that started a
+// server-hosted run knows when that request has settled — succeeded, failed, or was refused
+// before the server posted anything — while the Chat DV only knows that no assistant message
+// has arrived yet. Without this a refused or failed run left the placeholder up for the full
+// ASSISTANT_LOADING_TIMEOUT_MS, which reads as "the assistant is still working" long after it
+// stopped. A settled request ends the wait in the chat it was started for, whether or not the
+// Chat DV has consumed the trigger yet.
+const waitEndListeners = new Set()
+
+export const subscribeBotSpinnerWaitEnd = listener => {
+    waitEndListeners.add(listener)
+    return () => waitEndListeners.delete(listener)
+}
+
+export const endBotSpinnerWait = (projectId, chatId) => {
+    if (!projectId || !chatId) return
+    // Lazy: this module is imported by chat rows and tests that must not pull in the store.
+    const store = require('../../../redux/store').default
+    const { setTriggerBotSpinner } = require('../../../redux/actions')
+    const pending = store.getState().triggerBotSpinner
+    if (pending && typeof pending === 'object' && pending.projectId === projectId && pending.chatId === chatId) {
+        store.dispatch(setTriggerBotSpinner(null))
+    }
+    waitEndListeners.forEach(listener => listener(projectId, chatId))
+}

@@ -44,7 +44,7 @@ import {
     shouldShowAssistantScrollIndicator,
     snapshotAssistantMessageIds,
 } from '../Utils/assistantWaiting'
-import { shouldConsumeBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
+import { shouldConsumeBotSpinnerTrigger, subscribeBotSpinnerWaitEnd } from '../Utils/botSpinnerTrigger'
 import { isAssistantEnabledScopeMatch } from '../Utils/assistantEnabledScope'
 import { ASSISTANT_LOADING_TIMEOUT_MS, resolveEffectiveMessageLoading } from './EditorView/messageLoadingState'
 import { getLinkedEmailFromMessage, getLinkedEmailsFromMessages } from './linkedEmailActions'
@@ -139,18 +139,29 @@ export default function ChatBoard({
         hasNewMessagesBelow,
     } = useChatAutoScroll({ scrollViewRef, newestMessageSignal: `${lastMessageid}:${lastMessageLength}` })
 
+    // A wait armed by a spinner trigger starts on MOUNT, before the thread history has arrived. The
+    // "which assistant messages already exist" snapshot is therefore deferred until it has: taken
+    // against the empty pre-load list, the history's first snapshot would count every earlier
+    // assistant message as the answer and drop the placeholder at once (a second "Enrich profile"
+    // on the same contact, or any server-started run in a thread the assistant has spoken in).
+    // `null` means "not taken yet", and nothing can satisfy the wait until it is.
     const startWaitingForBotAnswer = () => {
-        assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(messages, getAssistant)
+        assistantMessageIdsAtWaitStartRef.current = messages.loaded
+            ? snapshotAssistantMessageIds(messages, getAssistant)
+            : null
         setWaitingForBotAnswer(true)
     }
 
+    useEffect(() => {
+        if (!waitingForBotAnswer || assistantMessageIdsAtWaitStartRef.current !== null || !messages.loaded) return
+        assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(messages, getAssistant)
+    }, [waitingForBotAnswer, messages.loaded])
+
     // Only a new assistant message can satisfy the wait. Older assistant messages may still be
     // among the most recent messages while the user's new comment is being persisted.
-    const hasNewAssistantMessage = hasNewVisibleAssistantMessage(
-        messages,
-        assistantMessageIdsAtWaitStartRef.current,
-        getAssistant
-    )
+    const hasNewAssistantMessage =
+        assistantMessageIdsAtWaitStartRef.current !== null &&
+        hasNewVisibleAssistantMessage(messages, assistantMessageIdsAtWaitStartRef.current, getAssistant)
     const assistantResponseIsLoading =
         waitingForBotAnswer ||
         hasLoadingAssistantMessage(
@@ -360,6 +371,16 @@ export default function ChatBoard({
         if (isAssistantEnabledScopeMatch(assistantEnabledScope, projectId, chat.id)) return
         dispatch(setAssistantEnabled(false))
     }, [assistantEnabled, assistantEnabledScope, projectId, chat.id])
+
+    // The code that started a server-hosted run ends the wait once the request has settled, so a
+    // refused or failed run does not leave the placeholder up until the timeout below.
+    useEffect(
+        () =>
+            subscribeBotSpinnerWaitEnd((endedProjectId, endedChatId) => {
+                if (endedProjectId === projectId && endedChatId === chat.id) setWaitingForBotAnswer(false)
+            }),
+        [projectId, chat.id]
+    )
 
     // Safety net: never leave the "assistant is working" placeholder up forever when the
     // answer never arrives (failed run, assistant not actually triggered, lost subscription).
