@@ -26,15 +26,20 @@ const PARALLEL_READ_TOOLS = new Set([
 const MAX_PARALLEL_TOOL_CALLS = 5
 const canRunToolInParallel = call => PARALLEL_READ_TOOLS.has(call?.function?.name)
 
+// `recoverError(error, call, index)` may turn a failed call into a result the model can read
+// (return a value) or leave it fatal (return undefined). Once a call has failed, calls that have
+// not started yet are not run — they may depend on the one that failed — and get
+// `skippedResult(call, index)` instead, so every call id still has an output.
 async function executeToolCallBatch(
     calls,
     execute,
-    { canRunInParallel = canRunToolInParallel, onState = () => {} } = {}
+    { canRunInParallel = canRunToolInParallel, onState = () => {}, recoverError = null, skippedResult = null } = {}
 ) {
     const results = new Array(calls.length)
     const active = new Set()
     let completed = 0
     let failure = null
+    let recoveredFailure = false
     const publish = () => {
         // Progress is advisory and must never orphan an in-flight operation.
         try {
@@ -43,13 +48,26 @@ async function executeToolCallBatch(
     }
     const run = async index => {
         if (failure) return
+        if (recoveredFailure) {
+            results[index] = skippedResult ? skippedResult(calls[index], index) : undefined
+            completed++
+            publish()
+            return
+        }
         active.add(index)
         try {
             publish()
             results[index] = await execute(calls[index], index)
             completed++
         } catch (error) {
-            failure ||= error
+            const recovered = recoverError ? recoverError(error, calls[index], index) : undefined
+            if (recovered === undefined) {
+                failure ||= error
+            } else {
+                results[index] = recovered
+                recoveredFailure = true
+                completed++
+            }
         } finally {
             active.delete(index)
             publish()

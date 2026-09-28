@@ -2182,6 +2182,35 @@ successful: if the document update fails, the body has changed, the note documen
 `functions/Notes/onCreateNoteFunctions.test.js` and
 `functions/shared/NoteService.persistOrder.test.js`.
 
+### Never read a note with `Y.Text.toString()` where a model or an offset is involved
+
+`toString()` concatenates string content only, so every embed (URL chip, mention, task tag,
+image) vanishes, while in Y.Text coordinates each embed still occupies one position. On note
+8b4wQWfKyLXpZFtqYsNC (2026-09-28) that cost both ways: the meeting-summary run wrote a calendar
+link, `update_note` read the note back via `getStorageContent` (then `toString()`) and showed
+`Calendar event: Re-Design Juno — ` with nothing after the dash, so the assistant re-patched the
+section seven times; and patch offsets computed on that string landed one position early per
+preceding embed. `functions/shared/noteTextProjection.js` is the fix: `projectYText` renders
+embeds as text and `toYIndex` maps a text offset back (an offset inside an embed snaps to one
+side — embeds are atomic). `getStorageContent` returns the projection, and patch mode resolves
+each edit against a fresh projection and maps it into Y.Text. Previews still use `toString()`
+on purpose. Pinned by `shared/noteTextProjection.test.js` and the `notes with embeds` block in
+`shared/NoteService.test.js`.
+
+Two things from the same run. **A failed tool call is returned to the model as its result**
+(`Assistant/toolCallFailure.js`, via `executeToolCallBatch`'s `recoverError`) instead of ending
+the run. That run had finished its work and then made a no-op `update_task`, and the user's whole
+reply was `Error executing update_task: …`. Cancellation and an exhausted time budget stay fatal,
+calls later in the same batch are skipped with a "not executed" result, and after
+`MAX_CONSECUTIVE_FAILED_TOOL_ROUNDS` (3) rounds in which every call failed the old stop applies,
+so an unattended run's `failOnToolExecutionError` still fires for a genuinely broken tool. This
+covers the interactive `storeChunks` loop only; `collectAssistantTextWithToolCalls` (Gmail
+labeling etc.) still fails fast. **And each `update_note` took ~50s** because
+`SearchService.findNotesBySearchCriteria` listed every project the user belongs to (~190
+sequential reads) and then probed each for the note (up to ~190 more). With both `noteId` and
+`projectId` it now does three reads (`findNoteInProject`, same membership + visibility rules);
+the fallback paths read projects at bounded concurrency and check the caller's project first.
+
 ### A recurrence copy must carry its goal's privacy, not just its goal id
 
 `parentGoalId` and `parentGoalIsPublicFor` are one fact written as two fields: the open-task lists

@@ -10508,6 +10508,10 @@ async function storeChunks(
                 let pendingAttachmentPayload = null
                 let pendingContinuation = null
                 const continuationGuard = createWorkflowContinuationGuard()
+                // A failed tool call is handed back to the model as its result instead of ending
+                // the run (see toolCallFailure.js); only a model that keeps failing is stopped.
+                const toolCallFailure = require('./toolCallFailure')
+                let consecutiveFailedToolRounds = 0
 
                 while (
                     currentToolCalls &&
@@ -10689,8 +10693,27 @@ async function storeChunks(
                                 onState: state => {
                                     batchState = state
                                 },
+                                recoverError: (error, toolCall) => {
+                                    if (!toolCallFailure.isRecoverableToolError(error)) return undefined
+                                    console.warn('🔧 TOOL CALL FAILED: returning the error to the model', {
+                                        toolName: toolCall?.function?.name,
+                                        error: error?.message,
+                                        iteration: toolCallIteration,
+                                    })
+                                    return toolCallFailure.buildFailedToolExecution(toolCall, error)
+                                },
+                                skippedResult: toolCall => toolCallFailure.buildSkippedToolExecution(toolCall),
                             }
                         )
+                        consecutiveFailedToolRounds = toolCallFailure.countConsecutiveFailedRounds(
+                            consecutiveFailedToolRounds,
+                            toolExecutions
+                        )
+                        if (consecutiveFailedToolRounds >= toolCallFailure.MAX_CONSECUTIVE_FAILED_TOOL_ROUNDS) {
+                            throw (
+                                toolCallFailure.getRoundFailure(toolExecutions) || new Error('Tool calls kept failing.')
+                            )
+                        }
                     } catch (error) {
                         if (error instanceof AssistantRunCancelledError) throw error
                         await progressWrites
