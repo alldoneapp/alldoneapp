@@ -1,30 +1,32 @@
 import { StyleSheet } from 'react-native'
 
 import { colors, hexColorToRGBa } from '../styles/global'
-import { FLOATING_ACTION_CLEARANCE } from '../UIComponents/floatingActionLayout'
+import {
+    FLOATING_ACTION_SIZE,
+    FLOATING_ACTION_STACK_GAP,
+    FLOATING_ACTION_VIEWPORT_GAP,
+    getFloatingActionBottom,
+} from '../UIComponents/floatingActionLayout'
+
+// Leave the same edge gap as the task action, and reserve its width plus a gap
+// so the two controls can share a row even on a narrow phone.
+export const getUndoOverlayPosition = ({ bottom = 0, left = 0, right = 0 } = {}) => ({
+    left: FLOATING_ACTION_VIEWPORT_GAP + left,
+    right: FLOATING_ACTION_VIEWPORT_GAP + right + FLOATING_ACTION_SIZE + FLOATING_ACTION_STACK_GAP,
+    bottom: getFloatingActionBottom(bottom),
+})
 
 const undoActionBarStyles = StyleSheet.create({
     overlay: {
         position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
         zIndex: 100000,
-        alignItems: 'center',
+        alignItems: 'flex-start',
     },
     viewport: {
-        // SafeAreaView's web styles use paddingLeft/paddingRight, which override paddingHorizontal.
         width: '100%',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-    },
-    mobileViewport: {
-        paddingHorizontal: 24,
+        alignItems: 'flex-start',
     },
     container: {
-        // Clear the task board's bottom-right floating action at narrow widths,
-        // where this full-width banner and the action share horizontal space.
-        marginBottom: FLOATING_ACTION_CLEARANCE,
         minHeight: 48,
         maxWidth: 560,
         width: '100%',

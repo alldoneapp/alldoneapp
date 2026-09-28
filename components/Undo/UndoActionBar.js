@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, SafeAreaView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Animated, Text, TouchableOpacity, View } from 'react-native'
 import firebase from 'firebase/compat/app'
 import { useSelector } from 'react-redux'
 
@@ -7,7 +7,8 @@ import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 import { reverseUndoAction } from '../../utils/undo/undoActions'
 import { buildUndoActionGroup, reverseUndoActionGroup, UNDO_BURST_SETTLE_MS } from '../../utils/undo/undoActionGrouping'
-import undoActionBarStyles from './undoActionBarStyles'
+import useModalSizing from '../../hooks/useModalSizing'
+import undoActionBarStyles, { getUndoOverlayPosition } from './undoActionBarStyles'
 import { abbreviateUndoLabel } from './undoActionLabel'
 import useUndoActionBarMotion, { UNDO_DISPLAY_TIME_MS } from './undoActionBarMotion'
 
@@ -24,7 +25,7 @@ const isTypingTarget = target => {
 export default function UndoActionBar() {
     const loggedIn = useSelector(state => state.loggedIn)
     const userId = useSelector(state => state.loggedUser?.uid)
-    const mobile = useSelector(state => state.smallScreenNavigation)
+    const { safeAreaInsets } = useModalSizing()
     const [group, setGroup] = useState(null)
     const [pendingGroup, setPendingGroup] = useState(null)
     const [actions, setActions] = useState([])
@@ -194,11 +195,12 @@ export default function UndoActionBar() {
     const stopPropagation = event => event?.stopPropagation?.()
 
     return (
-        <SafeAreaView pointerEvents="box-none" style={undoActionBarStyles.overlay}>
-            <View
-                pointerEvents="box-none"
-                style={[undoActionBarStyles.viewport, mobile && undoActionBarStyles.mobileViewport]}
-            >
+        <View
+            pointerEvents="box-none"
+            style={[undoActionBarStyles.overlay, getUndoOverlayPosition(safeAreaInsets)]}
+            testID="undo-action-overlay"
+        >
+            <View pointerEvents="box-none" style={undoActionBarStyles.viewport}>
                 <Animated.View
                     style={[undoActionBarStyles.container, motion.containerStyle]}
                     // A banner on its way out must not swallow a click meant for the app behind it.
@@ -281,7 +283,7 @@ export default function UndoActionBar() {
                     )}
                 </Animated.View>
             </View>
-        </SafeAreaView>
+        </View>
     )
 }
 
