@@ -26,6 +26,12 @@ import useLoadingMore from '../../hooks/useLoadingMore'
 import FeedsListSkeleton from './FeedsListSkeleton'
 import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
 
+// Retries of the first pass while its objects are unreadable (backoff 0.5s, 1s, 2s, 4s, 8s, 10s:
+// ~25s in all). An access projection normally lands within seconds; after that the unreadable
+// objects are dropped so the rows that can be read render and the unread counter clears, instead
+// of the project showing an empty header behind a badge forever.
+export const MAX_INITIAL_LOAD_RETRIES = 6
+
 export default function FeedsGlobalList({
     projectId,
     currentDateFormated,
@@ -122,8 +128,11 @@ export default function FeedsGlobalList({
             setFeedsOrderedArray,
             setDisplayedFeedsOrdered,
             newFeedsIds,
-            setNewFeedsIds
-        )
+            setNewFeedsIds,
+            undefined,
+            // Widening a list that already renders: an unreadable object is skipped, not retried.
+            { dropUnreadable: true }
+        ).catch(error => console.warn('Could not expand Updates feed', { projectId, error }))
     }
 
     const processInitialFeedsInTab = () => {
@@ -144,7 +153,8 @@ export default function FeedsGlobalList({
             setDisplayedFeedsOrdered,
             [],
             setNewFeedsIds,
-            isCurrent
+            isCurrent,
+            { dropUnreadable: initialLoadRetryCount.current >= MAX_INITIAL_LOAD_RETRIES }
         )
             .then(() => {
                 if (!isCurrent()) return

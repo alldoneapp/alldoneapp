@@ -7,6 +7,7 @@ import { CREATION_TYPES, FOLLOWED_TYPES } from './HelperFunctions'
 import store from '../../../redux/store'
 import { checkIfSelectedAllProjects } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import FeedHelper from '../../FeedView/Utils/FeedHelper'
+import { getFeedObjectDate } from '../../../utils/backends/Feeds/feedObjectDate'
 
 export const LOADING_MODE = 0
 export const NEW_FEEDS_MODE = 1
@@ -39,6 +40,35 @@ export const getLimitFeedAmountToDisplay = () => {
         : STANDARD_FEEDS_AMOUNT_TO_DISPLAY
 }
 
+// Object lookups on the Updates page resolve to one of three outcomes: an object to display, `null`
+// (the object behind the feed is gone - nothing to show), or a failed read. A failed read usually
+// means the object's access projection has not landed yet, so by default it rejects the whole pass
+// and the caller retries. With `dropUnreadable` (the caller has retried long enough, or is only
+// widening an already-rendered list) a failed read is dropped like a missing object instead, so one
+// unreadable object can no longer hold every other row - and the unread counter - hostage.
+const resolveFeedObjects = async (promises, dropUnreadable) => {
+    if (!dropUnreadable) return Promise.all(promises)
+    const results = await Promise.allSettled(promises)
+    const failures = results.filter(result => result.status === 'rejected')
+    if (failures.length > 0) {
+        console.warn('Dropping unreadable Updates feed objects', {
+            amount: failures.length,
+            error: failures[0].reason,
+        })
+    }
+    return results.map(result => (result.status === 'fulfilled' ? result.value : null))
+}
+
+const isDisplayableFeedObject = object => !!object && (object.type === 'user' || !FeedHelper.isPrivateTopic(object))
+
+const removeEmptyDates = feedsByDate => {
+    Object.keys(feedsByDate).forEach(date => {
+        if (Object.keys(feedsByDate[date]).length === 0) delete feedsByDate[date]
+    })
+}
+
+const getFeedDisplayDate = feed => moment(feed.lastChangeDate).format('YYYYMMDD')
+
 export const processInitialFeeds = async (
     activeMode,
     projectId,
@@ -49,7 +79,8 @@ export const processInitialFeeds = async (
     setDisplayedFeedsOrdered,
     newFeedsIds,
     setNewFeedsIds,
-    isCurrent = () => true
+    isCurrent = () => true,
+    { dropUnreadable = false } = {}
 ) => {
     const counterNewFeedsIds = []
     let showLikeNew = false
@@ -60,10 +91,12 @@ export const processInitialFeeds = async (
     const feedsByDate = {}
     const promises = []
     const promisesDate = []
+    const promisesObjectId = []
     feeds.forEach(feed => {
         const { lastChangeDate, objectId, id, type } = feed
-        const formatedDate = moment(lastChangeDate).format('YYYYMMDD')
-        const dateFormatedInverted = moment(lastChangeDate).format('DDMMYYYY')
+        const formatedDate = getFeedDisplayDate(feed)
+        // Grouped under the local day for display, but read from the day the object was filed under.
+        const dateFormatedInverted = getFeedObjectDate(feed)
         if (feed.showLikeNew === undefined) {
             feed.showLikeNew = showLikeNew
             if (showLikeNew) {
@@ -74,44 +107,52 @@ export const processInitialFeeds = async (
         const newFeedObject = { lastChangeDate, feeds: { [id]: feed } }
         const feedsInDate = feedsByDate[formatedDate]
 
-        if (feedsInDate) {
-            const feedObject = feedsInDate[objectId]
-            if (feedObject) {
-                feedObject.feeds[id] = feed
-            } else {
-                promisesDate.push(formatedDate)
-                promises.push(Backend.getFeedObject(projectId, dateFormatedInverted, objectId, type, lastChangeDate))
-                feedsInDate[objectId] = newFeedObject
-            }
+        if (feedsInDate && feedsInDate[objectId]) {
+            feedsInDate[objectId].feeds[id] = feed
         } else {
             promisesDate.push(formatedDate)
+            promisesObjectId.push(objectId)
             promises.push(Backend.getFeedObject(projectId, dateFormatedInverted, objectId, type, lastChangeDate))
-            feedsByDate[formatedDate] = { [objectId]: newFeedObject }
+            if (feedsInDate) {
+                feedsInDate[objectId] = newFeedObject
+            } else {
+                feedsByDate[formatedDate] = { [objectId]: newFeedObject }
+            }
         }
     })
 
-    const objects = await Promise.all(promises)
+    const objects = await resolveFeedObjects(promises, dropUnreadable)
     if (!isCurrent()) return
 
     for (let i = 0; i < objects.length; i++) {
         const object = objects[i]
-        object.isPrivate = object.isPublicFor && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-        const { id } = object
         const date = promisesDate[i]
-        if (object.type === 'user' || !FeedHelper.isPrivateTopic(object)) {
-            feedsByDate[date][id].object = object
+        const objectId = promisesObjectId[i]
+        if (isDisplayableFeedObject(object)) {
+            object.isPrivate = object.isPublicFor && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
+            feedsByDate[date][objectId].object = object
         } else {
-            delete feedsByDate[date][id]
+            delete feedsByDate[date][objectId]
         }
     }
+    removeEmptyDates(feedsByDate)
+    const displayedFeeds = feeds.filter(feed => feedsByDate[getFeedDisplayDate(feed)]?.[feed.objectId])
 
     if (setNewFeedsIds) {
         setNewFeedsIds([...newFeedsIds, ...counterNewFeedsIds])
     }
-    updateFeedsState(feedsByDate, feeds, setFeedsByDate, setDisplayedFeedsOrdered, setFeedsOrderedArray, feedActiveTab)
+    updateFeedsState(
+        feedsByDate,
+        displayedFeeds,
+        setFeedsByDate,
+        setDisplayedFeedsOrdered,
+        setFeedsOrderedArray,
+        feedActiveTab
+    )
     // Feed counters and feed documents are committed together, but the readerIds needed to read
     // projectsFeeds are projected by a later Cloud Function. A failed read must leave the unread
-    // counter in place so the list can retry when that projection arrives.
+    // counter in place so the list can retry when that projection arrives - unless the caller has
+    // given up on the unreadable objects, in which case the rows that could be read are the answer.
     if (activeMode === NEW_FEEDS_MODE) {
         Backend.resetAllNewFeeds(projectId, feedActiveTab)
     }
@@ -244,33 +285,35 @@ const removeFeed = (feedsByDate, formatedDate, objectId, feedId) => {
 }
 
 const fillFeedsWithObjects = async (projectId, feedsForAdd, showLikeNew) => {
-    const feedObjects = {}
+    const requestedObjectIds = []
     const promises = []
     feedsForAdd.forEach(feed => {
         const { objectId, lastChangeDate, type } = feed
-        if (!feedObjects[objectId]) {
-            feedObjects[objectId] = true
-            const dateFormatedInverted = moment(lastChangeDate).format('DDMMYYYY')
+        if (!requestedObjectIds.includes(objectId)) {
+            requestedObjectIds.push(objectId)
+            const dateFormatedInverted = getFeedObjectDate(feed)
             promises.push(Backend.getFeedObject(projectId, dateFormatedInverted, objectId, type, lastChangeDate))
         }
     })
-    const objects = await Promise.all(promises)
-    objects.forEach(object => {
-        object.isPrivate = object.isPublicFor && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
-        if (object.type === 'user' || !FeedHelper.isPrivateTopic(object)) {
-            feedObjects[object.id] = object
+    // New feeds merged into an already-rendered list: an object that cannot be shown is skipped
+    // rather than failing the whole merge.
+    const objects = await resolveFeedObjects(promises, true)
+    const feedObjects = {}
+    objects.forEach((object, index) => {
+        if (isDisplayableFeedObject(object)) {
+            object.isPrivate = object.isPublicFor && !object.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
+            feedObjects[requestedObjectIds[index]] = object
         }
     })
     const forAddFeedsCloned = []
     const forAddFeedData = []
     feedsForAdd.forEach(feed => {
         const { objectId } = feed
+        const object = feedObjects[objectId]
+        if (!object) return
         const clonedFeed = { ...feed, showLikeNew }
         forAddFeedsCloned.push(clonedFeed)
-        forAddFeedData.push({
-            feed: clonedFeed,
-            object: feedObjects[objectId],
-        })
+        forAddFeedData.push({ feed: clonedFeed, object })
     })
     return { forAddFeedData, forAddFeedsCloned }
 }
@@ -296,15 +339,18 @@ export const mergeFeedsInFeedsByDate = async (
         mergeLocalFeedInFeedsByDate(feedsByDate, feed, object)
     })
 
+    // Feeds whose object could not be shown were skipped, so trim by what was actually added.
+    const amountAdded = forAddFeedsCloned.length
+    const skipped = amountOfFeedsForAdd - amountAdded
     let newFeedsForDisplay
-    if (amountOfTotalFeeds > maxAmountOfFeedToDisplay) {
-        const lastFeeds = displayedFeedsOrdered.slice(maxAmountOfFeedToDisplay - amountOfFeedsForAdd)
+    if (amountOfTotalFeeds - skipped > maxAmountOfFeedToDisplay) {
+        const lastFeeds = displayedFeedsOrdered.slice(maxAmountOfFeedToDisplay - amountAdded)
         lastFeeds.forEach(feed => {
             removeFeedFromFeedsByDate(feedsByDate, feed)
         })
         newFeedsForDisplay = [
             ...forAddFeedsCloned,
-            ...displayedFeedsOrdered.slice(0, maxAmountOfFeedToDisplay - amountOfFeedsForAdd),
+            ...displayedFeedsOrdered.slice(0, maxAmountOfFeedToDisplay - amountAdded),
         ]
     } else {
         newFeedsForDisplay = [...forAddFeedsCloned, ...displayedFeedsOrdered]

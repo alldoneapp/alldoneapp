@@ -32,6 +32,22 @@ describe('selectNewFeeds', () => {
         expect(result.feedsData.map(feed => feed.objectTypes)).toEqual(['notes', 'tasks', 'notes', 'tasks'])
     })
 
+    it('keeps the day the feed object was filed under', () => {
+        const newFeeds = {
+            tasks: {
+                task1: {
+                    feed1: { dateFormated: '27092026', feed: { lastChangeDate: 1790546467082 } },
+                    feed2: { feed: { lastChangeDate: 10 } },
+                },
+            },
+        }
+
+        const [withDate, withoutDate] = selectNewFeeds(newFeeds, 99, 'user1').feedsData
+
+        expect(withDate.dateFormated).toBe('27092026')
+        expect(withoutDate).not.toHaveProperty('dateFormated')
+    })
+
     it('limits returned feed rows without limiting the object count', () => {
         const newFeeds = {
             tasks: {

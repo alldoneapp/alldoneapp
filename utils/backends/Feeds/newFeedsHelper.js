@@ -30,6 +30,9 @@ export function selectNewFeeds(newFeeds, amountFeedsToShow, userId) {
                         feedData.feed.id = feedId
                         feedData.feed.objectId = objectId
                         feedData.feed.objectTypes = type
+                        // The day the writer filed the feed object under. The server writes in UTC,
+                        // so re-deriving it from lastChangeDate in the browser can name the wrong day.
+                        if (feedData.dateFormated) feedData.feed.dateFormated = feedData.dateFormated
                         linealFeeds.push(feedData.feed)
                     }
                 }
