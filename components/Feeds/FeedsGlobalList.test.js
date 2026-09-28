@@ -6,7 +6,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
-import FeedsGlobalList from './FeedsGlobalList'
+import FeedsGlobalList, { MAX_INITIAL_LOAD_RETRIES } from './FeedsGlobalList'
 import { getInitialData, processInitialFeeds } from './Utils/FeedsHelper'
 import { ALL_TAB, FOLLOWED_TAB } from './Utils/FeedsConstants'
 
@@ -128,7 +128,10 @@ describe('FeedsGlobalList "show more" with a capped listener', () => {
             PROJECT_ID,
             ALL_TAB,
             expect.arrayContaining([expect.objectContaining({ id: 'feed-4' })]),
-            ...Array(5).fill(expect.anything())
+            ...Array(5).fill(expect.anything()),
+            undefined,
+            // Widening an already-rendered list skips an unreadable object instead of failing.
+            { dropUnreadable: true }
         )
         expect(processInitialFeeds.mock.calls[processInitialFeeds.mock.calls.length - 1][3]).toHaveLength(5)
 
@@ -219,6 +222,34 @@ describe('FeedsGlobalList "show more" with a capped listener', () => {
             })
             expect(processInitialFeeds).toHaveBeenCalledTimes(2)
             expect(getInitialData.mock.calls[1][1]).toEqual([{ id: 'new-feed' }])
+        } finally {
+            warn.mockRestore()
+            jest.useRealTimers()
+        }
+    })
+    it('stops retrying an unreadable object and renders what it can read instead', async () => {
+        jest.useFakeTimers()
+        const failures = MAX_INITIAL_LOAD_RETRIES
+        for (let i = 0; i < failures; i++) {
+            processInitialFeeds.mockImplementationOnce(() => Promise.reject(new Error('permission-denied')))
+        }
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        const dropFlags = () => processInitialFeeds.mock.calls.map(call => call[10]?.dropUnreadable)
+
+        try {
+            renderList(makeFeeds(1), { counterNewFeedsData: [{ id: 'new-feed' }] })
+            for (let i = 0; i <= failures; i++) {
+                await act(async () => {
+                    jest.advanceTimersByTime(10000)
+                    await Promise.resolve()
+                })
+            }
+
+            // Every attempt before the cap keeps waiting for the access projection...
+            expect(dropFlags().slice(0, failures)).toEqual(Array(failures).fill(false))
+            // ...and the one after it gives up on the unreadable objects instead of looping forever.
+            expect(dropFlags()[failures]).toBe(true)
+            expect(processInitialFeeds).toHaveBeenCalledTimes(failures + 1)
         } finally {
             warn.mockRestore()
             jest.useRealTimers()

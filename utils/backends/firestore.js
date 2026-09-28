@@ -119,6 +119,7 @@ import {
 } from '../../components/Feeds/Utils/FeedsConstants'
 import { getFeedObjectTypes, STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
+import { getFeedObjectDateCandidates, readFeedObjectFromCandidates } from './Feeds/feedObjectDate'
 import { getFeedsQueryLimit, MAX_NUMBER_OF_FEEDS_TO_SHOW } from './Feeds/feedQueryLimits'
 import { DEFAULT_MAX_STORED_FEEDS, deleteOldVisibleFeeds } from './Feeds/feedCleanup'
 import {
@@ -6476,7 +6477,11 @@ function watchNewFeedsTabRedux(
 }
 
 export async function getFeedObject(projectId, dateFormated, objectId, feedType, lastChangeDate) {
-    const object = (await db.doc(`projectsFeeds/${projectId}/${dateFormated}/${objectId}`).get()).data()
+    // The object may be filed under the UTC day rather than the local one - see feedObjectDate.js.
+    const { object, date } = await readFeedObjectFromCandidates(
+        getFeedObjectDateCandidates(dateFormated, lastChangeDate),
+        async candidateDate => (await db.doc(`projectsFeeds/${projectId}/${candidateDate}/${objectId}`).get()).data()
+    )
     if (object) {
         object.id = objectId
         return object
@@ -6484,11 +6489,13 @@ export async function getFeedObject(projectId, dateFormated, objectId, feedType,
         const objectType = getFeedObjectTypes(feedType)
         const feedObject = await generateMissingFeedObject(
             projectId,
-            dateFormated,
+            date || dateFormated,
             objectType,
             objectId,
             lastChangeDate
         )
+        // null: the object behind the feed is gone, so there is nothing to show for it.
+        if (!feedObject) return null
         feedObject.id = objectId
         return feedObject
     }
@@ -6511,9 +6518,11 @@ async function generateMissingFeedObject(projectId, dateFormated, objectType, ob
         feedObject = generateUserObjectModel(lastChangeDate, objectId, loggedUser.assistantId)
     } else if (objectType === 'notes') {
         const note = await getNote(projectId, objectId)
+        if (!note) return null
         feedObject = generateNoteObjectModel(lastChangeDate, note, objectId)
     } else if (objectType === 'goals') {
         const goal = await getGoalData(projectId, objectId)
+        if (!goal) return null
         feedObject = generateGoalObjectModel(lastChangeDate, goal, objectId)
     } else if (objectType === 'skills') {
         const skill = await getSkillData(projectId, objectId)
@@ -6522,10 +6531,15 @@ async function generateMissingFeedObject(projectId, dateFormated, objectType, ob
         const assistant = await getAssistantData(projectId, objectId)
         feedObject = generateAssistantObjectModel(lastChangeDate, assistant, objectId)
     }
+    if (!feedObject) return null
     const batch = new BatchWrapper(db)
     batch.set(db.doc(`projectsFeeds/${projectId}/${dateFormated}/${objectId}`), feedObject)
     setFeedObjectLastState(projectId, objectType, objectId, feedObject, batch)
-    batch.commit()
+    // Best effort: the rebuilt object is displayed either way, and a refused write must not surface
+    // as an unhandled rejection from the Updates list.
+    batch.commit().catch(error => {
+        console.warn('Could not store rebuilt feed object', { projectId, objectType, objectId, error })
+    })
     return feedObject
 }
 

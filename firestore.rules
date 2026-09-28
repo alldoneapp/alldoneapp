@@ -835,6 +835,10 @@ service cloud.firestore {
 
     match /projectsFeeds/{projectId}/{dateId}/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      // A missing feed object must read as "missing", not as a rules error: the Updates list
+      // treats a failed read as a pending access projection and retries it forever, while a
+      // clean miss lets getFeedObject rebuild the object. Same probe as the object collections.
+      allow get: if canProbeMissingObject(projectId);
       allow create: if isProjectMember(projectId) && accessProjectionAbsent(request.resource.data);
       allow update: if isProjectMember(projectId) && accessProjectionUnchanged();
       allow delete: if isProjectMember(projectId);
@@ -842,6 +846,7 @@ service cloud.firestore {
 
     match /projectsInnerFeeds/{projectId}/{objectType}/{objectId}/feeds/{feedId} {
       allow read: if canReadObject(projectId, resource.data) || canReadSharedObject(projectId, resource.data);
+      allow get: if canProbeMissingObject(projectId);
       allow create: if isProjectMember(projectId) && accessProjectionAbsent(request.resource.data);
       allow update: if isProjectMember(projectId) && accessProjectionUnchanged();
       allow delete: if isProjectMember(projectId);
