@@ -2811,6 +2811,18 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
   to var, set-semantics class fields, flow without pragma, classic JSX — plus
   transform-runtime with the real runtime version so `import * as X` namespace objects are
   shared across modules (suites that mutate a mock through a namespace import rely on it).
+- **`setImmediate` in tests is guarded against outliving its file** (`ci/jestPolyfills.js`).
+  jest's jsdom environment has no `setImmediate`, so the polyfill hands tests Node's real one —
+  which, unlike jsdom's own timers, is not cancelled when a file's environment is torn down.
+  React's scheduler prefers it, so a passive effect queued at the end of a test could run after
+  jsdom was gone on a busy runner, throw without `window`, and crash the whole `--runInBand`
+  `test:web:full` run with "The `document` global was defined when React was initialized, but is
+  not defined anymore" — in whichever unrelated file ran next, which is why no two occurrences
+  (seven failed master pipelines, August–September 2026) pointed at the same suite. The
+  `afterEach` `act()` flush in `ci/jestSetup.js` cannot catch it: `act` drains only work queued
+  inside it. The guard drops an immediate whose environment is gone, the way jsdom drops its
+  timers. A retry always passed, which is what made it look like a flaky test. Pinned by
+  `__tests__/JestPolyfills.test.js`.
 - **Functions suites**: `npx jest --config ci/jest.functions.config.js` (same Node 22).
   That config skips Babel for `functions/node_modules` (modern CJS runs natively) and
   resolves exports maps with the **node** conditions — under jsdom's default browser
