@@ -14,29 +14,32 @@ jest.mock('../styles/global', () => ({
     },
 }))
 
-import undoActionBarStyles from './undoActionBarStyles'
+import undoActionBarStyles, { getUndoOverlayPosition } from './undoActionBarStyles'
 import {
-    FLOATING_ACTION_CLEARANCE,
     FLOATING_ACTION_SIZE,
     FLOATING_ACTION_STACK_GAP,
     FLOATING_ACTION_VIEWPORT_GAP,
 } from '../UIComponents/floatingActionLayout'
 
 describe('UndoActionBar layout', () => {
-    it('positions the undo banner above the floating task action', () => {
-        expect(undoActionBarStyles.overlay.bottom).toBe(0)
-        expect(undoActionBarStyles.overlay.top).toBeUndefined()
-        expect(undoActionBarStyles.container.marginBottom).toBe(FLOATING_ACTION_CLEARANCE)
-        expect(undoActionBarStyles.container.marginBottom - (FLOATING_ACTION_VIEWPORT_GAP + FLOATING_ACTION_SIZE)).toBe(
-            FLOATING_ACTION_STACK_GAP
-        )
-        expect(undoActionBarStyles.container.marginTop).toBeUndefined()
+    it('aligns the banner with the task action at the bottom left', () => {
+        const position = getUndoOverlayPosition()
+        expect(position.left).toBe(FLOATING_ACTION_VIEWPORT_GAP)
+        expect(position.bottom).toBe(FLOATING_ACTION_VIEWPORT_GAP)
+        expect(position.right).toBe(FLOATING_ACTION_VIEWPORT_GAP + FLOATING_ACTION_SIZE + FLOATING_ACTION_STACK_GAP)
+        expect(undoActionBarStyles.overlay.alignItems).toBe('flex-start')
+        expect(undoActionBarStyles.container.marginBottom).toBeUndefined()
     })
 
-    it('adds extra horizontal viewport padding on mobile', () => {
-        expect(undoActionBarStyles.mobileViewport.paddingHorizontal).toBe(24)
-        expect(undoActionBarStyles.viewport.paddingHorizontal).toBe(16)
-        expect(undoActionBarStyles.overlay.paddingHorizontal).toBeUndefined()
+    it('keeps the banner in the safe area and leaves room for the task action in a narrow viewport', () => {
+        const position = getUndoOverlayPosition({ left: 47, right: 12, bottom: 34 })
+        expect(position).toEqual({
+            left: FLOATING_ACTION_VIEWPORT_GAP + 47,
+            right: FLOATING_ACTION_VIEWPORT_GAP + FLOATING_ACTION_SIZE + FLOATING_ACTION_STACK_GAP + 12,
+            bottom: FLOATING_ACTION_VIEWPORT_GAP + 34,
+        })
+        expect(undoActionBarStyles.container.width).toBe('100%')
+        expect(undoActionBarStyles.container.maxWidth).toBe(560)
     })
 
     it('makes only the banner background 20% transparent', () => {
