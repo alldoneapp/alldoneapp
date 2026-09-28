@@ -69,6 +69,7 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
         () => ({
             columns: weeks.length ? weeks[0].days.map((day, column) => ({ column, text: day.date.format('dd') })) : [],
             rows: weeks.map((week, row) => ({ row, text: week.days[0].date.format('D MMM') })),
+            today: translate('Today'),
         }),
         [weeks]
     )
@@ -152,7 +153,10 @@ export default function EmptyInboxSkyline({ user, emptyInboxDays, celebrationRun
             <View ref={containerRef} style={[localStyles.canvas, { height }]} />
             {shownDay ? (
                 <View style={localStyles.dayLine}>
-                    <Text style={localStyles.dayDate}>{shownDay.date.format('dddd, LL')}</Text>
+                    <Text style={localStyles.dayDate}>
+                        {shownDay.isToday && <Text style={localStyles.todayWord}>{`${translate('Today')} · `}</Text>}
+                        {shownDay.date.format('dddd, LL')}
+                    </Text>
                     <Text style={localStyles.dayFacts}>
                         {translate('Skyline tasks done', { count: shownDay.tasks })}
                         {formatSkylineMinutes(shownDay.minutes) ? ` · ${formatSkylineMinutes(shownDay.minutes)}` : ''}
@@ -207,6 +211,10 @@ const localStyles = StyleSheet.create({
     dayDate: {
         ...styles.subtitle2,
         color: colors.Text01,
+    },
+    // The same blue the city rings today in.
+    todayWord: {
+        color: colors.Primary100,
     },
     dayFacts: {
         ...styles.caption1,

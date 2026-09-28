@@ -294,7 +294,10 @@ export function EmptyInboxOverview({ user, style, onOpenAchievements, celebrateN
                                                         localStyles.activityCell,
                                                         day.achieved && localStyles.achievedCell,
                                                         day.isFuture && localStyles.futureCell,
-                                                        day.isToday && !day.achieved && localStyles.todayCell,
+                                                        // Today is ringed whether or not it was cleared
+                                                        // (the green fill says that), the same blue the
+                                                        // city marks today in.
+                                                        day.isToday && localStyles.todayCell,
                                                     ]}
                                                 />
                                             )
@@ -468,7 +471,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: 'transparent',
     },
     todayCell: {
-        borderWidth: 1,
+        borderWidth: 2,
         borderColor: colors.Primary100,
     },
 })
