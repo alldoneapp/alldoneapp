@@ -8,6 +8,10 @@ const { createRoutingToken } = require('./whatsAppCallSecurity')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
 const { createCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
+const { LIVE_INITIALIZATION_SECONDS, calculateLiveVoiceGold } = require('./assistantLivePricing')
+
+// Every call is a GPT-Live session, which charges a minimum on accept.
+const MIN_CALL_GOLD = calculateLiveVoiceGold(LIVE_INITIALIZATION_SECONDS)
 
 const TERMINAL_TWILIO_STATUSES = new Set(['completed', 'busy', 'failed', 'no-answer', 'canceled'])
 
@@ -15,7 +19,7 @@ function getCallEligibilityReason({ config, user }) {
     if (!config.enabled) return 'disabled'
     if (!user) return 'unlinked'
     if (user?.premium?.status !== PLAN_STATUS_PREMIUM) return 'premium_required'
-    if ((Number(user.gold) || 0) <= 0) return 'gold_required'
+    if ((Number(user.gold) || 0) <= MIN_CALL_GOLD) return 'gold_required'
     if (!user.defaultProjectId) return 'missing_project'
     return null
 }
@@ -26,7 +30,7 @@ function getRejectionMessage(reason) {
         unlinked:
             'This number is not linked to an Alldone account. Add your WhatsApp number in Alldone settings first.',
         premium_required: 'WhatsApp assistant calls are available to premium Alldone users.',
-        gold_required: 'You need a positive Gold balance before starting a WhatsApp assistant call.',
+        gold_required: `You need more than ${MIN_CALL_GOLD} Gold before starting a WhatsApp assistant call.`,
         missing_project: 'Set a default project in Alldone before calling the assistant.',
         missing_assistant: 'No default assistant is available for your WhatsApp call.',
         active_call: 'You already have an active assistant call. End it before starting another one.',
@@ -40,7 +44,7 @@ function getPhoneRejectionMessage(reason) {
         disabled: 'Assistant phone calls are not available right now.',
         unlinked: 'This phone number is not linked to an Alldone account. Please add it in Alldone settings first.',
         premium_required: 'Assistant phone calls are available to premium Alldone users.',
-        gold_required: 'You need a positive Gold balance before starting an assistant call.',
+        gold_required: `You need more than ${MIN_CALL_GOLD} Gold before starting an assistant call.`,
         missing_project: 'Please set a default project in Alldone before calling the assistant.',
         missing_assistant: 'No default assistant is available for your call.',
         active_call: 'You already have an active assistant call. Please end it before starting another one.',

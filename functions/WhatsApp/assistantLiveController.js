@@ -7,7 +7,13 @@ const { getCallSession, updateCallSession, finalizeCallSession, FINAL_STATUSES }
 const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant } = require('./assistantLiveBackend')
-const { createLiveTranscript, LIVE_READY_EVENT } = require('./assistantLiveProtocol')
+const {
+    createLiveTranscript,
+    getLiveGreeting,
+    isSipCallChannel,
+    LIVE_GREETING_EVENT,
+    LIVE_READY_EVENT,
+} = require('./assistantLiveProtocol')
 const { createLiveProgress, backgroundProgress } = require('./assistantLiveProgress')
 const { voiceOperationOutcome, statusUpdate, formatLiveStatus } = require('./assistantLiveStatus')
 const { createLiveAnswerDelivery } = require('./assistantLiveAnswerDelivery')
@@ -63,6 +69,17 @@ async function closeLiveSession(config, session) {
     })
 }
 
+// A phone line stays open (and billed) until the SIP leg ends. When the sideband
+// close could not be confirmed, end the call through the REST control endpoint.
+async function hangUpLiveSession(config, openAiSessionId) {
+    if (!openAiSessionId) return
+    const response = await fetch(
+        `https://api.openai.com/v1/live/sessions/${encodeURIComponent(openAiSessionId)}/hangup`,
+        { method: 'POST', headers: { Authorization: `Bearer ${config.openAiApiKey}` } }
+    )
+    if (!response.ok && response.status !== 404) throw new Error(`Live hangup failed with HTTP ${response.status}`)
+}
+
 async function runAssistantLiveCall(sessionId) {
     const config = getWhatsAppCallConfig()
     const session = await getCallSession(sessionId)
@@ -75,6 +92,8 @@ async function runAssistantLiveCall(sessionId) {
         return true
     })
     if (!claimed) return
+    const channel = session.channel || 'browser_call'
+    const sipCall = isSipCallChannel(channel)
     const transcript = createLiveTranscript()
     const persistedGroups = new Map()
     const pending = new Map()
@@ -222,7 +241,7 @@ async function runAssistantLiveCall(sessionId) {
                 chatId: session.chatId,
                 userId: session.userId,
                 assistantId: session.assistantId,
-                source: 'browser_call',
+                source: channel,
                 updateExisting: true,
                 createdAt: Number(session.startedAt) + group.start,
             })
@@ -262,7 +281,7 @@ async function runAssistantLiveCall(sessionId) {
         if (ending || stopped || !ready || revision !== transcript.revision) throw new Error('voice_request_superseded')
     }
     const handleEvent = async (event, transcriptChanged) => {
-        if (event.type === 'session.commentary.appended' && event.client_event_id === 'alldone_live_greeting')
+        if (event.type === 'session.commentary.appended' && event.client_event_id === LIVE_GREETING_EVENT)
             await updateCallSession(sessionId, { greetingAcknowledgedAt: Date.now() })
         if (event.client_event_id && event.type.endsWith('.appended')) outbox.delete(event.client_event_id)
         if (event.type === 'error') {
@@ -464,7 +483,7 @@ async function runAssistantLiveCall(sessionId) {
                         chatId: session.chatId,
                         userId: session.userId,
                         assistantId: session.assistantId,
-                        source: 'browser_call_backend',
+                        source: `${channel}_backend`,
                         isCallTranscript: false,
                     })
                     if (ending) {
@@ -555,7 +574,22 @@ async function runAssistantLiveCall(sessionId) {
                     sentPageContext = ''
                     publishPageContext()
                     for (const payload of outbox.values()) send(payload)
-                    if (attempt === 0)
+                    if (attempt === 0 && sipCall) {
+                        // No client gates playback on a phone line: the caller is
+                        // already listening, so greet as soon as the tools are ready.
+                        append(
+                            'session.instructions.append',
+                            'The server tools are ready. The opening greeting follows now.',
+                            null,
+                            LIVE_READY_EVENT
+                        )
+                        append(
+                            'session.commentary.append',
+                            getLiveGreeting(session.language),
+                            null,
+                            LIVE_GREETING_EVENT
+                        )
+                    } else if (attempt === 0)
                         append(
                             'session.instructions.append',
                             'The server tools are ready. Remain silent until the browser sends the opening greeting after audio playback is ready.',
@@ -653,6 +687,10 @@ async function runAssistantLiveCall(sessionId) {
         clearTimeout(closeTimer)
         clearTimeout(deadlineTimer)
         if (!finalized) finalized = await closeLiveSession(config, session)
+        if (!finalized && sipCall)
+            await hangUpLiveSession(config, session.openAiSessionId).catch(error =>
+                console.warn('Live Call: SIP hangup failed', { sessionId, message: error?.message })
+            )
         socket?.terminate()
         await events
         // Existing tool calls may complete, but assertActive prevents further actions.
@@ -661,11 +699,16 @@ async function runAssistantLiveCall(sessionId) {
         await flushTranscript()
         await updateCallSession(sessionId, {
             livePendingAction: null,
-            recapStatus: 'skipped',
+            // WhatsApp callers get the same WhatsApp recap as before GPT-Live.
+            ...(channel === 'whatsapp_call' ? {} : { recapStatus: 'skipped' }),
             controllerConnected: false,
         })
         await finalizeCallSession(sessionId, reason, finalized ? 'completed' : 'failed')
+        if (channel === 'whatsapp_call')
+            await require('./whatsAppCallController')
+                .sendCallRecap(sessionId)
+                .catch(() => {})
     }
 }
 
-module.exports = { runAssistantLiveCall, closeLiveSession, appendText }
+module.exports = { runAssistantLiveCall, closeLiveSession, hangUpLiveSession, appendText }

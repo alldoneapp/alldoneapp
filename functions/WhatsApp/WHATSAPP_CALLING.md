@@ -9,7 +9,7 @@ secrets before enabling each channel:
 - `OPENAI_PROJECT_ID`
 - `OPENAI_WEBHOOK_SECRET`
 - `WHATSAPP_CALL_ROUTING_SECRET`
-- `OPENAI_REALTIME_MODEL=gpt-realtime-2`
+- `OPENAI_REALTIME_MODEL=gpt-realtime-2` (now only the WhatsApp recap and the legacy Realtime fallback; calls themselves run on `gpt-live-1`, see `GPT_LIVE_CALLING.md`)
 - `OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper`
 - `OPENAI_REALTIME_REASONING_EFFORT=medium`
 - `WHATSAPP_CALL_MAX_DURATION_SECONDS=1800`
@@ -20,23 +20,23 @@ For this repository's GitLab production deployment, add the call settings to the
 `GOOGLE_FUNCTIONS_ENV_DEV`.
 
 `OPENAI_PROJECT_ID` is the `proj_...` ID from OpenAI Project settings. Create an OpenAI webhook for
-`realtime.call.incoming` using the deployed `openAIRealtimeCallWebhook` URL and store the signing secret shown during
+`live.transport.incoming` (GPT-Live SIP; previously `realtime.call.incoming`) using the deployed `openAIRealtimeCallWebhook` URL and store the signing secret shown during
 creation as `OPENAI_WEBHOOK_SECRET`. Generate `WHATSAPP_CALL_ROUTING_SECRET` independently using at least 32 random
 bytes.
 
 Twilio's WhatsApp sender must have WhatsApp Business Calling enabled. Its TwiML Voice Application should send inbound
 WhatsApp calls to `whatsAppIncomingCall` and status callbacks to `whatsAppCallStatusCallback`. Register
-`openAIRealtimeCallWebhook` as the OpenAI project webhook for `realtime.call.incoming`.
+`openAIRealtimeCallWebhook` as the OpenAI project webhook for `live.transport.incoming`.
 
 For regular phone calls, enable Twilio Voice on Anna's public voice number (`+49 304 173 5050`) and point its Voice Request
 URL to `phoneIncomingCall` with status callbacks to `phoneCallStatusCallback`. The same linked-user lookup is used:
-the caller ID must match `users.phone`, and the user must be premium, have positive Gold, and have a default project.
+the caller ID must match `users.phone`, and the user must be premium, have more than the 10-Gold GPT-Live minimum, and have a default project.
 
 For browser calls, enable `BROWSER_CALLS_ENABLED` after verifying the `startAssistantBrowserCallSecondGen` callable can
 create OpenAI Realtime WebRTC sessions. The browser sends only its SDP offer to Alldone; the OpenAI API key and tool
 execution stay server-side through the existing sideband controller.
 
-Twilio calls are routed directly from Twilio to OpenAI SIP over TLS. Browser calls use OpenAI Realtime WebRTC. Alldone
+Twilio calls are routed directly from Twilio to OpenAI SIP over TLS and answered as GPT-Live sessions. Browser calls use GPT-Live WebRTC. Alldone
 stores text transcripts in the call-start day's assistant topic. WhatsApp calls send a short WhatsApp recap afterward;
 phone and browser calls store the recap in Alldone. Audio recording is not enabled.
 
@@ -57,7 +57,7 @@ reason and flow through the normal recap/billing path.
 Before testing, complete Meta Business Verification and reach Meta's required messaging limit of at least 2,000
 business-initiated conversations in a rolling 24-hour period. Enable WhatsApp Business Calling on the Twilio sender,
 connect its Voice Endpoint Configuration to a TwiML Voice Application whose Voice Request URL is
-`whatsAppIncomingCall`, and register `openAIRealtimeCallWebhook` for OpenAI `realtime.call.incoming` events.
+`whatsAppIncomingCall`, and register `openAIRealtimeCallWebhook` for OpenAI `live.transport.incoming` events.
 
 The Firebase Admin SDK service account used by `functions/firebaseConfig.js` must be allowed to enqueue the
 `runWhatsAppRealtimeCall` task function. Follow the repository IAM guidance and grant Cloud Tasks enqueue permission

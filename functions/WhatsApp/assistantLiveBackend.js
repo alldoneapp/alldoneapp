@@ -57,7 +57,9 @@ async function runLiveAssistant({
         requestUserId: session.userId,
         objectType: 'topics',
         objectId: session.chatId,
-        sourceChannel: 'browser_call',
+        // A WhatsApp-call reminder is delivered back over WhatsApp (AT-2211), so the
+        // real channel matters to the tools, not just to the transcript.
+        sourceChannel: session.channel || 'browser_call',
         openAiReasoningEffort: assistant.reasoningEffort || null,
         userRequestText: lastUserTurn?.text || '',
     }
