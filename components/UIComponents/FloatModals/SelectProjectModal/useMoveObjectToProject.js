@@ -196,6 +196,7 @@ export default function useMoveObjectToProject() {
             })
             .finally(() => {
                 finishLoading()
+                if (type === 'note') taskMoveCallbacks.onNoteProjectMoveFinished?.()
             })
 
         dispatch(hideProjectPicker())
