@@ -1320,6 +1320,7 @@
     "No LinkedIn URL": "Sin URL de LinkedIn",
     "Edit LinkedIn URL": "Editar URL de LinkedIn",
     "Type the LinkedIn profile URL": "Ingrese la URL del perfil de LinkedIn",
+    "Profile enrichment did not complete": "El enriquecimiento del perfil no se completó. Inténtalo de nuevo.",
     "Enrich profile": "Enriquecer perfil",
     "Contact enrichment": "Enriquecimiento de contacto",
     "Triggered from a contact": "Activado desde un contacto",

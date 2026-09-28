@@ -15,7 +15,13 @@ import ChangeTextFieldModal from '../../UIComponents/FloatModals/ChangeTextField
 import ChangeContactInfoModal from '../../UIComponents/FloatModals/ChangeContactInfoModal'
 import HelperFunctions from '../../../utils/HelperFunctions'
 import ImagePickerModal from '../../UIComponents/FloatModals/ImagePickerModal'
-import { showConfirmPopup, setShowLimitedFeatureModal, setSelectedNavItem } from '../../../redux/actions'
+import {
+    showConfirmPopup,
+    setShowLimitedFeatureModal,
+    setSelectedNavItem,
+    setTriggerBotSpinner,
+} from '../../../redux/actions'
+import { buildBotSpinnerTrigger, endBotSpinnerWait } from '../../ChatsView/Utils/botSpinnerTrigger'
 import { CONFIRM_POPUP_TRIGGER_DELETE_PROJECT_CONTACT } from '../../UIComponents/ConfirmPopup'
 import URLsContacts, {
     URL_CONTACT_DETAILS_CHAT,
@@ -208,15 +214,17 @@ class ContactProperties extends Component {
         const assistantId = resolveAssistantForProjectObject(projectId, contact.assistantId)?.uid || ''
         this.setState({ isEnriching: true })
 
-        const run = enrichContactProfile(projectId, contact.uid, assistantId)
-        run.catch(error => console.error('Contact enrichment failed:', error))
-
-        // The request comment and the assistant's answers land in the chat tab.
-        store.dispatch(setSelectedNavItem(DV_TAB_CONTACT_CHAT))
+        // The server posts the request comment and the answers into the chat tab, but only after the
+        // callable has cold-started (often 10s+). The spinner trigger shows the "assistant is
+        // preparing" placeholder there at once, so the tab is never an idle, empty-looking chat.
+        store.dispatch([
+            setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, contact.uid)),
+            setSelectedNavItem(DV_TAB_CONTACT_CHAT),
+        ])
         URLsContacts.push(URL_CONTACT_DETAILS_CHAT, { projectId, userId: contact.uid }, projectId, contact.uid)
 
         try {
-            const result = await run
+            const result = await enrichContactProfile(projectId, contact.uid, assistantId)
             if (result && result.error === 'insufficient_gold') {
                 store.dispatch(
                     setShowLimitedFeatureModal({
@@ -224,9 +232,20 @@ class ContactProperties extends Component {
                         description: translate('Not enough Gold description'),
                     })
                 )
+            } else if (result && result.success === false) {
+                alert(translate('Profile enrichment did not complete'))
             }
         } catch (error) {
-            // already logged above
+            console.error('Contact enrichment failed:', error)
+            // The browser gives up after 9 minutes while the server may keep running (it has 55), and
+            // whatever it posts still reaches the chat; only a real failure is worth an alert.
+            if (!/deadline-exceeded$/.test(String(error?.code || ''))) {
+                alert(translate('Profile enrichment did not complete'))
+            }
+        } finally {
+            // The callable returns once the run is over (or was refused). Either way nothing more is
+            // coming, so the placeholder must not wait out its 5-minute safety timeout.
+            endBotSpinnerWait(projectId, contact.uid)
         }
         if (!this.unmounted) this.setState({ isEnriching: false })
     }

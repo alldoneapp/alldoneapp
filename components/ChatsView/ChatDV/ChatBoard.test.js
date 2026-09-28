@@ -6,7 +6,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
 import ChatBoard from './ChatBoard'
-import { buildBotSpinnerTrigger } from '../Utils/botSpinnerTrigger'
+import { buildBotSpinnerTrigger, endBotSpinnerWait } from '../Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../Utils/assistantEnabledScope'
 import { CHAT_FULLSCREEN_COOLDOWN_MS } from '../Utils/chatScrollFullscreen'
 import { markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
@@ -44,6 +44,11 @@ jest.mock('../../../redux/actions', () => ({
                 ? triggerBotSpinner
                 : null,
     }),
+}))
+// `endBotSpinnerWait` reads the store to clear a trigger nobody has consumed yet.
+jest.mock('../../../redux/store', () => ({
+    __esModule: true,
+    default: { getState: () => mockState, dispatch: action => mockDispatch(action) },
 }))
 jest.mock('../../../URLSystem/Tasks/URLsTasks', () => ({ __esModule: true, default: { push: jest.fn() } }))
 jest.mock('../../../URLSystem/Chats/URLsChats', () => ({ __esModule: true, default: { push: jest.fn() } }))
@@ -210,6 +215,108 @@ describe('ChatBoard bot spinner placeholder', () => {
         })
 
         expect(consumeCalls()).toHaveLength(0)
+    })
+})
+
+// A server-hosted run (Enrich profile, a pre-configured task) arms the trigger and opens the chat
+// before the thread history has arrived. The "assistant messages that already existed" snapshot
+// must be taken against the LOADED history: taken against the empty pre-load list, the history's
+// first snapshot counted every earlier assistant message as the answer and dropped the placeholder
+// immediately — the chat then sat empty-looking through the whole cold start.
+describe('ChatBoard placeholder across the history load', () => {
+    const loadedMessages = messages => Object.assign([...messages], { loaded: true })
+    const EARLIER_ANSWER = { id: 'earlier-answer', creatorId: 'assistant-1', commentText: 'An older answer' }
+
+    beforeEach(() => {
+        mockDispatch.mockClear()
+        mockMessages = Object.assign([], { loaded: false })
+        mockState = {
+            triggerBotSpinner: buildBotSpinnerTrigger(PROJECT_ID, TASK_CHAT_ID),
+            loggedUser: { uid: 'user-1', isAnonymous: false },
+            selectedNavItem: 'unrelated-tab',
+            chatPagesAmount: 0,
+            smallScreenNavigation: false,
+            projectChatNotifications: { [PROJECT_ID]: { [TASK_CHAT_ID]: null } },
+        }
+    })
+
+    const rerender = tree =>
+        act(() => {
+            tree.update(
+                <ChatBoard
+                    projectId={PROJECT_ID}
+                    chat={CHAT}
+                    parentObject={{ id: TASK_CHAT_ID, isAssistantEnabled: false }}
+                    assistantId="assistant-1"
+                    chatTitle="Task"
+                    members={[]}
+                    objectType="tasks"
+                />
+            )
+        })
+
+    it('keeps waiting when the loaded history already holds assistant messages', () => {
+        const tree = renderChatBoard()
+        expect(hasPlaceholder(tree)).toBe(true)
+
+        mockMessages = loadedMessages([EARLIER_ANSWER])
+        rerender(tree)
+        rerender(tree)
+
+        expect(hasPlaceholder(tree)).toBe(true)
+    })
+
+    it('ends the wait when an assistant message newer than the history arrives', () => {
+        const tree = renderChatBoard()
+        mockMessages = loadedMessages([EARLIER_ANSWER])
+        rerender(tree)
+
+        mockMessages = loadedMessages([
+            EARLIER_ANSWER,
+            { id: 'request', creatorId: 'user-1', commentText: 'Enrich the profile of Ada' },
+            { id: 'new-answer', creatorId: 'assistant-1', commentText: '', isLoading: true },
+        ])
+        rerender(tree)
+
+        expect(hasPlaceholder(tree)).toBe(false)
+    })
+})
+
+// The code that started the run knows when its request has settled; a refused or failed run must
+// not leave the placeholder up for the 5-minute safety timeout.
+describe('ChatBoard placeholder wait-end signal', () => {
+    beforeEach(() => {
+        mockDispatch.mockClear()
+        mockMessages = Object.assign([], { loaded: true })
+        mockState = {
+            triggerBotSpinner: buildBotSpinnerTrigger(PROJECT_ID, TASK_CHAT_ID),
+            loggedUser: { uid: 'user-1', isAnonymous: false },
+            selectedNavItem: 'unrelated-tab',
+            chatPagesAmount: 0,
+            smallScreenNavigation: false,
+            projectChatNotifications: { [PROJECT_ID]: { [TASK_CHAT_ID]: null } },
+        }
+    })
+
+    it('drops the placeholder when the run for its chat has settled', () => {
+        const tree = renderChatBoard()
+        expect(hasPlaceholder(tree)).toBe(true)
+
+        act(() => {
+            endBotSpinnerWait(PROJECT_ID, TASK_CHAT_ID)
+        })
+
+        expect(hasPlaceholder(tree)).toBe(false)
+    })
+
+    it('ignores a settled run of another chat', () => {
+        const tree = renderChatBoard()
+
+        act(() => {
+            endBotSpinnerWait(PROJECT_ID, 'some-other-topic')
+        })
+
+        expect(hasPlaceholder(tree)).toBe(true)
     })
 })
 

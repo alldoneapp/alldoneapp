@@ -1329,6 +1329,7 @@
     "No LinkedIn URL": "No LinkedIn URL",
     "Edit LinkedIn URL": "Edit LinkedIn URL",
     "Type the LinkedIn profile URL": "Type the LinkedIn profile URL",
+    "Profile enrichment did not complete": "Profile enrichment did not complete. Please try again.",
     "Enrich profile": "Enrich profile",
     "Contact enrichment": "Contact enrichment",
     "Triggered from a contact": "Triggered from a contact",

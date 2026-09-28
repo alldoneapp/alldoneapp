@@ -32,7 +32,7 @@ import { createChat } from './backends/Chats/chatsComments'
 import { createBotQuickTopicChat } from './backends/Chats/createBotQuickTopic'
 import { STAYWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { createObjectMessage } from './backends/Chats/chatsComments'
-import { buildBotSpinnerTrigger } from '../components/ChatsView/Utils/botSpinnerTrigger'
+import { buildBotSpinnerTrigger, endBotSpinnerWait } from '../components/ChatsView/Utils/botSpinnerTrigger'
 import { buildAssistantEnabledScope } from '../components/ChatsView/Utils/assistantEnabledScope'
 import { resolvePreConfigTaskReasoningEffort } from '../functions/Assistant/preConfigTaskReasoningEffort'
 import { getThreadAssistantModelOverride } from '../functions/Assistant/threadAssistantModel'
@@ -705,10 +705,17 @@ export const generateTaskFromPreConfig = async (
             }
         }
 
+        // The callable returns once the run is over or was refused; nothing more is coming, so the
+        // chat's "assistant is preparing" placeholder must not wait out its 5-minute timeout.
+        const runDirectTask = () =>
+            runAndCompleteDirectTask().finally(() => {
+                if (!skipNavigation) endBotSpinnerWait(projectId, taskWithPublicFor.id)
+            })
+
         if (waitForDirectRun) {
-            await runAndCompleteDirectTask()
+            await runDirectTask()
         } else {
-            runAndCompleteDirectTask().catch(error => {
+            runDirectTask().catch(error => {
                 console.error('Could not finish direct assistant task in the background:', error)
             })
         }
