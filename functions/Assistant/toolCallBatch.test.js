@@ -111,3 +111,33 @@ test('returned tool failures stay associated with their call and do not drop oth
         await executeToolCallBatch([call('web_search'), call('get_notes')], async (_, i) => (i ? 'notes' : failed))
     ).toEqual([failed, 'notes'])
 })
+
+test('a recovered failure becomes that call’s result and later calls are skipped, not run', async () => {
+    const executed = []
+    const results = await executeToolCallBatch(
+        [call('update_task', 'a'), call('update_note', 'b'), call('create_task', 'c')],
+        async toolCall => {
+            executed.push(toolCall.id)
+            if (toolCall.id === 'b') throw new Error('bad args')
+            return `ok ${toolCall.id}`
+        },
+        {
+            recoverError: (error, toolCall) => ({ failed: toolCall.id, message: error.message }),
+            skippedResult: toolCall => ({ skipped: toolCall.id }),
+        }
+    )
+    expect(executed).toEqual(['a', 'b'])
+    expect(results).toEqual(['ok a', { failed: 'b', message: 'bad args' }, { skipped: 'c' }])
+})
+
+test('a failure the hook declines to recover still rejects the batch', async () => {
+    await expect(
+        executeToolCallBatch(
+            [call('update_task')],
+            async () => {
+                throw new Error('cancelled')
+            },
+            { recoverError: () => undefined }
+        )
+    ).rejects.toThrow('cancelled')
+})

@@ -728,3 +728,112 @@ describe('buildNote ownership (AT-2194)', () => {
         expect(note.isVisibleInFollowedFor).toEqual(['human-1'])
     })
 })
+
+// The production note that looped (8b4wQWfKyLXpZFtqYsNC, 2026-09-28): the calendar link in
+// "Meeting Details" is a `url` embed. toString() dropped it, so the read-back showed nothing
+// after the dash, and patch offsets computed on that string sat one position early per embed.
+describe('NoteService notes with embeds', () => {
+    const CALENDAR_URL = 'https://www.google.com/calendar/event?eid=abc123'
+
+    const encodeMeetingNote = () => {
+        const doc = new Y.Doc()
+        const ytext = doc.getText('quill')
+        ytext.applyDelta([
+            { insert: 'Summary' },
+            { insert: '\n', attributes: { header: 2 } },
+            { insert: 'Sidebar refresh agreed.\n\nMeeting Details' },
+            { insert: '\n', attributes: { header: 2 } },
+            { insert: 'Calendar event: Re-Design Juno — ' },
+            { insert: { url: { url: CALENDAR_URL, type: 'plain', id: 'u1', editorId: '' } } },
+            { insert: '\nLocation: Teams\n\nAction Items' },
+            { insert: '\n', attributes: { header: 2 } },
+            { insert: 'Karsten: follow up\n' },
+        ])
+        return Buffer.from(Y.encodeStateAsUpdate(doc))
+    }
+
+    const createStorageService = (buffer, onSave = () => {}) => {
+        const file = {
+            exists: jest.fn(async () => [true]),
+            download: jest.fn(async () => [buffer]),
+            save: jest.fn(async saved => onSave(saved)),
+        }
+        const update = jest.fn(async () => {})
+        const service = createService({
+            storage: { bucket: jest.fn(() => ({ file: jest.fn(() => file) })) },
+            database: { doc: jest.fn(() => ({ update })) },
+        })
+        return { service, file, update }
+    }
+
+    test('reads the note back with the link it contains', async () => {
+        const { service } = createStorageService(encodeMeetingNote())
+
+        const content = await service.getStorageContent('project-1', 'note-1')
+
+        expect(content).toContain(`Calendar event: Re-Design Juno — ${CALENDAR_URL}\nLocation: Teams`)
+    })
+
+    test('replaces a section containing a link without disturbing the next heading', async () => {
+        let savedBuffer = null
+        const { service } = createStorageService(encodeMeetingNote(), saved => {
+            savedBuffer = saved
+        })
+
+        const result = await service.applyPatchEditsToStorage('project-1', 'note-1', [
+            {
+                type: 'replace_section',
+                heading: 'Meeting Details',
+                content: 'Organizer: Karsten\n',
+            },
+        ])
+
+        expect(result.success).toBe(true)
+        const delta = decodeDelta(savedBuffer)
+        expect(delta.some(op => typeof op.insert === 'object' && op.insert.url)).toBe(false)
+        expect(decodeContent(savedBuffer)).toBe(
+            'Summary\nSidebar refresh agreed.\n\nMeeting Details\nOrganizer: Karsten\nAction Items\nKarsten: follow up\n'
+        )
+        // "Action Items" is still the heading it was, not merged into the section body.
+        const actionItemsHeading = delta.findIndex(
+            (op, index) =>
+                op.insert === '\n' &&
+                op.attributes?.header === 2 &&
+                typeof delta[index - 1]?.insert === 'string' &&
+                delta[index - 1].insert.endsWith('\nAction Items')
+        )
+        expect(actionItemsHeading).toBeGreaterThan(-1)
+    })
+
+    test('lands exact-text edits after a link on the right characters', async () => {
+        let savedBuffer = null
+        const { service } = createStorageService(encodeMeetingNote(), saved => {
+            savedBuffer = saved
+        })
+
+        const result = await service.applyPatchEditsToStorage('project-1', 'note-1', [
+            { type: 'replace_text', find: 'Teams', replaceWith: 'Microsoft Teams' },
+        ])
+
+        expect(result.success).toBe(true)
+        expect(decodeContent(savedBuffer)).toContain('\nLocation: Microsoft Teams\n')
+        // The link survives an edit next to it, and the model sees it in the result.
+        expect(decodeDelta(savedBuffer).some(op => op.insert?.url?.url === CALENDAR_URL)).toBe(true)
+        expect(result.content).toContain(`— ${CALENDAR_URL}\nLocation: Microsoft Teams`)
+    })
+
+    test('treats a link as atomic when the edit targets its rendered text', async () => {
+        let savedBuffer = null
+        const { service } = createStorageService(encodeMeetingNote(), saved => {
+            savedBuffer = saved
+        })
+
+        const result = await service.applyPatchEditsToStorage('project-1', 'note-1', [
+            { type: 'replace_text', find: `— ${CALENDAR_URL}`, replaceWith: '(no link)' },
+        ])
+
+        expect(result.success).toBe(true)
+        expect(decodeDelta(savedBuffer).some(op => typeof op.insert === 'object')).toBe(false)
+        expect(decodeContent(savedBuffer)).toContain('Calendar event: Re-Design Juno (no link)\nLocation: Teams')
+    })
+})

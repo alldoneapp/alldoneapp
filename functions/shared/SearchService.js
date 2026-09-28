@@ -59,6 +59,9 @@ const DEFAULT_SEARCH_LIMIT = 50
 const MAX_SEARCH_LIMIT = 1000
 const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
 
+const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
+const PROJECT_READ_CONCURRENCY = 20
+
 function canAccessByIsPublicFor(data, userId) {
     const isPublicFor = Array.isArray(data?.isPublicFor) ? data.isPublicFor : []
     return isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userId)
@@ -1272,26 +1275,26 @@ class SearchService {
         const userData = userDoc.data()
         const projectIds = userData.projectIds || []
 
-        // Get project details
-        const projects = []
-        for (const projectId of projectIds) {
+        // One read per project, and an account can hold ~200 of them: awaited one at a time
+        // this took most of a minute. Bounded concurrency, same reads, same order.
+        const projects = await mapWithConcurrency(projectIds, PROJECT_READ_CONCURRENCY, async projectId => {
             try {
                 const projectDoc = await this.options.database.collection('projects').doc(projectId).get()
-                if (projectDoc.exists) {
-                    const projectData = projectDoc.data()
-                    projects.push({
-                        id: projectId,
-                        name: projectData.name,
-                        active: projectData.active,
-                        ...projectData,
-                    })
+                if (!projectDoc.exists) return null
+                const projectData = projectDoc.data()
+                return {
+                    id: projectId,
+                    name: projectData.name,
+                    active: projectData.active,
+                    ...projectData,
                 }
             } catch (error) {
                 console.warn(`Could not access project ${projectId}:`, error.message)
+                return null
             }
-        }
+        })
 
-        return projects
+        return projects.filter(Boolean)
     }
 
     /**
@@ -1497,6 +1500,18 @@ class SearchService {
             throw new Error('At least one search criterion is required (noteId, noteTitle, projectName, or projectId)')
         }
 
+        // The assistant almost always knows both ids (it is editing the note it is looking at).
+        // Resolve that with three reads instead of listing every project the user belongs to.
+        if (noteId && projectId) {
+            const directMatch = await this.findNoteInProject(noteId, projectId, userId)
+            if (directMatch) {
+                return {
+                    matches: [{ ...directMatch, matchScore: 1000, matchType: 'direct_id' }],
+                    searchCriteria,
+                }
+            }
+        }
+
         // Get user's accessible projects
         const userProjects = await this.getUserProjects(userId)
         if (userProjects.length === 0) {
@@ -1511,7 +1526,7 @@ class SearchService {
 
         // If noteId is provided, try direct lookup first
         if (noteId) {
-            const directMatch = await this.findNoteById(noteId, userProjects, userId)
+            const directMatch = await this.findNoteById(noteId, userProjects, userId, projectId)
             if (directMatch) {
                 matches.push({
                     ...directMatch,
@@ -1544,8 +1559,52 @@ class SearchService {
      * @param {string} userId - The authenticated user ID
      * @returns {Object|null} Note match or null
      */
-    async findNoteById(noteId, userProjects, userId) {
-        for (const project of userProjects) {
+    /**
+     * Direct lookup of a note in one known project, with the same access rules as
+     * getUserProjects + findNoteById: the project must be in the user's projectIds and the
+     * note must be visible to the user. Returns null when any of that does not hold, so the
+     * caller falls back to the full search.
+     */
+    async findNoteInProject(noteId, projectId, userId) {
+        try {
+            const db = this.options.database
+            const cleanNoteId = noteId.endsWith(projectId)
+                ? noteId.substring(0, noteId.length - projectId.length)
+                : noteId
+            const [userDoc, projectDoc, noteDoc] = await Promise.all([
+                db.collection('users').doc(userId).get(),
+                db.collection('projects').doc(projectId).get(),
+                db.doc(`noteItems/${projectId}/notes/${cleanNoteId}`).get(),
+            ])
+            if (!userDoc.exists || !projectDoc.exists || !noteDoc.exists) return null
+            const projectIds = (userDoc.data() || {}).projectIds || []
+            if (!projectIds.includes(projectId)) return null
+            const noteData = noteDoc.data()
+            if (!canAccessByIsPublicFor(noteData, userId)) return null
+            return {
+                note: { ...noteData, id: cleanNoteId },
+                projectId,
+                projectName: (projectDoc.data() || {}).name,
+            }
+        } catch (error) {
+            console.warn(
+                `SearchService: direct lookup of note ${noteId} in project ${projectId} failed:`,
+                error.message
+            )
+            return null
+        }
+    }
+
+    /**
+     * Find note by direct ID lookup
+     * @param {string} noteId - The note ID
+     * @param {Array} userProjects - User's accessible projects
+     * @param {string} userId - The authenticated user ID
+     * @param {string} [preferredProjectId] - Project to check first (the caller's current project)
+     * @returns {Object|null} Note match or null
+     */
+    async findNoteById(noteId, userProjects, userId, preferredProjectId = null) {
+        const lookUp = async project => {
             try {
                 // Clean the note ID in case it has project suffix (from Algolia objectID)
                 let cleanNoteId = noteId
@@ -1559,20 +1618,31 @@ class SearchService {
                 }
 
                 const noteDoc = await this.options.database.doc(`noteItems/${project.id}/notes/${cleanNoteId}`).get()
-                if (noteDoc.exists) {
-                    const noteData = noteDoc.data()
-                    if (!canAccessByIsPublicFor(noteData, userId)) continue
-                    return {
-                        note: { ...noteData, id: cleanNoteId }, // Ensure clean ID overrides any corrupted ID from document data
-                        projectId: project.id,
-                        projectName: project.name,
-                    }
+                if (!noteDoc.exists) return null
+                const noteData = noteDoc.data()
+                if (!canAccessByIsPublicFor(noteData, userId)) return null
+                return {
+                    note: { ...noteData, id: cleanNoteId }, // Ensure clean ID overrides any corrupted ID from document data
+                    projectId: project.id,
+                    projectName: project.name,
                 }
             } catch (error) {
                 console.warn(`Error checking note ${noteId} in project ${project.id}:`, error.message)
+                return null
             }
         }
-        return null
+
+        const preferred = preferredProjectId ? userProjects.find(project => project.id === preferredProjectId) : null
+        if (preferred) {
+            const match = await lookUp(preferred)
+            if (match) return match
+        }
+
+        // Every other project, a bounded number at a time. The first hit in project order wins,
+        // exactly as the sequential loop this replaces decided it.
+        const others = userProjects.filter(project => project !== preferred)
+        const results = await mapWithConcurrency(others, PROJECT_READ_CONCURRENCY, lookUp)
+        return results.find(Boolean) || null
     }
 
     /**

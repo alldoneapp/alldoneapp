@@ -25,6 +25,8 @@ try {
     containsMarkdown = null
 }
 
+const { projectYText, toYIndex, getProjectedHeadingTexts } = require('./noteTextProjection')
+
 const NOTE_UPDATE_MODE_PREPEND = 'prepend'
 const NOTE_UPDATE_MODE_PATCH = 'patch'
 const NOTE_PATCH_EDIT_TYPES = ['replace_text', 'replace_section', 'insert_before', 'insert_after']
@@ -1132,8 +1134,10 @@ class NoteService {
             // Decode Yjs content
             const doc = new Y.Doc()
             Y.applyUpdate(doc, new Uint8Array(buffer))
+            // Embeds (links, mentions, task tags, images) are rendered as text: toString() drops
+            // them, and every reader of this content is a model that must see what is there.
             const ytext = doc.getText('quill')
-            const content = ytext.toString()
+            const content = projectYText(ytext).text
 
             console.log(`NoteService: Decoded content length: ${content.length}`)
             return content
@@ -1193,36 +1197,8 @@ class NoteService {
     }
 
     getFormattedHeadingTextsFromYText(ytext) {
-        const headingTexts = new Set()
-        if (!ytext || typeof ytext.toDelta !== 'function') return headingTexts
-
-        const chars = []
-        ytext.toDelta().forEach(op => {
-            if (typeof op.insert !== 'string') return
-            for (let index = 0; index < op.insert.length; index++) {
-                chars.push({
-                    char: op.insert[index],
-                    attributes: op.attributes || {},
-                })
-            }
-        })
-
-        let lineStart = 0
-        let lineText = ''
-        chars.forEach((entry, index) => {
-            if (entry.char === '\n') {
-                if (entry.attributes && entry.attributes.header) {
-                    const trimmed = lineText.trim()
-                    if (trimmed) headingTexts.add(trimmed)
-                }
-                lineStart = index + 1
-                lineText = ''
-            } else if (index >= lineStart) {
-                lineText += entry.char
-            }
-        })
-
-        return headingTexts
+        if (!ytext || typeof ytext.toDelta !== 'function') return new Set()
+        return getProjectedHeadingTexts(projectYText(ytext))
     }
 
     normalizePatchEditOccurrence(occurrence) {
@@ -1347,156 +1323,16 @@ class NoteService {
         const changes = []
 
         for (let editIndex = 0; editIndex < edits.length; editIndex++) {
-            const edit = edits[editIndex] || {}
-            const editType = edit.type
+            const planned = this.buildPatchOperation(workingContent, edits[editIndex] || {}, editIndex, headingTexts)
+            if (!planned.success) return { ...planned, changes: [] }
 
-            if (!NOTE_PATCH_EDIT_TYPES.includes(editType)) {
-                return {
-                    success: false,
-                    error: 'INVALID_PATCH_EDIT',
-                    message: `Patch edit ${editIndex + 1} has unsupported type "${editType}".`,
-                    failedEditIndex: editIndex,
-                    changes: [],
-                }
-            }
-
-            let operation = null
-
-            if (editType === 'replace_text') {
-                const replacement = typeof edit.replaceWith === 'string' ? edit.replaceWith : edit.content
-                if (typeof replacement !== 'string') {
-                    return {
-                        success: false,
-                        error: 'INVALID_PATCH_EDIT',
-                        message: `Patch edit ${editIndex + 1} requires replaceWith.`,
-                        failedEditIndex: editIndex,
-                        changes: [],
-                    }
-                }
-
-                const match = this.resolvePatchTextMatch(
-                    workingContent,
-                    edit.find,
-                    edit.occurrence,
-                    editIndex,
-                    'find text'
-                )
-                if (!match.success) return { ...match, changes: [] }
-
-                const unsafeDelete = this.validatePatchDeleteRange(edit.find.length, workingContent.length, editIndex)
-                if (unsafeDelete) return { ...unsafeDelete, changes: [] }
-
-                operation = {
-                    index: match.index,
-                    deleteLength: edit.find.length,
-                    insertText: replacement,
-                    type: editType,
-                }
-                changes.push('patched exact text')
-            } else if (editType === 'replace_section') {
-                const heading = typeof edit.heading === 'string' ? edit.heading.trim() : ''
-                const sectionContent = typeof edit.content === 'string' ? edit.content : edit.replaceWith
-                if (!heading) {
-                    return {
-                        success: false,
-                        error: 'INVALID_PATCH_EDIT',
-                        message: `Patch edit ${editIndex + 1} requires heading.`,
-                        failedEditIndex: editIndex,
-                        changes: [],
-                    }
-                }
-                if (typeof sectionContent !== 'string') {
-                    return {
-                        success: false,
-                        error: 'INVALID_PATCH_EDIT',
-                        message: `Patch edit ${editIndex + 1} requires content.`,
-                        failedEditIndex: editIndex,
-                        changes: [],
-                    }
-                }
-
-                const lines = this.getPatchLinesFromContent(workingContent, headingTexts)
-                const matchingHeadings = lines.filter(line => {
-                    const withoutMarkdownPrefix = line.trimmed.replace(/^#{1,6}\s+/, '').trim()
-                    return line.isHeading && (line.trimmed === heading || withoutMarkdownPrefix === heading)
-                })
-
-                if (matchingHeadings.length === 0) {
-                    return {
-                        success: false,
-                        error: 'PATCH_HEADING_NOT_FOUND',
-                        message: `Patch edit ${editIndex + 1} could not find heading "${heading}".`,
-                        failedEditIndex: editIndex,
-                        changes: [],
-                    }
-                }
-
-                if (matchingHeadings.length > 1) {
-                    return {
-                        success: false,
-                        error: 'PATCH_HEADING_AMBIGUOUS',
-                        message: `Patch edit ${editIndex + 1} found multiple headings named "${heading}".`,
-                        failedEditIndex: editIndex,
-                        changes: [],
-                    }
-                }
-
-                const headingLine = matchingHeadings[0]
-                const followingLines = lines.filter(line => line.start >= headingLine.newlineEnd)
-                const nextHeading = followingLines.find(line => line.isHeading)
-                const sectionStart = headingLine.newlineEnd
-                const sectionEnd = nextHeading ? nextHeading.start : workingContent.length
-                const normalizedSectionContent =
-                    sectionContent.length > 0 && nextHeading && !sectionContent.endsWith('\n')
-                        ? `${sectionContent}\n`
-                        : sectionContent
-
-                const unsafeDelete = this.validatePatchDeleteRange(
-                    sectionEnd - sectionStart,
-                    workingContent.length,
-                    editIndex
-                )
-                if (unsafeDelete) return { ...unsafeDelete, changes: [] }
-
-                operation = {
-                    index: sectionStart,
-                    deleteLength: sectionEnd - sectionStart,
-                    insertText: normalizedSectionContent,
-                    type: editType,
-                }
-                changes.push(`patched section "${heading}"`)
-            } else {
-                const anchor = edit.anchor || edit.find
-                const content = typeof edit.content === 'string' ? edit.content : edit.insertText
-                if (typeof content !== 'string') {
-                    return {
-                        success: false,
-                        error: 'INVALID_PATCH_EDIT',
-                        message: `Patch edit ${editIndex + 1} requires content.`,
-                        failedEditIndex: editIndex,
-                        changes: [],
-                    }
-                }
-
-                const match = this.resolvePatchTextMatch(workingContent, anchor, edit.occurrence, editIndex, 'anchor')
-                if (!match.success) return { ...match, changes: [] }
-
-                operation = {
-                    index: editType === 'insert_after' ? match.index + anchor.length : match.index,
-                    deleteLength: 0,
-                    insertText: content,
-                    type: editType,
-                }
-                changes.push(
-                    editType === 'insert_after' ? 'inserted content after anchor' : 'inserted content before anchor'
-                )
-            }
-
+            const { operation } = planned
             workingContent =
                 workingContent.substring(0, operation.index) +
                 operation.insertText +
                 workingContent.substring(operation.index + operation.deleteLength)
             operations.push(operation)
+            changes.push(planned.change)
         }
 
         return {
@@ -1505,6 +1341,152 @@ class NoteService {
             content: workingContent,
             changes,
         }
+    }
+
+    /**
+     * Resolve one patch edit against `workingContent` (the projected note text, see
+     * noteTextProjection.js). Offsets in the returned operation are TEXT offsets; mapping them
+     * into Y.Text positions is the caller's job, because only the caller holds the projection.
+     */
+    buildPatchOperation(workingContent, edit, editIndex, headingTexts = new Set()) {
+        const editType = edit.type
+
+        if (!NOTE_PATCH_EDIT_TYPES.includes(editType)) {
+            return {
+                success: false,
+                error: 'INVALID_PATCH_EDIT',
+                message: `Patch edit ${editIndex + 1} has unsupported type "${editType}".`,
+                failedEditIndex: editIndex,
+                changes: [],
+            }
+        }
+
+        let operation = null
+        let change = null
+
+        if (editType === 'replace_text') {
+            const replacement = typeof edit.replaceWith === 'string' ? edit.replaceWith : edit.content
+            if (typeof replacement !== 'string') {
+                return {
+                    success: false,
+                    error: 'INVALID_PATCH_EDIT',
+                    message: `Patch edit ${editIndex + 1} requires replaceWith.`,
+                    failedEditIndex: editIndex,
+                    changes: [],
+                }
+            }
+
+            const match = this.resolvePatchTextMatch(workingContent, edit.find, edit.occurrence, editIndex, 'find text')
+            if (!match.success) return { ...match, changes: [] }
+
+            const unsafeDelete = this.validatePatchDeleteRange(edit.find.length, workingContent.length, editIndex)
+            if (unsafeDelete) return { ...unsafeDelete, changes: [] }
+
+            operation = {
+                index: match.index,
+                deleteLength: edit.find.length,
+                insertText: replacement,
+                type: editType,
+            }
+            change = 'patched exact text'
+        } else if (editType === 'replace_section') {
+            const heading = typeof edit.heading === 'string' ? edit.heading.trim() : ''
+            const sectionContent = typeof edit.content === 'string' ? edit.content : edit.replaceWith
+            if (!heading) {
+                return {
+                    success: false,
+                    error: 'INVALID_PATCH_EDIT',
+                    message: `Patch edit ${editIndex + 1} requires heading.`,
+                    failedEditIndex: editIndex,
+                    changes: [],
+                }
+            }
+            if (typeof sectionContent !== 'string') {
+                return {
+                    success: false,
+                    error: 'INVALID_PATCH_EDIT',
+                    message: `Patch edit ${editIndex + 1} requires content.`,
+                    failedEditIndex: editIndex,
+                    changes: [],
+                }
+            }
+
+            const lines = this.getPatchLinesFromContent(workingContent, headingTexts)
+            const matchingHeadings = lines.filter(line => {
+                const withoutMarkdownPrefix = line.trimmed.replace(/^#{1,6}\s+/, '').trim()
+                return line.isHeading && (line.trimmed === heading || withoutMarkdownPrefix === heading)
+            })
+
+            if (matchingHeadings.length === 0) {
+                return {
+                    success: false,
+                    error: 'PATCH_HEADING_NOT_FOUND',
+                    message: `Patch edit ${editIndex + 1} could not find heading "${heading}".`,
+                    failedEditIndex: editIndex,
+                    changes: [],
+                }
+            }
+
+            if (matchingHeadings.length > 1) {
+                return {
+                    success: false,
+                    error: 'PATCH_HEADING_AMBIGUOUS',
+                    message: `Patch edit ${editIndex + 1} found multiple headings named "${heading}".`,
+                    failedEditIndex: editIndex,
+                    changes: [],
+                }
+            }
+
+            const headingLine = matchingHeadings[0]
+            const followingLines = lines.filter(line => line.start >= headingLine.newlineEnd)
+            const nextHeading = followingLines.find(line => line.isHeading)
+            const sectionStart = headingLine.newlineEnd
+            const sectionEnd = nextHeading ? nextHeading.start : workingContent.length
+            const normalizedSectionContent =
+                sectionContent.length > 0 && nextHeading && !sectionContent.endsWith('\n')
+                    ? `${sectionContent}\n`
+                    : sectionContent
+
+            const unsafeDelete = this.validatePatchDeleteRange(
+                sectionEnd - sectionStart,
+                workingContent.length,
+                editIndex
+            )
+            if (unsafeDelete) return { ...unsafeDelete, changes: [] }
+
+            operation = {
+                index: sectionStart,
+                deleteLength: sectionEnd - sectionStart,
+                insertText: normalizedSectionContent,
+                type: editType,
+            }
+            change = `patched section "${heading}"`
+        } else {
+            const anchor = edit.anchor || edit.find
+            const content = typeof edit.content === 'string' ? edit.content : edit.insertText
+            if (typeof content !== 'string') {
+                return {
+                    success: false,
+                    error: 'INVALID_PATCH_EDIT',
+                    message: `Patch edit ${editIndex + 1} requires content.`,
+                    failedEditIndex: editIndex,
+                    changes: [],
+                }
+            }
+
+            const match = this.resolvePatchTextMatch(workingContent, anchor, edit.occurrence, editIndex, 'anchor')
+            if (!match.success) return { ...match, changes: [] }
+
+            operation = {
+                index: editType === 'insert_after' ? match.index + anchor.length : match.index,
+                deleteLength: 0,
+                insertText: content,
+                type: editType,
+            }
+            change = editType === 'insert_after' ? 'inserted content after anchor' : 'inserted content before anchor'
+        }
+
+        return { success: true, operation, change }
     }
 
     insertPatchContent(ytext, index, content) {
@@ -1531,20 +1513,42 @@ class NoteService {
         return content.length
     }
 
-    applyPatchOperationsToYText(ytext, operations) {
-        // Operation indices are computed against a working string that splices in the raw
-        // insertText. Markdown conversion changes the inserted length (e.g. "## Summary\n"
-        // becomes "Summary\n" with a header attribute), so track the cumulative divergence
-        // between what we actually inserted and the raw insertText to keep later indices aligned.
-        let offset = 0
-        operations.forEach(operation => {
-            const index = operation.index + offset
+    /**
+     * Apply validated patch edits to a Y.Text, one edit at a time.
+     *
+     * Each edit is resolved against a FRESH projection of the document as it stands after the
+     * previous edit, then mapped into Y.Text positions. Resolving everything up front against
+     * one string cannot work here: markdown conversion changes the inserted length ("## X\n"
+     * becomes "X\n" plus a header attribute), and embeds occupy one Y.Text position while
+     * rendering as many characters — so any precomputed offset drifts. The caller has already
+     * validated the whole batch; nothing is persisted until this returns success, so a late
+     * failure still leaves the stored note untouched.
+     */
+    applyPatchEditsToYText(ytext, edits) {
+        const changes = []
+        for (let editIndex = 0; editIndex < edits.length; editIndex++) {
+            const projection = projectYText(ytext)
+            const planned = this.buildPatchOperation(
+                projection.text,
+                edits[editIndex] || {},
+                editIndex,
+                getProjectedHeadingTexts(projection)
+            )
+            if (!planned.success) return { ...planned, changes: [] }
+
+            const { operation } = planned
             if (operation.deleteLength > 0) {
-                ytext.delete(index, operation.deleteLength)
+                const yStart = toYIndex(projection, operation.index, 'before')
+                const yEnd = toYIndex(projection, operation.index + operation.deleteLength, 'after')
+                if (yEnd > yStart) ytext.delete(yStart, yEnd - yStart)
+                this.insertPatchContent(ytext, yStart, operation.insertText)
+            } else {
+                const bias = operation.type === 'insert_after' ? 'after' : 'before'
+                this.insertPatchContent(ytext, toYIndex(projection, operation.index, bias), operation.insertText)
             }
-            const insertedLength = this.insertPatchContent(ytext, index, operation.insertText)
-            offset += insertedLength - operation.insertText.length
-        })
+            changes.push(planned.change)
+        }
+        return { success: true, changes }
     }
 
     async updateContentMetadata(projectId, noteId, fullContent, feedUser = null, changes = ['content updated']) {
@@ -1623,15 +1627,17 @@ class NoteService {
         }
 
         const ytext = doc.getText('quill')
-        const originalContent = ytext.toString()
-        const headingTexts = this.getFormattedHeadingTextsFromYText(ytext)
-        const patchPlan = this.buildPatchOperations(originalContent, edits, headingTexts)
+        const projection = projectYText(ytext)
+        const patchPlan = this.buildPatchOperations(projection.text, edits, getProjectedHeadingTexts(projection))
 
         if (!patchPlan.success) {
             return patchPlan
         }
 
-        this.applyPatchOperationsToYText(ytext, patchPlan.operations)
+        const applied = this.applyPatchEditsToYText(ytext, edits)
+        if (!applied.success) {
+            return applied
+        }
 
         const encodedStateData = Y.encodeStateAsUpdate(doc)
         await storageRef.save(Buffer.from(encodedStateData), {
@@ -1640,13 +1646,12 @@ class NoteService {
             },
         })
 
-        const fullContent = ytext.toString()
-        const preview = await this.updateContentMetadata(projectId, noteId, fullContent, feedUser, patchPlan.changes)
+        const preview = await this.updateContentMetadata(projectId, noteId, ytext.toString(), feedUser, applied.changes)
 
         return {
             success: true,
-            changes: patchPlan.changes,
-            content: fullContent,
+            changes: applied.changes,
+            content: projectYText(ytext).text,
             preview,
         }
     }

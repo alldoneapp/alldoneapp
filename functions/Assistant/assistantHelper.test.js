@@ -1165,7 +1165,29 @@ describe('Responses API compatibility helpers', () => {
         )
     })
 
-    test('propagates a native tool failure after persisting its error for a background task', async () => {
+    const missingProjectId = '-MDq6lDDNf_OwPjWeJsX2'
+    const failingProjectToolCall = id => ({
+        id,
+        type: 'function',
+        function: {
+            name: 'update_project_description',
+            arguments: JSON.stringify({ projectId: missingProjectId, description: 'Updated description' }),
+        },
+    })
+    const failingProjectToolResponse = id => [
+        {
+            type: 'response.output_item.done',
+            item: {
+                id,
+                type: 'function_call',
+                call_id: id,
+                name: 'update_project_description',
+                arguments: JSON.stringify({ projectId: missingProjectId, description: 'Updated description' }),
+            },
+        },
+        { type: 'response.completed', response: { output: [] } },
+    ]
+    const setUpFailingProjectTool = () => {
         mockDocSet.mockClear()
         mockDocUpdate.mockClear()
         mockBatchUpdate.mockClear()
@@ -1182,71 +1204,78 @@ describe('Responses API compatibility helpers', () => {
             exists: true,
             data: () => ({ uid: 'assistant-1', allowedTools: ['update_project_description'] }),
         })
-        ProjectService.mockImplementationOnce(() => ({
+        ProjectService.mockImplementation(() => ({
             initialize: jest.fn().mockResolvedValue(undefined),
             getUserProjects: jest.fn().mockResolvedValue([]),
         }))
-
-        const missingProjectId = '-MDq6lDDNf_OwPjWeJsX2'
-        const stream = [
+    }
+    const runFailingProjectTool = () =>
+        storeBotAnswerStream(
+            'project-1',
+            'tasks',
+            'task-1',
+            [{ content: '', additional_kwargs: { tool_calls: [failingProjectToolCall('call-update-project')] } }],
+            ['user-1'],
+            ['PUBLIC'],
+            null,
+            'assistant-1',
+            ['user-1'],
+            'Anna',
+            'user-1',
+            null,
+            [['user', 'Update all project descriptions']],
+            'MODEL_GPT6_LUNA',
+            'TEMPERATURE_NORMAL',
+            ['update_project_description'],
             {
-                content: '',
-                additional_kwargs: {
-                    tool_calls: [
-                        {
-                            id: 'call-update-project',
-                            type: 'function',
-                            function: {
-                                name: 'update_project_description',
-                                arguments: JSON.stringify({
-                                    projectId: missingProjectId,
-                                    description: 'Updated description',
-                                }),
-                            },
-                        },
-                    ],
-                },
+                project: { name: 'Project A' },
+                chat: { title: 'Weekly Project Descriptions Update' },
+                chatLink: 'https://my.alldone.app/projects/project-1/tasks/task-1/chat',
             },
-        ]
+            null,
+            {
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+                requestUserId: 'user-1',
+                objectType: 'tasks',
+                objectId: 'task-1',
+                failOnToolExecutionError: true,
+            }
+        )
 
-        await expect(
-            storeBotAnswerStream(
-                'project-1',
-                'tasks',
-                'task-1',
-                stream,
-                ['user-1'],
-                ['PUBLIC'],
-                null,
-                'assistant-1',
-                ['user-1'],
-                'Anna',
-                'user-1',
-                null,
-                [['user', 'Update all project descriptions']],
-                'MODEL_GPT6_LUNA',
-                'TEMPERATURE_NORMAL',
-                ['update_project_description'],
-                {
-                    project: { name: 'Project A' },
-                    chat: { title: 'Weekly Project Descriptions Update' },
-                    chatLink: 'https://my.alldone.app/projects/project-1/tasks/task-1/chat',
-                },
-                null,
-                {
-                    projectId: 'project-1',
-                    assistantId: 'assistant-1',
-                    requestUserId: 'user-1',
-                    objectType: 'tasks',
-                    objectId: 'task-1',
-                    failOnToolExecutionError: true,
-                }
-            )
-        ).rejects.toMatchObject({
+    // Note 8b4wQWfKyLXpZFtqYsNC (2026-09-28): one pointless update_task call at the end of a
+    // finished run replaced the whole answer with "Error executing update_task: …".
+    test('hands a failed tool call back to the model so the run can still answer', async () => {
+        setUpFailingProjectTool()
+        mockResponsesCreate.mockResolvedValueOnce([
+            { type: 'response.output_text.delta', delta: 'That project does not exist, so nothing was changed.' },
+            { type: 'response.completed', response: { output: [] } },
+        ])
+
+        await runFailingProjectTool()
+
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(1)
+        const resumedInput = JSON.stringify(mockResponsesCreate.mock.calls[0][0].input)
+        expect(resumedInput).toContain('function_call_output')
+        expect(resumedInput).toContain('Target project not found or not accessible')
+        const writtenTexts = mockDocUpdate.mock.calls.map(([update]) => update?.commentText).filter(Boolean)
+        expect(writtenTexts[writtenTexts.length - 1]).toContain('That project does not exist, so nothing was changed.')
+        expect(writtenTexts.some(text => text.includes('Error executing'))).toBe(false)
+    })
+
+    test('still fails a background task whose tool keeps failing, after persisting the error', async () => {
+        setUpFailingProjectTool()
+        mockResponsesCreate
+            .mockResolvedValueOnce(failingProjectToolResponse('call-retry-1'))
+            .mockResolvedValueOnce(failingProjectToolResponse('call-retry-2'))
+
+        await expect(runFailingProjectTool()).rejects.toMatchObject({
             code: 'ASSISTANT_TOOL_EXECUTION_FAILED',
             message: `Target project not found or not accessible: "${missingProjectId}"`,
         })
 
+        // Three rounds, all failed: the original call plus two retries the model was given.
+        expect(mockResponsesCreate).toHaveBeenCalledTimes(2)
         expect(mockDocUpdate).toHaveBeenCalledWith(
             expect.objectContaining({
                 commentText: expect.stringContaining(
