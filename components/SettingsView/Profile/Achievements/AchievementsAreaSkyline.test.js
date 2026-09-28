@@ -1,5 +1,7 @@
 import React from 'react'
 import renderer from 'react-test-renderer'
+import { StyleSheet } from 'react-native'
+import moment from 'moment'
 
 import { EmptyInboxOverview } from './AchievementsArea'
 import { canRenderSkyline } from './Skyline/webglSupport'
@@ -12,10 +14,10 @@ jest.mock('./Skyline/EmptyInboxSkyline', () => {
     return props => <View testID="skyline-double" {...props} />
 })
 
-const render = () => {
+const render = (emptyInboxDays = ['2026-01-02']) => {
     let tree
     renderer.act(() => {
-        tree = renderer.create(<EmptyInboxOverview user={{ uid: 'u1', emptyInboxDays: ['2026-01-02'] }} />)
+        tree = renderer.create(<EmptyInboxOverview user={{ uid: 'u1', emptyInboxDays }} />)
     })
     return tree
 }
@@ -65,6 +67,18 @@ describe('Empty inbox card: 3D skyline vs 2D grid', () => {
 
         press('empty-inbox-range-week')
         expect(tree.root.findAllByProps({ testID: 'skyline-double' }, { deep: false })[0].props.weeks).toBe(1)
+        localStorage.clear()
+    })
+
+    it('rings today in the year grid even on a day the inbox was cleared', () => {
+        canRenderSkyline.mockReturnValue(true)
+        localStorage.setItem('alldone.emptyInbox.range', 'year')
+        const tree = render([moment().format('YYYY-MM-DD')])
+        const today = tree.root.findAllByProps({ accessibilityLabel: 'Empty inbox reached on' }, { deep: false })
+        expect(today).toHaveLength(1)
+        const style = StyleSheet.flatten(today[0].props.style)
+        expect(style.borderWidth).toBe(2)
+        expect(style.borderColor).toBe('#007FFF')
         localStorage.clear()
     })
 

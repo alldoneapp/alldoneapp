@@ -25,6 +25,8 @@ import {
     Raycaster,
     Scene,
     SphereGeometry,
+    Sprite,
+    SpriteMaterial,
     SRGBColorSpace,
     TorusGeometry,
     Vector2,
@@ -116,6 +118,11 @@ const FLAG = colors.UtilityYellow200
 const FLAG_POLE = colors.Text02
 const FLAG_POLE_HEIGHT = 0.55
 const HIGHLIGHT = colors.UtilityYellow200
+// Today is the app's blue — the colour the 2D grid already rings today's square in — so it can never
+// be mistaken for the gold of an empty-inbox flag.
+const TODAY = colors.Primary100
+// How far above the top of today's building the tip of the "Today" tag floats.
+const TODAY_TAG_GAP = 0.28
 const METAL = '#9AA1A8'
 const ROOF_CAP = '#A7ADB3'
 const WATER_TANK = '#8F7F70'
@@ -258,6 +265,9 @@ export function createSkylineScene(
     const DEPTH_SCALE = ROWS / SKYLINE_WEEKS
     // A strip turned diagonal loses most of its width, so the week view flies a narrower arc.
     const ORBIT_SWEEP = ROWS === 1 ? 0.45 : 1
+    // The "Today" tag's width in scene units: the month is framed from further away, so its tag is
+    // larger to read at the same size on the card.
+    const TODAY_TAG_WIDTH = ROWS === 1 ? 1.05 : 1.5
     const renderer = new WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.outputColorSpace = SRGBColorSpace
@@ -498,20 +508,38 @@ export function createSkylineScene(
                 }
             }
         }
+        // Today's block is ringed in blue on the road around its kerb, drawn after the zebra
+        // crossings so they cannot break the ring.
+        const today = days.find(day => day.isToday)
+        if (today) {
+            const ring = 0.08 * px
+            const reach = block / 2 + 0.07 * px
+            context.strokeStyle = TODAY
+            context.lineWidth = ring
+            context.beginPath()
+            const x = cx(colX(today.weekday)) - reach
+            const y = cz(rowZ(today.week)) - reach
+            if (context.roundRect) context.roundRect(x, y, reach * 2, reach * 2, 0.12 * px)
+            else context.rect(x, y, reach * 2, reach * 2)
+            context.stroke()
+        }
         // The calendar's legends: weekday names along the front edge (at the back the towers would
-        // hide them), each week's first date on the left.
-        context.fillStyle = LABEL
+        // hide them), each week's first date on the left. Today's weekday and week are in blue.
         context.textBaseline = 'middle'
         const font = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        const legendStyle = (isToday, size) => {
+            context.fillStyle = isToday ? TODAY : LABEL
+            context.font = `${isToday ? 700 : 500} ${size * px}px ${font}`
+        }
         context.textAlign = 'center'
-        context.font = `500 ${0.44 * px}px ${font}`
         labels.columns.forEach(({ column, text }) => {
+            legendStyle(today && column === today.weekday, 0.44)
             context.fillText(text, cx(colX(column)), cz(CITY_HALF_DEPTH + roadHalf + 0.45))
         })
         context.textAlign = 'right'
-        context.font = `500 ${0.4 * px}px ${font}`
         rowLabelWidth = 0
         labels.rows.forEach(({ row, text }) => {
+            legendStyle(today && row === today.week, 0.4)
             context.fillText(text, cx(-CITY_HALF_WIDTH - roadHalf - 0.25), cz(rowZ(row)))
             rowLabelWidth = Math.max(rowLabelWidth, context.measureText(text).width / px)
         })
@@ -981,11 +1009,92 @@ export function createSkylineScene(
         if (done) animating = false
     }
 
-    // Today's marker: a small gold pin hovering over today's building.
-    const marker = new Mesh(track(new ConeGeometry(0.16, 0.36, 4)), basic(HIGHLIGHT))
-    marker.rotation.x = Math.PI
-    marker.visible = false
-    scene.add(marker)
+    // Today's marker: a blue "Today" tag floating over today's building — a billboard, so it reads
+    // from every angle the camera flies, drawn over the buildings so a tower in front cannot hide it
+    // — and a blue ripple spreading from its block. With the blue ring and legends on the ground it
+    // is the one day on the card that cannot be missed.
+    const todayTagCanvas = document.createElement('canvas')
+    todayTagCanvas.width = 320
+    todayTagCanvas.height = 132
+    const todayTagTexture = track(new CanvasTexture(todayTagCanvas))
+    todayTagTexture.colorSpace = SRGBColorSpace
+    let todayTagText = null
+    const drawTodayTag = text => {
+        if (text === todayTagText) return
+        todayTagText = text
+        const context = todayTagCanvas.getContext('2d')
+        const { width, height } = todayTagCanvas
+        context.clearRect(0, 0, width, height)
+        const pillHeight = 88
+        context.font = `700 50px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+        const measured = context.measureText(text)
+        const pillWidth = Math.min(width - 8, Math.max(pillHeight * 1.6, ((measured && measured.width) || 0) + 64))
+        const left = (width - pillWidth) / 2
+        context.fillStyle = TODAY
+        context.beginPath()
+        if (context.roundRect) context.roundRect(left, 2, pillWidth, pillHeight, pillHeight / 2)
+        else context.rect(left, 2, pillWidth, pillHeight)
+        context.fill()
+        // A pointer from the pill down to the building.
+        context.beginPath()
+        context.moveTo(width / 2 - 20, pillHeight - 2)
+        context.lineTo(width / 2 + 20, pillHeight - 2)
+        context.lineTo(width / 2, height - 2)
+        context.closePath()
+        context.fill()
+        context.fillStyle = '#FFFFFF'
+        context.textAlign = 'center'
+        context.textBaseline = 'middle'
+        context.fillText(text, width / 2, 2 + pillHeight / 2 + 2)
+        todayTagTexture.needsUpdate = true
+    }
+    const todayTag = new Sprite(
+        track(new SpriteMaterial({ map: todayTagTexture, transparent: true, depthTest: false, depthWrite: false }))
+    )
+    // Anchored at the pointer's tip, so `position` is the point just above the roof.
+    todayTag.center.set(0.5, 0)
+    const TODAY_TAG_HEIGHT = (TODAY_TAG_WIDTH * todayTagCanvas.height) / todayTagCanvas.width
+    todayTag.scale.set(TODAY_TAG_WIDTH, TODAY_TAG_HEIGHT, 1)
+    todayTag.renderOrder = 20
+    todayTag.visible = false
+    scene.add(todayTag)
+    const todayPulse = new Mesh(
+        track(new PlaneGeometry(1, 1)),
+        track(
+            new MeshBasicMaterial({
+                color: new Color(TODAY),
+                transparent: true,
+                opacity: 0,
+                depthWrite: false,
+                alphaMap: (() => {
+                    // A square frame: opaque edge, clear inside, so the pulse is a ring round the block.
+                    const frame = document.createElement('canvas')
+                    frame.width = 128
+                    frame.height = 128
+                    const context = frame.getContext('2d')
+                    context.fillStyle = '#000000'
+                    context.fillRect(0, 0, 128, 128)
+                    context.strokeStyle = '#FFFFFF'
+                    context.lineWidth = 7
+                    context.strokeRect(6, 6, 116, 116)
+                    return track(new CanvasTexture(frame))
+                })(),
+            })
+        )
+    )
+    todayPulse.rotation.x = -Math.PI / 2
+    todayPulse.visible = false
+    scene.add(todayPulse)
+    // How tall today's building currently stands (rising, damaged or collapsed).
+    const todayTop = () => {
+        let top = 0
+        ;(partsByBuilding[todayIndex] || []).forEach(part => {
+            top = Math.max(top, part.y + part.h)
+        })
+        const state = damageOf(todayIndex)
+        if (state && state.collapsed) return 0.2
+        return Math.max(0.05, top * rise[todayIndex] * (state ? state.integrity : 1))
+    }
 
     // ---------------------------------------------------------------- demolition effects
     // Three fixed pools (debris chunks, sparks, dust puffs) recycled round-robin, plus the rubble
@@ -1754,6 +1863,18 @@ export function createSkylineScene(
                 [-1, 1].forEach(sz => tops.push(new Vector3(x + sx * half, top + 0.05, z + sz * half)))
             )
         })
+        // The "Today" tag floats above today's roof and must stay on the card with it.
+        const todayB = days.findIndex(day => day.isToday)
+        if (todayB >= 0) {
+            let top = 0
+            ;(partsByBuilding[todayB] || []).forEach(part => {
+                top = Math.max(top, part.y + part.h)
+            })
+            const x = colX(days[todayB].weekday)
+            const z = rowZ(days[todayB].week)
+            const tagTop = Math.max(top, 0.05) + TODAY_TAG_GAP + 0.05 + TODAY_TAG_HEIGHT
+            ;[-1, 1].forEach(sx => tops.push(new Vector3(x + (sx * TODAY_TAG_WIDTH) / 2, tagTop, z)))
+        }
         bounds = groundBounds.concat(tops)
         target.y = highest * 0.15
         skylineTop = highest
@@ -1958,18 +2079,17 @@ export function createSkylineScene(
             updateAirplane(t)
             updateHelicopter(t)
         }
-        const todayState = damageOf(todayIndex)
-        marker.visible = false
-        if (todayIndex >= 0 && !(todayState && todayState.collapsed)) {
+        todayTag.visible = todayIndex >= 0
+        todayPulse.visible = todayIndex >= 0 && !reduceMotion
+        if (todayIndex >= 0) {
             const day = days[todayIndex]
-            const type = getBuildingType(day.tasks, scale)
-            const top =
-                (type === 'park' ? 0.2 : getSkylineHeight(day.tasks, scale) + (type === 'skyscraper' ? SPIRE : 0.2)) *
-                rise[todayIndex] *
-                (todayState ? todayState.integrity : 1)
-            marker.visible = true
-            marker.position.set(cellX(day), top + 0.55 + (reduceMotion ? 0 : Math.sin(t * 2.2) * 0.1), cellZ(day))
-            marker.rotation.y = reduceMotion ? 0 : t * 0.8
+            const bob = reduceMotion ? 0 : Math.sin(t * 2.2) * 0.05
+            todayTag.position.set(cellX(day), todayTop() + TODAY_TAG_GAP + bob, cellZ(day))
+            // A ripple every 2.4s, growing from the block's edge and fading as it goes.
+            const phase = (t % 2.4) / 2.4
+            todayPulse.position.set(cellX(day), 0.012, cellZ(day))
+            todayPulse.scale.setScalar(BLOCK + 0.14 + phase * 0.55)
+            todayPulse.material.opacity = (1 - phase) * 0.55
         }
         placeCamera(t, dt)
         renderer.render(scene, camera)
@@ -1997,6 +2117,7 @@ export function createSkylineScene(
             const previous = new Map(days.map((day, b) => [day.dateKey, { tasks: day.tasks, rise: rise[b] }]))
             days = nextDays
             labels = nextLabels || labels
+            drawTodayTag(labels.today || 'Today')
             scale = getSkylineScale(days)
             drawGround()
             ;({ list: parts, byBuilding: partsByBuilding } = buildParts())

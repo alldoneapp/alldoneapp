@@ -1494,6 +1494,15 @@ date — a statistics refresh must not resurrect a demolished day, a reload brin
 The celebration run that pops the 2D today dot pops today's flag instead, and the first hit on
 a building knocks its flag and rooftop equipment off.
 
+**Today is marked in the app's blue (`Primary100`), never in gold.** Gold already means "empty
+inbox" (the flags), so today gets the colour the 2D grid rings its square in: a blue ring round
+today's block on the ground, today's weekday and week legends in bold blue, a ripple spreading from
+the block, and a "Today" tag (a sprite, so it reads from every angle, drawn with `depthTest: false`
+so a tower in front cannot hide it) floating over the roof. The tag is part of the framing bounds
+(`setBuildingTops`), so it never leaves the card; the day line under the city prefixes "Today". The
+Year grid rings today's square with a 2px blue border whether or not it was cleared (it used to lose
+the ring exactly on a cleared day).
+
 **Life and cost.** The decorative layer (a few slow cars, street trees and lamps, zebra crossings,
 a small flock of birds, an occasional balloon or plane) carries no data, is not interactive, and is switched off under
 reduced motion (which also freezes the camera at `SKYLINE_REST_VIEW`). The render loop only runs
