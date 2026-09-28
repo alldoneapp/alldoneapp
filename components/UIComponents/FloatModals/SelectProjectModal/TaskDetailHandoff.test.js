@@ -38,6 +38,7 @@ jest.mock(
 import SelectProjectModal from './SelectProjectModal'
 
 describe('task detail project handoff start', () => {
+    beforeEach(() => mockMoveObjectToProject.mockClear())
     it('starts the DV pending state before dispatching the background move', async () => {
         mockMoveObjectToProject.mockResolvedValue(undefined)
         const onTaskProjectMoveStarted = jest.fn()
@@ -71,5 +72,35 @@ describe('task detail project handoff start', () => {
             mockMoveObjectToProject.mock.invocationCallOrder[0]
         )
         expect(mockDismissAllPopups).toHaveBeenCalled()
+    })
+
+    it('starts note field progress when another project is selected', async () => {
+        mockMoveObjectToProject.mockResolvedValue(undefined)
+        const onNoteProjectMoveStarted = jest.fn()
+        const onNoteProjectMoveFinished = jest.fn()
+        const project = { id: 'project-a', index: 0, name: 'Inbox' }
+        const destination = { id: 'project-b', index: 1, name: 'Product' }
+        const item = { type: 'note', data: { id: 'note-1' } }
+        const tree = renderer.create(
+            <SelectProjectModal
+                item={item}
+                project={project}
+                closePopover={jest.fn()}
+                onNoteProjectMoveStarted={onNoteProjectMoveStarted}
+                onNoteProjectMoveFinished={onNoteProjectMoveFinished}
+            />
+        )
+
+        await act(async () => {
+            await tree.root.findByType('ProjectListModal').props.onSelectProject(destination)
+        })
+
+        expect(onNoteProjectMoveStarted).toHaveBeenCalledWith(destination)
+        expect(mockMoveObjectToProject).toHaveBeenCalledWith(item, project, destination, {
+            onNoteProjectMoveFinished,
+        })
+        expect(onNoteProjectMoveStarted.mock.invocationCallOrder[0]).toBeLessThan(
+            mockMoveObjectToProject.mock.invocationCallOrder[0]
+        )
     })
 })

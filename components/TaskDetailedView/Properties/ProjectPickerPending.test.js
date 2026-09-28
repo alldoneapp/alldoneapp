@@ -1,5 +1,5 @@
 import React from 'react'
-import renderer from 'react-test-renderer'
+import renderer, { act } from 'react-test-renderer'
 
 jest.mock('react-redux', () => ({
     useSelector: callback => callback({ smallScreenNavigation: false }),
@@ -27,5 +27,28 @@ describe('task project-field move progress', () => {
         expect(button.props.processingTitle).toBeTruthy()
         expect(button.props.disabled).toBe(true)
         expect(button.props.accessibilityLabel).toContain('Product')
+    })
+
+    it('keeps the note project name visible with a spinner until the move finishes', () => {
+        const project = { id: 'project-a', name: 'Inbox', color: '#123456' }
+        const destination = { id: 'project-b', name: 'Product' }
+        const tree = renderer.create(
+            <ProjectPicker project={project} item={{ type: 'note', data: { id: 'note-1' } }} />
+        )
+
+        act(() => tree.root.findByType('Button').props.onPress())
+        const picker = tree.root.findByType('AppPopover').props.content
+        act(() => picker.props.onNoteProjectMoveStarted(destination))
+
+        let button = tree.root.findByType('Button')
+        expect(button.props.processing).toBe(true)
+        expect(button.props.processingTitle).toBe('Inbox')
+        expect(button.props.disabled).toBe(true)
+        expect(button.props.accessibilityLabel).toContain('Product')
+
+        act(() => picker.props.onNoteProjectMoveFinished())
+        button = tree.root.findByType('Button')
+        expect(button.props.processing).toBe(false)
+        expect(button.props.disabled).toBeFalsy()
     })
 })
