@@ -64,7 +64,7 @@ async function reconcileLiveUsage({ sessionId, seconds, final = false, backend =
                     projectId: session.projectId,
                     objectId: session.chatId,
                     objectType: 'topics',
-                    channel: 'browser_call',
+                    channel: session.channel || 'browser_call',
                     callSessionId: sessionId,
                     model: backend ? backend.model : session.voiceModel,
                     note: backend ? 'Assistant reasoning during voice call' : 'GPT-Live connected voice duration',

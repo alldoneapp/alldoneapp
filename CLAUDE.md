@@ -1811,14 +1811,18 @@ deleting, reassigning, re-goaling, goal-level postpone, non-Today lists, filters
 reduced motion keep their existing immediate/static behavior. Completion and task-postpone events
 share the in-memory goal-task-exit channel; no Redux or persistence state is added.
 
-### In-app GPT-Live voice calls
+### GPT-Live voice calls (in-app, phone, WhatsApp)
 
-In-app calls use GPT-Live (`gpt-live-1`) for speech and client delegation to the current
+Every assistant call uses GPT-Live (`gpt-live-1`) for speech and client delegation to the current
 assistant's configured chat model, instructions, history and tools. Voice is 40 Gold/min with
-a 15-second minimum; backend reasoning uses the assistant's normal model rate. Phone/WhatsApp
-retain their existing Realtime path. See `functions/WhatsApp/GPT_LIVE_CALLING.md` for session,
-billing, interruption, rollout and verification details. Keep the shared chat execution path
-and model-specific pricing; do not introduce a separate voice backend model.
+a 15-second minimum; backend reasoning uses the assistant's normal model rate. In-app calls use
+WebRTC; phone and WhatsApp calls arrive over SIP as `live.transport.incoming` and run on the same
+`assistantLiveController`, which greets SIP callers itself (no browser gates playback) and keys
+transcripts, tool `sourceChannel` and billing on the session's `channel`. The Realtime SIP path
+(`realtime.call.incoming`, `OPENAI_REALTIME_MODEL`) is now only a fallback while the OpenAI webhook
+subscription still names it. See `functions/WhatsApp/GPT_LIVE_CALLING.md` for session, billing,
+interruption, rollout and verification details. Keep the shared chat execution path and
+model-specific pricing; do not introduce a separate voice backend model.
 
 ### Assistant voice calls survive the background differently on every platform (AT-2496)
 

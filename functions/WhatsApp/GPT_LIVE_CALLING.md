@@ -1,6 +1,20 @@
-# In-app GPT-Live calls
+# GPT-Live calls (in-app, phone and WhatsApp)
 
-The in-app voice transport uses `gpt-live-1` with WebRTC and client delegation. Phone and WhatsApp calls continue through their existing Realtime controller.
+Every assistant call uses `gpt-live-1` with client delegation. In-app calls connect over WebRTC; phone and WhatsApp calls reach OpenAI over SIP (Twilio → `sip:<project>@sip.api.openai.com`) and are answered as Live sessions. All three share one controller (`assistantLiveController.js`), one prompt and one price.
+
+## Phone and WhatsApp (SIP)
+
+OpenAI delivers `live.transport.incoming` (`data.type: "sip"`, `data.session_id`) to `openAIRealtimeCallWebhook`; the deprecated `live.call.incoming` name is accepted too. The webhook validates the one-use `x-alldone-route` SIP header exactly as before, stamps the call session as `voiceProvider: 'gpt-live'`, accepts via `POST /v1/live/sessions/{id}/accept` with `{ session: { type: 'live', ... } }`, charges the 15-second minimum, and queues `runWhatsAppRealtimeCall`, which hands the session to the Live controller. Rejection and hangup use the Live `reject` / `hangup` endpoints.
+
+Differences from a browser call, all keyed on the session's `channel`:
+
+- No client gates audio playback, so the controller sends the localized opening greeting itself (`alldone_live_greeting`) as soon as the sideband attaches.
+- Transcripts carry `source: 'phone_call' | 'whatsapp_call'`, and the assistant's tools run with that `sourceChannel`, so a reminder set during a WhatsApp call is delivered over WhatsApp (AT-2211).
+- WhatsApp callers still get the post-call WhatsApp recap. That recap is text generation, still on `OPENAI_REALTIME_MODEL`, and is charged through the Live ledger (`reconcileLiveUsage`), because a Live session's `billedGold` already includes voice minutes.
+- If closing over the sideband cannot be confirmed, the controller hangs up via REST so a phone line is never left open.
+- Callers need more than the 10-Gold minimum, as in the app.
+
+**Webhook subscription:** the OpenAI project webhook must be subscribed to `live.transport.incoming`. Unsubscribe `realtime.call.incoming` at the same time. While that subscription is still active, the legacy Realtime path handles the call on `OPENAI_REALTIME_MODEL` and logs `Legacy Realtime SIP event received`. OpenAI does not document how it chooses between the two events, so treat that log line as a sign the switch is incomplete. When both events arrive for one call, the second finds its route already consumed and is ignored rather than rejected.
 
 `assistantBrowserCall.js` creates a Live session with `store: false`, validates the caller/topic, freezes the voice price, and queues the existing `runWhatsAppRealtimeCall` worker. That worker dispatches Live sessions to `assistantLiveController.js`. The microphone stays disabled until the session starts and the server controller acknowledges readiness.
 
@@ -43,6 +57,6 @@ Deploy the frontend together with `startAssistantBrowserCallSecondGen`, `getAssi
 
 `node browser-tests/voice-microphone/run.js` uses Playwright Chromium and synthetic Web Audio inputs to verify continuous stronger-input selection in both directions, pausing selection during playback, capture cleanup, and recovery from digital silence. It uses an isolated browser and localhost harness, without real microphone access or paid sessions.
 
-Run focused Functions tests with `ci/jest.functions.config.js`, client lifecycle tests with `ci/jest.web.config.js`, and the webpack production build under Node 22. Before production rollout, perform a real call with a configured OpenAI model and an OpenRouter model; check clarification, interruption, tool results/links, hangup, Gold history and final usage. Device testing remains necessary for iOS shell background capture, iOS Safari resume and Android notification hangup.
+Run focused Functions tests with `ci/jest.functions.config.js`, client lifecycle tests with `ci/jest.web.config.js`, and the webpack production build under Node 22. Before production rollout, perform a real in-app call, phone call and WhatsApp call with a configured OpenAI model and an OpenRouter model; check clarification, interruption, tool results/links, hangup, Gold history and final usage. Device testing remains necessary for iOS shell background capture, iOS Safari resume and Android notification hangup.
 
 Official references: [Live delegation](https://developers.openai.com/api/docs/guides/live-delegation), [Live conversations](https://developers.openai.com/api/docs/guides/live-conversations), [WebRTC](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live), [pricing](https://developers.openai.com/api/docs/pricing).

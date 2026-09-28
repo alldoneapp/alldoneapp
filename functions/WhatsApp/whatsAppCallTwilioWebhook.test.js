@@ -59,7 +59,7 @@ describe('WhatsApp call Twilio routing', () => {
     })
 
     test('enforces feature flag, linked premium user, Gold, and default project', () => {
-        const eligibleUser = { premium: { status: 'premium' }, gold: 2, defaultProjectId: 'project-1' }
+        const eligibleUser = { premium: { status: 'premium' }, gold: 11, defaultProjectId: 'project-1' }
         expect(getCallEligibilityReason({ config: { enabled: false }, user: eligibleUser })).toBe('disabled')
         expect(getCallEligibilityReason({ config: { enabled: true }, user: null })).toBe('unlinked')
         expect(
@@ -69,6 +69,10 @@ describe('WhatsApp call Twilio routing', () => {
             })
         ).toBe('premium_required')
         expect(getCallEligibilityReason({ config: { enabled: true }, user: { ...eligibleUser, gold: 0 } })).toBe(
+            'gold_required'
+        )
+        // Every call is a GPT-Live session, which charges its 15-second / 10-Gold minimum on accept.
+        expect(getCallEligibilityReason({ config: { enabled: true }, user: { ...eligibleUser, gold: 10 } })).toBe(
             'gold_required'
         )
         expect(
@@ -115,7 +119,7 @@ describe('WhatsApp call Twilio routing', () => {
     test('routes an eligible caller through the existing default assistant and daily topic', async () => {
         const user = {
             premium: { status: 'premium' },
-            gold: 3,
+            gold: 30,
             defaultProjectId: 'project-1',
         }
         getWhatsAppCallConfig.mockReturnValue({
@@ -176,7 +180,7 @@ describe('WhatsApp call Twilio routing', () => {
     test('routes an eligible phone caller through the shared SIP bridge', async () => {
         const user = {
             premium: { status: 'premium' },
-            gold: 3,
+            gold: 30,
             defaultProjectId: 'project-1',
         }
         getWhatsAppCallConfig.mockReturnValue({

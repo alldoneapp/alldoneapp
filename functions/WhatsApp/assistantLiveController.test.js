@@ -44,6 +44,7 @@ jest.mock('./whatsAppCallSessions', () => ({
 jest.mock('./whatsAppCallTranscript', () => ({ storeCallTranscriptTurn: jest.fn(async () => ({})) }))
 jest.mock('./assistantLiveGold', () => ({ reconcileLiveUsage: jest.fn(async () => ({ currentGold: 100 })) }))
 jest.mock('./assistantLiveBackend', () => ({ runLiveAssistant: jest.fn(async () => 'Verified result') }))
+jest.mock('./whatsAppCallController', () => ({ sendCallRecap: jest.fn(async () => ({ sent: true })) }))
 const admin = require('firebase-admin')
 const Socket = require('ws')
 const { getCallSession, finalizeCallSession } = require('./whatsAppCallSessions')
@@ -264,6 +265,62 @@ test('controller connection does not request a greeting and records its later br
     await emit(state.socket, { type: 'session.commentary.appended', client_event_id: 'alldone_live_greeting' })
     expect(updateCallSession).toHaveBeenCalledWith('s', { greetingAcknowledgedAt: expect.any(Number) })
     await finish(state)
+})
+
+describe('SIP calls (phone and WhatsApp) on GPT-Live', () => {
+    const { updateCallSession } = require('./whatsAppCallSessions')
+    const { sendCallRecap } = require('./whatsAppCallController')
+    const asChannel = (channel, extra = {}) => {
+        const session = { ...docs.get('whatsAppCallSessions/s'), channel, ...extra }
+        docs.set('whatsAppCallSessions/s', session)
+        getCallSession.mockResolvedValue(session)
+    }
+
+    test('greets the caller itself, since no browser gates playback on a phone line', async () => {
+        asChannel('phone_call', { language: 'de' })
+        const state = await start()
+        const greeting = state.socket.sent.find(e => e.event_id === 'alldone_live_greeting')
+        expect(greeting).toEqual(
+            expect.objectContaining({
+                type: 'session.commentary.append',
+                delegation_id: null,
+                content: 'Hallo, wie kann ich dir helfen?',
+            })
+        )
+        expect(state.socket.sent.find(e => e.event_id === 'alldone_live_ready').content).not.toContain('Remain silent')
+        await jest.advanceTimersByTimeAsync(0)
+        expect(updateCallSession).toHaveBeenCalledWith('s', { greetingAcknowledgedAt: expect.any(Number) })
+        await finish(state)
+        expect(sendCallRecap).not.toHaveBeenCalled()
+        expect(updateCallSession).toHaveBeenCalledWith('s', expect.objectContaining({ recapStatus: 'skipped' }))
+    })
+
+    test('stores transcripts under the call channel and sends the WhatsApp recap afterwards', async () => {
+        asChannel('whatsapp_call')
+        const state = await start()
+        await emit(state.socket, user())
+        await finish(state)
+        expect(storeCallTranscriptTurn).toHaveBeenCalledWith(expect.objectContaining({ source: 'whatsapp_call' }))
+        expect(updateCallSession).not.toHaveBeenCalledWith('s', expect.objectContaining({ recapStatus: 'skipped' }))
+        expect(finalizeCallSession).toHaveBeenCalledWith('s', 'close_requested', 'completed')
+        expect(sendCallRecap).toHaveBeenCalledWith('s')
+    })
+
+    test('hangs up the phone line when the sideband close cannot be confirmed', async () => {
+        asChannel('phone_call')
+        global.fetch = jest.fn(async () => ({ ok: true, status: 200 }))
+        const state = await start()
+        state.socket.emit('error', { code: 'ECONNRESET' })
+        await jest.advanceTimersByTimeAsync(20000)
+        // Reattachments close without a provider acknowledgement.
+        for (const socket of Socket.instances.slice(1)) socket.emit('close')
+        await jest.advanceTimersByTimeAsync(20000)
+        await state.running
+        expect(global.fetch).toHaveBeenCalledWith(
+            'https://api.openai.com/v1/live/sessions/live_s/hangup',
+            expect.objectContaining({ method: 'POST' })
+        )
+    })
 })
 
 const progressMessages = socket =>

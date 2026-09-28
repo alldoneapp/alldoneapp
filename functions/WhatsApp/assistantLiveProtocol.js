@@ -2,8 +2,37 @@ const { LIVE_MODEL } = require('./assistantLivePricing')
 const { buildCallLanguageInstruction } = require('./whatsAppCallPrompt')
 
 const LIVE_READY_EVENT = 'alldone_live_ready'
+const LIVE_GREETING_EVENT = 'alldone_live_greeting'
+// The browser sends these (translated) itself after playback starts. A SIP call has
+// no client in the loop, so the controller sends the greeting in the same shape.
+const LIVE_GREETINGS = {
+    de: 'Hallo, wie kann ich dir helfen?',
+    es: 'Hola, ¿cómo puedo ayudarte?',
+    en: 'Hello, how can I help?',
+}
 
-function buildLiveSession({ assistant, language, voice }) {
+// Browser calls are the only channel with a client; phone and WhatsApp calls arrive over SIP.
+function isSipCallChannel(channel) {
+    return !!channel && channel !== 'browser_call'
+}
+
+function getLiveGreeting(language) {
+    // Codes ("de", "de-DE") and names ("German", "Deutsch", "Español") both occur.
+    const code = String(language || '')
+        .trim()
+        .toLowerCase()
+    if (code.startsWith('de') || code === 'german') return LIVE_GREETINGS.de
+    if (code.startsWith('es') || code === 'spanish') return LIVE_GREETINGS.es
+    return LIVE_GREETINGS.en
+}
+
+function describeCallSetting(channel) {
+    if (channel === 'phone_call') return 'answering a phone call from the user'
+    if (channel === 'whatsapp_call') return 'answering a WhatsApp call from the user'
+    return 'speaking with the user in Alldone'
+}
+
+function buildLiveSession({ assistant, language, voice, channel = 'browser_call' }) {
     const name = String(assistant?.displayName || assistant?.name || 'Assistant').split(/\s+/)[0]
     return {
         model: LIVE_MODEL,
@@ -11,7 +40,7 @@ function buildLiveSession({ assistant, language, voice }) {
         audio: { output: { voice } },
         delegation: { type: 'client' },
         instructions: [
-            `You are ${name}, speaking with the user in Alldone. Keep replies brief, natural and in the user's language.`,
+            `You are ${name}, ${describeCallSetting(channel)}. Keep replies brief, natural and in the user's language.`,
             buildCallLanguageInstruction(language),
             "You are the voice interface for this user's configured assistant. Delegate substantive questions, requests, decisions, task work and lookups to that assistant. Its instructions, tools and verified results are authoritative for the task. Never substitute your own task answer while waiting.",
             'Continue listening while the backend works. Delegate corrections and answers to clarification or confirmation questions, including yes or no. Do not repeat an unchanged request while it is pending.',
@@ -98,4 +127,11 @@ function createLiveTranscript() {
     }
 }
 
-module.exports = { LIVE_READY_EVENT, buildLiveSession, createLiveTranscript }
+module.exports = {
+    LIVE_GREETING_EVENT,
+    LIVE_READY_EVENT,
+    buildLiveSession,
+    createLiveTranscript,
+    getLiveGreeting,
+    isSipCallChannel,
+}
