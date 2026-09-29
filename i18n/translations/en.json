@@ -2917,6 +2917,8 @@
     "comment_popup_loading_task": "Loading task",
     "comment_popup_unavailable_task": "Task unavailable",
     "comment_popup_unavailable_text_task": "This task is no longer available.",
+    "pre_config_task_link_unavailable": "This pre-configured task is no longer available. Insert a new link to it.",
+    "pre_config_task_link_load_failed": "Could not open this pre-configured task. Please try again.",
     "comment_popup_reconnecting_task": "Task details reconnecting",
     "comment_popup_reconnecting_text_task": "Task details are reconnecting. You can continue commenting.",
     "comment_popup_loading_goal": "Loading goal",

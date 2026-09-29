@@ -2865,6 +2865,8 @@
     "comment_popup_loading_task": "Cargando tarea",
     "comment_popup_unavailable_task": "Tarea no disponible",
     "comment_popup_unavailable_text_task": "Esta tarea ya no está disponible.",
+    "pre_config_task_link_unavailable": "Esta tarea preconfigurada ya no está disponible. Inserta un enlace nuevo a ella.",
+    "pre_config_task_link_load_failed": "No se pudo abrir esta tarea preconfigurada. Inténtalo de nuevo.",
     "comment_popup_reconnecting_task": "Reconectando con la tarea",
     "comment_popup_reconnecting_text_task": "Se está restableciendo la conexión con la tarea. Puedes seguir comentando.",
     "comment_popup_loading_goal": "Cargando meta",

@@ -71,7 +71,8 @@ import URLsAssistants, {
 import { GLOBAL_PROJECT_ID, getAssistant, isGlobalAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import { cleanTextMetaData, shrinkTagText } from '../../functions/Utils/parseTextUtils'
-import { getPreConfigTask, getAssistantData } from '../../utils/backends/Assistants/assistantsFirestore'
+import { getAssistantData } from '../../utils/backends/Assistants/assistantsFirestore'
+import { resolvePreConfigTaskLink } from '../../utils/preConfigTaskLink'
 import { setPreConfigTaskModalData, setIframeModalData } from '../../redux/actions'
 import { generateTaskFromPreConfig } from '../../utils/assistantHelper'
 import { getShortExternalUrlText } from './linkTextUtils'
@@ -656,89 +657,76 @@ export default function LinkTag({
         if (enableLink) {
             // Handle preConfigTask links based on task type
             if (type === 'preConfigTask') {
-                console.log('[LinkTag] Opening preConfigTask link:', link)
                 try {
-                    const urlObj = new URL(addProtocol(link))
-                    const assistantId = urlObj.searchParams.get('assistantId')
-                    const assistantProjectId = urlObj.searchParams.get('assistantProjectId') || projectId
-                    const pathParts = urlObj.pathname.split('/')
-                    const preConfigTasksIndex = pathParts.indexOf('preConfigTasks')
-                    const taskId = preConfigTasksIndex >= 0 ? pathParts[preConfigTasksIndex + 1] : null
+                    const resolved = await resolvePreConfigTaskLink(link, projectId)
+                    if (resolved) {
+                        const { task, assistantId, assistantProjectId, targetProjectId } = resolved
+                        const taskType = task.type || 'prompt'
 
-                    console.log('[LinkTag] Parsed preConfigTask URL:', { taskId, assistantId, assistantProjectId })
-
-                    if (taskId && assistantId) {
-                        const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
-                        console.log('[LinkTag] Got task:', task)
-
-                        if (task) {
-                            const taskType = task.type || 'prompt'
-                            const targetProjectId = projectId || assistantProjectId
-
-                            // Handle different task types
-                            if (taskType === 'prompt' || taskType === 'webhook') {
-                                // For prompt/webhook: show modal if has variables, otherwise execute directly
-                                if (task.variables && task.variables.length > 0) {
-                                    // Get assistant from Redux, or fetch from backend
-                                    let assistant = getAssistant(assistantId)
-                                    if (!assistant) {
-                                        const fetchProjectId = isGlobalAssistant(assistantId)
-                                            ? GLOBAL_PROJECT_ID
-                                            : assistantProjectId
-                                        assistant = await getAssistantData(fetchProjectId, assistantId)
-                                    }
-                                    console.log('[LinkTag] Got assistant:', assistant)
-
-                                    if (assistant) {
-                                        console.log(
-                                            '[LinkTag] Opening PreConfigTaskGeneratorModal for task with variables'
-                                        )
-                                        dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
-                                    }
-                                } else {
-                                    // No variables - execute directly
-                                    console.log('[LinkTag] Executing prompt task directly (no variables)')
-                                    const aiSettings =
-                                        task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
-                                            ? {
-                                                  model: task.aiModel,
-                                                  reasoningEffort: task.aiReasoningEffort,
-                                                  systemMessage: task.aiSystemMessage,
-                                              }
-                                            : null
-                                    const taskMetadata = {
-                                        ...(task.taskMetadata || {}),
-                                        sendWhatsApp: !!task.sendWhatsApp,
-                                        executionMode: task.executionMode,
-                                    }
-                                    generateTaskFromPreConfig(
-                                        targetProjectId,
-                                        task.name,
-                                        assistantId,
-                                        task.prompt,
-                                        aiSettings,
-                                        taskMetadata
-                                    )
+                        // Handle different task types
+                        if (taskType === 'prompt' || taskType === 'webhook') {
+                            // For prompt/webhook: show modal if has variables, otherwise execute directly
+                            if (task.variables && task.variables.length > 0) {
+                                // Get assistant from Redux, or fetch from backend
+                                let assistant = getAssistant(assistantId)
+                                if (!assistant) {
+                                    const fetchProjectId = isGlobalAssistant(assistantId)
+                                        ? GLOBAL_PROJECT_ID
+                                        : assistantProjectId
+                                    assistant = await getAssistantData(fetchProjectId, assistantId)
                                 }
-                            } else if (taskType === 'iframe') {
-                                // Open iframe modal
-                                console.log('[LinkTag] Opening iframe modal:', task.link)
-                                dispatch(setIframeModalData(true, task.link, task.name))
-                            } else if (taskType === 'link') {
-                                // Open external link in new tab
-                                console.log('[LinkTag] Opening external link:', task.link)
-                                window.open(task.link, '_blank')
+                                console.log('[LinkTag] Got assistant:', assistant)
+
+                                if (assistant) {
+                                    console.log('[LinkTag] Opening PreConfigTaskGeneratorModal for task with variables')
+                                    dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
+                                }
                             } else {
-                                // Unknown type - try to open as link
-                                console.log('[LinkTag] Unknown task type, opening as link:', taskType)
-                                if (task.link) {
-                                    window.open(task.link, '_blank')
+                                // No variables - execute directly
+                                console.log('[LinkTag] Executing prompt task directly (no variables)')
+                                const aiSettings =
+                                    task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
+                                        ? {
+                                              model: task.aiModel,
+                                              reasoningEffort: task.aiReasoningEffort,
+                                              systemMessage: task.aiSystemMessage,
+                                          }
+                                        : null
+                                const taskMetadata = {
+                                    ...(task.taskMetadata || {}),
+                                    sendWhatsApp: !!task.sendWhatsApp,
+                                    executionMode: task.executionMode,
                                 }
+                                generateTaskFromPreConfig(
+                                    targetProjectId,
+                                    task.name,
+                                    assistantId,
+                                    task.prompt,
+                                    aiSettings,
+                                    taskMetadata
+                                )
+                            }
+                        } else if (taskType === 'iframe') {
+                            // Open iframe modal
+                            console.log('[LinkTag] Opening iframe modal:', task.link)
+                            dispatch(setIframeModalData(true, task.link, task.name))
+                        } else if (taskType === 'link') {
+                            // Open external link in new tab
+                            console.log('[LinkTag] Opening external link:', task.link)
+                            window.open(task.link, '_blank')
+                        } else {
+                            // Unknown type - try to open as link
+                            console.log('[LinkTag] Unknown task type, opening as link:', taskType)
+                            if (task.link) {
+                                window.open(task.link, '_blank')
                             }
                         }
+                    } else {
+                        window.alert(translate('pre_config_task_link_unavailable'))
                     }
                 } catch (error) {
                     console.error('[LinkTag] Error opening pre-configured task:', error)
+                    window.alert(translate('pre_config_task_link_load_failed'))
                 }
                 return
             }

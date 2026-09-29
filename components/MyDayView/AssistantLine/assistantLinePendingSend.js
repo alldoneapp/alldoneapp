@@ -36,9 +36,12 @@ import { ASSISTANT_LOADING_TIMEOUT_MS } from '../../ChatsView/ChatDV/EditorView/
  *
  * ## Lifetime
  *
- * Bounded by the assistant's first comment, the callable settling, and an unconditional timeout.
- * The preview yields on the comment pointer; the thread retains a short handoff until its own
- * comment listener catches up. A failed send shows a brief failure notice instead.
+ * Bounded three ways, because a spinner nobody can clear is worse than no spinner at all:
+ *   - resolved when the assistant's comment lands (`resolveAssistantLineSendForChat`, driven by
+ *     the redux pointer's `creatorType: 'assistant'` — no extra Firestore listener),
+ *   - ended when the send itself fails (`endAssistantLineSend`),
+ *   - and expired unconditionally after `ASSISTANT_PENDING_SEND_TIMEOUT_MS`. Shared with the Chat
+ *     DV's own stale-spinner timeout so the two surfaces give up on the same schedule.
  */
 
 export const ASSISTANT_PENDING_SEND_TIMEOUT_MS = ASSISTANT_LOADING_TIMEOUT_MS
@@ -50,10 +53,6 @@ export const ASSISTANT_FAILED_SEND_DISPLAY_MS = 6000
 export const PENDING_SEND_SENDING = 'sending'
 export const PENDING_SEND_AWAITING_REPLY = 'awaiting_reply'
 export const PENDING_SEND_FAILED = 'failed'
-// Keep the thread's placeholder briefly after the preview learns that an assistant comment was
-// posted. Its user-document pointer can reach us before the chat comment listener does.
-export const PENDING_SEND_REPLY_POSTED = 'reply_posted'
-export const ASSISTANT_REPLY_HANDOFF_MS = 10000
 
 const entries = new Map()
 const subscribers = new Set()
@@ -166,12 +165,8 @@ export const resolveAssistantLineSendForChat = chatId => {
     if (!chatId) return
     let changed = false
     entries.forEach((entry, id) => {
-        if (entry.chatId === chatId && entry.status === PENDING_SEND_AWAITING_REPLY) {
-            entries.set(id, {
-                ...entry,
-                status: PENDING_SEND_REPLY_POSTED,
-                expiresAt: Math.min(entry.expiresAt, Date.now() + ASSISTANT_REPLY_HANDOFF_MS),
-            })
+        if (entry.chatId === chatId) {
+            entries.delete(id)
             changed = true
         }
     })
@@ -191,22 +186,8 @@ export const getPendingAssistantLineSend = (projectKey, assistantId = null, now 
     let newest = null
     entries.forEach(entry => {
         if (hasExpired(entry, now)) return
-        if (entry.status === PENDING_SEND_REPLY_POSTED) return
         if (!entry.keys.includes(projectKey)) return
         if (assistantId && entry.assistantId !== assistantId) return
-        if (!newest || entry.startedAt >= newest.startedAt) newest = entry
-    })
-    return newest
-}
-
-// The chat and the comment popover need the same pending send even when the assistant line has
-// unmounted. Match both ids: a pending run in another project or topic must never show here.
-export const getPendingAssistantLineSendForChat = (projectId, chatId, now = Date.now()) => {
-    if (!projectId || !chatId) return null
-    let newest = null
-    entries.forEach(entry => {
-        if (hasExpired(entry, now) || entry.status === PENDING_SEND_FAILED) return
-        if (entry.projectId !== projectId || entry.chatId !== chatId) return
         if (!newest || entry.startedAt >= newest.startedAt) newest = entry
     })
     return newest
@@ -230,12 +211,8 @@ export const resetAssistantLinePendingSends = () => {
     idCounter = 0
 }
 
-const usePendingSend = ({ projectKey = null, assistantId = null, projectId = null, chatId = null }) => {
-    const getCurrent = () =>
-        chatId
-            ? getPendingAssistantLineSendForChat(projectId, chatId)
-            : getPendingAssistantLineSend(projectKey, assistantId)
-    const [pending, setPending] = useState(getCurrent)
+export const useAssistantLinePendingSend = (projectKey, assistantId = null) => {
+    const [pending, setPending] = useState(() => getPendingAssistantLineSend(projectKey, assistantId))
 
     useEffect(() => {
         let active = true
@@ -243,7 +220,7 @@ const usePendingSend = ({ projectKey = null, assistantId = null, projectId = nul
 
         const sync = () => {
             if (!active) return
-            const next = getCurrent()
+            const next = getPendingAssistantLineSend(projectKey, assistantId)
             setPending(next)
 
             // An entry nobody settles has to stop being rendered on its own, and no further store
@@ -267,15 +244,7 @@ const usePendingSend = ({ projectKey = null, assistantId = null, projectId = nul
             subscribers.delete(sync)
             if (expiryTimer) clearTimeout(expiryTimer)
         }
-    }, [projectKey, assistantId, projectId, chatId])
+    }, [projectKey, assistantId])
 
-    // Switching between chat ids can reuse the same mounted component. React updates the hook
-    // subscription in an effect, so never expose the previous chat's entry during that render.
-    if (chatId) return pending?.projectId === projectId && pending?.chatId === chatId ? pending : null
     return pending
 }
-
-export const useAssistantLinePendingSend = (projectKey, assistantId = null) =>
-    usePendingSend({ projectKey, assistantId })
-
-export const useAssistantLinePendingSendForChat = (projectId, chatId) => usePendingSend({ projectId, chatId })
