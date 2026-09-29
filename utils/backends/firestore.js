@@ -48,6 +48,12 @@ import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
 import { installFirestoreNetworkGate } from './firestoreNetworkGate'
 import { installTaskWriteMonitor } from './taskWriteMonitor'
+import { installCommentOutbox } from './Chats/commentOutbox'
+import { subscribePageVisible as subscribeCommentOutboxVisible } from '../appResume'
+import {
+    subscribeConnectionHealth as subscribeCommentOutboxHealth,
+    isManualOfflineMode as isCommentOutboxOffline,
+} from '../connectionHealth'
 import { createCachedSnapshotGate } from './cachedSnapshotGate'
 import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
 import { startPerformanceTrace } from '../performance/performanceLogger'
@@ -121,7 +127,7 @@ import { getFeedObjectTypes, STAYWARD_COMMENT } from '../../components/Feeds/Uti
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
 import { getFeedObjectDateCandidates, readFeedObjectFromCandidates } from './Feeds/feedObjectDate'
 import { getFeedsQueryLimit, MAX_NUMBER_OF_FEEDS_TO_SHOW } from './Feeds/feedQueryLimits'
-import { DEFAULT_MAX_STORED_FEEDS, deleteOldVisibleFeeds } from './Feeds/feedCleanup'
+import { DEFAULT_MAX_STORED_FEEDS } from './Feeds/feedCleanup'
 import {
     setAllFeeds,
     setFollowedFeeds,
@@ -616,6 +622,12 @@ export async function initFirebase(onComplete) {
     // Restore pending-write monitoring after persistence/emulator configuration,
     // before the authenticated UI can create tasks.
     installTaskWriteMonitor(db, firebase.auth())
+    installCommentOutbox(db, firebase.auth(), store, {
+        subscribeVisible: subscribeCommentOutboxVisible,
+        subscribeHealth: subscribeCommentOutboxHealth,
+        isOffline: () =>
+            navigator.onLine === false || isCommentOutboxOffline() || store.getState().connectionState === 'offline',
+    })
 
     firebase.auth().onAuthStateChanged(firebaseUser => {
         if (__DEV__) console.log('🔄 onAuthStateChanged:', firebaseUser ? firebaseUser.email : 'no user')
@@ -6792,36 +6804,10 @@ async function increaseNewFeedCount(
 
 //// ROBOT FOR CLEAN FEEDS
 
-const reportFeedCleanupError = (scope, error) => {
-    console.warn('[feeds cleanup] Could not trim legacy client feed data', {
-        scope,
-        code: error?.code,
-        message: error?.message,
-    })
-}
-
-export function cleanStoreFeeds(projectId) {
-    const loggedUserId = store.getState().loggedUser?.uid
-    if (!loggedUserId) return Promise.resolve()
-
-    // Each followed feed is user-scoped by the rules. A browser must never scan
-    // or rewrite the other project members' personal feeds; trusted backend
-    // cleanup already handles project-wide retention.
-    return Promise.all([
-        deleteOldVisibleFeeds(db, `feedsStore/${projectId}/all`, loggedUserId),
-        deleteOldVisibleFeeds(db, `feedsStore/${projectId}/${loggedUserId}/feeds/followed`, loggedUserId),
-    ]).catch(error => reportFeedCleanupError(`store:${projectId}`, error))
-}
-
-export async function cleanInnerFeeds(projectId, objectId, objectTypes) {
-    const loggedUserId = store.getState().loggedUser?.uid
-    if (!loggedUserId) return
-
-    const path = `projectsInnerFeeds/${projectId}/${objectTypes}/${objectId}/feeds`
-    await deleteOldVisibleFeeds(db, path, loggedUserId).catch(error =>
-        reportFeedCleanupError(`inner:${projectId}:${objectTypes}:${objectId}`, error)
-    )
-}
+// Retention runs in the feed-create Cloud Functions. Maintenance must never
+// enqueue hundreds of deletions in the same persisted queue as user edits.
+export const cleanStoreFeeds = () => Promise.resolve()
+export const cleanInnerFeeds = () => Promise.resolve()
 
 export function cleanNewFeeds(projectId) {
     const loggedUserId = store.getState().loggedUser?.uid

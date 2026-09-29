@@ -1,3 +1,4 @@
+import { hasUnsafeCommentDrafts } from './commentDraftStore'
 import { recordNewDayEvent } from './newDayDiagnostics'
 /**
  * Recovers the page from an unrecoverable Firestore client assertion.
@@ -105,6 +106,7 @@ export const installFirestoreFatalRecovery = ({
     clearTimer = clearTimeout,
     cooldownMs = FIRESTORE_FATAL_RECOVERY_COOLDOWN_MS,
     reloadDelayMs = FIRESTORE_FATAL_RECOVERY_DELAY_MS,
+    canReload = () => !hasUnsafeCommentDrafts(),
 } = {}) => {
     if (!windowObject || !windowObject.addEventListener) return () => {}
 
@@ -119,6 +121,13 @@ export const installFirestoreFatalRecovery = ({
     const attemptRecovery = () => {
         if (!reloadPending || reloadStarted || reloadTimer !== undefined || isOffline()) return
 
+        if (!canReload()) {
+            reloadTimer = setTimer(() => {
+                reloadTimer = undefined
+                attemptRecovery()
+            }, 1000)
+            return
+        }
         const currentTime = now()
         const previousRecoveryTime = readRecoveryTime(sessionStorage)
         const elapsed = previousRecoveryTime === null ? null : currentTime - previousRecoveryTime
@@ -141,6 +150,10 @@ export const installFirestoreFatalRecovery = ({
             // Connectivity can disappear during the short reporting delay. Keep
             // the request pending and let the next online event try again.
             if (isOffline()) return
+            if (!canReload()) {
+                attemptRecovery()
+                return
+            }
 
             reloadPending = false
             reloadStarted = true

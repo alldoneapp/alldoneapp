@@ -229,6 +229,23 @@ describe('pending task write recovery', () => {
         expect(db.disableNetwork).toHaveBeenCalledTimes(2)
     })
 
+    it('does not restart a queue whose older unrelated batches are still draining', async () => {
+        const { monitor: initial, createMonitor, db, record } = setup()
+        initial.stop()
+        let firstBatchId = 10
+        const monitor = createMonitor({ readQueueProgress: async () => ({ count: 150, firstBatchId }) })
+        monitor.track(new Promise(() => {}), { userId: 'user-1', taskId: 'task-1' })
+        for (let i = 0; i < 30; i++) {
+            firstBatchId++
+            await jest.advanceTimersByTimeAsync(5000)
+        }
+        expect(db.disableNetwork).not.toHaveBeenCalled()
+        expect(record.mock.calls.some(([phase]) => phase === 'server_acked')).toBe(false)
+        // Once that queue really stops making progress, recovery is still armed.
+        await jest.advanceTimersByTimeAsync(10000)
+        expect(db.disableNetwork).toHaveBeenCalledTimes(1)
+    })
+
     it('keeps a rejection observable to the caller and removes its pending marker', async () => {
         const { track, write, db, record } = setup()
         const result = track()

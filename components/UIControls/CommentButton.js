@@ -116,7 +116,7 @@ class CommentButton extends Component {
                 this.props.saveCommentBeforeSaveTask(comment)
                 this.hidePopover()
             } else {
-                createObjectMessage(
+                return createObjectMessage(
                     projectId,
                     task.id,
                     comment,

@@ -67,6 +67,8 @@ import useCommentPopupAutoFocus, {
 } from './commentPopupAutoFocus'
 import RichCommentDismissSurface from './RichCommentDismissSurface'
 import DeferredCommentComposer from './DeferredCommentComposer'
+import PendingCommentSends from './PendingCommentSends'
+import { readCommentDraft, saveCommentDraft, clearCommentDraft } from '../../../../utils/commentDraftStore'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import {
     ASSISTANT_LOADING_TIMEOUT_MS,
@@ -129,7 +131,19 @@ export default function RichCommentModal({
     const assistantMessageIdsAtWaitStartRef = useRef(new Set())
     const modalMountedRef = useRef(true)
     const [isThreadAssistantEnabled, setIsThreadAssistantEnabled] = useState(initialAssistantEnabled)
-    const [initialComment, setInitialComment] = useState(currentComment || '')
+    const draftContext = { userId: loggedUser.uid, projectId, objectType, objectId }
+    const [initialComment, setInitialComment] = useState(
+        () => readCommentDraft(draftContext)?.comment || currentComment || ''
+    )
+    const [sendError, setSendError] = useState('')
+    const [isSending, setIsSending] = useState(false)
+    const sendingRef = useRef(false)
+    const persistDraft = comment => {
+        setInitialComment(comment)
+        if (!saveCommentDraft(draftContext, { ...readCommentDraft(draftContext), comment })) {
+            setSendError(translate('Could not save on this device. Keep this window open and try again.'))
+        }
+    }
     const [archivingEmailKeys, setArchivingEmailKeys] = useState([])
     const [archivedEmailKeys, setArchivedEmailKeys] = useState([])
     const [archivingAllEmails, setArchivingAllEmails] = useState(false)
@@ -143,7 +157,7 @@ export default function RichCommentModal({
     )
     const pendingLineSend = useAssistantLinePendingSendForChat(projectId, objectId)
 
-    disableDoneButton = !!botOptionModalIsOpen
+    const disableDoneButton = !!botOptionModalIsOpen || isSending
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
@@ -317,71 +331,43 @@ export default function RichCommentModal({
         }
     }
 
-    const done = ({ comment, mentions, privacy, hasKarma }) => {
-        const clientSubmissionTime = Date.now()
+    const done = async ({ comment, mentions, privacy, hasKarma }) => {
+        if (sendingRef.current) return
         const shouldTriggerAssistant = isThreadAssistantEnabled === true
-        if (__DEV__) {
-            console.log('⏱️ [TIMING] CLIENT: RichCommentModal submission', {
-                timestamp: new Date().toISOString(),
-                submissionTime: clientSubmissionTime,
-                projectId,
-                objectType,
-                objectId,
-                assistantId,
-                assistantEnabled,
-                shouldTriggerAssistant,
-                inTaskModal,
-                commentLength: comment?.length,
-            })
-        }
-
         if (shouldTriggerAssistant && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
-        } else {
-            const onSendFailure = error => {
-                setWaitingForBotAnswer(false)
-                console.error('[RichCommentModal] Could not send comment', error)
+            return
+        }
+        sendingRef.current = true
+        setIsSending(true)
+        setSendError('')
+        try {
+            if (!saveCommentDraft(draftContext, { comment, mentions, privacy, hasKarma })) {
+                throw new Error(translate('Could not save on this device. Keep this window open and try again.'))
             }
             if (shouldTriggerAssistant) {
                 assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(comments, getAssistant)
                 setWaitingForBotAnswer(true)
             }
-
-            if (inTaskModal) {
-                try {
-                    Promise.resolve(
-                        processDone(comment.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
-                    ).catch(onSendFailure)
-                } catch (error) {
-                    onSendFailure(error)
-                }
-                if (__DEV__) {
-                    console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
-                        timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                    })
-                }
-            } else {
-                updateNewAttachmentsData(projectId, comment)
-                    .then(text => {
-                        const result = processDone(text.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
-                        if (__DEV__) {
-                            console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
-                                timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                            })
-                        }
-                        return result
-                    })
-                    .catch(onSendFailure)
+            const text = inTaskModal ? comment : await updateNewAttachmentsData(projectId, comment)
+            await processDone(text.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
+            clearCommentDraft(draftContext, comment)
+            if (modalMountedRef.current) {
+                editor?.setText('')
+                editor?.setSelection(0)
+                setInitialComment('')
+                if (!inNotesEditor && !shouldTriggerAssistant) closeModal()
             }
-
-            if (editor) {
-                editor.setText('')
-                editor.setSelection(0)
+        } catch (error) {
+            if (modalMountedRef.current) {
+                setWaitingForBotAnswer(false)
+                setSendError(error.message || translate('Comment could not be sent. Your text is still here.'))
             }
-            if (!inNotesEditor && !shouldTriggerAssistant) {
-                closeModal()
-            }
+            console.error('[RichCommentModal] Could not send comment', error)
+        } finally {
+            sendingRef.current = false
+            if (modalMountedRef.current) setIsSending(false)
         }
     }
 
@@ -573,6 +559,12 @@ export default function RichCommentModal({
                             </View>
                         )}
 
+                        <PendingCommentSends projectId={projectId} objectId={objectId} objectType={objectType} dark />
+                        {!!sendError && (
+                            <Text accessibilityRole="alert" style={{ color: '#ffffff', marginBottom: 8 }}>
+                                {sendError}
+                            </Text>
+                        )}
                         <DeferredCommentComposer
                             defer={!smallScreenNavigation}
                             resetKey={`${projectId}:${objectType}:${objectId}`}
@@ -591,16 +583,17 @@ export default function RichCommentModal({
                                     containerStyle={{ marginBottom: comments && comments.length > 0 ? 16 : 0 }}
                                     onSuccess={done}
                                     currentComment={initialComment}
-                                    currentMentions={currentMentions}
-                                    currentPrivacy={currentPrivacy}
-                                    currentKarma={currentKarma}
+                                    currentMentions={readCommentDraft(draftContext)?.mentions || currentMentions}
+                                    currentPrivacy={readCommentDraft(draftContext)?.privacy ?? currentPrivacy}
+                                    currentKarma={readCommentDraft(draftContext)?.hasKarma ?? currentKarma}
                                     toggleShowFileSelector={toggleShowFileSelector}
                                     setEditor={setEditor}
                                     editor={editor}
                                     setInputCursorIndex={setInputCursorIndex}
                                     initialCursorIndex={inputCursorIndex}
                                     initialDeltaOps={editorOpsRef.current.length > 0 ? editorOpsRef.current : null}
-                                    setInitialComment={setInitialComment}
+                                    setInitialComment={persistDraft}
+                                    isSubmitting={isSending}
                                     loggedUserId={loggedUser.uid}
                                     userGettingKarmaId={userGettingKarmaId}
                                     objectType={objectType}

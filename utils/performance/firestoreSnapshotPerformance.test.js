@@ -44,3 +44,18 @@ describe('first snapshot performance', () => {
         })
     })
 })
+
+test('continues measuring server freshness after cached content has already painted', () => {
+    startPerformanceTrace.mockClear()
+    const measurement = createFirstSnapshotPerformance({ object_type: 'tasks' })
+    const first = startPerformanceTrace.mock.results[0].value
+    const server = startPerformanceTrace.mock.results[1].value
+    measurement.observe({ size: 5, metadata: { fromCache: true, isGateFlush: true } }, false)
+    first.isEnded.mockReturnValue(true)
+    expect(server.end).not.toHaveBeenCalled()
+    measurement.observe({ size: 7, metadata: { fromCache: false } }, false)
+    expect(server.end).toHaveBeenCalledWith(
+        'server_ready',
+        expect.objectContaining({ from_cache: false, document_count: 7 })
+    )
+})

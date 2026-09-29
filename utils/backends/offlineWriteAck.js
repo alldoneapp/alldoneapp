@@ -20,8 +20,8 @@ import { markServerContact, startConnectionLatencySample, subscribeConnectionHea
  * `tasksFirestore.js` `updateTaskInDone`). The fix is to await it only when an
  * ack can actually arrive.
  *
- * Reads are deliberately NOT covered here: an offline `get()` resolves from the
- * local cache, so it does not block.
+ * Reads are not covered here: an offline `get()` can reject on a cache miss.
+ * Callers must durably retain user input before doing preliminary reads.
  */
 
 /**
@@ -94,7 +94,7 @@ export const awaitWriteAck = (write, label = 'firestore write') => {
                 if (finished) {
                     if (releasedOffline) {
                         console.warn(
-                            `Offline write "${label}" did not reach the server; it stays queued locally.`,
+                            `Offline write "${label}" did not reach the server; the server rejected it and it is no longer queued.`,
                             error
                         )
                     }
@@ -141,7 +141,10 @@ const describeFailedWrite = (error, label) => {
 
 const continueWithoutServerAck = (settled, label) => {
     settled.catch(error => {
-        console.warn(`Offline write "${label}" did not reach the server; it stays queued locally.`, error)
+        console.warn(
+            `Offline write "${label}" did not reach the server; the server rejected it and it is no longer queued.`,
+            error
+        )
     })
     return Promise.resolve()
 }

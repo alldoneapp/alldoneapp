@@ -4652,7 +4652,11 @@ exports.onCreateInnerFeedAccessProjectionSecondGen = onDocumentCreated(
         memory: '256MiB',
         region: 'europe-west1',
     },
-    synchronizeAccessProjection
+    async event => {
+        await synchronizeAccessProjection(event)
+        const { trimFeedCollection } = require('./Feeds/feedRetention')
+        await trimFeedCollection(admin.firestore(), event.data.ref.parent.path)
+    }
 )
 
 exports.onUpdateInnerFeedAccessProjectionSecondGen = onDocumentUpdated(
@@ -4675,7 +4679,11 @@ exports.onCreateAllFeedStoreAccessProjectionSecondGen = onDocumentCreated(
         memory: '256MiB',
         region: 'europe-west1',
     },
-    synchronizeAccessProjection
+    async event => {
+        await synchronizeAccessProjection(event)
+        const { trimFeedCollection } = require('./Feeds/feedRetention')
+        await trimFeedCollection(admin.firestore(), event.data.ref.parent.path)
+    }
 )
 
 exports.onUpdateAllFeedStoreAccessProjectionSecondGen = onDocumentUpdated(
@@ -4698,7 +4706,11 @@ exports.onCreateFollowedFeedStoreAccessProjectionSecondGen = onDocumentCreated(
         memory: '256MiB',
         region: 'europe-west1',
     },
-    synchronizeAccessProjection
+    async event => {
+        await synchronizeAccessProjection(event)
+        const { trimFeedCollection } = require('./Feeds/feedRetention')
+        await trimFeedCollection(admin.firestore(), event.data.ref.parent.path)
+    }
 )
 
 exports.onUpdateFollowedFeedStoreAccessProjectionSecondGen = onDocumentUpdated(

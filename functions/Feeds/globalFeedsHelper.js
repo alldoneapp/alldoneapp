@@ -130,18 +130,8 @@ async function cleanInnerFeeds(projectId, objectId, objectTypes) {
 }
 
 async function deleteOldFeeds(path) {
-    const feedsDocs = (await admin.firestore().collection(path).orderBy('lastChangeDate', 'desc').get()).docs
-    const feedsIds = []
-    feedsDocs.forEach(function (doc) {
-        feedsIds.push(doc.id)
-    })
-
-    feedsIds.splice(0, MAX_AMOUNT_OF_FEEDS_STORED)
-    const promises = []
-    feedsIds.forEach(id => {
-        promises.push(admin.firestore().doc(`${path}/${id}`).delete())
-    })
-    await Promise.all(promises)
+    const { trimFeedCollection } = require('./feedRetention')
+    await trimFeedCollection(admin.firestore(), path)
 }
 
 async function cleanNewFeeds(projectId, projectUsersIds) {

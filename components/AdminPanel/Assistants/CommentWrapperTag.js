@@ -69,7 +69,7 @@ export default function CommentWrapperTag({
             !isBotWarningModalOpen &&
             comment
         ) {
-            createObjectMessage(
+            await createObjectMessage(
                 projectId,
                 assistantId,
                 comment,

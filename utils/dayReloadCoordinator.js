@@ -1,3 +1,4 @@
+import { hasUnsafeCommentDrafts } from './commentDraftStore'
 import { newDayRecoveryStore } from './newDayRecoveryStore'
 
 export const DAILY_APP_LOAD_DATE_STORAGE_KEY = 'alldone.lastFullAppLoadLocalDate'
@@ -35,7 +36,7 @@ export const createDayReloadCoordinator = ({ isSafe = () => true } = {}) => {
 }
 
 export const dayReloadCoordinator = createDayReloadCoordinator({
-    isSafe: () => !newDayRecoveryStore.hasUnsafeEntries(),
+    isSafe: () => !newDayRecoveryStore.hasUnsafeEntries() && !hasUnsafeCommentDrafts(),
 })
 
 export const markDailyReload = () => {
