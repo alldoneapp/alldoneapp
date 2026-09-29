@@ -284,6 +284,6 @@ describe('every composer that posts a message submits its dictations (AT-2410)',
             'utf8'
         )
 
-        expect(modal).toContain('if (!inNotesEditor && !shouldTriggerAssistant) {')
+        expect(modal).toMatch(/if \(!inNotesEditor && !shouldTriggerAssistant\)\s*(?:\{\s*)?closeModal\(\)/)
     })
 })
