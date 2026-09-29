@@ -89,8 +89,8 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
     const disabledBtn = contact.displayName === contactName || contactName === ''
 
     return (
-        <View style={localStyles.container}>
-            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: 16 }]}>
+        <View style={[localStyles.container, isFullscreen && !accessGranted && localStyles.sharedChatContainer]}>
+            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
                 {isMiddleScreen && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton user={contact} projectIndex={project.index} />
@@ -170,7 +170,7 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
                     <TagList project={project} contact={contact} />
                 </View>
             )}
-            {isFullscreen && selectedNavItem === DV_TAB_CONTACT_CHAT && (
+            {isFullscreen && selectedNavItem === DV_TAB_CONTACT_CHAT && accessGranted && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}
@@ -192,6 +192,10 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingBottom: 24,
         overflow: 'hidden',
+    },
+    sharedChatContainer: {
+        height: 'auto',
+        paddingBottom: 0,
     },
     upperHeader: {
         flexDirection: 'row',

@@ -11,6 +11,7 @@ import OpenInNewWindowButton from '../../UIControls/OpenInNewWindowButton'
 import { DV_TAB_ASSISTANT_CHAT, DV_TAB_ASSISTANT_NOTE } from '../../../utils/TabNavigationConstants'
 import DvBotButton from '../../UIControls/DvBotButton'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
+import SharedHelper from '../../../utils/SharedHelper'
 
 export default function Header({
     projectId,
@@ -26,6 +27,7 @@ export default function Header({
     const mobile = useSelector(state => state.smallScreenNavigation)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const loggedUser = useSelector(state => state.loggedUser)
+    const accessGranted = SharedHelper.accessGranted(loggedUser, projectDetailedId)
     const [editionMode, setEditionMode] = useState(false)
 
     const maxHeight =
@@ -86,7 +88,7 @@ export default function Header({
                     <OpenInNewWindowButton />
                 </View>
             )}
-            {isFullscreen && selectedTab === DV_TAB_ASSISTANT_CHAT && (
+            {isFullscreen && selectedTab === DV_TAB_ASSISTANT_CHAT && accessGranted && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}

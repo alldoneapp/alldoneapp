@@ -85,7 +85,7 @@ export default function Header({ goal, projectId, navigation, accessGranted, isF
                     <OpenInNewWindowButton />
                 </View>
             )}
-            {isFullscreen && selectedTab === DV_TAB_GOAL_CHAT && (
+            {isFullscreen && selectedTab === DV_TAB_GOAL_CHAT && accessGranted && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}

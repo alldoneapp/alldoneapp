@@ -57,6 +57,7 @@ export default class Header extends Component {
         const { mobile, isMiddleScreen, loggedUser, editionMode, selectedTab } = this.state
         const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
         const maxHeight = this.getMaxHeight()
+        const compactSharedChat = isFullscreen && selectedTab === DV_TAB_NOTE_CHAT && !accessGranted
 
         return (
             <Animated.View
@@ -67,6 +68,7 @@ export default class Header extends Component {
                           ? localStyles.containerTablet
                           : localStyles.container,
                     isFullscreen && localStyles.containerFS,
+                    compactSharedChat && localStyles.sharedChatContainer,
                 ]}
             >
                 <View
@@ -74,7 +76,7 @@ export default class Header extends Component {
                         localStyles.upperHeader,
                         isFullscreen
                             ? selectedTab === DV_TAB_NOTE_CHAT
-                                ? { paddingBottom: 16 }
+                                ? { paddingBottom: compactSharedChat ? 8 : 16 }
                                 : localStyles.upperHeaderFS
                             : null,
                     ]}
@@ -128,7 +130,7 @@ export default class Header extends Component {
                         />
                     </View>
                 )}
-                {isFullscreen && selectedTab === DV_TAB_NOTE_CHAT && (
+                {isFullscreen && selectedTab === DV_TAB_NOTE_CHAT && accessGranted && (
                     <View style={localStyles.bottomHeader}>
                         <BotLine
                             setFullscreen={setFullscreen}
@@ -184,6 +186,9 @@ const localStyles = StyleSheet.create({
     containerFS: {
         minHeight: 80,
         paddingBottom: 0,
+    },
+    sharedChatContainer: {
+        minHeight: 0,
     },
     titleContainer: {
         marginRight: 'auto',
