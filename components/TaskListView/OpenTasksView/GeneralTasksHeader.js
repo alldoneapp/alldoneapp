@@ -20,7 +20,7 @@ export const GENERAL_TASKS_HEADER_MIN_HEIGHT = 40
 // rather than wrapping and growing the row.
 export const GENERAL_TASKS_HEADER_MAX_LINES = 1
 
-export default function GeneralTasksHeader({ projectId, noVerticalMargin = false }) {
+export default function GeneralTasksHeader({ projectId }) {
     const taskHierarchy = useTaskHierarchy()
     const projectBorderColor = useProjectSectionBorder()
     const project = ProjectHelper.getProjectById(projectId)
@@ -30,12 +30,7 @@ export default function GeneralTasksHeader({ projectId, noVerticalMargin = false
 
     return (
         <View
-            style={[
-                localStyles.container,
-                { borderColor: conatinerColor },
-                taskHierarchy && localStyles.hierarchyRow,
-                noVerticalMargin && localStyles.noVerticalMargin,
-            ]}
+            style={[localStyles.container, { borderColor: conatinerColor }, taskHierarchy && localStyles.hierarchyRow]}
         >
             <View
                 style={[
@@ -82,9 +77,6 @@ const localStyles = StyleSheet.create({
         marginTop: 0,
         borderTopLeftRadius: 7,
         borderTopRightRadius: 7,
-    },
-    noVerticalMargin: {
-        marginVertical: 0,
     },
     blockContainer: {
         // Full row height, the way GoalProgressBar uses height: '100%'. Paired with the

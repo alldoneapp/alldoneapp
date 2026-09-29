@@ -706,6 +706,7 @@
     "Drop files to attach": "Dateien zum Anhängen hier ablegen",
     "Drop files to add to description": "Dateien hier ablegen, um sie zur Beschreibung hinzuzufügen",
     "Adding files to description": "Dateien werden zur Beschreibung hinzugefügt",
+    "Files added to description": "Dateien zur Beschreibung hinzugefügt",
     "Task attachment upload failed": "Einige Dateien konnten nicht hochgeladen werden. Bitte versuche es erneut.",
     "Select kind of file to add": "Wähle den Typ der Datei aus",
     "Here you can select a file from storage device or add a quick video or audio": "Hier kannst Du die gewünschte Datei auswählen",
