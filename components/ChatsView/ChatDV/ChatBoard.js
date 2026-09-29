@@ -39,6 +39,7 @@ import { getAssistant } from '../../AdminPanel/Assistants/assistantsHelper'
 import URLsAssistants, { URL_ASSISTANT_DETAILS_CHAT } from '../../../URLSystem/Assistants/URLsAssistants'
 import { getChatCommentsWithLinkedEmails, markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
 import {
+    hasAssistantReplyToPendingSend,
     hasLoadingAssistantMessage,
     hasNewVisibleAssistantMessage,
     shouldShowAssistantScrollIndicator,
@@ -53,6 +54,7 @@ import Icon from '../../Icon'
 import global, { colors } from '../../styles/global'
 import { translate } from '../../../i18n/TranslationService'
 import useNewEmailCommentIds from './useNewEmailCommentIds'
+import { useAssistantLinePendingSendForChat } from '../../MyDayView/AssistantLine/assistantLinePendingSend'
 import useLoadingMore from '../../../hooks/useLoadingMore'
 import MessagesSkeleton from './MessagesSkeleton'
 import { resolveGhostRowCount } from '../../UIComponents/Ghosts/ghostRowCount'
@@ -115,6 +117,7 @@ export default function ChatBoard({
     setFullscreenRef.current = setFullscreen
 
     const messages = useGetMessages(true, true, projectId, chat.id, chat.type, toRender)
+    const pendingLineSend = useAssistantLinePendingSendForChat(projectId, chat.id)
     // AT-2382 - the "a page arrived" edge for the ghosts. Note this canNOT be `messages`
     // itself: `useGetMessages` returns `[...state.messages]`, a brand-new array on EVERY
     // render, so keying on its identity would retire the ghosts on the very next render and
@@ -162,15 +165,26 @@ export default function ChatBoard({
     const hasNewAssistantMessage =
         assistantMessageIdsAtWaitStartRef.current !== null &&
         hasNewVisibleAssistantMessage(messages, assistantMessageIdsAtWaitStartRef.current, getAssistant)
-    const assistantResponseIsLoading =
-        waitingForBotAnswer ||
-        hasLoadingAssistantMessage(
-            messages,
-            creatorId => !!getAssistant(creatorId),
-            message =>
-                message.assistantRun?.kind === 'chat' &&
-                resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate))
-        )
+    const hasActiveAssistantMessage = hasLoadingAssistantMessage(
+        messages,
+        creatorId => creatorId === assistantId || !!getAssistant(creatorId),
+        message =>
+            message.assistantRun?.kind === 'chat' &&
+            resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate))
+    )
+    // The assistant line creates a fresh topic without navigating. Its pending send is already
+    // visible on the board; carry that state into this thread until the first assistant comment
+    // arrives. The user-document preview pointer can arrive before the comment snapshot, so the
+    // pending store keeps a short handoff window for this view.
+    const lineReplyIsVisible = hasAssistantReplyToPendingSend(
+        messages,
+        pendingLineSend,
+        creatorId => !!getAssistant(creatorId)
+    )
+    const showBotPlaceholder =
+        !hasActiveAssistantMessage &&
+        ((waitingForBotAnswer && !hasNewAssistantMessage) || (!!pendingLineSend && !lineReplyIsVisible))
+    const assistantResponseIsLoading = showBotPlaceholder || hasActiveAssistantMessage
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
@@ -514,9 +528,7 @@ export default function ChatBoard({
                             />
                         )
                     })}
-                    {waitingForBotAnswer && !hasNewAssistantMessage && (
-                        <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
-                    )}
+                    {showBotPlaceholder && <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />}
                 </View>
             </CustomScrollView>
             {accessGranted && (

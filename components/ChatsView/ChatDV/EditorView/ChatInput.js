@@ -28,6 +28,7 @@ import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComme
 import { resolveAssistantForProjectObject } from '../../../AdminPanel/Assistants/assistantsHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
+import { endBotSpinnerWait } from '../../Utils/botSpinnerTrigger'
 import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
 import { CHAT_COMPOSER_LIFT, getChatComposerLift } from '../chatComposerLayout'
 
@@ -167,20 +168,25 @@ export default function ChatInput({
                 // Re-enable auto-scroll when user sends a message
                 if (onMessageSent) onMessageSent()
 
-                updateNewAttachmentsData(projectId, textToSubmit).then(commentWithAttachments => {
-                    createObjectMessage(
-                        projectId,
-                        objectId,
-                        commentWithAttachments,
-                        chatType,
-                        chatType === 'tasks' ? STAYWARD_COMMENT : null,
-                        null,
-                        null,
-                        false, // skipAssistantTrigger
-                        explicitAssistantEnabled,
-                        selectedAssistantId
+                updateNewAttachmentsData(projectId, textToSubmit)
+                    .then(commentWithAttachments =>
+                        createObjectMessage(
+                            projectId,
+                            objectId,
+                            commentWithAttachments,
+                            chatType,
+                            chatType === 'tasks' ? STAYWARD_COMMENT : null,
+                            null,
+                            null,
+                            false, // skipAssistantTrigger
+                            explicitAssistantEnabled,
+                            selectedAssistantId
+                        )
                     )
-                })
+                    .catch(error => {
+                        if (isAssistantActive) endBotSpinnerWait(projectId, objectId)
+                        console.error('[ChatInput] Could not send message', error)
+                    })
                 setAmountOfNewCommentsToHighligth(0)
                 updateXpByCommentInChat(loggedUserId, firebase, Backend.getDb(), projectId)
             }
