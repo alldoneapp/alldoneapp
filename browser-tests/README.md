@@ -587,3 +587,17 @@ The desktop case pins the existing centered 640×512 card.
 ```bash
 node browser-tests/at2594/run.js
 ```
+
+### `rage-mode/` — the rage-mode arena over a real page
+
+Runs the REAL three.js arena (`components/RageMode/rageArena.js`) over a stand-in page in
+Chromium (SwiftShader WebGL). Asserts that bolts knock letters out of a paragraph and
+shatter an image through the input layer, that no click or key reaches the page's own
+handlers while the arena is up, and that leaving removes every arena layer and leaves the
+page's DOM byte-identical. Screenshots land in `rage-mode/.build/`. `--touch` repeats it on
+a 390×844 touch viewport; `--serve` just builds and serves the harness so you can play it.
+
+```bash
+node browser-tests/rage-mode/run.js [--touch] [--headed]
+node browser-tests/rage-mode/run.js --serve
+```

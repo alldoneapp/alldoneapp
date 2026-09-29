@@ -8,7 +8,6 @@ import {
     RAMBLE_PHASE_PROCESSING,
 } from '../../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../../hooks/useRambleRecorder'
-import { keepScreenAwake } from '../../../../utils/screenWakeLock'
 import {
     canAutoStartNoteTranscription,
     isNoteDictationVisible,
@@ -1040,13 +1039,8 @@ export const EditorToolbar = ({
     const audioContextRef = useRef(null)
     const intervalRef = useRef(null)
     const systemStreamRef = useRef(null) // Store system stream for screenshots
-    const releaseTranscriptionWakeLockRef = useRef(null)
-    const transcriptionSessionRef = useRef(0)
 
-    const stopRecording = (updateState = true) => {
-        transcriptionSessionRef.current += 1
-        releaseTranscriptionWakeLockRef.current?.()
-        releaseTranscriptionWakeLockRef.current = null
+    const stopRecording = () => {
         if (intervalRef.current) {
             clearTimeout(intervalRef.current)
             intervalRef.current = null
@@ -1074,19 +1068,14 @@ export const EditorToolbar = ({
             audioContextRef.current = null
         }
 
-        if (updateState) setIsRecording(false)
+        setIsRecording(false)
     }
-
-    useEffect(() => () => stopRecording(false), [])
 
     const toggleTranscription = async () => {
         if (isRecording) {
             stopRecording()
             return
         }
-        const session = ++transcriptionSessionRef.current
-        let acquiredSystemStream
-        let acquiredMicStream
 
         try {
             // Insert Date + Transcription Header
@@ -1118,12 +1107,8 @@ export const EditorToolbar = ({
             })
 
             const micStreamPromise = navigator.mediaDevices
-                .getUserMedia({ audio: true })
-                .then(stream => {
-                    if (session !== transcriptionSessionRef.current) {
-                        stream.getTracks().forEach(track => track.stop())
-                    }
-                    return stream
+                .getUserMedia({
+                    audio: true,
                 })
                 .catch(err => {
                     console.warn('Could not get microphone access', err)
@@ -1131,13 +1116,6 @@ export const EditorToolbar = ({
                 })
 
             const [systemStream, micStream] = await Promise.all([systemStreamPromise, micStreamPromise])
-            acquiredSystemStream = systemStream
-            acquiredMicStream = micStream
-            if (session !== transcriptionSessionRef.current) {
-                systemStream.getTracks().forEach(track => track.stop())
-                micStream?.getTracks().forEach(track => track.stop())
-                return
-            }
 
             const audioTracks = systemStream.getAudioTracks()
             if (audioTracks.length === 0) {
@@ -1181,7 +1159,7 @@ export const EditorToolbar = ({
             setIsRecording(true)
 
             const startNextChunk = () => {
-                if (session !== transcriptionSessionRef.current) return // Stopped or unmounted
+                if (!isRecording && !streamsRef.current.length) return // Stopped
 
                 const mixedStream = destination.stream
                 const mimeType = 'audio/webm' // Chrome defaults to this
@@ -1249,9 +1227,6 @@ export const EditorToolbar = ({
                 }
 
                 recorder.start()
-                if (!releaseTranscriptionWakeLockRef.current) {
-                    releaseTranscriptionWakeLockRef.current = keepScreenAwake()
-                }
                 // Stop and restart execution after 10 seconds to create effective chunks with headers
                 intervalRef.current = setTimeout(() => {
                     if (recorder.state !== 'inactive') {
@@ -1268,9 +1243,6 @@ export const EditorToolbar = ({
             startNextChunk()
         } catch (err) {
             console.error('Error starting transcription:', err)
-            stopRecording()
-            acquiredSystemStream?.getTracks().forEach(track => track.stop())
-            acquiredMicStream?.getTracks().forEach(track => track.stop())
             if (err.name !== 'NotAllowedError') {
                 alert(translate('Could not start recording: ') + err.message)
             }

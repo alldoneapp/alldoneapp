@@ -2641,5 +2641,18 @@
     "Shift + Enter for a new line": "Umschalt + Enter für eine neue Zeile",
     "You": "Du",
     "Anna is pointing to:": "Anna zeigt:",
-    "Clear highlight": "Markierung entfernen"
+    "Clear highlight": "Markierung entfernen",
+    "Rage mode": "Rage-Modus",
+    "Esc to exit": "Esc zum Beenden",
+    "destroyed": "zerstört",
+    "Rage mode desktop help": "WASD oder Pfeiltasten zum Fliegen · Klick zum Schießen · Leertaste sagt Hallo · Esc stellt alles wieder her",
+    "Rage mode touch help": "Tippen und halten zum Schießen · 👋 sagt Hallo · ✕ stellt alles wieder her",
+    "Mute": "Stumm",
+    "Unmute": "Ton an",
+    "Exit rage mode": "Rage-Modus beenden",
+    "Say hi": "Hallo sagen",
+    "Rage mode greeting 1": "Hallo! 👋",
+    "Rage mode greeting 2": "Hi du!",
+    "Rage mode greeting 3": "Du schaffst das!",
+    "Rage mode greeting 4": "Guter Schuss!"
 }

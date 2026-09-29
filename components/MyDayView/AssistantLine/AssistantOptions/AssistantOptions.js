@@ -34,6 +34,7 @@ import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZ
 import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
+import RageModeButton from '../../../RageMode/RageModeButton'
 import {
     getAssistantControlsStacked,
     getAssistantInputDisplayHeight,
@@ -402,9 +403,14 @@ export default function AssistantOptions({
                 {/* Kept short on purpose (AT-2442): the header is a single centred line
                     (numberOfLines={1}) that also carries the assistant's display name, so a
                     longer greeting ellipsises on narrow phones. */}
-                <Text style={localStyles.headerText} numberOfLines={1}>
-                    {`${assistant.displayName}: ${translate('How can I help?')}`}
-                </Text>
+                <View style={localStyles.headerTitle}>
+                    <Text style={localStyles.headerText} numberOfLines={1}>
+                        {`${assistant.displayName}: ${translate('How can I help?')}`}
+                    </Text>
+                    {/* Rage mode is Anna's: she is the one who flies out and shoots the page apart.
+                        Hidden without WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
+                    <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
+                </View>
                 {!!onCollapse && (
                     <View style={localStyles.collapseButton}>
                         <Icon name={'chevron-up'} size={16} color={colors.Text03} />
@@ -537,13 +543,23 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 16,
     },
-    headerText: {
+    headerTitle: {
         flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 22,
+        minWidth: 0,
+    },
+    headerText: {
+        flexShrink: 1,
         fontSize: 16,
         fontWeight: '600',
         color: colors.Text01,
         textAlign: 'center',
-        marginLeft: 22,
+    },
+    rageButton: {
+        marginLeft: 8,
     },
     collapseButton: {
         marginLeft: 8,
