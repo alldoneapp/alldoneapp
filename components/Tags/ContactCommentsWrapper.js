@@ -70,7 +70,7 @@ export default function ContactCommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
-            createObjectMessage(
+            await createObjectMessage(
                 projectId,
                 contactId,
                 comment,

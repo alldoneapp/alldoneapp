@@ -9,9 +9,11 @@ import { Keyboard } from 'react-native'
 import ChatInput from './ChatInput'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
 import { endBotSpinnerWait } from '../../Utils/botSpinnerTrigger'
+import { readCommentDraft } from '../../../../utils/commentDraftStore'
 
 const mockInputFocus = jest.fn()
 const mockInputBlur = jest.fn()
+const mockInputClear = jest.fn()
 const mockKeyboardDismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(jest.fn())
 
 const mockState = {
@@ -53,7 +55,7 @@ jest.mock('../../../Feeds/CommentsTextInput/CustomTextInput3', () => {
     return React.forwardRef((props, ref) => {
         React.useImperativeHandle(ref, () => ({
             blur: mockInputBlur,
-            clear: jest.fn(),
+            clear: mockInputClear,
             focus: mockInputFocus,
             getEditorId: jest.fn(() => 'editor-1'),
             isFocused: jest.fn(() => false),
@@ -626,5 +628,74 @@ describe('ChatInput push-to-talk submit', () => {
         expect(tree.root.findByProps({ testID: 'chat-input' }).props.onDictationSubmit).toBeUndefined()
 
         tree.unmount()
+    })
+})
+
+describe('ChatInput durable submission', () => {
+    const context = { userId: 'user-1', projectId: 'project-1', objectId: 'chat-1', objectType: 'topics' }
+    const renderComposer = () =>
+        renderer.create(
+            <ChatInput
+                chat={{ id: 'chat-1', type: 'topics' }}
+                projectId="project-1"
+                autoFocus={false}
+                setWaitingForBotAnswer={jest.fn()}
+                setAmountOfNewCommentsToHighligth={jest.fn()}
+            />
+        )
+    beforeEach(() => {
+        jest.clearAllMocks()
+        localStorage.clear()
+    })
+
+    it('keeps failed input on disk and restores it when the composer reopens', async () => {
+        createObjectMessage.mockRejectedValueOnce(new Error('Storage refused the submission'))
+        let tree
+        await act(async () => {
+            tree = renderComposer()
+        })
+        await act(async () => {
+            await tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Arguments for our chat')
+        })
+        expect(mockInputClear).not.toHaveBeenCalled()
+        expect(readCommentDraft(context).comment).toBe('Arguments for our chat')
+        expect(JSON.stringify(tree.toJSON())).toContain('Storage refused the submission')
+        act(() => tree.unmount())
+        await act(async () => {
+            tree = renderComposer()
+        })
+        expect(tree.root.findByProps({ testID: 'chat-input' }).props.initialTextExtended).toBe('Arguments for our chat')
+        act(() => tree.unmount())
+    })
+
+    it('blocks duplicate taps and clears the draft only after durable acceptance', async () => {
+        let accept
+        createObjectMessage.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    accept = resolve
+                })
+        )
+        let tree, pending
+        await act(async () => {
+            tree = renderComposer()
+        })
+        await act(async () => {
+            pending = tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Keep this text')
+            await Promise.resolve()
+        })
+        expect(mockInputClear).not.toHaveBeenCalled()
+        expect(readCommentDraft(context).comment).toBe('Keep this text')
+        await act(async () => {
+            await tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Keep this text')
+        })
+        expect(createObjectMessage).toHaveBeenCalledTimes(1)
+        await act(async () => {
+            accept('comment-id')
+            await pending
+        })
+        expect(mockInputClear).toHaveBeenCalledTimes(1)
+        expect(readCommentDraft(context).comment).toBe('')
+        act(() => tree.unmount())
     })
 })

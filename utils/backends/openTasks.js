@@ -488,6 +488,10 @@ const watchOpenTasksInternal = (
                                 trackConnectionHealth: false,
                                 affectsLoadingState: false,
                                 performanceSource: 'assigned_open_tasks_background',
+                                onInitialSnapshotFailed: () => {
+                                    releaseHydrationSlot()
+                                    scheduleSecondaryStreams()
+                                },
                                 onInitialSnapshotDelivered: () => {
                                     releaseHydrationSlot()
                                     stopAssignedUnsubscriber(foregroundUnsubscribe)
@@ -520,6 +524,7 @@ const watchOpenTasksInternal = (
                     assistantProfileMode,
                     trackConnectionHealth,
                     onInitialSnapshotDelivered: scheduleCompleteAssignedTasks,
+                    onInitialSnapshotFailed: scheduleCompleteAssignedTasks,
                     queryLimit: foregroundLimit,
                     topLevelOnly: true,
                     performanceSource: 'assigned_open_tasks_foreground',
@@ -545,6 +550,7 @@ const watchOpenTasksInternal = (
                     assistantProfileMode,
                     trackConnectionHealth,
                     onInitialSnapshotDelivered: deferSecondaryStreams ? scheduleSecondaryStreams : undefined,
+                    onInitialSnapshotFailed: deferSecondaryStreams ? scheduleSecondaryStreams : undefined,
                 }
             )
         )
@@ -679,6 +685,7 @@ const watchUserOpenTasks = (
         assistantProfileMode = false,
         trackConnectionHealth = true,
         onInitialSnapshotDelivered,
+        onInitialSnapshotFailed,
         queryLimit = null,
         topLevelOnly = false,
         affectsLoadingState = true,
@@ -717,6 +724,10 @@ const watchUserOpenTasks = (
     const gate = createCachedSnapshotGate(() => handleOpenTasksSnapshot, {
         trackConnectionHealth,
         loadingSource: !areObservedTasks && affectsLoadingState ? 'open_tasks' : undefined,
+        onError: error => {
+            snapshotPerformance.fail()
+            if (!initialSnapshotDelivered) onInitialSnapshotFailed?.(error)
+        },
     })
     const snapshotPerformance = createFirstSnapshotPerformance(
         {
@@ -965,6 +976,7 @@ const watchUserOpenTasks = (
         if (unsubscribed) return
         unsubscribed = true
         unsubOptimistic()
+        snapshotPerformance.cancel()
         unsub()
     }
 

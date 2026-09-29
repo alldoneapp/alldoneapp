@@ -1,3 +1,4 @@
+import { readFirestoreQueueProgress, queueHasAdvanced } from './firestoreQueueProgress'
 import {
     getConnectionHealth,
     isManualOfflineMode,
@@ -57,6 +58,7 @@ const recordDiagnostic = (storage, phase, durationMs, pendingCount, source) => {
  */
 export const createTaskWriteMonitor = ({
     db,
+    readQueueProgress = readFirestoreQueueProgress,
     storage = browserStorage(),
     now = Date.now,
     isOffline = isBrowserOffline,
@@ -78,6 +80,8 @@ export const createTaskWriteMonitor = ({
     let drainInFlight = null
     let lastRecoveryAt = null
     let lastProgressAt = null
+    let queueSample = null
+    let samplingQueue = false
     const pending = new Map()
 
     const persist = entry => {
@@ -156,10 +160,32 @@ export const createTaskWriteMonitor = ({
         })
     }
 
-    const check = () => {
+    const check = async () => {
         if (stopped || !pending.size) return
         observeRestoredQueue()
         if (isHidden() || isOffline() || isManualOffline()) return
+        if (samplingQueue) return
+        samplingQueue = true
+        const sampleGeneration = generation
+        try {
+            const sample = await readQueueProgress(db, userId)
+            if (stopped || generation !== sampleGeneration || !pending.size) return
+            if (queueHasAdvanced(queueSample, sample)) lastProgressAt = now()
+            if (sample) queueSample = sample
+        } catch (_) {
+            // Optional progress observation must never disable stalled recovery.
+        } finally {
+            samplingQueue = false
+        }
+        if (
+            stopped ||
+            generation !== sampleGeneration ||
+            !pending.size ||
+            isHidden() ||
+            isOffline() ||
+            isManualOffline()
+        )
+            return
         pending.forEach(startSample)
         const at = now()
         const oldest = [...pending.values()].reduce((a, b) => (a.startedAt < b.startedAt ? a : b))
@@ -218,6 +244,7 @@ export const createTaskWriteMonitor = ({
         interval = undefined
         drainInFlight = null
         lastProgressAt = null
+        queueSample = null
         lastRecoveryAt = null
     }
     const unsubscribeVisible = subscribeVisible(check)

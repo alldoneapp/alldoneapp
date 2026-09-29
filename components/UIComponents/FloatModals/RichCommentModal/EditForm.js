@@ -153,6 +153,7 @@ export default class EditForm extends Component {
     }
 
     done = () => {
+        if (!this.canSubmit()) return
         const { comment, mentions, isPrivate, hasKarma } = this.state
         const { onSuccess } = this.props
 
@@ -217,7 +218,7 @@ export default class EditForm extends Component {
                             initialCursorIndex={initialCursorIndex}
                             initialDeltaOps={initialDeltaOps}
                             otherFormats={['image', 'attachment', 'customImageFormat', 'videoFormat', 'karma']}
-                            disabledEdition={userIsAnonymous}
+                            disabledEdition={userIsAnonymous || this.props.isSubmitting}
                             characterLimit={characterLimit}
                             setShowRunOutGoalModal={setShowRunOutGoalModal}
                             chatAssistantData={chatAssistantData}

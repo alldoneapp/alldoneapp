@@ -857,7 +857,7 @@ service cloud.firestore {
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canReadObject(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow delete: if canReadObject(projectId, resource.data) || canProbeMissingObject(projectId);
     }
 
     match /feedsStore/{projectId}/{userId}/feeds/followed/{feedId} {
@@ -865,7 +865,8 @@ service cloud.firestore {
       allow create: if canWriteObject(projectId, request.resource.data) && accessProjectionAbsent(request.resource.data);
       allow update: if canReadObject(projectId, resource.data) &&
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
-      allow delete: if canReadObject(projectId, resource.data);
+      allow delete: if canReadObject(projectId, resource.data) ||
+        (signedIn() && request.auth.uid == userId && canProbeMissingObject(projectId));
     }
 
     match /feedsCount/{projectId}/{userId}/{document=**} {

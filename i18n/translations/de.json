@@ -2654,5 +2654,9 @@
     "Rage mode greeting 1": "Hallo! 👋",
     "Rage mode greeting 2": "Hi du!",
     "Rage mode greeting 3": "Du schaffst das!",
-    "Rage mode greeting 4": "Guter Schuss!"
+    "Rage mode greeting 4": "Guter Schuss!",
+    "Saved on this device. Waiting to sync.": "Auf diesem Gerät gespeichert. Wartet auf Synchronisierung.",
+    "Comment not synced. Saved on this device.": "Kommentar nicht synchronisiert. Auf diesem Gerät gespeichert.",
+    "Could not save on this device. Keep this window open and try again.": "Speichern auf diesem Gerät nicht möglich. Lass dieses Fenster offen und versuche es erneut.",
+    "Comment could not be sent. Your text is still here.": "Kommentar konnte nicht gesendet werden. Dein Text ist noch hier."
 }

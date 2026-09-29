@@ -86,6 +86,26 @@ describe('firestoreFatalRecovery', () => {
         stop()
     })
 
+    it('waits for a draft that could not be persisted before automatically reloading', () => {
+        let safe = false
+        const windowObject = createWindow()
+        const reload = jest.fn()
+        const stop = installFirestoreFatalRecovery({
+            windowObject,
+            storage: createStorage(),
+            reload,
+            reloadDelayMs: 0,
+            canReload: () => safe,
+        })
+        windowObject.emit('unhandledrejection', { reason: FATAL_ERROR })
+        jest.advanceTimersByTime(2000)
+        expect(reload).not.toHaveBeenCalled()
+        safe = true
+        jest.advanceTimersByTime(1001)
+        expect(reload).toHaveBeenCalledTimes(1)
+        stop()
+    })
+
     it('defers recovery while offline and reloads when connectivity returns', () => {
         const windowObject = createWindow({ online: false })
         const reload = jest.fn()

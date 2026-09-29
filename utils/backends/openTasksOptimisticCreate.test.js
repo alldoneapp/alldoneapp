@@ -656,6 +656,32 @@ describe('AT-2342 optimistic task insert in the open board', () => {
         projectIds.forEach(projectId => unwatchOpenTasks(projectId, 'user-1'))
     })
 
+    it('releases background hydration slots on listener failure without abandoning healthy foreground listeners', () => {
+        jest.useFakeTimers()
+        const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {})
+        unwatchOpenTasks(PROJECT_ID, 'user-1')
+        listeners.length = 0
+        listenerErrors.length = 0
+        listenerUnsubscribes.length = 0
+        queryRegistrations.length = 0
+        const projects = ['resume-1', 'resume-2', 'resume-3']
+        projects.forEach(projectId =>
+            watchOpenTasks(projectId, jest.fn(), false, false, false, `${projectId}user-1`, false, {
+                deferSecondaryStreams: true,
+            })
+        )
+        for (let i = 0; i < 3; i++) deliverSnapshot(i, [])
+        jest.advanceTimersByTime(DEFERRED_FULL_ASSIGNED_TASK_STREAM_DELAY_MS)
+        expect(listeners).toHaveLength(5)
+        listenerErrors[3]({ code: 'permission-denied' })
+        expect(listeners).toHaveLength(6)
+        expect(listenerUnsubscribes[0]).not.toHaveBeenCalled()
+        deliverSnapshot(5, [])
+        expect(listenerUnsubscribes[2]).toHaveBeenCalledTimes(1)
+        projects.forEach(projectId => unwatchOpenTasks(projectId, 'user-1'))
+        errorLog.mockRestore()
+    })
+
     it('removes the row again when the write is rejected', () => {
         const raw = buildRawTask()
 

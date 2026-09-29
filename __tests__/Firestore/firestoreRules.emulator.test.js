@@ -13,9 +13,11 @@ const {
     doc,
     getDoc,
     getDocs,
+    increment,
     limit,
     orderBy,
     query,
+    runTransaction,
     setDoc,
     updateDoc,
     writeBatch,
@@ -1252,6 +1254,26 @@ describe('queries used by the web client', () => {
     })
 })
 
+describe('feed cleanup retries', () => {
+    it('allows harmless repeated deletes in accessible stores while protecting other users and private feeds', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const paths = [
+            `feedsStore/${PROJECT_ID}/all/already-deleted`,
+            `feedsStore/${PROJECT_ID}/${MEMBER_ID}/feeds/followed/already-deleted`,
+        ]
+        for (const path of paths) {
+            await assertSucceeds(deleteDoc(doc(memberDb, path)))
+            await assertSucceeds(deleteDoc(doc(memberDb, path)))
+            await assertFails(deleteDoc(doc(outsiderDb, path)))
+        }
+        await assertFails(
+            deleteDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/${TEAMMATE_ID}/feeds/followed/already-deleted`))
+        )
+        await assertFails(deleteDoc(doc(memberDb, `feedsStore/${PROJECT_ID}/all/hidden-feed`)))
+    })
+})
+
 describe('missing object probes (AT-2484)', () => {
     it('lets a project member learn that an object does not exist without erroring the read', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
@@ -1467,6 +1489,59 @@ describe('comment parent authorization', () => {
 })
 
 describe('chat notification ownership', () => {
+    it('allows an outbox transaction to read its missing receipt and atomically create the chat, comment and previews', async () => {
+        const db = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const commentId = 'outbox-comment'
+        const taskId = 'public-task'
+        const commentRef = doc(db, `chatComments/${PROJECT_ID}/tasks/${taskId}/comments/${commentId}`)
+        const chatRef = doc(db, `chatObjects/${PROJECT_ID}/chats/${taskId}`)
+        await assertSucceeds(
+            runTransaction(db, async transaction => {
+                const [comment, chat] = await Promise.all([transaction.get(commentRef), transaction.get(chatRef)])
+                expect(comment.exists()).toBe(false)
+                expect(chat.exists()).toBe(false)
+                transaction.set(commentRef, {
+                    commentText: 'Persisted offline first',
+                    creatorId: MEMBER_ID,
+                    created: 1,
+                })
+                transaction.set(chatRef, {
+                    id: taskId,
+                    title: 'Task',
+                    type: 'tasks',
+                    creatorId: MEMBER_ID,
+                    members: [MEMBER_ID],
+                    isPublicFor: [0],
+                    commentsData: { amount: increment(1), lastComment: 'Persisted offline first' },
+                })
+                transaction.update(doc(db, `items/${PROJECT_ID}/tasks/${taskId}`), {
+                    'commentsData.amount': increment(1),
+                    'commentsData.lastComment': 'Persisted offline first',
+                })
+                transaction.update(doc(db, `projects/${PROJECT_ID}`), { lastChatActionDate: 1 })
+                transaction.update(doc(db, `users/${MEMBER_ID}`), {
+                    [`lastAssistantCommentData.${PROJECT_ID}`]: {
+                        objectType: 'tasks',
+                        objectId: taskId,
+                        creatorId: MEMBER_ID,
+                        creatorType: 'user',
+                        date: 1,
+                    },
+                })
+                transaction.set(doc(db, `chatNotifications/${PROJECT_ID}/${TEAMMATE_ID}/${commentId}`), {
+                    projectId: PROJECT_ID,
+                    chatType: 'tasks',
+                    objectId: taskId,
+                    commentId,
+                    creatorId: MEMBER_ID,
+                    chatId: taskId,
+                    followed: true,
+                })
+            })
+        )
+        expect((await getDoc(chatRef)).data().commentsData.amount).toBe(1)
+    })
+
     it('lets a comment author atomically fan out inbox, push, and email notifications to project members', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
         const commentId = 'comment-fanout'

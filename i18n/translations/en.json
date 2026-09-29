@@ -3099,5 +3099,9 @@
     "Rage mode greeting 1": "Hi! 👋",
     "Rage mode greeting 2": "Hello there!",
     "Rage mode greeting 3": "You've got this!",
-    "Rage mode greeting 4": "Nice aim!"
+    "Rage mode greeting 4": "Nice aim!",
+    "Saved on this device. Waiting to sync.": "Saved on this device. Waiting to sync.",
+    "Comment not synced. Saved on this device.": "Comment not synced. Saved on this device.",
+    "Could not save on this device. Keep this window open and try again.": "Could not save on this device. Keep this window open and try again.",
+    "Comment could not be sent. Your text is still here.": "Comment could not be sent. Your text is still here."
 }

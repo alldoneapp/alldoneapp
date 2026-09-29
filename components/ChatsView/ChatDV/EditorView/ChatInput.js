@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Keyboard, StyleSheet, View } from 'react-native'
+import { Keyboard, StyleSheet, View, Text } from 'react-native'
 import { shallowEqual, useSelector, useDispatch } from 'react-redux'
 import firebase from 'firebase/compat/app'
 import ReactQuill from 'react-quill-new'
@@ -30,6 +30,8 @@ import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZ
 import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
 import { endBotSpinnerWait } from '../../Utils/botSpinnerTrigger'
 import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
+import PendingCommentSends from '../../../UIComponents/FloatModals/RichCommentModal/PendingCommentSends'
+import { readCommentDraft, saveCommentDraft, clearCommentDraft } from '../../../../utils/commentDraftStore'
 import { CHAT_COMPOSER_LIFT, getChatComposerLift } from '../chatComposerLayout'
 
 const Delta = ReactQuill.Quill.import('delta')
@@ -81,7 +83,18 @@ export default function ChatInput({
     )
     const [autoFocusDisabled, setAutoFocusDisabled] = useState(disableAutoFocusInChat)
     const [chatEditor, setChatEditor] = useState(null)
-    const [inputText, setInputText] = useState('')
+    const draftContext = { userId: loggedUserId, projectId, objectId: messageId || chat.id, objectType: chat.type }
+    const [recoveredDraft] = useState(() => readCommentDraft(draftContext)?.comment)
+    const [inputText, setInputText] = useState(recoveredDraft || '')
+    const [sendError, setSendError] = useState('')
+    const [isSending, setIsSending] = useState(false)
+    const sendingRef = useRef(false)
+    const persistInput = text => {
+        setInputText(text.trim())
+        if (!saveCommentDraft(draftContext, { comment: text })) {
+            setSendError(translate('Could not save on this device. Keep this window open and try again.'))
+        }
+    }
     const [inputCursorIndex, setInputCursorIndex] = useState(0)
     const [showRunOutGoalModal, setShowRunOutGoalModal] = useState(false)
     const inputRef = useRef(null)
@@ -126,13 +139,22 @@ export default function ChatInput({
         }
     }, [])
 
-    const onEdit = event => {
+    const onEdit = async event => {
+        event?.preventDefault?.()
+        if (sendingRef.current) return
         if (disabledEdition || initialText.trim() === inputText.trim()) {
+            clearCommentDraft(draftContext, inputText)
             closeEditMode()
         } else {
-            event?.preventDefault?.()
-            updateNewAttachmentsData(projectId, inputText).then(commentWithAttachments => {
-                createObjectMessage(
+            sendingRef.current = true
+            setIsSending(true)
+            setSendError('')
+            try {
+                if (!saveCommentDraft(draftContext, { comment: inputText })) {
+                    throw new Error(translate('Could not save on this device. Keep this window open and try again.'))
+                }
+                const commentWithAttachments = await updateNewAttachmentsData(projectId, inputText)
+                await createObjectMessage(
                     projectId,
                     objectId,
                     commentWithAttachments,
@@ -143,53 +165,64 @@ export default function ChatInput({
                     false, // skipAssistantTrigger
                     explicitAssistantEnabled
                 )
-            })
-            setAmountOfNewCommentsToHighligth(0)
-            closeEditMode()
+                clearCommentDraft(draftContext, inputText)
+                setAmountOfNewCommentsToHighligth(0)
+                closeEditMode()
+            } catch (error) {
+                setSendError(error.message || translate('Comment could not be sent. Your text is still here.'))
+            } finally {
+                sendingRef.current = false
+                setIsSending(false)
+            }
         }
     }
 
-    const onSubmit = eventOrText => {
-        const isEvent = eventOrText && eventOrText.preventDefault
-        if (isEvent) eventOrText.preventDefault()
-
+    const onSubmit = async eventOrText => {
+        eventOrText?.preventDefault?.()
+        if (sendingRef.current) return
         const textToSubmit = typeof eventOrText === 'string' ? eventOrText : inputText
-        const selectedAssistantId = selectedAssistantIdRef.current
-
+        if (!textToSubmit?.trim()) return
         if (isAssistantActive && gold === 0) {
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
-        } else {
-            if (!checkIsLimitedByXp(projectId)) {
-                inputRef.current.clear()
-
-                if (isAssistantActive) setWaitingForBotAnswer(true)
-
-                // Re-enable auto-scroll when user sends a message
-                if (onMessageSent) onMessageSent()
-
-                updateNewAttachmentsData(projectId, textToSubmit)
-                    .then(commentWithAttachments =>
-                        createObjectMessage(
-                            projectId,
-                            objectId,
-                            commentWithAttachments,
-                            chatType,
-                            chatType === 'tasks' ? STAYWARD_COMMENT : null,
-                            null,
-                            null,
-                            false, // skipAssistantTrigger
-                            explicitAssistantEnabled,
-                            selectedAssistantId
-                        )
-                    )
-                    .catch(error => {
-                        if (isAssistantActive) endBotSpinnerWait(projectId, objectId)
-                        console.error('[ChatInput] Could not send message', error)
-                    })
-                setAmountOfNewCommentsToHighligth(0)
-                updateXpByCommentInChat(loggedUserId, firebase, Backend.getDb(), projectId)
+            return
+        }
+        if (checkIsLimitedByXp(projectId)) return
+        sendingRef.current = true
+        const submittedAssistantId = selectedAssistantIdRef.current
+        setIsSending(true)
+        setSendError('')
+        try {
+            if (!saveCommentDraft(draftContext, { comment: textToSubmit })) {
+                throw new Error(translate('Could not save on this device. Keep this window open and try again.'))
             }
+            if (isAssistantActive) setWaitingForBotAnswer(true)
+            const comment = await updateNewAttachmentsData(projectId, textToSubmit)
+            await createObjectMessage(
+                projectId,
+                objectId,
+                comment,
+                chatType,
+                chatType === 'tasks' ? STAYWARD_COMMENT : null,
+                null,
+                null,
+                false,
+                explicitAssistantEnabled,
+                submittedAssistantId
+            )
+            clearCommentDraft(draftContext, textToSubmit)
+            inputRef.current?.clear()
+            setInputText('')
+            onMessageSent?.()
+            setAmountOfNewCommentsToHighligth(0)
+            updateXpByCommentInChat(loggedUserId, firebase, Backend.getDb(), projectId)
+        } catch (error) {
+            if (isAssistantActive) endBotSpinnerWait(projectId, objectId)
+            setWaitingForBotAnswer(false)
+            setSendError(error.message || translate('Comment could not be sent. Your text is still here.'))
+        } finally {
+            sendingRef.current = false
+            setIsSending(false)
         }
     }
 
@@ -412,11 +445,17 @@ export default function ChatInput({
             projectId={projectId}
             setInputCursorIndex={setInputCursorIndex}
         >
+            {!editing && <PendingCommentSends projectId={projectId} objectId={objectId} objectType={chatType} />}
+            {!!sendError && (
+                <Text accessibilityRole="alert" style={{ color: colors.Text02 }}>
+                    {sendError}
+                </Text>
+            )}
             <CustomTextInput3
                 ref={inputRef}
                 placeholder={translate('Type to add new comment')}
                 placeholderTextColor={colors.Text03}
-                onChangeText={text => setInputText(text.trim())}
+                onChangeText={persistInput}
                 autoFocus={shouldAutoFocus}
                 projectId={projectId}
                 externalAlignment={localStyles.textInputAlignment}
@@ -425,8 +464,8 @@ export default function ChatInput({
                 setInputCursorIndex={setInputCursorIndex}
                 setEditor={updateEditor}
                 otherFormats={['image', 'attachment', 'customImageFormat', 'videoFormat']}
-                disabledEdition={disabledEdition}
-                initialTextExtended={initialText || quotedNoteText}
+                disabledEdition={disabledEdition || isSending}
+                initialTextExtended={recoveredDraft || initialText || quotedNoteText}
                 keepBreakLines={true}
                 characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
                 setShowRunOutGoalModal={setShowRunOutGoalModal}
@@ -453,7 +492,7 @@ export default function ChatInput({
                 editor={chatEditor}
                 initialText={initialText}
                 editing={editing}
-                disabledEdition={disabledEdition}
+                disabledEdition={disabledEdition || isSending}
                 closeEditMode={closeEditMode}
                 creatorId={creatorId}
                 inputRef={inputRef}

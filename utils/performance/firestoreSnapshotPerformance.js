@@ -1,22 +1,25 @@
 import { startPerformanceTrace } from './performanceLogger'
 
 /**
- * Measures time to the first snapshot a watcher can actually render. A cached
- * snapshot buffered while online is a separate phase; the trace stays open until
- * the server snapshot or cached-snapshot grace makes data usable.
+ * Measures both first usable content and first authoritative server snapshot.
+ * Cache delivery can finish the first trace while server freshness keeps waiting.
  */
 export const createFirstSnapshotPerformance = (metadata = {}, options = {}) => {
     const trace = startPerformanceTrace('firestore_first_snapshot', metadata, options)
+    const serverTrace = startPerformanceTrace('firestore_first_server_snapshot', metadata, options)
     let cacheRecorded = false
 
     return {
         observe(snapshot, buffered) {
-            if (trace.isEnded()) return
             const snapshotMetadata = snapshot?.metadata || {}
             const details = {
                 document_count: Number.isFinite(snapshot?.size) ? snapshot.size : snapshot?.docs?.length || 0,
                 from_cache: !!snapshotMetadata.fromCache,
             }
+            if (!snapshotMetadata.fromCache && !serverTrace.isEnded()) {
+                serverTrace.end('server_ready', { ...details, outcome: 'success' })
+            }
+            if (trace.isEnded()) return
             if (buffered) {
                 if (!cacheRecorded) {
                     cacheRecorded = true
@@ -33,9 +36,11 @@ export const createFirstSnapshotPerformance = (metadata = {}, options = {}) => {
         },
         fail() {
             trace.fail('listener_failed')
+            serverTrace.fail('listener_failed')
         },
         cancel() {
             trace.end('listener_cancelled', { outcome: 'cancelled' })
+            serverTrace.end('listener_cancelled', { outcome: 'cancelled' })
         },
     }
 }
