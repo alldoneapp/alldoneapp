@@ -10,7 +10,9 @@ export default function BotMessagePlaceholder({ projectId, assistantId }) {
             <View style={localStyles.headerContainer}>
                 <BotHeader projectId={projectId} assistantId={assistantId} />
             </View>
-            <AssistantProgress activity={{ phase: 'preparing' }} compact={true} />
+            <View style={localStyles.progressContainer}>
+                <AssistantProgress activity={{ phase: 'preparing' }} compact={true} />
+            </View>
         </View>
     )
 }
@@ -23,5 +25,10 @@ const localStyles = StyleSheet.create({
     },
     headerContainer: {
         marginTop: 8,
+    },
+    // Matches MessageItemBody's messageContentContainer (24px avatar + 12px gap), so the
+    // card lines up with the text of the messages above it.
+    progressContainer: {
+        marginLeft: 36,
     },
 })
