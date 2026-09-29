@@ -175,6 +175,11 @@ jest.mock('../../../UIControls/Button', () => {
     )
 })
 
+jest.mock('../../../RageMode/RageModeButton', () => {
+    const React = require('react')
+    const { View } = require('react-native')
+    return props => React.createElement(View, { ...props, testID: 'rage-mode-button' })
+})
 jest.mock('../../../UIComponents/AssistantVoiceCallButton', () => {
     const React = require('react')
     const { Text } = require('react-native')

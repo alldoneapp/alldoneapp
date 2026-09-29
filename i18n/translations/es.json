@@ -3034,5 +3034,18 @@
     "Shift + Enter for a new line": "Mayús + Intro para una nueva línea",
     "You": "Tú",
     "Anna is pointing to:": "Anna señala:",
-    "Clear highlight": "Quitar resaltado"
+    "Clear highlight": "Quitar resaltado",
+    "Rage mode": "Modo furia",
+    "Esc to exit": "Esc para salir",
+    "destroyed": "destruidos",
+    "Rage mode desktop help": "WASD o flechas para volar · clic para disparar · Espacio para saludar · Esc lo deja todo como estaba",
+    "Rage mode touch help": "Mantén pulsado para disparar · 👋 para saludar · ✕ lo deja todo como estaba",
+    "Mute": "Silenciar",
+    "Unmute": "Activar sonido",
+    "Exit rage mode": "Salir del modo furia",
+    "Say hi": "Saludar",
+    "Rage mode greeting 1": "¡Hola! 👋",
+    "Rage mode greeting 2": "¡Hola, tú!",
+    "Rage mode greeting 3": "¡Tú puedes!",
+    "Rage mode greeting 4": "¡Buena puntería!"
 }

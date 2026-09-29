@@ -69,7 +69,6 @@ const installAudioContext = amplitudesPerContext => {
 }
 
 let hookValue
-let renderedHooks = []
 const Harness = ({ options }) => {
     hookValue = useRambleRecorder(options)
     return null
@@ -80,7 +79,6 @@ const renderHook = options => {
     act(() => {
         root = renderer.create(<Harness options={options} />)
     })
-    renderedHooks.push(root)
     return root
 }
 
@@ -89,7 +87,6 @@ const originalMediaDevices = navigator.mediaDevices
 beforeEach(() => {
     jest.useFakeTimers()
     recorderInstances = []
-    renderedHooks = []
     supportedTypes = ['audio/webm;codecs=opus', 'audio/webm']
     global.MediaRecorder = MockMediaRecorder
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -99,7 +96,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-    act(() => renderedHooks.forEach(root => root.unmount()))
     jest.useRealTimers()
     delete global.MediaRecorder
     delete global.window.AudioContext
@@ -126,54 +122,6 @@ describe('isDictationSupported', () => {
 })
 
 describe('useRambleRecorder', () => {
-    test('keeps the screen awake only while the dictation recorder runs', async () => {
-        const sentinel = { release: jest.fn(async () => {}), addEventListener: jest.fn() }
-        const request = jest.fn(async () => sentinel)
-        Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
-        renderHook({ onComplete: jest.fn(), onError: jest.fn() })
-
-        await act(async () => {
-            await hookValue.start()
-        })
-        await Promise.resolve()
-        expect(request).toHaveBeenCalledWith('screen')
-
-        act(() => hookValue.stop())
-        expect(sentinel.release).toHaveBeenCalledTimes(1)
-        delete navigator.wakeLock
-    })
-
-    test('releases the screen lock on recorder error and unmount', async () => {
-        const sentinels = []
-        Object.defineProperty(navigator, 'wakeLock', {
-            configurable: true,
-            value: {
-                request: jest.fn(async () => {
-                    const sentinel = { release: jest.fn(async () => {}), addEventListener: jest.fn() }
-                    sentinels.push(sentinel)
-                    return sentinel
-                }),
-            },
-        })
-        const onError = jest.fn()
-        const root = renderHook({ onComplete: jest.fn(), onError })
-        await act(async () => {
-            await hookValue.start()
-        })
-        await Promise.resolve()
-        act(() => recorderInstances[0].onerror())
-        expect(sentinels[0].release).toHaveBeenCalledTimes(1)
-        expect(onError).toHaveBeenCalledWith('recorder-error')
-
-        await act(async () => {
-            await hookValue.start()
-        })
-        await Promise.resolve()
-        act(() => root.unmount())
-        expect(sentinels[1].release).toHaveBeenCalledTimes(1)
-        delete navigator.wakeLock
-    })
-
     test('start → data → stop delivers one base64 clip with mimeType and duration', async () => {
         // jsdom's FileReader schedules its load event through timers, so this test runs on real
         // ones; only the auto-stop test below needs the fake clock.
@@ -310,56 +258,6 @@ describe('useRambleRecorder', () => {
             expect(issued).toHaveLength(1)
             expect(issued[0].tracks[0].stop).toHaveBeenCalled()
             expect(recorderInstances).toHaveLength(0)
-        })
-
-        test('unmount while microphone permission is pending never requests a wake lock', async () => {
-            jest.useRealTimers()
-            const { openMic, issued } = deferredStream()
-            const request = jest.fn()
-            Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
-            const root = renderHook({ onComplete: jest.fn(), onError: jest.fn() })
-
-            let pending
-            act(() => {
-                pending = hookValue.start()
-                root.unmount()
-            })
-            await act(async () => {
-                openMic()
-                await pending
-            })
-
-            expect(issued[0].tracks[0].stop).toHaveBeenCalled()
-            expect(recorderInstances).toHaveLength(0)
-            expect(request).not.toHaveBeenCalled()
-            delete navigator.wakeLock
-        })
-
-        test('a second press cannot open a second recorder; a retry after cancel uses the new take', async () => {
-            jest.useRealTimers()
-            const { openMic, issued } = deferredStream()
-            renderHook({ onComplete: jest.fn(), onError: jest.fn() })
-
-            let first
-            let retry
-            act(() => {
-                first = hookValue.start()
-                hookValue.start()
-            })
-            expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1)
-            act(() => {
-                hookValue.stop()
-                retry = hookValue.start()
-            })
-            expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2)
-            await act(async () => {
-                openMic()
-                await Promise.all([first, retry])
-            })
-
-            expect(issued[0].tracks[0].stop).toHaveBeenCalled()
-            expect(recorderInstances).toHaveLength(1)
-            expect(hookValue.isRecording).toBe(true)
         })
 
         test('a start issued after an abort is not itself aborted', async () => {

@@ -1510,6 +1510,39 @@ while the card intersects the viewport. `skylineScene.test.js` drives the real s
 only the WebGL renderer and the 2D canvas stubbed — it is the one test that executes this module,
 which needs `three` in Jest's transform allowlist and the class-static-block Babel transform.
 
+### Rage mode — shoot the page apart, change nothing
+
+A small crosshair after "Anna Alldone: How can I help?" in the assistant line (`AssistantOptions` →
+`components/RageMode/RageModeButton.js`) turns the current page into a level:
+a voxel Anna Alldone (blonde bob, light-blue shirt) with a jetpack flies over it, bolts knock letters out, shatter images and crack small
+coloured blocks, and Escape / ✕ rewinds every piece back into place. She faces where she shoots;
+Space (👋 on touch) makes her fly ONE loop towards the camera: up and over to its front, where she
+greets with a random pose and a speech bubble, then down and under back to where she was
+(`rageGreeting.js`, pure and tested). The loop is an OFFSET from wherever you steer her, so she stays
+controllable throughout (she only stops shooting), and her edge margins grow with her close-up size. It is purely for fun: **no
+data is ever written.** It is on for everyone; the button is hidden only for anonymous viewers,
+without WebGL, under reduced motion, or on a browser that opted out with `?rageMode=off`
+(`?rageMode=on` undoes it; `rageModeFlag.js`). The arena is its own lazy `rage-mode`
+chunk (three.js is shared with the skyline chunk).
+
+Three rules are load-bearing. **The app's DOM is never mutated**: a destroyed letter is measured
+(`caretRangeFromPoint` + `Range.getClientRects`, `rageTargets.js`), covered on the WebGL canvas
+by a plane in the colour behind it, and a copy of the glyph flies off. Removing or splitting the
+real nodes would hit the React/Quill `NotFoundError` class described above, and leaving would
+need a repair; this way leaving just clears the canvas. **Nothing may reach the app**: a
+transparent input layer covers the viewport under the canvas (a click meant as a shot must never
+tick the checkbox beneath it), keys are swallowed in the `window` capture phase, which runs
+before every document-level listener including the escape stack (Cmd/Ctrl/Alt combinations
+stay with the browser), and hit testing switches that layer to `pointer-events: none` only for
+one synchronous query per frame (`withLayerTransparent`). **The camera maps z = 0 to CSS
+pixels**: a perspective camera at `h / 2 / tan(fov / 2)`, so a piece built at a character's box
+sits exactly on it and grows as it flies out at the viewer; things that must appear at a screen
+point while floating in front (hero, bolts) go through `toWorldOnScreen`. A resize repairs all
+damage instantly, because every hole is anchored to the old layout. Pure physics and controls live
+in `rageDebris.js` / `rageControls.js`; `browser-tests/rage-mode` is the only place the arena
+actually runs (jsdom has no WebGL, caret hit testing or layout). The button deliberately imports nothing that pulls in the redux store (it sits in `AssistantOptions`,
+whose suites load it). Not built yet: the Gold weapon shop, the task-row targets and extra weapons.
+
 ### Per-project empty inbox — the completed sweep (AT-2492)
 
 **Clearing one project is celebrated too, and the difference from the all-projects moment is one of

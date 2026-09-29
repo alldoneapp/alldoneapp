@@ -3086,5 +3086,18 @@
     "Shift + Enter for a new line": "Shift + Enter for a new line",
     "You": "You",
     "Anna is pointing to:": "Anna is pointing to:",
-    "Clear highlight": "Clear highlight"
+    "Clear highlight": "Clear highlight",
+    "Rage mode": "Rage mode",
+    "Esc to exit": "Esc to exit",
+    "destroyed": "destroyed",
+    "Rage mode desktop help": "WASD or arrow keys to fly · click to shoot · Space to say hi · Esc puts everything back",
+    "Rage mode touch help": "Tap and hold to shoot · 👋 to say hi · ✕ puts everything back",
+    "Mute": "Mute",
+    "Unmute": "Unmute",
+    "Exit rage mode": "Exit rage mode",
+    "Say hi": "Say hi",
+    "Rage mode greeting 1": "Hi! 👋",
+    "Rage mode greeting 2": "Hello there!",
+    "Rage mode greeting 3": "You've got this!",
+    "Rage mode greeting 4": "Nice aim!"
 }

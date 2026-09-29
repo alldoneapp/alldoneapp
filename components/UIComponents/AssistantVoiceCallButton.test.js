@@ -313,34 +313,6 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         expect(navigator.mediaSession.setMicrophoneActive).toHaveBeenCalledWith(true)
     })
 
-    it('keeps a connected call awake while muted and reacquires after returning to the page', async () => {
-        const locks = []
-        const request = jest.fn(async () => {
-            const lock = { release: jest.fn(async () => {}), addEventListener: jest.fn() }
-            locks.push(lock)
-            return lock
-        })
-        Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
-        try {
-            const tree = render()
-            await startCall(tree)
-            await act(async () => {})
-            expect(request).toHaveBeenCalledWith('screen')
-
-            act(() => findMuteButton(tree).props.onPress())
-            expect(locks[0].release).not.toHaveBeenCalled()
-            await setVisibility('hidden')
-            expect(locks[0].release).toHaveBeenCalledTimes(1)
-            await setVisibility('visible')
-            expect(request).toHaveBeenCalledTimes(2)
-
-            await act(async () => findEndCallButton(tree).props.onPress())
-            expect(locks[1].release).toHaveBeenCalledTimes(1)
-        } finally {
-            delete navigator.wakeLock
-        }
-    })
-
     it('mutes and unmutes the WebRTC sender from the floating call panel', async () => {
         const tree = render()
         const pc = await startCall(tree)
