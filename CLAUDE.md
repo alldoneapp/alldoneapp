@@ -1560,7 +1560,40 @@ spot never hits the checkbox or chip still hidden underneath; on the rewind ever
 the letter it came from and shrinks to that letter's size before the hole fades. Pure physics and controls live
 in `rageDebris.js` / `rageControls.js`; `browser-tests/rage-mode` is the only place the arena
 actually runs (jsdom has no WebGL, caret hit testing or layout). The button deliberately imports nothing that pulls in the redux store (it sits in `AssistantOptions`,
-whose suites load it). Not built yet: the Gold weapon shop and extra weapons.
+whose suites load it).
+
+**The game on top: score, health, a Gold weapon shop and a boss.** The HUD shows the score, the
+player's best and Anna's health. Snakes that crawl into her bite (10), the boss's orbs hit (12) and
+touching the boss hurts (20); after a hit she blinks and cannot be hit for 1.1s, and every snake
+killed heals her a little (`rageCombat.js`). At zero it is game over: a card with the score and
+"play again" / "exit". **The boss is built from today's open-task count** — the same number the Home
+button's badge shows (`getAllProjectsOpenTasksAmount` over `sidebarNumbers`), falling back to the
+task rows on the page — as a big red voxel block with that number on its chest; its health is 12 per
+task and the number counts down as it takes damage (`rageBoss.js`, pure and tested). It arrives after
+3 snakes or 45 seconds, once per round, and never on a day with no open tasks.
+
+**Weapons are bought with Gold on the SERVER, never granted by the client.** Seven weapons
+(`rageWeapons.js`: blaster free, shotgun 100, rocket 250, flamethrower 400, laser 600, black hole
+1000, finger snap 2000), switched with 1–7 or the weapon bar, bought in a shop panel (🛒 or B) that
+pauses the game and always asks to confirm. `functions/RageMode/rageModeProfile.js` hosts three
+callables — `getRageModeProfile`, `purchaseRageModeItem`, `submitRageModeScore` — over
+`rageModeProfiles/{uid}`, a collection with NO client rule at all, so Firestore's default deny keeps
+ownership and highscores out of reach of the browser (deliberately not `users/{uid}` or
+`users/{uid}/private/**`, which are owner-writable). A purchase goes through `deductGold` with source
+`rage_mode_item` (labelled in the Gold history) and the idempotency key `rage_mode_item:<weapon>`,
+which is scoped per user — so each weapon is charged at most once ever, and a retry after a failed
+ownership write finds the claim, skips the charge and finishes the write. The price list the server
+charges is `functions/RageMode/rageWeaponsCatalog.js`; the client copy is for display, and
+`rageWeapons.test.js` fails the build if they disagree. `submitRageModeScore` keeps the best score,
+accepts only a real number (`Number(null)` is 0) and caps it at 10 million. The arena itself stays
+free of backend imports: `RageModeButton` hands it `services` (the three calls via the lazily-required
+`rageModeBackend.js`, plus live getters for Gold and the open-task count), and the harness passes
+fakes. `tuning` (`bossHeadStart`, `startHealth`, `invincible`) exists for `browser-tests/rage-mode`
+only. All HUD strings come from one table, `rageStrings.js`.
+
+**Overlays are placed on the VISIBLE viewport** (`visibleWidth`/`visibleHeight`): on a phone a page
+that overflows sideways widens `innerWidth` past the screen, and `left: 50%` / `bottom: 16px` on a
+fixed element then land off screen — which is how ✕ and the weapon bar went missing on a 390px phone.
 
 ### Per-project empty inbox — the completed sweep (AT-2492)
 

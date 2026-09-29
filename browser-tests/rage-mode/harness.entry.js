@@ -11,6 +11,9 @@
  * Open the built page by hand (`node browser-tests/rage-mode/run.js --serve`) to simply play it.
  */
 import { startRageArena } from '../../components/RageMode/rageArena'
+import { buildRageStrings } from '../../components/RageMode/rageStrings'
+import { RAGE_WEAPONS } from '../../components/RageMode/rageWeapons'
+import en from '../../i18n/translations/en.json'
 
 const PARAGRAPH =
     'A stick figure is a very simple drawing of a person, in which the head is represented by a circle and the limbs and torso by straight lines. Deadlines, overdue reviews and that one task you have postponed eleven times are represented by this paragraph, which you are now free to take apart letter by letter.'
@@ -64,13 +67,15 @@ const style = document.createElement('style')
 style.textContent = `
   body { margin: 0; font-family: Roboto, Arial, sans-serif; background: #F1F3F4; color: #04142F; }
   .topbar { height: 48px; background: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-radius: 0 0 24px 24px; margin: 0 104px; }
+  @media (max-width: 600px) { .topbar { margin: 0 8px; padding: 0 12px; } .page { margin: 16px 8px; padding: 16px; } }
   .page { max-width: 900px; margin: 24px auto; background: #fff; border-radius: 16px; padding: 24px 32px; }
   h1 { font-size: 28px; margin: 0 0 12px; }
   p { font-size: 16px; line-height: 26px; }
   .row { display: flex; align-items: center; gap: 12px; height: 40px; border-bottom: 1px solid #E5E8EB; font-size: 15px; }
   .check { width: 20px; height: 20px; border: 2px solid #8C95A8; border-radius: 6px; background: #fff; cursor: pointer; }
   .chip { background: #FFE6C7; color: #A66007; border-radius: 10px; padding: 2px 8px; font-size: 12px; }
-  .media { display: flex; gap: 24px; align-items: center; margin-top: 16px; }
+  .media { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; margin-top: 16px; }
+  img { max-width: 100%; height: auto; }
   .avatar { width: 64px; height: 64px; border-radius: 32px; background-size: cover; }
   .btn { background: #0C66FF; color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; cursor: pointer; }
   .assistant { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; }
@@ -117,17 +122,42 @@ document.addEventListener('keydown', () => {
 
 state.pageHtml = document.body.innerHTML
 
-const strings = {
-    title: 'Rage mode',
-    exitHint: 'Esc to exit',
-    destroyed: 'destroyed',
-    desktopHelp: 'WASD or arrow keys to fly · click to shoot · Space to say hi · Esc puts everything back',
-    touchHelp: 'Tap and hold to shoot · 👋 to say hi · ✕ puts everything back',
-    mute: 'Mute',
-    unmute: 'Unmute',
-    exit: 'Exit rage mode',
-    greet: 'Say hi',
-    greetings: ['Hi! 👋', 'Hello there!', "You've got this!", 'Nice aim!'],
+// The real string table, read from en.json the way the app's TranslationService would.
+const strings = buildRageStrings(key => en[key] || key)
+
+// Fake services, steered by the query string: ?gold=1500&tasks=3&best=120&owned=all
+// &bossHeadStart=42&health=10. `state.calls` records what the arena asked for.
+const params = new URLSearchParams(window.location.search)
+state.gold = Number(params.get('gold') || 1500)
+state.profile = {
+    owned: params.get('owned') === 'all' ? RAGE_WEAPONS.map(weapon => weapon.id) : ['blaster'],
+    highscore: Number(params.get('best') || 120),
+}
+state.calls = { purchase: [], submitScore: [] }
+const services = {
+    loadProfile: () => Promise.resolve({ ...state.profile }),
+    purchase: id => {
+        state.calls.purchase.push(id)
+        const price = RAGE_WEAPONS.find(weapon => weapon.id === id).price
+        if (state.gold < price)
+            return Promise.resolve({ ok: false, reason: 'insufficient_gold', currentGold: state.gold })
+        state.gold -= price
+        state.profile.owned = [...state.profile.owned, id]
+        return Promise.resolve({ ok: true, owned: state.profile.owned, newBalance: state.gold })
+    },
+    submitScore: score => {
+        state.calls.submitScore.push(score)
+        const isNew = score > state.profile.highscore
+        if (isNew) state.profile.highscore = score
+        return Promise.resolve({ ok: true, isNew, highscore: state.profile.highscore })
+    },
+    getGold: () => state.gold,
+    getOpenTasksToday: () => Number(params.get('tasks') || 3),
+}
+const tuning = {
+    bossHeadStart: Number(params.get('bossHeadStart') || 0),
+    ...(params.get('health') ? { startHealth: Number(params.get('health')) } : {}),
+    ...(params.get('god') ? { invincible: true } : {}),
 }
 
 state.start = () => {
@@ -135,6 +165,8 @@ state.start = () => {
     state.exited = false
     state.arena = startRageArena({
         strings,
+        services,
+        tuning,
         from: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
         onExit: () => {
             state.exited = true

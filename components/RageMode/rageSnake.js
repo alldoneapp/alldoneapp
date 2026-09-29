@@ -1,7 +1,8 @@
 /**
  * Task snakes: a task row peels out of the list and crawls around the screen like the old game —
  * a chain of tiles (one per letter of its title, plus a head with eyes) moving on a grid and turning
- * at right angles. Shooting it knocks the tail off and shrinks it until it bursts.
+ * at right angles. Shooting it knocks the tail off — it gets SHORTER, never smaller — and once only
+ * its head is left it bursts.
  *
  * Pure: movement and segment placement only, in screen space (px, y down). The arena owns the
  * meshes and decides what a hit does.
@@ -16,8 +17,9 @@ export const SNAKE_GAP = 21
 export const SNAKE_CELL = 42
 export const SNAKE_SPEED = 150
 export const SNAKE_TURN_CHANCE = 0.35
-export const SNAKE_SHRINK = 0.86
-export const SNAKE_MIN_SCALE = 0.42
+// Each lost tile makes it a little faster (up to SNAKE_MAX_SPEEDUP x): a wounded snake is an angry one.
+export const SNAKE_WOUND_SPEEDUP = 0.05
+export const SNAKE_MAX_SPEEDUP = 1.8
 export const SNAKE_MAX_LETTERS = 16
 export const SNAKE_MORPH_SECONDS = 0.55
 
@@ -53,7 +55,9 @@ export const createSnake = ({ head, tail, segmentCount }) => {
             { x: head.x - dir.x * Math.max(reach, length), y: head.y - dir.y * Math.max(reach, length) },
         ],
         sinceTurn: 0,
+        // Tiles keep their size; `scale` stays 1 and only spaces the body. Hits add wounds.
         scale: 1,
+        wounds: 0,
         age: 0,
     }
 }
@@ -107,13 +111,16 @@ export const chooseDirection = (snake, bounds, random) => {
     return order.find(fits) || DIRECTIONS[(current + 2) % 4]
 }
 
+export const snakeSpeed = snake =>
+    SNAKE_SPEED * Math.min(SNAKE_MAX_SPEEDUP, 1 + SNAKE_WOUND_SPEEDUP * (snake.wounds || 0))
+
 /**
- * Move the snake on by `dt` seconds. It speeds up as it shrinks — a wounded snake is an angry one.
+ * Move the snake on by `dt` seconds. It speeds up with every tile it has lost.
  * Mutates and returns the snake.
  */
 export const stepSnake = (snake, dt, bounds, random, segmentCount) => {
     snake.age += dt
-    const speed = SNAKE_SPEED / Math.sqrt(snake.scale)
+    const speed = snakeSpeed(snake)
     let remaining = speed * dt
     const cell = SNAKE_CELL * snake.scale
     while (remaining > 0) {
@@ -145,8 +152,11 @@ export const stepSnake = (snake, dt, bounds, random, segmentCount) => {
     return snake
 }
 
-/** The snake after a hit: smaller, and it says whether that was the killing blow. */
+/**
+ * The snake after a hit has cost it its tail tile: one wound more, and whether that was the killing
+ * blow (only the head is left). Its size never changes — it just gets shorter.
+ */
 export const shrinkSnake = (snake, segmentsLeft) => {
-    snake.scale *= SNAKE_SHRINK
-    return { dead: segmentsLeft <= 1 || snake.scale < SNAKE_MIN_SCALE }
+    snake.wounds = (snake.wounds || 0) + 1
+    return { dead: segmentsLeft <= 1 }
 }

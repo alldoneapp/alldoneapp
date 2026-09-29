@@ -1520,6 +1520,53 @@ exports.getVmSubscriptionStatus = onCall(
     }
 )
 
+// Rage mode (components/RageMode): the player's owned weapons and highscore, and the Gold weapon
+// shop. The profile lives in a server-only collection; see functions/RageMode/rageModeProfile.js.
+exports.getRageModeProfile = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { getRageModeProfile } = require('./RageMode/rageModeProfile')
+        return await getRageModeProfile({ userId: auth.uid })
+    }
+)
+
+exports.purchaseRageModeItem = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { purchaseRageModeItem } = require('./RageMode/rageModeProfile')
+        return await purchaseRageModeItem({ userId: auth.uid, itemId: data && data.itemId })
+    }
+)
+
+exports.submitRageModeScore = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { submitRageModeScore } = require('./RageMode/rageModeProfile')
+        return await submitRageModeScore({ userId: auth.uid, score: data && data.score })
+    }
+)
+
 exports.getVmAgentSettings = onCall(
     {
         timeoutSeconds: 30,

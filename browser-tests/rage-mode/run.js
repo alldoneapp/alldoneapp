@@ -85,11 +85,41 @@ const check = (name, ok, detail) => {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail !== undefined ? `  — ${detail}` : ''}`)
 }
 
-const destroyedCount = page =>
+const hudData = page =>
     page.evaluate(() => {
-        const counter = document.querySelector('[data-rage-mode-layer="hud"] span:nth-child(2)')
-        return counter ? parseInt(counter.textContent, 10) || 0 : -1
+        const hud = document.querySelector('[data-rage-mode-layer="hud"]')
+        return hud ? { ...hud.dataset } : {}
     })
+const destroyedCount = async page => Number((await hudData(page)).destroyed || 0)
+const waitForHud = (page, predicate, arg, timeout = 15000) =>
+    page
+        .waitForFunction(
+            ([source, value]) => {
+                const hud = document.querySelector('[data-rage-mode-layer="hud"]')
+                // eslint-disable-next-line no-new-func
+                return !!hud && new Function('data', 'value', `return (${source})(data, value)`)(hud.dataset, value)
+            },
+            [predicate.toString(), arg],
+            { timeout }
+        )
+        .then(() => true)
+        .catch(() => false)
+const holdFire = async (page, target, ms) => {
+    await page.mouse.move(target.x, target.y)
+    await page.mouse.down()
+    await sleep(ms)
+    await page.mouse.up()
+}
+const openPage = async (browser, url, query) => {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+    const errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    page.on('console', message => message.type() === 'error' && errors.push(message.text()))
+    await page.goto(`${url}?${query}`)
+    await page.click('#rage')
+    await sleep(900)
+    return { page, errors }
+}
 const layerCount = page => page.evaluate(() => document.querySelectorAll('[data-rage-mode-layer]').length)
 // The rewind runs on the arena's own clock, which a software-rendered test browser slows down (more
 // so at 2x density with snakes on screen): wait for it to finish rather than guessing how long it takes.
@@ -108,7 +138,7 @@ async function desktop(browser, url) {
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => message.type() === 'error' && errors.push(message.text()))
-    await page.goto(url)
+    await page.goto(`${url}?god=1`)
     await page.click('#rage')
     await sleep(900)
     check('arena layers are on the page', (await layerCount(page)) >= 4, await layerCount(page))
@@ -266,6 +296,144 @@ async function desktop(browser, url) {
     await page.close()
 }
 
+// The shop: buy the rocket launcher, be refused the finger snap, close with Escape.
+async function shop(browser, url) {
+    const { page, errors } = await openPage(browser, url, 'gold=1500&god=1')
+    check('shop: the HUD shows score and full health', (await hudData(page)).health === '100')
+    await page.keyboard.press('KeyB')
+    check('shop: B opens the weapon shop (and pauses the game)', await waitForHud(page, data => data.shop === 'open'))
+    const row = weapon => `[data-rage-mode-layer="shop"] [data-weapon="${weapon}"]`
+    await page.click(`${row('rocket')} button`)
+    await page.click(`${row('rocket')} button:first-child`)
+    const equipped = await waitForHud(page, data => data.weapon === 'rocket')
+    const bought = await page.evaluate(() => ({ gold: window.__rage.gold, calls: window.__rage.calls.purchase }))
+    check(
+        'shop: buying asks to confirm, charges the price once and equips it',
+        equipped && bought.gold === 1250 && bought.calls.join() === 'rocket',
+        JSON.stringify(bought)
+    )
+    await page.click(`${row('snap')} button`)
+    await page.click(`${row('snap')} button:first-child`)
+    await sleep(300)
+    const refusal = await page.textContent(row('snap'))
+    check('shop: an unaffordable weapon is refused, not granted', /Not enough Gold/.test(refusal), refusal.slice(0, 80))
+    await page.screenshot({ path: path.join(BUILD_DIR, 'shop.png') })
+    await page.keyboard.press('Escape')
+    await sleep(200)
+    const afterEscape = await hudData(page)
+    check(
+        'shop: Escape closes the shop, not rage mode',
+        afterEscape.shop === undefined && (await layerCount(page)) >= 4,
+        JSON.stringify({ shop: afterEscape.shop })
+    )
+    const chips = await page.$$eval('[data-rage-mode-layer="weapons"] [data-weapon]', nodes =>
+        nodes.map(node => node.dataset.weapon)
+    )
+    check('shop: the weapon bar lists what you own', chips.join() === 'blaster,rocket', chips.join())
+    const before = await destroyedCount(page)
+    const paragraph = await centreOf(page, '#paragraph')
+    await holdFire(page, { x: paragraph.x, y: paragraph.y }, 900)
+    await sleep(900)
+    check('shop: the rocket launcher blows holes in the page', (await destroyedCount(page)) > before + 3)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'rocket.png') })
+    check('shop: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await page.close()
+}
+
+// Every weapon fires without an error and does damage.
+async function weapons(browser, url) {
+    const { page, errors } = await openPage(browser, url, 'owned=all&god=1')
+    // The laser (5) aims at the paragraph far above her: a beam aimed at the list she hovers over runs
+    // sideways through empty space.
+    const targets = ['#paragraph', '#title', '#tasks', '#paragraph', '#paragraph', '#paragraph', '#paragraph']
+    const results = []
+    for (let i = 0; i < 7; i++) {
+        await page.keyboard.press(`Digit${i + 1}`)
+        await sleep(150)
+        const weapon = (await hudData(page)).weapon
+        const before = await destroyedCount(page)
+        const target = await centreOf(page, targets[i])
+        await holdFire(page, { x: target.x + (i - 3) * 30, y: target.y }, weapon === 'snap' ? 120 : 800)
+        await sleep(weapon === 'blackhole' ? 2400 : 700)
+        const after = await destroyedCount(page)
+        results.push(`${weapon}:${after - before}`)
+        if (weapon === 'laser' || weapon === 'flamethrower') {
+            await holdFire(page, { x: target.x, y: target.y + 20 }, 1)
+        }
+    }
+    await page.mouse.move(640, 300)
+    await page.mouse.down()
+    await page.keyboard.press('Digit5')
+    await sleep(400)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'laser.png') })
+    await page.mouse.up()
+    const allHit = results.every(result => Number(result.split(':')[1]) > 0)
+    check('weapons: all seven fire and do damage', allHit && results.length === 7, results.join(' '))
+    check('weapons: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await page.close()
+}
+
+// The boss: built from today's open-task count, defeated with rockets.
+async function bossFight(browser, url) {
+    const { page, errors } = await openPage(browser, url, 'owned=all&tasks=3&bossHeadStart=44&god=1')
+    const arrived = await waitForHud(page, data => data.boss === '3', null, 12000)
+    check('boss: arrives, built from today’s open tasks (3)', arrived, (await hudData(page)).boss)
+    await sleep(1500)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'boss.png') })
+    await page.keyboard.press('Digit3')
+    const scoreBefore = Number((await hudData(page)).score || 0)
+    for (let round = 0; round < 80; round++) {
+        const data = await hudData(page)
+        if (data.bossDefeated || data.gameOver) break
+        const target = await page.evaluate(() => {
+            const layer = document.querySelector('[data-rage-mode-layer="input"]')
+            return layer && layer.rageBossTarget ? layer.rageBossTarget() : null
+        })
+        if (target) await holdFire(page, target, 300)
+        else await sleep(200)
+    }
+    const data = await hudData(page)
+    check(
+        'boss: can be defeated',
+        data.bossDefeated === '3',
+        JSON.stringify({ defeated: data.bossDefeated, gameOver: data.gameOver })
+    )
+    check('boss: defeating it scores big', Number(data.score) - scoreBefore >= 500, `${scoreBefore} → ${data.score}`)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'boss-defeated.png') })
+    check('boss: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await page.close()
+}
+
+// Game over: a nearly empty health bar, the boss's orbs finish her, the score is saved once.
+async function gameOver(browser, url) {
+    const { page, errors } = await openPage(browser, url, 'health=10&tasks=3&bossHeadStart=44&best=5')
+    const paragraph = await centreOf(page, '#paragraph')
+    await holdFire(page, { x: paragraph.x, y: paragraph.y }, 600)
+    const over = await waitForHud(page, data => data.gameOver === '1', null, 25000)
+    check('game over: a hit with no health left ends the game', over, JSON.stringify(await hudData(page)))
+    await page
+        .waitForSelector('[data-rage-mode-layer="gameover"] button', { state: 'visible', timeout: 5000 })
+        .catch(() => {})
+    await page.screenshot({ path: path.join(BUILD_DIR, 'game-over.png') })
+    const card = await page.textContent('[data-rage-mode-layer="gameover"]')
+    const calls = await page.evaluate(() => window.__rage.calls.submitScore)
+    check('game over: the score is submitted once', calls.length === 1 && calls[0] > 0, JSON.stringify(calls))
+    check('game over: the card celebrates a new highscore', /New highscore/.test(card), card.slice(0, 90))
+    await page.click('[data-rage-mode-layer="gameover"] button:first-child')
+    await sleep(300)
+    const again = await hudData(page)
+    check(
+        'game over: play again starts a fresh round at full health',
+        !again.gameOver && again.health === '100' && again.score === '0',
+        JSON.stringify(again)
+    )
+    await page.keyboard.press('Escape')
+    await waitForArenaGone(page)
+    check('game over: leaving still puts the page back', (await layerCount(page)) === 0)
+    check('game over: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await page.close()
+}
+
 async function touch(browser, url) {
     const context = await browser.newContext({
         viewport: { width: 390, height: 844 },
@@ -276,7 +444,7 @@ async function touch(browser, url) {
     const page = await context.newPage()
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
-    await page.goto(url)
+    await page.goto(`${url}?god=1`)
     await page.tap('#rage')
     await sleep(900)
     check('touch: arena layers are on the page', (await layerCount(page)) >= 4, await layerCount(page))
@@ -312,7 +480,12 @@ async function touch(browser, url) {
     })
     try {
         if (args.has('--touch')) await touch(browser, url)
-        else await desktop(browser, url)
+        else if (args.has('--game')) {
+            await shop(browser, url)
+            await weapons(browser, url)
+            await bossFight(browser, url)
+            await gameOver(browser, url)
+        } else await desktop(browser, url)
     } catch (error) {
         check('harness ran to completion', false, error.message)
     }

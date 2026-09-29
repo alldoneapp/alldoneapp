@@ -53,6 +53,7 @@ function getTransactionLabel(source) {
         contact_enrichment: 'Contact enrichment',
         monthly_gold: 'Monthly gold',
         gold_pack_purchase: 'Gold pack purchase',
+        rage_mode_item: 'Rage mode weapon',
         meeting_transcription: 'Meeting transcription',
         rambler: 'Rambler dictation',
         email_draft_reply: 'Email reply draft',
