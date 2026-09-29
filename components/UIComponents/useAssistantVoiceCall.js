@@ -10,6 +10,7 @@ import { sanitizeCallDiagnostics } from '../../functions/WhatsApp/assistantCallD
 import { beginMobileCallAudioSession, primeCallAudio } from './assistantCallAudio'
 import { acquireVoiceMicrophone, createVoiceMicrophoneSelector } from './assistantVoiceMicrophone'
 import { createInputLevelMonitor } from '../../hooks/rambleMicCapture'
+import { keepScreenAwake } from '../../utils/screenWakeLock'
 import {
     RETURN_MIC_SETTLE_MS,
     beginNativeCallAudioSession,
@@ -90,7 +91,7 @@ export default function useAssistantVoiceCall() {
     const audioElementRef = useRef(null)
     const releaseMobileAudioSessionRef = useRef(null)
     const mountedRef = useRef(true)
-    const wakeLockRef = useRef(null)
+    const releaseWakeLockRef = useRef(null)
     const disconnectTimerRef = useRef(null)
     const micHealthTimerRef = useRef(null)
     const returnMicCheckTimerRef = useRef(null)
@@ -179,26 +180,15 @@ export default function useAssistantVoiceCall() {
         }
     }, [])
 
-    // Acquire a Screen Wake Lock so the device does not sleep while a call is
-    // active.  This is best-effort — the API may not be available everywhere.
-    const acquireWakeLock = useCallback(async () => {
-        try {
-            if (navigator?.wakeLock) {
-                wakeLockRef.current = await navigator.wakeLock.request('screen')
-                wakeLockRef.current.addEventListener('release', () => {
-                    wakeLockRef.current = null
-                })
-            }
-        } catch (_) {
-            // Non-critical — ignore if the browser denies the lock.
-        }
+    // The provider owns one lease for the connected call. The shared lock also covers dictation
+    // when a user starts it during the call, without either feature releasing the other's lock.
+    const acquireWakeLock = useCallback(() => {
+        if (!releaseWakeLockRef.current) releaseWakeLockRef.current = keepScreenAwake()
     }, [])
 
     const releaseWakeLock = useCallback(() => {
-        if (wakeLockRef.current) {
-            wakeLockRef.current.release().catch(() => {})
-            wakeLockRef.current = null
-        }
+        releaseWakeLockRef.current?.()
+        releaseWakeLockRef.current = null
     }, [])
 
     const clearDisconnectTimer = useCallback(() => {
@@ -571,8 +561,8 @@ export default function useAssistantVoiceCall() {
 
     // Visibility transitions. Hidden: nothing is torn down — the peer connection,
     // the capture and the keepalive all stay up, and a pending disconnect grace
-    // is re-armed with the long hidden value. Visible: re-acquire the wake lock
-    // (browsers release it on hide), resume the keepalive AudioContext, nudge
+    // is re-armed with the long hidden value. The shared wake lock handles visibility itself.
+    // Visible: resume the keepalive AudioContext, nudge
     // the audio element, collapse a pending disconnect grace back to the short
     // value, and replay any mic check that was deferred while hidden.
     useEffect(() => {
@@ -585,8 +575,6 @@ export default function useAssistantVoiceCall() {
                 if (disconnectTimerRef.current) armDisconnectTimer(pc)
                 return
             }
-
-            acquireWakeLock()
 
             const keepalive = silentKeepaliveRef.current
             if (keepalive?.audioContext?.state === 'suspended') {
@@ -625,7 +613,7 @@ export default function useAssistantVoiceCall() {
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange)
         }
-    }, [acquireWakeLock, armDisconnectTimer, playCallAudio, captureDiagnostics])
+    }, [armDisconnectTimer, playCallAudio, captureDiagnostics])
 
     useEffect(() => {
         mountedRef.current = true
