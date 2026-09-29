@@ -47,6 +47,16 @@ describe('GeneralTasksHeader (AT-2399 mobile layout)', () => {
         expect(style.minHeight).toBe(GENERAL_TASKS_HEADER_MIN_HEIGHT)
     })
 
+    it('lets a swipe wrapper own its spacing so the swipe background stays hidden at rest', () => {
+        ProjectHelper.getProjectById.mockReturnValue({
+            id: 'p1',
+            name: LONG_PROJECT_NAME,
+            color: PROJECT_COLOR_DEFAULT,
+        })
+        const root = renderer.create(<GeneralTasksHeader projectId="p1" noVerticalMargin={true} />).root
+        expect(StyleSheet.flatten(parts(root).container.props.style).marginVertical).toBe(0)
+    })
+
     it('keeps the title on one line and truncates it', () => {
         const { title } = parts(render())
 
