@@ -42,6 +42,7 @@ jest.mock('./ArchiveUnreadEmailsButton', () => {
     return props => React.createElement(View, { testID: 'archive-unread-emails', projectId: props.projectId })
 })
 jest.mock('./MarkAsRead', () => () => null)
+jest.mock('./ChatsEmailConnectionStatus', () => () => null)
 jest.mock('./ChatsByProject', () => {
     const React = require('react')
     const { View } = require('react-native')
