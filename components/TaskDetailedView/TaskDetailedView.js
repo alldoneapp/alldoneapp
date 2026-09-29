@@ -160,8 +160,12 @@ const TaskDetailedView = ({ navigation }) => {
     }, [selectedTab])
 
     useEffect(() => {
-        Backend.getUserOrContactBy(projectId, task.userId).then(afterAssigneeFetch)
-    }, [task.userId])
+        if (loggedUser.isAnonymous) {
+            afterAssigneeFetch(SharedHelper.createAnonymousResourceUser(task.userId))
+        } else {
+            Backend.getUserOrContactBy(projectId, task.userId).then(afterAssigneeFetch)
+        }
+    }, [task.userId, loggedUser.isAnonymous])
 
     useEffect(() => {
         if (taskInDetailView.name != null) {

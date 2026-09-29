@@ -8,18 +8,24 @@ import Backend from '../../../utils/BackendBridge'
 import TasksHelper from '../../TaskListView/Utils/TasksHelper'
 import Button from '../../UIControls/Button'
 import { getUserData } from '../../../utils/backends/Users/usersFirestore'
+import { useSelector } from 'react-redux'
+import SharedHelper from '../../../utils/SharedHelper'
 
 export default function SkillOwner({ userId, projectId }) {
+    const isAnonymous = useSelector(state => !!state.loggedUser.isAnonymous)
     const [ownerData, setOwnerData] = useState({})
 
     useEffect(() => {
         const owner = TasksHelper.getUserInProject(projectId, userId)
-        owner
-            ? setOwnerData({ displayName: owner.displayName, photoURL: owner.displayName })
-            : getUserData(userId, false).then(owner => {
-                  setOwnerData(owner ? { displayName: owner.displayName, photoURL: owner.displayName } : {})
-              })
-    }, [])
+        if (owner || isAnonymous) {
+            const visibleOwner = owner || SharedHelper.createAnonymousResourceUser(userId)
+            setOwnerData({ displayName: visibleOwner.displayName, photoURL: visibleOwner.photoURL })
+        } else {
+            getUserData(userId, false).then(owner => {
+                setOwnerData(owner ? { displayName: owner.displayName, photoURL: owner.photoURL } : {})
+            })
+        }
+    }, [userId, projectId, isAnonymous])
 
     const { displayName, photoURL } = ownerData
 

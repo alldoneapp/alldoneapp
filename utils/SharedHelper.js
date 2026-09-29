@@ -177,6 +177,8 @@ class SharedHelper {
         }
 
         const isAnonymous = !isLoggedIn
+        const getResourceUser = userId =>
+            isAnonymous ? SharedHelper.createAnonymousResourceUser(userId) : getUserData(userId, false)
 
         if (matchAnyResource(matchedSharedObj)) {
             const params = matchedSharedObj.matches.groups
@@ -196,7 +198,9 @@ class SharedHelper {
                         promises.push(getProjectData(params.projectId))
                         const [task, project] = await Promise.all(promises)
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(task)) {
-                            const user = await getUserData(task.creatorId, false)
+                            // Anonymous visitors can read this public task, but Firestore does not
+                            // expose its creator's private /users document to them.
+                            const user = await getResourceUser(task.creatorId || task.userId || project.creatorId)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.taskId, 'tasks')
                             await onIsShared(URL, users, params, commonPath)
@@ -256,7 +260,7 @@ class SharedHelper {
                         const [goal, project] = await Promise.all(promises)
 
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(goal)) {
-                            const user = await getUserData(goal.creatorId, false)
+                            const user = await getResourceUser(goal.creatorId || goal.userId || project.creatorId)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.goalId, 'goals')
                             await onIsShared(URL, users, params, commonPath)
@@ -327,7 +331,7 @@ class SharedHelper {
                                     (globalAssistant && project.globalAssistantIds.includes(params.assistantId)))
                             ) {
                                 const projectUserId = assistant ? assistant.creatorId : project.userIds[0]
-                                const user = await getUserData(projectUserId, false)
+                                const user = await getResourceUser(projectUserId)
                                 const users = { projectUser: user, currentUser: user }
                                 const commonPath = getDvLink(params.projectId, params.assistantId, 'assistants')
                                 await onIsShared(URL, users, params, commonPath)
@@ -362,11 +366,24 @@ class SharedHelper {
                     // Process contact & users
                     case matchedSharedObj.key.indexOf(URL_CONTACT_DETAILS) >= 0 ||
                         matchedSharedObj.key.indexOf(URL_PEOPLE_DETAILS) >= 0: {
-                        const promises = []
-                        promises.push(getContactData(params.projectId, params.userId))
-                        promises.push(getUserData(params.userId, false))
-                        promises.push(getProjectData(params.projectId))
-                        const [contact, user, project] = await Promise.all(promises)
+                        const project = await getProjectData(params.projectId)
+                        if (!SharedHelper.canAccessToProject(project, false)) {
+                            await onNotShared()
+                            break
+                        }
+                        // A person's /users profile is private even when the project is public.
+                        // Only a separately public contact document can be shared anonymously.
+                        if (isAnonymous && project.userIds?.includes(params.userId)) {
+                            await onNotShared()
+                            break
+                        }
+                        const [contact, user] = await Promise.all([
+                            getContactData(params.projectId, params.userId).catch(error => {
+                                if (isAnonymous && error?.code === 'permission-denied') return null
+                                throw error
+                            }),
+                            isAnonymous ? null : getUserData(params.userId, false),
+                        ])
 
                         if (SharedHelper.canAccessToProject(project, false)) {
                             if (user) {
@@ -374,8 +391,8 @@ class SharedHelper {
                                 const commonPath = getDvLink(params.projectId, params.userId, 'users')
                                 await onIsShared(URL, users, params, commonPath)
                             } else if (SharedHelper.canAccessToObject(contact)) {
-                                const user = await getUserData(contact.recorderUserId, false)
-                                const users = { projectUser: user, currentUser: user }
+                                const contactOwner = await getResourceUser(contact.recorderUserId || project.creatorId)
+                                const users = { projectUser: contactOwner, currentUser: contactOwner }
                                 const commonPath = getDvLink(params.projectId, params.userId, 'contacts')
                                 await onIsShared(URL, users, params, commonPath)
                             } else {
@@ -393,7 +410,7 @@ class SharedHelper {
                         promises.push(getProjectData(params.projectId))
                         const [skill, project] = await Promise.all(promises)
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(skill)) {
-                            const user = await getUserData(skill.userId, false)
+                            const user = await getResourceUser(skill.userId || project.creatorId)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.skillId, 'skills')
                             await onIsShared(URL, users, params, commonPath)
@@ -409,7 +426,7 @@ class SharedHelper {
                         promises.push(getProjectData(params.projectId))
                         const [chat, project] = await Promise.all(promises)
                         if (SharedHelper.canAccessToProject(project, false) && SharedHelper.canAccessToObject(chat)) {
-                            const user = await getUserData(chat.creatorId, false)
+                            const user = await getResourceUser(chat.creatorId || project.creatorId)
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.chatId, 'chats')
                             await onIsShared(URL, users, params, commonPath)
@@ -422,7 +439,7 @@ class SharedHelper {
                     case matchedSharedObj.key.indexOf(URL_PROJECT_DETAILS) >= 0: {
                         const project = await getProjectData(params.projectId)
                         if (SharedHelper.canAccessToProject(project, false)) {
-                            const user = await getUserData(project.userIds[0], false)
+                            const user = await getResourceUser(project.creatorId || project.userIds?.[0])
                             const users = { projectUser: user, currentUser: user }
                             const commonPath = getDvLink(params.projectId, params.projectId, 'projects')
                             await onIsShared(URL, users, params, commonPath)

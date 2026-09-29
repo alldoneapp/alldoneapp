@@ -357,12 +357,14 @@ class ContactsHelper {
             // plus an ERROR log about a document that was never going to exist (AT-2428). The
             // resulting value is deliberately left as `null`, exactly what the lookup returned
             // before, so this only removes the doomed request and not a behaviour anyone relies on.
-            const selectedUser =
-                projectType === PROJECT_TYPE_SHARED
-                    ? user.recorderUserId
-                        ? await Backend.getUserDataByUidOrEmail(user.recorderUserId, { absenceIsExpected: true })
-                        : null
-                    : loggedUser
+            let selectedUser = loggedUser
+            if (projectType === PROJECT_TYPE_SHARED) {
+                selectedUser = loggedUser.isAnonymous
+                    ? SharedHelper.createAnonymousResourceUser(user.recorderUserId || project.creatorId)
+                    : user.recorderUserId
+                      ? await Backend.getUserDataByUidOrEmail(user.recorderUserId, { absenceIsExpected: true })
+                      : null
+            }
             const data = { projectId: projectId, userId: userId }
             URLsContacts.push(tabConstant !== undefined ? tabConstant : URL_CONTACT_DETAILS, data, projectId, userId)
             const navData = { contact: user, project }

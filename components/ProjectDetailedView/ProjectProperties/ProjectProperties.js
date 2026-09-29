@@ -69,9 +69,11 @@ const ProjectProperties = ({ project, type }) => {
     const cannotLeaveGuide = isGuide && loggedUser.realTemplateProjectIds.includes(project.parentTemplateId)
 
     useEffect(() => {
-        getUserData(project.creatorId, false).then(user => {
-            setCreator(user)
-        })
+        if (loggedUser.isAnonymous) {
+            setCreator(SharedHelper.createAnonymousResourceUser(project.creatorId))
+        } else {
+            getUserData(project.creatorId, false).then(setCreator)
+        }
         writeBrowserURL()
     }, [])
 

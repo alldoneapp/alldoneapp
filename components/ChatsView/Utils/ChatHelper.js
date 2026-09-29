@@ -88,7 +88,10 @@ class ChatHelper {
         // A chat creator is very often an assistant rather than a user — the `!user` branch below
         // says so and falls back to the logged user — so this is a probe: an absence here is the
         // expected answer and must not cost a verification round trip or log an ERROR (AT-2428).
-        const user = chat ? await Backend.getUserDataByUidOrEmail(chat.creatorId, { absenceIsExpected: true }) : null
+        const user =
+            chat && !loggedUser.isAnonymous
+                ? await Backend.getUserDataByUidOrEmail(chat.creatorId, { absenceIsExpected: true })
+                : null
         console.log('ChatHelper: Chat creator data:', user)
 
         if (!chat) {
