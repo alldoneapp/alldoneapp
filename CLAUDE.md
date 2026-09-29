@@ -1516,7 +1516,7 @@ A small crosshair after "Anna Alldone: How can I help?" in the assistant line (`
 `components/RageMode/RageModeButton.js`) turns the current page into a level:
 a voxel Anna Alldone (blonde bob, light-blue shirt) with a jetpack flies over it, bolts knock letters out, shatter images and crack small
 coloured blocks, and Escape / ✕ rewinds every piece back into place. She faces where she shoots;
-Space (👋 on touch) makes her fly ONE loop towards the camera: up and over to its front, where she
+Enter (👋 on touch) makes her fly ONE loop towards the camera: up and over to its front, where she
 greets with a random pose and a speech bubble, then down and under back to where she was
 (`rageGreeting.js`, pure and tested). The loop is an OFFSET from wherever you steer her, so she stays
 controllable throughout (she only stops shooting), and her edge margins grow with her close-up size. It is purely for fun: **no
@@ -1549,11 +1549,11 @@ anchor too, so the rewind sends them to where their letter is NOW. Damage outsid
 top bar) stays screen-anchored. A window resize still repairs everything at once: every rect was
 measured against the old layout.
 
-**Task snakes** (`rageSnake.js`, pure and tested). Up to three task rows at a time peel out of the
-list and crawl around like the old game: a chain of 3D tiles, one per letter of the title plus a
-head with eyes, moving on a grid and turning at right angles, the body retracing the head's trail.
-Every hit knocks the tail tile off and shrinks the snake (it speeds up as it shrinks) until it
-bursts; the next row peels out after a pause. Rows are found by the DOM id every task row already
+**Task snakes** (`rageSnake.js`, pure and tested). Up to five task rows at a time peel out of the
+list, one by one at random 1.2–2.8s intervals, and crawl around like the old game: a chain of 3D
+tiles, one per letter of the title plus a head with eyes, moving on a grid and turning at right
+angles, the body retracing the head's trail. Every hit knocks the tail tile off — the snake gets
+SHORTER, never smaller, and a little faster — until only its head is left and it bursts. Rows are found by the DOM id every task row already
 has (`task_body_<project>_<task>_…`, TaskPresentation's `nativeID`) — no hook in the task row
 itself. A peeled row is covered by a hole and listed in `coveredRows`, so a bolt through its empty
 spot never hits the checkbox or chip still hidden underneath; on the rewind every tile flies back to
@@ -1574,7 +1574,8 @@ task and the number counts down as it takes damage (`rageBoss.js`, pure and test
 
 **Weapons are bought with Gold on the SERVER, never granted by the client.** Seven weapons
 (`rageWeapons.js`: blaster free, shotgun 100, rocket 250, flamethrower 400, laser 600, black hole
-1000, finger snap 2000), switched with 1–7 or the weapon bar, bought in a shop panel (🛒 or B) that
+1000, finger snap 2000), switched with 1–7 or the weapon bar (Space, or its ⟳ button, toggles
+auto-fire: she keeps shooting at the cursor with nothing held), bought in a shop panel (🛒 or B) that
 pauses the game and always asks to confirm. `functions/RageMode/rageModeProfile.js` hosts three
 callables — `getRageModeProfile`, `purchaseRageModeItem`, `submitRageModeScore` — over
 `rageModeProfiles/{uid}`, a collection with NO client rule at all, so Firestore's default deny keeps

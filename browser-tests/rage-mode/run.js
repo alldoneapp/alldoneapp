@@ -207,22 +207,18 @@ async function desktop(browser, url) {
     check('a snake bursts in the end', afterSnakes.killed >= 1, afterSnakes.killed)
     await page.screenshot({ path: path.join(BUILD_DIR, 'desktop-snake-hit.png') })
 
-    // Space: Anna loops towards the camera and greets; clicks during the greeting are not shots.
+    // Enter: Anna loops towards the camera and greets; clicks during the greeting are not shots.
     const beforeGreeting = await destroyedCount(page)
-    await page.keyboard.press('Space')
+    await page.keyboard.press('Enter')
     const greetingStyle = await page.getAttribute('[data-rage-mode-layer="hud"]', 'data-greeting')
-    check('Space starts a greeting', !!greetingStyle, greetingStyle)
+    check('Enter starts a greeting', !!greetingStyle, greetingStyle)
     await sleep(1900)
     const paragraphNow = await centreOf(page, '#paragraph')
     await page.mouse.click(paragraphNow.x, paragraphNow.y)
     await sleep(150)
     await page.screenshot({ path: path.join(BUILD_DIR, 'desktop-greeting.png') })
     const duringGreeting = await destroyedCount(page)
-    check(
-        'Space greets instead of shooting',
-        duringGreeting === beforeGreeting,
-        `${beforeGreeting} → ${duringGreeting}`
-    )
+    check('a greeting does not shoot', duringGreeting === beforeGreeting, `${beforeGreeting} → ${duringGreeting}`)
     // The arena runs on its own clock, which a software-rendered test browser slows down; wait for
     // the greeting to actually end instead of guessing its duration.
     await page.waitForFunction(
@@ -243,6 +239,29 @@ async function desktop(browser, url) {
         'shooting works again after the greeting',
         afterGreeting > duringGreeting,
         `${duringGreeting} → ${afterGreeting}`
+    )
+
+    // Space toggles auto-fire: she keeps shooting at the cursor with no button held.
+    const paragraphForAuto = await centreOf(page, '#paragraph')
+    await page.mouse.move(paragraphForAuto.x + 120, paragraphForAuto.y)
+    const beforeAuto = await destroyedCount(page)
+    await page.keyboard.press('Space')
+    const autoOn = (await hudData(page)).autoFire
+    await sleep(1200)
+    const duringAuto = await destroyedCount(page)
+    check(
+        'Space turns auto-fire on, and she shoots without a click',
+        autoOn === 'on' && duringAuto > beforeAuto,
+        `${autoOn}: ${beforeAuto} → ${duringAuto}`
+    )
+    await page.keyboard.press('Space')
+    await sleep(500)
+    const settled = await destroyedCount(page)
+    await sleep(700)
+    check(
+        'Space again turns it off',
+        (await hudData(page)).autoFire === 'off' && (await destroyedCount(page)) === settled,
+        (await hudData(page)).autoFire
     )
 
     // The whole page: the wheel scrolls it, and flying into the bottom edge scrolls it too.
@@ -356,7 +375,7 @@ async function weapons(browser, url) {
         await holdFire(page, { x: target.x + (i - 3) * 30, y: target.y }, weapon === 'snap' ? 120 : 800)
         await sleep(weapon === 'blackhole' ? 2400 : 700)
         const after = await destroyedCount(page)
-        results.push(`${weapon}:${after - before}`)
+        results.push(`${weapon}:${after - before}(shots ${(await hudData(page)).shots || 0})`)
         if (weapon === 'laser' || weapon === 'flamethrower') {
             await holdFire(page, { x: target.x, y: target.y + 20 }, 1)
         }
@@ -367,7 +386,7 @@ async function weapons(browser, url) {
     await sleep(400)
     await page.screenshot({ path: path.join(BUILD_DIR, 'laser.png') })
     await page.mouse.up()
-    const allHit = results.every(result => Number(result.split(':')[1]) > 0)
+    const allHit = results.every(result => parseInt(result.split(':')[1], 10) > 0)
     check('weapons: all seven fire and do damage', allHit && results.length === 7, results.join(' '))
     check('weapons: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
     await page.close()

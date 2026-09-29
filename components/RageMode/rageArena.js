@@ -1371,6 +1371,8 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
     const blackholes = []
     let laserTick = 0
     let laserPhase = 0
+    // Space toggles auto-fire: she keeps shooting at the cursor without a button held down.
+    let autoFire = false
 
     const bolts = []
     const pieces = []
@@ -1959,6 +1961,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
 
     const fire = () => {
         const weapon = weaponById(equipped)
+        hud.dataset.shots = String(Number(hud.dataset.shots || 0) + 1)
         if (weapon.kind === 'snap') return fireSnap(weapon)
         if (weapon.kind === 'flame') return spawnFlames(weapon)
         const { x, y, angle } = muzzle()
@@ -2177,7 +2180,12 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
     const updateLaser = dt => {
         const weapon = weaponById(equipped)
         const active =
-            phase === 'playing' && !paused && !greeting && entering <= 0 && weapon.kind === 'laser' && pointerFiring
+            phase === 'playing' &&
+            !paused &&
+            !greeting &&
+            entering <= 0 &&
+            weapon.kind === 'laser' &&
+            (pointerFiring || autoFire)
         laserGroup.visible = active
         hud.dataset.laser = active ? 'on' : ''
         if (!active) return
@@ -2731,6 +2739,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
             hole.ringMaterial.dispose()
         })
         laserGroup.visible = false
+        autoFire = false
         character.root.visible = true
         ui.weaponBar.style.opacity = '0'
         ui.weaponBar.style.transition = 'opacity 300ms ease'
@@ -2839,6 +2848,30 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
             })
             ui.weaponBar.appendChild(chip)
         })
+        const auto = document.createElement('button')
+        auto.type = 'button'
+        auto.textContent = '⟳'
+        auto.title = `${strings.autoFire} (Space)`
+        auto.setAttribute('aria-label', strings.autoFire)
+        auto.setAttribute('aria-pressed', autoFire ? 'true' : 'false')
+        auto.setAttribute('data-auto-fire', autoFire ? 'on' : 'off')
+        Object.assign(auto.style, {
+            border: 'none',
+            borderRadius: '13px',
+            width: '38px',
+            height: '34px',
+            fontSize: '18px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            color: autoFire ? '#091540' : '#FFFFFF',
+            background: autoFire ? '#9CF0C8' : 'rgba(255,255,255,0.12)',
+        })
+        auto.addEventListener('pointerdown', event => event.stopPropagation())
+        auto.addEventListener('click', event => {
+            event.stopPropagation()
+            toggleAutoFire()
+        })
+        ui.weaponBar.appendChild(auto)
         const more = document.createElement('button')
         more.type = 'button'
         more.textContent = '🛒'
@@ -2859,6 +2892,17 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
             openShop()
         })
         ui.weaponBar.appendChild(more)
+    }
+
+    const setAutoFire = on => {
+        autoFire = on
+        hud.dataset.autoFire = on ? 'on' : 'off'
+        renderWeaponBar()
+    }
+    const toggleAutoFire = () => {
+        if (phase !== 'playing') return
+        setAutoFire(!autoFire)
+        showToast(autoFire ? `⟳ ${strings.autoFireOn}` : strings.autoFireOff, 1.1)
     }
 
     let shopPending = null
@@ -2990,6 +3034,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
         gameOverShown = false
         pointerFiring = false
         pendingShot = false
+        setAutoFire(false)
         closeShop()
         if (greeting) {
             greeting = null
@@ -3089,7 +3134,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
                 character.root.visible = !isBlinking(health, time) || Math.floor(time * 14) % 2 === 0
                 fireCooldown -= dt
                 const weapon = weaponById(equipped)
-                const wantsFire = pointerFiring || pendingShot
+                const wantsFire = pointerFiring || pendingShot || autoFire
                 if (weapon.kind === 'laser') pendingShot = false
                 else if (wantsFire && !greeting && entering <= 0 && fireCooldown <= 0) {
                     fire()
@@ -3175,6 +3220,10 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
         }
         if (shopUi.isOpen() || phase !== 'playing') return
         if (event.code === 'Space') {
+            if (down && !event.repeat) toggleAutoFire()
+            return
+        }
+        if (event.key === 'Enter') {
             if (down && !event.repeat) startGreeting()
             return
         }
