@@ -3090,8 +3090,8 @@
     "Rage mode": "Rage mode",
     "Esc to exit": "Esc to exit",
     "destroyed": "destroyed",
-    "Rage mode desktop help": "WASD to fly · click to shoot · 1–7 weapons · B shop · Space says hi · Esc puts everything back",
-    "Rage mode touch help": "Tap and hold to shoot · 🛒 weapons · 👋 says hi · ✕ puts everything back",
+    "Rage mode desktop help": "WASD to fly · click to shoot · Space auto-fire · 1–7 weapons · B shop · Enter says hi · Esc puts everything back",
+    "Rage mode touch help": "Tap and hold to shoot · ⟳ auto-fire · 🛒 weapons · 👋 says hi · ✕ puts everything back",
     "Mute": "Mute",
     "Unmute": "Unmute",
     "Exit rage mode": "Exit rage mode",
@@ -3138,5 +3138,8 @@
     "Rage weapon blackhole description": "Pulls everything in, then implodes.",
     "Rage weapon snap": "Finger snap",
     "Rage weapon snap description": "The ultimate: half the page turns to dust. Long cooldown.",
-    "Rage mode weapon": "Rage mode weapon"
+    "Rage mode weapon": "Rage mode weapon",
+    "Auto-fire": "Auto-fire",
+    "Auto-fire on": "Auto-fire on",
+    "Auto-fire off": "Auto-fire off"
 }

@@ -2645,8 +2645,8 @@
     "Rage mode": "Rage-Modus",
     "Esc to exit": "Esc zum Beenden",
     "destroyed": "zerstört",
-    "Rage mode desktop help": "WASD zum Fliegen · Klick zum Schießen · 1–7 Waffen · B Laden · Leertaste sagt Hallo · Esc stellt alles wieder her",
-    "Rage mode touch help": "Tippen und halten zum Schießen · 🛒 Waffen · 👋 sagt Hallo · ✕ stellt alles wieder her",
+    "Rage mode desktop help": "WASD zum Fliegen · Klick zum Schießen · Leertaste Dauerfeuer · 1–7 Waffen · B Laden · Enter sagt Hallo · Esc stellt alles wieder her",
+    "Rage mode touch help": "Tippen und halten zum Schießen · ⟳ Dauerfeuer · 🛒 Waffen · 👋 sagt Hallo · ✕ stellt alles wieder her",
     "Mute": "Stumm",
     "Unmute": "Ton an",
     "Exit rage mode": "Rage-Modus beenden",
@@ -2695,5 +2695,8 @@
     "Rage weapon blackhole description": "Zieht alles an und implodiert dann.",
     "Rage weapon snap": "Fingerschnipp",
     "Rage weapon snap description": "Das Ultimative: Die halbe Seite zerfällt zu Staub. Lange Abklingzeit.",
-    "Rage mode weapon": "Rage-Modus-Waffe"
+    "Rage mode weapon": "Rage-Modus-Waffe",
+    "Auto-fire": "Dauerfeuer",
+    "Auto-fire on": "Dauerfeuer an",
+    "Auto-fire off": "Dauerfeuer aus"
 }

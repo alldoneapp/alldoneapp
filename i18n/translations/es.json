@@ -3038,8 +3038,8 @@
     "Rage mode": "Modo furia",
     "Esc to exit": "Esc para salir",
     "destroyed": "destruidos",
-    "Rage mode desktop help": "WASD para volar · clic para disparar · 1–7 armas · B tienda · Espacio saluda · Esc lo deja todo como estaba",
-    "Rage mode touch help": "Mantén pulsado para disparar · 🛒 armas · 👋 saluda · ✕ lo deja todo como estaba",
+    "Rage mode desktop help": "WASD para volar · clic para disparar · Espacio disparo automático · 1–7 armas · B tienda · Intro saluda · Esc lo deja todo como estaba",
+    "Rage mode touch help": "Mantén pulsado para disparar · ⟳ disparo automático · 🛒 armas · 👋 saluda · ✕ lo deja todo como estaba",
     "Mute": "Silenciar",
     "Unmute": "Activar sonido",
     "Exit rage mode": "Salir del modo furia",
@@ -3087,5 +3087,8 @@
     "Rage weapon blackhole description": "Lo atrae todo y luego implosiona.",
     "Rage weapon snap": "Chasquido",
     "Rage weapon snap description": "Lo definitivo: media página se convierte en polvo. Recarga larga.",
-    "Rage mode weapon": "Arma del modo furia"
+    "Rage mode weapon": "Arma del modo furia",
+    "Auto-fire": "Disparo automático",
+    "Auto-fire on": "Disparo automático activado",
+    "Auto-fire off": "Disparo automático desactivado"
 }
