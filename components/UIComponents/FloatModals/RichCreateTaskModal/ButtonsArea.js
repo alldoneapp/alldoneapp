@@ -17,6 +17,7 @@ export default function ButtonsArea({
     showMoreOptions,
     showRecurring,
     done,
+    uploadingDraft,
 }) {
     // Enter is handled once, by TaskEditForm's document listener. This area used
     // to register a second identical listener, so a single Return ran the whole
@@ -34,7 +35,7 @@ export default function ButtonsArea({
                 <MoreOptions showMoreOptions={showMoreOptions} disabled={disabled} />
             </View>
             <View style={localStyles.buttonsRight}>
-                <DoneButton done={done} disabled={disabled} />
+                <DoneButton done={done} disabled={disabled || uploadingDraft} />
             </View>
         </View>
     )

@@ -115,6 +115,49 @@ export const appendTokensToDescription = (description, tokens) => {
     return `${base}\n ${appended}`
 }
 
+// The create-task popup has no persisted task yet. Keep the same attachment words in its
+// draft, then resolve them against the FINAL selected project just before creating it.
+export const createDraftAttachmentTokens = files => {
+    const tokens = []
+    const uris = []
+    addFilesAsAttachments(files, (name, uri) => {
+        tokens.push(buildNewAttachmentToken(name, uri))
+        uris.push(uri)
+    })
+    return { tokens, uris }
+}
+
+const isNewAttachmentToken = word => {
+    if (word.startsWith(IMAGE_TRIGGER)) return getImageData(word).isNew === NEW_ATTACHMENT
+    if (word.startsWith(VIDEO_TRIGGER)) return getVideoData(word).isNew === NEW_ATTACHMENT
+    if (word.startsWith(ATTACHMENT_TRIGGER)) return getAttachmentData(word).isNew === NEW_ATTACHMENT
+    return false
+}
+
+export const hasDraftAttachments = description =>
+    typeof description === 'string' && description.split(' ').some(isNewAttachmentToken)
+
+export const resolveDraftAttachments = async (projectId, description) => {
+    const words = description.split(' ')
+    let failedCount = 0
+
+    for (let index = 0; index < words.length; index++) {
+        if (!isNewAttachmentToken(words[index])) continue
+        try {
+            const resolved = await updateNewAttachmentsData(projectId, words[index])
+            if (isStoredAttachmentToken(resolved)) {
+                words[index] = resolved
+            } else {
+                failedCount += 1
+            }
+        } catch (error) {
+            failedCount += 1
+        }
+    }
+
+    return { description: words.join(' '), failedCount }
+}
+
 /**
  * Uploads every dropped file and appends the results to the task description.
  *

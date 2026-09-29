@@ -820,6 +820,7 @@
     "Drop files to attach": "Suelta los archivos para adjuntarlos",
     "Drop files to add to description": "Suelta los archivos para añadirlos a la descripción",
     "Adding files to description": "Añadiendo archivos a la descripción",
+    "Files added to description": "Archivos añadidos a la descripción",
     "Task attachment upload failed": "Algunos archivos no se pudieron subir. Vuelve a intentarlo.",
     "Select kind of file to add": "Seleccione el tipo de archivo para agregar",
     "Here you can select a file from storage device or add a quick video or audio": "Aquí puede seleccionar un archivo del dispositivo de almacenamiento o agregar un video o audio rápido",

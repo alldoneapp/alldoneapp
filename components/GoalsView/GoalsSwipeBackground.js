@@ -5,19 +5,13 @@ import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import { translate } from '../../i18n/TranslationService'
 
-export default function GoalsSwipeBackground({ needToShowReminderButton, showPropertiesButton = false }) {
+export default function GoalsSwipeBackground({ needToShowReminderButton }) {
     return (
         <View style={localStyles.swipeContainer}>
             <View style={localStyles.leftSwipeArea}>
-                <Icon
-                    name={showPropertiesButton ? 'settings' : 'circle-details'}
-                    size={18}
-                    color={colors.UtilityGreen200}
-                />
+                <Icon name="circle-details" size={18} color={colors.UtilityGreen200} />
                 <View style={{ marginLeft: 4 }}>
-                    <Text style={[styles.subtitle2, { color: colors.UtilityGreen200 }]}>
-                        {translate(showPropertiesButton ? 'Properties' : 'Tasks')}
-                    </Text>
+                    <Text style={[styles.subtitle2, { color: colors.UtilityGreen200 }]}>{translate('Tasks')}</Text>
                 </View>
             </View>
 

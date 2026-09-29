@@ -12,6 +12,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import ProjectFilter from '../../../GlobalSearchAlgolia/Filter/ProjectFilter'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 import SelectedGoalRow from './SelectedGoalRow'
+import CreateTaskFileDropZone from './CreateTaskFileDropZone'
 
 export default function MainModal({
     projectId,
@@ -31,6 +32,8 @@ export default function MainModal({
     selectedProject,
     activeGoal,
     widthStyle,
+    onFilesDropped,
+    uploadingDraft,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const [screenDimensions, setScreenDimensions] = useState(Dimensions.get('window'))
@@ -50,52 +53,55 @@ export default function MainModal({
     const title = modalTitle || translate('Add task')
 
     return (
-        <View
-            style={[
-                localStyles.container,
-                applyPopoverWidth(),
-                smallScreenNavigation && { minWidth: 315 },
-                { maxHeight: getSafeAreaModalMaxHeight(screenDimensions.height) },
-                // AT-2582: last, so the responsive add-task width overrides
-                // both the legacy popover width and small-screen minimum.
-                widthStyle,
-            ]}
-        >
-            <ModalHeader closeModal={closeModal} title={title} description="" />
-            {selectedProject && (
-                <ProjectFilter
-                    setShowSelectProjectModal={() => {
-                        showSelectProject(true)
-                    }}
-                    selectedProject={selectedProject}
-                    containerStyle={{ marginBottom: activeGoal ? 0 : 16, marginTop: 0 }}
-                    text="Select project"
+        <CreateTaskFileDropZone onFilesDropped={onFilesDropped}>
+            <View
+                style={[
+                    localStyles.container,
+                    applyPopoverWidth(),
+                    smallScreenNavigation && { minWidth: 315 },
+                    { maxHeight: getSafeAreaModalMaxHeight(screenDimensions.height) },
+                    // AT-2582: last, so the responsive add-task width overrides
+                    // both the legacy popover width and small-screen minimum.
+                    widthStyle,
+                ]}
+            >
+                <ModalHeader closeModal={closeModal} title={title} description="" />
+                {selectedProject && (
+                    <ProjectFilter
+                        setShowSelectProjectModal={() => {
+                            showSelectProject(true)
+                        }}
+                        selectedProject={selectedProject}
+                        containerStyle={{ marginBottom: activeGoal ? 0 : 16, marginTop: 0 }}
+                        text="Select project"
+                    />
+                )}
+                {selectedProject && activeGoal && (
+                    <SelectedGoalRow activeGoal={activeGoal} showParentGoal={showParentGoal} />
+                )}
+                <AssigneeArea
+                    projectId={projectId}
+                    task={task}
+                    showAssignee={showAssignee}
+                    containerStyle={{ top: selectedProject ? (activeGoal ? 146 : 106) : 50 }}
                 />
-            )}
-            {selectedProject && activeGoal && (
-                <SelectedGoalRow activeGoal={activeGoal} showParentGoal={showParentGoal} />
-            )}
-            <AssigneeArea
-                projectId={projectId}
-                task={task}
-                showAssignee={showAssignee}
-                containerStyle={{ top: selectedProject ? (activeGoal ? 146 : 106) : 50 }}
-            />
-            <TaskEditForm
-                projectId={projectId}
-                isAssigneeVisible={showAssigneeModal}
-                task={task}
-                setTask={setTask}
-                onSuccess={createTask}
-                mentions={mentions}
-                setMentions={setMentions}
-                showDueDate={showDueDate}
-                showPrivacy={showPrivacy}
-                showRecurring={showRecurring}
-                showParentGoal={showParentGoal}
-                showMoreOptions={showMoreOptions}
-            />
-        </View>
+                <TaskEditForm
+                    projectId={projectId}
+                    isAssigneeVisible={showAssigneeModal}
+                    task={task}
+                    setTask={setTask}
+                    onSuccess={createTask}
+                    mentions={mentions}
+                    setMentions={setMentions}
+                    showDueDate={showDueDate}
+                    showPrivacy={showPrivacy}
+                    showRecurring={showRecurring}
+                    showParentGoal={showParentGoal}
+                    showMoreOptions={showMoreOptions}
+                    uploadingDraft={uploadingDraft}
+                />
+            </View>
+        </CreateTaskFileDropZone>
     )
 }
 

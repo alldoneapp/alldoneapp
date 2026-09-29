@@ -20,10 +20,13 @@ import renderer, { act } from 'react-test-renderer'
 const mockCreateTaskWithService = jest.fn()
 const mockDispatch = jest.fn()
 const mockWatchGoal = jest.fn()
+const mockCheckTraffic = jest.fn(() => false)
+const mockResolveDraftAttachments = jest.fn()
 
 let capturedMainModalProps = null
 let capturedProjectPickerProps = null
 let capturedGoalPickerProps = null
+let capturedAssigneeModalProps = null
 
 jest.mock('react-redux', () => ({
     useDispatch: () => mockDispatch,
@@ -32,6 +35,19 @@ jest.mock('react-redux', () => ({
 
 jest.mock('../../../utils/backends/Tasks/TaskServiceFrontendHelper', () => ({
     createTaskWithService: (...args) => mockCreateTaskWithService(...args),
+}))
+jest.mock('../../../components/Premium/PremiumHelper', () => ({
+    checkIsLimitedByTraffic: (...args) => mockCheckTraffic(...args),
+}))
+jest.mock('../../../components/TaskListView/TaskItem/TaskPresentation/taskFileDropHelper', () => ({
+    createDraftAttachmentTokens: files => ({
+        tokens: files.map(file => `image(blob:${file.name})`),
+        uris: files.map(file => `blob:${file.name}`),
+    }),
+    appendTokensToDescription: (description, tokens) =>
+        description ? `${description}\n ${tokens.join(' ')}` : tokens.join(' '),
+    hasDraftAttachments: description => description.includes('blob:'),
+    resolveDraftAttachments: (...args) => mockResolveDraftAttachments(...args),
 }))
 
 jest.mock('../../../components/UIControls/CustomScrollView', () => 'CustomScrollView')
@@ -44,7 +60,10 @@ jest.mock('../../../components/UIComponents/FloatModals/DueDateModal/DueDateModa
 jest.mock('../../../components/UIComponents/FloatModals/PrivacyModal/PrivacyModal', () => 'PrivacyModal')
 jest.mock(
     '../../../components/UIComponents/FloatModals/AssigneeAndObserversModal/AssigneeAndObserversModal',
-    () => 'AssigneeAndObserversModal'
+    () => props => {
+        capturedAssigneeModalProps = props
+        return null
+    }
 )
 jest.mock('../../../components/UIComponents/FloatModals/TaskParentGoalModal/TaskParentGoalModal', () => props => {
     capturedGoalPickerProps = props
@@ -166,6 +185,7 @@ const renderPopup = (props = {}, taskOverrides = {}) => {
     capturedMainModalProps = null
     capturedProjectPickerProps = null
     capturedGoalPickerProps = null
+    capturedAssigneeModalProps = null
     let tree
     act(() => {
         tree = renderer.create(
@@ -203,6 +223,11 @@ describe('RichCreateTaskModal project switcher (PT-4745)', () => {
         mockCreateTaskWithService.mockReset()
         mockCreateTaskWithService.mockResolvedValue({ id: 'task-1' })
         mockDispatch.mockClear()
+        mockCheckTraffic.mockReset()
+        mockCheckTraffic.mockReturnValue(false)
+        mockResolveDraftAttachments.mockReset()
+        global.URL.revokeObjectURL = jest.fn()
+        global.alert = jest.fn()
         mockWatchGoal.mockClear()
     })
 
@@ -269,6 +294,103 @@ describe('RichCreateTaskModal project switcher (PT-4745)', () => {
             capturedMainModalProps.createTask(jest.fn())
         })
         expect(mockCreateTaskWithService.mock.calls[0][0].projectId).toBe('project-default')
+    })
+
+    it('adds a dropped image to the draft, then uploads it in the final selected project before creation', async () => {
+        renderPopup()
+        act(() => {
+            capturedMainModalProps.onFilesDropped([{ name: 'photo.png', size: 10 }])
+        })
+        expect(capturedMainModalProps.task.description).toBe('image(blob:photo.png)')
+
+        await pickProject('project-default')
+        mockResolveDraftAttachments.mockResolvedValueOnce({
+            description: 'image(https://cdn/photo.png)',
+            failedCount: 0,
+        })
+        await act(async () => {
+            await capturedMainModalProps.createTask(jest.fn())
+        })
+
+        expect(mockResolveDraftAttachments).toHaveBeenCalledWith('project-default', 'image(blob:photo.png)')
+        expect(mockCreateTaskWithService.mock.calls[0][0]).toMatchObject({
+            projectId: 'project-default',
+            description: 'image(https://cdn/photo.png)',
+        })
+    })
+
+    it('keeps an upload failure in the draft and lets the user retry without creating a broken task', async () => {
+        renderPopup()
+        act(() => {
+            capturedMainModalProps.onFilesDropped([{ name: 'photo.png', size: 10 }])
+        })
+        mockResolveDraftAttachments.mockResolvedValueOnce({
+            description: 'image(blob:photo.png)',
+            failedCount: 1,
+        })
+
+        await act(async () => {
+            await capturedMainModalProps.createTask(jest.fn())
+        })
+        expect(mockCreateTaskWithService).not.toHaveBeenCalled()
+        expect(global.alert).toHaveBeenCalled()
+
+        mockResolveDraftAttachments.mockResolvedValueOnce({
+            description: 'image(https://cdn/photo.png)',
+            failedCount: 0,
+        })
+        await act(async () => {
+            await capturedMainModalProps.createTask(jest.fn())
+        })
+        expect(mockCreateTaskWithService).toHaveBeenCalledTimes(1)
+    })
+
+    it('appends several drops without losing the existing description and respects the traffic gate', () => {
+        renderPopup({}, { description: 'Existing notes' })
+        act(() => {
+            capturedMainModalProps.onFilesDropped([{ name: 'first.png', size: 10 }])
+            capturedMainModalProps.onFilesDropped([{ name: 'second.png', size: 10 }])
+        })
+        expect(capturedMainModalProps.task.description).toBe(
+            'Existing notes\n image(blob:first.png)\n image(blob:second.png)'
+        )
+
+        mockCheckTraffic.mockReturnValue(true)
+        act(() => {
+            capturedMainModalProps.onFilesDropped([{ name: 'blocked.png', size: 10 }])
+        })
+        expect(capturedMainModalProps.task.description).not.toContain('blocked.png')
+    })
+
+    it('checks the final project traffic quota before uploading the draft image', async () => {
+        renderPopup()
+        act(() => capturedMainModalProps.onFilesDropped([{ name: 'photo.png', size: 10 }]))
+        await pickProject('project-default')
+        mockCheckTraffic.mockReturnValue(true)
+
+        await act(async () => {
+            await capturedMainModalProps.createTask(jest.fn())
+        })
+
+        expect(mockCheckTraffic).toHaveBeenLastCalledWith('project-default')
+        expect(mockResolveDraftAttachments).not.toHaveBeenCalled()
+        expect(mockCreateTaskWithService).not.toHaveBeenCalled()
+    })
+
+    it('resolves dropped images before the assign-and-comment creation path too', async () => {
+        renderPopup()
+        act(() => capturedMainModalProps.onFilesDropped([{ name: 'photo.png', size: 10 }]))
+        mockResolveDraftAttachments.mockResolvedValueOnce({
+            description: 'image(https://cdn/photo.png)',
+            failedCount: 0,
+        })
+
+        act(() => capturedMainModalProps.showAssignee())
+        await act(async () => {
+            await capturedAssigneeModalProps.updateTask({ uid: 'user-1' }, [])
+        })
+
+        expect(mockCreateTaskWithService.mock.calls[0][0].description).toBe('image(https://cdn/photo.png)')
     })
 
     it("shows a selected goal and adopts that goal's project scope", () => {
