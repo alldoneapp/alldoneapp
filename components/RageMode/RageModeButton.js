@@ -8,21 +8,13 @@ import { canRenderSkyline } from '../SettingsView/Profile/Achievements/Skyline/w
 import { useReducedMotion } from '../UIComponents/Ghosts/ghostAnimation'
 import { isRageModeEnabled } from './rageModeFlag'
 import { loadRageArena } from './loadRageArena'
+import { loadRageProfile, purchaseRageItem, submitRageScore } from './rageModeBackend'
+import { buildRageStrings } from './rageStrings'
+import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
 
 export const RAGE_ACTIVE_COLOR = '#E00000'
 
-const rageStrings = () => ({
-    title: translate('Rage mode'),
-    exitHint: translate('Esc to exit'),
-    destroyed: translate('destroyed'),
-    desktopHelp: translate('Rage mode desktop help'),
-    touchHelp: translate('Rage mode touch help'),
-    mute: translate('Mute'),
-    unmute: translate('Unmute'),
-    exit: translate('Exit rage mode'),
-    greet: translate('Say hi'),
-    greetings: [1, 2, 3, 4].map(n => translate(`Rage mode greeting ${n}`)),
-})
+const rageStrings = () => buildRageStrings(translate)
 
 /**
  * The entry to rage mode, next to "Anna Alldone: How can I help?" in the assistant line: Anna flies
@@ -36,6 +28,21 @@ const rageStrings = () => ({
  */
 export default function RageModeButton({ color, style, size = 24 }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const gold = useSelector(state => state.loggedUser.gold)
+    const openTasksToday = useSelector(state =>
+        getAllProjectsOpenTasksAmount(
+            state.sidebarNumbers,
+            state.loggedUser.uid,
+            state.loggedUser.archivedProjectIds,
+            state.loggedUser.templateProjectIds
+        )
+    )
+    // The arena reads these live (the shop shows the balance, the boss is built from the count), so
+    // they are handed over as getters over refs rather than as values frozen at start.
+    const goldRef = useRef(gold)
+    goldRef.current = gold
+    const openTasksRef = useRef(openTasksToday)
+    openTasksRef.current = openTasksToday
     const reducedMotion = useReducedMotion()
     const [enabled] = useState(isRageModeEnabled)
     const [active, setActive] = useState(false)
@@ -66,6 +73,13 @@ export default function RageModeButton({ color, style, size = 24 }) {
                 arenaRef.current = startRageArena({
                     strings: rageStrings(),
                     from,
+                    services: {
+                        loadProfile: loadRageProfile,
+                        purchase: purchaseRageItem,
+                        submitScore: submitRageScore,
+                        getGold: () => goldRef.current,
+                        getOpenTasksToday: () => openTasksRef.current,
+                    },
                     onExit: () => {
                         arenaRef.current = null
                         if (mountedRef.current) setActive(false)

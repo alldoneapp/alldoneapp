@@ -27,7 +27,6 @@ import {
     aimAngle,
     BOLT_SPEED,
     directionForKey,
-    FIRE_INTERVAL,
     isBrowserShortcut,
     moveVector,
     stepCharacter,
@@ -37,6 +36,7 @@ import {
     findScrollContainer,
     findTaskRows,
     RAGE_LAYER_ATTRIBUTE,
+    TASK_ROW_SELECTOR,
     resolveBackgroundColor,
     resolveHit,
     rowGlyphs,
@@ -53,6 +53,32 @@ import {
     stepSnake,
 } from './rageSnake'
 import { greetingPose, pickGreetingStyle } from './rageGreeting'
+import { blastPoints, RAGE_DEFAULT_WEAPON, RAGE_WEAPONS, volleyAngles, weaponById } from './rageWeapons'
+import {
+    applyDamage,
+    bossKillPoints,
+    createHealth,
+    DAMAGE,
+    heal,
+    isBlinking,
+    MAX_HEALTH,
+    POINTS,
+    pointsForHit,
+    SNAKE_KILL_HEAL,
+} from './rageCombat'
+import {
+    BOSS_HALF_HEIGHT,
+    BOSS_HALF_WIDTH,
+    createBoss,
+    damageBoss,
+    displayedCount,
+    insideBoss,
+    ORB_RADIUS,
+    shouldSummonBoss,
+    stepBoss,
+    stepOrb,
+} from './rageBoss'
+import { buildShop } from './rageShop'
 
 /**
  * Rage mode's arena: the page you are on becomes the level. A voxel jetpack character flies in front
@@ -92,15 +118,20 @@ const BOLT_SAMPLES = 3
 const REWIND_SECONDS = 0.95
 const HOLE_FADE_SECONDS = 0.28
 const MUTE_KEY = 'alldone.rageMode.muted'
-// Task snakes: how many crawl at once, when the first peels out, the pause between the next ones.
-const MAX_SNAKES = 3
+const WEAPON_KEY = 'alldone.rageMode.weapon'
+const BOSS_Z = 44
+const BOSS_COLOR = '#D32F2F'
+// Task snakes: up to five crawl at once, but they peel out one by one, a random 1.2–2.8s apart.
+const MAX_SNAKES = 5
 const SNAKE_FIRST_DELAY = 1.4
-const SNAKE_SPAWN_GAP = 1.3
+const SNAKE_SPAWN_GAP_MIN = 1.2
+const SNAKE_SPAWN_GAP_MAX = 2.8
 const SNAKE_Z = 12
 const SNAKE_COLORS = ['#0C66FF', '#09A87A', '#E64A19', '#7E57C2']
-// Flying into the top or bottom edge scrolls the page under her.
-const EDGE_SCROLL_ZONE = 70
-const EDGE_SCROLL_SPEED = 900
+// Flying towards the top or bottom edge scrolls the page under her. It starts well before the edge
+// and ramps up the closer she gets, so it feels like steering rather than hitting a wall.
+const EDGE_SCROLL_ZONE = 160
+const EDGE_SCROLL_SPEED = 1100
 
 // Anna Alldone, as she appears in the app's celebration pictures: a wavy blonde bob, a big smile,
 // a light-blue button-up shirt and navy trousers. The jetpack and blaster are rage mode's own.
@@ -159,6 +190,22 @@ const readMuted = () => {
         return window.localStorage.getItem(MUTE_KEY) === '1'
     } catch (error) {
         return false
+    }
+}
+
+const readStoredWeapon = () => {
+    try {
+        return window.localStorage.getItem(WEAPON_KEY) || null
+    } catch (error) {
+        return null
+    }
+}
+
+const writeStoredWeapon = id => {
+    try {
+        window.localStorage.setItem(WEAPON_KEY, id)
+    } catch (error) {
+        // The weapon choice is a convenience; the arena works without it.
     }
 }
 
@@ -232,6 +279,22 @@ const createSound = () => {
             source.connect(filter).connect(gain).connect(ctx.destination)
             source.start(now)
             source.stop(now + 0.32)
+        },
+        hurt() {
+            if (this.muted) return
+            const ctx = ensure()
+            if (!ctx) return
+            const now = ctx.currentTime
+            const osc = ctx.createOscillator()
+            const gain = ctx.createGain()
+            osc.type = 'sawtooth'
+            osc.frequency.setValueAtTime(220, now)
+            osc.frequency.exponentialRampToValueAtTime(60, now + 0.25)
+            gain.gain.setValueAtTime(0.12, now)
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28)
+            osc.connect(gain).connect(ctx.destination)
+            osc.start(now)
+            osc.stop(now + 0.3)
         },
         close() {
             if (context && context.close) context.close().catch(() => {})
@@ -643,6 +706,112 @@ const buildCharacter = () => {
 }
 
 /* ------------------------------------------------------------------------------------------------ */
+/* The boss                                                                                         */
+/* ------------------------------------------------------------------------------------------------ */
+
+/** The boss's chest: today's open-task count, big, with a caption. Redrawn as the number counts down. */
+const drawBossFace = (canvas, count, caption) => {
+    const context = canvas.getContext('2d')
+    const { width, height } = canvas
+    context.clearRect(0, 0, width, height)
+    context.fillStyle = '#B71C1C'
+    context.fillRect(0, 0, width, height)
+    context.fillStyle = '#FFFFFF'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.font = '900 150px Roboto, system-ui, sans-serif'
+    context.fillText(String(count), width / 2, height * 0.46)
+    context.font = '700 30px Roboto, system-ui, sans-serif'
+    context.fillStyle = 'rgba(255,255,255,0.85)'
+    context.fillText(caption, width / 2, height * 0.85)
+}
+
+/**
+ * The boss: a big red voxel block with the open-task count on its chest, eyes that follow Anna, angry
+ * brows, horns and a toothy mouth. Local units are screen pixels at its depth.
+ */
+const buildBoss = caption => {
+    const materials = []
+    const material = (color, extra = {}) => {
+        const m = new MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05, flatShading: true, ...extra })
+        materials.push(m)
+        return m
+    }
+    const group = new Group()
+    const bodyMaterial = material(BOSS_COLOR, { emissive: '#FFFFFF', emissiveIntensity: 0 })
+    const body = new Mesh(new BoxGeometry(BOSS_HALF_WIDTH * 2, BOSS_HALF_HEIGHT * 2, 70), bodyMaterial)
+    group.add(body)
+
+    const faceCanvas = document.createElement('canvas')
+    faceCanvas.width = 256
+    faceCanvas.height = 200
+    const faceTexture = new CanvasTexture(faceCanvas)
+    faceTexture.colorSpace = SRGBColorSpace
+    const face = new Mesh(
+        new PlaneGeometry(BOSS_HALF_WIDTH * 1.3, BOSS_HALF_HEIGHT * 1.0),
+        new MeshBasicMaterial({ map: faceTexture })
+    )
+    face.position.set(0, -12, 35.5)
+    group.add(face)
+
+    const pupils = []
+    ;[-34, 34].forEach(x => {
+        const eye = new Mesh(new BoxGeometry(30, 22, 6), material('#FFFFFF'))
+        eye.position.set(x, 44, 36)
+        const pupil = new Mesh(new BoxGeometry(11, 11, 4), material('#091540'))
+        pupil.position.set(x, 44, 40)
+        pupil.userData.home = { x, y: 44 }
+        const brow = new Mesh(new BoxGeometry(36, 7, 8), material('#4A0E0E'))
+        brow.position.set(x, 62, 37)
+        brow.rotation.z = x < 0 ? -0.35 : 0.35
+        group.add(eye, pupil, brow)
+        pupils.push(pupil)
+    })
+    ;[-50, 50].forEach(x => {
+        const horn = new Mesh(new ConeGeometry(10, 36, 6), material('#F5E6C8'))
+        horn.position.set(x, BOSS_HALF_HEIGHT + 14, 0)
+        horn.rotation.z = x < 0 ? 0.35 : -0.35
+        group.add(horn)
+        const arm = new Mesh(new BoxGeometry(22, 60, 26), material('#B71C1C'))
+        arm.position.set(x < 0 ? -BOSS_HALF_WIDTH - 12 : BOSS_HALF_WIDTH + 12, -8, 0)
+        group.add(arm)
+    })
+    const mouth = new Mesh(new BoxGeometry(80, 12, 4), material('#2B0A0A'))
+    mouth.position.set(0, -BOSS_HALF_HEIGHT + 12, 36)
+    group.add(mouth)
+    for (let i = 0; i < 5; i++) {
+        const tooth = new Mesh(new BoxGeometry(9, 8, 3), material('#FFFFFF'))
+        tooth.position.set(-32 + i * 16, -BOSS_HALF_HEIGHT + 16, 38)
+        group.add(tooth)
+    }
+    let shown = null
+    return {
+        group,
+        bodyMaterial,
+        faceTexture,
+        setCount(count) {
+            if (count === shown) return
+            shown = count
+            drawBossFace(faceCanvas, count, caption)
+            faceTexture.needsUpdate = true
+        },
+        lookAt(dx, dy) {
+            const length = Math.hypot(dx, dy) || 1
+            pupils.forEach(pupil => {
+                pupil.position.x = pupil.userData.home.x + (dx / length) * 7
+                pupil.position.y = pupil.userData.home.y - (dy / length) * 5
+            })
+        },
+        dispose() {
+            group.traverse(node => node.geometry && node.geometry.dispose())
+            materials.forEach(m => m.dispose())
+            face.material.dispose()
+            faceTexture.dispose()
+        },
+    }
+}
+
+/* ------------------------------------------------------------------------------------------------ */
 /* HUD                                                                                              */
 /* ------------------------------------------------------------------------------------------------ */
 
@@ -672,10 +841,30 @@ const hudButton = (label, text) => {
 
 const NARROW_HUD_WIDTH = 420
 
+/**
+ * The width the user can actually SEE. On a phone a page that overflows sideways widens the layout
+ * viewport (`innerWidth`) past the screen, and `position: fixed` + `left: 50%` would then centre the
+ * HUD on a point off to the right, pushing ✕ off screen.
+ */
+const visibleWidth = () =>
+    Math.min(
+        window.innerWidth,
+        document.documentElement.clientWidth || Infinity,
+        (window.visualViewport && window.visualViewport.width) || Infinity
+    )
+// Likewise the visible height: bottom-anchored bars measured from a taller layout viewport end up
+// below the screen.
+const visibleHeight = () =>
+    Math.min(window.innerHeight, (window.visualViewport && window.visualViewport.height) || Infinity)
+
+const pillElement = (tag, style = {}) => {
+    const element = document.createElement(tag)
+    Object.assign(element.style, style)
+    return element
+}
+
 const buildHud = (strings, touch, muted, narrow) => {
-    const hud = document.createElement('div')
-    hud.setAttribute(RAGE_LAYER_ATTRIBUTE, 'hud')
-    Object.assign(hud.style, {
+    const hud = pillElement('div', {
         position: 'fixed',
         top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
         left: '50%',
@@ -683,8 +872,8 @@ const buildHud = (strings, touch, muted, narrow) => {
         zIndex: String(Z_INDEX + 2),
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
-        padding: '5px 5px 5px 14px',
+        gap: narrow ? '6px' : '10px',
+        padding: narrow ? '4px 4px 4px 10px' : '5px 5px 5px 14px',
         borderRadius: '20px',
         background: '#091540',
         boxShadow: '0 6px 24px rgba(9,21,64,0.35)',
@@ -694,32 +883,43 @@ const buildHud = (strings, touch, muted, narrow) => {
         userSelect: 'none',
         pointerEvents: 'none',
     })
-    const title = document.createElement('span')
-    // On a phone the pill has to fit between the screen edges with the counter and two buttons.
+    hud.setAttribute(RAGE_LAYER_ATTRIBUTE, 'hud')
+    const title = pillElement('span', { letterSpacing: '0.04em', textTransform: 'uppercase' })
+    // On a phone the pill has to fit between the screen edges with the counters and four buttons.
     title.textContent = narrow ? '🔥' : `🔥 ${strings.title}`
-    title.style.letterSpacing = '0.04em'
-    title.style.textTransform = 'uppercase'
-    const counter = document.createElement('span')
-    Object.assign(counter.style, {
-        fontVariantNumeric: 'tabular-nums',
-        color: '#FFCE8F',
-        minWidth: '24px',
+    const scoreValue = pillElement('span', { fontVariantNumeric: 'tabular-nums', color: '#FFCE8F' })
+    scoreValue.title = strings.score
+    const bestValue = pillElement('span', { fontVariantNumeric: 'tabular-nums', color: 'rgba(255,255,255,0.7)' })
+    bestValue.title = strings.best
+    const healthTrack = pillElement('span', {
+        display: 'inline-block',
+        width: narrow ? '44px' : '72px',
+        height: '8px',
+        borderRadius: '4px',
+        background: 'rgba(255,255,255,0.18)',
+        overflow: 'hidden',
     })
-    const hint = document.createElement('span')
+    healthTrack.title = strings.health
+    const healthFill = pillElement('span', {
+        display: 'block',
+        height: '100%',
+        width: '100%',
+        background: '#09D693',
+        transition: 'width 200ms ease, background 200ms ease',
+    })
+    healthTrack.appendChild(healthFill)
+    const hint = pillElement('span', { color: 'rgba(255,255,255,0.6)', fontWeight: '400' })
     hint.textContent = strings.exitHint
-    Object.assign(hint.style, { color: 'rgba(255,255,255,0.6)', fontWeight: '400' })
-    if (touch) hint.style.display = 'none'
+    if (touch || narrow) hint.style.display = 'none'
+    const shop = hudButton(strings.shop, '🛒')
     const greet = hudButton(strings.greet, '👋')
     const mute = hudButton(muted ? strings.unmute : strings.mute, muted ? '🔇' : '🔊')
     const exit = hudButton(strings.exit, '✕')
-    hud.append(title, counter, hint, greet, mute, exit)
+    hud.append(title, scoreValue, bestValue, healthTrack, hint, shop, greet, mute, exit)
 
-    const help = document.createElement('div')
-    help.setAttribute(RAGE_LAYER_ATTRIBUTE, 'help')
-    help.textContent = touch ? strings.touchHelp : strings.desktopHelp
-    Object.assign(help.style, {
+    const help = pillElement('div', {
         position: 'fixed',
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 70px)',
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: String(Z_INDEX + 2),
@@ -728,11 +928,172 @@ const buildHud = (strings, touch, muted, narrow) => {
         background: 'rgba(9,21,64,0.8)',
         color: '#fff',
         font: '400 13px Roboto, system-ui, sans-serif',
-        whiteSpace: 'nowrap',
+        // On a phone the help wraps instead of running off both edges.
+        whiteSpace: narrow ? 'normal' : 'nowrap',
+        maxWidth: 'calc(100vw - 32px)',
+        boxSizing: 'border-box',
+        textAlign: 'center',
         pointerEvents: 'none',
         transition: 'opacity 600ms ease',
     })
-    return { hud, counter, greet, mute, exit, help }
+    help.setAttribute(RAGE_LAYER_ATTRIBUTE, 'help')
+    help.textContent = touch ? strings.touchHelp : strings.desktopHelp
+
+    // The owned weapons, bottom centre: tap one, or press its number.
+    const weaponBar = pillElement('div', {
+        position: 'fixed',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: String(Z_INDEX + 2),
+        display: 'flex',
+        gap: '6px',
+        padding: '5px',
+        borderRadius: '18px',
+        background: '#091540',
+        boxShadow: '0 6px 24px rgba(9,21,64,0.35)',
+        userSelect: 'none',
+    })
+    weaponBar.setAttribute(RAGE_LAYER_ATTRIBUTE, 'weapons')
+
+    // The boss's health, under the pill, only while there is a boss.
+    const bossBar = pillElement('div', {
+        position: 'fixed',
+        top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: String(Z_INDEX + 2),
+        width: 'min(420px, calc(100vw - 32px))',
+        display: 'none',
+        flexDirection: 'column',
+        gap: '4px',
+        color: '#fff',
+        font: '700 12px Roboto, system-ui, sans-serif',
+        textAlign: 'center',
+        textShadow: '0 1px 2px rgba(9,21,64,0.8)',
+        pointerEvents: 'none',
+    })
+    bossBar.setAttribute(RAGE_LAYER_ATTRIBUTE, 'boss')
+    const bossLabel = pillElement('div')
+    const bossTrack = pillElement('div', {
+        height: '10px',
+        borderRadius: '5px',
+        background: 'rgba(9,21,64,0.55)',
+        overflow: 'hidden',
+    })
+    const bossFill = pillElement('div', {
+        height: '100%',
+        width: '100%',
+        background: 'linear-gradient(90deg, #E00000, #FF7043)',
+        transition: 'width 150ms ease',
+    })
+    bossTrack.appendChild(bossFill)
+    bossBar.append(bossLabel, bossTrack)
+
+    // Short announcements ("Boss!", "New highscore!") in the middle of the screen.
+    const toast = pillElement('div', {
+        position: 'fixed',
+        top: '38%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        zIndex: String(Z_INDEX + 3),
+        padding: '12px 22px',
+        borderRadius: '18px',
+        background: '#091540',
+        color: '#FFFFFF',
+        font: '800 20px Roboto, system-ui, sans-serif',
+        boxShadow: '0 10px 40px rgba(9,21,64,0.45)',
+        opacity: '0',
+        transition: 'opacity 250ms ease',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+    })
+    toast.setAttribute(RAGE_LAYER_ATTRIBUTE, 'toast')
+
+    return {
+        hud,
+        scoreValue,
+        bestValue,
+        healthFill,
+        shop,
+        greet,
+        mute,
+        exit,
+        help,
+        weaponBar,
+        bossBar,
+        bossLabel,
+        bossFill,
+        toast,
+    }
+}
+
+/** The game-over card: score, best, and "play again" / "exit". */
+const buildGameOver = (strings, onAgain, onExit) => {
+    const backdrop = pillElement('div', {
+        position: 'fixed',
+        inset: '0',
+        zIndex: String(Z_INDEX + 4),
+        display: 'none',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(9,21,64,0.3)',
+    })
+    backdrop.setAttribute(RAGE_LAYER_ATTRIBUTE, 'gameover')
+    backdrop.addEventListener('pointerdown', event => event.stopPropagation())
+    const card = pillElement('div', {
+        background: '#091540',
+        color: '#FFFFFF',
+        borderRadius: '22px',
+        padding: '22px 26px',
+        minWidth: '260px',
+        maxWidth: 'calc(100vw - 32px)',
+        boxSizing: 'border-box',
+        textAlign: 'center',
+        font: '400 14px Roboto, system-ui, sans-serif',
+        boxShadow: '0 12px 48px rgba(9,21,64,0.5)',
+    })
+    const title = pillElement('div', { font: '800 22px Roboto, system-ui, sans-serif', marginBottom: '10px' })
+    title.textContent = `💥 ${strings.gameOver}`
+    const scoreLine = pillElement('div', { font: '700 30px Roboto, system-ui, sans-serif', color: '#FFCE8F' })
+    const bestLine = pillElement('div', { color: 'rgba(255,255,255,0.7)', marginTop: '4px' })
+    const newBest = pillElement('div', { color: '#9CF0C8', fontWeight: '700', marginTop: '6px', display: 'none' })
+    newBest.textContent = `🏆 ${strings.newHighscore}`
+    const actions = pillElement('div', { display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '16px' })
+    const again = hudButton(strings.playAgain, strings.playAgain)
+    const leave = hudButton(strings.exit, strings.exit)
+    ;[again, leave].forEach(button =>
+        Object.assign(button.style, { width: 'auto', height: 'auto', padding: '9px 16px', borderRadius: '16px' })
+    )
+    again.style.background = '#FFAE47'
+    again.style.color = '#091540'
+    again.addEventListener('click', event => {
+        event.stopPropagation()
+        onAgain()
+    })
+    leave.addEventListener('click', event => {
+        event.stopPropagation()
+        onExit()
+    })
+    actions.append(again, leave)
+    card.append(title, scoreLine, bestLine, newBest, actions)
+    backdrop.appendChild(card)
+    return {
+        element: backdrop,
+        show({ score, best, isNew }) {
+            scoreLine.textContent = score.toLocaleString()
+            bestLine.textContent = `${strings.best}: ${best.toLocaleString()}`
+            newBest.style.display = isNew ? 'block' : 'none'
+            backdrop.style.display = 'flex'
+        },
+        update({ best, isNew }) {
+            bestLine.textContent = `${strings.best}: ${best.toLocaleString()}`
+            newBest.style.display = isNew ? 'block' : 'none'
+        },
+        hide() {
+            backdrop.style.display = 'none'
+        },
+    }
 }
 
 /* ------------------------------------------------------------------------------------------------ */
@@ -748,8 +1109,14 @@ const buildHud = (strings, touch, muted, narrow) => {
  *                                  touchHelp, mute, unmute, exit)
  * @param {{x:number,y:number}} [options.from] where the character flies in from (the button)
  * @param {() => void} [options.onExit] called once the arena is fully gone
+ * @param {object} [options.services] the outside world, all optional (a harness passes fakes):
+ *   loadProfile() → Promise<{owned, highscore}>, purchase(id) → Promise<{ok, owned, newBalance, reason}>,
+ *   submitScore(score) → Promise<{ok, highscore, isNew}>, getGold() → number, getOpenTasksToday() → number
+ * @param {object} [options.tuning] for browser-tests only: `bossHeadStart` (seconds added to the boss
+ *   timer), `startHealth` and `invincible`, so a test can reach the boss or a game over in seconds —
+ *   or run its other checks without dying half-way.
  */
-export function startRageArena({ strings, from, onExit }) {
+export function startRageArena({ strings, from, onExit, services = {}, tuning = {} }) {
     if (activeArena) return activeArena
 
     const random = createRandom(Date.now() & 0xffff)
@@ -976,6 +1343,35 @@ export function startRageArena({ strings, from, onExit }) {
     let phase = 'playing'
     let rewindStart = 0
 
+    // The game on top of the toy: score, health, weapons and the boss.
+    let score = 0
+    let best = 0
+    const freshHealth = () => {
+        const fresh = createHealth()
+        if (typeof tuning.startHealth === 'number') fresh.hp = Math.max(1, Math.min(MAX_HEALTH, tuning.startHealth))
+        return fresh
+    }
+    let health = freshHealth()
+    let playTime = tuning.bossHeadStart || 0
+    let snakesKilled = 0
+    let paused = false
+    let scoreSubmitted = false
+    let gameOverAt = 0
+    let gameOverShown = false
+    let owned = new Set([RAGE_DEFAULT_WEAPON])
+    const preferredWeapon = readStoredWeapon()
+    let equipped = RAGE_DEFAULT_WEAPON
+    let knownGold = null
+    let boss = null
+    let bossModel = null
+    let bossSummoned = false
+    let bossDebris = null
+    const orbs = []
+    const flames = []
+    const blackholes = []
+    let laserTick = 0
+    let laserPhase = 0
+
     const bolts = []
     const pieces = []
     const effects = []
@@ -984,18 +1380,52 @@ export function startRageArena({ strings, from, onExit }) {
 
     const sound = createSound()
     sound.unlock()
-    const { hud, counter, greet, mute, exit, help } = buildHud(
-        strings,
-        touchDevice,
-        sound.muted,
-        viewport.width < NARROW_HUD_WIDTH
-    )
+    const ui = buildHud(strings, touchDevice, sound.muted, visibleWidth() < NARROW_HUD_WIDTH)
+    // Centre every overlay on what is visible, not on the (possibly wider) layout viewport.
+    const centreOverlays = () => {
+        const centre = `${visibleWidth() / 2}px`
+        ;[ui.hud, ui.help, ui.weaponBar, ui.bossBar, ui.toast].forEach(node => {
+            node.style.left = centre
+        })
+        const height = visibleHeight()
+        ui.weaponBar.style.bottom = 'auto'
+        ui.weaponBar.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 60px)`
+        // Anchored by its bottom edge just above the weapon bar, however many lines it wraps to.
+        ui.help.style.bottom = 'auto'
+        ui.help.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 70px)`
+        ui.help.style.transform = 'translate(-50%, -100%)'
+    }
+    centreOverlays()
+    const { hud, greet, mute, exit, help } = ui
     const updateCounter = () => {
-        counter.textContent = `${destroyedCount} ${strings.destroyed}`
+        hud.dataset.destroyed = String(destroyedCount)
+        hud.dataset.score = String(score)
+        ui.scoreValue.textContent = `★ ${score.toLocaleString()}`
+        ui.bestValue.textContent = `🏆 ${Math.max(best, score).toLocaleString()}`
+    }
+    const updateHealth = () => {
+        const share = health.hp / MAX_HEALTH
+        ui.healthFill.style.width = `${share * 100}%`
+        ui.healthFill.style.background = share > 0.5 ? '#09D693' : share > 0.25 ? '#FFAE47' : '#E00000'
+        hud.dataset.health = String(health.hp)
+    }
+    const addScore = points => {
+        score += points
+        updateCounter()
+    }
+    let toastTimer = 0
+    const showToast = (text, seconds = 1.8) => {
+        ui.toast.textContent = text
+        ui.toast.style.opacity = '1'
+        clearTimeout(toastTimer)
+        toastTimer = setTimeout(() => {
+            ui.toast.style.opacity = '0'
+        }, seconds * 1000)
     }
     updateCounter()
+    updateHealth()
 
-    document.body.append(inputLayer, canvas, hud, help)
+    document.body.append(inputLayer, canvas, hud, help, ui.weaponBar, ui.bossBar, ui.toast)
     requestAnimationFrame(() => {
         inputLayer.style.boxShadow = 'inset 0 0 90px rgba(224,0,0,0.14)'
     })
@@ -1189,15 +1619,21 @@ export function startRageArena({ strings, from, onExit }) {
         )
     }
 
-    const impactAt = (x, y, hit) => {
-        const power = 1
+    /**
+     * Something on the page was hit. `quiet` hits (a flame, a laser tick, one sample of a blast) knock
+     * the page out and score, but leave the flash, sparks and sound to whatever caused them.
+     */
+    const impactAt = (x, y, hit, { quiet = false, power = 1 } = {}) => {
         if (hit.kind === 'text') knockOutText(hit, { x, y }, power)
         else shatterBlock(hit, { x, y }, power)
-        addScorch(x, y, 34 + random() * 22, hit.anchor)
-        addFlash(x, y, 70)
-        addSparks(x, y, 7)
-        shake = Math.min(9, shake + (hit.kind === 'text' ? 2.2 : 4.5))
-        sound.boom(hit.kind === 'text' ? 0.8 : 1.2)
+        addScore(pointsForHit(hit))
+        addScorch(x, y, (quiet ? 16 : 34) + random() * (quiet ? 10 : 22), hit.anchor)
+        if (!quiet) {
+            addFlash(x, y, 70)
+            addSparks(x, y, 7)
+            shake = Math.min(9, shake + (hit.kind === 'text' ? 2.2 : 4.5))
+            sound.boom(hit.kind === 'text' ? 0.8 : 1.2)
+        }
         updateCounter()
     }
 
@@ -1295,12 +1731,14 @@ export function startRageArena({ strings, from, onExit }) {
 
     const ease = t => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2)
 
-    const updateSnakes = dt => {
-        if (entering <= 0) {
+    const nextSpawnGap = () => SNAKE_SPAWN_GAP_MIN + random() * (SNAKE_SPAWN_GAP_MAX - SNAKE_SPAWN_GAP_MIN)
+
+    const updateSnakes = (dt, active = true) => {
+        if (active && entering <= 0) {
             snakeTimer -= dt
             if (snakeTimer <= 0) {
                 if (snakes.length < MAX_SNAKES) spawnSnake()
-                snakeTimer = SNAKE_SPAWN_GAP
+                snakeTimer = nextSpawnGap()
             }
         }
         const bounds = snakeBounds()
@@ -1323,6 +1761,14 @@ export function startRageArena({ strings, from, onExit }) {
             })
             const head = entry.segments[0]
             head.mesh.rotation.z = Math.atan2(-entry.snake.dir.y, entry.snake.dir.x)
+            // A snake that crawls into Anna bites.
+            if (active && entry.morph >= 1) {
+                const bite = entry.segments.find(
+                    segment =>
+                        segment.pos && Math.abs(segment.pos.x - hero.x) < 24 && Math.abs(segment.pos.y - hero.y) < 44
+                )
+                if (bite) takeDamage(DAMAGE.snakeBite, bite.pos)
+            }
         })
     }
 
@@ -1373,18 +1819,25 @@ export function startRageArena({ strings, from, onExit }) {
         shake = 10
         sound.boom(1.7)
         destroyedCount += 1
+        snakesKilled += 1
+        addScore(POINTS.snakeKill)
+        heal(health, SNAKE_KILL_HEAL)
+        updateHealth()
         hud.dataset.snakesKilled = String(Number(hud.dataset.snakesKilled || 0) + 1)
-        snakeTimer = Math.min(snakeTimer, SNAKE_SPAWN_GAP)
+        snakeTimer = Math.min(snakeTimer, nextSpawnGap())
     }
 
-    /** A bolt hit a snake: its tail flies off and it shrinks — until the last hit bursts it. */
-    const hitSnake = (entry, x, y) => {
+    /** One tile off a snake: shorter, never smaller — until only the head is left and it bursts. */
+    const hitSnake = (entry, x, y, quiet = false) => {
+        if (!snakes.includes(entry)) return
         const impact = { x, y }
         if (entry.segments.length > 1) segmentToPiece(entry.segments.pop(), impact, 1)
         const { dead } = shrinkSnake(entry.snake, entry.segments.length)
         destroyedCount += 1
+        addScore(POINTS.snakeTile)
         hud.dataset.snakeHits = String(Number(hud.dataset.snakeHits || 0) + 1)
         if (dead) burstSnake(entry, impact)
+        else if (quiet) addSparks(x, y, 2)
         else {
             addFlash(x, y, 60)
             addSparks(x, y, 6)
@@ -1394,7 +1847,18 @@ export function startRageArena({ strings, from, onExit }) {
         updateCounter()
     }
 
-    // Read-only, on the arena's own node: where the snakes are, for browser-tests/rage-mode to aim at.
+    // Weapons deal fractional damage (a flame, a laser tick); a snake loses a tile per whole point.
+    const damageSnake = (entry, amount, impact, quiet = false) => {
+        entry.pending = (entry.pending || 0) + amount
+        while (entry.pending >= 1 && snakes.includes(entry)) {
+            entry.pending -= 1
+            hitSnake(entry, impact.x, impact.y, quiet)
+        }
+    }
+
+    // Read-only, on the arena's own node: where the boss is, for browser-tests/rage-mode to aim at.
+    inputLayer.rageBossTarget = () => (boss ? { x: boss.x, y: boss.y } : null)
+    // Likewise where the snakes are.
     inputLayer.rageSnakeTargets = () => snakes.map(entry => entry.segments.map(segment => segment.pos).filter(Boolean))
 
     const isCovered = (x, y) =>
@@ -1408,6 +1872,29 @@ export function startRageArena({ strings, from, onExit }) {
             )
         })
 
+    /* Health. */
+    let hurtTimer = 0
+    const takeDamage = (amount, source) => {
+        if (phase !== 'playing' || paused || tuning.invincible) return
+        const result = applyDamage(health, amount, time)
+        if (!result.hit) return
+        const dx = hero.x - source.x
+        const dy = hero.y - source.y
+        const length = Math.hypot(dx, dy) || 1
+        hero.vx += (dx / length) * 520
+        hero.vy += (dy / length) * 520
+        shake = 12
+        sound.hurt()
+        inputLayer.style.boxShadow = 'inset 0 0 160px rgba(224,0,0,0.55)'
+        clearTimeout(hurtTimer)
+        hurtTimer = setTimeout(() => {
+            if (phase === 'playing') inputLayer.style.boxShadow = 'inset 0 0 90px rgba(224,0,0,0.14)'
+        }, 260)
+        hud.dataset.hurt = String(Number(hud.dataset.hurt || 0) + 1)
+        updateHealth()
+        if (result.dead) gameOver()
+    }
+
     /* Firing. */
     const muzzle = () => {
         const angle = aimAngle({ x: hero.x, y: hero.y - 6 }, aim)
@@ -1415,27 +1902,69 @@ export function startRageArena({ strings, from, onExit }) {
         return { x: hero.x + Math.cos(angle) * reach, y: hero.y - 6 + Math.sin(angle) * reach, angle }
     }
 
-    const fire = () => {
-        const { x, y, angle } = muzzle()
-        const mesh = new Mesh(boltGeometry, boltMaterial)
+    const rocketGeometry = new BoxGeometry(28, 9, 9)
+    const rocketMaterial = new MeshBasicMaterial({ color: '#ECEFF1' })
+    const holeCoreGeometry = new BoxGeometry(20, 20, 20)
+    const holeCoreMaterial = new MeshBasicMaterial({ color: '#2A0845' })
+    const voidTexture = radialTexture([
+        [0, 'rgba(8,0,20,1)'],
+        [0.45, 'rgba(36,0,72,0.95)'],
+        [0.72, 'rgba(124,77,255,0.45)'],
+        [1, 'rgba(124,77,255,0)'],
+    ])
+    ;[rocketGeometry, rocketMaterial, holeCoreGeometry, holeCoreMaterial, voidTexture].forEach(r => disposables.add(r))
+
+    const glowMaterial = color =>
+        new MeshBasicMaterial({
+            map: glowTexture,
+            color,
+            transparent: true,
+            blending: AdditiveBlending,
+            depthWrite: false,
+        })
+
+    const spawnProjectile = (weapon, x, y, angle) => {
+        const type = weapon.kind === 'rocket' ? 'rocket' : weapon.kind === 'blackhole' ? 'blackhole' : 'bolt'
+        const mesh =
+            type === 'rocket'
+                ? new Mesh(rocketGeometry, rocketMaterial)
+                : type === 'blackhole'
+                  ? new Mesh(holeCoreGeometry, holeCoreMaterial)
+                  : new Mesh(boltGeometry, boltMaterial)
         mesh.rotation.z = -angle
         mesh.renderOrder = 4
         toWorldOnScreen(mesh, x, y, BOLT_Z)
         const glow = new Mesh(
             unitPlane,
-            new MeshBasicMaterial({
-                map: glowTexture,
-                transparent: true,
-                blending: AdditiveBlending,
-                depthWrite: false,
-            })
+            glowMaterial(type === 'rocket' ? '#FFB74D' : type === 'blackhole' ? '#B388FF' : '#FFFFFF')
         )
-        glow.scale.set(34, 34, 1)
+        glow.scale.set(type === 'bolt' ? 34 : 48, type === 'bolt' ? 34 : 48, 1)
         glow.position.z = -2
         mesh.add(glow)
         scene.add(mesh)
-        bolts.push({ x, y, dx: Math.cos(angle), dy: Math.sin(angle), age: 0, mesh, glow })
-        addFlash(x, y, 34, 0.08)
+        bolts.push({
+            type,
+            weapon,
+            x,
+            y,
+            dx: Math.cos(angle),
+            dy: Math.sin(angle),
+            speed: weapon.speed || BOLT_SPEED,
+            travelled: 0,
+            age: 0,
+            mesh,
+            glow,
+        })
+    }
+
+    const fire = () => {
+        const weapon = weaponById(equipped)
+        if (weapon.kind === 'snap') return fireSnap(weapon)
+        if (weapon.kind === 'flame') return spawnFlames(weapon)
+        const { x, y, angle } = muzzle()
+        volleyAngles(weapon, angle).forEach(a => spawnProjectile(weapon, x, y, a))
+        addFlash(x, y, weapon.kind === 'bolt' && !weapon.pellets ? 34 : 56, 0.08)
+        if (weapon.pellets) shake = Math.min(9, shake + 3)
         sound.pew()
     }
 
@@ -1446,6 +1975,41 @@ export function startRageArena({ strings, from, onExit }) {
         bolts.splice(index, 1)
     }
 
+    /**
+     * Area damage: the page within `blast` (sampled, see `blastPoints`), every snake with a tile in
+     * range, and the boss if the blast reaches its box. Used by rockets, black holes and the snap.
+     */
+    const damageArea = (centre, blast, damage, power = 1.3) => {
+        withLayerTransparent(inputLayer, () => {
+            blastPoints(centre, blast, blast > 100 ? 3 : 2).forEach(point => {
+                if (isCovered(point.x, point.y)) return
+                const hit = resolveHit({
+                    x: point.x,
+                    y: point.y,
+                    radius: blast / 3,
+                    layer: null,
+                    destroyedGlyphs,
+                    destroyedBlocks,
+                    viewport,
+                })
+                if (hit) impactAt(point.x, point.y, hit, { quiet: true, power })
+            })
+        })
+        snakes.slice().forEach(entry => {
+            const inRange = entry.segments.some(
+                segment => segment.pos && Math.hypot(segment.pos.x - centre.x, segment.pos.y - centre.y) <= blast
+            )
+            if (inRange) damageSnake(entry, damage, centre, true)
+        })
+        if (boss && Math.hypot(boss.x - centre.x, boss.y - centre.y) <= blast + BOSS_HALF_WIDTH) {
+            hitBoss(damage, centre.x, centre.y, true)
+        }
+        addFlash(centre.x, centre.y, blast * 2.4, 0.4)
+        addSparks(centre.x, centre.y, 18, 1.5)
+        shake = Math.min(14, shake + 8)
+        sound.boom(1.8)
+    }
+
     const updateBolts = dt => {
         if (!bolts.length) return
         // All hit tests of a frame share one pass with the input layer switched off (see
@@ -1454,16 +2018,31 @@ export function startRageArena({ strings, from, onExit }) {
             for (let i = bolts.length - 1; i >= 0; i--) {
                 const bolt = bolts[i]
                 bolt.age += dt
-                const step = (BOLT_SPEED * dt) / BOLT_SAMPLES
+                if (bolt.type === 'blackhole' && bolt.age >= bolt.weapon.travel) {
+                    startBlackhole(bolt.x, bolt.y, bolt.weapon)
+                    removeBolt(i)
+                    continue
+                }
+                const step = (bolt.speed * dt) / BOLT_SAMPLES
                 let hitSomething = false
                 for (let s = 0; s < BOLT_SAMPLES && !hitSomething; s++) {
                     bolt.x += bolt.dx * step
                     bolt.y += bolt.dy * step
+                    bolt.travelled += step
                     // The first few pixels are inside the character's own gun.
                     if (bolt.age < 0.02) continue
+                    if (bolt.type === 'blackhole') continue
+                    const point = { x: bolt.x, y: bolt.y }
+                    if (boss && insideBoss(boss, bolt.x, bolt.y)) {
+                        if (bolt.type === 'rocket') damageArea(point, bolt.weapon.blast, bolt.weapon.damage)
+                        else hitBoss(bolt.weapon.damage, bolt.x, bolt.y)
+                        hitSomething = true
+                        break
+                    }
                     const snake = snakeAt(bolt.x, bolt.y)
                     if (snake) {
-                        hitSnake(snake, bolt.x, bolt.y)
+                        if (bolt.type === 'rocket') damageArea(point, bolt.weapon.blast, bolt.weapon.damage)
+                        else damageSnake(snake, bolt.weapon.damage, point)
                         hitSomething = true
                         break
                     }
@@ -1471,23 +2050,446 @@ export function startRageArena({ strings, from, onExit }) {
                     const hit = resolveHit({
                         x: bolt.x,
                         y: bolt.y,
-                        radius: BOLT_HIT_RADIUS,
+                        radius: bolt.weapon.radius || BOLT_HIT_RADIUS,
                         layer: null,
                         destroyedGlyphs,
                         destroyedBlocks,
                         viewport,
                     })
                     if (hit) {
-                        impactAt(bolt.x, bolt.y, hit)
+                        if (bolt.type === 'rocket') damageArea(point, bolt.weapon.blast, bolt.weapon.damage)
+                        else impactAt(bolt.x, bolt.y, hit)
                         hitSomething = true
                     }
                 }
                 const offScreen =
                     bolt.x < -40 || bolt.y < -40 || bolt.x > viewport.width + 40 || bolt.y > viewport.height + 40
-                if (hitSomething || offScreen || bolt.age > 2) removeBolt(i)
-                else toWorldOnScreen(bolt.mesh, bolt.x, bolt.y, BOLT_Z)
+                const spent = bolt.weapon.range && bolt.travelled > bolt.weapon.range
+                if (hitSomething || offScreen || spent || bolt.age > 3) removeBolt(i)
+                else {
+                    toWorldOnScreen(bolt.mesh, bolt.x, bolt.y, BOLT_Z)
+                    if (bolt.type === 'blackhole') bolt.mesh.rotation.set(time * 3, time * 4, time * 5)
+                }
             }
         })
+    }
+
+    /* Flamethrower: a cone of short-lived flame puffs that burn whatever they touch. */
+    const spawnFlames = weapon => {
+        const { x, y, angle } = muzzle()
+        for (let i = 0; i < 3; i++) {
+            const a = angle + (random() - 0.5) * (weapon.spread || 0.3)
+            const speed = weapon.speed * (0.8 + random() * 0.4)
+            const material = glowMaterial(random() < 0.5 ? '#FF7043' : '#FFB74D')
+            const mesh = new Mesh(unitPlane, material)
+            mesh.renderOrder = 5
+            scene.add(mesh)
+            flames.push({
+                x,
+                y,
+                vx: Math.cos(a) * speed,
+                vy: Math.sin(a) * speed,
+                age: 0,
+                life: weapon.range / speed,
+                mesh,
+                material,
+                weapon,
+                check: i % 2 === 0,
+            })
+        }
+        if (Math.random() < 0.25) sound.boom(0.25)
+    }
+
+    const removeFlame = index => {
+        const flame = flames[index]
+        scene.remove(flame.mesh)
+        flame.material.dispose()
+        flames.splice(index, 1)
+    }
+
+    const updateFlames = dt => {
+        if (!flames.length) return
+        withLayerTransparent(inputLayer, () => {
+            for (let i = flames.length - 1; i >= 0; i--) {
+                const flame = flames[i]
+                flame.age += dt
+                flame.x += flame.vx * dt
+                flame.y += flame.vy * dt - 40 * dt
+                const t = flame.age / flame.life
+                if (t >= 1) {
+                    removeFlame(i)
+                    continue
+                }
+                const size = 16 + 46 * t
+                flame.mesh.scale.set(size, size, 1)
+                flame.material.opacity = 1 - t * 0.8
+                toWorldOnScreen(flame.mesh, flame.x, flame.y, 24)
+                const point = { x: flame.x, y: flame.y }
+                if (boss && insideBoss(boss, flame.x, flame.y)) {
+                    hitBoss(flame.weapon.damage, flame.x, flame.y, true)
+                    removeFlame(i)
+                    continue
+                }
+                const snake = snakeAt(flame.x, flame.y)
+                if (snake) {
+                    damageSnake(snake, flame.weapon.damage, point, true)
+                    removeFlame(i)
+                    continue
+                }
+                // Half the puffs test the page each frame: enough to burn a clean path, at half the cost.
+                flame.check = !flame.check
+                if (!flame.check || isCovered(flame.x, flame.y)) continue
+                const hit = resolveHit({
+                    x: flame.x,
+                    y: flame.y,
+                    radius: flame.weapon.radius,
+                    layer: null,
+                    destroyedGlyphs,
+                    destroyedBlocks,
+                    viewport,
+                })
+                if (hit) {
+                    impactAt(flame.x, flame.y, hit, { quiet: true, power: 0.7 })
+                    removeFlame(i)
+                }
+            }
+        })
+    }
+
+    /* Laser: a hitscan beam that cuts through everything along it while held. */
+    const laserGroup = new Group()
+    const laserCoreMaterial = new MeshBasicMaterial({
+        color: '#E0FFFF',
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+    })
+    const laserGlowMaterial = glowMaterial('#4DD0E1')
+    const laserCore = new Mesh(unitPlane, laserCoreMaterial)
+    const laserGlow = new Mesh(unitPlane, laserGlowMaterial)
+    laserGroup.add(laserGlow, laserCore)
+    laserGroup.visible = false
+    laserGroup.renderOrder = 5
+    scene.add(laserGroup)
+    disposables.add(laserCoreMaterial)
+    disposables.add(laserGlowMaterial)
+
+    const updateLaser = dt => {
+        const weapon = weaponById(equipped)
+        const active =
+            phase === 'playing' && !paused && !greeting && entering <= 0 && weapon.kind === 'laser' && pointerFiring
+        laserGroup.visible = active
+        hud.dataset.laser = active ? 'on' : ''
+        if (!active) return
+        const { x, y, angle } = muzzle()
+        const dx = Math.cos(angle)
+        const dy = Math.sin(angle)
+        // To the edge of the screen, or the boss, whichever comes first.
+        const toEdge = Math.min(
+            dx > 0 ? (viewport.width - x) / dx : dx < 0 ? -x / dx : Infinity,
+            dy > 0 ? (viewport.height - y) / dy : dy < 0 ? -y / dy : Infinity
+        )
+        let length = Math.min(weapon.range, Math.max(0, toEdge))
+        let hitsBoss = false
+        if (boss) {
+            for (let d = 0; d < length; d += 12) {
+                if (insideBoss(boss, x + dx * d, y + dy * d)) {
+                    length = d
+                    hitsBoss = true
+                    break
+                }
+            }
+        }
+        const flicker = 0.8 + Math.random() * 0.4
+        toWorldOnScreen(laserGroup, x + (dx * length) / 2, y + (dy * length) / 2, BOLT_Z)
+        laserGroup.rotation.z = -angle
+        laserCore.scale.set(length, 4 * flicker, 1)
+        laserGlow.scale.set(length + 30, 26 * flicker, 1)
+        shake = Math.max(shake, 1.5)
+
+        laserTick += dt
+        if (laserTick < weapon.interval) return
+        laserTick = 0
+        laserPhase = (laserPhase + 1) % 3
+        withLayerTransparent(inputLayer, () => {
+            for (let d = 30 + laserPhase * 8; d < length; d += 24) {
+                const px = x + dx * d
+                const py = y + dy * d
+                if (isCovered(px, py)) continue
+                const hit = resolveHit({
+                    x: px,
+                    y: py,
+                    radius: weapon.radius,
+                    layer: null,
+                    destroyedGlyphs,
+                    destroyedBlocks,
+                    viewport,
+                })
+                if (hit) impactAt(px, py, hit, { quiet: true, power: 0.6 })
+            }
+        })
+        snakes.slice().forEach(entry => {
+            const touched = entry.segments.find(segment => {
+                if (!segment.pos) return false
+                const along = (segment.pos.x - x) * dx + (segment.pos.y - y) * dy
+                if (along < 0 || along > length) return false
+                const off = Math.abs((segment.pos.x - x) * dy - (segment.pos.y - y) * dx)
+                return off < SNAKE_TILE / 2 + 4
+            })
+            if (touched) damageSnake(entry, weapon.damage, touched.pos, true)
+        })
+        if (hitsBoss) hitBoss(weapon.damage, x + dx * length, y + dy * length, true)
+        addSparks(x + dx * length, y + dy * length, 2, 0.6)
+    }
+
+    /* Black hole: stops, pulls everything loose towards it, then implodes. */
+    const startBlackhole = (x, y, weapon) => {
+        const material = new MeshBasicMaterial({ map: voidTexture, transparent: true, depthWrite: false })
+        const core = new Mesh(unitPlane, material)
+        const ringMaterial = glowMaterial('#B388FF')
+        const ring = new Mesh(unitPlane, ringMaterial)
+        core.renderOrder = 5
+        ring.renderOrder = 5
+        scene.add(ring, core)
+        blackholes.push({ x, y, weapon, age: 0, core, ring, material, ringMaterial })
+        sound.boom(0.6)
+    }
+
+    const updateBlackholes = dt => {
+        for (let i = blackholes.length - 1; i >= 0; i--) {
+            const hole = blackholes[i]
+            hole.age += dt
+            const t = hole.age / hole.weapon.pull
+            const size = hole.weapon.blast * (0.5 + 0.5 * Math.min(1, t * 3)) * (1 + Math.sin(time * 20) * 0.04)
+            hole.core.scale.set(size, size, 1)
+            hole.ring.scale.set(size * 1.5, size * 1.5, 1)
+            hole.ring.rotation.z = time * 4
+            toWorldOnScreen(hole.core, hole.x, hole.y, 26)
+            toWorldOnScreen(hole.ring, hole.x, hole.y, 25)
+            // Everything loose within reach is pulled in.
+            const reach = hole.weapon.blast * 1.8
+            pieces.forEach(piece => {
+                const dx = hole.x - piece.x
+                const dy = hole.y - piece.y
+                const distance = Math.hypot(dx, dy)
+                if (distance > reach || distance < 1) return
+                piece.sleeping = false
+                piece.vx += (dx / distance) * 2400 * dt
+                piece.vy += (dy / distance) * 2400 * dt - 1900 * dt
+                piece.spinZ += 20 * dt
+            })
+            if (t >= 1) {
+                damageArea({ x: hole.x, y: hole.y }, hole.weapon.blast, hole.weapon.damage, 1.8)
+                pieces.forEach(piece => {
+                    const dx = piece.x - hole.x
+                    const dy = piece.y - hole.y
+                    const distance = Math.hypot(dx, dy) || 1
+                    if (distance > reach) return
+                    piece.vx += (dx / distance) * 900
+                    piece.vy += (dy / distance) * 900
+                })
+                scene.remove(hole.core, hole.ring)
+                hole.material.dispose()
+                hole.ringMaterial.dispose()
+                blackholes.splice(i, 1)
+            }
+        }
+    }
+
+    /* Finger snap: half the visible text turns to dust, every snake bursts, the boss takes a hit. */
+    const fireSnap = weapon => {
+        addFlash(viewport.width / 2, viewport.height / 2, Math.max(viewport.width, viewport.height) * 2.2, 0.6)
+        shake = 16
+        sound.boom(2)
+        showToast('🫰', 1.2)
+        snakes
+            .slice()
+            .forEach(entry => damageSnake(entry, entry.segments.length + 1, entry.segments[0].pos || hero, true))
+        if (boss) hitBoss(weapon.damage, boss.x, boss.y)
+        const cols = 11
+        const rows = 8
+        withLayerTransparent(inputLayer, () => {
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (random() > weapon.share) continue
+                    const x = ((c + 0.2 + random() * 0.6) / cols) * viewport.width
+                    const y = 70 + ((r + 0.2 + random() * 0.6) / rows) * (viewport.height - 90)
+                    if (isCovered(x, y)) continue
+                    const hit = resolveHit({
+                        x,
+                        y,
+                        radius: 34,
+                        layer: null,
+                        destroyedGlyphs,
+                        destroyedBlocks,
+                        viewport,
+                    })
+                    if (hit) impactAt(x, y, hit, { quiet: true, power: 0.55 })
+                }
+            }
+        })
+    }
+
+    /* The boss. */
+    const openTasksToday = () => {
+        const reported = services.getOpenTasksToday ? services.getOpenTasksToday() : null
+        if (typeof reported === 'number' && Number.isFinite(reported)) return Math.max(0, Math.floor(reported))
+        // Without a count from the app, the task rows on the page stand in for today's list.
+        return document.querySelectorAll(TASK_ROW_SELECTOR).length
+    }
+
+    const maybeSummonBoss = () => {
+        if (boss || bossSummoned) return
+        if (!shouldSummonBoss({ snakesKilled, elapsed: playTime, summoned: bossSummoned, openTasks: 1 })) return
+        // Decided once: an empty day has no boss, and the count is not re-read every frame after that.
+        bossSummoned = true
+        const count = openTasksToday()
+        if (!count) return
+        boss = createBoss(count, viewport)
+        bossModel = buildBoss(strings.bossCaption)
+        bossModel.setCount(count)
+        scene.add(bossModel.group)
+        ui.bossLabel.textContent = `👾 ${strings.bossName.replace('{count}', count)}`
+        ui.bossBar.style.display = 'flex'
+        ui.bossFill.style.width = '100%'
+        hud.dataset.boss = String(count)
+        showToast(`⚠️ ${strings.bossIncoming}`, 2)
+        sound.boom(2)
+        shake = 10
+    }
+
+    const removeBoss = () => {
+        if (bossModel) {
+            scene.remove(bossModel.group)
+            bossModel.dispose()
+        }
+        boss = null
+        bossModel = null
+        ui.bossBar.style.display = 'none'
+        delete hud.dataset.boss
+        orbs.splice(0).forEach(orb => {
+            scene.remove(orb.mesh)
+            orb.material.dispose()
+        })
+    }
+
+    const hitBoss = (amount, x, y, quiet = false) => {
+        if (!boss) return
+        const killed = damageBoss(boss, amount)
+        addScore(POINTS.bossHit)
+        ui.bossFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`
+        if (!quiet) {
+            addFlash(x, y, 70)
+            addSparks(x, y, 8)
+            shake = Math.min(10, shake + 3)
+            sound.boom(1)
+        }
+        if (killed) bossDefeated()
+    }
+
+    const bossDefeated = () => {
+        const count = boss.openTasks
+        const points = bossKillPoints(count)
+        addScore(points)
+        heal(health, 30)
+        updateHealth()
+        for (let i = 0; i < 7; i++) {
+            addFlash(
+                boss.x + (random() - 0.5) * BOSS_HALF_WIDTH * 2,
+                boss.y + (random() - 0.5) * BOSS_HALF_HEIGHT * 2,
+                120 + random() * 160,
+                0.5 + random() * 0.4
+            )
+        }
+        addSparks(boss.x, boss.y, 40, 2)
+        shake = 18
+        sound.boom(2)
+        // Its parts fly apart and fade: the group stays, each child gets a velocity and a spin.
+        bossDebris = {
+            model: bossModel,
+            age: 0,
+            parts: bossModel.group.children.map(child => ({
+                child,
+                v: { x: (random() - 0.5) * 900, y: random() * 700, z: random() * 500 },
+                spin: { x: (random() - 0.5) * 12, y: (random() - 0.5) * 12, z: (random() - 0.5) * 12 },
+            })),
+        }
+        bossModel = null
+        boss = null
+        ui.bossBar.style.display = 'none'
+        hud.dataset.bossDefeated = String(count)
+        showToast(`🏆 ${strings.bossDefeated} +${points.toLocaleString()}`, 2.4)
+        orbs.splice(0).forEach(orb => {
+            addFlash(orb.x, orb.y, 40)
+            scene.remove(orb.mesh)
+            orb.material.dispose()
+        })
+    }
+
+    const updateBossDebris = dt => {
+        if (!bossDebris) return
+        bossDebris.age += dt
+        bossDebris.parts.forEach(({ child, v, spin }) => {
+            child.position.x += v.x * dt
+            child.position.y += v.y * dt
+            child.position.z += v.z * dt
+            v.y -= 1400 * dt
+            child.rotation.x += spin.x * dt
+            child.rotation.y += spin.y * dt
+            child.rotation.z += spin.z * dt
+        })
+        const fade = Math.max(0, 1 - bossDebris.age / 1.6)
+        bossDebris.model.group.scale.setScalar(Math.max(0.01, fade))
+        if (bossDebris.age >= 1.6) {
+            scene.remove(bossDebris.model.group)
+            bossDebris.model.dispose()
+            bossDebris = null
+        }
+    }
+
+    const spawnOrb = orb => {
+        const material = glowMaterial('#FF5252')
+        const mesh = new Mesh(unitPlane, material)
+        mesh.scale.set(ORB_RADIUS * 4, ORB_RADIUS * 4, 1)
+        mesh.renderOrder = 5
+        scene.add(mesh)
+        orbs.push({ ...orb, mesh, material })
+    }
+
+    const updateBoss = (dt, active = true) => {
+        if (!boss) return
+        const thrown = stepBoss(boss, dt, hero, viewport, random)
+        if (active) thrown.forEach(spawnOrb)
+        toWorldOnScreen(bossModel.group, boss.x, boss.y, BOSS_Z)
+        bossModel.group.rotation.set(
+            Math.sin(boss.t * 1.7) * 0.08,
+            Math.sin(boss.t * 0.9) * 0.25,
+            Math.sin(boss.t * 2.1) * 0.05
+        )
+        bossModel.bodyMaterial.emissiveIntensity = boss.hurt > 0 ? 0.55 : 0
+        bossModel.lookAt(hero.x - boss.x, hero.y - boss.y)
+        bossModel.setCount(displayedCount(boss))
+        if (active && insideBoss(boss, hero.x, hero.y, 12)) takeDamage(DAMAGE.bossContact, boss)
+    }
+
+    const updateOrbs = (dt, active = true) => {
+        for (let i = orbs.length - 1; i >= 0; i--) {
+            const orb = orbs[i]
+            const alive = stepOrb(orb, dt, viewport)
+            const pulse = 1 + Math.sin(time * 18 + i) * 0.15
+            orb.mesh.scale.set(ORB_RADIUS * 4 * pulse, ORB_RADIUS * 4 * pulse, 1)
+            toWorldOnScreen(orb.mesh, orb.x, orb.y, 28)
+            const hitsHero = active && Math.hypot(orb.x - hero.x, orb.y - hero.y) < ORB_RADIUS + 20
+            if (hitsHero) {
+                takeDamage(DAMAGE.bossOrb, orb)
+                addFlash(orb.x, orb.y, 60)
+            }
+            if (!alive || hitsHero) {
+                scene.remove(orb.mesh)
+                orb.material.dispose()
+                orbs.splice(i, 1)
+            }
+        }
     }
 
     /* The greeting. */
@@ -1609,15 +2611,23 @@ export function startRageArena({ strings, from, onExit }) {
             held.has('down') || (touchSeek && aim.y > viewport.height - EDGE_SCROLL_ZONE) || hero.vy > 60
         const pushingUp = held.has('up') || (touchSeek && aim.y < 72 + EDGE_SCROLL_ZONE) || hero.vy < -60
         let direction = 0
-        if (hero.y > viewport.height - EDGE_SCROLL_ZONE && pushingDown) direction = 1
-        else if (hero.y < 72 + EDGE_SCROLL_ZONE && pushingUp) direction = -1
+        let depth = 0
+        if (hero.y > viewport.height - EDGE_SCROLL_ZONE && pushingDown) {
+            direction = 1
+            depth = (hero.y - (viewport.height - EDGE_SCROLL_ZONE)) / EDGE_SCROLL_ZONE
+        } else if (hero.y < 72 + EDGE_SCROLL_ZONE && pushingUp) {
+            direction = -1
+            depth = (72 + EDGE_SCROLL_ZONE - hero.y) / EDGE_SCROLL_ZONE
+        }
         if (!direction) return
         edgeContainerAge += dt
         if (edgeContainerAge > 0.5) {
             edgeContainer = scrollContainerAt(hero.x, viewport.height / 2, inputLayer)
             edgeContainerAge = 0
         }
-        if (edgeContainer) edgeContainer.scrollTop += direction * EDGE_SCROLL_SPEED * dt
+        // Gentle at the start of the zone, full speed at the edge.
+        const ramp = 0.25 + 0.75 * Math.min(1, Math.max(0, depth)) ** 1.5
+        if (edgeContainer) edgeContainer.scrollTop += direction * EDGE_SCROLL_SPEED * ramp * dt
     }
 
     /* Per-frame updates. */
@@ -1706,7 +2716,24 @@ export function startRageArena({ strings, from, onExit }) {
 
     /* Rewind: every piece flies home, then the holes and scorch marks fade and the page is whole. */
     const beginRewind = () => {
-        if (phase !== 'playing') return
+        if (phase !== 'playing' && phase !== 'gameover') return
+        submitScore()
+        closeShop()
+        gameOverUi.hide()
+        removeBoss()
+        flames.splice(0).forEach(flame => {
+            scene.remove(flame.mesh)
+            flame.material.dispose()
+        })
+        blackholes.splice(0).forEach(hole => {
+            scene.remove(hole.core, hole.ring)
+            hole.material.dispose()
+            hole.ringMaterial.dispose()
+        })
+        laserGroup.visible = false
+        character.root.visible = true
+        ui.weaponBar.style.opacity = '0'
+        ui.weaponBar.style.transition = 'opacity 300ms ease'
         phase = 'rewinding'
         rewindStart = time
         pointerFiring = false
@@ -1773,6 +2800,278 @@ export function startRageArena({ strings, from, onExit }) {
         }
     }
 
+    /* Weapons you own, and the shop. */
+    const equip = id => {
+        if (!owned.has(id)) return
+        equipped = id
+        writeStoredWeapon(id)
+        fireCooldown = 0
+        hud.dataset.weapon = id
+        renderWeaponBar()
+        if (shopUi.isOpen()) shopUi.render()
+    }
+
+    const renderWeaponBar = () => {
+        ui.weaponBar.textContent = ''
+        RAGE_WEAPONS.forEach((weapon, index) => {
+            if (!owned.has(weapon.id)) return
+            const chip = document.createElement('button')
+            chip.type = 'button'
+            chip.setAttribute('data-weapon', weapon.id)
+            const label = strings.weapons && strings.weapons[weapon.id] ? strings.weapons[weapon.id].name : weapon.id
+            chip.title = `${label} (${index + 1})`
+            chip.setAttribute('aria-label', chip.title)
+            chip.textContent = `${weapon.icon}`
+            Object.assign(chip.style, {
+                position: 'relative',
+                border: 'none',
+                borderRadius: '13px',
+                width: '38px',
+                height: '34px',
+                fontSize: '18px',
+                cursor: 'pointer',
+                background: weapon.id === equipped ? '#FFAE47' : 'rgba(255,255,255,0.12)',
+            })
+            chip.addEventListener('pointerdown', event => event.stopPropagation())
+            chip.addEventListener('click', event => {
+                event.stopPropagation()
+                equip(weapon.id)
+            })
+            ui.weaponBar.appendChild(chip)
+        })
+        const more = document.createElement('button')
+        more.type = 'button'
+        more.textContent = '🛒'
+        more.title = strings.shop
+        more.setAttribute('aria-label', strings.shop)
+        Object.assign(more.style, {
+            border: 'none',
+            borderRadius: '13px',
+            width: '38px',
+            height: '34px',
+            fontSize: '16px',
+            cursor: 'pointer',
+            background: 'rgba(255,255,255,0.12)',
+        })
+        more.addEventListener('pointerdown', event => event.stopPropagation())
+        more.addEventListener('click', event => {
+            event.stopPropagation()
+            openShop()
+        })
+        ui.weaponBar.appendChild(more)
+    }
+
+    let shopPending = null
+    let shopConfirm = null
+    let shopMessage = null
+    const currentGold = () => {
+        if (knownGold !== null) return knownGold
+        const gold = services.getGold ? services.getGold() : null
+        return typeof gold === 'number' ? gold : null
+    }
+    const shopUi = buildShop({
+        strings,
+        weapons: RAGE_WEAPONS,
+        zIndex: Z_INDEX + 4,
+        getState: () => ({
+            owned,
+            equipped,
+            gold: currentGold(),
+            pending: shopPending,
+            confirm: shopConfirm,
+            message: shopMessage,
+        }),
+        onBuy: id => {
+            shopConfirm = id
+            shopMessage = null
+            shopUi.render()
+        },
+        onConfirm: id => buy(id),
+        onCancel: () => {
+            shopConfirm = null
+            shopUi.render()
+        },
+        onEquip: id => equip(id),
+        onClose: () => closeShop(),
+    })
+
+    // Buying goes to the server, which charges the Gold and records the weapon (see
+    // functions/RageMode/rageModeProfile.js). Nothing is granted here until it says so.
+    const buy = id => {
+        shopConfirm = null
+        if (!services.purchase) {
+            shopMessage = { id, text: strings.shopUnavailable, tone: 'error' }
+            shopUi.render()
+            return
+        }
+        shopPending = id
+        shopMessage = null
+        shopUi.render()
+        Promise.resolve()
+            .then(() => services.purchase(id))
+            .then(result => {
+                if (result && result.ok) {
+                    owned = new Set([RAGE_DEFAULT_WEAPON, ...(result.owned || []), id])
+                    if (typeof result.newBalance === 'number') knownGold = result.newBalance
+                    shopMessage = { id, text: strings.bought, tone: 'ok' }
+                    equip(id)
+                    sound.boom(0.5)
+                } else {
+                    if (result && typeof result.currentGold === 'number') knownGold = result.currentGold
+                    const text =
+                        result && result.reason === 'insufficient_gold' ? strings.notEnoughGold : strings.purchaseFailed
+                    shopMessage = { id, text, tone: 'error' }
+                }
+            })
+            .catch(error => {
+                shopMessage = {
+                    id,
+                    text: error && error.code === 'offline' ? strings.offline : strings.purchaseFailed,
+                    tone: 'error',
+                }
+            })
+            .finally(() => {
+                shopPending = null
+                if (!finished) shopUi.render()
+            })
+    }
+
+    const openShop = () => {
+        if (phase !== 'playing' || shopUi.isOpen()) return
+        paused = true
+        pointerFiring = false
+        pendingShot = false
+        shopConfirm = null
+        shopMessage = null
+        shopUi.open()
+        hud.dataset.shop = 'open'
+    }
+    const closeShop = () => {
+        if (!shopUi.isOpen()) return
+        paused = false
+        shopUi.close()
+        delete hud.dataset.shop
+    }
+
+    /* Game over, and another go. */
+    const gameOverUi = buildGameOver(
+        strings,
+        () => playAgain(),
+        () => beginRewind()
+    )
+    document.body.append(shopUi.element, gameOverUi.element)
+
+    // A finished game's score goes to the server once, which keeps the best one.
+    const submitScore = () => {
+        if (scoreSubmitted) return
+        scoreSubmitted = true
+        const final = score
+        const wasNew = final > best
+        best = Math.max(best, final)
+        if (final <= 0 || !services.submitScore) return wasNew
+        Promise.resolve()
+            .then(() => services.submitScore(final))
+            .then(result => {
+                if (!result || !result.ok) return
+                best = Math.max(best, result.highscore || 0)
+                if (!finished) {
+                    gameOverUi.update({ best, isNew: !!result.isNew })
+                    updateCounter()
+                }
+            })
+            .catch(() => {})
+        return wasNew
+    }
+
+    let lastRoundNew = false
+    const gameOver = () => {
+        phase = 'gameover'
+        gameOverAt = time
+        gameOverShown = false
+        pointerFiring = false
+        pendingShot = false
+        closeShop()
+        if (greeting) {
+            greeting = null
+            removeBubble()
+            resetRig()
+            delete hud.dataset.greeting
+        }
+        hud.dataset.gameOver = '1'
+        hero.vy = -300
+        sound.boom(1.4)
+        lastRoundNew = submitScore()
+    }
+
+    const updateGameOver = dt => {
+        // She tumbles out of the sky; the page carries on without her.
+        hero.vy += 1500 * dt
+        hero.y = Math.min(viewport.height - 30, hero.y + hero.vy * dt)
+        character.root.visible = true
+        toWorldOnScreen(character.root, hero.x, hero.y, CHARACTER_Z)
+        character.root.rotation.z += dt * 6
+        updateSnakes(dt, false)
+        updateBoss(dt, false)
+        updateOrbs(dt, false)
+        updatePieces(dt)
+        if (!gameOverShown && time - gameOverAt > 0.9) {
+            gameOverShown = true
+            gameOverUi.show({ score, best: Math.max(best, score), isNew: lastRoundNew })
+        }
+    }
+
+    const playAgain = () => {
+        gameOverUi.hide()
+        // Whatever is left of the last round drops to the floor (and still flies home on exit).
+        snakes
+            .splice(0)
+            .forEach(entry =>
+                entry.segments.forEach(segment => segmentToPiece(segment, segment.pos || segment.origin, 0.4))
+            )
+        hud.dataset.snakes = '0'
+        removeBoss()
+        flames.splice(0).forEach(flame => {
+            scene.remove(flame.mesh)
+            flame.material.dispose()
+        })
+        health = createHealth()
+        updateHealth()
+        score = 0
+        playTime = tuning.bossHeadStart || 0
+        snakesKilled = 0
+        bossSummoned = false
+        scoreSubmitted = false
+        updateCounter()
+        hero.x = viewport.width / 2
+        hero.y = viewport.height * 0.42
+        hero.vx = 0
+        hero.vy = 0
+        resetRig()
+        character.root.visible = true
+        delete hud.dataset.gameOver
+        snakeTimer = SNAKE_FIRST_DELAY
+        entering = 0.35
+        phase = 'playing'
+    }
+
+    // What the player owns and their best score come from the server; until then: the blaster.
+    renderWeaponBar()
+    hud.dataset.weapon = equipped
+    if (services.loadProfile) {
+        Promise.resolve()
+            .then(() => services.loadProfile())
+            .then(profile => {
+                if (!profile || finished) return
+                owned = new Set([RAGE_DEFAULT_WEAPON, ...(Array.isArray(profile.owned) ? profile.owned : [])])
+                best = Math.max(best, Number(profile.highscore) || 0)
+                if (preferredWeapon && owned.has(preferredWeapon)) equip(preferredWeapon)
+                else renderWeaponBar()
+                updateCounter()
+                if (shopUi.isOpen()) shopUi.render()
+            })
+            .catch(() => {})
+    } else if (preferredWeapon && owned.has(preferredWeapon)) equip(preferredWeapon)
+
     /* Loop. */
     let frameId = 0
     let lastTimestamp = 0
@@ -1782,21 +3081,38 @@ export function startRageArena({ strings, from, onExit }) {
         lastTimestamp = timestamp
         time += dt
         if (phase === 'playing') {
-            updateHero(dt)
-            fireCooldown -= dt
-            const wantsFire = pointerFiring || pendingShot
-            if (wantsFire && !greeting && entering <= 0 && fireCooldown <= 0) {
-                fire()
-                pendingShot = false
-                fireCooldown = FIRE_INTERVAL
+            // The shop pauses the game: nothing moves, nothing can hurt her while she browses.
+            if (!paused) {
+                playTime += dt
+                updateHero(dt)
+                // She blinks while she cannot be hit again.
+                character.root.visible = !isBlinking(health, time) || Math.floor(time * 14) % 2 === 0
+                fireCooldown -= dt
+                const weapon = weaponById(equipped)
+                const wantsFire = pointerFiring || pendingShot
+                if (weapon.kind === 'laser') pendingShot = false
+                else if (wantsFire && !greeting && entering <= 0 && fireCooldown <= 0) {
+                    fire()
+                    pendingShot = false
+                    fireCooldown = weapon.interval
+                }
+                maybeSummonBoss()
+                updateSnakes(dt)
+                updateBolts(dt)
+                updateFlames(dt)
+                updateLaser(dt)
+                updateBlackholes(dt)
+                updateBoss(dt)
+                updateOrbs(dt)
+                updatePieces(dt)
             }
-            updateSnakes(dt)
-            updateBolts(dt)
-            updatePieces(dt)
+        } else if (phase === 'gameover') {
+            updateGameOver(dt)
         } else {
             updateRewind()
         }
         updateEffects(dt)
+        updateBossDebris(dt)
         updateAnchors()
         updateCamera(dt)
         renderer.render(scene, camera)
@@ -1852,11 +3168,24 @@ export function startRageArena({ strings, from, onExit }) {
         event.preventDefault()
         event.stopImmediatePropagation()
         if (down && event.key === 'Escape') {
-            beginRewind()
+            // Escape closes the shop first; only then does it leave rage mode.
+            if (shopUi.isOpen()) closeShop()
+            else beginRewind()
             return
         }
+        if (shopUi.isOpen() || phase !== 'playing') return
         if (event.code === 'Space') {
             if (down && !event.repeat) startGreeting()
+            return
+        }
+        if (down && event.code === 'KeyB') {
+            openShop()
+            return
+        }
+        const digit = /^Digit([1-9])$/.exec(event.code)
+        if (down && digit) {
+            const weapon = RAGE_WEAPONS[Number(digit[1]) - 1]
+            if (weapon) equip(weapon.id)
             return
         }
         const direction = directionForKey(event.code)
@@ -1896,6 +3225,7 @@ export function startRageArena({ strings, from, onExit }) {
         destroyedGlyphs.clear()
         destroyedBlocks = new WeakSet()
         resizeCamera()
+        centreOverlays()
     }
     // No visibility listener of our own (the app's resume signals have one owner, utils/appResume.js):
     // the browser already stops requestAnimationFrame in a hidden tab, `frame` clamps the gap it
@@ -1915,8 +3245,13 @@ export function startRageArena({ strings, from, onExit }) {
     window.addEventListener('resize', onResize)
 
     const stopHudEvent = event => event.stopPropagation()
-    ;[greet, mute, exit].forEach(button => {
+    ;[ui.shop, greet, mute, exit].forEach(button => {
         button.addEventListener('pointerdown', stopHudEvent)
+    })
+    ui.shop.addEventListener('click', event => {
+        event.stopPropagation()
+        if (shopUi.isOpen()) closeShop()
+        else openShop()
     })
     greet.addEventListener('click', event => {
         event.stopPropagation()
@@ -1947,8 +3282,30 @@ export function startRageArena({ strings, from, onExit }) {
         window.removeEventListener('keyup', onKey, true)
         window.removeEventListener('blur', onBlur)
         window.removeEventListener('resize', onResize)
-        ;[inputLayer, canvas, hud, help].forEach(node => {
+        clearTimeout(toastTimer)
+        clearTimeout(hurtTimer)
+        ;[
+            inputLayer,
+            canvas,
+            hud,
+            help,
+            ui.weaponBar,
+            ui.bossBar,
+            ui.toast,
+            shopUi.element,
+            gameOverUi.element,
+        ].forEach(node => {
             if (node.parentNode) node.parentNode.removeChild(node)
+        })
+        removeBoss()
+        if (bossDebris) {
+            bossDebris.model.dispose()
+            bossDebris = null
+        }
+        flames.forEach(flame => flame.material.dispose())
+        blackholes.forEach(hole => {
+            hole.material.dispose()
+            hole.ringMaterial.dispose()
         })
         pieces.forEach(piece => {
             if (piece.ownGeometry) piece.mesh.geometry.dispose()

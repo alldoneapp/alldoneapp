@@ -6,8 +6,9 @@ import {
     segmentPositions,
     shrinkSnake,
     SNAKE_GAP,
-    SNAKE_MIN_SCALE,
-    SNAKE_SHRINK,
+    SNAKE_MAX_SPEEDUP,
+    SNAKE_SPEED,
+    snakeSpeed,
     stepSnake,
 } from './rageSnake'
 
@@ -74,18 +75,19 @@ describe('task snakes', () => {
         }
     })
 
-    it('gets smaller with every hit and bursts in the end', () => {
-        const snake = createSnake({ head: { x: 600, y: 400 }, tail: { x: 500, y: 400 }, segmentCount: 12 })
-        let segments = 12
-        let hits = 0
+    it('gets shorter with every hit, never smaller, and bursts when only its head is left', () => {
+        const snake = createSnake({ head: { x: 600, y: 400 }, tail: { x: 500, y: 400 }, segmentCount: 6 })
+        let segments = 6
         let result = { dead: false }
+        let hits = 0
         while (!result.dead) {
             segments -= 1
             hits += 1
             result = shrinkSnake(snake, segments)
+            expect(snake.scale).toBe(1)
         }
-        expect(snake.scale).toBeLessThan(1)
-        expect(hits).toBe(Math.ceil(Math.log(SNAKE_MIN_SCALE) / Math.log(SNAKE_SHRINK)))
+        expect(segments).toBe(1)
+        expect(hits).toBe(5)
     })
 
     it('dies when only its head is left', () => {
@@ -93,12 +95,12 @@ describe('task snakes', () => {
         expect(shrinkSnake(snake, 1).dead).toBe(true)
     })
 
-    it('speeds up as it shrinks', () => {
-        const fresh = createSnake({ head: { x: 300, y: 400 }, tail: { x: 200, y: 400 }, segmentCount: 4 })
-        const wounded = createSnake({ head: { x: 300, y: 400 }, tail: { x: 200, y: 400 }, segmentCount: 4 })
-        wounded.scale = 0.5
-        stepSnake(fresh, 0.1, bounds, () => 0.99, 4)
-        stepSnake(wounded, 0.1, bounds, () => 0.99, 4)
-        expect(Math.abs(wounded.head.x - 300)).toBeGreaterThan(Math.abs(fresh.head.x - 300))
+    it('speeds up with every tile it has lost, up to a cap', () => {
+        const snake = createSnake({ head: { x: 300, y: 400 }, tail: { x: 200, y: 400 }, segmentCount: 4 })
+        expect(snakeSpeed(snake)).toBe(SNAKE_SPEED)
+        shrinkSnake(snake, 3)
+        expect(snakeSpeed(snake)).toBeGreaterThan(SNAKE_SPEED)
+        snake.wounds = 1000
+        expect(snakeSpeed(snake)).toBeCloseTo(SNAKE_SPEED * SNAKE_MAX_SPEEDUP)
     })
 })
