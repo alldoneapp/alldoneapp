@@ -1,4 +1,5 @@
 import { keepScreenAwake } from './screenWakeLock'
+import { installAppResumeListener } from './appResume'
 
 const originalWakeLock = navigator.wakeLock
 const originalVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState')
@@ -6,6 +7,7 @@ let visibility
 let locks
 let request
 let releases
+let stopAppResumeListener
 
 const flush = async () => {
     await Promise.resolve()
@@ -28,10 +30,16 @@ beforeEach(() => {
     })
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
     Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
+    stopAppResumeListener = installAppResumeListener({
+        evaluateConnection: () => {},
+        runIntegrityCheck: () => {},
+        updateServiceWorker: () => {},
+    })
 })
 
 afterEach(() => {
     releases.forEach(release => release())
+    stopAppResumeListener()
     if (originalVisibility) Object.defineProperty(document, 'visibilityState', originalVisibility)
     if (originalWakeLock === undefined) delete navigator.wakeLock
     else Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: originalWakeLock })

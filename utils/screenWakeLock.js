@@ -1,9 +1,13 @@
+import { subscribePageHidden, subscribePageVisible } from './appResume'
+
 // A single browser wake lock is shared by all active microphone features. A call and a dictation
 // can overlap; stopping either one must not let the screen sleep while the other is still active.
 const owners = new Set()
 let sentinel = null
 let pending = false
 let generation = 0
+let unsubscribePageVisible = null
+let unsubscribePageHidden = null
 
 const isVisible = () => typeof document !== 'undefined' && document.visibilityState !== 'hidden'
 function releaseLock(lock) {
@@ -48,24 +52,24 @@ function requestIfNeeded() {
         })
 }
 
-function onVisibilityChange() {
-    if (isVisible()) requestIfNeeded()
-    else releaseSentinel()
-}
-
 /** Keep the screen awake until the returned idempotent function is called. */
 export function keepScreenAwake() {
     const owner = Symbol('screen wake lock owner')
     owners.add(owner)
-    if (owners.size === 1 && typeof document !== 'undefined') {
-        document.addEventListener('visibilitychange', onVisibilityChange)
+    // The shared lifecycle service handles hiding and returning, including bfcache and focus.
+    if (owners.size === 1) {
+        unsubscribePageHidden = subscribePageHidden(releaseSentinel)
+        unsubscribePageVisible = subscribePageVisible(requestIfNeeded)
     }
     requestIfNeeded()
 
     return () => {
         if (!owners.delete(owner)) return
         if (owners.size) return
-        if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange)
+        unsubscribePageVisible?.()
+        unsubscribePageVisible = null
+        unsubscribePageHidden?.()
+        unsubscribePageHidden = null
         releaseSentinel()
     }
 }
