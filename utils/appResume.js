@@ -50,6 +50,7 @@ export const RESUME_SW_UPDATE_MS = 60 * 60 * 1000
 export const RESUME_COALESCE_MS = 1000
 
 const pageVisibleSubscribers = new Set()
+const pageHiddenSubscribers = new Set()
 
 /**
  * Lets UI features react when the shared lifecycle owner confirms that the page is visible again.
@@ -64,12 +65,29 @@ export const subscribePageVisible = callback => {
     return () => pageVisibleSubscribers.delete(callback)
 }
 
+/** Lets active features release browser resources when the page becomes hidden or frozen. */
+export const subscribePageHidden = callback => {
+    if (typeof callback !== 'function') return () => {}
+    pageHiddenSubscribers.add(callback)
+    return () => pageHiddenSubscribers.delete(callback)
+}
+
 const notifyPageVisible = details => {
     pageVisibleSubscribers.forEach(callback => {
         try {
             callback(details)
         } catch (error) {
             console.warn('[AppResume] Page-visible subscriber failed:', error)
+        }
+    })
+}
+
+const notifyPageHidden = () => {
+    pageHiddenSubscribers.forEach(callback => {
+        try {
+            callback()
+        } catch (error) {
+            console.warn('[AppResume] Page-hidden subscriber failed:', error)
         }
     })
 }
@@ -187,12 +205,14 @@ export const installAppResumeListener = ({
     const handleSignal = (kind, signal) => () => {
         if (kind === 'absence') {
             recordAbsence()
+            notifyPageHidden()
             return
         }
 
         if (kind === 'visibility') {
             if (isHidden()) {
                 recordAbsence()
+                notifyPageHidden()
                 return
             }
             notifyPageVisible({ hiddenMs: hiddenAt === null ? null : Math.max(0, now() - hiddenAt), signal })

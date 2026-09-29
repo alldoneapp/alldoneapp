@@ -17,6 +17,7 @@ import {
     RETURN_MIC_SETTLE_MS,
     VISIBLE_DISCONNECT_GRACE_MS,
 } from './assistantCallBackground'
+import { installAppResumeListener } from '../../utils/appResume'
 
 jest.mock('../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../../utils/backends/firestore', () => ({ runHttpsCallableFunction: jest.fn() }))
@@ -119,6 +120,7 @@ let tracks = []
 let getUserMedia
 let nativePlugin
 let callOrder
+let stopAppResumeListener
 
 const setVisibility = async state => {
     visibility = state
@@ -211,6 +213,11 @@ beforeEach(() => {
     })
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } })
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
+    stopAppResumeListener = installAppResumeListener({
+        evaluateConnection: () => {},
+        runIntegrityCheck: () => {},
+        updateServiceWorker: () => {},
+    })
     Object.defineProperty(navigator, 'mediaSession', {
         configurable: true,
         value: { metadata: null, playbackState: 'none', setActionHandler: jest.fn(), setMicrophoneActive: jest.fn() },
@@ -232,6 +239,7 @@ afterEach(() => {
         })
     })
     trees = []
+    stopAppResumeListener()
     delete window.Capacitor
     delete window.RTCPeerConnection
     delete global.MediaMetadata
