@@ -1,5 +1,10 @@
 import React from 'react'
-import { useTaskHierarchy, useProjectSectionBorder, taskHierarchyStyles } from '../TaskHierarchy'
+import {
+    useTaskHierarchy,
+    useTaskHierarchyBackground,
+    useProjectSectionBorder,
+    taskHierarchyStyles,
+} from '../TaskHierarchy'
 import { StyleSheet, Text, View } from 'react-native'
 
 import { translate } from '../../../i18n/TranslationService'
@@ -22,6 +27,7 @@ export const GENERAL_TASKS_HEADER_MAX_LINES = 1
 
 export default function GeneralTasksHeader({ projectId, noVerticalMargin = false }) {
     const taskHierarchy = useTaskHierarchy()
+    const hierarchyBackground = useTaskHierarchyBackground()
     const projectBorderColor = useProjectSectionBorder()
     const project = ProjectHelper.getProjectById(projectId)
     if (!project) return null
@@ -35,6 +41,9 @@ export default function GeneralTasksHeader({ projectId, noVerticalMargin = false
                 { borderColor: conatinerColor },
                 taskHierarchy && localStyles.hierarchyRow,
                 noVerticalMargin && localStyles.noVerticalMargin,
+                // The swipe actions sit behind this row. Cover them with the same surface as
+                // the surrounding project card until the row actually moves.
+                noVerticalMargin && { backgroundColor: hierarchyBackground },
             ]}
         >
             <View

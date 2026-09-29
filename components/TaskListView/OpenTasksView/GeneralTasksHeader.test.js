@@ -5,6 +5,7 @@ import { StyleSheet } from 'react-native'
 import GeneralTasksHeader, { GENERAL_TASKS_HEADER_MIN_HEIGHT } from './GeneralTasksHeader'
 import globalStyles from '../../styles/global'
 import { PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
+import { TaskHierarchyBackgroundContext } from '../TaskHierarchy'
 
 jest.mock('../../../i18n/TranslationService', () => ({
     translate: key => key,
@@ -55,6 +56,23 @@ describe('GeneralTasksHeader (AT-2399 mobile layout)', () => {
         })
         const root = renderer.create(<GeneralTasksHeader projectId="p1" noVerticalMargin={true} />).root
         expect(StyleSheet.flatten(parts(root).container.props.style).marginVertical).toBe(0)
+    })
+
+    it('covers both swipe actions at rest with the surrounding project surface', () => {
+        ProjectHelper.getProjectById.mockReturnValue({
+            id: 'p1',
+            name: LONG_PROJECT_NAME,
+            color: PROJECT_COLOR_DEFAULT,
+        })
+        const surface = '#F0F7FA'
+        const root = renderer.create(
+            <TaskHierarchyBackgroundContext.Provider value={surface}>
+                <GeneralTasksHeader projectId="p1" noVerticalMargin={true} />
+            </TaskHierarchyBackgroundContext.Provider>
+        ).root
+
+        expect(flatten(parts(root).container).backgroundColor).toBe(surface)
+        expect(flatten(parts(render()).container).backgroundColor).toBeUndefined()
     })
 
     it('keeps the title on one line and truncates it', () => {
