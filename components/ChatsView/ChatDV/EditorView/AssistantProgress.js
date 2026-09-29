@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import global, { colors } from '../../../styles/global'
 import { TOOL_LABEL_BY_KEY } from '../../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
 import { translate } from '../../../../i18n/TranslationService'
+import AssistantThinking3D, { useAssistantThinking3DEnabled } from './AssistantThinking3D/AssistantThinking3D'
 
 export const ASSISTANT_PROGRESS_ROTATION_MS = 2800
 
@@ -228,6 +229,9 @@ export default function AssistantProgress({
     }:${activity?.startedAt || ''}`
     const [stepIndex, setStepIndex] = useState(0)
     const darkAppearance = appearance === 'dark'
+    const indicatorColor = darkAppearance ? colors.UtilityBlue200 : colors.Primary100
+    // With WebGL the card gets a small 3D scene on its right instead of the inline spinner.
+    const show3D = useAssistantThinking3DEnabled()
 
     useEffect(() => {
         setStepIndex(0)
@@ -265,46 +269,53 @@ export default function AssistantProgress({
             accessibilityLiveRegion="polite"
             accessibilityLabel={`${currentStepText}. ${footerText}`}
         >
-            <View style={localStyles.trail} testID="assistant-progress-trail">
-                {visibleSteps.map(([emoji, textKey, isLiteralText], index) => {
-                    const isCurrent = index === visibleSteps.length - 1
-                    return (
-                        <View key={textKey} style={[localStyles.stepRow, !isCurrent && localStyles.previousStep]}>
-                            <Text style={[localStyles.emoji, darkAppearance && localStyles.darkEmoji]}>
-                                {isCurrent ? emoji : '•'}
-                            </Text>
-                            <Text
-                                style={[
-                                    localStyles.stepText,
-                                    darkAppearance && localStyles.darkStepText,
-                                    isCurrent && localStyles.currentStepText,
-                                    isCurrent && darkAppearance && localStyles.darkCurrentStepText,
-                                ]}
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                                testID="assistant-progress-step-text"
-                            >
-                                {isLiteralText ? textKey : translate(textKey)}
-                            </Text>
-                            {isCurrent && (
-                                <ActivityIndicator
-                                    style={localStyles.indicator}
-                                    size="small"
-                                    color={darkAppearance ? colors.UtilityBlue200 : colors.Primary100}
-                                />
-                            )}
-                        </View>
-                    )
-                })}
+            <View style={localStyles.body}>
+                <View style={localStyles.trail} testID="assistant-progress-trail">
+                    {visibleSteps.map(([emoji, textKey, isLiteralText], index) => {
+                        const isCurrent = index === visibleSteps.length - 1
+                        return (
+                            <View key={textKey} style={[localStyles.stepRow, !isCurrent && localStyles.previousStep]}>
+                                <Text style={[localStyles.emoji, darkAppearance && localStyles.darkEmoji]}>
+                                    {isCurrent ? emoji : '•'}
+                                </Text>
+                                <Text
+                                    style={[
+                                        localStyles.stepText,
+                                        darkAppearance && localStyles.darkStepText,
+                                        isCurrent && localStyles.currentStepText,
+                                        isCurrent && darkAppearance && localStyles.darkCurrentStepText,
+                                    ]}
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                    testID="assistant-progress-step-text"
+                                >
+                                    {isLiteralText ? textKey : translate(textKey)}
+                                </Text>
+                                {isCurrent && !show3D && (
+                                    <ActivityIndicator
+                                        style={localStyles.indicator}
+                                        size="small"
+                                        color={indicatorColor}
+                                    />
+                                )}
+                            </View>
+                        )
+                    })}
+                </View>
+                <Text
+                    style={[localStyles.reassurance, darkAppearance && localStyles.darkReassurance]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    testID="assistant-progress-reassurance"
+                >
+                    {footerText}
+                </Text>
             </View>
-            <Text
-                style={[localStyles.reassurance, darkAppearance && localStyles.darkReassurance]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                testID="assistant-progress-reassurance"
-            >
-                {footerText}
-            </Text>
+            {show3D && (
+                <View style={localStyles.stage}>
+                    <AssistantThinking3D appearance={appearance} spinnerColor={indicatorColor} />
+                </View>
+            )}
         </View>
     )
 }
@@ -320,6 +331,15 @@ const localStyles = StyleSheet.create({
         backgroundColor: colors.UtilityBlue100,
         borderWidth: 1,
         borderColor: colors.UtilityBlue125,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    body: {
+        flex: 1,
+        minWidth: 0,
+    },
+    stage: {
+        marginLeft: 8,
     },
     compactContainer: {
         marginTop: 4,
