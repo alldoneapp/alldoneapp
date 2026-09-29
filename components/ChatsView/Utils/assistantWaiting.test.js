@@ -1,4 +1,5 @@
 import {
+    hasAssistantReplyToPendingSend,
     hasLoadingAssistantMessage,
     hasNewVisibleAssistantMessage,
     shouldShowAssistantScrollIndicator,
@@ -51,6 +52,27 @@ describe('assistant waiting state', () => {
         const message = { id: 'assistant-loading', creatorId: 'assistant-1', isLoading: true }
 
         expect(hasLoadingAssistantMessage([message], isAssistant, () => false)).toBe(false)
+    })
+
+    it('hands a fresh thread to its assistant comment regardless of progress or terminal status', () => {
+        const pending = { assistantId: 'assistant-1' }
+        const userMessage = { creatorId: 'user-1', commentText: 'Hello' }
+        expect(hasAssistantReplyToPendingSend([userMessage], pending, isAssistant)).toBe(false)
+        expect(
+            hasAssistantReplyToPendingSend(
+                [userMessage, { creatorId: 'assistant-1', commentText: '', isLoading: true }],
+                pending,
+                isAssistant
+            )
+        ).toBe(true)
+        expect(
+            hasAssistantReplyToPendingSend(
+                [userMessage, { creatorId: 'assistant-1', commentText: '', assistantRun: { status: 'cancelled' } }],
+                pending,
+                isAssistant
+            )
+        ).toBe(true)
+        expect(hasAssistantReplyToPendingSend([userMessage], null, isAssistant)).toBe(false)
     })
 
     test.each([320, 375, 430])('hides the loading indicator scrollbar at a %ipx mobile viewport', width => {

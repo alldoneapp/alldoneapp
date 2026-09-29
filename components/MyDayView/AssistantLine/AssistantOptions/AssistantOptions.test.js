@@ -598,6 +598,7 @@ describe('AssistantOptions search button', () => {
                 skipNavigation: true,
                 enableAssistant: true,
                 projectId: 'selected-project',
+                onAssistantRunSettled: expect.any(Function),
             }
         )
     })
@@ -754,6 +755,26 @@ describe('AssistantOptions immediate clear (AT-2504)', () => {
         // ...but not a project this message has nothing to do with.
         expect(getPendingAssistantLineSend('default-project')).toBeNull()
     })
+
+    it.each(['completed', 'failed', 'cancelled', 'skipped'])(
+        'clears the pending wait when the backend run is %s',
+        async status => {
+            createBotQuickTopic.mockResolvedValue({ projectId: 'selected-project', chatId: 'chat-1' })
+            let tree
+            await act(async () => {
+                tree = renderer.create(<AssistantOptions amountOfButtonOptions={1} />)
+            })
+            await act(async () => {
+                await typeAndSend(tree, 'one assistant request')
+            })
+
+            expect(getPendingAssistantLineSend('selected-project')).toMatchObject({
+                status: PENDING_SEND_AWAITING_REPLY,
+            })
+            act(() => createBotQuickTopic.mock.calls[0][2].onAssistantRunSettled({ status }))
+            expect(getPendingAssistantLineSend('selected-project')).toBeNull()
+        }
+    )
 
     it('accepts a second message while the first is still being created', async () => {
         let releaseFirst
