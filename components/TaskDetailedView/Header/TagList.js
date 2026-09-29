@@ -87,20 +87,24 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
 
             <View style={localStyles.actions}>
                 <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
-                <DvSearchButton style={{ top: -5 }} />
-                <DvBotButton
-                    style={{ top: -5 }}
-                    navItem={DV_TAB_TASK_CHAT}
-                    projectId={projectId}
-                    assistantId={assistantId}
-                    setAssistantId={setAssistantId}
-                    objectId={task.id}
-                    showThreadModelBadge={true}
-                    objectType={FEED_TASK_OBJECT_TYPE}
-                    parentObject={task}
-                    updateObjectState={updateObjectState}
-                    resolveProjectAssistant={true}
-                />
+                {accessGranted && (
+                    <>
+                        <DvSearchButton style={{ top: -5 }} />
+                        <DvBotButton
+                            style={{ top: -5 }}
+                            navItem={DV_TAB_TASK_CHAT}
+                            projectId={projectId}
+                            assistantId={assistantId}
+                            setAssistantId={setAssistantId}
+                            objectId={task.id}
+                            showThreadModelBadge={true}
+                            objectType={FEED_TASK_OBJECT_TYPE}
+                            parentObject={task}
+                            updateObjectState={updateObjectState}
+                            resolveProjectAssistant={true}
+                        />
+                    </>
+                )}
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>
         </View>

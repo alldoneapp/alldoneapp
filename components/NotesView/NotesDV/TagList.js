@@ -46,24 +46,28 @@ export default function TagList({
             </View>
             <View style={localStyles.actions}>
                 <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
-                <DvSearchButton style={{ top: -5 }} />
-                <DvBotButton
-                    style={{ top: -5 }}
-                    navItem={DV_TAB_NOTE_CHAT}
-                    projectId={projectId}
-                    assistantId={assistantId}
-                    setAssistantId={setAssistantId}
-                    objectId={note.id}
-                    showThreadModelBadge={true}
-                    objectType={FEED_NOTE_OBJECT_TYPE}
-                    parentObject={note}
-                    updateObjectState={updateObjectState}
-                    onOpenSideChat={
-                        onOpenSideChat
-                            ? () => onOpenSideChat({ objectType: 'notes', objectId: note.id, projectId })
-                            : undefined
-                    }
-                />
+                {accessGranted && (
+                    <>
+                        <DvSearchButton style={{ top: -5 }} />
+                        <DvBotButton
+                            style={{ top: -5 }}
+                            navItem={DV_TAB_NOTE_CHAT}
+                            projectId={projectId}
+                            assistantId={assistantId}
+                            setAssistantId={setAssistantId}
+                            objectId={note.id}
+                            showThreadModelBadge={true}
+                            objectType={FEED_NOTE_OBJECT_TYPE}
+                            parentObject={note}
+                            updateObjectState={updateObjectState}
+                            onOpenSideChat={
+                                onOpenSideChat
+                                    ? () => onOpenSideChat({ objectType: 'notes', objectId: note.id, projectId })
+                                    : undefined
+                            }
+                        />
+                    </>
+                )}
                 <OpenInNewWindowButton style={{ top: -5 }} />
             </View>
         </View>

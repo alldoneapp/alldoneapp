@@ -80,11 +80,13 @@ export default function Header({
                 <View style={localStyles.bottomHeader}>
                     <View style={{ flex: 1 }} />
                     <CopyLinkButton style={{ marginRight: 8 }} />
-                    <DvBotButton
-                        navItem={DV_TAB_ASSISTANT_CHAT}
-                        projectId={projectDetailedId}
-                        assistantId={assistant.uid}
-                    />
+                    {accessGranted && (
+                        <DvBotButton
+                            navItem={DV_TAB_ASSISTANT_CHAT}
+                            projectId={projectDetailedId}
+                            assistantId={assistant.uid}
+                        />
+                    )}
                     <OpenInNewWindowButton />
                 </View>
             )}
