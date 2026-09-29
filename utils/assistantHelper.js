@@ -171,7 +171,12 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
     return runWithLoading('create_assistant_topic', async () => {
         const { loggedUser, selectedProjectIndex } = store.getState()
 
-        const { enableAssistant = true, skipNavigation = false, projectId: customProjectId = null } = options
+        const {
+            enableAssistant = true,
+            skipNavigation = false,
+            projectId: customProjectId = null,
+            onAssistantRunSettled = null,
+        } = options
 
         try {
             const selectedProjectId = checkIfSelectedProject(selectedProjectIndex)
@@ -217,15 +222,31 @@ export const createBotQuickTopic = async (assistant, initialMessage = '', option
             }
 
             const trimmedMessage = typeof initialMessage === 'string' ? initialMessage.trim() : ''
+            let assistantRunSettled = false
             if (trimmedMessage) {
-                await createObjectMessage(projectId, chatId, trimmedMessage, 'topics', null, null, null)
+                await createObjectMessage(
+                    projectId,
+                    chatId,
+                    trimmedMessage,
+                    'topics',
+                    null,
+                    null,
+                    null,
+                    false,
+                    null,
+                    null,
+                    outcome => {
+                        assistantRunSettled = true
+                        onAssistantRunSettled?.(outcome)
+                    }
+                )
             }
 
             const postCreateActions = []
             // Only arm the spinner when we actually take the user to this thread. With
             // `skipNavigation` nobody is watching this chat, and an unscoped trigger would be
             // picked up by whatever Chat DV the user opens next (AT-2084).
-            if (enableAssistant && trimmedMessage && !skipNavigation) {
+            if (enableAssistant && trimmedMessage && !skipNavigation && !assistantRunSettled) {
                 postCreateActions.push(setTriggerBotSpinner(buildBotSpinnerTrigger(projectId, chatId)))
             }
             store.dispatch(postCreateActions)

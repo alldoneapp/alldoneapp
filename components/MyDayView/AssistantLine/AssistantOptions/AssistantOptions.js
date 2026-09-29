@@ -24,6 +24,7 @@ import Icon from '../../../Icon'
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../../utils/backends/Chats/chatNotificationPriority'
 import {
     beginAssistantLineSend,
+    endAssistantLineSend,
     failAssistantLineSend,
     markAssistantLineSendCreated,
 } from '../assistantLinePendingSend'
@@ -244,6 +245,11 @@ export default function AssistantOptions({
                     skipNavigation: true,
                     enableAssistant: true,
                     projectId: conversationProjectId,
+                    // `createObjectMessage` starts the assistant callable after writing the user's
+                    // comment, then returns without waiting for the run. If that callable fails,
+                    // is cancelled, or completes without posting, the line and any open thread
+                    // must stop claiming the assistant is still working.
+                    onAssistantRunSettled: () => endAssistantLineSend(pendingSendId),
                 })
 
                 if (!topicData) {

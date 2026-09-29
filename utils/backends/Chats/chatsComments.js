@@ -67,6 +67,7 @@ import {
 } from '../Contacts/contactsFirestore'
 import { getLinkedParentChatUrl } from '../../../components/ChatsView/Utils/ChatHelper'
 import { selectAssistantEnabledFor } from '../../../components/ChatsView/Utils/assistantEnabledScope'
+import { endBotSpinnerWait } from '../../../components/ChatsView/Utils/botSpinnerTrigger'
 import { PROJECT_TYPE_GUIDE } from '../../../components/SettingsView/ProjectsSettings/ProjectsSettings'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { setProjectLastChatActionDate } from '../Projects/projectsFirestore'
@@ -501,7 +502,8 @@ export async function createObjectMessage(
     oldComment,
     skipAssistantTrigger = false,
     explicitAssistantEnabled = null,
-    explicitAssistantId = null
+    explicitAssistantId = null,
+    onAssistantRunSettled = null
 ) {
     const promises = []
     promises.push(getParentObjectData(projectId, objectId, objectType))
@@ -733,6 +735,8 @@ export async function createObjectMessage(
                 }
             )
                 .then(result => {
+                    endBotSpinnerWait(projectId, objectId)
+                    onAssistantRunSettled?.({ status: result?.cancelled ? 'cancelled' : 'completed', result })
                     const clientCallCompleteTime = Date.now()
                     const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
                     const networkLatency = functionCallStartTime - clientSubmissionTime
@@ -751,6 +755,8 @@ export async function createObjectMessage(
                     }
                 })
                 .catch(error => {
+                    endBotSpinnerWait(projectId, objectId)
+                    onAssistantRunSettled?.({ status: 'failed', error })
                     console.error('⏱️ [TIMING] CLIENT: Error calling askToBotSecondGen', {
                         error: error.message,
                         timestamp: new Date().toISOString(),
@@ -759,6 +765,9 @@ export async function createObjectMessage(
                         timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                     })
                 })
+        } else {
+            if (isThreadAssistantEnabled) endBotSpinnerWait(projectId, objectId)
+            onAssistantRunSettled?.({ status: 'skipped' })
         }
 
         return commentId
