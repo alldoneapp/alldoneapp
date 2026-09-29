@@ -2456,6 +2456,8 @@
     "comment_popup_loading_task": "Aufgabe wird geladen",
     "comment_popup_unavailable_task": "Aufgabe nicht verfügbar",
     "comment_popup_unavailable_text_task": "Diese Aufgabe ist nicht mehr verfügbar.",
+    "pre_config_task_link_unavailable": "Diese vorkonfigurierte Aufgabe ist nicht mehr verfügbar. Füge einen neuen Link zu ihr ein.",
+    "pre_config_task_link_load_failed": "Diese vorkonfigurierte Aufgabe konnte nicht geöffnet werden. Bitte versuche es erneut.",
     "comment_popup_reconnecting_task": "Verbindung zur Aufgabe wird wiederhergestellt",
     "comment_popup_reconnecting_text_task": "Die Verbindung zur Aufgabe wird wiederhergestellt. Du kannst weiter kommentieren.",
     "comment_popup_loading_goal": "Ziel wird geladen",

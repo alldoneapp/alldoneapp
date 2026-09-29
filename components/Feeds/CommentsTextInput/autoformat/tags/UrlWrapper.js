@@ -11,7 +11,8 @@ import { getQuillEditorRef } from '../../textInputHelper'
 import URLTrigger from '../../../../../URLSystem/URLTrigger'
 import NavigationService from '../../../../../utils/NavigationService'
 import LinkTag, { getPathname } from '../../../../Tags/LinkTag'
-import { getPreConfigTask, getAssistantData } from '../../../../../utils/backends/Assistants/assistantsFirestore'
+import { getAssistantData } from '../../../../../utils/backends/Assistants/assistantsFirestore'
+import { resolvePreConfigTaskLink } from '../../../../../utils/preConfigTaskLink'
 import { getAssistant, GLOBAL_PROJECT_ID, isGlobalAssistant } from '../../../../AdminPanel/Assistants/assistantsHelper'
 import { setPreConfigTaskModalData, setIframeModalData } from '../../../../../redux/actions'
 import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
@@ -31,6 +32,7 @@ import { REGEX_URL } from '../../../Utils/HelperFunctions'
 import ReactQuill from 'react-quill-new'
 import EditObjectsInLinks from '../../../../EditObjectsInLinks/EditObjectsInLinks'
 import { isLegacyEmailUrlFragment } from './legacyEmailUrlFragment'
+import { translate } from '../../../../../i18n/TranslationService'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -154,79 +156,71 @@ export default function UrlWrapper({ value, objectName, isShared, embedNode }) {
 
         if (isPreConfig) {
             try {
-                const urlObj = new URL(addProtocol(currentUrl))
-                const assistantId = urlObj.searchParams.get('assistantId')
-                const assistantProjectId = urlObj.searchParams.get('assistantProjectId') || projectId
-                const pathParts = urlObj.pathname.split('/')
-                const preConfigTasksIndex = pathParts.indexOf('preConfigTasks')
-                const taskId = preConfigTasksIndex >= 0 ? pathParts[preConfigTasksIndex + 1] : null
-
-                if (taskId && assistantId) {
+                const resolved = await resolvePreConfigTaskLink(currentUrl, projectId)
+                if (resolved) {
+                    const { task, assistantId, assistantProjectId, targetProjectId } = resolved
                     closeModal()
-                    const task = await getPreConfigTask(assistantProjectId, assistantId, taskId)
+                    const taskType = task.type || 'prompt'
 
-                    if (task) {
-                        const taskType = task.type || 'prompt'
-                        const targetProjectId = projectId || assistantProjectId
+                    // Handle different task types
+                    if (taskType === 'prompt' || taskType === 'webhook') {
+                        // For prompt/webhook: show modal if has variables, otherwise execute directly
+                        if (task.variables && task.variables.length > 0) {
+                            // Get assistant from Redux, or fetch from backend
+                            let assistant = getAssistant(assistantId)
 
-                        // Handle different task types
-                        if (taskType === 'prompt' || taskType === 'webhook') {
-                            // For prompt/webhook: show modal if has variables, otherwise execute directly
-                            if (task.variables && task.variables.length > 0) {
-                                // Get assistant from Redux, or fetch from backend
-                                let assistant = getAssistant(assistantId)
-
-                                if (!assistant) {
-                                    const fetchProjectId = isGlobalAssistant(assistantId)
-                                        ? GLOBAL_PROJECT_ID
-                                        : assistantProjectId
-                                    assistant = await getAssistantData(fetchProjectId, assistantId)
-                                }
-
-                                if (assistant) {
-                                    dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
-                                }
-                            } else {
-                                // No variables - execute directly
-                                const aiSettings =
-                                    task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
-                                        ? {
-                                              model: task.aiModel,
-                                              reasoningEffort: task.aiReasoningEffort,
-                                              systemMessage: task.aiSystemMessage,
-                                          }
-                                        : null
-                                const taskMetadata = {
-                                    ...(task.taskMetadata || {}),
-                                    sendWhatsApp: !!task.sendWhatsApp,
-                                    executionMode: task.executionMode,
-                                }
-                                generateTaskFromPreConfig(
-                                    targetProjectId,
-                                    task.name,
-                                    assistantId,
-                                    task.prompt,
-                                    aiSettings,
-                                    taskMetadata
-                                )
+                            if (!assistant) {
+                                const fetchProjectId = isGlobalAssistant(assistantId)
+                                    ? GLOBAL_PROJECT_ID
+                                    : assistantProjectId
+                                assistant = await getAssistantData(fetchProjectId, assistantId)
                             }
-                        } else if (taskType === 'iframe') {
-                            // Open iframe modal
-                            dispatch(setIframeModalData(true, task.link, task.name))
-                        } else if (taskType === 'link') {
-                            // Open external link in new tab
-                            window.open(task.link, '_blank')
+
+                            if (assistant) {
+                                dispatch(setPreConfigTaskModalData(true, task, assistant, targetProjectId))
+                            }
                         } else {
-                            // Unknown type - try to open as link
-                            if (task.link) {
-                                window.open(task.link, '_blank')
+                            // No variables - execute directly
+                            const aiSettings =
+                                task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
+                                    ? {
+                                          model: task.aiModel,
+                                          reasoningEffort: task.aiReasoningEffort,
+                                          systemMessage: task.aiSystemMessage,
+                                      }
+                                    : null
+                            const taskMetadata = {
+                                ...(task.taskMetadata || {}),
+                                sendWhatsApp: !!task.sendWhatsApp,
+                                executionMode: task.executionMode,
                             }
+                            generateTaskFromPreConfig(
+                                targetProjectId,
+                                task.name,
+                                assistantId,
+                                task.prompt,
+                                aiSettings,
+                                taskMetadata
+                            )
+                        }
+                    } else if (taskType === 'iframe') {
+                        // Open iframe modal
+                        dispatch(setIframeModalData(true, task.link, task.name))
+                    } else if (taskType === 'link') {
+                        // Open external link in new tab
+                        window.open(task.link, '_blank')
+                    } else {
+                        // Unknown type - try to open as link
+                        if (task.link) {
+                            window.open(task.link, '_blank')
                         }
                     }
                 } else {
+                    window.alert(translate('pre_config_task_link_unavailable'))
                 }
             } catch (error) {
                 console.error('[UrlWrapper] Error opening pre-configured task:', error)
+                window.alert(translate('pre_config_task_link_load_failed'))
             }
             return
         }

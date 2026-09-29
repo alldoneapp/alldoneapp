@@ -74,7 +74,7 @@ const assistantTasksCache = {}
 export const getAssistantTemplateSnapshot = getAssistantTemplateState
 
 function getAssistantTasksCollectionPath(projectId, assistantId) {
-    return isGlobalAssistant(assistantId)
+    return projectId === GLOBAL_PROJECT_ID || isGlobalAssistant(assistantId)
         ? `assistantTasks/${projectId}/preConfigTasks`
         : `assistantTasks/${projectId}/${assistantId}`
 }

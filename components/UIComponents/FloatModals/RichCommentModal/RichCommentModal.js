@@ -45,7 +45,6 @@ import {
 } from '../../../../utils/backends/Chats/chatsComments'
 import { translate } from '../../../../i18n/TranslationService'
 import {
-    hasAssistantReplyToPendingSend,
     hasLoadingAssistantMessage,
     hasNewVisibleAssistantMessage,
     shouldShowAssistantScrollIndicator,
@@ -68,12 +67,7 @@ import useCommentPopupAutoFocus, {
 import RichCommentDismissSurface from './RichCommentDismissSurface'
 import DeferredCommentComposer from './DeferredCommentComposer'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
-import {
-    ASSISTANT_LOADING_TIMEOUT_MS,
-    resolveEffectiveMessageLoading,
-} from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
-import { useAssistantLinePendingSendForChat } from '../../../MyDayView/AssistantLine/assistantLinePendingSend'
-import { subscribeBotSpinnerWaitEnd } from '../../../ChatsView/Utils/botSpinnerTrigger'
+import { resolveEffectiveMessageLoading } from '../../../ChatsView/ChatDV/EditorView/messageLoadingState'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function RichCommentModal({
@@ -141,7 +135,6 @@ export default function RichCommentModal({
         objectType === 'users' ? 'contacts' : objectType,
         3
     )
-    const pendingLineSend = useAssistantLinePendingSendForChat(projectId, objectId)
 
     disableDoneButton = !!botOptionModalIsOpen
 
@@ -164,22 +157,15 @@ export default function RichCommentModal({
         assistantMessageIdsAtWaitStartRef.current,
         getAssistant
     )
-    const hasActiveAssistantMessage = hasLoadingAssistantMessage(
-        comments,
-        creatorId => creatorId === assistantId || !!getAssistant(creatorId),
-        message =>
-            message.assistantRun?.kind === 'chat' &&
-            resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate))
-    )
-    const lineReplyIsVisible = hasAssistantReplyToPendingSend(
-        comments,
-        pendingLineSend,
-        creatorId => !!getAssistant(creatorId)
-    )
-    const showBotPlaceholder =
-        !hasActiveAssistantMessage &&
-        ((waitingForBotAnswer && !hasNewAssistantMessage) || (!!pendingLineSend && !lineReplyIsVisible))
-    const assistantResponseIsLoading = showBotPlaceholder || hasActiveAssistantMessage
+    const assistantResponseIsLoading =
+        waitingForBotAnswer ||
+        hasLoadingAssistantMessage(
+            comments,
+            creatorId => !!getAssistant(creatorId),
+            message =>
+                message.assistantRun?.kind === 'chat' &&
+                resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate))
+        )
 
     const toggleShowFileSelector = () => {
         if (showFileSelector || !checkIsLimitedByTraffic(projectId)) {
@@ -339,40 +325,27 @@ export default function RichCommentModal({
             setShowRunOutGoalModal(true)
             dispatch(setAssistantEnabled(false))
         } else {
-            const onSendFailure = error => {
-                setWaitingForBotAnswer(false)
-                console.error('[RichCommentModal] Could not send comment', error)
-            }
             if (shouldTriggerAssistant) {
                 assistantMessageIdsAtWaitStartRef.current = snapshotAssistantMessageIds(comments, getAssistant)
                 setWaitingForBotAnswer(true)
             }
 
             if (inTaskModal) {
-                try {
-                    Promise.resolve(
-                        processDone(comment.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
-                    ).catch(onSendFailure)
-                } catch (error) {
-                    onSendFailure(error)
-                }
+                processDone(comment.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
                 if (__DEV__) {
                     console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (task modal)', {
                         timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                     })
                 }
             } else {
-                updateNewAttachmentsData(projectId, comment)
-                    .then(text => {
-                        const result = processDone(text.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
-                        if (__DEV__) {
-                            console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
-                                timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
-                            })
-                        }
-                        return result
-                    })
-                    .catch(onSendFailure)
+                updateNewAttachmentsData(projectId, comment).then(text => {
+                    processDone(text.trim(), mentions, privacy, hasKarma, shouldTriggerAssistant)
+                    if (__DEV__) {
+                        console.log('⏱️ [TIMING] CLIENT: RichCommentModal processDone called (after attachments)', {
+                            timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
+                        })
+                    }
+                })
             }
 
             if (editor) {
@@ -401,20 +374,6 @@ export default function RichCommentModal({
             setWaitingForBotAnswer(false)
         }
     }, [isThreadAssistantEnabled])
-
-    useEffect(
-        () =>
-            subscribeBotSpinnerWaitEnd((endedProjectId, endedObjectId) => {
-                if (endedProjectId === projectId && endedObjectId === objectId) setWaitingForBotAnswer(false)
-            }),
-        [projectId, objectId]
-    )
-
-    useEffect(() => {
-        if (!waitingForBotAnswer) return undefined
-        const timeout = setTimeout(() => setWaitingForBotAnswer(false), ASSISTANT_LOADING_TIMEOUT_MS)
-        return () => clearTimeout(timeout)
-    }, [waitingForBotAnswer])
 
     useEffect(() => {
         if (commentsLengthRef) {
@@ -624,7 +583,7 @@ export default function RichCommentModal({
                                 />
                             </AttachmentDropZone>
                         </DeferredCommentComposer>
-                        {showBotPlaceholder && (
+                        {waitingForBotAnswer && !hasNewAssistantMessage && (
                             <BotMessagePlaceholder projectId={projectId} assistantId={assistantId} />
                         )}
                         <div ref={commentListRef}>

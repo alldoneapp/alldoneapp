@@ -8,7 +8,6 @@ import { Keyboard } from 'react-native'
 
 import ChatInput from './ChatInput'
 import { createObjectMessage } from '../../../../utils/backends/Chats/chatsComments'
-import { endBotSpinnerWait } from '../../Utils/botSpinnerTrigger'
 
 const mockInputFocus = jest.fn()
 const mockInputBlur = jest.fn()
@@ -122,8 +121,6 @@ jest.mock('../../../../utils/backends/Chats/chatsComments', () => ({
     createObjectMessage: jest.fn(() => Promise.resolve()),
 }))
 
-jest.mock('../../Utils/botSpinnerTrigger', () => ({ endBotSpinnerWait: jest.fn() }))
-
 jest.mock('../../../styles/global', () => ({
     colors: {
         Text03: '#000000',
@@ -215,34 +212,6 @@ describe('ChatInput assistant selection', () => {
         )
 
         tree.unmount()
-    })
-
-    it('ends the local wait when the comment cannot be written', async () => {
-        createObjectMessage.mockRejectedValueOnce(new Error('offline'))
-        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-        const startWaiting = jest.fn()
-        let tree
-
-        await act(async () => {
-            tree = renderer.create(
-                <ChatInput
-                    chat={{ id: 'chat-1', type: 'topics', isAssistantEnabled: true }}
-                    projectId="project-1"
-                    assistantId="anna-assistant"
-                    setWaitingForBotAnswer={startWaiting}
-                    setAmountOfNewCommentsToHighligth={jest.fn()}
-                />
-            )
-        })
-        await act(async () => {
-            tree.root.findByProps({ testID: 'chat-input-buttons' }).props.onSubmit('Hello')
-            await Promise.resolve()
-        })
-
-        expect(startWaiting).toHaveBeenCalledWith(true)
-        expect(endBotSpinnerWait).toHaveBeenCalledWith('project-1', 'chat-1')
-        act(() => tree.unmount())
-        consoleError.mockRestore()
     })
 })
 

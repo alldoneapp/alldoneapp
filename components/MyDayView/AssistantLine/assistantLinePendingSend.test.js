@@ -9,22 +9,18 @@ import { Text } from 'react-native'
 import {
     ASSISTANT_FAILED_SEND_DISPLAY_MS,
     ASSISTANT_PENDING_SEND_TIMEOUT_MS,
-    ASSISTANT_REPLY_HANDOFF_MS,
     PENDING_SEND_AWAITING_REPLY,
     PENDING_SEND_FAILED,
     PENDING_SEND_SENDING,
-    PENDING_SEND_REPLY_POSTED,
     assistantHasRepliedToPendingSend,
     beginAssistantLineSend,
     endAssistantLineSend,
     failAssistantLineSend,
     getPendingAssistantLineSend,
-    getPendingAssistantLineSendForChat,
     markAssistantLineSendCreated,
     resetAssistantLinePendingSends,
     resolveAssistantLineSendForChat,
     useAssistantLinePendingSend,
-    useAssistantLinePendingSendForChat,
 } from './assistantLinePendingSend'
 
 const ALL_PROJECTS = 'allProjects'
@@ -110,35 +106,6 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
 
             resolveAssistantLineSendForChat('chat-1')
             expect(getPendingAssistantLineSend('project-1')).toBeNull()
-            expect(getPendingAssistantLineSendForChat('project-1', 'chat-1')).toMatchObject({
-                status: PENDING_SEND_REPLY_POSTED,
-            })
-        })
-
-        it('keeps the thread covered while the assistant pointer reaches the preview before its comment', () => {
-            const id = begin()
-            markAssistantLineSendCreated(id, 'chat-1')
-            const now = Date.now()
-
-            expect(getPendingAssistantLineSendForChat('project-1', 'chat-1')).toMatchObject({
-                status: PENDING_SEND_AWAITING_REPLY,
-            })
-            expect(getPendingAssistantLineSendForChat('project-2', 'chat-1')).toBeNull()
-            expect(getPendingAssistantLineSendForChat('project-1', 'another-chat')).toBeNull()
-
-            resolveAssistantLineSendForChat('chat-1')
-            expect(getPendingAssistantLineSend('project-1')).toBeNull()
-            expect(
-                getPendingAssistantLineSendForChat('project-1', 'chat-1', now + ASSISTANT_REPLY_HANDOFF_MS + 1)
-            ).toBeNull()
-        })
-
-        it('does not show a thread wait after its send failed', () => {
-            const id = begin()
-            markAssistantLineSendCreated(id, 'chat-1')
-            failAssistantLineSend(id)
-
-            expect(getPendingAssistantLineSendForChat('project-1', 'chat-1')).toBeNull()
         })
 
         it('does not treat the user’s own comment as the answer', () => {
@@ -272,30 +239,6 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
             }).not.toThrow()
         })
     })
-
-    it('updates the chat view through creation, reply handoff and expiry', () => {
-        jest.useFakeTimers()
-        let tree
-        act(() => {
-            tree = renderer.create(<ChatPendingProbe />)
-        })
-        expect(tree.root.findByProps({ testID: 'chat-status' }).props.children).toBe('none')
-
-        let id
-        act(() => {
-            id = begin()
-            markAssistantLineSendCreated(id, 'chat-1')
-        })
-        expect(tree.root.findByProps({ testID: 'chat-status' }).props.children).toBe(PENDING_SEND_AWAITING_REPLY)
-
-        act(() => resolveAssistantLineSendForChat('chat-1'))
-        expect(tree.root.findByProps({ testID: 'chat-status' }).props.children).toBe(PENDING_SEND_REPLY_POSTED)
-
-        act(() => jest.advanceTimersByTime(ASSISTANT_REPLY_HANDOFF_MS + 10))
-        expect(tree.root.findByProps({ testID: 'chat-status' }).props.children).toBe('none')
-        act(() => tree.unmount())
-        jest.useRealTimers()
-    })
     /**
      * AT-2523 — the card became a door into the thread, and the popover it opens names the object
      * it is commenting on. That title cannot be read from the thread: it was created a moment ago
@@ -324,9 +267,4 @@ describe('assistantLinePendingSend store (AT-2504)', () => {
 function PendingProbe({ projectKey = 'project-1', assistantId = null }) {
     const pending = useAssistantLinePendingSend(projectKey, assistantId)
     return <Text testID="status">{pending ? pending.status : 'none'}</Text>
-}
-
-function ChatPendingProbe() {
-    const pending = useAssistantLinePendingSendForChat('project-1', 'chat-1')
-    return <Text testID="chat-status">{pending ? pending.status : 'none'}</Text>
 }

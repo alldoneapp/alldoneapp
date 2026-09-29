@@ -10,13 +10,6 @@ import { buildBotSpinnerTrigger, endBotSpinnerWait } from '../Utils/botSpinnerTr
 import { buildAssistantEnabledScope } from '../Utils/assistantEnabledScope'
 import { CHAT_FULLSCREEN_COOLDOWN_MS } from '../Utils/chatScrollFullscreen'
 import { markChatMessagesAsRead } from '../../../utils/backends/Chats/chatsComments'
-import {
-    ASSISTANT_REPLY_HANDOFF_MS,
-    beginAssistantLineSend,
-    markAssistantLineSendCreated,
-    resetAssistantLinePendingSends,
-    resolveAssistantLineSendForChat,
-} from '../../MyDayView/AssistantLine/assistantLinePendingSend'
 
 const PROJECT_ID = 'project-1'
 const TASK_CHAT_ID = 'task-1'
@@ -130,7 +123,6 @@ jest.mock('./EditorView/BotMessagePlaceholder', () => {
 })
 
 const CHAT = { id: TASK_CHAT_ID, type: 'tasks' }
-const renderedTrees = []
 
 const renderChatBoard = (props = {}) => {
     let tree
@@ -148,14 +140,8 @@ const renderChatBoard = (props = {}) => {
             />
         )
     })
-    renderedTrees.push(tree)
     return tree
 }
-
-afterEach(() => {
-    act(() => renderedTrees.splice(0).forEach(tree => tree.unmount()))
-    resetAssistantLinePendingSends()
-})
 
 const hasPlaceholder = tree => tree.root.findAll(node => node.props?.testID === 'bot-message-placeholder').length > 0
 
@@ -172,7 +158,6 @@ beforeEach(() => {
 describe('ChatBoard bot spinner placeholder', () => {
     beforeEach(() => {
         mockDispatch.mockClear()
-        resetAssistantLinePendingSends()
         mockMessages = []
         mockState = {
             triggerBotSpinner: null,
@@ -230,84 +215,6 @@ describe('ChatBoard bot spinner placeholder', () => {
         })
 
         expect(consumeCalls()).toHaveLength(0)
-    })
-})
-
-describe('ChatBoard assistant-line reply handoff', () => {
-    beforeEach(() => {
-        mockDispatch.mockClear()
-        resetAssistantLinePendingSends()
-        mockMessages = Object.assign([], { loaded: true })
-        mockState = {
-            triggerBotSpinner: null,
-            loggedUser: { uid: 'user-1', isAnonymous: false },
-            selectedNavItem: 'unrelated-tab',
-            chatPagesAmount: 0,
-            smallScreenNavigation: false,
-            projectChatNotifications: { [PROJECT_ID]: { [TASK_CHAT_ID]: null } },
-        }
-    })
-
-    const startLineSend = (projectId = PROJECT_ID, chatId = TASK_CHAT_ID) => {
-        const id = beginAssistantLineSend({ keys: [projectId], projectId, assistantId: 'assistant-1' })
-        markAssistantLineSendCreated(id, chatId)
-        return id
-    }
-
-    it('shows pending work immediately when opening the new thread from the assistant line', () => {
-        startLineSend()
-        const tree = renderChatBoard()
-
-        expect(hasPlaceholder(tree)).toBe(true)
-        expect(consumeCalls()).toHaveLength(0)
-        act(() => tree.unmount())
-    })
-
-    it('never shows pending work for another thread', () => {
-        startLineSend(PROJECT_ID, 'other-chat')
-        const tree = renderChatBoard()
-        expect(hasPlaceholder(tree)).toBe(false)
-        act(() => tree.unmount())
-    })
-
-    it.each(['running', 'completed', 'failed', 'cancelled'])(
-        'hands off to the assistant comment in %s state without a duplicate placeholder',
-        status => {
-            startLineSend()
-            const tree = renderChatBoard()
-            expect(hasPlaceholder(tree)).toBe(true)
-
-            mockMessages = Object.assign(
-                [
-                    { id: 'user-message', creatorId: 'user-1', commentText: 'Hello' },
-                    {
-                        id: 'assistant-message',
-                        creatorId: 'assistant-1',
-                        commentText: status === 'completed' ? 'Done' : '',
-                        isLoading: status === 'running',
-                        assistantRun: { kind: 'chat', status },
-                    },
-                ],
-                { loaded: true }
-            )
-            act(() => tree.update(<ChatBoard projectId={PROJECT_ID} chat={CHAT} assistantId="assistant-1" />))
-            expect(hasPlaceholder(tree)).toBe(false)
-            act(() => tree.unmount())
-        }
-    )
-
-    it('bridges a preview pointer that arrives before the assistant comment, then expires', () => {
-        jest.useFakeTimers()
-        startLineSend()
-        const tree = renderChatBoard()
-
-        act(() => resolveAssistantLineSendForChat(TASK_CHAT_ID))
-        expect(hasPlaceholder(tree)).toBe(true)
-
-        act(() => jest.advanceTimersByTime(ASSISTANT_REPLY_HANDOFF_MS + 10))
-        expect(hasPlaceholder(tree)).toBe(false)
-        act(() => tree.unmount())
-        jest.useRealTimers()
     })
 })
 
@@ -595,7 +502,6 @@ describe('ChatBoard placeholder safety timeout', () => {
     beforeEach(() => {
         jest.useFakeTimers()
         mockDispatch.mockClear()
-        mockMessages = Object.assign([], { loaded: true })
         mockState = {
             triggerBotSpinner: buildBotSpinnerTrigger(PROJECT_ID, TASK_CHAT_ID),
             loggedUser: { uid: 'user-1', isAnonymous: false },
