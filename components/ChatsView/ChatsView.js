@@ -20,6 +20,7 @@ import MarkAsRead from './MarkAsRead'
 import ChatFiltersLine from './ChatFiltersLine'
 import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 import { UnreadEmailArchiveProvider } from './unreadEmailArchiveContext'
+import ChatsEmailConnectionStatus from './ChatsEmailConnectionStatus'
 import {
     buildSecondaryViewCacheKey,
     getSecondaryViewCacheEntry,
@@ -221,6 +222,8 @@ function ChatsView() {
                 )}
 
                 <HashtagFiltersView />
+
+                <ChatsEmailConnectionStatus />
 
                 <ChatFiltersLine
                     projectIds={filteredProjectIds}
