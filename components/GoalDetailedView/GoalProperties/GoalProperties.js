@@ -29,6 +29,7 @@ import Privacy from './Privacy'
 import Reminder from './Reminder'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
 import { getUserData } from '../../../utils/backends/Users/usersFirestore'
+import SharedHelper from '../../../utils/SharedHelper'
 
 export default function GoalProperties({ projectId, goal, accessGranted }) {
     const dispatch = useDispatch()
@@ -65,7 +66,11 @@ export default function GoalProperties({ projectId, goal, accessGranted }) {
     }
 
     useEffect(() => {
-        getUserData(goal.creatorId, false).then(setCreator)
+        if (loggedUser.isAnonymous) {
+            setCreator(SharedHelper.createAnonymousResourceUser(goal.creatorId))
+        } else {
+            getUserData(goal.creatorId, false).then(setCreator)
+        }
         writeBrowserURL()
     }, [])
 

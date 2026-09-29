@@ -59,7 +59,11 @@ export default function PropertiesView({
     useTaskMergeStatusRefresh(project.id, task)
 
     useEffect(() => {
-        Backend.getUserOrContactBy(project.id, task.creatorId).then(afterCreatorFetch)
+        if (loggedUser.isAnonymous) {
+            afterCreatorFetch(SharedHelper.createAnonymousResourceUser(task.creatorId))
+        } else {
+            Backend.getUserOrContactBy(project.id, task.creatorId).then(afterCreatorFetch)
+        }
         writeBrowserURL()
         return () => {
             isUnmountedRef.current = true

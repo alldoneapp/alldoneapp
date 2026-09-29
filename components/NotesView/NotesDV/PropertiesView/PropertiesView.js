@@ -45,7 +45,11 @@ export default function PropertiesView({ projectId, note, project }) {
 
     useEffect(() => {
         writeBrowserURL()
-        getUserData(note.creatorId, false).then(afterCreatorFetch)
+        if (loggedUser.isAnonymous) {
+            afterCreatorFetch(SharedHelper.createAnonymousResourceUser(note.creatorId))
+        } else {
+            getUserData(note.creatorId, false).then(afterCreatorFetch)
+        }
     }, [])
 
     const afterCreatorFetch = user => {

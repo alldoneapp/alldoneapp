@@ -1062,7 +1062,14 @@ class TasksHelper {
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
         console.log('TasksHelper: Project index:', projectIndex)
 
-        let user = task != null ? await Backend.getUserOrContactBy(projectId, task.userId) : null
+        // The shared-task boot has already checked public project and task access.
+        // Anonymous visitors cannot read the assignee's private /users document.
+        let user =
+            task != null
+                ? loggedUser.isAnonymous
+                    ? SharedHelper.createAnonymousResourceUser(task.userId)
+                    : await Backend.getUserOrContactBy(projectId, task.userId)
+                : null
         // If user not found and task has an assistantId, try finding the assistant across all projects
         // This handles cases where the assistant is from another project
         if (!user && task != null && task.userId) {
@@ -1182,7 +1189,9 @@ class TasksHelper {
         if (goal && inSelectedProject) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             const selectedUser =
-                projectType === PROJECT_TYPE_SHARED ? await Backend.getUserDataByUidOrEmail(goal.creatorId) : loggedUser
+                !loggedUser.isAnonymous && projectType === PROJECT_TYPE_SHARED
+                    ? await Backend.getUserDataByUidOrEmail(goal.creatorId)
+                    : loggedUser
             let data = {
                 goalId,
                 goal,
@@ -1236,7 +1245,9 @@ class TasksHelper {
         if (skill != null && checkIfSelectedProject(projectIndex) /*&& user != null*/) {
             const projectType = ProjectHelper.getTypeOfProject(loggedUser, projectId)
             const selectedUser =
-                projectType === PROJECT_TYPE_SHARED ? await Backend.getUserDataByUidOrEmail(skill.userId) : loggedUser
+                !loggedUser.isAnonymous && projectType === PROJECT_TYPE_SHARED
+                    ? await Backend.getUserDataByUidOrEmail(skill.userId)
+                    : loggedUser
             let data = {
                 skillId,
                 skill,
@@ -1276,7 +1287,7 @@ class TasksHelper {
     static getNoteDVUserContext = async (projectId, note) => {
         const { loggedUser } = store.getState()
 
-        if (!note || !note.userId) return loggedUser
+        if (!note || !note.userId || loggedUser.isAnonymous) return loggedUser
 
         const owner = (await Backend.getUserOrContactBy(projectId, note.userId)) || getAssistant(note.userId)
 

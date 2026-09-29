@@ -27,6 +27,7 @@ import Skillpoints from './Skillpoints'
 import CompletionProperty from './CompletionProperty'
 import AssistantProperty from '../../UIComponents/FloatModals/ChangeAssistantModal/AssistantProperty'
 import { getUserData } from '../../../utils/backends/Users/usersFirestore'
+import SharedHelper from '../../../utils/SharedHelper'
 
 export default function SkillProperties({ projectId, accessGranted }) {
     const dispatch = useDispatch()
@@ -64,7 +65,11 @@ export default function SkillProperties({ projectId, accessGranted }) {
     }
 
     useEffect(() => {
-        getUserData(skill.userId, false).then(setCreator)
+        if (isAnonymous) {
+            setCreator(SharedHelper.createAnonymousResourceUser(skill.userId))
+        } else {
+            getUserData(skill.userId, false).then(setCreator)
+        }
         writeBrowserURL()
     }, [])
 

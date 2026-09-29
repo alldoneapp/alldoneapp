@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import { getUnknownUserData, getUserPresentationData } from './ContactsHelper'
 import { unwatch, watchUserData } from '../../../utils/backends/firestore'
 
 export default function useGetUserPresentationData(userId) {
+    const isAnonymous = useSelector(state => !!state.loggedUser.isAnonymous)
     const [userData, setUserData] = useState(getUnknownUserData())
 
     const updateEditor = userData => {
@@ -13,7 +15,9 @@ export default function useGetUserPresentationData(userId) {
 
     useEffect(() => {
         const userData = getUserPresentationData(userId)
-        if (userId && userData.isUnknownUser) {
+        // An anonymous shared-resource view may render a message from a project member,
+        // but it is not authorized to watch that member's private /users document.
+        if (userId && userData.isUnknownUser && !isAnonymous) {
             const watcherKey = v4()
             watchUserData(userId, false, updateEditor, watcherKey)
             return () => {
@@ -22,7 +26,7 @@ export default function useGetUserPresentationData(userId) {
         } else {
             setUserData(userData)
         }
-    }, [userId])
+    }, [userId, isAnonymous])
 
     return userData
 }
