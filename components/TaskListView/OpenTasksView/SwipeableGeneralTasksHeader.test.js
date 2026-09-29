@@ -30,6 +30,8 @@ jest.mock('./GeneralTasksHeader', () => 'GeneralTasksHeader')
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 import GoalsSwipeBackground from '../../GoalsView/GoalsSwipeBackground'
 import store from '../../../redux/store'
+import NavigationService from '../../../utils/NavigationService'
+import { DV_TAB_PROJECT_PROPERTIES } from '../../../utils/TabNavigationConstants'
 
 describe('SwipeableGeneralTasksHeader (AT-2642)', () => {
     beforeEach(() => {
@@ -37,6 +39,7 @@ describe('SwipeableGeneralTasksHeader (AT-2642)', () => {
         mockClose.mockClear()
         mockDispatch.mockClear()
         store.dispatch.mockClear()
+        NavigationService.navigate.mockClear()
     })
 
     afterEach(() => jest.useRealTimers())
@@ -80,5 +83,15 @@ describe('SwipeableGeneralTasksHeader (AT-2642)', () => {
                 goal: null,
             }),
         })
+    })
+
+    it('still opens project Properties after a right swipe', () => {
+        const swipeable = renderRow().findByType('Swipeable')
+
+        act(() => swipeable.props.onSwipeableLeftWillOpen())
+
+        expect(mockClose).toHaveBeenCalledTimes(1)
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_NAV_ITEM', tab: DV_TAB_PROJECT_PROPERTIES })
+        expect(NavigationService.navigate).toHaveBeenCalledWith('ProjectDetailedView', { projectIndex: 0 })
     })
 })
