@@ -53,7 +53,7 @@ const Header = ({ projectId, chat, assistantId, setAssistantId, isFullscreen, se
                     <TagList projectId={projectId} chat={chat} />
                 </View>
             )}
-            {isFullscreen && selectedTab === DV_TAB_CHAT_BOARD && (
+            {isFullscreen && selectedTab === DV_TAB_CHAT_BOARD && accessGranted && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}

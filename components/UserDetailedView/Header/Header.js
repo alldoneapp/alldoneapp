@@ -15,8 +15,8 @@ export default function Header({ contact, project, isFullscreen, setFullscreen }
     const accessGranted = SharedHelper.accessGranted(null, project.id)
 
     return (
-        <View style={localStyles.container}>
-            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: 16 }]}>
+        <View style={[localStyles.container, isFullscreen && !accessGranted && localStyles.sharedChatContainer]}>
+            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
                 {mobile && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton user={contact} projectIndex={project.index} />
@@ -35,7 +35,7 @@ export default function Header({ contact, project, isFullscreen, setFullscreen }
                     <TagList project={project} user={contact} />
                 </View>
             )}
-            {isFullscreen && selectedTab === DV_TAB_USER_CHAT && (
+            {isFullscreen && selectedTab === DV_TAB_USER_CHAT && accessGranted && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}
@@ -57,6 +57,10 @@ const localStyles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingBottom: 24,
         overflow: 'hidden',
+    },
+    sharedChatContainer: {
+        height: 'auto',
+        paddingBottom: 0,
     },
     upperHeader: {
         flexDirection: 'row',

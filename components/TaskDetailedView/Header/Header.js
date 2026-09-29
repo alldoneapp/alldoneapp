@@ -32,8 +32,14 @@ const Header = ({
     const selectedTab = useSelector(state => state.selectedNavItem)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
     return (
-        <View style={[localStyles.container, isFullscreen && { paddingBottom: 8 }]}>
-            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: 16 }]}>
+        <View
+            style={[
+                localStyles.container,
+                isFullscreen && { paddingBottom: 8 },
+                isFullscreen && !accessGranted && localStyles.sharedChatContainer,
+            ]}
+        >
+            <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
                 {isMiddleScreen && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton projectId={projectId} task={task} />
@@ -78,7 +84,7 @@ const Header = ({
                     />
                 </View>
             )}
-            {isFullscreen && selectedTab === DV_TAB_TASK_CHAT && (
+            {isFullscreen && selectedTab === DV_TAB_TASK_CHAT && accessGranted && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}
@@ -103,6 +109,9 @@ const localStyles = StyleSheet.create({
         flexDirection: 'column',
         justifyContent: 'space-between',
         paddingBottom: 24,
+    },
+    sharedChatContainer: {
+        minHeight: 0,
     },
     upperHeader: {
         flexDirection: 'row',

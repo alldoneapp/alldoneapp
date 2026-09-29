@@ -48,7 +48,7 @@ export default function Header({ projectId, userHasAccessToProject }) {
                     <OpenInNewWindowButton />
                 </View>
             )}
-            {isFullScreen && selectedNavItem === DV_TAB_SKILL_CHAT && (
+            {isFullScreen && selectedNavItem === DV_TAB_SKILL_CHAT && userHasAccessToProject && (
                 <View style={localStyles.bottomHeader}>
                     <BotLine
                         setFullscreen={setFullscreen}
