@@ -1537,11 +1537,30 @@ stay with the browser), and hit testing switches that layer to `pointer-events: 
 one synchronous query per frame (`withLayerTransparent`). **The camera maps z = 0 to CSS
 pixels**: a perspective camera at `h / 2 / tan(fov / 2)`, so a piece built at a character's box
 sits exactly on it and grows as it flies out at the viewer; things that must appear at a screen
-point while floating in front (hero, bolts) go through `toWorldOnScreen`. A resize repairs all
-damage instantly, because every hole is anchored to the old layout. Pure physics and controls live
+point while floating in front (hero, bolts) go through `toWorldOnScreen`.
+
+**Damage belongs to the content it was done to (scroll anchors).** Anna can fly over the whole page:
+the wheel scrolls whatever is under the pointer, and flying into the top or bottom edge scrolls the
+page under her. So every hole and burn mark is filed under the scroll container of the element it
+hit (`findScrollContainer`), its group is shifted by how far that container has scrolled since, and
+its materials are clipped to the container's box (`renderer.localClippingEnabled`) — without the
+clip, a hole scrolled up past the list would paint over the fixed top bar. Pieces remember their
+anchor too, so the rewind sends them to where their letter is NOW. Damage outside any scroller (the
+top bar) stays screen-anchored. A window resize still repairs everything at once: every rect was
+measured against the old layout.
+
+**Task snakes** (`rageSnake.js`, pure and tested). Up to three task rows at a time peel out of the
+list and crawl around like the old game: a chain of 3D tiles, one per letter of the title plus a
+head with eyes, moving on a grid and turning at right angles, the body retracing the head's trail.
+Every hit knocks the tail tile off and shrinks the snake (it speeds up as it shrinks) until it
+bursts; the next row peels out after a pause. Rows are found by the DOM id every task row already
+has (`task_body_<project>_<task>_…`, TaskPresentation's `nativeID`) — no hook in the task row
+itself. A peeled row is covered by a hole and listed in `coveredRows`, so a bolt through its empty
+spot never hits the checkbox or chip still hidden underneath; on the rewind every tile flies back to
+the letter it came from and shrinks to that letter's size before the hole fades. Pure physics and controls live
 in `rageDebris.js` / `rageControls.js`; `browser-tests/rage-mode` is the only place the arena
 actually runs (jsdom has no WebGL, caret hit testing or layout). The button deliberately imports nothing that pulls in the redux store (it sits in `AssistantOptions`,
-whose suites load it). Not built yet: the Gold weapon shop, the task-row targets and extra weapons.
+whose suites load it). Not built yet: the Gold weapon shop and extra weapons.
 
 ### Per-project empty inbox — the completed sweep (AT-2492)
 

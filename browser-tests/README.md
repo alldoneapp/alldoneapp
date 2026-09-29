@@ -592,9 +592,12 @@ node browser-tests/at2594/run.js
 
 Runs the REAL three.js arena (`components/RageMode/rageArena.js`) over a stand-in page in
 Chromium (SwiftShader WebGL). Asserts that bolts knock letters out of a paragraph and
-shatter an image through the input layer, that no click or key reaches the page's own
-handlers while the arena is up, and that leaving removes every arena layer and leaves the
-page's DOM byte-identical. Screenshots land in `rage-mode/.build/`. `--touch` repeats it on
+shatter an image through the input layer; that task rows (found by their real `task_body_…`
+ids) peel out as snakes, shrink tile by tile when shot and burst; that Space greets instead of
+shooting; that the wheel and the bottom edge scroll the page; that no click or key reaches the
+page's own handlers while the arena is up; and that leaving removes every arena layer and leaves
+the page's DOM byte-identical. It waits on the arena's own signals (`data-greeting`, layers gone)
+rather than fixed delays, because software WebGL slows the arena's clock. Screenshots land in `rage-mode/.build/`. `--touch` repeats it on
 a 390×844 touch viewport; `--serve` just builds and serves the harness so you can play it.
 
 ```bash

@@ -14,9 +14,11 @@ import {
     MeshBasicMaterial,
     MeshStandardMaterial,
     PerspectiveCamera,
+    Plane,
     PlaneGeometry,
     Scene,
     SRGBColorSpace,
+    Vector3,
     WebGLRenderer,
 } from 'three'
 
@@ -31,7 +33,25 @@ import {
     stepCharacter,
     touchHoverTarget,
 } from './rageControls'
-import { RAGE_LAYER_ATTRIBUTE, resolveHit, withLayerTransparent } from './rageTargets'
+import {
+    findScrollContainer,
+    findTaskRows,
+    RAGE_LAYER_ATTRIBUTE,
+    resolveBackgroundColor,
+    resolveHit,
+    rowGlyphs,
+    scrollContainerAt,
+    withLayerTransparent,
+} from './rageTargets'
+import {
+    createSnake,
+    segmentPositions,
+    shrinkSnake,
+    SNAKE_MAX_LETTERS,
+    SNAKE_MORPH_SECONDS,
+    SNAKE_TILE,
+    stepSnake,
+} from './rageSnake'
 import { greetingPose, pickGreetingStyle } from './rageGreeting'
 
 /**
@@ -72,6 +92,15 @@ const BOLT_SAMPLES = 3
 const REWIND_SECONDS = 0.95
 const HOLE_FADE_SECONDS = 0.28
 const MUTE_KEY = 'alldone.rageMode.muted'
+// Task snakes: how many crawl at once, when the first peels out, the pause between the next ones.
+const MAX_SNAKES = 3
+const SNAKE_FIRST_DELAY = 1.4
+const SNAKE_SPAWN_GAP = 1.3
+const SNAKE_Z = 12
+const SNAKE_COLORS = ['#0C66FF', '#09A87A', '#E64A19', '#7E57C2']
+// Flying into the top or bottom edge scrolls the page under her.
+const EDGE_SCROLL_ZONE = 70
+const EDGE_SCROLL_SPEED = 900
 
 // Anna Alldone, as she appears in the app's celebration pictures: a wavy blonde bob, a big smile,
 // a light-blue button-up shirt and navy trousers. The jetpack and blaster are rage mode's own.
@@ -339,6 +368,56 @@ const bubbleTexture = text => {
     const texture = new CanvasTexture(canvas)
     texture.colorSpace = SRGBColorSpace
     return { texture, width, height: height + 12 }
+}
+
+const tileTextureCache = new Map()
+
+/**
+ * The face of one snake tile: a rounded square in the snake's colour with the letter it came from
+ * in white — or, for the head, two eyes looking the way it crawls (+x; the mesh is rotated).
+ */
+const tileTexture = (char, color, head) => {
+    const key = `${head ? '@head' : char}|${color}`
+    if (tileTextureCache.has(key)) return tileTextureCache.get(key)
+    const size = 96
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const context = canvas.getContext('2d')
+    const r = 22
+    context.fillStyle = color
+    context.beginPath()
+    context.moveTo(r, 2)
+    context.arcTo(size - 2, 2, size - 2, size - 2, r)
+    context.arcTo(size - 2, size - 2, 2, size - 2, r)
+    context.arcTo(2, size - 2, 2, 2, r)
+    context.arcTo(2, 2, size - 2, 2, r)
+    context.closePath()
+    context.fill()
+    context.fillStyle = 'rgba(255,255,255,0.18)'
+    context.fillRect(10, 8, size - 20, 14)
+    if (head) {
+        ;[30, 66].forEach(y => {
+            context.fillStyle = '#FFFFFF'
+            context.beginPath()
+            context.arc(62, y, 15, 0, Math.PI * 2)
+            context.fill()
+            context.fillStyle = '#091540'
+            context.beginPath()
+            context.arc(69, y, 7, 0, Math.PI * 2)
+            context.fill()
+        })
+    } else {
+        context.fillStyle = '#FFFFFF'
+        context.font = '700 58px Roboto, system-ui, sans-serif'
+        context.textAlign = 'center'
+        context.textBaseline = 'middle'
+        context.fillText(char, size / 2, size / 2 + 4)
+    }
+    const texture = new CanvasTexture(canvas)
+    texture.colorSpace = SRGBColorSpace
+    tileTextureCache.set(key, texture)
+    return texture
 }
 
 const radialTexture = (stops, size = 128) => {
@@ -685,6 +764,8 @@ export function startRageArena({ strings, from, onExit }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, touchDevice ? 1.5 : 2))
     renderer.outputColorSpace = SRGBColorSpace
     renderer.setClearColor(0x000000, 0)
+    // Damage done inside a scrolling list is clipped to that list's box (see the scroll anchors).
+    renderer.localClippingEnabled = true
     const canvas = renderer.domElement
     canvas.setAttribute(RAGE_LAYER_ATTRIBUTE, 'canvas')
     canvas.setAttribute('aria-hidden', 'true')
@@ -755,15 +836,18 @@ export function startRageArena({ strings, from, onExit }) {
     const boltMaterial = new MeshBasicMaterial({ color: PALETTE.bolt })
     const boltGeometry = new BoxGeometry(26, 4, 4)
     const sparkGeometry = new BoxGeometry(3, 3, 3)
+    // Everything that fades out at the end of the rewind: every hole and burn-mark material.
+    const fadingMaterials = new Set([scorchMaterial])
     const holeMaterials = new Map()
-    const holeMaterial = css => {
-        if (!holeMaterials.has(css)) {
-            holeMaterials.set(
-                css,
-                new MeshBasicMaterial({ color: opaqueColor(css), transparent: true, depthWrite: false })
-            )
+    const holeMaterial = (css, anchor) => {
+        const key = `${css}|${anchor ? anchor.id : 0}`
+        if (!holeMaterials.has(key)) {
+            const material = new MeshBasicMaterial({ color: opaqueColor(css), transparent: true, depthWrite: false })
+            if (anchor && anchor.planes) material.clippingPlanes = anchor.planes
+            holeMaterials.set(key, material)
+            fadingMaterials.add(material)
         }
-        return holeMaterials.get(css)
+        return holeMaterials.get(key)
     }
     const edgeMaterials = new Map()
     const edgeMaterial = css => {
@@ -793,6 +877,76 @@ export function startRageArena({ strings, from, onExit }) {
 
     const character = buildCharacter()
     scene.add(character.root)
+
+    /*
+     * Scroll anchors. Damage belongs to the content it was done to: a hole punched into a task list
+     * must move with that list when it scrolls, and must never be painted over the fixed top bar
+     * the list scrolls under. So every hole and burn mark is filed under the scroll container of the
+     * element it hit; the container's groups are shifted by how far it has scrolled since, and its
+     * materials are clipped to its box. Damage outside any scroller (the top bar) is anchored to the
+     * screen, as before.
+     */
+    const anchors = new Map()
+    const anchorFor = container => {
+        if (!container) return null
+        if (anchors.has(container)) return anchors.get(container)
+        const isPage = container === document.scrollingElement
+        const rect = isPage
+            ? { left: 0, top: 0, right: viewport.width, bottom: viewport.height }
+            : container.getBoundingClientRect()
+        const holeGroup = new Group()
+        const scorchGroup = new Group()
+        holes.add(holeGroup)
+        scorches.add(scorchGroup)
+        const anchor = {
+            id: anchors.size + 1,
+            container,
+            top: container.scrollTop,
+            left: container.scrollLeft,
+            holeGroup,
+            scorchGroup,
+            // World space: x right, y up (screen y negated). Three keeps what is on the positive side.
+            planes: isPage
+                ? null
+                : [
+                      new Plane(new Vector3(1, 0, 0), -rect.left),
+                      new Plane(new Vector3(-1, 0, 0), rect.right),
+                      new Plane(new Vector3(0, -1, 0), -rect.top),
+                      new Plane(new Vector3(0, 1, 0), rect.bottom),
+                  ],
+            scorchMaterial: null,
+        }
+        if (anchor.planes) {
+            anchor.scorchMaterial = scorchMaterial.clone()
+            anchor.scorchMaterial.clippingPlanes = anchor.planes
+            fadingMaterials.add(anchor.scorchMaterial)
+        }
+        anchors.set(container, anchor)
+        return anchor
+    }
+    // How far an anchor's content has moved on screen since the damage was done (screen px).
+    const anchorShift = anchor =>
+        anchor
+            ? { x: anchor.left - anchor.container.scrollLeft, y: anchor.top - anchor.container.scrollTop }
+            : { x: 0, y: 0 }
+    const updateAnchors = () => {
+        anchors.forEach(anchor => {
+            const shift = anchorShift(anchor)
+            anchor.holeGroup.position.set(shift.x, -shift.y, 0)
+            anchor.scorchGroup.position.set(shift.x, -shift.y, 0)
+        })
+    }
+    const anchorOfElement = element => anchorFor(findScrollContainer(element))
+
+    /* Task snakes. */
+    const tileGeometry = new BoxGeometry(SNAKE_TILE, SNAKE_TILE, 7)
+    disposables.add(tileGeometry)
+    const snakes = []
+    const takenRows = new WeakSet()
+    // Rows that crawled off: their spot is covered, so a bolt there must not hit the hidden row.
+    const coveredRows = []
+    let snakeTimer = SNAKE_FIRST_DELAY
+    let snakesSpawned = 0
 
     /* World state. Everything positional is screen space. */
     const hero = {
@@ -850,16 +1004,25 @@ export function startRageArena({ strings, from, onExit }) {
     }, 4500)
 
     /* Spawning. */
+    /**
+     * A flying piece. `rect` is where it came from on the page (its rewind target, filed under
+     * `rect.anchor` so it follows a scrolled list home); `rect.start` is where it is now, when that
+     * differs (a snake tile knocked off mid-crawl). `rect.restScale` is the size it returns to.
+     */
     const addPiece = (mesh, rect, impact, power, kind) => {
         const origin = { x: rect.x, y: rect.y, z: PIECE_START_Z }
-        const velocity = launchVelocity(origin, impact, random, power)
+        const start = rect.start || origin
+        const velocity = launchVelocity(start, impact, random, power)
         const piece = {
             mesh,
             kind,
             origin,
-            x: origin.x,
-            y: origin.y,
-            z: origin.z,
+            anchor: rect.anchor || null,
+            ownGeometry: kind === 'shard',
+            restScale: rect.restScale || null,
+            x: start.x,
+            y: start.y,
+            z: start.z !== undefined ? start.z : origin.z,
             rx: 0,
             ry: 0,
             rz: 0,
@@ -876,26 +1039,35 @@ export function startRageArena({ strings, from, onExit }) {
         while (pieces.length > MAX_PIECES) {
             const old = pieces.shift()
             scene.remove(old.mesh)
-            if (old.kind !== 'glyph') old.mesh.geometry.dispose()
+            if (old.ownGeometry) old.mesh.geometry.dispose()
         }
     }
 
-    const addHole = (rect, background, pad = 1) => {
-        const mesh = new Mesh(unitPlane, holeMaterial(background))
+    // Holes and burn marks are placed in their anchor's group at the anchor's CURRENT scroll, so a
+    // later scroll moves them together with the content.
+    const addHole = (rect, background, pad = 1, anchor = null) => {
+        const mesh = new Mesh(unitPlane, holeMaterial(background, anchor))
+        const shift = anchorShift(anchor)
         mesh.scale.set(rect.width + pad * 2, rect.height + pad * 2, 1)
-        toWorld(mesh, rect.left + rect.width / 2, rect.top + rect.height / 2, 0)
+        toWorld(mesh, rect.left + rect.width / 2 - shift.x, rect.top + rect.height / 2 - shift.y, 0)
         mesh.renderOrder = 1
-        holes.add(mesh)
+        ;(anchor ? anchor.holeGroup : holes).add(mesh)
     }
 
-    const addScorch = (x, y, size) => {
-        const mesh = new Mesh(unitPlane, scorchMaterial)
+    const scorchMeshes = []
+    const addScorch = (x, y, size, anchor = null) => {
+        const mesh = new Mesh(unitPlane, (anchor && anchor.scorchMaterial) || scorchMaterial)
+        const shift = anchorShift(anchor)
         mesh.scale.set(size, size, 1)
         mesh.rotation.z = random() * Math.PI * 2
-        toWorld(mesh, x, y, 0.5)
+        toWorld(mesh, x - shift.x, y - shift.y, 0.5)
         mesh.renderOrder = 2
-        scorches.add(mesh)
-        while (scorches.children.length > MAX_SCORCH) scorches.remove(scorches.children[0])
+        ;(anchor ? anchor.scorchGroup : scorches).add(mesh)
+        scorchMeshes.push(mesh)
+        while (scorchMeshes.length > MAX_SCORCH) {
+            const old = scorchMeshes.shift()
+            if (old.parent) old.parent.remove(old)
+        }
     }
 
     const addFlash = (x, y, size, life = 0.22) => {
@@ -944,9 +1116,11 @@ export function startRageArena({ strings, from, onExit }) {
     const knockOutText = (hit, impact, power) => {
         const gone = destroyedGlyphs.get(hit.node) || new Set()
         destroyedGlyphs.set(hit.node, gone)
+        const anchor = anchorOfElement(hit.node.parentElement)
+        hit.anchor = anchor
         hit.glyphs.forEach(glyph => {
             gone.add(glyph.index)
-            addHole(glyph.rect, hit.background, 1)
+            addHole(glyph.rect, hit.background, 1, anchor)
             const texture = glyphTexture(glyph.char, hit.style, glyph.rect.width, glyph.rect.height)
             disposables.add(texture)
             const material = new MeshBasicMaterial({
@@ -964,6 +1138,7 @@ export function startRageArena({ strings, from, onExit }) {
                     x: glyph.rect.left + glyph.rect.width / 2,
                     y: glyph.rect.top + glyph.rect.height / 2,
                     halfHeight: glyph.rect.height / 2,
+                    anchor,
                 },
                 impact,
                 power,
@@ -975,7 +1150,10 @@ export function startRageArena({ strings, from, onExit }) {
 
     const shatterBlock = (hit, impact, power) => {
         destroyedBlocks.add(hit.element)
-        addHole(hit.rect, hit.background, 0)
+        const anchor = anchorOfElement(hit.element)
+        hit.anchor = anchor
+        // 1px over: an anti-aliased border would otherwise survive as a hairline outline.
+        addHole(hit.rect, hit.background, 1, anchor)
         const { width, height } = hit.rect
         const faceMaterial =
             hit.kind === 'image'
@@ -991,27 +1169,244 @@ export function startRageArena({ strings, from, onExit }) {
             const spanY = Math.max(...shard.vertices.map(v => Math.abs(v.y - shard.centroid.y)))
             addPiece(
                 mesh,
-                { x: hit.rect.left + shard.centroid.x, y: hit.rect.top + shard.centroid.y, halfHeight: spanY },
+                {
+                    x: hit.rect.left + shard.centroid.x,
+                    y: hit.rect.top + shard.centroid.y,
+                    halfHeight: spanY,
+                    anchor,
+                },
                 impact,
                 power * 0.9,
                 'shard'
             )
         })
         destroyedCount += 1
-        addScorch(hit.rect.left + width / 2, hit.rect.top + height / 2, Math.min(140, Math.max(width, height) * 0.9))
+        addScorch(
+            hit.rect.left + width / 2,
+            hit.rect.top + height / 2,
+            Math.min(140, Math.max(width, height) * 0.9),
+            anchor
+        )
     }
 
     const impactAt = (x, y, hit) => {
         const power = 1
         if (hit.kind === 'text') knockOutText(hit, { x, y }, power)
         else shatterBlock(hit, { x, y }, power)
-        addScorch(x, y, 34 + random() * 22)
+        addScorch(x, y, 34 + random() * 22, hit.anchor)
         addFlash(x, y, 70)
         addSparks(x, y, 7)
         shake = Math.min(9, shake + (hit.kind === 'text' ? 2.2 : 4.5))
         sound.boom(hit.kind === 'text' ? 0.8 : 1.2)
         updateCounter()
     }
+
+    /* Task snakes: spawning, crawling, getting shot. */
+    const snakeBounds = () => ({ left: 16, top: 72, right: viewport.width - 16, bottom: viewport.height - 16 })
+
+    const tileMesh = (char, color, head) => {
+        const face = new MeshBasicMaterial({ map: tileTexture(char, color, head) })
+        const side = edgeMaterial(color)
+        disposables.add(face)
+        disposables.add(face.map)
+        return new Mesh(tileGeometry, [side, side, side, side, face, side])
+    }
+
+    /** Peel one task row out of the list and turn it into a snake. Returns false if none is left. */
+    const spawnSnake = () => {
+        const rows = findTaskRows(viewport, takenRows)
+        while (rows.length) {
+            const row = rows.splice(Math.floor(random() * rows.length), 1)[0]
+            takenRows.add(row)
+            const glyphs = rowGlyphs(row, SNAKE_MAX_LETTERS)
+            if (glyphs.length < 2) continue
+
+            const rect = row.getBoundingClientRect()
+            const anchor = anchorOfElement(row)
+            const shift = anchorShift(anchor)
+            addHole(
+                { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+                resolveBackgroundColor(row.parentElement),
+                1,
+                anchor
+            )
+            coveredRows.push({
+                rect: {
+                    left: rect.left - shift.x,
+                    top: rect.top - shift.y,
+                    right: rect.right - shift.x,
+                    bottom: rect.bottom - shift.y,
+                },
+                anchor,
+            })
+            // Its letters are gone from the page now; a bolt must not knock them out a second time.
+            glyphs.forEach(glyph => {
+                const gone = destroyedGlyphs.get(glyph.node) || new Set()
+                gone.add(glyph.index)
+                destroyedGlyphs.set(glyph.node, gone)
+            })
+
+            const color = SNAKE_COLORS[snakesSpawned % SNAKE_COLORS.length]
+            snakesSpawned += 1
+            const centre = glyph => ({
+                x: glyph.rect.left + glyph.rect.width / 2,
+                y: glyph.rect.top + glyph.rect.height / 2,
+            })
+            const last = glyphs[glyphs.length - 1]
+            const headOrigin = { x: last.rect.left + last.rect.width + SNAKE_TILE / 2 + 4, y: centre(last).y }
+            // Head first, then the title back to front, so the tail is its first letter.
+            const segments = [
+                { mesh: tileMesh('', color, true), origin: headOrigin, restScale: 0.7 },
+                ...glyphs
+                    .slice()
+                    .reverse()
+                    .map(glyph => ({
+                        mesh: tileMesh(glyph.char, color, false),
+                        origin: centre(glyph),
+                        restScale: Math.max(0.35, glyph.rect.height / SNAKE_TILE),
+                    })),
+            ].map(segment => ({
+                ...segment,
+                origin: { x: segment.origin.x - shift.x, y: segment.origin.y - shift.y },
+                anchor,
+                pos: null,
+            }))
+            segments.forEach(segment => {
+                segment.mesh.renderOrder = 3
+                scene.add(segment.mesh)
+            })
+            snakes.push({
+                snake: createSnake({ head: headOrigin, tail: centre(glyphs[0]), segmentCount: segments.length }),
+                segments,
+                morph: 0,
+                anchor,
+            })
+            hud.dataset.snakes = String(snakes.length)
+            sound.boom(0.3)
+            return true
+        }
+        return false
+    }
+
+    const segmentOrigin = segment => {
+        const shift = anchorShift(segment.anchor)
+        return { x: segment.origin.x + shift.x, y: segment.origin.y + shift.y }
+    }
+
+    const ease = t => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2)
+
+    const updateSnakes = dt => {
+        if (entering <= 0) {
+            snakeTimer -= dt
+            if (snakeTimer <= 0) {
+                if (snakes.length < MAX_SNAKES) spawnSnake()
+                snakeTimer = SNAKE_SPAWN_GAP
+            }
+        }
+        const bounds = snakeBounds()
+        snakes.forEach(entry => {
+            entry.morph = Math.min(1, entry.morph + dt / SNAKE_MORPH_SECONDS)
+            const settled = ease(entry.morph)
+            // It starts crawling half-way through turning back into tiles, so it peels off in motion.
+            if (entry.morph > 0.5) stepSnake(entry.snake, dt, bounds, random, entry.segments.length)
+            const positions = segmentPositions(entry.snake, entry.segments.length)
+            entry.segments.forEach((segment, index) => {
+                const from = segmentOrigin(segment)
+                const to = positions[index]
+                segment.pos = {
+                    x: from.x + (to.x - from.x) * settled,
+                    y: from.y + (to.y - from.y) * settled,
+                }
+                const scale = segment.restScale + (entry.snake.scale - segment.restScale) * settled
+                segment.mesh.scale.setScalar(scale)
+                toWorldOnScreen(segment.mesh, segment.pos.x, segment.pos.y, SNAKE_Z + Math.sin(time * 9 + index) * 2)
+            })
+            const head = entry.segments[0]
+            head.mesh.rotation.z = Math.atan2(-entry.snake.dir.y, entry.snake.dir.x)
+        })
+    }
+
+    const snakeAt = (x, y) => {
+        for (let s = 0; s < snakes.length; s++) {
+            const entry = snakes[s]
+            const reach = (SNAKE_TILE / 2) * entry.snake.scale + 7
+            for (let i = 0; i < entry.segments.length; i++) {
+                const pos = entry.segments[i].pos
+                if (pos && Math.abs(pos.x - x) <= reach && Math.abs(pos.y - y) <= reach) return entry
+            }
+        }
+        return null
+    }
+
+    const segmentToPiece = (segment, impact, power) => {
+        addPiece(
+            segment.mesh,
+            {
+                x: segment.origin.x,
+                y: segment.origin.y,
+                start: {
+                    x: segment.pos ? segment.pos.x : segment.origin.x,
+                    y: segment.pos ? segment.pos.y : segment.origin.y,
+                    z: SNAKE_Z,
+                },
+                halfHeight: (SNAKE_TILE / 2) * segment.mesh.scale.x,
+                anchor: segment.anchor,
+                restScale: segment.restScale,
+            },
+            impact,
+            power,
+            'tile'
+        )
+    }
+
+    const removeSnake = entry => {
+        const index = snakes.indexOf(entry)
+        if (index >= 0) snakes.splice(index, 1)
+        hud.dataset.snakes = String(snakes.length)
+    }
+
+    const burstSnake = (entry, impact) => {
+        entry.segments.splice(0).forEach(segment => segmentToPiece(segment, impact, 1.5))
+        removeSnake(entry)
+        addFlash(impact.x, impact.y, 150, 0.35)
+        addSparks(impact.x, impact.y, 16, 1.4)
+        shake = 10
+        sound.boom(1.7)
+        destroyedCount += 1
+        hud.dataset.snakesKilled = String(Number(hud.dataset.snakesKilled || 0) + 1)
+        snakeTimer = Math.min(snakeTimer, SNAKE_SPAWN_GAP)
+    }
+
+    /** A bolt hit a snake: its tail flies off and it shrinks — until the last hit bursts it. */
+    const hitSnake = (entry, x, y) => {
+        const impact = { x, y }
+        if (entry.segments.length > 1) segmentToPiece(entry.segments.pop(), impact, 1)
+        const { dead } = shrinkSnake(entry.snake, entry.segments.length)
+        destroyedCount += 1
+        hud.dataset.snakeHits = String(Number(hud.dataset.snakeHits || 0) + 1)
+        if (dead) burstSnake(entry, impact)
+        else {
+            addFlash(x, y, 60)
+            addSparks(x, y, 6)
+            shake = Math.min(9, shake + 3)
+            sound.boom(0.9)
+        }
+        updateCounter()
+    }
+
+    // Read-only, on the arena's own node: where the snakes are, for browser-tests/rage-mode to aim at.
+    inputLayer.rageSnakeTargets = () => snakes.map(entry => entry.segments.map(segment => segment.pos).filter(Boolean))
+
+    const isCovered = (x, y) =>
+        coveredRows.some(({ rect, anchor }) => {
+            const shift = anchorShift(anchor)
+            return (
+                x >= rect.left + shift.x &&
+                x <= rect.right + shift.x &&
+                y >= rect.top + shift.y &&
+                y <= rect.bottom + shift.y
+            )
+        })
 
     /* Firing. */
     const muzzle = () => {
@@ -1066,6 +1461,13 @@ export function startRageArena({ strings, from, onExit }) {
                     bolt.y += bolt.dy * step
                     // The first few pixels are inside the character's own gun.
                     if (bolt.age < 0.02) continue
+                    const snake = snakeAt(bolt.x, bolt.y)
+                    if (snake) {
+                        hitSnake(snake, bolt.x, bolt.y)
+                        hitSomething = true
+                        break
+                    }
+                    if (isCovered(bolt.x, bolt.y)) continue
                     const hit = resolveHit({
                         x: bolt.x,
                         y: bolt.y,
@@ -1196,6 +1598,28 @@ export function startRageArena({ strings, from, onExit }) {
         }
     }
 
+    /*
+     * Anna can fly over the whole page, not just what fits on screen: pushing against the top or
+     * bottom edge scrolls the content under her. The damage follows (scroll anchors above).
+     */
+    let edgeContainer = null
+    let edgeContainerAge = Infinity
+    const edgeScroll = dt => {
+        const pushingDown =
+            held.has('down') || (touchSeek && aim.y > viewport.height - EDGE_SCROLL_ZONE) || hero.vy > 60
+        const pushingUp = held.has('up') || (touchSeek && aim.y < 72 + EDGE_SCROLL_ZONE) || hero.vy < -60
+        let direction = 0
+        if (hero.y > viewport.height - EDGE_SCROLL_ZONE && pushingDown) direction = 1
+        else if (hero.y < 72 + EDGE_SCROLL_ZONE && pushingUp) direction = -1
+        if (!direction) return
+        edgeContainerAge += dt
+        if (edgeContainerAge > 0.5) {
+            edgeContainer = scrollContainerAt(hero.x, viewport.height / 2, inputLayer)
+            edgeContainerAge = 0
+        }
+        if (edgeContainer) edgeContainer.scrollTop += direction * EDGE_SCROLL_SPEED * dt
+    }
+
     /* Per-frame updates. */
     const updateHero = dt => {
         if (greeting) {
@@ -1209,6 +1633,7 @@ export function startRageArena({ strings, from, onExit }) {
             const seek = touchSeek ? touchHoverTarget(hero, aim, viewport) : null
             stepCharacter(hero, { thrust: moveVector(held), seek }, dt, viewport)
         }
+        edgeScroll(dt)
         if (aim.x > hero.x + 4) hero.facing = 1
         else if (aim.x < hero.x - 4) hero.facing = -1
         const targetYaw = hero.facing > 0 ? -HERO_YAW : Math.PI + HERO_YAW
@@ -1291,10 +1716,17 @@ export function startRageArena({ strings, from, onExit }) {
             removeBubble()
             resetRig()
         }
+        bolts.slice().forEach((bolt, index) => removeBolt(bolts.length - 1 - index))
+        // Every snake still crawling flies home too, tile by tile, to the letters it came from.
+        snakes
+            .splice(0)
+            .forEach(entry =>
+                entry.segments.forEach(segment => segmentToPiece(segment, segment.pos || segment.origin, 0))
+            )
         pieces.forEach(piece => {
             piece.snapshot = { x: piece.x, y: piece.y, z: piece.z, rx: piece.rx, ry: piece.ry, rz: piece.rz }
+            piece.snapshotScale = piece.mesh.scale.x
         })
-        bolts.slice().forEach((bolt, index) => removeBolt(bolts.length - 1 - index))
         inputLayer.style.boxShadow = 'inset 0 0 0 rgba(224,0,0,0)'
         help.style.opacity = '0'
         hud.style.opacity = '0'
@@ -1306,9 +1738,16 @@ export function startRageArena({ strings, from, onExit }) {
         const elapsed = time - rewindStart
         const t = elapsed / REWIND_SECONDS
         pieces.forEach(piece => {
-            const pose = rewindPose(piece.snapshot, piece.origin, t)
+            // Home is where the piece came from, moved by however far its list has scrolled since.
+            const shift = anchorShift(piece.anchor)
+            const home = { x: piece.origin.x + shift.x, y: piece.origin.y + shift.y, z: piece.origin.z }
+            const pose = rewindPose(piece.snapshot, home, t)
             toWorld(piece.mesh, pose.x, pose.y, pose.z)
             piece.mesh.rotation.set(pose.rx, pose.ry, pose.rz)
+            if (piece.restScale) {
+                const k = Math.min(1, t)
+                piece.mesh.scale.setScalar(piece.snapshotScale + (piece.restScale - piece.snapshotScale) * k)
+            }
         })
         // The hero flies back up into the top bar it came from.
         const home = from || { x: viewport.width / 2, y: -80 }
@@ -1327,10 +1766,9 @@ export function startRageArena({ strings, from, onExit }) {
             pieces.forEach(piece => {
                 piece.mesh.visible = fade < 0.02
             })
-            holeMaterials.forEach(material => {
+            fadingMaterials.forEach(material => {
                 material.opacity = 1 - fade
             })
-            scorchMaterial.opacity = 1 - fade
             if (fade >= 1) finish()
         }
     }
@@ -1352,12 +1790,14 @@ export function startRageArena({ strings, from, onExit }) {
                 pendingShot = false
                 fireCooldown = FIRE_INTERVAL
             }
+            updateSnakes(dt)
             updateBolts(dt)
             updatePieces(dt)
         } else {
             updateRewind()
         }
         updateEffects(dt)
+        updateAnchors()
         updateCamera(dt)
         renderer.render(scene, camera)
         if (phase !== 'done') frameId = requestAnimationFrame(frame)
@@ -1424,6 +1864,16 @@ export function startRageArena({ strings, from, onExit }) {
         if (down) held.add(direction)
         else held.delete(direction)
     }
+    // The wheel / trackpad scrolls whatever is under the pointer, as it would without the arena.
+    const onWheel = event => {
+        event.preventDefault()
+        event.stopPropagation()
+        const container = scrollContainerAt(event.clientX, event.clientY, inputLayer)
+        if (!container) return
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.height : 1
+        container.scrollTop += event.deltaY * unit
+        container.scrollLeft += event.deltaX * unit
+    }
     const onBlur = () => {
         held.clear()
         pointerFiring = false
@@ -1434,8 +1884,13 @@ export function startRageArena({ strings, from, onExit }) {
         // has moved under them, so the damage is repaired at once rather than left floating.
         pieces.splice(0).forEach(piece => {
             scene.remove(piece.mesh)
-            if (piece.kind !== 'glyph') piece.mesh.geometry.dispose()
+            if (piece.ownGeometry) piece.mesh.geometry.dispose()
         })
+        snakes.splice(0).forEach(entry => entry.segments.forEach(segment => scene.remove(segment.mesh)))
+        hud.dataset.snakes = '0'
+        coveredRows.splice(0)
+        anchors.clear()
+        scorchMeshes.splice(0)
         holes.clear()
         scorches.clear()
         destroyedGlyphs.clear()
@@ -1451,7 +1906,7 @@ export function startRageArena({ strings, from, onExit }) {
     inputLayer.addEventListener('pointerup', onPointerUp)
     inputLayer.addEventListener('pointercancel', onPointerUp)
     inputLayer.addEventListener('contextmenu', swallow)
-    inputLayer.addEventListener('wheel', swallow, { passive: false })
+    inputLayer.addEventListener('wheel', onWheel, { passive: false })
     inputLayer.addEventListener('touchstart', swallow, { passive: false })
     inputLayer.addEventListener('click', swallow)
     window.addEventListener('keydown', onKey, true)
@@ -1496,8 +1951,10 @@ export function startRageArena({ strings, from, onExit }) {
             if (node.parentNode) node.parentNode.removeChild(node)
         })
         pieces.forEach(piece => {
-            if (piece.kind !== 'glyph') piece.mesh.geometry.dispose()
+            if (piece.ownGeometry) piece.mesh.geometry.dispose()
         })
+        anchors.forEach(anchor => anchor.scorchMaterial && anchor.scorchMaterial.dispose())
+        tileTextureCache.clear()
         effects.forEach(effect => effect.material && effect.material.dispose())
         bolts.forEach(bolt => bolt.glow.material.dispose())
         character.root.traverse(node => {
