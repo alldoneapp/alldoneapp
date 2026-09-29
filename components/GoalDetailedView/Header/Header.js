@@ -80,8 +80,16 @@ export default function Header({ goal, projectId, navigation, accessGranted, isF
                         loggedUserCanUpdateObject={loggedUserCanUpdateObject}
                     />
                     <CopyLinkButton style={{ marginRight: 8 }} />
-                    <DvSearchButton />
-                    <DvBotButton navItem={DV_TAB_GOAL_CHAT} projectId={projectId} assistantId={goal.assistantId} />
+                    {accessGranted && (
+                        <>
+                            <DvSearchButton />
+                            <DvBotButton
+                                navItem={DV_TAB_GOAL_CHAT}
+                                projectId={projectId}
+                                assistantId={goal.assistantId}
+                            />
+                        </>
+                    )}
                     <OpenInNewWindowButton />
                 </View>
             )}

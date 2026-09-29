@@ -42,13 +42,17 @@ export default function TagList({ project, contact }) {
 
             <View style={{ flexDirection: 'row' }}>
                 <CopyLinkButton style={{ top: 3, marginRight: 8 }} />
-                <DvSearchButton style={{ top: 3 }} />
-                <DvBotButton
-                    style={{ top: 3 }}
-                    navItem={DV_TAB_CONTACT_CHAT}
-                    projectId={project.id}
-                    assistantId={contact.assistantId}
-                />
+                {accessGranted && (
+                    <>
+                        <DvSearchButton style={{ top: 3 }} />
+                        <DvBotButton
+                            style={{ top: 3 }}
+                            navItem={DV_TAB_CONTACT_CHAT}
+                            projectId={project.id}
+                            assistantId={contact.assistantId}
+                        />
+                    </>
+                )}
                 <OpenInNewWindowButton style={{ top: 3 }} />
             </View>
         </View>
