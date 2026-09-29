@@ -22,6 +22,17 @@ const TASKS = [
     'Book the dentist appointment',
     'Clean up the backlog before Monday',
 ]
+// Below the fold, so the page scrolls and there is more to fly to.
+const MORE_TASKS = [
+    'Renew the domain before it expires',
+    'Answer the partner survey',
+    'Plan the team offsite',
+    'Update the pricing page',
+    'Archive old projects',
+    'Review the hiring pipeline',
+    'Write the release notes',
+    'Call the insurance about the claim',
+]
 
 const makeImage = () => {
     const canvas = document.createElement('canvas')
@@ -75,7 +86,8 @@ document.body.innerHTML = `
     <p id="paragraph">${PARAGRAPH}</p>
     <div id="tasks">${TASKS.map(
         (task, i) =>
-            `<div class="row"><div class="check" id="check-${i}"></div><span>${task}</span>${
+            // The id is the one TaskPresentation renders (nativeID), which is how the arena finds rows.
+            `<div class="row" id="task_body_p_t${i}_false"><div class="check" id="check-${i}"></div><span>${task}</span>${
                 i % 2 ? '<span class="chip">Overdue</span>' : ''
             }</div>`
     ).join('')}</div>
@@ -85,6 +97,12 @@ document.body.innerHTML = `
       <button class="btn" id="primary">Save</button>
       <button class="btn" id="secondary" style="background:#09D693">Done</button>
     </div>
+  </div>
+  <div class="page" id="more">
+    <h1>Later</h1>
+    ${MORE_TASKS.map(
+        (task, i) => `<div class="row" id="task_body_p_m${i}_false"><div class="check"></div><span>${task}</span></div>`
+    ).join('')}
   </div>
 `
 
@@ -97,7 +115,7 @@ document.addEventListener('keydown', () => {
     state.appKeys += 1
 })
 
-state.pageHtml = document.getElementById('page').innerHTML
+state.pageHtml = document.body.innerHTML
 
 const strings = {
     title: 'Rage mode',

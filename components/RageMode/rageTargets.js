@@ -214,3 +214,90 @@ export const resolveHit = ({ x, y, radius, layer, destroyedGlyphs, destroyedBloc
         const element = stack.find(candidate => !isRageLayer(candidate))
         return element ? findBlockHit(element, destroyedBlocks, viewport) : null
     })
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Scrolling                                                                                        */
+/* ------------------------------------------------------------------------------------------------ */
+
+const isScrollable = element => {
+    if (!element || element.nodeType !== 1) return false
+    const overflowY = window.getComputedStyle(element).overflowY
+    return /(auto|scroll|overlay)/.test(overflowY) && element.scrollHeight > element.clientHeight + 1
+}
+
+/**
+ * The element that scrolls `element` vertically: the nearest scrollable ancestor, else the
+ * document's own scroller when the page itself scrolls, else null (nothing to scroll).
+ */
+export const findScrollContainer = element => {
+    let node = element && element.nodeType === 1 ? element : element && element.parentElement
+    while (node && node !== document.body && node !== document.documentElement) {
+        if (isScrollable(node)) return node
+        node = node.parentElement
+    }
+    const page = document.scrollingElement
+    return page && page.scrollHeight > page.clientHeight + 1 ? page : null
+}
+
+/** The scroll container under a screen point, looking through the arena's own layers. */
+export const scrollContainerAt = (x, y, layer) =>
+    withLayerTransparent(layer, () => {
+        const stack = document.elementsFromPoint ? document.elementsFromPoint(x, y) : []
+        const element = stack.find(candidate => !isRageLayer(candidate))
+        return element ? findScrollContainer(element) : null
+    })
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Task rows (the snakes)                                                                           */
+/* ------------------------------------------------------------------------------------------------ */
+
+// Every task row in the app carries `nativeID={`task_body_${projectId}_${taskId}_…`}` (TaskPresentation),
+// which react-native-web renders as the DOM id. Read-only: the arena never touches the row itself.
+export const TASK_ROW_SELECTOR = '[id^="task_body_"]'
+
+/** Task rows fully inside the play area (below the HUD, above the bottom edge), not yet taken. */
+export const findTaskRows = (viewport, taken, top = 64) =>
+    Array.from(document.querySelectorAll(TASK_ROW_SELECTOR)).filter(row => {
+        if (taken.has(row)) return false
+        const rect = row.getBoundingClientRect()
+        return (
+            rect.width > 40 &&
+            rect.height > 12 &&
+            rect.top >= top &&
+            rect.bottom <= viewport.height - 8 &&
+            rect.left >= 0 &&
+            rect.right <= viewport.width
+        )
+    })
+
+/**
+ * The visible letters of a row's text, in reading order, with the style they are drawn in — up to
+ * `max` of them. Letters clipped out of the row (an ellipsised title) are skipped.
+ */
+export const rowGlyphs = (row, max) => {
+    const rowRect = row.getBoundingClientRect()
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT)
+    const glyphs = []
+    let node = walker.nextNode()
+    while (node && glyphs.length < max) {
+        const text = node.textContent || ''
+        const parent = node.parentElement
+        if (parent && text.trim()) {
+            const style = glyphStyle(parent)
+            for (let i = 0; i < text.length && glyphs.length < max; i++) {
+                if (!/\S/.test(text[i])) continue
+                const rect = charRect(node, i)
+                if (!rect || rect.right > rowRect.right + 1 || rect.bottom > rowRect.bottom + 1) continue
+                glyphs.push({
+                    char: displayedChar(text[i], style.transform),
+                    node,
+                    index: i,
+                    style,
+                    rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+                })
+            }
+        }
+        node = walker.nextNode()
+    }
+    return glyphs
+}

@@ -91,6 +91,12 @@ const destroyedCount = page =>
         return counter ? parseInt(counter.textContent, 10) || 0 : -1
     })
 const layerCount = page => page.evaluate(() => document.querySelectorAll('[data-rage-mode-layer]').length)
+// The rewind runs on the arena's own clock, which a software-rendered test browser slows down (more
+// so at 2x density with snakes on screen): wait for it to finish rather than guessing how long it takes.
+const waitForArenaGone = page =>
+    page
+        .waitForFunction(() => !document.querySelector('[data-rage-mode-layer]'), null, { timeout: 10000 })
+        .catch(() => {})
 const centreOf = (page, selector) =>
     page.evaluate(sel => {
         const r = document.querySelector(sel).getBoundingClientRect()
@@ -134,6 +140,43 @@ async function desktop(browser, url) {
     const afterImage = await destroyedCount(page)
     check('shooting the picture shatters it', afterImage > afterText, `${afterText} → ${afterImage}`)
 
+    // Task snakes: rows peel out and crawl; shooting one shrinks it until it bursts.
+    const snakeState = () =>
+        page.evaluate(() => {
+            const hud = document.querySelector('[data-rage-mode-layer="hud"]')
+            const layer = document.querySelector('[data-rage-mode-layer="input"]')
+            return {
+                alive: Number(hud.dataset.snakes || 0),
+                hits: Number(hud.dataset.snakeHits || 0),
+                killed: Number(hud.dataset.snakesKilled || 0),
+                targets: layer.rageSnakeTargets ? layer.rageSnakeTargets() : [],
+            }
+        })
+    await page.waitForFunction(
+        () => Number(document.querySelector('[data-rage-mode-layer="hud"]').dataset.snakes || 0) >= 2,
+        null,
+        { timeout: 15000 }
+    )
+    check('task rows peel out as snakes, a few at a time', (await snakeState()).alive >= 2, (await snakeState()).alive)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'desktop-snakes.png') })
+    // Aim a third of the way down a snake's body: the rest of it crawls through that point after.
+    for (let round = 0; round < 60 && (await snakeState()).killed < 1; round++) {
+        const { targets } = await snakeState()
+        const body = targets.find(t => t.length) || []
+        if (body.length) {
+            const target = body[Math.floor(body.length / 3)]
+            await page.mouse.move(target.x, target.y)
+            await page.mouse.down()
+            await sleep(180)
+            await page.mouse.up()
+        }
+        await sleep(60)
+    }
+    const afterSnakes = await snakeState()
+    check('shooting a snake shrinks it tile by tile', afterSnakes.hits >= 3, afterSnakes.hits)
+    check('a snake bursts in the end', afterSnakes.killed >= 1, afterSnakes.killed)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'desktop-snake-hit.png') })
+
     // Space: Anna loops towards the camera and greets; clicks during the greeting are not shots.
     const beforeGreeting = await destroyedCount(page)
     await page.keyboard.press('Space')
@@ -172,6 +215,25 @@ async function desktop(browser, url) {
         `${duringGreeting} → ${afterGreeting}`
     )
 
+    // The whole page: the wheel scrolls it, and flying into the bottom edge scrolls it too.
+    const scrollTop = () => page.evaluate(() => document.scrollingElement.scrollTop)
+    const beforeWheel = await scrollTop()
+    await page.mouse.move(640, 400)
+    await page.mouse.wheel(0, 240)
+    await sleep(200)
+    const afterWheel = await scrollTop()
+    check('the wheel scrolls the page under the arena', afterWheel > beforeWheel, `${beforeWheel} → ${afterWheel}`)
+    await page.mouse.wheel(0, -2000)
+    await sleep(200)
+    await page.keyboard.down('KeyS')
+    await sleep(1600)
+    await page.keyboard.up('KeyS')
+    const afterEdge = await scrollTop()
+    check('flying into the bottom edge scrolls the page', afterEdge > 0, afterEdge)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'desktop-scrolled.png') })
+    await page.mouse.wheel(0, -2000)
+    await sleep(200)
+
     // Nothing may reach the app.
     const checkbox = await centreOf(page, '#check-0')
     const button = await centreOf(page, '#primary')
@@ -192,9 +254,9 @@ async function desktop(browser, url) {
     await page.keyboard.press('Escape')
     await sleep(500)
     await page.screenshot({ path: path.join(BUILD_DIR, 'desktop-rewind.png') })
-    await sleep(1200)
+    await waitForArenaGone(page)
     check('every arena layer is gone after Escape', (await layerCount(page)) === 0, await layerCount(page))
-    const intact = await page.evaluate(() => document.getElementById('page').innerHTML === window.__rage.pageHtml)
+    const intact = await page.evaluate(() => document.body.innerHTML === window.__rage.pageHtml)
     check('the page DOM is byte-identical afterwards', intact)
     check('onExit was called', await page.evaluate(() => window.__rage.exited))
     await page.mouse.click(checkbox.x, checkbox.y)
@@ -228,7 +290,7 @@ async function touch(browser, url) {
     check('touch: taps shoot letters out', destroyed > 3, destroyed)
     await page.screenshot({ path: path.join(BUILD_DIR, 'touch-mid.png') })
     await page.tap('[data-rage-mode-layer="hud"] button:last-child')
-    await sleep(1700)
+    await waitForArenaGone(page)
     check('touch: ✕ removes every arena layer', (await layerCount(page)) === 0, await layerCount(page))
     check('touch: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
     await context.close()
