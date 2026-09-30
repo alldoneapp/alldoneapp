@@ -91,6 +91,12 @@ it('falls back to the default palette for a project without a known color', () =
     expect(getProjectPalette('unknown')).toBe(getProjectPalette(PROJECT_COLOR_DEFAULT))
 })
 
+it('marks the complete project surface for task creation scroll context', () => {
+    const tree = renderer.create(<ProjectSection projectId="project-1" projectColor={PROJECT_COLOR_BLUE} />)
+    expect(tree.root.findByProps({ testID: 'project-section' }).props.dataSet).toEqual({ taskProjectId: 'project-1' })
+    act(() => tree.unmount())
+})
+
 it('forwards layout measurements from the existing project surface', () => {
     const onLayout = jest.fn()
     const event = { nativeEvent: { layout: { height: 240 } } }

@@ -14,6 +14,7 @@ import ProjectHelper, {
     checkIfSelectedProject,
 } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import AddTaskTag from '../Tags/AddTaskTag'
+import { getMostVisibleTaskProjectId } from './visibleTaskProject'
 import { colors } from '../styles/global'
 import {
     FLOATING_ACTION_SIZE,
@@ -36,10 +37,18 @@ export default function FloatingAddTaskButton() {
     const pendingWebShareTarget = useSelector(state => state.pendingWebShareTarget)
     const taskEditorCount = useSelector(state => state.taskEditorCount)
     const blockShortcuts = useSelector(state => state.blockShortcuts)
+    const showAllProjectsByTime = useSelector(state => state.loggedUser.showAllProjectsByTime)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
     const projectId = inAllProjects ? AUTOMATIC_PROJECT_OPTION : selectedProject?.id
+    const getInitialProjectId = useCallback(
+        () =>
+            inAllProjects && !showAllProjectsByTime
+                ? getMostVisibleTaskProjectId() || AUTOMATIC_PROJECT_OPTION
+                : projectId,
+        [inAllProjects, showAllProjectsByTime, projectId]
+    )
     const loggedUserCanUpdateProject =
         inSelectedProject &&
         (loggedUser?.uid === currentUser?.uid || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId)) &&
@@ -77,6 +86,7 @@ export default function FloatingAddTaskButton() {
         >
             <AddTaskTag
                 projectId={projectId}
+                getInitialProjectId={getInitialProjectId}
                 sourceType={FEED_TASK_OBJECT_TYPE}
                 expandTaskListIfNeeded={true}
                 setPressedShowMoreMainSection={inSelectedProject ? expandSelectedProjectTaskList : undefined}
