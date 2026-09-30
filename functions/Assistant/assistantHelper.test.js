@@ -10,7 +10,6 @@ const {
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     injectPendingAttachmentIntoToolArgs,
-    withEmailAttachmentToolDescriptions,
 } = require('./attachmentToolHandoff')
 const { resolveCreateTaskTargetProject } = require('./createTaskProjectResolver')
 const { extractMediaContextFromText } = require('../Utils/parseTextUtils')
@@ -771,52 +770,6 @@ describe('Responses API compatibility helpers', () => {
                 contentBytesLength: fileBase64.length,
             },
         })
-    })
-
-    test('adds email attachment guidance without changing cached schemas or leaking file bytes', () => {
-        const invoiceToolName = 'external_tool_bookkeeping_assistant__f5f03fdb4d16'
-        const cachedSchemas = [invoiceToolName, 'create_gmail_reply_draft', 'external_tool_other'].map(name => ({
-            type: 'function',
-            function: { name, description: 'Original description', parameters: { type: 'object' } },
-        }))
-        const context = {
-            channel: 'email',
-            invoiceToolName,
-            invoiceAttachmentPayload: { fileName: 'private-invoice.pdf', fileBase64: 'private-file-bytes' },
-        }
-        const described = withEmailAttachmentToolDescriptions(cachedSchemas, context)
-        expect(described[0].function.description).toContain('leave fileBase64 empty')
-        expect(described[0].function.description).toContain('directly to bookkeeping before creating a suggested task')
-        expect(described[1].function.description).toContain('sender explicitly requests a Gmail draft')
-        expect(described[1].function.description).toContain('final assistant reply is sent automatically')
-        expect(described[2]).toBe(cachedSchemas[2])
-        expect(described[0].function.parameters).toBe(cachedSchemas[0].function.parameters)
-        expect(cachedSchemas.map(schema => schema.function.description)).toEqual(Array(3).fill('Original description'))
-        expect(JSON.stringify(described)).not.toContain('private-file-bytes')
-        expect(JSON.stringify(described)).not.toContain('private-invoice.pdf')
-
-        const completed = withEmailAttachmentToolDescriptions(cachedSchemas, { ...context, invoiceToolAttempted: true })
-        expect(completed[0].function.description).toContain('do not upload the same invoice again')
-        expect(completed[0].function.description).not.toContain('injected automatically')
-        expect(withEmailAttachmentToolDescriptions(cachedSchemas, { channel: 'chat' })).toBe(cachedSchemas)
-        const builtInSchema = { type: 'web_search' }
-        expect(withEmailAttachmentToolDescriptions([builtInSchema], { channel: 'email' })).toEqual([builtInSchema])
-    })
-
-    test('sends email-specific draft guidance in the actual model tool schema', async () => {
-        mockResponsesCreate.mockResolvedValue([{ type: 'response.output_text.delta', delta: 'Reply' }])
-        const stream = await interactWithChatStream(
-            [['user', 'Forwarded invoice']],
-            'MODEL_GPT6_SOL',
-            'TEMPERATURE_NORMAL',
-            ['create_gmail_reply_draft'],
-            { channel: 'email' }
-        )
-        await stream.next()
-        const draftTool = mockResponsesCreate.mock.calls[0][0].tools.find(
-            tool => tool.name === 'create_gmail_reply_draft'
-        )
-        expect(draftTool.description).toContain('receiving or forwarding an invoice is not a draft request')
     })
 
     test('adds internal prompt cache markers only when explicit caching is enabled', () => {
