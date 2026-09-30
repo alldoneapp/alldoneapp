@@ -14,6 +14,9 @@ import {
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import { DEFAULT_WORKSTREAM_ID, WORKSTREAM_ID_PREFIX } from '../../../components/Workstreams/WorkstreamHelper'
 import { BACKLOG_DATE_NUMERIC } from '../../../components/TaskListView/Utils/TasksHelper'
+import { getTasksCompletedTodayQuery } from './myDayDoneTasks'
+
+const countDocs = (snapshot, predicate) => snapshot.docs.filter(doc => predicate(doc.data() || {})).length
 
 export const watchWorkflowTasksAmount = (projectIds, userId, watcherKeys) => {
     const { loggedUser } = store.getState()
@@ -68,24 +71,26 @@ export const watchDoneTasksAmount = (projectIds, userId, watcherKeys) => {
     const dateStartToday = moment().startOf('day').valueOf()
 
     projectIds.forEach((projectId, index) => {
-        globalWatcherUnsub[watcherKeys[index]] = getDb()
-            .collection(`items/${projectId}/tasks`)
-            .where('userId', '==', userId)
-            .where('done', '==', true)
-            .where('completed', '<=', dateEndToday)
-            .where('completed', '>=', dateStartToday)
-            .where('parentId', '==', null)
-            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
-            .onSnapshot(snapshot => {
-                const newAmount = snapshot.docs.length
-                const previousAmount = amountsByProject[projectId]
-                if (newAmount !== previousAmount) {
-                    if (previousAmount) amountsByProject.total -= previousAmount
-                    amountsByProject.total += newAmount
-                    amountsByProject[projectId] = newAmount
-                    store.dispatch(setDoneTasksAmount(amountsByProject.total))
-                }
-            })
+        // The same query as the My Day done list (one server target for both); a top-level task's
+        // inDone always equals done, so filtering here gives exactly the old done==true count.
+        globalWatcherUnsub[watcherKeys[index]] = getTasksCompletedTodayQuery(
+            projectId,
+            userId,
+            allowUserIds[allowUserIds.length - 1],
+            dateStartToday
+        ).onSnapshot(snapshot => {
+            const newAmount = countDocs(
+                snapshot,
+                task => task.done === true && task.parentId === null && task.completed <= dateEndToday
+            )
+            const previousAmount = amountsByProject[projectId]
+            if (newAmount !== previousAmount) {
+                if (previousAmount) amountsByProject.total -= previousAmount
+                amountsByProject.total += newAmount
+                amountsByProject[projectId] = newAmount
+                store.dispatch(setDoneTasksAmount(amountsByProject.total))
+            }
+        })
     })
 }
 
@@ -108,6 +113,23 @@ export const unwatchDoneTasksAmount = watcherKeys => {
  * contribute a count, and leaving it outstanding would keep a genuinely empty board from ever
  * showing its congrats.
  */
+/**
+ * The open, top-level tasks of a project that are due today or overdue, for every assignee.
+ *
+ * Built in ONE place so that every counter asking a question about today uses a byte-identical
+ * query. Firestore serves identical queries (same filters in the same order, same values) from a
+ * single server target, so the sidebar numbers, today's open-task amount and today's workstream
+ * amounts cost one listener per project instead of up to 2 + one per workstream. Callers filter the
+ * assignee on the client. Do not reorder the clauses: the order is part of the query's identity.
+ */
+export const getTodayOpenTasksQuery = (projectId, readerId, dateEndToday) =>
+    getDb()
+        .collection(`items/${projectId}/tasks`)
+        .where('done', '==', false)
+        .where('dueDate', '<=', dateEndToday)
+        .where('parentId', '==', null)
+        .where('readerIds', 'array-contains', readerId)
+
 const reportWatcherSettled = (onQuerySettled, token) => {
     if (typeof onQuerySettled === 'function') onQuerySettled(token)
 }
@@ -127,20 +149,30 @@ export const watchOpenTasksAmount = (
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
     const dateEndToday = moment().endOf('day').valueOf()
 
+    const readerId = allowUserIds[allowUserIds.length - 1]
+    const countsTodayOnly = !countLaterTasks && !countSomedayTasks
+
     projectIds.forEach((projectId, index) => {
-        let query = getDb()
-            .collection(`items/${projectId}/tasks`)
-            .where('done', '==', false)
-            .where('parentId', '==', null)
-            .where('currentReviewerId', '==', userId)
-            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
-        if (!countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<=', dateEndToday)
-        if (countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
+        let query
+        if (countsTodayOnly) {
+            // Shares the sidebar's per-project listener; see getTodayOpenTasksQuery.
+            query = getTodayOpenTasksQuery(projectId, readerId, dateEndToday)
+        } else {
+            query = getDb()
+                .collection(`items/${projectId}/tasks`)
+                .where('done', '==', false)
+                .where('parentId', '==', null)
+                .where('currentReviewerId', '==', userId)
+                .where('readerIds', 'array-contains', readerId)
+            if (countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
+        }
 
         globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(
             snapshot => {
                 if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
-                const newAmount = snapshot.docs.length
+                const newAmount = countsTodayOnly
+                    ? countDocs(snapshot, task => task.currentReviewerId === userId)
+                    : snapshot.docs.length
                 const previousAmount = amountsByProject[projectId].normal ? amountsByProject[projectId].normal : 0
 
                 if (newAmount !== previousAmount) {
@@ -244,7 +276,21 @@ export const watchUserWorkstreamsOpenTasksAmount = (
     const { uid: loggedUserId, isAnonymous } = loggedUser
 
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
+    const readerId = allowUserIds[allowUserIds.length - 1]
     const queryTokens = []
+    const countsTodayOnly = !countLaterTasks && !countSomedayTasks
+
+    const applyWorkstreamAmount = (projectId, wsId, newAmount) => {
+        if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
+        if (!amountsByProject[projectId].workstreams) amountsByProject[projectId].workstreams = {}
+        if (!amountsByProject[projectId].workstreams[wsId]) amountsByProject[projectId].workstreams[wsId] = 0
+        const previousAmount = amountsByProject[projectId].workstreams[wsId]
+        if (newAmount === previousAmount) return false
+        amountsByProject.total -= previousAmount
+        amountsByProject.total += newAmount
+        amountsByProject[projectId].workstreams[wsId] = newAmount
+        return true
+    }
 
     projectIds.forEach((projectId, index) => {
         const userWorkstreamIdsInProject =
@@ -253,6 +299,35 @@ export const watchUserWorkstreamsOpenTasksAmount = (
 
         const dateEndToday = moment().endOf('day').valueOf()
 
+        if (countsTodayOnly) {
+            // One shared listener per project answers every workstream at once (and is the same
+            // server target as the sidebar numbers). It used to be one query per workstream id, all
+            // stored under this single watcher key, so only the last of them could be unsubscribed.
+            const queryToken = watcherKeys[index]
+            queryTokens.push(queryToken)
+            globalWatcherUnsub[watcherKeys[index]] = getTodayOpenTasksQuery(
+                projectId,
+                readerId,
+                dateEndToday
+            ).onSnapshot(
+                snapshot => {
+                    let changed = false
+                    userWorkstreamIds.forEach(wsId => {
+                        const amount = countDocs(
+                            snapshot,
+                            task => task.userId === wsId && task.currentReviewerId === wsId
+                        )
+                        if (applyWorkstreamAmount(projectId, wsId, amount)) changed = true
+                    })
+                    if (changed) store.dispatch(setOpenTasksAmount(amountsByProject.total))
+                    reportWatcherSettled(onQuerySettled, queryToken)
+                },
+                () => reportWatcherSettled(onQuerySettled, queryToken)
+            )
+            return
+        }
+
+        const unsubscribers = []
         userWorkstreamIds.forEach(wsId => {
             let query = getDb()
                 .collection(`items/${projectId}/tasks`)
@@ -260,8 +335,7 @@ export const watchUserWorkstreamsOpenTasksAmount = (
                 .where('parentId', '==', null)
                 .where('userId', '==', wsId)
                 .where('currentReviewerId', '==', wsId)
-                .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
-            if (!countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<=', dateEndToday)
+                .where('readerIds', 'array-contains', readerId)
             if (countLaterTasks && !countSomedayTasks) query = query.where('dueDate', '<', BACKLOG_DATE_NUMERIC)
 
             // One token per QUERY: this watcher opens one listener per workstream id but stores them
@@ -270,26 +344,19 @@ export const watchUserWorkstreamsOpenTasksAmount = (
             const queryToken = `${watcherKeys[index]}:${wsId}`
             queryTokens.push(queryToken)
 
-            globalWatcherUnsub[watcherKeys[index]] = query.onSnapshot(
-                snapshot => {
-                    const newAmount = snapshot.docs.length
-                    if (!amountsByProject[projectId]) amountsByProject[projectId] = {}
-                    if (!amountsByProject[projectId].workstreams) amountsByProject[projectId].workstreams = {}
-                    if (!amountsByProject[projectId].workstreams[wsId])
-                        amountsByProject[projectId].workstreams[wsId] = 0
-                    const previousAmount = amountsByProject[projectId].workstreams[wsId]
-
-                    if (newAmount !== previousAmount) {
-                        amountsByProject.total -= previousAmount
-                        amountsByProject.total += newAmount
-                        amountsByProject[projectId].workstreams[wsId] = newAmount
-                        store.dispatch(setOpenTasksAmount(amountsByProject.total))
-                    }
-                    reportWatcherSettled(onQuerySettled, queryToken)
-                },
-                () => reportWatcherSettled(onQuerySettled, queryToken)
+            unsubscribers.push(
+                query.onSnapshot(
+                    snapshot => {
+                        if (applyWorkstreamAmount(projectId, wsId, snapshot.docs.length))
+                            store.dispatch(setOpenTasksAmount(amountsByProject.total))
+                        reportWatcherSettled(onQuerySettled, queryToken)
+                    },
+                    () => reportWatcherSettled(onQuerySettled, queryToken)
+                )
             )
         })
+        // All of this project's workstream listeners live under one watcher key.
+        globalWatcherUnsub[watcherKeys[index]] = () => unsubscribers.forEach(unsubscribe => unsubscribe())
     })
 
     return queryTokens
@@ -400,61 +467,59 @@ export const watchSidebarTasksAmount = (
         if (!usersTasksAmountByProject[projectId])
             usersTasksAmountByProject[projectId] = { loadedRegular: false, loadedObserved: false }
 
-        globalWatcherUnsub[normalWatcherKeys[index]] = getDb()
-            .collection(`items/${projectId}/tasks`)
-            .where('done', '==', false)
-            .where('dueDate', '<=', dateEndToday)
-            .where('parentId', '==', null)
-            .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
-            .onSnapshot(snapshot => {
-                const oldUsersTasksAmountByProject = cloneDeep(usersTasksAmountByProject)
-                usersTasksAmountByProject[projectId].loadedRegular = true
+        globalWatcherUnsub[normalWatcherKeys[index]] = getTodayOpenTasksQuery(
+            projectId,
+            allowUserIds[allowUserIds.length - 1],
+            dateEndToday
+        ).onSnapshot(snapshot => {
+            const oldUsersTasksAmountByProject = cloneDeep(usersTasksAmountByProject)
+            usersTasksAmountByProject[projectId].loadedRegular = true
 
-                const needToCountInWorkstreamsUsers = task => {
-                    const { userId } = task
-                    return typeof userId === 'string' && userId.startsWith(WORKSTREAM_ID_PREFIX)
-                }
+            const needToCountInWorkstreamsUsers = task => {
+                const { userId } = task
+                return typeof userId === 'string' && userId.startsWith(WORKSTREAM_ID_PREFIX)
+            }
 
-                const changes = snapshot.docChanges()
-                changes.forEach(change => {
-                    const taskId = change.doc.id
-                    const task = mapTaskData(taskId, change.doc.data())
-                    const { userId, currentReviewerId } = task
-                    const lastUid = currentReviewerId
+            const changes = snapshot.docChanges()
+            changes.forEach(change => {
+                const taskId = change.doc.id
+                const task = mapTaskData(taskId, change.doc.data())
+                const { userId, currentReviewerId } = task
+                const lastUid = currentReviewerId
 
-                    if (change.type === 'added') {
-                        taskHistory[projectId][taskId] = {
-                            previousUid: lastUid,
-                            workstreamId: null,
-                            wsUsersIds: [],
-                        }
-                        increaseUserCount(projectId, lastUid)
-                        if (needToCountInWorkstreamsUsers(task)) setTaskWorkstreamUsers(projectId, taskId, userId)
-                    } else if (change.type === 'removed') {
-                        const history = taskHistory[projectId][taskId]
-                        if (history) {
-                            decreaseUserCount(projectId, history.previousUid)
-                            setTaskWorkstreamUsers(projectId, taskId, null)
-                            delete taskHistory[projectId][taskId]
-                        }
-                    } else {
-                        const history = taskHistory[projectId][taskId]
-                        if (history) {
-                            const previousUid = history.previousUid
-                            const nextWorkstreamId = needToCountInWorkstreamsUsers(task) ? userId : null
-                            setTaskWorkstreamUsers(projectId, taskId, nextWorkstreamId)
-                            if (previousUid !== lastUid) {
-                                decreaseUserCount(projectId, previousUid)
-                                history.previousUid = lastUid
-                                increaseUserCount(projectId, lastUid)
-                            }
+                if (change.type === 'added') {
+                    taskHistory[projectId][taskId] = {
+                        previousUid: lastUid,
+                        workstreamId: null,
+                        wsUsersIds: [],
+                    }
+                    increaseUserCount(projectId, lastUid)
+                    if (needToCountInWorkstreamsUsers(task)) setTaskWorkstreamUsers(projectId, taskId, userId)
+                } else if (change.type === 'removed') {
+                    const history = taskHistory[projectId][taskId]
+                    if (history) {
+                        decreaseUserCount(projectId, history.previousUid)
+                        setTaskWorkstreamUsers(projectId, taskId, null)
+                        delete taskHistory[projectId][taskId]
+                    }
+                } else {
+                    const history = taskHistory[projectId][taskId]
+                    if (history) {
+                        const previousUid = history.previousUid
+                        const nextWorkstreamId = needToCountInWorkstreamsUsers(task) ? userId : null
+                        setTaskWorkstreamUsers(projectId, taskId, nextWorkstreamId)
+                        if (previousUid !== lastUid) {
+                            decreaseUserCount(projectId, previousUid)
+                            history.previousUid = lastUid
+                            increaseUserCount(projectId, lastUid)
                         }
                     }
-                })
-                if (!isEqual(oldUsersTasksAmountByProject, usersTasksAmountByProject)) {
-                    updateSidebarNumbers(projectIds, packageAmountsInArray())
                 }
             })
+            if (!isEqual(oldUsersTasksAmountByProject, usersTasksAmountByProject)) {
+                updateSidebarNumbers(projectIds, packageAmountsInArray())
+            }
+        })
 
         globalWatcherUnsub[observedWatcherKeys[index]] = getDb()
             .collection(`items/${projectId}/tasks`)

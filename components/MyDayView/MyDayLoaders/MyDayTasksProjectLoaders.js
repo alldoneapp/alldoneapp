@@ -18,8 +18,6 @@ import { watchDoneTasks } from '../../../utils/backends/Tasks/myDayDoneTasks'
 import {
     watchIfThereAreFutureAndSomedayEmptyGoals,
     watchIfThereAreFutureAndSomedayObservedTasks,
-    watchIfThereAreFutureTasksToAttend,
-    watchIfThereAreSomedayTasksToAttend,
 } from '../../../utils/backends/Tasks/openTasksShowMore/openTasksShowMore'
 
 export default function MyDayTasksProjectLoaders({ projectId }) {
@@ -71,21 +69,10 @@ export default function MyDayTasksProjectLoaders({ projectId }) {
         }
     }, [])
 
-    useEffect(() => {
-        const watcherKey = v4()
-        watchIfThereAreFutureTasksToAttend(projectId, loggedUserId, false, loggedUserId, watcherKey)
-        return () => {
-            unwatch(watcherKey)
-        }
-    }, [projectId, loggedUserId])
-
-    useEffect(() => {
-        const watcherKey = v4()
-        watchIfThereAreSomedayTasksToAttend(projectId, loggedUserId, false, loggedUserId, watcherKey)
-        return () => {
-            unwatch(watcherKey)
-        }
-    }, [projectId, loggedUserId])
+    // No live `limit(1)` probes for Later/Someday assigned tasks here. They wrote only the task
+    // board's show-more flags, which the board computes itself (NeedShowMoreOpenTasksButton: live in
+    // a selected project, re-checked on All Projects whenever the project's today count changes).
+    // Keeping them cost two extra live Firestore listeners per project on every screen.
 
     useEffect(() => {
         const watcherKey = v4()
