@@ -19,6 +19,7 @@ const {
     generateTypesenseScopedSearchKey,
     normalizeDocumentForTypesense,
     adaptTypesenseSearchHit,
+    searchTypesenseDocuments,
     upsertTypesenseDocument,
     deleteTypesenseDocument,
     importTypesenseDocuments,
@@ -31,6 +32,7 @@ const CONFIGURED_ENV = { TYPESENSE_HOST: 'abc.a1.typesense.net', TYPESENSE_ADMIN
 // Fake typesense client: collections() -> {create}, collections(name) -> {retrieve, documents}
 const makeFakeClient = ({ collectionExists = true } = {}) => {
     const upsert = jest.fn().mockResolvedValue({})
+    const search = jest.fn().mockResolvedValue({ hits: [] })
     const importFn = jest.fn().mockImplementation(docs => Promise.resolve(docs.map(() => ({ success: true }))))
     const deleteByFilter = jest.fn().mockResolvedValue({})
     const deleteDoc = jest.fn().mockResolvedValue({})
@@ -46,14 +48,14 @@ const makeFakeClient = ({ collectionExists = true } = {}) => {
             return {
                 retrieve,
                 documents: id => {
-                    if (id === undefined) return { upsert, import: importFn, delete: deleteByFilter }
+                    if (id === undefined) return { upsert, search, import: importFn, delete: deleteByFilter }
                     return { delete: deleteDoc }
                 },
             }
         },
         keys: () => ({ generateScopedSearchKey }),
     }
-    return { client, upsert, importFn, deleteByFilter, deleteDoc, create, retrieve, generateScopedSearchKey }
+    return { client, upsert, search, importFn, deleteByFilter, deleteDoc, create, retrieve, generateScopedSearchKey }
 }
 
 beforeEach(() => {
@@ -139,6 +141,35 @@ describe('search hit adaptation', () => {
             id: 'task-1',
             objectID: 'task-1',
         })
+    })
+})
+
+describe('server search ranking (AT-2663)', () => {
+    it.each(ALL_COLLECTIONS)('uses the shared edit-date boost for %s before fetching hits', async collection => {
+        getEnvFunctions.mockReturnValue(CONFIGURED_ENV)
+        const { client, search } = makeFakeClient()
+        Typesense.Client.mockImplementation(() => client)
+        await expect(
+            searchTypesenseDocuments(collection, 'roadmap', { filterBy: 'projectId:=p', perPage: 50 })
+        ).resolves.toEqual({ hits: [] })
+        const params = search.mock.calls[0][0]
+        expect(params).toMatchObject({
+            q: 'roadmap',
+            filter_by: 'projectId:=p',
+            per_page: 50,
+            highlight_fields: 'none',
+        })
+        expect(params.sort_by).toMatch(/^_eval\(/)
+        expect(params.sort_by).toContain('_text_match(bucket_size: 5):desc,lastEditionDate(missing_values: last):desc')
+        expect(params.sort_by).not.toContain('created')
+    })
+
+    it('sorts match-all server searches by the last edit', async () => {
+        getEnvFunctions.mockReturnValue(CONFIGURED_ENV)
+        const { client, search } = makeFakeClient()
+        Typesense.Client.mockImplementation(() => client)
+        await searchTypesenseDocuments(TASKS_COLLECTION, '*')
+        expect(search.mock.calls[0][0].sort_by).toBe('lastEditionDate(missing_values: last):desc')
     })
 })
 
