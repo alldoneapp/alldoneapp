@@ -2,6 +2,7 @@ import { getDb } from '../firestore'
 import store from '../../../redux/store'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import { awaitWriteAck } from '../offlineWriteAck'
+import { getSummaryChatNotification, queueSummaryChatNotificationWrite } from '../Feeds/activityUnreadSummary'
 
 const TOTAL_COUNT_KEYS = new Set(['totalFollowed', 'totalUnfollowed'])
 
@@ -65,6 +66,7 @@ export async function markChatCommentsAsRead(commentRefs = []) {
     const batch = new BatchWrapper(getDb())
     uniqueRefs.forEach(({ projectId, commentId }) => {
         batch.delete(getNotificationRef(projectId, userId, commentId))
+        queueSummaryChatNotificationWrite(batch, userId, projectId, commentId, null)
     })
     // The delete lands in the local cache the moment it is issued, which is what makes the
     // comment disappear from the unread list at once (AT-2424). Offline the server ack can
@@ -141,6 +143,10 @@ export async function captureChatNotifications(commentRefs = []) {
     return (
         await Promise.all(
             uniqueRefs.map(async ref => {
+                // With the activity summary live, the collection is no longer under a listener,
+                // so the summary's in-memory copy is the current one; the cache is the fallback.
+                const summaryData = getSummaryChatNotification(ref.projectId, ref.commentId)
+                if (summaryData) return { ...ref, data: summaryData }
                 try {
                     const snapshot = await getNotificationRef(ref.projectId, userId, ref.commentId).get({
                         source: 'cache',
@@ -165,6 +171,7 @@ export async function restoreChatNotifications(captured = []) {
     const batch = new BatchWrapper(getDb())
     entries.forEach(({ projectId, commentId, data }) => {
         batch.set(getNotificationRef(projectId, userId, commentId), data)
+        queueSummaryChatNotificationWrite(batch, userId, projectId, commentId, data)
     })
     await awaitWriteAck(batch.commit(), 'restore chat notifications')
 }

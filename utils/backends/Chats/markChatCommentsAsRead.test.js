@@ -13,6 +13,10 @@ import store from '../../../redux/store'
 
 jest.mock('../firestore', () => ({ getDb: jest.fn() }))
 jest.mock('../../../redux/store', () => ({ __esModule: true, default: { getState: jest.fn() } }))
+jest.mock('../Feeds/activityUnreadSummary', () => ({
+    getSummaryChatNotification: jest.fn(() => null),
+    queueSummaryChatNotificationWrite: jest.fn(),
+}))
 
 const deletedPaths = []
 const writtenDocs = []

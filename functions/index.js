@@ -3923,6 +3923,29 @@ exports.onUpdateProjectSecondGen = onDocumentUpdated(
     }
 )
 
+// Unread badges: mirror each user's per-project counters into one document the client watches
+// (functions/Feeds/activityUnreadSummary.js). Small and idempotent, so no retries and a short timeout.
+exports.mirrorFeedsCountToUnreadSummarySecondGen = onDocumentWritten(
+    { document: 'feedsCount/{projectId}/{userId}/{tab}', timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1' },
+    async event => {
+        const { mirrorFeedsCount } = require('./Feeds/activityUnreadSummary')
+        await mirrorFeedsCount(event.params)
+    }
+)
+
+exports.mirrorChatNotificationToUnreadSummarySecondGen = onDocumentWritten(
+    {
+        document: 'chatNotifications/{projectId}/{userId}/{commentId}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { mirrorChatNotification } = require('./Feeds/activityUnreadSummary')
+        await mirrorChatNotification(event.params)
+    }
+)
+
 exports.processFirestoreAccessProjectionJobSecondGen = onDocumentWritten(
     {
         document: `${ACCESS_PROJECTION_JOBS_COLLECTION}/{projectId}`,

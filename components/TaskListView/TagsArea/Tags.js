@@ -1,3 +1,4 @@
+import v4 from 'uuid/v4'
 import React, { useState, useEffect } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
 import moment from 'moment'
@@ -200,6 +201,9 @@ export default function Tags({
     }
 
     useEffect(() => {
+        // Own key: without one, a second row showing the same task replaced this registration and
+        // either unmount then closed the other's listener.
+        const watcherKey = v4()
         Backend.watchBacklinksCount(
             projectId,
             {
@@ -215,11 +219,12 @@ export default function Tags({
                     setBacklinksNotesCount(parentsAmount)
                     setBacklinkNoteObject(aloneParentObject)
                 }
-            }
+            },
+            watcherKey
         )
 
         return () => {
-            Backend.unwatchBacklinksCount(task.id)
+            Backend.unwatchBacklinksCount(task.id, watcherKey)
         }
     }, [task.id])
 

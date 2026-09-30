@@ -1203,6 +1203,34 @@ describe('queries used by the web client', () => {
         expect(snapshot.docs.map(item => item.id).sort()).toEqual(['private-task', 'public-task'])
     })
 
+    it('allows one combined backlink query for many objects of a project', async () => {
+        // backlinksCountRegistry answers every visible row of a project with one array-contains-any
+        // query on the reader's projection instead of one array-contains query per row.
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const tasks = query(
+            collection(memberDb, `items/${PROJECT_ID}/tasks`),
+            where(new FieldPath('backlinkIdsVisibleTo', MEMBER_ID), 'array-contains-any', [
+                BACKLINK_TOKEN,
+                INNER_TASK_NOTE_TOKEN,
+            ])
+        )
+
+        const snapshot = await assertSucceeds(getDocs(tasks))
+        expect(snapshot.docs.map(item => item.id).sort()).toEqual(['private-task', 'public-task'])
+
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        await assertFails(
+            getDocs(
+                query(
+                    collection(outsiderDb, `items/${PROJECT_ID}/tasks`),
+                    where(new FieldPath('backlinkIdsVisibleTo', OUTSIDER_ID), 'array-contains-any', [
+                        INNER_TASK_NOTE_TOKEN,
+                    ])
+                )
+            )
+        )
+    })
+
     it('loads note inner tasks through the per-reader backlink projection', async () => {
         const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
         const projectedTasks = query(

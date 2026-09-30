@@ -94,6 +94,7 @@ import {
 } from './chatNotificationPriority'
 import { buildCommentNotificationIdentity } from './commentNotificationHelper'
 import { isNewComment, queueObjectActivityFeedUnreadClear } from '../Feeds/activityFeedReadState'
+import { queueSummaryChatNotificationPatch, subscribeActivitySummary } from '../Feeds/activityUnreadSummary'
 
 export { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification }
 
@@ -145,15 +146,24 @@ export async function getChatCommentsWithLinkedEmails(projectId, chatType, chatI
 }
 
 export function watchChatNotifications(projectId, userId, watcherKey, callback) {
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`chatNotifications/${projectId}/${userId}`)
-        .onSnapshot(snapshot => {
-            const notifications = []
-            snapshot.forEach(doc => {
-                notifications.push(getChatNotificationWithCommentId(doc))
-            })
-            callback(notifications)
-        })
+    // Served from the user's one activity summary listener when it is live for this project; the
+    // direct per-project listener is the fallback (see Feeds/activityUnreadSummary.js).
+    globalWatcherUnsub[watcherKey] = subscribeActivitySummary({
+        userId,
+        projectId,
+        kind: 'chats',
+        onData: callback,
+        legacySubscribe: deliver =>
+            getDb()
+                .collection(`chatNotifications/${projectId}/${userId}`)
+                .onSnapshot(snapshot => {
+                    const notifications = []
+                    snapshot.forEach(doc => {
+                        notifications.push(getChatNotificationWithCommentId(doc))
+                    })
+                    deliver(notifications)
+                }),
+    })
 }
 
 export const getParentObjectData = async (projectId, objectId, objectType) => {
@@ -1207,6 +1217,7 @@ async function setFollowChatNotifications(projectId, userId, chatId, followed, b
         .get()
     docs.forEach(doc => {
         batch.update(getDb().doc(`chatNotifications/${projectId}/${userId}/${doc.id}`), { followed })
+        queueSummaryChatNotificationPatch(batch, userId, projectId, doc.id, { followed })
     })
 }
 

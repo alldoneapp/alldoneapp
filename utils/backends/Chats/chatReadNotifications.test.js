@@ -1,10 +1,15 @@
 import { markChatMessagesAsRead, markMessagesAsRead } from './chatReadNotifications'
 import { getDb, runHttpsCallableFunction } from '../firestore'
 import store from '../../../redux/store'
+import { queueSummaryChatNotificationWrite } from '../Feeds/activityUnreadSummary'
 
 jest.mock('../firestore', () => ({ getDb: jest.fn(), runHttpsCallableFunction: jest.fn() }))
 jest.mock('../../../redux/store', () => ({ __esModule: true, default: { getState: jest.fn() } }))
 jest.mock('../offlineWriteAck', () => ({ awaitWriteAck: promise => promise }))
+jest.mock('../Feeds/activityUnreadSummary', () => ({
+    ...jest.requireActual('../Feeds/activityUnreadSummary'),
+    queueSummaryChatNotificationWrite: jest.fn(),
+}))
 
 const snapshot = (path, data) => ({
     id: path.split('/').pop(),
@@ -81,7 +86,14 @@ describe('markChatMessagesAsRead', () => {
         expect(runHttpsCallableFunction).toHaveBeenCalledWith('markChatNotificationsReadSecondGen', {
             projectId: 'project-1',
             chatId: 'chat-1',
-        })
+        }) // The badge reads the activity summary: its copy is cleared in the same batch.
+        expect(queueSummaryChatNotificationWrite).toHaveBeenCalledWith(
+            expect.anything(),
+            'user-1',
+            'project-1',
+            'comment-1',
+            null
+        )
     })
 
     it('does nothing without a signed-in user', async () => {

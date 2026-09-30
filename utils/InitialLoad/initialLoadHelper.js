@@ -5,20 +5,12 @@ import { getGlobalAssistants, getProjectAssistants, watchAssistants } from '../b
 import { getProjectContacts } from '../backends/Contacts/contactsFirestore'
 import { getProjectUsers, removeCopyProjectIdFromUser } from '../backends/Users/usersFirestore'
 import { getProjectWorkstreams } from '../backends/Workstreams/workstreamsFirestore'
-import {
-    getAdministratorUser,
-    getProjectData,
-    unwatch,
-    watchProject,
-    watchProjectInvitations,
-    watchUserData,
-} from '../backends/firestore'
+import { getAdministratorUser, getProjectData, unwatch, watchProject, watchUserData } from '../backends/firestore'
 import {
     removeProjectData,
     setAdministratorAndGlobalAssistants,
     setAdministratorUser,
     setGlobalAssistants,
-    setInvitationsInProject,
     setShowEndCopyProjectPopup,
     storeLoggedUser,
     updateUserProject,
@@ -99,11 +91,9 @@ export function watchProjectData(projectId, likeProjectMember, watchChatNotifica
 }
 
 export const watchProjectDataThatIsOnlyForProjectMembers = (projectId, watchChatNotifications) => {
-    const updateInvitations = invitations => {
-        store.dispatch(setInvitationsInProject(projectId, invitations))
-    }
-
-    watchProjectInvitations(projectId, updateInvitations, `${projectId}Invitations`)
+    // Pending invitations are only rendered by ProjectMembers, which watches them while it is open.
+    // Watching them here cost one live listener per project at every login, for collections that
+    // are empty almost everywhere.
     if (watchChatNotifications) watchProjectChatNotifications(projectId)
 }
 
