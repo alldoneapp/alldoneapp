@@ -1,5 +1,6 @@
 import ReactQuill from 'react-quill-new'
 import v4 from 'uuid/v4'
+import { normalizeMarkdownTableCell } from '../../../../utils/markdownTableParser'
 
 // A table is block content, so the blot must be a BlockEmbed. The quill-1 era
 // version was an inline Embed (span) styled display:block — under quill 2 the
@@ -19,7 +20,7 @@ const parseInlineFormatting = text => {
 
     const findNextMatch = str => {
         const matches = []
-        const boldItalicMatch = /\*\*\*(.+?)\*\*\*/.exec(str)
+        const boldItalicMatch = /\*\*\*(.+?)\*\*\*/s.exec(str)
         if (boldItalicMatch) {
             matches.push({
                 index: boldItalicMatch.index,
@@ -31,7 +32,7 @@ const parseInlineFormatting = text => {
             })
         }
 
-        const boldMatch = /\*\*(.+?)\*\*/.exec(str)
+        const boldMatch = /\*\*(.+?)\*\*/s.exec(str)
         if (boldMatch && (!boldItalicMatch || boldMatch.index < boldItalicMatch.index)) {
             const beforeBold = str.substring(0, boldMatch.index)
             const afterBold = str.substring(boldMatch.index + boldMatch[0].length)
@@ -50,7 +51,7 @@ const parseInlineFormatting = text => {
         let italicSearchStart = 0
         while (italicSearchStart < str.length) {
             const searchStr = str.substring(italicSearchStart)
-            const italicMatch = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/.exec(searchStr)
+            const italicMatch = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/s.exec(searchStr)
             if (!italicMatch) break
 
             const actualIndex = italicSearchStart + italicMatch.index
@@ -70,7 +71,7 @@ const parseInlineFormatting = text => {
             italicSearchStart = actualIndex + 1
         }
 
-        const strikeMatch = /~~(.+?)~~/.exec(str)
+        const strikeMatch = /~~(.+?)~~/s.exec(str)
         if (strikeMatch) {
             matches.push({
                 index: strikeMatch.index,
@@ -131,7 +132,7 @@ const createCell = (tagName, text, alignment) => {
     if (alignment) {
         cell.style.textAlign = alignment
     }
-    appendFormattedText(cell, text)
+    appendFormattedText(cell, normalizeMarkdownTableCell(text))
     return cell
 }
 

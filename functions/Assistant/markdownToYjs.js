@@ -263,14 +263,14 @@ function splitMarkdownTableRow(line) {
             cell += '|'
             i += 1
         } else if (char === '|') {
-            cells.push(cell.trim())
+            cells.push(cell.trim().replace(/<br\s*\/?>/gi, '\n'))
             cell = ''
         } else {
             cell += char
         }
     }
 
-    cells.push(cell.trim())
+    cells.push(cell.trim().replace(/<br\s*\/?>/gi, '\n'))
     return cells
 }
 

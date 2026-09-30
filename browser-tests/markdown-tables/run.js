@@ -96,10 +96,62 @@ const server = http.createServer((req, res) => {
             await input.press('Enter')
             assert.equal(await page.evaluate(() => editor.getText()), 'Before the table\nAfter the table\n')
             assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+            const originalCellWidth = (await first.boundingBox()).width
+            await first.click()
+            const longText =
+                'Aim to release a standalone version of the Customer Service Agent with controlled rollout and monitoring for each pilot.'
+            await input.fill(longText)
+            const wrapped = await input.evaluate(element => ({
+                height: element.clientHeight,
+                lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+                scrollHeight: element.scrollHeight,
+                scrollWidth: element.scrollWidth,
+                width: element.clientWidth,
+            }))
+            assert.ok(wrapped.height > wrapped.lineHeight * 2, 'Long cell text must wrap across visible lines')
+            assert.ok(wrapped.scrollHeight <= wrapped.height + 1, 'All wrapped lines must remain visible')
+            assert.ok(wrapped.scrollWidth <= wrapped.width + 1, 'Cell text must not scroll horizontally')
+            assert.ok(
+                Math.abs((await first.boundingBox()).width - originalCellWidth) < 1,
+                'Editing must keep column widths steady'
+            )
+            await input.press('End')
+            await input.press('Shift+Enter')
+            await input.pressSequentially('Second line')
+            assert.equal(await input.inputValue(), `${longText}\nSecond line`)
+            await page.screenshot({
+                path: path.join(output, mobile ? 'mobile-editing.png' : 'desktop-editing.png'),
+                fullPage: true,
+            })
+            await input.press('Enter')
+            assert.equal(await page.evaluate(() => tableValue().rows[1][0]), `${longText}\nSecond line`)
+            assert.equal(await first.textContent(), `${longText}\nSecond line`)
+            await first.click()
+            assert.equal(await input.inputValue(), `${longText}\nSecond line`)
+            await input.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A')
+            await page.evaluate(() => navigator.clipboard.writeText('Pasted first line\nPasted second line'))
+            await input.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V')
+            await page.waitForFunction(
+                () => document.querySelector('.ql-table-cell-input').value === 'Pasted first line\nPasted second line'
+            )
+            await input.press('Escape')
+            assert.equal(await input.count(), 0, 'Escape must close the cell editor')
+            assert.equal(await page.locator('.ql-table-controls').count(), 0, 'Escape must exit table controls')
+            assert.equal(await page.evaluate(() => tableValue().rows[1][0]), `${longText}\nSecond line`)
+            assert.equal(await first.textContent(), `${longText}\nSecond line`)
+            await first.click()
+            assert.equal(await input.inputValue(), `${longText}\nSecond line`, 'Escape must discard the pasted draft')
+            await input.press('Escape')
             await page.screenshot({ path: path.join(output, mobile ? 'mobile.png' : 'desktop.png'), fullPage: true })
+            // The cell selection guard must release the normal document caret.
+            await page.evaluate(() => editor.setSelection(0, 0, 'user'))
+            await page.keyboard.type('Note typing ')
+            assert.equal(await page.evaluate(() => editor.getText()), 'Note typing Before the table\nAfter the table\n')
+            await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Z' : 'Control+Z')
+            assert.equal(await page.evaluate(() => editor.getText()), 'Before the table\nAfter the table\n')
             assert.deepEqual(errors, [])
             console.log(
-                `${mobile ? 'Mobile touch' : 'Desktop'}: inline edit, Tab, undo/redo, Escape, native paste, row/column controls and alignment passed`
+                `${mobile ? 'Mobile touch' : 'Desktop'}: cell wrapping, multiline save/reopen, native editing and table controls passed`
             )
             await context.close()
         }

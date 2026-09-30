@@ -2,6 +2,7 @@ import Quill from 'quill'
 import * as Y from 'yjs'
 import { QuillBinding } from 'y-quill'
 import MarkdownTableFormat from './MarkdownTableFormat'
+import { markdownToDelta } from './markdownToDelta'
 import './markdownTableEditing'
 
 Quill.register('formats/markdownTable', MarkdownTableFormat, true)
@@ -51,6 +52,50 @@ afterEach(() => {
 })
 
 describe('inline Markdown table editing with real Quill', () => {
+    it('keeps manual cell breaks through commit, Yjs persistence and Markdown paste', () => {
+        const quill = buildEditor()
+        const doc = new Y.Doc()
+        doc.getText('quill').applyDelta(quill.getContents().ops)
+        const binding = new QuillBinding(doc.getText('quill'), quill)
+        const input = open(quill)
+        expect(input.tagName).toBe('TEXTAREA')
+        expect(key(input, 'Enter', { shiftKey: true }).defaultPrevented).toBe(false)
+        expect(value(quill).rows).toEqual(TABLE.rows)
+        input.value = '**First line**\nSecond | line\nThird line'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        key(input, 'Enter')
+        expect(value(quill).rows[1][0]).toBe('**First line**\nSecond | line\nThird line')
+        const restored = new Y.Doc()
+        Y.applyUpdate(restored, Y.encodeStateAsUpdate(doc))
+        expect(
+            restored
+                .getText('quill')
+                .toDelta()
+                .find(op => op.insert?.markdownTable).insert.markdownTable
+        ).toEqual(value(quill))
+        const { markdownTableToMarkdown } = require('../../../../functions/Assistant/deltaToMarkdown')
+        const markdown = markdownTableToMarkdown(value(quill))
+        expect(markdown).toContain('**First line**<br>Second \\| line<br>Third line')
+        const pasted = markdownToDelta(markdown, Quill.import('delta'))
+        expect(pasted.ops.find(op => op.insert?.markdownTable).insert.markdownTable.rows).toEqual(value(quill).rows)
+        binding.destroy()
+        doc.destroy()
+        restored.destroy()
+    })
+
+    it('opens legacy HTML breaks without rewriting untouched cell content', () => {
+        const quill = buildEditor()
+        quill.setContents([
+            { insert: { markdownTable: { rows: [['Heading'], ['First<br />Second']], alignments: [] } } },
+        ])
+        quill.history.clear()
+        const input = open(quill)
+        expect(input.value).toBe('First\nSecond')
+        input.blur()
+        expect(value(quill).rows[1][0]).toBe('First<br />Second')
+        expect(quill.history.stack.undo).toHaveLength(0)
+    })
+
     it('commits on Enter as a local delta, preserves formatting and surrounding text, and reloads', () => {
         const quill = buildEditor()
         const changes = []
@@ -87,17 +132,42 @@ describe('inline Markdown table editing with real Quill', () => {
         expect(quill.getText()).toContain('Typed Before')
     })
 
-    it('cancels on Escape without an undo entry and commits on blur', () => {
+    it('discards multiline edits on Escape, closes controls and does not save on subsequent blur', () => {
         const quill = buildEditor()
+        const changes = jest.fn()
+        quill.on('text-change', changes)
         const input = open(quill)
-        input.value = 'Discard'
-        key(input, 'Escape')
+        input.value = 'Discard\nThis second line too'
+        expect(key(input, 'Escape').defaultPrevented).toBe(true)
+        expect(quill.root.querySelector('.ql-table-cell-input')).toBeNull()
+        expect(quill.root.querySelector('.ql-table-controls')).toBeNull()
+        expect(cell(quill).textContent).toBe('Alice')
+        expect(cell(quill).querySelector('span').style.fontWeight).toBe('700')
+        expect(document.activeElement).toBe(cell(quill))
+        input.dispatchEvent(new FocusEvent('blur'))
         expect(value(quill)).toEqual(TABLE)
+        expect(changes).not.toHaveBeenCalled()
         expect(quill.history.stack.undo).toHaveLength(0)
         const next = open(quill)
+        expect(next.value).toBe('**Alice**')
         next.value = 'Keep'
         next.blur()
         expect(value(quill).rows[1][0]).toBe('Keep')
+    })
+
+    it('exits table controls with Escape from a saved cell or a focused control', () => {
+        const quill = buildEditor()
+        key(open(quill), 'Enter')
+        expect(key(cell(quill), 'Escape').defaultPrevented).toBe(true)
+        expect(quill.root.querySelector('.ql-table-controls')).toBeNull()
+        key(open(quill), 'Enter')
+        const button = tableNode(quill).querySelector('[data-table-action="add-row"]')
+        button.focus()
+        expect(key(button, 'Escape').defaultPrevented).toBe(true)
+        expect(quill.root.querySelector('.ql-table-controls')).toBeNull()
+        expect(document.activeElement).toBe(cell(quill))
+        expect(value(quill)).toEqual(TABLE)
+        expect(quill.history.stack.undo).toHaveLength(0)
     })
 
     it('moves forward/backward with Tab and survives switching cells after replacement', () => {
@@ -164,7 +234,7 @@ describe('inline Markdown table editing with real Quill', () => {
         await Promise.resolve()
         expect(value(quill)).toEqual(TABLE)
         expect(quill.root.querySelector('.ql-table-cell-input')).toBeNull()
-        expect(quill.container.querySelector('.ql-table-draft-recovery input').value).toBe('Private draft')
+        expect(quill.container.querySelector('.ql-table-draft-recovery textarea').value).toBe('Private draft')
     })
 
     it('finds the current table index after surrounding text changes', () => {
@@ -203,7 +273,7 @@ describe('inline Markdown table editing with real Quill', () => {
         )
         expect(value(b).rows[1][0]).toBe('Collaborator')
         expect(value(b).rows[1][1]).toBe('Open')
-        const recovery = b.container.querySelector('.ql-table-draft-recovery input')
+        const recovery = b.container.querySelector('.ql-table-draft-recovery textarea')
         expect(recovery.value).toBe('Unsaved local status')
         expect(b.getText()).not.toContain('Unsaved')
         const restored = new Y.Doc()
