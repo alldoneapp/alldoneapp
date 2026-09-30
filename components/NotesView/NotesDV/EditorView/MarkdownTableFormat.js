@@ -143,7 +143,9 @@ export default class MarkdownTableFormat extends BlockEmbed {
         const alignments = Array.isArray(tableData.alignments) ? tableData.alignments : []
 
         node.setAttribute('data-id', id)
-        node.setAttribute('data-markdown-table', JSON.stringify({ rows, alignments }))
+        // Legacy tables have no persisted id. Keep their value unchanged until the
+        // first edit; edited tables retain their identity across embed replacements.
+        node.setAttribute('data-markdown-table', JSON.stringify({ rows, alignments, ...(tableData.id ? { id } : {}) }))
         node.setAttribute('contenteditable', false)
 
         const scrollWrapper = document.createElement('div')
@@ -156,7 +158,10 @@ export default class MarkdownTableFormat extends BlockEmbed {
             const tableRow = document.createElement('tr')
             const cellTag = rowIndex === 0 ? 'th' : 'td'
             row.forEach((cellText, cellIndex) => {
-                tableRow.appendChild(createCell(cellTag, cellText, alignments[cellIndex]))
+                const cell = createCell(cellTag, cellText, alignments[cellIndex])
+                cell.dataset.row = rowIndex
+                cell.dataset.column = cellIndex
+                tableRow.appendChild(cell)
             })
             table.appendChild(tableRow)
         })
