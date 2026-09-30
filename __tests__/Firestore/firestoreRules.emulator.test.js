@@ -1289,6 +1289,9 @@ describe('missing object probes (AT-2484)', () => {
             // missing, or the Updates list retries the read forever behind an empty header.
             `projectsFeeds/${PROJECT_ID}/28092026/never-created`,
             `projectsInnerFeeds/${PROJECT_ID}/tasks/some-task/feeds/never-created`,
+            // VM badges watch the session of every visible task, and most tasks never ran a VM. A
+            // denied listener here could close the whole Listen stream when it was unsubscribed.
+            `vmSessions/${PROJECT_ID}__never-created`,
         ]) {
             const snapshot = await assertSucceeds(getDoc(doc(memberDb, path)))
             expect(snapshot.exists()).toBe(false)
@@ -1304,6 +1307,7 @@ describe('missing object probes (AT-2484)', () => {
         await assertFails(getDoc(doc(anonymousDb, `items/${PROJECT_ID}/tasks/never-created`)))
         await assertFails(getDoc(doc(outsiderDb, `noteItems/${PROJECT_ID}/notes/never-created`)))
         await assertFails(getDoc(doc(outsiderDb, `projectsFeeds/${PROJECT_ID}/28092026/never-created`)))
+        await assertFails(getDoc(doc(outsiderDb, `vmSessions/${PROJECT_ID}__never-created`)))
         // The probe only answers for a null resource; a real private task is still governed by the
         // ordinary read rule, so a teammate outside its isPublicFor cannot read it.
         await assertFails(getDoc(doc(teammateDb, `items/${PROJECT_ID}/tasks/private-task`)))

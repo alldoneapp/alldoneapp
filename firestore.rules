@@ -817,6 +817,13 @@ service cloud.firestore {
             get(/databases/$(database)/documents/items/$(resource.data.projectId)/tasks/$(resource.data.objectId)).data
           )
         );
+      // Most tasks never had a VM run, so the VM badges and filters routinely watch a session that
+      // does not exist. The rule above dereferences resource.data, which is an evaluation error for
+      // a missing document, so every one of those listeners was rejected as permission-denied — and
+      // a rejected listener that is unsubscribed at the wrong moment makes Firestore close the whole
+      // Listen stream ("Target id not found"). The id is `${projectId}__${objectId}`, so a project
+      // member may learn that no session exists; an existing session still needs the task read.
+      allow get: if canProbeMissingObject(sessionId.split('__')[0]);
       allow write: if false;
     }
 

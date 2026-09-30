@@ -47,6 +47,7 @@ import {
 import { updateXpByCreateProject } from '../Levels'
 import { enableFirestorePersistence } from './firestorePersistence'
 import { installFirestoreNetworkGate } from './firestoreNetworkGate'
+import { scheduleFirestoreWebStorageSweep } from './firestoreWebStorageSweep'
 import { installTaskWriteMonitor } from './taskWriteMonitor'
 import { installCommentOutbox } from './Chats/commentOutbox'
 import { subscribePageVisible as subscribeCommentOutboxVisible } from '../appResume'
@@ -542,6 +543,9 @@ export async function initFirebase(onComplete) {
         // reconnect attempts, no browser-level network error spam, no battery
         // burn in airplane mode. See firestoreNetworkGate.js.
         installFirestoreNetworkGate(db)
+        // Multi-tab mode leaks a localStorage entry per query on every page
+        // close; clear the orphans once the initial sync is out of the way.
+        if (!useEmulator) scheduleFirestoreWebStorageSweep(db)
     }
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'

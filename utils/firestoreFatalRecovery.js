@@ -1,5 +1,6 @@
 import { hasUnsafeCommentDrafts } from './commentDraftStore'
 import { recordNewDayEvent } from './newDayDiagnostics'
+import { hasPendingTaskWrites } from './backends/pendingTaskWrites'
 /**
  * Recovers the page from an unrecoverable Firestore client assertion.
  *
@@ -106,7 +107,10 @@ export const installFirestoreFatalRecovery = ({
     clearTimer = clearTimeout,
     cooldownMs = FIRESTORE_FATAL_RECOVERY_COOLDOWN_MS,
     reloadDelayMs = FIRESTORE_FATAL_RECOVERY_DELAY_MS,
-    canReload = () => !hasUnsafeCommentDrafts(),
+    // A fatal assertion means the queue is dead and holds nothing a reload
+    // could still lose. Any other reason is a guess about a slow client, so it
+    // waits for tasks the user just created to reach the server first.
+    canReload = reason => !hasUnsafeCommentDrafts() && (reason === 'fatal_assertion' || !hasPendingTaskWrites()),
 } = {}) => {
     if (!windowObject || !windowObject.addEventListener) return () => {}
 
@@ -121,7 +125,7 @@ export const installFirestoreFatalRecovery = ({
     const attemptRecovery = () => {
         if (!reloadPending || reloadStarted || reloadTimer !== undefined || isOffline()) return
 
-        if (!canReload()) {
+        if (!canReload(pendingReason)) {
             reloadTimer = setTimer(() => {
                 reloadTimer = undefined
                 attemptRecovery()
@@ -150,7 +154,7 @@ export const installFirestoreFatalRecovery = ({
             // Connectivity can disappear during the short reporting delay. Keep
             // the request pending and let the next online event try again.
             if (isOffline()) return
-            if (!canReload()) {
+            if (!canReload(pendingReason)) {
                 attemptRecovery()
                 return
             }

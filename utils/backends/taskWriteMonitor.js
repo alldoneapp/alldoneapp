@@ -10,6 +10,7 @@ import {
 import { isBrowserOffline } from '../connectionState'
 import { subscribePageVisible } from '../appResume'
 import { logPerformanceMeasurement } from '../performance/performanceLogger'
+import { setPendingTaskWriteCount } from './pendingTaskWrites'
 
 // Try one early recovery; the separate cooldown gives slow queues time to drain
 // instead of repeatedly tearing down the transport every ten seconds.
@@ -71,6 +72,7 @@ export const createTaskWriteMonitor = ({
     subscribeHealth = subscribeConnectionHealth,
     subscribeVisible = subscribePageVisible,
     record = (phase, durationMs, count, source) => recordDiagnostic(storage, phase, durationMs, count, source),
+    publishPending = setPendingTaskWriteCount,
 } = {}) => {
     let userId = null
     let generation = 0
@@ -83,6 +85,13 @@ export const createTaskWriteMonitor = ({
     let queueSample = null
     let samplingQueue = false
     const pending = new Map()
+    // Only writes issued by this page can be lost by a reload. A restored marker
+    // belongs to a page that is already gone: its write is in IndexedDB or never was.
+    const publish = () => {
+        try {
+            publishPending([...pending.values()].filter(entry => !entry.restored).length)
+        } catch (_) {}
+    }
 
     const persist = entry => {
         try {
@@ -119,6 +128,7 @@ export const createTaskWriteMonitor = ({
         } catch (_) {}
         if (pending.get(entry.taskId) !== entry) return
         pending.delete(entry.taskId)
+        publish()
         stopSample(entry)
         lastProgressAt = now()
         report(phase, entry, source)
@@ -240,6 +250,7 @@ export const createTaskWriteMonitor = ({
         generation++
         pending.forEach(stopSample)
         pending.clear()
+        publish()
         clearInterval(interval)
         interval = undefined
         drainInFlight = null
@@ -297,6 +308,7 @@ export const createTaskWriteMonitor = ({
             if (stopped || !ownerId || ownerId !== userId || !taskId) return write
             const entry = { userId: ownerId, taskId, startedAt: now(), recoveryEligibleAt: now() }
             pending.set(taskId, entry)
+            publish()
             persist(entry)
             arm()
             Promise.resolve(write).then(

@@ -8,6 +8,7 @@ import {
     requestFirestoreClientReload,
     resetFirestoreFatalRecoveryForTests,
 } from './firestoreFatalRecovery'
+import { setPendingTaskWriteCount } from './backends/pendingTaskWrites'
 
 const FATAL_ERROR = new Error(
     'FIRESTORE (12.17.0) INTERNAL ASSERTION FAILED: Unexpected state (ID: b815) ' +
@@ -180,6 +181,40 @@ describe('firestoreFatalRecovery', () => {
         expect(reload).toHaveBeenCalledTimes(1)
         expect(storage.setItem).toHaveBeenCalledWith(FIRESTORE_FATAL_RECOVERY_STORAGE_KEY, '100000')
         stop()
+    })
+
+    it('holds a slow-client replacement until a task created in this page reaches the server', () => {
+        const windowObject = createWindow()
+        const reload = jest.fn()
+        const stop = installFirestoreFatalRecovery({ windowObject, storage: createStorage(), reload, reloadDelayMs: 0 })
+        setPendingTaskWriteCount(1)
+        try {
+            expect(requestFirestoreClientReload('restart_timeout')).toBe(true)
+            jest.advanceTimersByTime(5000)
+            expect(reload).not.toHaveBeenCalled()
+
+            setPendingTaskWriteCount(0)
+            jest.advanceTimersByTime(1001)
+            expect(reload).toHaveBeenCalledTimes(1)
+        } finally {
+            setPendingTaskWriteCount(0)
+            stop()
+        }
+    })
+
+    it('does not hold a fatal assertion reload for a pending task write, which the dead queue cannot save', () => {
+        const windowObject = createWindow()
+        const reload = jest.fn()
+        const stop = installFirestoreFatalRecovery({ windowObject, storage: createStorage(), reload, reloadDelayMs: 0 })
+        setPendingTaskWriteCount(1)
+        try {
+            windowObject.emit('unhandledrejection', { reason: FATAL_ERROR })
+            jest.runOnlyPendingTimers()
+            expect(reload).toHaveBeenCalledTimes(1)
+        } finally {
+            setPendingTaskWriteCount(0)
+            stop()
+        }
     })
 
     it('waits for real connectivity before replacing a stuck Firestore client', () => {
