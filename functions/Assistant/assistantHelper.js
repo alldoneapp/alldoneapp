@@ -65,6 +65,7 @@ const {
     buildPendingAttachmentPayload,
     buildConversationSafeToolArgs,
     injectPendingAttachmentIntoToolArgs,
+    withEmailAttachmentToolDescriptions,
 } = require('./attachmentToolHandoff')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 const {
@@ -2871,13 +2872,16 @@ async function interactWithChatStream(
             } = await getDynamicToolSchemasWithCache(runtimeAllowedTools, toolRuntimeContext)
             // Full schemas, always: hosted tool-search is a Responses-API feature and has no
             // Chat Completions equivalent. Flash's 1M-token window absorbs the extra context.
-            openRouterTools = [
-                ...additionalToolSchemas,
-                ...getToolSchemas(staticAllowedTools),
-                ...delegationToolSchemas,
-                ...externalToolSchemas,
-                ...mcpToolSchemas,
-            ]
+            openRouterTools = withEmailAttachmentToolDescriptions(
+                [
+                    ...additionalToolSchemas,
+                    ...getToolSchemas(staticAllowedTools),
+                    ...delegationToolSchemas,
+                    ...externalToolSchemas,
+                    ...mcpToolSchemas,
+                ],
+                toolRuntimeContext
+            )
         }
 
         return await streamOpenRouterChat({
@@ -3047,13 +3051,16 @@ async function interactWithChatStream(
                 assistantId: toolRuntimeContext?.assistantId || null,
                 requestUserId: toolRuntimeContext?.requestUserId || null,
             })
-            const toolSchemas = [
-                ...additionalToolSchemas,
-                ...staticToolSchemas,
-                ...delegationToolSchemas,
-                ...externalToolSchemas,
-                ...mcpToolSchemas,
-            ]
+            const toolSchemas = withEmailAttachmentToolDescriptions(
+                [
+                    ...additionalToolSchemas,
+                    ...staticToolSchemas,
+                    ...delegationToolSchemas,
+                    ...externalToolSchemas,
+                    ...mcpToolSchemas,
+                ],
+                toolRuntimeContext
+            )
 
             console.log('🔧 TOOL SCHEMAS: Assembled for request', {
                 staticAllowedToolsCount: staticAllowedTools.length,
