@@ -73,6 +73,8 @@ import { isTransientMissingDocSnapshot } from '../InitialLoad/projectsInitialDat
 import { withoutServerAccessProjection } from './accessProjection'
 import { applyVisibleFeedPrivacy, deleteVisibleFollowedFeeds, getFeedPrivacyReaders } from './Feeds/feedPrivacy'
 import { isUserAuthoredFeed, queueObjectActivityFeedUnreadClear } from './Feeds/activityFeedReadState'
+import { queueSummaryFeedTabClear, subscribeActivitySummary } from './Feeds/activityUnreadSummary'
+import { subscribeBacklinksCount } from './backlinksCountRegistry'
 import store from '../../redux/store'
 
 import HelperFunctions from '../HelperFunctions'
@@ -1497,39 +1499,41 @@ export function watchBacklinksCount(projectId, linkedParentObject, callback, wat
     const allowUserIds = loggedUser.isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUser.uid]
     const accessReaderId = allowUserIds[allowUserIds.length - 1]
     const backlinkField = getBacklinkIdsVisibleToField(accessReaderId)
-    const backlinkToken = buildBacklinkToken(idsField, objectId)
     const hasAccess = data => {
         const isPublicFor = Array.isArray(data?.isPublicFor) ? data.isPublicFor : []
         return allowUserIds.some(userId => isPublicFor.includes(userId))
     }
 
-    backlinksCounterUnsub[watcherKey || objectId] = { tasks: null, notes: null }
-
-    backlinksCounterUnsub[watcherKey || objectId].tasks = db
-        .collection(`items/${projectId}/tasks`)
-        .where(backlinkField, 'array-contains', backlinkToken)
-        .onSnapshot(
-            snapshots => {
-                const tasksDocs = snapshots.docs.filter(doc => doc.data().parentId === null && hasAccess(doc.data()))
-                const tasksAmount = tasksDocs.length
-                const aloneTask = tasksAmount === 1 ? mapTaskData(tasksDocs[0].id, tasksDocs[0].data()) : null
-                callback('tasks', tasksAmount, aloneTask)
+    // One query per project and collection for every object on screen; see backlinksCountRegistry.
+    const unsubscribe = subscribeBacklinksCount(projectId, buildBacklinkToken(idsField, objectId), callback, {
+        readerKey: String(accessReaderId),
+        readerField: {
+            read: data => {
+                const tokens = data?.backlinkIdsVisibleTo?.[String(accessReaderId)]
+                return Array.isArray(tokens) ? tokens : []
             },
-            error => handleOptionalSnapshotError('goal task backlinks', error, () => callback('tasks', 0, null))
-        )
+        },
+        acceptTask: data => data.parentId === null && hasAccess(data),
+        acceptNote: data => hasAccess(data),
+        mapAlone: (collection, doc) =>
+            collection === 'tasks' ? mapTaskData(doc.id, doc.data()) : mapNoteData(doc.id, doc.data()),
+        subscribe: (collection, tokens, onDocs, onError) =>
+            db
+                .collection(collection === 'tasks' ? `items/${projectId}/tasks` : `noteItems/${projectId}/notes`)
+                .where(backlinkField, 'array-contains-any', tokens)
+                .onSnapshot(snapshot => onDocs(snapshot.docs), onError),
+        onError: (collection, error) =>
+            handleOptionalSnapshotError(
+                collection === 'tasks' ? 'goal task backlinks' : 'goal note backlinks',
+                error,
+                () => {}
+            ),
+    })
 
-    backlinksCounterUnsub[watcherKey || objectId].notes = db
-        .collection(`noteItems/${projectId}/notes`)
-        .where(backlinkField, 'array-contains', backlinkToken)
-        .onSnapshot(
-            snapshots => {
-                const notesDocs = snapshots.docs.filter(doc => hasAccess(doc.data()))
-                const notesAmount = notesDocs.length
-                const aloneNote = notesAmount === 1 ? mapNoteData(notesDocs[0].id, notesDocs[0].data()) : null
-                callback('notes', notesAmount, aloneNote)
-            },
-            error => handleOptionalSnapshotError('goal note backlinks', error, () => callback('notes', 0, null))
-        )
+    // Keep the existing watcher-key contract: unwatchBacklinksCount(objectId, watcherKey).
+    const key = watcherKey || objectId
+    if (backlinksCounterUnsub[key]) unwatchBacklinksCount(objectId, watcherKey)
+    backlinksCounterUnsub[key] = { tasks: unsubscribe, notes: null }
 }
 
 export function unwatchBacklinksCount(objectId, watcherKey) {
@@ -6367,18 +6371,28 @@ export function watchNewFeedsAllTabs(projectId, userId, followedCallback, allCal
 
 function watchNewFeedsTab(projectId, userId, tab, callback) {
     const MAX_NEW_FEEDS_TO_SHOW = 99
-    feedsCountUnsub[tab][projectId] = db
-        .doc(`/feedsCount/${projectId}/${userId}/${tab}`)
-        .onSnapshot(notificationsData => {
-            const newFeedsData = selectNewFeeds(notificationsData.data(), MAX_NEW_FEEDS_TO_SHOW, userId)
-            callback(projectId, newFeedsData)
-        })
+    // Served from the user's one activity summary listener when it is live for this project; the
+    // direct per-project listener below is the fallback (see Feeds/activityUnreadSummary.js).
+    feedsCountUnsub[tab][projectId] = subscribeActivitySummary({
+        userId,
+        projectId,
+        kind: 'feeds',
+        tab,
+        onData: data => callback(projectId, selectNewFeeds(data || undefined, MAX_NEW_FEEDS_TO_SHOW, userId)),
+        legacySubscribe: deliver =>
+            db
+                .doc(`/feedsCount/${projectId}/${userId}/${tab}`)
+                .onSnapshot(notificationsData => deliver(notificationsData.data() ?? null)),
+    })
 }
 
 export function resetAllNewFeeds(projectId, feedActiveTab) {
     const loggedUserId = store.getState().loggedUser.uid
     const notificationPath = feedActiveTab === FOLLOWED_TAB ? 'followed' : 'all'
-    db.doc(`feedsCount/${projectId}/${loggedUserId}/${notificationPath}`).delete()
+    const batch = db.batch()
+    batch.delete(db.doc(`feedsCount/${projectId}/${loggedUserId}/${notificationPath}`))
+    queueSummaryFeedTabClear(batch, loggedUserId, projectId, notificationPath)
+    batch.commit()
 }
 
 export async function unsubStoreFeedsTab(projectId) {

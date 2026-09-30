@@ -10,6 +10,13 @@ import ProjectMembers from '../../../components/ProjectDetailedView/ProjectMembe
 import renderer from 'react-test-renderer'
 import store from '../../../redux/store'
 
+// ProjectMembers watches the project's pending invitations while it is mounted.
+jest.mock('../../../utils/backends/firestore', () => ({
+    ...jest.requireActual('../../../utils/backends/firestore'),
+    watchProjectInvitations: jest.fn(),
+    unwatch: jest.fn(),
+}))
+
 // seedProjects gives the first project this id.
 const seededProject = { id: 'seeded-project-0', name: 'My Project' }
 

@@ -3,13 +3,21 @@ import { FOLLOWED_TAB } from '../../../components/Feeds/Utils/FeedsConstants'
 import store from '../../../redux/store'
 import { getDb, runHttpsCallableFunction } from '../firestore'
 import { awaitWriteAck } from '../offlineWriteAck'
+import { parseChatNotificationPath, queueSummaryChatNotificationWrite } from '../Feeds/activityUnreadSummary'
 
 const commitDeletes = async (docs, label) => {
     if (!docs?.length) return
 
     const db = getDb()
     const batch = new BatchWrapper(db)
-    docs.forEach(snapshot => batch.delete(snapshot.ref || db.doc(snapshot.path)))
+    docs.forEach(snapshot => {
+        const ref = snapshot.ref || db.doc(snapshot.path)
+        batch.delete(ref)
+        // The unread badges read the user's activity summary; clear it in the same batch so the
+        // badge moves with the local delete rather than after the mirror trigger.
+        const parts = parseChatNotificationPath(ref.path)
+        if (parts) queueSummaryChatNotificationWrite(batch, parts.userId, parts.projectId, parts.commentId, null)
+    })
     await awaitWriteAck(batch.commit(), label)
 }
 

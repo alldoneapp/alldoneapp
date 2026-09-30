@@ -1,5 +1,7 @@
 import firebase from 'firebase/compat/app'
 
+import { queueSummaryFeedObjectClear } from './activityUnreadSummary'
+
 const ACTIVITY_FEED_TABS = ['followed', 'all']
 
 export const isUserAuthoredFeed = (feed, loggedUserId) =>
@@ -17,6 +19,8 @@ export function queueObjectActivityFeedUnreadClear(db, batch, { projectId, userI
     ACTIVITY_FEED_TABS.forEach(tab => {
         batch.set(db.doc(`feedsCount/${projectId}/${userId}/${tab}`), objectUnreadEntry, { merge: true })
     })
+    // The badge reads the user's activity summary; clear it in the same batch (own summary only).
+    queueSummaryFeedObjectClear(batch, userId, projectId, objectType, objectId)
 
     return true
 }
