@@ -433,6 +433,186 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         expect(forcedToolCall.function.arguments).not.toContain(fileBase64)
     })
 
+    test.each(['create_gmail_reply_draft', 'external_tool_other_upload'])(
+        'still uploads the original invoice after %s consumes the attachment',
+        async otherToolName => {
+            const invoiceToolName = 'external_tool_bookkeeping_assistant__f5f03fdb4d16'
+            const fileBase64 = Buffer.from('original-invoice-bytes').toString('base64')
+            mockGetAssistantForChat.mockResolvedValue({
+                uid: 'assistant-1',
+                displayName: 'Anna',
+                allowedTools: ['external_tools', 'create_task', 'create_gmail_reply_draft'],
+                instructions: '',
+                model: 'MODEL_GPT6_LUNA',
+            })
+            mockGetExternalIntegrationToolName.mockResolvedValue(invoiceToolName)
+            mockExecuteToolNatively
+                .mockResolvedValueOnce({ success: true, taskId: 'task-1', projectId: 'project-1' })
+                .mockResolvedValueOnce({ success: true })
+                .mockResolvedValueOnce({ success: true, status: 'matched' })
+            const toolChunk = (name, args = {}) => [
+                {
+                    additional_kwargs: {
+                        tool_calls: [{ id: `call-${name}`, function: { name, arguments: JSON.stringify(args) } }],
+                    },
+                },
+            ]
+            mockInteractWithChatStream
+                .mockReturnValueOnce(
+                    toolChunk('create_task', { name: 'Match invoice', taskOrigin: 'assistant_suggestion' })
+                )
+                .mockReturnValueOnce(toolChunk(otherToolName))
+                .mockReturnValueOnce([{ content: 'Draft or other upload completed.' }])
+                .mockReturnValueOnce([{ content: 'Invoice attached to bookkeeping.' }])
+
+            const response = await processAnnaEmailAssistantMessage(
+                'user-1',
+                'project-1',
+                'chat-1',
+                'Forwarded invoice',
+                'assistant-1',
+                {
+                    initialPendingAttachmentPayload: {
+                        fileName: 'invoice.pdf',
+                        fileBase64,
+                        fileMimeType: 'application/pdf',
+                    },
+                    autoAttachInvoice: true,
+                }
+            )
+
+            expect(response).toBe('Invoice attached to bookkeeping.')
+            expect(mockExecuteToolNatively.mock.calls.map(call => call[0])).toEqual([
+                'create_task',
+                otherToolName,
+                invoiceToolName,
+            ])
+            expect(mockExecuteToolNatively.mock.calls[2][1]).toEqual(
+                expect.objectContaining({ fileName: 'invoice.pdf', fileBase64 })
+            )
+            for (const [messages] of mockInteractWithChatStream.mock.calls) {
+                expect(JSON.stringify(messages)).not.toContain(fileBase64)
+            }
+            const systemText = mockInteractWithChatStream.mock.calls[0][0]
+                .filter(message => message[0] === 'system')
+                .map(message => message[1])
+                .join('\n')
+            expect(systemText).toContain(invoiceToolName)
+            expect(systemText).toContain('original bytes even if another tool also uses the file')
+            expect(systemText).toContain('Create a Gmail draft only when the sender explicitly asks')
+            expect(systemText).toContain('omitted base64 does not mean the file is unavailable')
+        }
+    )
+
+    test('supplies the original invoice when the model calls bookkeeping after creating a draft', async () => {
+        const invoiceToolName = 'external_tool_bookkeeping_assistant__f5f03fdb4d16'
+        const fileBase64 = Buffer.from('late-bookkeeping-upload').toString('base64')
+        mockGetExternalIntegrationToolName.mockResolvedValue(invoiceToolName)
+        mockExecuteToolNatively.mockResolvedValue({ success: true })
+        const toolChunk = name => [
+            { additional_kwargs: { tool_calls: [{ id: name, function: { name, arguments: '{}' } }] } },
+        ]
+        mockInteractWithChatStream
+            .mockReturnValueOnce(toolChunk('create_gmail_reply_draft'))
+            .mockReturnValueOnce(toolChunk(invoiceToolName))
+            .mockReturnValueOnce([{ content: 'Invoice uploaded.' }])
+        await processAnnaEmailAssistantMessage('user-1', 'project-1', 'chat-1', 'Forwarded invoice', 'assistant-1', {
+            initialPendingAttachmentPayload: { fileName: 'invoice.pdf', fileBase64, fileMimeType: 'application/pdf' },
+            autoAttachInvoice: true,
+        })
+        expect(mockExecuteToolNatively).toHaveBeenCalledTimes(2)
+        expect(mockExecuteToolNatively.mock.calls[1][1]).toEqual(expect.objectContaining({ fileBase64 }))
+        expect(mockInteractWithChatStream.mock.calls[2][0].at(-1).content).toContain(
+            'do not upload the same invoice again'
+        )
+    })
+
+    test('an unrelated tool error does not suppress invoice delivery', async () => {
+        const invoiceToolName = 'external_tool_bookkeeping_assistant__f5f03fdb4d16'
+        mockGetExternalIntegrationToolName.mockResolvedValue(invoiceToolName)
+        mockExecuteToolNatively
+            .mockRejectedValueOnce(new Error('Draft failed'))
+            .mockResolvedValueOnce({ success: true })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                {
+                    additional_kwargs: {
+                        tool_calls: [{ id: 'draft', function: { name: 'create_gmail_reply_draft', arguments: '{}' } }],
+                    },
+                },
+            ])
+            .mockReturnValueOnce([{ content: 'Invoice uploaded; draft failed.' }])
+        const response = await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Forwarded invoice',
+            'assistant-1',
+            {
+                initialPendingAttachmentPayload: {
+                    fileName: 'invoice.pdf',
+                    fileBase64: 'YWJj',
+                    fileMimeType: 'application/pdf',
+                },
+                autoAttachInvoice: true,
+            }
+        )
+        expect(response).toBe('Invoice uploaded; draft failed.')
+        expect(mockExecuteToolNatively.mock.calls.map(call => call[0])).toEqual([
+            'create_gmail_reply_draft',
+            invoiceToolName,
+        ])
+        expect(mockInteractWithChatStream.mock.calls[1][0]).toContainEqual({
+            role: 'assistant',
+            content: 'Tool failed',
+        })
+    })
+
+    test('does not automatically upload an invoice when the sender opted out', async () => {
+        mockGetExternalIntegrationToolName.mockResolvedValue('external_tool_bookkeeping_assistant__f5f03fdb4d16')
+        await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Do not forward to bookkeeping',
+            'assistant-1',
+            {
+                initialPendingAttachmentPayload: { fileName: 'invoice.pdf', fileBase64: 'YWJj' },
+                autoAttachInvoice: false,
+            }
+        )
+        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+        expect(mockGetExternalIntegrationToolName).not.toHaveBeenCalled()
+    })
+
+    test('does not repeat a failed bookkeeping attempt as an automatic fallback', async () => {
+        const invoiceToolName = 'external_tool_bookkeeping_assistant__f5f03fdb4d16'
+        mockGetExternalIntegrationToolName.mockResolvedValue(invoiceToolName)
+        mockExecuteToolNatively.mockResolvedValue({ success: false, message: 'Upload rejected' })
+        mockInteractWithChatStream
+            .mockReturnValueOnce([
+                {
+                    additional_kwargs: {
+                        tool_calls: [{ id: 'invoice', function: { name: invoiceToolName, arguments: '{}' } }],
+                    },
+                },
+            ])
+            .mockReturnValueOnce([{ content: 'Upload rejected.' }])
+        const response = await processAnnaEmailAssistantMessage(
+            'user-1',
+            'project-1',
+            'chat-1',
+            'Forwarded invoice',
+            'assistant-1',
+            {
+                initialPendingAttachmentPayload: { fileName: 'invoice.pdf', fileBase64: 'YWJj' },
+                autoAttachInvoice: true,
+            }
+        )
+        expect(response).toBe('Upload rejected.')
+        expect(mockExecuteToolNatively).toHaveBeenCalledTimes(1)
+    })
+
     test('attributes calendar availability to the account owner instead of Anna', async () => {
         mockGetAssistantForChat.mockResolvedValue({
             uid: 'assistant-1',

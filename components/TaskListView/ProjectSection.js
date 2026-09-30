@@ -20,7 +20,6 @@ export function getProjectPalette(color) {
 }
 
 export default function ProjectSection({
-    projectId,
     projectColor,
     children,
     style,
@@ -48,7 +47,6 @@ export default function ProjectSection({
 
     return (
         <ProjectSectionSurface
-            projectId={projectId}
             accentColor={accentColor}
             lastCommentTint={lastCommentTint}
             backgroundColor={backgroundColor}
@@ -68,7 +66,6 @@ export default function ProjectSection({
 }
 
 function ProjectSectionSurface({
-    projectId,
     accentColor,
     lastCommentTint,
     backgroundColor,
@@ -125,7 +122,6 @@ function ProjectSectionSurface({
                         <ProjectSectionBorderContext.Provider value={borderColor}>
                             <View style={localStyles.exitContainer}>
                                 <Animated.View
-                                    dataSet={projectId ? { taskProjectId: projectId } : undefined}
                                     style={[baseStyle, exitStyle]}
                                     onLayout={handleLayout}
                                     testID="project-section"

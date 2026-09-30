@@ -42,7 +42,6 @@ export default function MainViewsContainer() {
 
     return (
         <CustomScrollView
-            nativeID="main-task-list-viewport"
             style={[localStyles.subContainer, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}
             scrollEnabled={enableScroll}
             fixedChildren={selectedTab === DV_TAB_ROOT_TASKS ? <FloatingAddTaskButton /> : null}
