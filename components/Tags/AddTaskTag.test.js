@@ -10,6 +10,7 @@ import { useSelector } from 'react-redux'
 import { colors } from '../styles/global'
 import Icon from '../Icon'
 import AddTaskTag from './AddTaskTag'
+import { AUTOMATIC_PROJECT_OPTION } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
 
 const mockDispatch = jest.fn()
 
@@ -41,7 +42,13 @@ jest.mock('react-tiny-popover', () => {
         default: props => React.createElement('Popover', props, props.children, props.content),
     }
 })
-jest.mock('../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal', () => 'RichCreateTaskModal')
+jest.mock('../UIComponents/FloatModals/RichCreateTaskModal/RichCreateTaskModal', () => {
+    const React = require('react')
+    return props => {
+        const [selectedProjectId, setSelectedProjectId] = React.useState(props.initialProjectId)
+        return React.createElement('RichCreateTaskModal', { ...props, selectedProjectId, setSelectedProjectId })
+    }
+})
 
 const mockState = (overrides = {}) => {
     useSelector.mockImplementation(selector =>
@@ -60,6 +67,55 @@ describe('AddTaskTag', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         mockState()
+    })
+
+    it('refreshes scroll context and replaces a manual project selection every time the button opens', () => {
+        const getInitialProjectId = jest.fn(() => 'project-1')
+        const tree = renderer.create(
+            <AddTaskTag projectId={AUTOMATIC_PROJECT_OPTION} getInitialProjectId={getInitialProjectId} />
+        )
+        const button = tree.root.findByType(TouchableOpacity)
+        act(() => button.props.onPress())
+        const modal = tree.root.findByType('RichCreateTaskModal')
+        expect(modal.props.selectedProjectId).toBe('project-1')
+        act(() => modal.props.setSelectedProjectId('manually-selected'))
+        expect(tree.root.findByType('RichCreateTaskModal').props.selectedProjectId).toBe('manually-selected')
+        act(() => tree.root.findByType('Popover').props.onClickOutside())
+        getInitialProjectId.mockReturnValue('project-2')
+        act(() => button.props.onPress())
+        expect(tree.root.findByType('RichCreateTaskModal').props.selectedProjectId).toBe('project-2')
+        act(() => tree.root.findByType('RichCreateTaskModal').props.setSelectedProjectId('manually-selected-again'))
+        act(() => tree.root.findByType('Popover').props.onClickOutside())
+        act(() => button.props.onPress())
+        expect(tree.root.findByType('RichCreateTaskModal').props.selectedProjectId).toBe('project-2')
+        act(() => tree.root.findByType('Popover').props.onClickOutside())
+        getInitialProjectId.mockReturnValue(AUTOMATIC_PROJECT_OPTION)
+        act(() => button.props.onPress())
+        expect(tree.root.findByType('RichCreateTaskModal').props.selectedProjectId).toBe(AUTOMATIC_PROJECT_OPTION)
+        expect(getInitialProjectId).toHaveBeenCalledTimes(4)
+        act(() => tree.unmount())
+    })
+
+    it('resolves the project for the plus shortcut and shared-link auto-open too', () => {
+        const getInitialProjectId = jest.fn(() => 'visible-project')
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <AddTaskTag
+                    projectId={AUTOMATIC_PROJECT_OPTION}
+                    getInitialProjectId={getInitialProjectId}
+                    autoOpenKey="share-context"
+                    plusShortcutEnabled
+                />
+            )
+        })
+        expect(tree.root.findByType('RichCreateTaskModal').props.initialProjectId).toBe('visible-project')
+        act(() => tree.root.findByType('Popover').props.onClickOutside())
+        getInitialProjectId.mockReturnValue('next-project')
+        act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true })))
+        expect(tree.root.findByType('RichCreateTaskModal').props.initialProjectId).toBe('next-project')
+        expect(getInitialProjectId).toHaveBeenCalledTimes(2)
+        act(() => tree.unmount())
     })
 
     it('acquires once for repeated opens and releases when the add popup closes', () => {
