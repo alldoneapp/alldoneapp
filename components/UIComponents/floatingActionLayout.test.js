@@ -14,9 +14,12 @@ describe('floating action layout', () => {
         const safeAreaBottom = 5
 
         expect(getFloatingActionBottom(safeAreaBottom)).toBe(29)
-        expect(getLoadingDataBottom(safeAreaBottom)).toBe(33)
+        expect(getLoadingDataBottom(safeAreaBottom)).toBe(45)
         expect(FLOATING_ACTION_SIZE).toBe(56)
-        expect(LOADING_DATA_CONTAINER_SIZE).toBe(48)
+        expect(LOADING_DATA_CONTAINER_SIZE).toBe(24)
+        expect(getLoadingDataBottom(safeAreaBottom) + LOADING_DATA_CONTAINER_SIZE / 2).toBe(
+            getFloatingActionBottom(safeAreaBottom) + FLOATING_ACTION_SIZE / 2
+        )
     })
 
     it('reserves explicit viewport and popup gaps around the task action', () => {
