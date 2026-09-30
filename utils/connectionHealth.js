@@ -75,6 +75,15 @@ export const PROBE_TIMEOUT_MS = 5000
 export const FIRESTORE_RESTART_TIMEOUT_MS = 5000
 
 /**
+ * How long a restart that missed FIRESTORE_RESTART_TIMEOUT_MS may stay queued
+ * before the page is replaced. The five-second budget only decides what the UI
+ * shows. On a phone that is still running the initial sync, the SDK queue can
+ * be busy for tens of seconds: a task write measured 42s to its server ack on
+ * the dogfooding Pixel. A reload at five seconds discarded the queued write.
+ */
+export const FIRESTORE_RESTART_RELOAD_GRACE_MS = 60 * 1000
+
+/**
  * Offer offline work when a real page read or write acknowledgement takes this long.
  * Wait fifteen seconds before showing slow loading so brief delays can resolve
  * without interrupting the user with a warning.
@@ -107,6 +116,7 @@ let retryDelayMs = STALE_RETRY_BASE_MS
 let latencyGeneration = 0
 let activeSlowSamples = 0
 let slowRecoveryTimer
+let blockedRestart = null
 const healthListeners = new Set()
 
 // Injected once by installConnectionHealthMonitor so the module stays importable
@@ -410,23 +420,62 @@ const restartTransport = async trigger => {
 
     if (outcome === 'ok') return { ok: true, reason: 'ok', reloadRequested: false }
 
-    const reason = outcome === 'timeout' ? 'restart_timeout' : 'restart_failed'
-    console.warn(`[ConnectionHealth] Firestore transport ${outcome}; replacing the client (${trigger}).`)
-    let reloadRequested = false
-    if (!browserIsOffline() && !manualOffline) {
-        const serverReachable = await probeServerOutsideClient()
-        if (serverReachable && !browserIsOffline() && !manualOffline) {
-            const requestReload = deps.requestClientReload || requestFirestoreClientReload
-            try {
-                reloadRequested = requestReload(reason)
-            } catch (error) {
-                console.warn('[ConnectionHealth] Could not request a fresh Firestore client:', error)
-            }
-        } else {
-            console.warn('[ConnectionHealth] Skipping client replacement because Firestore is not reachable.')
-        }
+    if (outcome === 'timeout') {
+        // Slow is not dead. The restart is still queued behind whatever the SDK is
+        // doing, so replacing the page now would discard that work, including a
+        // task write not yet in IndexedDB.
+        console.warn(`[ConnectionHealth] Firestore transport restart is slow; waiting before replacing (${trigger}).`)
+        replaceClientIfRestartStaysBlocked(restart)
+        return { ok: false, reason: 'restart_timeout', reloadRequested: false }
     }
-    return { ok: false, reason, reloadRequested }
+
+    // A rejected disable/enable means the AsyncQueue refuses work: that client is dead.
+    console.warn(`[ConnectionHealth] Firestore transport ${outcome}; replacing the client (${trigger}).`)
+    const reloadRequested = await requestClientReplacement('restart_failed')
+    return { ok: false, reason: 'restart_failed', reloadRequested }
+}
+
+const requestClientReplacement = async reason => {
+    if (browserIsOffline() || manualOffline) return false
+    const serverReachable = await probeServerOutsideClient()
+    if (!serverReachable || browserIsOffline() || manualOffline) {
+        console.warn('[ConnectionHealth] Skipping client replacement because Firestore is not reachable.')
+        return false
+    }
+    const requestReload = deps.requestClientReload || requestFirestoreClientReload
+    try {
+        return requestReload(reason)
+    } catch (error) {
+        console.warn('[ConnectionHealth] Could not request a fresh Firestore client:', error)
+        return false
+    }
+}
+
+/**
+ * Replaces the client only if the timed-out restart is still blocked after the
+ * grace period, or if the SDK rejects it. The restart lease hands every caller
+ * the same in-flight promise, so one blocked restart is watched once.
+ */
+const replaceClientIfRestartStaysBlocked = restart => {
+    if (blockedRestart?.restart === restart) return
+    const watch = { restart, timer: undefined }
+    blockedRestart = watch
+    watch.timer = setTimeout(() => {
+        if (blockedRestart !== watch) return
+        blockedRestart = null
+        console.warn('[ConnectionHealth] Firestore transport restart never settled; replacing the client.')
+        void requestClientReplacement('restart_timeout')
+    }, deps.firestoreRestartReloadGraceMs || FIRESTORE_RESTART_RELOAD_GRACE_MS)
+    void restart.then(succeeded => {
+        if (blockedRestart !== watch) return
+        clearBlockedRestart()
+        if (!succeeded) void requestClientReplacement('restart_failed')
+    })
+}
+
+const clearBlockedRestart = () => {
+    if (blockedRestart) clearTimeout(blockedRestart.timer)
+    blockedRestart = null
 }
 
 const finishFailedRestart = (trigger, restart) => {
@@ -689,6 +738,7 @@ export const installConnectionHealthMonitor = ({
     return () => {
         clearInterval(intervalId)
         clearRetryTimer()
+        clearBlockedRestart()
         windowObject.removeEventListener('offline', onOffline)
         windowObject.removeEventListener('online', onOnline)
     }
@@ -696,6 +746,7 @@ export const installConnectionHealthMonitor = ({
 
 export const resetConnectionHealthForTests = () => {
     clearRetryTimer()
+    clearBlockedRestart()
     invalidateLatencySamples()
     health = CONNECTION_HEALTH_LIVE
     manualOffline = false

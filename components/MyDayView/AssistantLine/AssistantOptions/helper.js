@@ -129,13 +129,25 @@ export const getCommentData = (
 
     if (commentSource) {
         const { creatorId, creatorType, projectId } = commentSource
-        const commentProject = (projectId && ProjectHelper.getProjectById(projectId)) || project
+        // A source that names its project must be rendered in THAT project. The preview subscribes
+        // to chatComments/<commentProject>/<objectType>/<objectId>, and under any other project the
+        // thread does not exist, so the rules deny it. That denial is not harmless: when the preview
+        // then remounts under the right project, removing the rejected listener raced the server's
+        // rejection and Firestore answered `Target id not found`, which tears down the WHOLE Listen
+        // stream. It happened on every boot of the All projects board, because project users and
+        // assistants load after this pointer and the old code fell back to the displayed project
+        // until they did. Show the skeleton instead of a wrong-project preview.
+        const sourceProject = projectId ? ProjectHelper.getProjectById(projectId) : null
+        if (projectId && !sourceProject)
+            return { commentCreator: null, commentProject: null, isAssistant: false, hasUnread }
+        const commentProject = sourceProject || project
 
         if (commentProject) {
             const projectAssistantId = commentProject.assistantId || defaultAssistantId
             const projectAssistant =
                 (projectAssistantId && getAssistantInProject(commentProject.id, projectAssistantId)) ||
-                (projectAssistantId ? getAssistant(projectAssistantId) : null)
+                (projectAssistantId ? getAssistant(projectAssistantId) : null) ||
+                (projectId && defaultAssistantId ? getAssistant(defaultAssistantId) : null)
 
             const isAssistantComment = creatorType === 'assistant'
             const commentCreator = isAssistantComment
@@ -152,6 +164,7 @@ export const getCommentData = (
                     hasUnread,
                 }
             }
+            if (projectId) return { commentCreator: null, commentProject: null, isAssistant: false, hasUnread }
         }
     }
 

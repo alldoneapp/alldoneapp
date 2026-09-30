@@ -504,17 +504,60 @@ describe('connectionHealth', () => {
             stop()
         })
 
-        it('replaces a blocked client only after an independent server check', async () => {
+        it('replaces a blocked client only after the grace period and an independent server check', async () => {
             const db = createFakeDb(['ok'], { disableNetwork: 'hang' })
             const requestClientReload = jest.fn(() => true)
             const { stop } = install({
                 db,
                 firestoreRestartTimeoutMs: 5,
+                firestoreRestartReloadGraceMs: 20,
                 probeServerDirectly: () => Promise.resolve({ exists: true }),
                 requestClientReload,
             })
             expect(await recoverStalledTaskWrites()).toBe(false)
+            // Slow is not dead: the restart may still be queued behind a task write.
+            expect(requestClientReload).not.toHaveBeenCalled()
+            await new Promise(resolve => setTimeout(resolve, 40))
             expect(requestClientReload).toHaveBeenCalledWith('restart_timeout')
+            stop()
+        })
+
+        it('keeps a client whose slow restart settles inside the grace period', async () => {
+            const db = createFakeDb(['ok'])
+            let finishDisable
+            db.disableNetwork = () => new Promise(resolve => (finishDisable = resolve))
+            const requestClientReload = jest.fn(() => true)
+            const { stop } = install({
+                db,
+                firestoreRestartTimeoutMs: 5,
+                firestoreRestartReloadGraceMs: 40,
+                probeServerDirectly: () => Promise.resolve({ exists: true }),
+                requestClientReload,
+            })
+            expect(await recoverStalledTaskWrites()).toBe(false)
+            finishDisable()
+            await new Promise(resolve => setTimeout(resolve, 60))
+            expect(db.calls.enableNetwork).toBe(1)
+            expect(requestClientReload).not.toHaveBeenCalled()
+            stop()
+        })
+
+        it('replaces the client at once when a slow restart is finally rejected', async () => {
+            const db = createFakeDb(['ok'])
+            let failDisable
+            db.disableNetwork = () => new Promise((_, reject) => (failDisable = reject))
+            const requestClientReload = jest.fn(() => true)
+            const { stop } = install({
+                db,
+                firestoreRestartTimeoutMs: 5,
+                firestoreRestartReloadGraceMs: 100000,
+                probeServerDirectly: () => Promise.resolve({ exists: true }),
+                requestClientReload,
+            })
+            expect(await recoverStalledTaskWrites()).toBe(false)
+            failDisable(new Error('queue failed'))
+            await new Promise(resolve => setTimeout(resolve, 10))
+            expect(requestClientReload).toHaveBeenCalledWith('restart_failed')
             stop()
         })
 
@@ -579,6 +622,7 @@ describe('connectionHealth', () => {
             const { tracked, stop } = install({
                 db,
                 firestoreRestartTimeoutMs: 5,
+                firestoreRestartReloadGraceMs: 20,
                 probeServerDirectly: () => Promise.resolve({ exists: true }),
                 requestClientReload,
             })
@@ -586,11 +630,13 @@ describe('connectionHealth', () => {
             const outcome = await reconnectNow()
 
             expect(outcome).toBe(CONNECTION_HEALTH_STALE)
-            expect(requestClientReload).toHaveBeenCalledWith('restart_timeout')
+            expect(requestClientReload).not.toHaveBeenCalled()
             expect(tracked).toContainEqual({
                 name: 'connection_manual_reconnect',
-                params: { state_from: CONNECTION_HEALTH_LIVE, outcome: 'reload_restart_timeout' },
+                params: { state_from: CONNECTION_HEALTH_LIVE, outcome: CONNECTION_HEALTH_STALE },
             })
+            await new Promise(resolve => setTimeout(resolve, 40))
+            expect(requestClientReload).toHaveBeenCalledWith('restart_timeout')
             stop()
         })
 
@@ -616,11 +662,13 @@ describe('connectionHealth', () => {
             const { stop } = install({
                 db,
                 firestoreRestartTimeoutMs: 5,
+                firestoreRestartReloadGraceMs: 5,
                 probeServerDirectly: () => Promise.reject(new Error('network unavailable')),
                 requestClientReload,
             })
 
             const outcome = await reconnectNow()
+            await new Promise(resolve => setTimeout(resolve, 30))
 
             expect(outcome).toBe(CONNECTION_HEALTH_STALE)
             expect(requestClientReload).not.toHaveBeenCalled()

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -32,6 +32,9 @@ function InitLoadWatchers() {
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const [timeOfFeedsLoaded, setTimeOfFeedsLoaded] = useState(0)
     const [watchedProjectsIds, setWatchedProjectsIds] = useState([])
+    // The listeners actually open right now. The effect cleanup runs with the closure of the render
+    // that subscribed, whose state copy is one generation behind, so it reads this ref instead.
+    const openFeedProjectIdsRef = useRef([])
     useReachEmptyInbox()
     // AT-2492: the per-project sibling. Records "this project's today list was cleared" wherever the
     // user happens to be when it happens; the selected-project board decides what to do with it.
@@ -102,22 +105,29 @@ function InitLoadWatchers() {
     }, [timeOfFeedsLoaded])
 
     const cleanComponent = () => {
-        for (let i = 0; i < watchedProjectsIds.length; i++) {
-            Backend.unsubNewFeedsTab(watchedProjectsIds[i], 'followed')
-            Backend.unsubNewFeedsTab(watchedProjectsIds[i], 'all')
+        const openIds = openFeedProjectIdsRef.current
+        for (let i = 0; i < openIds.length; i++) {
+            Backend.unsubNewFeedsTab(openIds[i], 'followed')
+            Backend.unsubNewFeedsTab(openIds[i], 'all')
         }
+        openFeedProjectIdsRef.current = []
+    }
+
+    const getAllFeedProjects = () => {
+        const filteredProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_ACTIVE)
+        const guideProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_GUIDE)
+        return [...filteredProjects, ...guideProjects]
     }
 
     const watchAllProjects = () => {
         cleanComponent()
-        const filteredProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_ACTIVE)
-        const guideProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_GUIDE)
-        filteredProjects.push(...guideProjects)
+        const filteredProjects = getAllFeedProjects()
         Backend.watchAllNewFeedsAllTabs(filteredProjects, loggedUser.uid, updateFollowedFeedsData, updateAllFeedsData)
         const newWatchedProjectsIds = []
         for (let i = 0; i < filteredProjects.length; i++) {
             newWatchedProjectsIds.push(filteredProjects[i].id)
         }
+        openFeedProjectIdsRef.current = newWatchedProjectsIds
         setWatchedProjectsIds(newWatchedProjectsIds)
     }
 
@@ -126,14 +136,26 @@ function InitLoadWatchers() {
         if (loggedUserProjects[selectedProjectIndex]) {
             const projectId = loggedUserProjects[selectedProjectIndex].id
             Backend.watchNewFeedsAllTabs(projectId, loggedUser.uid, updateFollowedFeedsData, updateAllFeedsData)
+            openFeedProjectIdsRef.current = [projectId]
             setWatchedProjectsIds([projectId])
         }
     }
 
+    // Keyed on WHICH documents are watched, not on the `loggedUserProjects` array: that array gets a
+    // new identity whenever any project document changes, and at boot every project delivers a
+    // cached and then a server snapshot. Measured on the dogfooding Pixel, that re-subscribed all
+    // 2 x 13 unread-badge listeners about 25 times in the first 30 seconds (~650 billed reads and
+    // listener round trips competing with the initial sync) for an unchanged set of documents.
+    const watchedFeedsKey = inSelectedProject
+        ? `project:${loggedUserProjects[selectedProjectIndex]?.id || ''}`
+        : `all:${getAllFeedProjects()
+              .map(project => project.id)
+              .join(',')}`
+
     useEffect(() => {
         inSelectedProject ? watchProject() : watchAllProjects()
         return cleanComponent
-    }, [loggedUserProjects, selectedProjectIndex])
+    }, [watchedFeedsKey, loggedUser.uid])
 
     return (
         <View>

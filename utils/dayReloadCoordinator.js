@@ -1,5 +1,6 @@
 import { hasUnsafeCommentDrafts } from './commentDraftStore'
 import { newDayRecoveryStore } from './newDayRecoveryStore'
+import { hasPendingTaskWrites, subscribePendingTaskWrites } from './backends/pendingTaskWrites'
 
 export const DAILY_APP_LOAD_DATE_STORAGE_KEY = 'alldone.lastFullAppLoadLocalDate'
 
@@ -35,8 +36,13 @@ export const createDayReloadCoordinator = ({ isSafe = () => true } = {}) => {
     }
 }
 
+// A task created while the day was loading can still be only in memory; the
+// reload waits for its server ack and retries as soon as the last one lands.
 export const dayReloadCoordinator = createDayReloadCoordinator({
-    isSafe: () => !newDayRecoveryStore.hasUnsafeEntries() && !hasUnsafeCommentDrafts(),
+    isSafe: () => !newDayRecoveryStore.hasUnsafeEntries() && !hasUnsafeCommentDrafts() && !hasPendingTaskWrites(),
+})
+subscribePendingTaskWrites(count => {
+    if (!count) dayReloadCoordinator.retry()
 })
 
 export const markDailyReload = () => {

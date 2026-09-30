@@ -246,6 +246,26 @@ describe('pending task write recovery', () => {
         expect(db.disableNetwork).toHaveBeenCalledTimes(1)
     })
 
+    it('publishes only writes issued by this page as pending, so a reload cannot drop them', async () => {
+        const publishPending = jest.fn()
+        const { createMonitor, monitor } = setup()
+        monitor.stop()
+        const own = createMonitor({ publishPending })
+        const write = deferred()
+        own.track(write.promise, { userId: 'user-1', taskId: 'task-2' })
+        expect(publishPending).toHaveBeenLastCalledWith(1)
+        write.resolve('ack')
+        await jest.advanceTimersByTimeAsync(0)
+        expect(publishPending).toHaveBeenLastCalledWith(0)
+
+        // A marker restored from an earlier page is already in IndexedDB or already lost.
+        own.track(deferred().promise, { userId: 'user-1', taskId: 'task-3' })
+        own.stop()
+        const restoredPublish = jest.fn()
+        createMonitor({ publishPending: restoredPublish })
+        expect(restoredPublish).not.toHaveBeenCalledWith(1)
+    })
+
     it('keeps a rejection observable to the caller and removes its pending marker', async () => {
         const { track, write, db, record } = setup()
         const result = track()
