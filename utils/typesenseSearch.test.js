@@ -1,7 +1,7 @@
 import Backend from './BackendBridge'
+import { buildRecencySortBy } from '../functions/Typesense/searchRanking'
 import {
     __resetTypesenseCredentialCacheForTests,
-    buildSortBy,
     isBlankQuery,
     mergeIdentityFirstHits,
     multiSearchTypesense,
@@ -10,6 +10,9 @@ import {
     TYPESENSE_QUERY_CONFIG,
     warmTypesenseSearchCredentials,
 } from './typesenseSearch'
+
+// The adapter only reads navigator via connectionState; avoid booting the app's UI store.
+jest.mock('../redux/store', () => ({ dispatch: jest.fn(), getState: jest.fn() }))
 
 jest.mock('./BackendBridge', () => ({
     getTypesenseScopedSearchCredentials: jest.fn(),
@@ -240,7 +243,7 @@ describe('per-search query_by override (AT-2393)', () => {
         expect(search.query_by).toBe('displayName,role,company')
         // Everything else still comes from the collection config.
         expect(search.num_typos).toBe(TYPESENSE_QUERY_CONFIG.dev_contacts.num_typos)
-        expect(search.sort_by).toBe(TYPESENSE_QUERY_CONFIG.dev_contacts.sort_by)
+        expect(search.sort_by).toBe(buildRecencySortBy('dev_contacts', 'an', search.query_by))
         expect(search.filter_by).toBe('projectId:=p')
     })
 
@@ -304,7 +307,7 @@ describe('match-all on a blank query (AT-2497)', () => {
 
         const [search] = readSentSearches()
         expect(search.q).toBe('roadmap')
-        expect(search.sort_by).toBe(TYPESENSE_QUERY_CONFIG.dev_notes.sort_by)
+        expect(search.sort_by).toBe(buildRecencySortBy('dev_notes', search.q, search.query_by))
     })
 
     it('is opt-in: a caller that does not ask for it still sends the empty query', async () => {
@@ -314,7 +317,7 @@ describe('match-all on a blank query (AT-2497)', () => {
 
         const [search] = readSentSearches()
         expect(search.q).toBe('')
-        expect(search.sort_by).toBe(TYPESENSE_QUERY_CONFIG.dev_notes.sort_by)
+        expect(search.sort_by).toBe(buildRecencySortBy('dev_notes', search.q, search.query_by))
     })
 
     it('applies per search entry, not per request', async () => {
@@ -326,11 +329,6 @@ describe('match-all on a blank query (AT-2497)', () => {
         const searches = readSentSearches()
         expect(searches[0].q).toBe(TYPESENSE_MATCH_ALL_QUERY)
         expect(searches[1].q).toBe('')
-    })
-
-    it('falls back to the configured sort when it carries nothing but a text score', () => {
-        expect(buildSortBy('_text_match:desc', true)).toBe('_text_match:desc')
-        expect(buildSortBy(undefined, true)).toBeUndefined()
     })
 
     it('treats only a genuinely blank string as blank', () => {
@@ -422,7 +420,7 @@ describe('identity matches lead the page (AT-2527)', () => {
             expect(search.q).toBe('an')
             expect(search.filter_by).toBe('projectId:=p')
             expect(search.num_typos).toBe(TYPESENSE_QUERY_CONFIG.dev_notes.num_typos)
-            expect(search.sort_by).toBe(TYPESENSE_QUERY_CONFIG.dev_notes.sort_by)
+            expect(search.sort_by).toBe(buildRecencySortBy('dev_notes', search.q, search.query_by))
             expect(search.per_page).toBe(20)
         }
     })
