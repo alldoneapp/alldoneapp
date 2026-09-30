@@ -57,6 +57,16 @@ export default function AppPopover({ content, children, isOpen, onClickOutside, 
     const [contentHostCount, setContentHostCount] = useState(0)
     const [contentRenderer, setContentRenderer] = useState(null)
 
+    useLayoutEffect(() => {
+        // AT-2660: after the last close animation retires its host, opening
+        // again must wait for the new host to attach the portal container.
+        // A BottomSheet mounts that host asynchronously; retaining 'portal'
+        // here mounted editors into detached DOM on the second open, where
+        // CustomTextInput3's document lookup crashed. Keep the renderer while
+        // open or animating out so responsive handoffs preserve the draft.
+        if (!isOpen && contentHostCount === 0 && contentRenderer !== null) setContentRenderer(null)
+    }, [isOpen, contentHostCount, contentRenderer])
+
     if (!contentNodeRef.current && typeof document !== 'undefined') {
         contentNodeRef.current = document.createElement('div')
         contentNodeRef.current.style.display = 'contents'
