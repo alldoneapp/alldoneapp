@@ -14,6 +14,7 @@
 const Typesense = require('typesense')
 
 const { getEnvFunctions } = require('./envFunctionsHelper')
+const { buildRecencySortBy } = require('./Typesense/searchRanking')
 
 const TASKS_COLLECTION = 'dev_tasks'
 const GOALS_COLLECTION = 'dev_goals'
@@ -326,27 +327,22 @@ const SEARCH_QUERY_CONFIG = {
     [TASKS_COLLECTION]: {
         query_by: 'humanReadableIdSearchable,humanReadableId,name',
         num_typos: 2,
-        sort_by: '_text_match:desc,created(missing_values: last):desc',
     },
     [GOALS_COLLECTION]: {
         query_by: 'name',
         num_typos: 0,
-        sort_by: '_text_match:desc,created(missing_values: last):desc',
     },
     [NOTES_COLLECTION]: {
         query_by: 'title,content',
         num_typos: 2,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
     },
     [CONTACTS_COLLECTION]: {
         query_by: 'displayName,cleanDescription,role,company',
         num_typos: 0,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
     },
     [CHATS_COLLECTION]: {
         query_by: 'cleanName,cleanLastComment,cleanComments',
         num_typos: 0,
-        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
     },
 }
 
@@ -378,15 +374,18 @@ const searchTypesenseDocuments = async (collectionName, query, { filterBy, perPa
     const config = SEARCH_QUERY_CONFIG[collectionName]
     if (!config) throw new Error(`No Typesense query config for collection ${collectionName}`)
 
-    const result = await client.collections(collectionName).documents().search({
-        q: query,
-        query_by: config.query_by,
-        num_typos: config.num_typos,
-        sort_by: config.sort_by,
-        filter_by: filterBy,
-        per_page: perPage,
-        highlight_fields: 'none',
-    })
+    const result = await client
+        .collections(collectionName)
+        .documents()
+        .search({
+            q: query,
+            query_by: config.query_by,
+            num_typos: config.num_typos,
+            sort_by: buildRecencySortBy(collectionName, query, config.query_by),
+            filter_by: filterBy,
+            per_page: perPage,
+            highlight_fields: 'none',
+        })
 
     const hits = (result.hits || []).map(adaptTypesenseSearchHit)
     return { hits }
