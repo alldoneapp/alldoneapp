@@ -99,7 +99,6 @@ const MemoizedModalContent = memo(
         showAISettings,
         setShowAISettings,
         aiModel,
-        assistantModel,
         setAiModel,
         aiReasoningEffort,
         setAiReasoningEffort,
@@ -377,7 +376,6 @@ const MemoizedModalContent = memo(
                                 <AISettingsArea
                                     disabled={disabled}
                                     aiModel={aiModel}
-                                    assistantModel={assistantModel}
                                     setAiModel={setAiModel}
                                     aiReasoningEffort={aiReasoningEffort}
                                     setAiReasoningEffort={setAiReasoningEffort}
@@ -448,7 +446,6 @@ const MemoizedModalContent = memo(
             prevProps.showAISettings === nextProps.showAISettings &&
             prevProps.startDate === nextProps.startDate &&
             prevProps.aiModel === nextProps.aiModel &&
-            prevProps.assistantModel === nextProps.assistantModel &&
             prevProps.aiReasoningEffort === nextProps.aiReasoningEffort &&
             prevProps.aiSystemMessage === nextProps.aiSystemMessage &&
             prevProps.link === nextProps.link &&
@@ -771,7 +768,6 @@ export default function TaskModal({
                         showAISettings={showAISettings}
                         setShowAISettings={memoizedSetShowAISettings}
                         aiModel={aiModel}
-                        assistantModel={currentAssistant?.model}
                         setAiModel={setAiModel}
                         aiReasoningEffort={aiReasoningEffort}
                         setAiReasoningEffort={setAiReasoningEffort}

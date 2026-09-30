@@ -1,5 +1,5 @@
 import { taskHierarchyStyles } from '../TaskListView/TaskHierarchy'
-import React, { useCallback, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import styles, {
@@ -28,6 +28,7 @@ import { isEditableElementFocused } from '../../utils/editingGuard'
 
 function AddTaskTag({
     projectId,
+    getInitialProjectId,
     objectId,
     style,
     sourceIsPublicFor,
@@ -71,6 +72,7 @@ function AddTaskTag({
     const autoOpenInitialTaskNameRef = useRef('')
     const popupLock = useFloatPopupLock()
     const taskEditorLock = useTaskEditorLock()
+    const [opening, setOpening] = useState({ projectId, sequence: 0 })
     const { maxHeight: popupMaxHeight, isSheet, windowHeight, safeAreaInsets } = useModalSizing({ size: 'L' })
     const keyboardLift = useLiftAboveKeyboard(popupCardRef)
     const floatingPopupMaxHeight = Math.max(
@@ -85,6 +87,15 @@ function AddTaskTag({
     )
     const resolvedPopupMaxHeight = floating ? Math.min(popupMaxHeight, floatingPopupMaxHeight) : popupMaxHeight
 
+    const handleOpen = useCallback(() => {
+        // Resolve before opening: focusing the editor or locking the mobile scroller can change layout.
+        const initialProjectId = getInitialProjectId ? getInitialProjectId() : projectId
+        setOpening(previous => ({ projectId: initialProjectId, sequence: previous.sequence + 1 }))
+        openPopover()
+        popupLock.acquire()
+        taskEditorLock.acquire()
+    }, [getInitialProjectId, projectId, openPopover, popupLock, taskEditorLock])
+
     useEffect(() => {
         if (!autoOpenKey || autoOpenedKeyRef.current === autoOpenKey) return
         autoOpenedKeyRef.current = autoOpenKey
@@ -92,17 +103,9 @@ function AddTaskTag({
         // queued share as soon as it is consumed, which can happen in the same
         // React batch as opening the (lazily mounted) popover content.
         autoOpenInitialTaskNameRef.current = initialTaskName || ''
-        openPopover()
-        popupLock.acquire()
-        taskEditorLock.acquire()
+        handleOpen()
         if (onAutoOpen) onAutoOpen()
-    }, [autoOpenKey, initialTaskName, onAutoOpen, openPopover, popupLock, taskEditorLock])
-
-    const handleOpen = useCallback(() => {
-        openPopover()
-        popupLock.acquire()
-        taskEditorLock.acquire()
-    }, [openPopover, popupLock, taskEditorLock])
+    }, [autoOpenKey, initialTaskName, onAutoOpen, handleOpen])
 
     useEffect(() => {
         if (!plusShortcutEnabled) return
@@ -236,7 +239,8 @@ function AddTaskTag({
                     }}
                 >
                     <RichCreateTaskModal
-                        initialProjectId={projectId}
+                        key={opening.sequence}
+                        initialProjectId={opening.sequence ? opening.projectId : projectId}
                         sourceType={sourceType}
                         sourceId={objectId}
                         closeModal={handleClose}

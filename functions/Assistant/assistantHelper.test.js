@@ -608,7 +608,7 @@ describe('Responses API compatibility helpers', () => {
         expect(firstChunk.value).toEqual({ content: 'Hello', additional_kwargs: {} })
         expect(mockResponsesCreate).toHaveBeenCalledWith(
             expect.objectContaining({
-                model: 'gpt-6.1-sol',
+                model: 'gpt-6-sol',
                 input: [{ role: 'user', content: 'Hello' }],
                 stream: true,
                 store: false,
@@ -636,9 +636,7 @@ describe('Responses API compatibility helpers', () => {
             await stream.next()
 
             expect(mockResponsesCreate).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    reasoning: { effort: reasoningEffort === 'none' ? 'high' : reasoningEffort },
-                })
+                expect.objectContaining({ reasoning: { effort: reasoningEffort } })
             )
         }
     )
@@ -874,7 +872,7 @@ describe('Responses API compatibility helpers', () => {
         logOpenAiCacheUsage({
             usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 50 } },
             route: 'tasks',
-            model: 'gpt-6.1-sol',
+            model: 'gpt-6-sol',
             cacheKey: 'sensitive-cache-key',
             cacheMode: 'explicit',
         })
@@ -933,7 +931,7 @@ describe('Responses API compatibility helpers', () => {
                         },
                     ],
                 },
-                { route: 'assistant', model: 'gpt-6.1-sol' }
+                { route: 'assistant', model: 'gpt-6-sol' }
             )
         ).toThrow(expect.objectContaining({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' }))
 
