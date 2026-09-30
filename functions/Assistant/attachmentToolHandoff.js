@@ -18,32 +18,6 @@ function isGmailDraftToolName(toolName) {
     return ['create_gmail_draft', 'create_gmail_reply_draft', 'update_gmail_draft'].includes(toolName)
 }
 
-// Apply current email guidance after loading cached schemas. Never persist filenames,
-// attachment availability, or invoice-attempt state in the shared schema cache.
-function withEmailAttachmentToolDescriptions(toolSchemas, toolRuntimeContext = null) {
-    if (toolRuntimeContext?.channel !== 'email') return toolSchemas
-    return toolSchemas.map(schema => {
-        const toolName = schema.function?.name
-        let guidance = ''
-        if (toolRuntimeContext.invoiceToolName && toolName === toolRuntimeContext.invoiceToolName) {
-            guidance = toolRuntimeContext.invoiceToolAttempted
-                ? 'The current invoice upload has already been attempted. Use the existing tool result and do not upload the same invoice again.'
-                : 'Use this tool to upload the recognised invoice directly to bookkeeping before creating a suggested task. The original email attachment bytes are held by the server and injected automatically: supply the exact fileName and leave fileBase64 empty. Omitted binary content in model context does not mean the attachment is unavailable. Creating a task or Gmail draft does not complete this upload.'
-        } else if (isGmailDraftToolName(toolName)) {
-            guidance =
-                'In the incoming email channel, use this only when the sender explicitly requests a Gmail draft. The final assistant reply is sent automatically; receiving or forwarding an invoice is not a draft request. Attaching an invoice to a draft does not upload it to bookkeeping.'
-        }
-        if (!guidance) return schema
-        return {
-            ...schema,
-            function: {
-                ...schema.function,
-                description: `${schema.function.description || ''} ${guidance}`.trim(),
-            },
-        }
-    })
-}
-
 function isSuccessfulAttachmentToolResult(toolName, toolResult) {
     if (!['get_chat_attachment', 'get_gmail_attachment'].includes(toolName)) return false
     return !!(toolResult?.success && typeof toolResult?.fileBase64 === 'string' && toolResult.fileBase64.trim())
@@ -495,7 +469,6 @@ function injectPendingAttachmentIntoDraftToolArgs(toolArgs, pendingAttachmentPay
 }
 
 module.exports = {
-    withEmailAttachmentToolDescriptions,
     MAX_TOOL_RESULT_CONTEXT_CHARS,
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,

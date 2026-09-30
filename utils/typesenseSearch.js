@@ -2,14 +2,13 @@
 // fetch against the multi_search endpoint — no typesense-js dependency, so the web bundle
 // and the CI node_modules images are untouched.
 //
-// Per-collection query config mirrors the searchable attributes and typo tolerance
-// from the Algolia index settings. Ranking is shared with server-side searches in
-// functions/Typesense/searchRanking.js (AT-2663).
+// Per-collection query config mirrors what the Algolia INDEX SETTINGS used to carry
+// (configAlgoliaIndex in functions/searchHelper.js): searchable attributes, typo
+// tolerance, ranking. In Typesense these are per-query parameters, so they live here.
 // Sort fields are optional in the schema, so missing_values keeps legacy records at the
 // end instead of erroring.
 import Backend from './BackendBridge'
 import { isBrowserOffline } from './connectionState'
-import { buildRecencySortBy } from '../functions/Typesense/searchRanking'
 
 // `identity_query_by` is the subset of `query_by` that NAMES the object — its title, its
 // display name, its human-readable id. See the AT-2527 block above `getIdentityQueryBy`
@@ -20,16 +19,19 @@ export const TYPESENSE_QUERY_CONFIG = {
         query_by: 'humanReadableIdSearchable,humanReadableId,name',
         identity_query_by: 'humanReadableIdSearchable,humanReadableId,name',
         num_typos: 2,
+        sort_by: '_text_match:desc,created(missing_values: last):desc',
     },
     dev_goals: {
         query_by: 'name',
         identity_query_by: 'name',
         num_typos: 0,
+        sort_by: '_text_match:desc,created(missing_values: last):desc',
     },
     dev_notes: {
         query_by: 'title,content',
         identity_query_by: 'title',
         num_typos: 2,
+        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
     },
     dev_contacts: {
         // Identity fields only — deliberately the same list as MENTION_CONTACTS_QUERY_BY
@@ -39,11 +41,13 @@ export const TYPESENSE_QUERY_CONFIG = {
         query_by: 'displayName,cleanDescription,role,company',
         identity_query_by: 'displayName,role,company',
         num_typos: 0,
+        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
     },
     dev_updates: {
         query_by: 'cleanName,cleanLastComment,cleanComments',
         identity_query_by: 'cleanName',
         num_typos: 0,
+        sort_by: '_text_match:desc,lastEditionDate(missing_values: last):desc',
     },
 }
 
@@ -69,7 +73,7 @@ const CREDENTIAL_REFRESH_SKEW_SECONDS = 60
 // an empty `q` is not — Typesense documents `q=*` as the way to match all documents and
 // makes no promise at all about `''`, so relying on today's behaviour of a blank query is
 // relying on an implementation detail across future engine upgrades. It is also the form
-// that lets the shared ranking helper know a page is unranked.
+// that lets `buildSortBy` below know a page is unranked.
 //
 // It is opt-in per call rather than automatic because the two kinds of caller want opposite
 // things. A picker starts empty and should suggest something; global search starts empty and
@@ -78,6 +82,18 @@ const CREDENTIAL_REFRESH_SKEW_SECONDS = 60
 export const TYPESENSE_MATCH_ALL_QUERY = '*'
 
 export const isBlankQuery = query => typeof query !== 'string' || query.trim() === ''
+
+// For a wildcard query every document scores the same `_text_match`, so leading with it only
+// obscures the field that actually orders the list. Dropping it makes the recency sort the
+// primary criterion, which is the whole point of the match-all request.
+export const buildSortBy = (sortBy, isMatchAll) => {
+    if (!isMatchAll || typeof sortBy !== 'string') return sortBy
+    const withoutTextMatch = sortBy
+        .split(',')
+        .filter(criterion => !criterion.trim().startsWith('_text_match'))
+        .join(',')
+    return withoutTextMatch || sortBy
+}
 
 // AT-2527 — "sometimes I have to enter more letters until it starts finding results."
 //
@@ -298,19 +314,17 @@ export const multiSearchTypesense = async searches => {
         const { collection, query, filterBy, queryBy, matchAllWhenEmpty } = search
         const config = TYPESENSE_QUERY_CONFIG[collection]
         const isMatchAll = !!matchAllWhenEmpty && isBlankQuery(query)
-        const engineQuery = isMatchAll ? TYPESENSE_MATCH_ALL_QUERY : query
-        const engineQueryBy = queryByOverride || queryBy || config.query_by
         return {
             collection,
-            q: engineQuery,
+            q: isMatchAll ? TYPESENSE_MATCH_ALL_QUERY : query,
             // `queryBy` narrows the searched fields for one call without moving the
             // collection default. A picker can be stricter than global search about
             // what counts as a match — the @-mention contact picker is (AT-2393) —
             // while global search keeps the full field list and instead leads with the
             // identity page (AT-2527).
-            query_by: engineQueryBy,
+            query_by: queryByOverride || queryBy || config.query_by,
             num_typos: config.num_typos,
-            sort_by: buildRecencySortBy(collection, engineQuery, engineQueryBy),
+            sort_by: buildSortBy(config.sort_by, isMatchAll),
             filter_by: filterBy,
             per_page: PER_PAGE,
             ...(Number.isInteger(search.page) && search.page > 0 ? { page: search.page } : {}),

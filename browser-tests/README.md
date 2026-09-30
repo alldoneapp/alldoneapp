@@ -604,27 +604,3 @@ a 390×844 touch viewport; `--serve` just builds and serves the harness so you c
 node browser-tests/rage-mode/run.js [--touch] [--headed]
 node browser-tests/rage-mode/run.js --serve
 ```
-
-### `at2660/` — opening the add-task popup a second time
-
-Renders the real `AddTaskTag`, `RichCreateTaskModal`, `CustomTextInput3`, Quill,
-Redux store and responsive popup shells. At desktop (1280px), phone (390px) and
-narrow phone (320px) widths, it opens with two presses in one browser turn,
-types a draft, closes, and repeats three times. It asserts one editor, balanced
-popup/editor locks, and no browser errors. External network requests are blocked;
-this fixture does not save tasks to Firebase.
-
-Before AT-2660, the second phone-width open crashed with an undefined `classList`
-in `CustomTextInput3`: the sheet's portal renderer survived closing, so the editor
-mounted into a detached container before the new sheet attached it.
-
-Run with Node 22, installed root and `web-bundler` dependencies, the repository's
-`replacement_node_modules` copied into `node_modules`, and Playwright/Chromium:
-
-```bash
-node browser-tests/at2660/run.js
-```
-
-If Playwright is installed outside the repository, set `PLAYWRIGHT_MODULE` to its
-module path and, when needed, `PLAYWRIGHT_BROWSERS_PATH` to its browser directory.
-`--skip-build` reuses the previous harness bundle.
