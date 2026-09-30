@@ -342,6 +342,7 @@ export default function DefaultVmAgentSection() {
                             // nouns, not translatable UI strings — render them as discovered.
                             label: family.label,
                             tokensPerGold: family.tokensPerGold,
+                            resolvedModel: family.resolvedModel,
                         }))
                     )
                     .map(family => {
@@ -367,9 +368,14 @@ export default function DefaultVmAgentSection() {
                                     </Text>
                                     {!!formatTokensPerGold(family.tokensPerGold) && (
                                         <Text style={localStyles.goldRate}>
-                                            {translate('1 Gold = %{tokens} tokens', {
-                                                tokens: formatTokensPerGold(family.tokensPerGold),
-                                            })}
+                                            {translate(
+                                                family.resolvedModel === 'gpt-6.1-sol'
+                                                    ? '1 Gold ≈ %{tokens} tokens'
+                                                    : '1 Gold = %{tokens} tokens',
+                                                {
+                                                    tokens: formatTokensPerGold(family.tokensPerGold),
+                                                }
+                                            )}
                                         </Text>
                                     )}
                                 </View>

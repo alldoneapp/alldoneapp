@@ -21,12 +21,25 @@ const VALID_ASSISTANT_REASONING_EFFORTS = SELECTABLE_ASSISTANT_REASONING_EFFORTS
 
 const isValidAssistantReasoningEffort = value => VALID_ASSISTANT_REASONING_EFFORTS.includes(value)
 
-const normalizeAssistantReasoningEffort = value => (isValidAssistantReasoningEffort(value) ? value : null)
+// Keep the saved product key stable: existing Sol 6.0 selections now run on 6.1.
+const isSolModel = model => !model || ['MODEL_GPT6_SOL', 'MODEL_GPT5_6_SOL', 'gpt-6-sol', 'gpt-6.1-sol'].includes(model)
+
+const normalizeAssistantReasoningEffort = (value, model) =>
+    value === 'none' && isSolModel(model) && model !== undefined
+        ? 'high'
+        : isValidAssistantReasoningEffort(value)
+          ? value
+          : null
+
+const getAssistantReasoningEffortOptions = model =>
+    isSolModel(model)
+        ? SELECTABLE_ASSISTANT_REASONING_EFFORTS.filter(option => option.value !== 'none')
+        : SELECTABLE_ASSISTANT_REASONING_EFFORTS
 
 const resolveAssistantReasoningEffort = (settings = {}, fallbackValue = null) =>
     Object.prototype.hasOwnProperty.call(settings, 'reasoningEffort')
-        ? normalizeAssistantReasoningEffort(settings.reasoningEffort)
-        : normalizeAssistantReasoningEffort(fallbackValue)
+        ? normalizeAssistantReasoningEffort(settings.reasoningEffort, settings.model)
+        : normalizeAssistantReasoningEffort(fallbackValue, settings.model)
 
 const getAssistantReasoningEffortLabelKey = value => {
     const normalizedValue = normalizeAssistantReasoningEffort(value)
@@ -38,6 +51,7 @@ module.exports = {
     VALID_ASSISTANT_REASONING_EFFORTS,
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
+    getAssistantReasoningEffortOptions,
     resolveAssistantReasoningEffort,
     getAssistantReasoningEffortLabelKey,
 }

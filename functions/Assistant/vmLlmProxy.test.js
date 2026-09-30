@@ -106,6 +106,29 @@ describe('vmLlmProxy config + routing', () => {
 })
 
 describe('vmLlmProxy token usage parsing', () => {
+    test('captures actual Flex Sol cost from Responses, including cache writes without double-counting input', () => {
+        const result = extractUsageFromJsonPayload('openai', {
+            type: 'response.completed',
+            response: {
+                model: 'gpt-6.1-sol',
+                service_tier: 'flex',
+                usage: {
+                    input_tokens: 100000,
+                    output_tokens: 10000,
+                    input_tokens_details: { cached_tokens: 80000, cache_write_tokens: 10000 },
+                },
+            },
+        })
+        expect(result).toEqual({
+            inputTokens: 100000,
+            outputTokens: 10000,
+            cacheTokens: 80000,
+            cacheWriteTokens: 10000,
+            totalTokens: 110000,
+            solPricedTokens: 110000,
+            solCostUsd: 0.0765,
+        })
+    })
     test('captures Anthropic streamed message_start plus final output-token delta usage', () => {
         const state = { buffer: '', usage: { inputTokens: 0, outputTokens: 0, cacheTokens: 0, totalTokens: 0 } }
         captureUsageFromTextChunk(
@@ -173,7 +196,7 @@ describe('vmLlmProxy credential scoping in minted tokens', () => {
 
     test('derives the provider from the job when the caller does not pass one', () => {
         const credentials = buildVmAgentCredentials({
-            vmJob: { ...vmJob, agent: 'codex', agentModel: 'gpt-6-sol' },
+            vmJob: { ...vmJob, agent: 'codex', agentModel: 'gpt-6.1-sol' },
             agent: 'codex',
             credentialMode: 'byok',
             realApiKey: 'sk-openai-key',
@@ -303,7 +326,7 @@ describe('vmLlmProxy job authorization', () => {
                     userId: 'owner',
                     credentialMode: 'byok',
                     agent: 'codex',
-                    agentModel: 'gpt-6-sol',
+                    agentModel: 'gpt-6.1-sol',
                     status: 'initiated',
                 })
             )
@@ -372,6 +395,58 @@ describe('vmLlmProxy job authorization', () => {
 })
 
 describe('vmLlmProxy token Gold charging', () => {
+    test('meters Standard Sol cache costs cumulatively and keeps writes out of total tokens', async () => {
+        const { getSolRequestCost } = require('./solModelPricing')
+        const { calculateSolUsageGold } = require('./vmTokenPricing')
+        const cost = getSolRequestCost({
+            input_tokens: 100000,
+            input_tokens_details: { cached_tokens: 80000, cache_write_tokens: 10000 },
+            output_tokens: 10000,
+        })
+        const { db, writes } = buildFakeDb({
+            userGold: 100000,
+            pendingData: { agentModel: 'gpt-6.1-sol', tokensPerGold: 240 },
+        })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true }))
+        await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openai',
+            usage: {
+                totalTokens: cost.totalTokens,
+                solCostUsd: cost.costUsd,
+                solPricedTokens: cost.totalTokens,
+                cacheWriteTokens: cost.cacheWriteTokens,
+            },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(
+            expect.objectContaining({ delta: -calculateSolUsageGold(cost.costUsd, 240) })
+        )
+        expect(writes[writes.length - 1].data.proxyTokenUsage).toEqual(
+            expect.objectContaining({
+                totalTokens: 110000,
+                cacheWriteTokens: 10000,
+                solCostUsd: cost.costUsd,
+                solPricedTokens: 110000,
+            })
+        )
+    })
+
+    test('old Sol 6.0 jobs retain their frozen token rate even when the resumed model reports 6.1 costs', async () => {
+        const { db } = buildFakeDb({ userGold: 100000, pendingData: { agentModel: 'gpt-6-sol', tokensPerGold: 200 } })
+        const applyGoldChangeInTransactionFn = jest.fn(() => ({ success: true }))
+        await chargeProxyTokenGold({
+            correlationId: 'cid-1',
+            userId: 'u1',
+            provider: 'openai',
+            usage: { totalTokens: 1000, solCostUsd: 0.5, solPricedTokens: 1000 },
+            db,
+            applyGoldChangeInTransactionFn,
+        })
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -5 }))
+    })
     function buildFakeDb({ userGold = 10, pendingData = {} } = {}) {
         const userRef = { path: 'users/u1' }
         const pendingRef = { path: 'pendingWebhooks/cid-1' }
@@ -396,7 +471,7 @@ describe('vmLlmProxy token Gold charging', () => {
                                         objectId: 'chat-1',
                                         objectType: 'topics',
                                         correlationId: 'cid-1',
-                                        agentModel: 'gpt-6-sol',
+                                        agentModel: 'gpt-6.1-sol',
                                         tokenBillingExempt: false,
                                         ...pendingData,
                                     }),
@@ -440,7 +515,7 @@ describe('vmLlmProxy token Gold charging', () => {
         expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(
             expect.objectContaining({
                 context: expect.objectContaining({
-                    model: 'gpt-6-sol',
+                    model: 'gpt-6.1-sol',
                     billingExempt: false,
                     correlationId: 'cid-1',
                 }),
@@ -557,7 +632,7 @@ describe('vmLlmProxy token Gold charging', () => {
             applyGoldChangeInTransactionFn,
         })
 
-        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -5 }))
+        expect(applyGoldChangeInTransactionFn).toHaveBeenCalledWith(expect.objectContaining({ delta: -4 }))
     })
 
     // Guards the revenue hole a bigger divisor opens: at 4900 tokens/Gold — the cheapest rate in the

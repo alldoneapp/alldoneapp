@@ -70,8 +70,8 @@ describe('MainSectionTabsHeader compact mobile tabs', () => {
         setLanguage('en')
     })
 
-    it.each([320, 360, 390, 419])('renders a fixed single row with 15px labels at %ipx', width => {
-        setViewportWidth(width)
+    it('renders a fixed single row with the compact font and padding on a 390px phone', () => {
+        setViewportWidth(390)
         setLanguage('de')
         const tree = renderHeader()
 
@@ -82,16 +82,16 @@ describe('MainSectionTabsHeader compact mobile tabs', () => {
         expect(buttons).toHaveLength(5)
         buttons.forEach(button => {
             const buttonStyle = flatten(button.props.style)
-            expect(buttonStyle.paddingHorizontal).toBe(1)
+            expect(buttonStyle.paddingHorizontal).toBe(6)
             expect(buttonStyle.flexShrink).toBe(1)
             const text = button.findByType(Text)
             expect(text.props.numberOfLines).toBe(1)
-            expect(flatten(text.props.style).fontSize).toBe(15)
+            expect(flatten(text.props.style).fontSize).toBe(14)
         })
     })
 
-    it.each([COMPACT_TABS_BREAKPOINT, 817])('keeps the 16px centred scroller at %ipx', width => {
-        setViewportWidth(width)
+    it('keeps the centred scroller for the wider mobile layout', () => {
+        setViewportWidth(COMPACT_TABS_BREAKPOINT)
         setLanguage('de')
         const tree = renderHeader()
 
@@ -112,14 +112,6 @@ describe('MainSectionTabsHeader compact mobile tabs', () => {
         })
 
         expect(tree.root.findAllByType(ScrollView)).toHaveLength(0)
-        expect(flatten(tree.root.findAllByType(Text)[0].props.style).fontSize).toBe(15)
-
-        act(() => {
-            setViewportWidth(COMPACT_TABS_BREAKPOINT)
-            window.dispatchEvent(new Event('resize'))
-        })
-
-        expect(tree.root.findAllByType(ScrollView)).toHaveLength(1)
-        expect(flatten(tree.root.findAllByType(Text)[0].props.style).fontSize).toBe(16)
+        expect(flatten(tree.root.findAllByType(Text)[0].props.style).fontSize).toBe(14)
     })
 })

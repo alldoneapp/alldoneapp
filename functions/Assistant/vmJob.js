@@ -83,7 +83,7 @@ const VALID_VM_EXECUTION_MODES = [DEFAULT_VM_EXECUTION_MODE, 'plan_first', 'inte
 
 // Coding agents the assistant can choose to run in the VM (E2B prebuilt templates).
 const DEFAULT_CLAUDE_MODEL = 'opus'
-const DEFAULT_CODEX_MODEL = 'gpt-6-sol'
+const DEFAULT_CODEX_MODEL = 'gpt-6.1-sol'
 const DEFAULT_CLAUDE_EFFORT_LEVEL = 'high'
 const DEFAULT_CODEX_REASONING_EFFORT = 'medium'
 const VALID_CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']
@@ -245,7 +245,7 @@ function normalizeAgentModel(agent, agentModel) {
     }
     if (agent === 'codex') {
         return isCodexModelId(trimmed)
-            ? { value: trimmed }
+            ? { value: trimmed === 'gpt-6-sol' ? DEFAULT_CODEX_MODEL : trimmed }
             : { error: 'agentModel must be an OpenAI model id when agent="codex".' }
     }
     return { value: fallback }
@@ -301,6 +301,7 @@ function normalizeAgentReasoningEffort(agent, effort) {
         // tool when reasoning.effort is "minimal". Preserve compatibility with callers that
         // still send the old value by clamping it to the lowest supported VM effort.
         if (trimmed === 'minimal') return { value: 'low' }
+        if (trimmed === 'none') return { value: 'high' }
         if (!VALID_CODEX_REASONING_EFFORTS.includes(trimmed)) {
             return {
                 error: `agentReasoningEffort must be one of: ${VALID_CODEX_REASONING_EFFORTS.join(', ')}.`,

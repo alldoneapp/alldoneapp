@@ -20,7 +20,7 @@ const {
     formatTokenDiscountNote,
 } = require('./vmTokenPricing')
 
-const SOL = 'gpt-6-sol'
+const SOL = 'gpt-6.1-sol'
 const LEGACY_SOL = 'gpt-5.6-sol'
 const ASTRA = 'gpt-6-astra'
 const TERRA = 'gpt-5.6-terra'
@@ -34,8 +34,8 @@ describe('Sol is the baseline the whole table hangs off', () => {
     test('Sol remains the 100-token billing baseline', () => {
         expect(BASE_VM_TOKENS_PER_GOLD).toBe(100)
         expect(resolveTokensPerGold(LEGACY_SOL)).toBe(BASE_VM_TOKENS_PER_GOLD)
-        expect(resolveSolRelativeGoldFactor(LEGACY_SOL)).toBe(0.5)
-        expect(resolveTokensPerGold(SOL)).toBe(200)
+        expect(resolveSolRelativeGoldFactor(LEGACY_SOL)).toBeCloseTo(100 / 240)
+        expect(resolveTokensPerGold(SOL)).toBe(240)
         expect(resolveSolRelativeGoldFactor(SOL)).toBe(1)
     })
 
@@ -85,9 +85,9 @@ describe('Sol is the baseline the whole table hangs off', () => {
 
 describe('OpenAI model rates track the current upstream price table', () => {
     test('Astra is dearer than Sol while Terra and Luna remain cheaper', () => {
-        expect(resolveSolRelativeGoldFactor(ASTRA)).toBe(0.2)
-        expect(resolveSolRelativeGoldFactor(TERRA)).toBe(0.95)
-        expect(resolveSolRelativeGoldFactor(LUNA)).toBe(20)
+        expect(resolveSolRelativeGoldFactor(ASTRA)).toBeCloseTo(40 / 240)
+        expect(resolveSolRelativeGoldFactor(TERRA)).toBeCloseTo(190 / 240)
+        expect(resolveSolRelativeGoldFactor(LUNA)).toBeCloseTo(4000 / 240)
         expect(resolveTokensPerGold(ASTRA)).toBe(40)
         expect(resolveTokensPerGold(TERRA)).toBe(190)
         expect(resolveTokensPerGold(LUNA)).toBe(4000)
@@ -104,8 +104,8 @@ describe('OpenAI model rates track the current upstream price table', () => {
         const luna = calculateTokenGoldForModel(tokens, LUNA)
 
         expect(luna).toBeGreaterThan(0)
-        expect(sol / terra).toBeCloseTo(0.95, 2)
-        expect(sol / luna).toBeCloseTo(20, 2)
+        expect(sol / terra).toBeCloseTo(190 / 240, 2)
+        expect(sol / luna).toBeCloseTo(4000 / 240, 2)
     })
 
     test('an unpriced future generation takes the conservative native rate', () => {
@@ -133,7 +133,7 @@ describe('blending uses the measured mix, and cache pricing dominates it', () =>
 
     test('Sol blends to its published mix-weighted cost', () => {
         expect(SOL_BLENDED_USD_PER_MILLION).toBeCloseTo(1.005, 3)
-        expect(blendedUsdPerMillionTokens(CODEX_REFERENCE_PRICES.sol)).toBeCloseTo(SOL_BLENDED_USD_PER_MILLION / 2)
+        expect(blendedUsdPerMillionTokens(CODEX_REFERENCE_PRICES.sol)).toBeCloseTo(0.417)
     })
 
     // The single most dangerous line in the module: `Number(null)` is 0, so treating a missing
@@ -176,7 +176,7 @@ describe('blending uses the measured mix, and cache pricing dominates it', () =>
 
     test('every rate is a faithful inversion of the blended cost ratio', () => {
         for (const [modelId, price] of Object.entries(OPENROUTER_REFERENCE_PRICES)) {
-            const expected = SOL_BLENDED_USD_PER_MILLION / (2 * blendedUsdPerMillionTokens(price))
+            const expected = (SOL_BLENDED_USD_PER_MILLION * 100) / (240 * blendedUsdPerMillionTokens(price))
             const actual = resolveSolRelativeGoldFactor(`openrouter:${modelId}`)
             // Quantization only ever rounds down, and never by more than one significant step.
             expect(actual).toBeLessThanOrEqual(expected + 1e-9)
@@ -329,8 +329,8 @@ describe('the rate can never produce a zero, negative or non-finite charge', () 
         const sol = resolveTokensPerGold(SOL, repricedBase)
         const luna = resolveTokensPerGold(LUNA, repricedBase)
 
-        expect(sol).toBe(repricedBase * 2)
-        expect(luna / sol).toBe(20)
+        expect(sol).toBe(600)
+        expect(luna / sol).toBeCloseTo(10000 / 600)
     })
 
     test('a bad divisor falls back to the base rate rather than charging Infinity', () => {
@@ -378,7 +378,7 @@ describe('the rate can never produce a zero, negative or non-finite charge', () 
         for (const model of [SOL, TERRA, LUNA, DEEPSEEK_PRO, DEEPSEEK_FLASH, DEEPSEEK_R1]) {
             expect(calculateTokenGoldForModel(5_000_000, model)).toBeGreaterThan(0)
         }
-        expect(calculateTokenGoldForModel(1_000_000, SOL)).toBe(5_000)
+        expect(calculateTokenGoldForModel(1_000_000, SOL)).toBe(4167)
         expect(calculateTokenGoldForModel(1_000_000, LUNA)).toBe(250)
     })
 })
@@ -388,13 +388,13 @@ describe('the rate is disclosed to the user', () => {
         expect(formatTokenDiscountNote(SOL)).toBe('')
         expect(formatTokenDiscountNote(undefined)).toBe('')
 
-        expect(formatTokenDiscountNote('opus')).toContain('1.7x the Sol rate')
-        expect(formatTokenDiscountNote('sonnet')).toBe('')
-        expect(formatTokenDiscountNote('fable')).toContain('3.8x the Sol rate')
-        expect(formatTokenDiscountNote(LUNA)).toContain('1/20')
-        expect(formatTokenDiscountNote(TERRA)).toContain('1.1x the Sol rate')
-        expect(formatTokenDiscountNote(DEEPSEEK_PRO)).toContain('1/7')
-        expect(formatTokenDiscountNote(DEEPSEEK_R1)).toContain('1.4x the Sol rate')
+        expect(formatTokenDiscountNote('opus')).toContain('2x the Sol rate')
+        expect(formatTokenDiscountNote('sonnet')).toContain('1.2x the Sol rate')
+        expect(formatTokenDiscountNote('fable')).toContain('4.5x the Sol rate')
+        expect(formatTokenDiscountNote(LUNA)).toContain('1/16.7')
+        expect(formatTokenDiscountNote(TERRA)).toContain('1.3x the Sol rate')
+        expect(formatTokenDiscountNote(DEEPSEEK_PRO)).toContain('1/5.8')
+        expect(formatTokenDiscountNote(DEEPSEEK_R1)).toContain('1.7x the Sol rate')
     })
 
     test('a model dearer than Sol says so rather than implying a discount', () => {
@@ -408,7 +408,7 @@ describe('the rate is disclosed to the user', () => {
     // The quoted number must be the billed number, so the note prefers the rate frozen on the job
     // rather than independently re-deriving one that could differ.
     test('the note quotes the persisted rate, not a second derivation of it', () => {
-        expect(formatTokenDiscountNote(SOL, { tokensPerGold: 2500 })).toContain('1/12.5')
+        expect(formatTokenDiscountNote(SOL, { tokensPerGold: 2500 })).toContain('1/10.4')
         expect(formatTokenDiscountNote(DEEPSEEK_PRO, { tokensPerGold: resolveTokensPerGold(SOL) })).toBe('')
     })
 })

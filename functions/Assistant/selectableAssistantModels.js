@@ -1,7 +1,7 @@
 const SELECTABLE_ASSISTANT_MODELS = [
     {
         model: 'MODEL_GPT6_SOL',
-        labelKey: 'GPT 6 Sol',
+        labelKey: 'GPT 6.1 Sol',
         name: 'Sol',
         descriptionKey: 'Most capable',
         tokensPerGold: 200,

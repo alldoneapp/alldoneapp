@@ -1218,7 +1218,7 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_GPT4O) return 'gpt-4o'
     if (normalizedKey === MODEL_GPT5_1) return 'gpt-5.1'
     if (normalizedKey === MODEL_GPT5_5) return 'gpt-5.5'
-    if (normalizedKey === MODEL_GPT6_SOL) return 'gpt-6-sol'
+    if (normalizedKey === MODEL_GPT6_SOL) return 'gpt-6.1-sol'
     if (normalizedKey === MODEL_GPT5_6_TERRA) return 'gpt-5.6-terra'
     if (normalizedKey === MODEL_GPT6_LUNA) return 'gpt-6-luna'
     if (normalizedKey === MODEL_GPT5_4_MINI) return 'gpt-5.4-mini'
@@ -1234,7 +1234,7 @@ const getModel = modelKey => {
     if (normalizedKey === MODEL_SONAR_DEEP_RESEARCH) return 'sonar-deep-research'
 
     // Default fallback to the explicit GPT-6 Sol tier.
-    return 'gpt-6-sol'
+    return 'gpt-6.1-sol'
 }
 
 const getTemperature = temperatureKey => {
@@ -2831,7 +2831,7 @@ async function interactWithChatStream(
 
     // Step 1: Get model config and cached environment
     const configStart = Date.now()
-    const model = getModel(modelKey) || 'gpt-6-sol'
+    const model = getModel(modelKey) || 'gpt-6.1-sol'
     const temperature = getTemperature(temperatureKey)
     const envFunctions = getCachedEnvFunctions() // Use cached version
     const configDuration = Date.now() - configStart
@@ -2993,7 +2993,7 @@ async function interactWithChatStream(
         }
         let responsesToolConfig = null
 
-        const reasoningEffort = toolRuntimeContext?.openAiReasoningEffort
+        const reasoningEffort = normalizeAssistantReasoningEffort(toolRuntimeContext?.openAiReasoningEffort, model)
         if (modelSupportsAssistantReasoningEffort(modelKey) && isValidAssistantReasoningEffort(reasoningEffort)) {
             requestParams.reasoning = { effort: reasoningEffort }
         }
@@ -3362,6 +3362,7 @@ async function* convertResponsesStream(stream, usageContext = {}) {
                     model: chunk.response?.model || usageContext.model || '',
                     cacheKey: usageContext.cacheKey,
                     cacheMode: usageContext.cacheMode,
+                    serviceTier: chunk.response?.service_tier || 'default',
                 })
                 console.log('📊 OPENAI USAGE: Responses request completed', {
                     route: usageContext.route || 'assistant',
@@ -11482,7 +11483,10 @@ const primeDefaultAssistantCache = async () => {
                 ...defaultAssistant,
                 model: normalizeModelKey(defaultAssistant.model || MODEL_GPT6_SOL),
                 temperature: defaultAssistant.temperature || 'TEMPERATURE_NORMAL',
-                reasoningEffort: normalizeAssistantReasoningEffort(defaultAssistant.reasoningEffort),
+                reasoningEffort: normalizeAssistantReasoningEffort(
+                    defaultAssistant.reasoningEffort,
+                    defaultAssistant.model || MODEL_GPT6_SOL
+                ),
                 instructions: defaultAssistant.instructions || 'You are a helpful assistant.',
                 emailSignature:
                     typeof defaultAssistant.emailSignature === 'string'
@@ -11595,7 +11599,7 @@ async function getAssistantForChat(projectId, assistantId, userId = null, option
     assistant = assistant || {}
     assistant.model = normalizeModelKey(assistant?.model || MODEL_GPT6_SOL)
     assistant.temperature = assistant?.temperature || 'TEMPERATURE_NORMAL'
-    assistant.reasoningEffort = normalizeAssistantReasoningEffort(assistant?.reasoningEffort)
+    assistant.reasoningEffort = normalizeAssistantReasoningEffort(assistant?.reasoningEffort, assistant.model)
     assistant.instructions = assistant?.instructions || 'You are a helpful assistant.'
     assistant.emailSignature =
         typeof assistant?.emailSignature === 'string' ? assistant.emailSignature : DEFAULT_EMAIL_SIGNATURE
@@ -13405,7 +13409,14 @@ function enforceOpenAiInputTokenPreflight(requestParams, { route = 'unknown', mo
     throw error
 }
 
-function logOpenAiCacheUsage({ usage, route = 'unknown', model = '', cacheKey = '', cacheMode = '' } = {}) {
+function logOpenAiCacheUsage({
+    usage,
+    route = 'unknown',
+    model = '',
+    cacheKey = '',
+    cacheMode = '',
+    serviceTier = 'default',
+} = {}) {
     if (!usage) return null
     const cacheUsage = getOpenAiCacheUsage(usage)
     const cacheKeyFingerprint = cacheKey
@@ -13418,6 +13429,9 @@ function logOpenAiCacheUsage({ usage, route = 'unknown', model = '', cacheKey = 
         cacheKeyFingerprint,
         cacheMode: cacheMode || 'automatic',
         ...cacheUsage,
+        ...(model === 'gpt-6.1-sol'
+            ? { pricing: require('./solModelPricing').getSolRequestCost(usage, serviceTier) }
+            : {}),
     })
     if (cacheUsage.inputTokens >= OPENAI_INPUT_TOKEN_ALERT_THRESHOLD) {
         console.warn('🚨 OPENAI INPUT TOKEN ALERT: Request approaching 200K input tokens', {

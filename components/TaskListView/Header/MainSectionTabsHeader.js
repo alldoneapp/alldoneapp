@@ -26,8 +26,8 @@ import { allGoals } from '../../AllSections/allSectionHelper'
  * Spanish ("Aufgaben Ziele Notizen Kontakte Chats" needs ~372px at 16px + 10px padding, and a
  * 390px phone leaves the card ~336px). English only just fits, which is why it was never noticed.
  * The mobile layout above this width keeps the centred scroller; below it the tabs become a fixed
- * single row with 15px labels, 1px tab padding and 4px card padding per side, leaving room for all
- * three languages even in the narrower project navigation on a 320px phone.
+ * single row with a smaller font and tighter padding (~300px), which fits all three languages on a
+ * 360px Android as well.
  */
 export const COMPACT_TABS_BREAKPOINT = 420
 
@@ -133,7 +133,7 @@ export default function MainSectionTabsHeader({
     return (
         <View style={localStyles.container}>
             {useMobileLayout ? (
-                <View style={[localStyles.controlsRowMobile, useCompactMobileTabs && localStyles.controlsRowCompact]}>
+                <View style={localStyles.controlsRowMobile}>
                     {useCompactMobileTabs ? (
                         <View
                             style={[
@@ -258,9 +258,6 @@ const localStyles = StyleSheet.create({
         boxShadow: '0px 4px 10px rgba(4,20,47,0.08)',
         elevation: 2,
     },
-    controlsRowCompact: {
-        paddingHorizontal: 4,
-    },
     tabsRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -307,7 +304,7 @@ const localStyles = StyleSheet.create({
         marginHorizontal: 0,
     },
     tabButtonCompact: {
-        paddingHorizontal: 1,
+        paddingHorizontal: 6,
         flexShrink: 1,
         minWidth: 0,
     },
@@ -322,7 +319,7 @@ const localStyles = StyleSheet.create({
         ...styles.subtitle1,
     },
     tabTextCompact: {
-        fontSize: 15,
+        fontSize: 14,
         lineHeight: 22,
         letterSpacing: 0,
     },

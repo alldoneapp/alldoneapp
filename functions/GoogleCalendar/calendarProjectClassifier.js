@@ -44,7 +44,7 @@ function mapAssistantModelToOpenAIModel(modelKey) {
     if (normalizedKey === 'MODEL_GPT4O') return 'gpt-4o'
     if (normalizedKey === 'MODEL_GPT5_1') return 'gpt-5.1'
     if (normalizedKey === 'MODEL_GPT5_5') return 'gpt-5.5'
-    if (normalizedKey === 'MODEL_GPT6_SOL') return 'gpt-6-sol'
+    if (normalizedKey === 'MODEL_GPT6_SOL') return 'gpt-6.1-sol'
     if (normalizedKey === 'MODEL_GPT5_6_TERRA') return 'gpt-5.6-terra'
     if (normalizedKey === 'MODEL_GPT6_LUNA') return 'gpt-6-luna'
     if (normalizedKey === 'MODEL_GPT5_4_MINI') return 'gpt-5.4-mini'

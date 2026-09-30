@@ -41,7 +41,8 @@ const {
     resolveJobCredentialProvider,
     OPENROUTER_LABEL,
 } = require('./vmModelRouting')
-const { resolveEffectiveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
+const { resolveEffectiveTokensPerGold, calculateTokenGold, calculateSolUsageGold } = require('./vmTokenPricing')
+const { SOL_MODEL } = require('./solModelPricing')
 const {
     MAX_VM_RUNTIME_MS,
     VM_JOB_FINALIZATION_HEADROOM_MS,
@@ -1545,7 +1546,7 @@ function appendCodexActivity(evt, state) {
             inputTokens: input,
             outputTokens: output,
             cacheTokens: cache,
-            totalTokens: u.total_tokens || input + output + cache,
+            totalTokens: u.total_tokens || input + output,
             costUsd: null,
         }
         return
@@ -1591,10 +1592,12 @@ function appendCodexActivity(evt, state) {
 // real values even when the assistant omitted agentModel / agentReasoningEffort on the tool call.
 function resolveAgentRunDetails(vmJob) {
     const agent = (vmJob && vmJob.agent) || DEFAULT_AGENT
-    const model = (vmJob && vmJob.agentModel) || (agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
-    const effort =
+    const savedModel = (vmJob && vmJob.agentModel) || (agent === 'codex' ? DEFAULT_CODEX_MODEL : DEFAULT_CLAUDE_MODEL)
+    const model = agent === 'codex' && savedModel === 'gpt-6-sol' ? DEFAULT_CODEX_MODEL : savedModel
+    const savedEffort =
         (vmJob && vmJob.agentReasoningEffort) ||
         (agent === 'codex' ? DEFAULT_CODEX_REASONING_EFFORT : DEFAULT_CLAUDE_EFFORT_LEVEL)
+    const effort = agent === 'codex' && savedEffort === 'none' ? 'high' : savedEffort
     const persistedResolvedModel = vmJob?.resolvedAgentModel
     const resolvedModel =
         typeof persistedResolvedModel === 'string' &&
@@ -2364,13 +2367,23 @@ function calculateCompletionGoldCharges({
     subscriptionUsed = false,
     agentModel = '',
     tokensPerGold: persistedTokensPerGold = 0,
+    proxyTokenUsage = {},
 }) {
     const minutes = Math.max(1, Math.ceil(Math.max(0, Number(runtimeMs) || 0) / 60000))
-    const totalTokens = usage && usage.totalTokens ? usage.totalTokens : 0
+    // The proxy sees all requests across turns/resumes, while CLI usage may cover only the last turn.
+    const totalTokens = Math.max(Number(usage?.totalTokens) || 0, Number(proxyTokenUsage.totalTokens) || 0)
     const runtimeGoldTotal = minutes * VM_GOLD_PER_MINUTE
     const runtimeGoldRemaining = Math.max(0, runtimeGoldTotal - (Number(runtimeGoldCharged) || 0))
     const tokensPerGold = resolveEffectiveTokensPerGold({ tokensPerGold: persistedTokensPerGold, agentModel })
-    const tokenGoldTotal = subscriptionUsed ? 0 : calculateTokenGold(totalTokens, tokensPerGold)
+    const tokenGoldTotal = subscriptionUsed
+        ? 0
+        : agentModel === SOL_MODEL && proxyTokenUsage.solPricedTokens > 0
+          ? calculateSolUsageGold(
+                proxyTokenUsage.solCostUsd,
+                tokensPerGold,
+                Math.max(0, totalTokens - proxyTokenUsage.solPricedTokens)
+            )
+          : calculateTokenGold(totalTokens, tokensPerGold)
     const tokenGold = Math.max(0, tokenGoldTotal - (Number(proxyTokenGoldCharged) || 0))
     return {
         minutes,
@@ -4712,6 +4725,7 @@ async function runVmJobByCorrelationId(correlationId) {
                 // mirror of it came from, so settlement and the incremental charges are the same rate
                 // by construction rather than by two matching derivations.
                 tokensPerGold: vmJob.tokensPerGold,
+                proxyTokenUsage: latestPendingData.proxyTokenUsage,
             })
         await chargeVmTopup(pendingWebhook, vmJob, {
             topup,

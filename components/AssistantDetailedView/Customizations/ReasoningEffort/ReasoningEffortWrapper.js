@@ -20,7 +20,10 @@ export default function ReasoningEffortWrapper({ disabled, projectId, assistant 
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [isOpen, setIsOpen] = useState(false)
     const isOpenRef = useRef(false)
-    const reasoningEffort = normalizeAssistantReasoningEffort(assistant.reasoningEffort)
+    const reasoningEffort = normalizeAssistantReasoningEffort(
+        assistant.reasoningEffort,
+        assistant.model || 'MODEL_GPT6_SOL'
+    )
 
     const openModal = () => {
         setIsOpen(true)
@@ -46,6 +49,7 @@ export default function ReasoningEffortWrapper({ disabled, projectId, assistant 
         <AppPopover
             content={
                 <AssistantReasoningEffortModal
+                    model={assistant.model}
                     closeModal={closeModal}
                     reasoningEffort={reasoningEffort}
                     updateReasoningEffort={value => updateAssistantReasoningEffort(projectId, assistant, value)}

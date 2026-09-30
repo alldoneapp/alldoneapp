@@ -5,9 +5,24 @@ const {
     normalizeAssistantReasoningEffort,
     resolveAssistantReasoningEffort,
     getAssistantReasoningEffortLabelKey,
+    getAssistantReasoningEffortOptions,
 } = require('./selectableAssistantReasoningEfforts')
 
 describe('selectable assistant reasoning efforts', () => {
+    test.each(['MODEL_GPT6_SOL', 'MODEL_GPT5_6_SOL', 'gpt-6-sol', 'gpt-6.1-sol'])(
+        '%s upgrades disabled reasoning to high while preserving other selections',
+        model => {
+            expect(normalizeAssistantReasoningEffort('none', model)).toBe('high')
+            expect(normalizeAssistantReasoningEffort('low', model)).toBe('low')
+            expect(normalizeAssistantReasoningEffort(null, model)).toBeNull()
+            expect(getAssistantReasoningEffortOptions(model).map(option => option.value)).not.toContain('none')
+        }
+    )
+
+    test('other models retain their none setting and option', () => {
+        expect(normalizeAssistantReasoningEffort('none', 'MODEL_GPT5_6_TERRA')).toBe('none')
+        expect(getAssistantReasoningEffortOptions('MODEL_GPT5_6_TERRA').map(option => option.value)).toContain('none')
+    })
     test('defines the complete ordered product and API value set', () => {
         expect(SELECTABLE_ASSISTANT_REASONING_EFFORTS).toEqual([
             { value: null, labelKey: 'Model default' },

@@ -47,7 +47,7 @@ describe('assistantModelRouting', () => {
     })
 
     test('an unknown or empty key falls back to OpenAI instead of failing the run', () => {
-        // Pre-AT-2238 behaviour: it then flows into `getModel`'s own `gpt-6-sol` fallback.
+        // Pre-AT-2238 behaviour: it then flows into `getModel`'s own `gpt-6.1-sol` fallback.
         expect(resolveAssistantModelProvider('MODEL_SOMETHING_NEW').provider).toBe(PROVIDER_OPENAI)
         expect(resolveAssistantModelProvider('').provider).toBe(PROVIDER_OPENAI)
         expect(resolveAssistantModelProvider(undefined).provider).toBe(PROVIDER_OPENAI)
