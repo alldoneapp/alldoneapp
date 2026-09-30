@@ -8,7 +8,6 @@ import SharedHelper from '../../utils/SharedHelper'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { useVoiceCall } from '../UIComponents/AssistantVoiceCallProvider'
 import { AUTOMATIC_PROJECT_OPTION } from '../UIComponents/FloatModals/SelectProjectModal/projectPickerConstants'
-import { getMostVisibleTaskProjectId } from './visibleTaskProject'
 
 const mockDispatch = jest.fn()
 const mockClearStoredWebShareTarget = jest.fn()
@@ -24,7 +23,6 @@ jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     checkIfSelectedProject: index => index > -1,
 }))
 jest.mock('../Tags/AddTaskTag', () => 'AddTaskTag')
-jest.mock('./visibleTaskProject', () => ({ getMostVisibleTaskProjectId: jest.fn() }))
 jest.mock('../../redux/actions', () => ({
     clearPendingWebShareTarget: () => ({ type: 'Clear pending web share target' }),
     setTasksArrowButtonIsExpanded: value => ({
@@ -56,7 +54,6 @@ const renderButton = (overrides = {}, callStatus = 'idle') => {
 describe('FloatingAddTaskButton (AT-2575)', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        getMostVisibleTaskProjectId.mockReturnValue(null)
         SharedHelper.accessGranted.mockReturnValue(true)
         ProjectHelper.checkIfLoggedUserIsNormalUserInGuide.mockReturnValue(false)
     })
@@ -72,8 +69,6 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
         const addTask = renderButton({ selectedProjectIndex: 0 }).root.findByType('AddTaskTag')
 
         expect(addTask.props.projectId).toBe('project-1')
-        expect(addTask.props.getInitialProjectId()).toBe('project-1')
-        expect(getMostVisibleTaskProjectId).not.toHaveBeenCalled()
         expect(addTask.props.showProjectSelector).toBeUndefined()
 
         act(() => addTask.props.setPressedShowMoreMainSection())
@@ -81,25 +76,6 @@ describe('FloatingAddTaskButton (AT-2575)', () => {
             type: 'Tasks arrow button is expanded',
             tasksArrowButtonIsExpanded: true,
         })
-    })
-
-    it.each(['Open', 'In progress', 'Workflow', 'Done'])('resolves scroll context on each %s opening', tab => {
-        const addTask = renderButton({ taskViewToggleSection: tab }).root.findByType('AddTaskTag')
-        getMostVisibleTaskProjectId.mockReturnValue('project-1')
-        expect(addTask.props.getInitialProjectId()).toBe('project-1')
-        getMostVisibleTaskProjectId.mockReturnValue('project-2')
-        expect(addTask.props.getInitialProjectId()).toBe('project-2')
-        getMostVisibleTaskProjectId.mockReturnValue(null)
-        expect(addTask.props.getInitialProjectId()).toBe(AUTOMATIC_PROJECT_OPTION)
-    })
-
-    it('keeps Automatic in mixed-project My Day even if a project section is rendered', () => {
-        getMostVisibleTaskProjectId.mockReturnValue('project-1')
-        const addTask = renderButton({
-            loggedUser: { ...baseState.loggedUser, showAllProjectsByTime: true },
-        }).root.findByType('AddTaskTag')
-        expect(addTask.props.getInitialProjectId()).toBe(AUTOMATIC_PROJECT_OPTION)
-        expect(getMostVisibleTaskProjectId).not.toHaveBeenCalled()
     })
 
     it.each(['connecting', 'connected', 'ending'])('is hidden while a voice call is %s', status => {
