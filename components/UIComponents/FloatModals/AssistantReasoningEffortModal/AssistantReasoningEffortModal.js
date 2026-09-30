@@ -8,17 +8,19 @@ import OptionItem from './OptionItem'
 import useWindowSize from '../../../../utils/useWindowSize'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { translate } from '../../../../i18n/TranslationService'
-import { SELECTABLE_ASSISTANT_REASONING_EFFORTS } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
+import { getAssistantReasoningEffortOptions } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
 import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
-const options = SELECTABLE_ASSISTANT_REASONING_EFFORTS.map((option, index) => ({
-    text: option.labelKey,
-    reasoningEffort: option.value,
-    shortcutKey: String(index + 1),
-}))
+const getOptions = model =>
+    getAssistantReasoningEffortOptions(model).map((option, index) => ({
+        text: option.labelKey,
+        reasoningEffort: option.value,
+        shortcutKey: String(index + 1),
+    }))
 
-export default function AssistantReasoningEffortModal({ closeModal, reasoningEffort, updateReasoningEffort }) {
+export default function AssistantReasoningEffortModal({ closeModal, model, reasoningEffort, updateReasoningEffort }) {
     const [, height] = useWindowSize()
+    const options = getOptions(model)
 
     const selectReasoningEffort = value => {
         updateReasoningEffort(value)

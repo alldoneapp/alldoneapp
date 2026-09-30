@@ -43,7 +43,7 @@ describe('per-thread assistant model override (AT-2502)', () => {
         })
 
         // The whole reason the read validates rather than trusting. `getModel` answers
-        // 'gpt-6-sol' for an unknown key while `getTokensPerGold` answers undefined, and
+        // 'gpt-6.1-sol' for an unknown key while `getTokensPerGold` answers undefined, and
         // `calculateGoldCostFromTokens` turns that into a charge of ZERO — so a thread pinned to
         // a model that is later retired would run free and silently, forever.
         it('ignores a model key that is no longer selectable', () => {

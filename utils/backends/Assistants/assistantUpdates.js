@@ -476,7 +476,7 @@ const getModelText = modelKey => {
     if (modelKey === MODEL_GPT4O) return 'GPT 4o'
     if (modelKey === MODEL_GPT5_1) return 'GPT 5_1'
     if (modelKey === MODEL_GPT5_5) return 'GPT 5_5'
-    if (modelKey === MODEL_GPT6_SOL || modelKey === 'MODEL_GPT5_6_SOL') return 'GPT 6 Sol'
+    if (modelKey === MODEL_GPT6_SOL || modelKey === 'MODEL_GPT5_6_SOL') return 'GPT 6.1 Sol'
     if (modelKey === MODEL_GPT5_6_TERRA) return 'GPT 5_6 Terra'
     if (modelKey === MODEL_GPT6_LUNA || modelKey === 'MODEL_GPT5_6_LUNA') return 'GPT 6 Luna'
     if (modelKey === MODEL_GPT5_2) return 'GPT 5_2'

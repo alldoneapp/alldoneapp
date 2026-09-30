@@ -74,6 +74,10 @@ async function readStoredVmAgentSettings(userId) {
     }
 
     const data = snapshot.data() || {}
+    // Legacy disabled reasoning is upgraded at read time without rewriting user settings.
+    if (data.defaultVmAgentReasoningEffort === 'none' && data.defaultVmAgent !== 'claude') {
+        data.defaultVmAgentReasoningEffort = 'high'
+    }
     const hasReasoningEffortField = Object.prototype.hasOwnProperty.call(data, 'defaultVmAgentReasoningEffort')
     const hasStoredReasoningEffort =
         (hasReasoningEffortField &&
