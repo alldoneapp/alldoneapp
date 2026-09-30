@@ -26,7 +26,7 @@ import { allGoals } from '../../AllSections/allSectionHelper'
  * Spanish ("Aufgaben Ziele Notizen Kontakte Chats" needs ~372px at 16px + 10px padding, and a
  * 390px phone leaves the card ~336px). English only just fits, which is why it was never noticed.
  * The mobile layout above this width keeps the centred scroller; below it the tabs become a fixed
- * single row with 15px labels, 1px tab padding and 4px card padding per side, leaving room for all
+ * single row with 15px labels, 1px tab padding and 5px card padding per side, leaving room for all
  * three languages even in the narrower project navigation on a 320px phone.
  */
 export const COMPACT_TABS_BREAKPOINT = 420
@@ -259,7 +259,7 @@ const localStyles = StyleSheet.create({
         elevation: 2,
     },
     controlsRowCompact: {
-        paddingHorizontal: 4,
+        paddingHorizontal: 5,
     },
     tabsRow: {
         flexDirection: 'row',
