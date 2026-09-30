@@ -83,9 +83,9 @@
  *
  * ## Known modelling caveats
  *
- * - Cache *writes* cost more than fresh input (1.25x on both OpenAI and Anthropic) and are metered
- *   as plain input tokens. The blend ignores that, so a cache-write-heavy run is slightly
- *   under-priced. It is a small term at the measured mix and it errs consistently across models.
+ * - The catalog blend ignores cache writes and long context. Sol 6.1 proxy requests use actual
+ *   component prices instead (solModelPricing), and convert their USD cost to equivalent blended
+ *   tokens for Gold settlement. Other models and old jobs keep the established blended tariff.
  * - `OBSERVED_TOKEN_MIX` is one workload shape (Claude/OpenAI coding runs). A model used for a very
  *   different mix is priced against that shape, not its own. Re-measure it if VM usage changes
  *   character; the constant is the only thing that needs touching.
@@ -99,10 +99,11 @@
  */
 
 const { parseOpenRouterSelection } = require('./vmModelRouting')
+const { SOL_STANDARD_PRICES } = require('./solModelPricing')
 
 /**
  * Historical GPT-5.6 Sol rate: 100 tokens buy 1 Gold. Keeping this anchor prevents a model release
- * from changing the Gold rates of unrelated providers or old jobs. Current Sol derives to 200.
+ * from changing the Gold rates of unrelated providers or old jobs. Current Sol derives to 240.
  */
 const BASE_VM_TOKENS_PER_GOLD = 100
 
@@ -128,23 +129,24 @@ const OBSERVED_TOKEN_MIX = Object.freeze({
 
 /**
  * Official OpenAI Standard short-context list prices in USD per 1M tokens
- * (developers.openai.com/api/docs/pricing, retrieved 2026-09-22). The older Sol price remains the
+ * (developers.openai.com/api/docs/pricing, retrieved 2026-09-30). The older Sol price remains the
  * billing anchor so releasing a cheaper model does not reprice other providers or existing jobs.
  */
 const CODEX_REFERENCE_PRICES = Object.freeze({
     astra: Object.freeze({ input: 10, cachedInput: 1, output: 50 }),
-    sol: Object.freeze({ input: 2, cachedInput: 0.2, output: 10 }),
+    sol: SOL_STANDARD_PRICES,
     terra: Object.freeze({ input: 2, cachedInput: 0.2, output: 12 }),
     luna: Object.freeze({ input: 0.1, cachedInput: 0.01, output: 0.5 }),
 })
 
 const CODEX_LEGACY_REFERENCE_PRICES = Object.freeze({
+    'gpt-6-sol': Object.freeze({ input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 10 }),
     'gpt-5.6-sol': Object.freeze({ input: 4, cachedInput: 0.4, output: 20 }),
     'gpt-5.6-luna': Object.freeze({ input: 0.2, cachedInput: 0.02, output: 1.2 }),
 })
 const CODEX_CURRENT_MODEL_REFERENCE_PRICES = Object.freeze({
     'gpt-6-astra': CODEX_REFERENCE_PRICES.astra,
-    'gpt-6-sol': CODEX_REFERENCE_PRICES.sol,
+    'gpt-6.1-sol': CODEX_REFERENCE_PRICES.sol,
     'gpt-5.6-terra': CODEX_REFERENCE_PRICES.terra,
     'gpt-6-luna': CODEX_REFERENCE_PRICES.luna,
 })
@@ -466,6 +468,14 @@ function calculateTokenGold(totalTokens, tokensPerGold) {
     return Math.round(tokens / rate)
 }
 
+// Convert metered Sol USD to Gold using the same blend and frozen divisor as the
+// catalog estimate. Older jobs without per-request costs retain total-token billing.
+function calculateSolUsageGold(costUsd, tokensPerGold, unpricedTokens = 0) {
+    const equivalentTokens =
+        (Math.max(0, Number(costUsd) || 0) * 1000000) / blendedUsdPerMillionTokens(CODEX_REFERENCE_PRICES.sol)
+    return calculateTokenGold(equivalentTokens + Math.max(0, Number(unpricedTokens) || 0), tokensPerGold)
+}
+
 /** Tokens → Gold for a model selection, resolving the rate in one step. */
 function calculateTokenGoldForModel(totalTokens, agentModel, options = {}) {
     return calculateTokenGold(totalTokens, resolveTokensPerGold(agentModel, BASE_VM_TOKENS_PER_GOLD, options))
@@ -512,6 +522,7 @@ module.exports = {
     resolveEffectiveTokensPerGold,
     resolveSolRelativeGoldFactor,
     calculateTokenGold,
+    calculateSolUsageGold,
     calculateTokenGoldForModel,
     formatTokenDiscountNote,
 }

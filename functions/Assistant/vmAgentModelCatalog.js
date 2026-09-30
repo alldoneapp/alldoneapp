@@ -32,7 +32,7 @@ const { resolveTokensPerGold } = require('./vmTokenPricing')
 const CATALOG_COLLECTION = 'vmAgentModelCatalog'
 const CATALOG_TTL_MS = 12 * 60 * 60 * 1000
 const DISCOVERY_TIMEOUT_MS = 8000
-const CODEX_CATALOG_SCHEMA_VERSION = 3
+const CODEX_CATALOG_SCHEMA_VERSION = 4
 
 const VALID_PROVIDERS = ['claude', 'codex']
 
@@ -99,7 +99,7 @@ const FALLBACK_CATALOGS = {
     codex: {
         families: [
             { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false },
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6-sol', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.1-sol', isAlias: false },
             { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
             { id: 'luna', label: 'Luna', resolvedModel: 'gpt-6-luna', isAlias: false },
         ],
@@ -646,6 +646,17 @@ async function getModelCatalog(provider, options = {}) {
     // `getVmAgentSettings`, and shipping a few tens of KB of prices the UI never reads on every
     // Settings load would be pure waste.
     const decorate = catalog => {
+        // Cached/discovered Sol 6.0 choices follow the reviewed replacement even during outages.
+        if (provider === 'codex') {
+            catalog = {
+                ...catalog,
+                families: (catalog.families || []).map(model => ({
+                    ...model,
+                    ...(model.resolvedModel === 'gpt-6-sol' ? { resolvedModel: 'gpt-6.1-sol' } : {}),
+                    ...(model.latestModel === 'gpt-6-sol' ? { latestModel: 'gpt-6.1-sol' } : {}),
+                })),
+            }
+        }
         const pricedCatalog = decorateCatalogGoldPricing(provider, catalog)
         if (!isOpenRouter) return pricedCatalog
         const decorated = { ...pricedCatalog, available: isOpenRouterConfigured(options) }

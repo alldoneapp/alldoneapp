@@ -1845,7 +1845,7 @@
     "GPT 5_1": "GPT 5.1",
     "GPT 5_5": "GPT 5.5",
     "GPT 5_6 Sol": "GPT 5.6 Sol",
-    "GPT 6 Sol": "GPT 6 Sol",
+    "GPT 6.1 Sol": "GPT 6.1 Sol",
     "GPT 5_6 Terra": "GPT 5.6 Terra",
     "GPT 5_6 Luna": "GPT 5.6 Luna",
     "GPT 6 Luna": "GPT 6 Luna",
@@ -3090,5 +3090,6 @@
     "Rage mode weapon": "Arma del modo furia",
     "Auto-fire": "Disparo automático",
     "Auto-fire on": "Disparo automático activado",
-    "Auto-fire off": "Disparo automático desactivado"
+    "Auto-fire off": "Disparo automático desactivado",
+    "1 Gold ≈ %{tokens} tokens": "1 Gold ≈ %{tokens} tokens"
 }

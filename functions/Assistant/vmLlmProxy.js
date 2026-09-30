@@ -23,7 +23,8 @@
 const crypto = require('crypto')
 const { TextDecoder } = require('util')
 const { getEnvFunctions } = require('../envFunctionsHelper')
-const { resolveEffectiveTokensPerGold, calculateTokenGold } = require('./vmTokenPricing')
+const { resolveEffectiveTokensPerGold, calculateTokenGold, calculateSolUsageGold } = require('./vmTokenPricing')
+const { SOL_MODEL, getSolRequestCost } = require('./solModelPricing')
 const { resolveJobCredentialProvider } = require('./vmModelRouting')
 const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 const admin = require('firebase-admin')
@@ -428,8 +429,11 @@ function normalizeUsage(usage = {}) {
         (Number(usage.cache_creation_input_tokens) || 0) +
         (Number(usage.cache_read_input_tokens) || 0) +
         (Number(usage.cached_input_tokens) || 0) +
-        (Number(usage.input_tokens_details?.cached_tokens) || 0)
-    const total = Number(usage.total_tokens) || Number(usage.totalTokens) || input + output + cache
+        (Number(usage.input_tokens_details?.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens) || 0)
+    // OpenAI cache reads and writes are included in input; Anthropic's are separate.
+    const additionalCache =
+        (Number(usage.cache_creation_input_tokens) || 0) + (Number(usage.cache_read_input_tokens) || 0)
+    const total = Number(usage.total_tokens) || Number(usage.totalTokens) || input + output + additionalCache
     return {
         inputTokens: Number.isFinite(input) ? input : 0,
         outputTokens: Number.isFinite(output) ? output : 0,
@@ -500,6 +504,13 @@ function addUsage(a = {}, b = {}) {
         outputTokens: (Number(a.outputTokens) || 0) + (Number(b.outputTokens) || 0),
         cacheTokens: (Number(a.cacheTokens) || 0) + (Number(b.cacheTokens) || 0),
         totalTokens: (Number(a.totalTokens) || 0) + (Number(b.totalTokens) || 0),
+        ...(a.solCostUsd !== undefined || b.solCostUsd !== undefined
+            ? {
+                  solCostUsd: (Number(a.solCostUsd) || 0) + (Number(b.solCostUsd) || 0),
+                  solPricedTokens: (Number(a.solPricedTokens) || 0) + (Number(b.solPricedTokens) || 0),
+                  cacheWriteTokens: (Number(a.cacheWriteTokens) || 0) + (Number(b.cacheWriteTokens) || 0),
+              }
+            : {}),
     }
 }
 
@@ -514,10 +525,20 @@ function extractUsageFromJsonPayload(provider, payload) {
     // OpenRouter speaks the same OpenAI-compatible shapes: `usage` on a Chat Completions chunk
     // (final chunk when include_usage is on) or on a non-streamed response body.
     if (provider === 'openai' || provider === 'openrouter') {
-        if (payload.usage) return normalizeUsage(payload.usage)
-        if (payload.response?.usage) return normalizeUsage(payload.response.usage)
-        if (payload.type === 'response.completed' && payload.response?.usage)
-            return normalizeUsage(payload.response.usage)
+        const response = payload.response || payload
+        if (response.usage) {
+            const normalized = normalizeUsage(response.usage)
+            if (provider === 'openai' && response.model === SOL_MODEL) {
+                const cost = getSolRequestCost(response.usage, response.service_tier || 'default')
+                return {
+                    ...normalized,
+                    solCostUsd: cost.costUsd,
+                    solPricedTokens: cost.totalTokens,
+                    cacheWriteTokens: cost.cacheWriteTokens,
+                }
+            }
+            return normalized
+        }
     }
     return null
 }
@@ -627,12 +648,28 @@ async function chargeProxyTokenGold({
         // is the rate frozen at launch (including a live OpenRouter price); a job doc written before
         // that field existed falls back to resolving from `agentModel`, i.e. unchanged behaviour.
         const tokensPerGold = resolveEffectiveTokensPerGold(pendingData)
-        const goldDue = Math.max(0, calculateTokenGold(nextTokens, tokensPerGold) - previousGoldCharged)
+        const solCostUsd = (Number(pendingData.proxyTokenUsage?.solCostUsd) || 0) + (Number(usage.solCostUsd) || 0)
+        const solPricedTokens =
+            (Number(pendingData.proxyTokenUsage?.solPricedTokens) || 0) + (Number(usage.solPricedTokens) || 0)
+        const usesSolCosts = pendingData.agentModel === SOL_MODEL && solPricedTokens > 0
+        const tokenGoldTotal = usesSolCosts
+            ? calculateSolUsageGold(solCostUsd, tokensPerGold, Math.max(0, nextTokens - solPricedTokens))
+            : calculateTokenGold(nextTokens, tokensPerGold)
+        const goldDue = Math.max(0, tokenGoldTotal - previousGoldCharged)
         const usageUpdate = {
             inputTokens: (Number(pendingData.proxyTokenUsage?.inputTokens) || 0) + (Number(usage.inputTokens) || 0),
             outputTokens: (Number(pendingData.proxyTokenUsage?.outputTokens) || 0) + (Number(usage.outputTokens) || 0),
             cacheTokens: (Number(pendingData.proxyTokenUsage?.cacheTokens) || 0) + (Number(usage.cacheTokens) || 0),
             totalTokens: nextTokens,
+            ...(usesSolCosts
+                ? {
+                      solCostUsd,
+                      solPricedTokens,
+                      cacheWriteTokens:
+                          (Number(pendingData.proxyTokenUsage?.cacheWriteTokens) || 0) +
+                          (Number(usage.cacheWriteTokens) || 0),
+                  }
+                : {}),
         }
 
         if (goldDue <= 0) {

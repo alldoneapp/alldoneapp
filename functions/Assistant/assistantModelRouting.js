@@ -114,7 +114,7 @@ function isPerplexityAssistantModel(modelKey) {
  * is exactly the drift this module exists to stop.
  *
  * An unknown key resolves to OpenAI, which is the pre-AT-2238 behaviour: it then flows into the
- * existing `getModel` fallback (`gpt-6-sol`) rather than failing the run.
+ * existing `getModel` fallback (`gpt-6.1-sol`) rather than failing the run.
  */
 /**
  * Whether a model key can be sent image parts.

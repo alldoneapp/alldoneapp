@@ -3,6 +3,15 @@ const mockUpdate = jest.fn(async () => {})
 const mockDoc = jest.fn(() => ({ get: mockGet, update: mockUpdate }))
 const mockFirestore = jest.fn(() => ({ doc: mockDoc }))
 
+test('legacy Codex none reasoning is read as high', async () => {
+    mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ defaultVmAgent: 'codex', defaultVmAgentReasoningEffort: 'none' }),
+    })
+    const result = await require('./vmAgentSettings').resolveVmAgentSettings('user-1')
+    expect(result).toEqual({ agent: 'codex', reasoningEffort: 'high' })
+})
+
 jest.mock('firebase-admin', () => ({
     firestore: mockFirestore,
 }))
@@ -33,7 +42,7 @@ const MOCK_CATALOGS = {
     },
     codex: {
         families: [
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6-sol', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.1-sol', isAlias: false },
             { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
         ],
         fetchedAt: 1,
@@ -225,7 +234,7 @@ describe('VM agent settings', () => {
         test('reads a per-agent family map and ignores malformed entries', async () => {
             mockGet.mockResolvedValue({
                 exists: true,
-                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'gpt-6-sol' } }),
+                data: () => ({ defaultVmAgentModel: { claude: 'sonnet', codex: 'gpt-6.1-sol' } }),
             })
 
             await expect(resolveVmAgentModelFamily('user-1', 'claude')).resolves.toBe('sonnet')

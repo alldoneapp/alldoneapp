@@ -74,7 +74,7 @@ jest.mock('../Assistant/assistantHelper', () => ({
 jest.mock('../Gmail/gmailPromptClassifier', () => ({
     extractJsonFromText: jest.fn(text => JSON.parse(text)),
     isGpt5ReasoningModel: jest.fn(() => true),
-    mapAssistantModelToOpenAIModel: jest.fn(() => 'gpt-6-sol'),
+    mapAssistantModelToOpenAIModel: jest.fn(() => 'gpt-6.1-sol'),
 }))
 
 jest.mock('./calendarLearnedRuleFeed', () => ({

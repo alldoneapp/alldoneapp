@@ -141,10 +141,13 @@ function getEffectiveHeartbeatModel(assistant = {}) {
 
 function getEffectiveHeartbeatReasoningEffort(assistant = {}) {
     if (Object.prototype.hasOwnProperty.call(assistant, 'heartbeatReasoningEffort')) {
-        return normalizeAssistantReasoningEffort(assistant.heartbeatReasoningEffort)
+        return normalizeAssistantReasoningEffort(
+            assistant.heartbeatReasoningEffort,
+            getEffectiveHeartbeatModel(assistant)
+        )
     }
 
-    return normalizeAssistantReasoningEffort(assistant.reasoningEffort)
+    return normalizeAssistantReasoningEffort(assistant.reasoningEffort, getEffectiveHeartbeatModel(assistant))
 }
 
 function getNormalizedHeartbeatSettings(assistant = {}, { projectId = null, userData = null } = {}) {
