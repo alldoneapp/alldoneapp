@@ -1,4 +1,5 @@
 import Quill from 'quill'
+import { normalizeMarkdownTableCell } from '../../../../utils/markdownTableParser'
 
 const Delta = Quill.import('delta')
 const CELL_SELECTOR = '.ql-markdown-table [data-row][data-column]'
@@ -14,6 +15,18 @@ export default class MarkdownTableEditing {
         this.active = null
         this.selected = null
         this.listeners = []
+        // Quill 2 restores the document selection after DOM mutations. A
+        // textarea has its own native selection: interpreting it as a note
+        // caret replaces its editing selection with a DOM Range on TEXTAREA,
+        // which stops native typing after the textarea grows. Exclude only the
+        // focused cell control; document caret handling otherwise stays intact.
+        const selection = quill.selection
+        this.originalNativeRange = selection.getNativeRange
+        this.cellNativeRange = (...args) => {
+            if (this.active?.input === document.activeElement) return null
+            return this.originalNativeRange.apply(selection, args)
+        }
+        selection.getNativeRange = this.cellNativeRange
         this.listen('pointerdown', event => this.onPointerDown(event))
         this.listen('click', event => this.onClick(event))
         this.listen('keydown', event => {
@@ -101,8 +114,8 @@ export default class MarkdownTableEditing {
                 input.select()
             } else if (event.key === 'Escape') {
                 event.preventDefault()
-                this.finish(false, true)
-            } else if (event.key === 'Enter') {
+                this.cancelEdit()
+            } else if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
                 this.finish(true, true)
             } else if (event.key === 'Tab') {
@@ -120,11 +133,25 @@ export default class MarkdownTableEditing {
             return
         }
         const cell = event.target.closest?.(CELL_SELECTOR)
+        if (event.key === 'Escape' && this.selected && (cell || event.target.closest?.('.ql-table-controls'))) {
+            event.preventDefault()
+            event.stopImmediatePropagation()
+            this.cancelEdit()
+            return
+        }
         if (cell && this.quill.isEnabled() && (event.key === 'Enter' || event.key === ' ')) {
             event.preventDefault()
             event.stopImmediatePropagation()
             this.openCell(cell)
         }
+    }
+
+    cancelEdit() {
+        const selected = this.selected
+        this.finish(false)
+        this.selected = null
+        this.clearControls()
+        selected?.node.querySelector(`[data-row="${selected.row}"][data-column="${selected.column}"]`)?.focus()
     }
 
     openCell(cell) {
@@ -140,20 +167,62 @@ export default class MarkdownTableEditing {
         if (!currentNode || !this.quill.root.contains(currentNode)) return
         cell = currentNode.querySelector(`[data-row="${row}"][data-column="${column}"]`)
         const data = Quill.find(currentNode).value().markdownTable
-        const input = document.createElement('input')
-        input.type = 'text'
+        const input = document.createElement('textarea')
+        input.rows = 1
         input.className = 'ql-table-cell-input'
-        input.value = String(data.rows[row]?.[column] ?? '')
+        input.value = normalizeMarkdownTableCell(data.rows[row]?.[column])
         input.setAttribute('aria-label', this.translate('Edit table cell'))
         // Stop at the input itself, preserving its native keyboard/default actions.
         // The app's document clipboard handlers and Quill's clipboard,
         // keyboard and composition handlers all bubble from the input.
         input.addEventListener('keydown', event => this.onKeyDown(event))
         INPUT_EVENTS.forEach(type => input.addEventListener(type, event => event.stopPropagation()))
+        // Replacing a long cell with a form control must not redistribute the
+        // table's column widths. Restore the original layout when editing ends.
+        const table = cell.closest('table')
+        const headers = Array.from(table.rows[0].cells)
+        const widths = headers.map(header => header.getBoundingClientRect().width)
+        const tableStyle = table.style.cssText
+        const headerStyles = headers.map(header => header.style.cssText)
+        table.style.width = `${table.getBoundingClientRect().width}px`
+        table.style.tableLayout = 'fixed'
+        headers.forEach((header, index) => {
+            header.style.boxSizing = 'border-box'
+            header.style.width = `${widths[index]}px`
+        })
+        const restoreLayout = () => {
+            table.style.cssText = tableStyle
+            headers.forEach((header, index) => (header.style.cssText = headerStyles[index]))
+        }
         const originalChildren = Array.from(cell.childNodes).map(child => child.cloneNode(true))
-        this.active = { node: currentNode, cell, input, row, column, originalChildren, snapshot: JSON.stringify(data) }
+        const resize = () => {
+            input.style.height = '0px'
+            input.style.height = `${input.scrollHeight}px`
+        }
+        const resizeObserver = new ResizeObserver(() => {
+            if (this.active?.input !== input || input.clientWidth === this.active.inputWidth) return
+            this.active.inputWidth = input.clientWidth
+            resize()
+        })
+        this.active = {
+            node: currentNode,
+            cell,
+            input,
+            row,
+            column,
+            originalChildren,
+            snapshot: JSON.stringify(data),
+            restoreLayout,
+            resizeObserver,
+        }
         this.selected = { node: currentNode, row, column }
         cell.replaceChildren(input)
+        input.addEventListener('input', event => {
+            event.stopPropagation()
+            resize()
+        })
+        resize()
+        resizeObserver.observe(input)
         input.addEventListener('blur', event => {
             if (this.active?.input !== input) return
             const action = event.relatedTarget?.dataset.tableAction
@@ -163,6 +232,7 @@ export default class MarkdownTableEditing {
             }
         })
         this.showControls()
+        this.quill.blur()
         input.focus({ preventScroll: true })
     }
 
@@ -183,9 +253,11 @@ export default class MarkdownTableEditing {
         const data = JSON.parse(active.snapshot)
         const value = active.input.value
         this.active = null // Removed inputs can blur synchronously during updateContents.
+        active.resizeObserver.disconnect()
+        active.restoreLayout()
         active.cell.replaceChildren(...active.originalChildren)
         let node = active.node
-        if (commit && value !== String(data.rows[active.row]?.[active.column] ?? '')) {
+        if (commit && value !== normalizeMarkdownTableCell(data.rows[active.row]?.[active.column])) {
             const rows = data.rows.map(row => row.slice())
             rows[active.row][active.column] = value
             node = this.replaceTable(node, { ...data, rows })
@@ -289,8 +361,10 @@ export default class MarkdownTableEditing {
         const active = this.active
         if (!active) return
         const draft = active.input.value
-        const original = JSON.parse(active.snapshot).rows[active.row]?.[active.column] ?? ''
+        const original = normalizeMarkdownTableCell(JSON.parse(active.snapshot).rows[active.row]?.[active.column])
         this.active = null
+        active.resizeObserver.disconnect()
+        active.restoreLayout()
         active.cell.replaceChildren(...active.originalChildren)
         this.selected = null
         this.clearControls()
@@ -301,10 +375,10 @@ export default class MarkdownTableEditing {
         recovery.setAttribute('role', 'alert')
         const message = document.createElement('p')
         message.textContent = this.translate('Table editing stopped. Your unsaved cell text is preserved below.')
-        const input = document.createElement('input')
-        input.type = 'text'
+        const input = document.createElement('textarea')
         input.value = draft
         input.readOnly = true
+        input.rows = Math.max(2, draft.split('\n').length)
         input.setAttribute('aria-label', this.translate('Unsaved table cell text'))
         const dismiss = document.createElement('button')
         dismiss.type = 'button'
@@ -315,6 +389,10 @@ export default class MarkdownTableEditing {
     }
 
     destroy() {
+        this.finish(false)
+        if (this.quill.selection.getNativeRange === this.cellNativeRange) {
+            this.quill.selection.getNativeRange = this.originalNativeRange
+        }
         this.listeners.forEach(([type, handler]) => this.quill.root.removeEventListener(type, handler, true))
         this.quill.off('text-change', this.onChange)
         this.enabledObserver.disconnect()

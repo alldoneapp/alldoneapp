@@ -1471,6 +1471,7 @@
     outline-offset: -2px;
 }
 .ql-editor .ql-table-cell-input {
+    display: block;
     box-sizing: border-box;
     width: 100%;
     min-width: 76px;
@@ -1483,6 +1484,15 @@
     color: inherit;
     font: inherit;
     text-align: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    resize: none;
+    min-height: 20px;
+}
+.ql-editor .ql-markdown-table th,
+.ql-editor .ql-markdown-table td {
+    white-space: pre-wrap;
 }
 .ql-editor .ql-table-controls {
     display: flex;
@@ -1520,7 +1530,7 @@
     border-radius: 4px;
     background: #f6f8fc;
 }
-.ql-container .ql-table-draft-recovery input {
+.ql-container .ql-table-draft-recovery textarea {
     box-sizing: border-box;
     width: 100%;
     padding: 8px;

@@ -180,7 +180,14 @@ function markdownTableToMarkdown(tableData) {
         }
     }
 
-    const formatRow = row => `| ${row.map(cell => String(cell || '').replace(/\|/g, '\\|')).join(' | ')} |`
+    const formatRow = row =>
+        `| ${row
+            .map(cell =>
+                String(cell || '')
+                    .replace(/\r\n?|\n/g, '<br>')
+                    .replace(/\|/g, '\\|')
+            )
+            .join(' | ')} |`
     return [formatRow(normalizedRows[0]), formatRow(separatorCells), ...normalizedRows.slice(1).map(formatRow)].join(
         '\n'
     )

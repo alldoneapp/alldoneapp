@@ -16,6 +16,28 @@ class MockYText {
 }
 
 describe('assistant markdown table conversion', () => {
+    test('round-trips multiline cells without splitting table rows', () => {
+        const table = {
+            rows: [
+                ['Name', 'Plan'],
+                ['Alpha', '**October**\nNovember | beta\r\nDecember'],
+            ],
+            alignments: ['left', null],
+        }
+        const markdown = deltaToMarkdown([{ insert: { markdownTable: table } }])
+        expect(markdown.split('\n')).toHaveLength(3)
+        expect(markdown).toContain('**October**<br>November \\| beta<br>December')
+        const ytext = new MockYText()
+        insertMarkdownToYjs(ytext, 0, markdown)
+        expect(ytext.ops[0].insert.markdownTable.rows).toEqual([
+            ['Name', 'Plan'],
+            ['Alpha', '**October**\nNovember | beta\nDecember'],
+        ])
+        expect(
+            getMarkdownTableAt(['| A | B |', '| --- | --- |', '| One<BR />Two | Three<br/>Four |'], 0).rows[1]
+        ).toEqual(['One\nTwo', 'Three\nFour'])
+    })
+
     const tableMarkdown = ['| Name | Status | Score |', '| :--- | :---: | ---: |', '| Alpha | Done | 10 |'].join('\n')
 
     test('detects and parses markdown tables', () => {

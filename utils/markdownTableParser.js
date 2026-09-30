@@ -6,6 +6,12 @@ const TABLE_CELL_MAX_WIDTH = 360
 const TABLE_CELL_CHARACTER_WIDTH = 9
 const TABLE_CELL_HORIZONTAL_PADDING = 32
 
+// Markdown tables keep each row on one physical line; <br> represents a cell break.
+export const normalizeMarkdownTableCell = value =>
+    String(value ?? '')
+        .replace(/\r\n?/g, '\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+
 const hasUnescapedPipe = line => {
     let backslashCount = 0
 
@@ -62,14 +68,14 @@ export const splitMarkdownTableRow = line => {
             cell += '|'
             i += 1
         } else if (char === '|') {
-            cells.push(cell.trim())
+            cells.push(normalizeMarkdownTableCell(cell.trim()))
             cell = ''
         } else {
             cell += char
         }
     }
 
-    cells.push(cell.trim())
+    cells.push(normalizeMarkdownTableCell(cell.trim()))
     return cells
 }
 
