@@ -637,6 +637,9 @@ const NotesEditorView = ({
     }
 
     const cleanup = () => {
+        // A cell draft is not in Yjs until committed. Flush before encoding the
+        // document on navigation/unload, just as a blur would do.
+        quillRef.current.getModule('markdownTableEditing')?.finish(true)
         const ops = quillRef.current.getContents().ops
         generateMentionTasks(ops)
         resetMentionsData()
@@ -992,6 +995,7 @@ const NotesEditorView = ({
             // reopening the note simply adds another set.
             const editorRoot = quillRef.current?.root
             cleanup()
+            quillRef.current?.getModule('markdownTableEditing')?.destroy()
             unmountEmbedReactRoots(editorRoot)
         }
     }, [])

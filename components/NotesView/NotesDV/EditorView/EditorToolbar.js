@@ -23,6 +23,7 @@ import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPicke
 import styles, { colors } from '../../../styles/global'
 import QuillCursors from 'quill-cursors'
 import './noteAttachmentDrop'
+import './markdownTableEditing'
 import '../../../Feeds/CommentsTextInput/quill2Setup'
 import EditorsGroup from './EditorsGroup/EditorsGroup'
 import { useSelector } from 'react-redux'
@@ -874,6 +875,7 @@ export const modules = {
     noteAttachmentDrop: {
         getProjectId: editor => quillTextInputProjectIds[getEditorId(editor)],
     },
+    markdownTableEditing: { translate },
     // Quill 2's built-in uploader listens for `drop` on the same node and inserts png/jpeg
     // a SECOND time as a base64 `image` embed, so every dropped screenshot was duplicated.
     // Disabled here only: paste keeps going through the clipboard module untouched.

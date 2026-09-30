@@ -1460,3 +1460,69 @@
     top: -16px !important;
     left: -14px;
 }
+
+/* Cell editing stays inside the existing table; controls wrap on phones. */
+.ql-editor[contenteditable='true'] .ql-markdown-table [data-row][data-column] {
+    cursor: text;
+}
+.ql-editor .ql-markdown-table [data-row][data-column]:focus,
+.ql-editor .ql-markdown-table [data-row][data-column]:focus-within {
+    outline: 2px solid #8a9eff;
+    outline-offset: -2px;
+}
+.ql-editor .ql-table-cell-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 76px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+}
+.ql-editor .ql-table-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 0;
+    white-space: normal;
+}
+.ql-editor .ql-table-controls button,
+.ql-container .ql-table-draft-recovery button {
+    padding: 5px 8px;
+    border: 1px solid #d7dff0;
+    border-radius: 4px;
+    background: #f6f8fc;
+    color: #04142f;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.ql-editor .ql-table-controls button[aria-pressed='true'] {
+    background: #e8edff;
+    border-color: #8a9eff;
+}
+.ql-editor .ql-table-controls button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.ql-container.ql-disabled .ql-table-controls {
+    display: none;
+}
+.ql-container .ql-table-draft-recovery {
+    padding: 12px;
+    margin: 12px 0;
+    border: 1px solid #d7dff0;
+    border-radius: 4px;
+    background: #f6f8fc;
+}
+.ql-container .ql-table-draft-recovery input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+}
