@@ -4,14 +4,27 @@ import { useSelector } from 'react-redux'
 
 import Spinner from './Spinner'
 import useModalSizing from '../../hooks/useModalSizing'
-import { getLoadingDataBottom, LOADING_DATA_CONTAINER_SIZE } from './floatingActionLayout'
+import { SIDEBAR_MENU_COLLAPSED_WIDTH, SIDEBAR_MENU_WIDTH } from '../styles/global'
+import { isAnnaMode } from '../../utils/annaMode'
+import { FLOATING_ACTION_VIEWPORT_GAP, getLoadingDataBottom, LOADING_DATA_CONTAINER_SIZE } from './floatingActionLayout'
 
 export const LOADING_DATA_SPINNER_DELAY_MS = 300
 export const LOADING_DATA_SPINNER_MIN_VISIBLE_MS = 500
 
 export default function LoadingData() {
     const spinnerRequested = useSelector(state => state.showLoadingDataSpinner)
+    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
+    const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)
     const { safeAreaInsets } = useModalSizing()
+    // A collapsed sidebar can expand on hover as an overlay without moving
+    // the content. Anonymous users have their desktop sidebar on the right.
+    const contentLeft =
+        smallScreenNavigation || isAnonymous || isAnnaMode()
+            ? 0
+            : sidebarExpanded
+              ? SIDEBAR_MENU_WIDTH
+              : SIDEBAR_MENU_COLLAPSED_WIDTH
     const [spinnerVisible, setSpinnerVisible] = useState(false)
     const shownAtRef = useRef(null)
 
@@ -39,9 +52,15 @@ export default function LoadingData() {
         spinnerVisible && (
             <View
                 testID="loading-data-spinner"
-                style={[localStyles.container, { bottom: getLoadingDataBottom(safeAreaInsets.bottom) }]}
+                style={[
+                    localStyles.container,
+                    {
+                        left: contentLeft + FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.left,
+                        bottom: getLoadingDataBottom(safeAreaInsets.bottom),
+                    },
+                ]}
             >
-                <Spinner containerSize={LOADING_DATA_CONTAINER_SIZE} spinnerSize={32} />
+                <Spinner containerSize={LOADING_DATA_CONTAINER_SIZE} spinnerSize={16} />
             </View>
         )
     )
@@ -50,9 +69,6 @@ export default function LoadingData() {
 const localStyles = StyleSheet.create({
     container: {
         position: 'fixed',
-        left: 0,
-        right: 0,
-        alignItems: 'center',
         pointerEvents: 'none',
         zIndex: 10000,
     },
