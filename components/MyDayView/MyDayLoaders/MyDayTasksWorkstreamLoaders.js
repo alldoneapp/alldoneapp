@@ -6,10 +6,6 @@ import v4 from 'uuid/v4'
 import { watchWorkstreamTasks } from '../../../utils/backends/Tasks/myDayTasks'
 import { unwatch } from '../../../utils/backends/firestore'
 import { clearMyDayAllTodayTasksInWorkstream, clearOpenTasksShowMoreDataInWorkstream } from '../../../redux/actions'
-import {
-    watchIfThereAreFutureWorkstreamTasks,
-    watchIfThereAreSomedayWorkstreamTasks,
-} from '../../../utils/backends/Tasks/openTasksShowMore/openTasksShowMore'
 
 export default function MyDayTasksWorkstreamLoaders({ projectId, workstreamId }) {
     const dispatch = useDispatch()
@@ -29,22 +25,8 @@ export default function MyDayTasksWorkstreamLoaders({ projectId, workstreamId })
         }
     }, [])
 
-    useEffect(() => {
-        const watcherKey = v4()
-        watchIfThereAreFutureWorkstreamTasks(projectId, workstreamId, false, loggedUserId, watcherKey)
-        return () => {
-            unwatch(watcherKey)
-        }
-    }, [projectId, loggedUserId, workstreamId])
-
-    useEffect(() => {
-        const watcherKey = v4()
-        watchIfThereAreSomedayWorkstreamTasks(projectId, workstreamId, false, loggedUserId, watcherKey)
-        return () => {
-            unwatch(watcherKey)
-        }
-    }, [projectId, loggedUserId, workstreamId])
-
+    // Later/Someday availability for the board is computed by NeedShowMoreOpenTasksButton; see
+    // MyDayTasksProjectLoaders. Only the clean-up of this workstream's flags stays here.
     useEffect(() => {
         return () => {
             dispatch(clearOpenTasksShowMoreDataInWorkstream(projectId, workstreamId))

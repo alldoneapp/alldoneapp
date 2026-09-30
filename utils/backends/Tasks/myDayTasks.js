@@ -114,7 +114,10 @@ export async function watchTasksToAttend(projectId, userId, watcherKey) {
         .where('currentReviewerId', '==', userId)
         .where('readerIds', 'array-contains', accessReaderId)
         .where('dueDate', '<=', endOfDay)
-        .orderBy('dueDate', 'desc')
+        // No explicit order: this is then byte-identical to the open-tasks board's assigned stream
+        // (getOpenTasksQuery), so Firestore serves both from ONE server target instead of two per
+        // project. My Day re-sorts by sortIndex and time in processMyDayData, so the snapshot order
+        // never reaches the screen. Keep the clause order in step with that query.
         .onSnapshot(querySnapshot => {
             // The parameter is a QuerySnapshot (the original code just called `.forEach` on it).
             // Materialise it once so the optimistic path can re-emit without a second snapshot.
@@ -174,7 +177,8 @@ export async function watchWorkstreamTasks(projectId, userId, workstreamId, watc
         .where('userId', '==', workstreamId)
         .where('readerIds', 'array-contains', accessReaderId)
         .where('dueDate', '<=', endOfDay)
-        .orderBy('dueDate', 'desc')
+        // Identical to the board's workstream stream (getOpenStreamAndUserTasksQuery), so the two
+        // share one server target; see watchTasksToAttend.
         .onSnapshot(docs => {
             const tasks = []
             const subtasksMap = {}
