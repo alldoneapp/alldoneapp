@@ -236,7 +236,7 @@ export default function TaskMoreButton({
                     <GenericModalItem
                         key={'mbtn-priority'}
                         icon={'flag'}
-                        text={translate('Priority')}
+                        text={'Priority'}
                         visibilityData={{ openPopup, visibilityFn: setShowPriority }}
                         shortcut={shortcut}
                     />
