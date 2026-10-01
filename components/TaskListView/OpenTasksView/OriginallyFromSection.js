@@ -9,6 +9,8 @@ import { translate } from '../../../i18n/TranslationService'
 import GeneralTasksHeader from './GeneralTasksHeader'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 import { TaskHierarchyGroup } from '../TaskHierarchy'
+import useProjectData from '../../../hooks/useProjectData'
+import { PROJECT_DATA_USERS } from '../../../utils/InitialLoad/projectDataLoader'
 
 export default function OriginallyFromSection({
     projectId,
@@ -19,6 +21,9 @@ export default function OriginallyFromSection({
     nestedTaskListIndex,
     instanceKey,
 }) {
+    // AT-2671: a returning workflow task can be this project's first visible row. Its owner
+    // must load without relying on a main task or the Add Task editor to request project users.
+    useProjectData(projectId, PROJECT_DATA_USERS)
     const currentUser = useSelector(state => state.currentUser)
     const usersInProject = useSelector(state => state.projectUsers[projectId])
     const subtaskByTaskStore = useSelector(state => state.subtaskByTaskStore[instanceKey])
