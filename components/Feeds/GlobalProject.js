@@ -40,11 +40,8 @@ function GlobalProject({
     const allFeeds = useSelector(state => state.allFeeds[projectId])
     const followedFeeds = useSelector(state => state.followedFeeds[projectId])
     const activeTabFeeds = feedActiveTab === FOLLOWED_TAB ? followedFeeds : allFeeds
-    // Read straight from the store rather than through props. `followedFeedsData` / `allFeedsData`
-    // are written by mutating the map in place (InitLoadView), so the map's identity never changes
-    // and a parent re-render was the only thing that ever delivered a fresh counter. Selecting the
-    // per-project slice here re-renders exactly the project whose counter moved - and makes the
-    // memoization below safe.
+    // Select the per-project counter so a global badge update only re-renders the project
+    // whose unread entries changed.
     const counterNewFeedsData = useSelector(
         state => (feedActiveTab === FOLLOWED_TAB ? state.followedFeedsData : state.allFeedsData)[projectId]
     )

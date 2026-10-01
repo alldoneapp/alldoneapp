@@ -18,7 +18,7 @@ jest.mock('../HashtagFilters/HashtagFiltersView', () => 'HashtagFiltersView')
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     __esModule: true,
     default: {
-        getProjectsByType: (projects, user, type) => (type === 'active' ? projects : []),
+        getGlobalFeedProjects: (projects, user) => projects.filter(project => project.userIds?.includes(user.uid)),
     },
     ALL_PROJECTS_INDEX: { id: 'all' },
     checkIfSelectedProject: () => false,
@@ -41,8 +41,8 @@ jest.mock('./Utils/FeedsHelper', () => ({
 jest.mock('./Utils/FeedsConstants', () => ({ FOLLOWED_TAB: 0, ALL_TAB: 1 }))
 
 const PROJECTS = [
-    { id: 'project-1', index: 0, name: 'Alpha', lastActionDate: 2 },
-    { id: 'project-2', index: 1, name: 'Beta', lastActionDate: 1 },
+    { userIds: ['user-1'], id: 'project-1', index: 0, name: 'Alpha', lastActionDate: 2 },
+    { userIds: ['user-1'], id: 'project-2', index: 1, name: 'Beta', lastActionDate: 1 },
 ]
 const STATE = {
     followedFeedsAmount: 0,
@@ -52,7 +52,7 @@ const STATE = {
     smallScreenNavigation: false,
     loggedUserProjects: PROJECTS,
     selectedProjectIndex: -1,
-    loggedUser: { uid: 'user-1' },
+    loggedUser: { uid: 'user-1', guideProjectIds: [] },
     processedInitialURL: true,
     needReloadGlobalFeeds: false,
     loadedNewFeeds: true,
@@ -78,5 +78,30 @@ describe('RootViewFeedsGlobalProject project admission', () => {
         expect(projects.map(node => node.props.projectId)).toEqual(['project-1', 'project-2'])
         expect(projects.map(node => node.props.trackInitialLoad)).toEqual([true, false])
         expect(projects.every(node => typeof node.props.onInitialSnapshot === 'function')).toBe(true)
+        act(() => tree.unmount())
     })
+})
+
+it('excludes projects without membership from the global feed and removes a revoked project', () => {
+    let state = {
+        ...STATE,
+        loggedUserProjects: [...PROJECTS, { id: 'forbidden', userIds: ['someone-else'], lastActionDate: 10 }],
+    }
+    useSelector.mockImplementation(selector => selector(state))
+    useRateLimitedProjectReveal.mockImplementation(({ projectIds }) => ({
+        revealedProjectIds: projectIds,
+        primaryProjectId: projectIds[0] || null,
+    }))
+    let tree
+    act(() => {
+        tree = renderer.create(<RootViewFeedsGlobalProject />)
+    })
+    expect(tree.root.findAllByType('GlobalProject').map(node => node.props.projectId)).toEqual([
+        'project-1',
+        'project-2',
+    ])
+    state = { ...state, loggedUserProjects: [PROJECTS[0], { ...PROJECTS[1], userIds: ['someone-else'] }] }
+    act(() => tree.update(<RootViewFeedsGlobalProject />))
+    expect(tree.root.findAllByType('GlobalProject').map(node => node.props.projectId)).toEqual(['project-1'])
+    act(() => tree.unmount())
 })

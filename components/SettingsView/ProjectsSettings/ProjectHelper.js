@@ -173,6 +173,16 @@ class ProjectHelper {
         })
     }
 
+    // Keep the existing global Updates convention: active projects + community guides.
+    // Membership comes from the project document; user project lists are navigation state.
+    static getGlobalFeedProjects = (projects, user) => {
+        const membersProjects = projects.filter(project => project.userIds?.includes(user.uid))
+        return [
+            ...this.getProjectsByType(membersProjects, user, PROJECT_TYPE_ACTIVE),
+            ...this.getProjectsByType(membersProjects, user, PROJECT_TYPE_GUIDE),
+        ]
+    }
+
     static getActiveProjectsInList = (
         projects,
         userProjectIds,
