@@ -70,6 +70,7 @@ export default function MainSection({
     // the user types so a background `parentGoalId` write cannot re-bucket the
     // row and unmount the open editor with it (AT-2267). See taskPlacementHold.js.
     const taskGroupingRef = useRef(undefined)
+    const unresolvedGoalSortRef = useRef(false)
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const liveMainTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX])
     const heldMainTasks = holdTaskGrouping(liveMainTasks, isUserEditing, taskGroupingRef)
@@ -330,7 +331,11 @@ export default function MainSection({
     let globalAmountToRender = showTheFullList ? mainItemsAmount + tmpGoals.length : numberTodayTasks
     const goalsByIdWithTmpGoals = { ...goalsById, ...tmpGoalsById }
 
-    const goalsPositionId = sortGoalTasksGorups(
+    // Task snapshots and milestone snapshots arrive independently. Missing sorting data must
+    // not hide already-loaded tasks or the general composer. The existing orphan handling below
+    // presents goal tasks as general rows until their positions are known, without changing any
+    // task document. Access and composer restrictions still apply in the render path.
+    const sortedGoalPositions = sortGoalTasksGorups(
         projectId,
         openMilestones,
         doneMilestones,
@@ -340,8 +345,12 @@ export default function MainSection({
         currentUserId,
         [...mainTasks, ...visibleEmptyGoals.map(goal => [goal.id]), ...tmpGoals.map(goal => [goal.id])]
     )
-
-    if (!goalsPositionId) return null
+    if (!isUserEditing) unresolvedGoalSortRef.current = !sortedGoalPositions
+    // Metadata arriving under an editor must not move its task back into a goal and unmount it.
+    const goalsPositionId =
+        !sortedGoalPositions || (isUserEditing && unresolvedGoalSortRef.current)
+            ? { [NOT_PARENT_GOAL_INDEX]: 0 }
+            : sortedGoalPositions
 
     const lastGoalPosition = Math.max(...Object.values(goalsPositionId))
     tmpGoals.forEach((goal, index) => {

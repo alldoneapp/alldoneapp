@@ -28,6 +28,11 @@ jest.mock('./OpenTasksByDate', () => {
     return props => React.createElement('OpenTasksByDate', { ...props, taskHierarchy: useTaskHierarchy() })
 })
 jest.mock('./OpenTasksByProjectHandler', () => 'OpenTasksByProjectHandler')
+jest.mock('./NewTaskSection', () => 'NewTaskSection')
+jest.mock('../../../utils/SharedHelper', () => ({
+    __esModule: true,
+    default: { checkIfUserHasAccessToProject: () => true },
+}))
 jest.mock('./NeedShowMoreOpenTasksButton', () => 'NeedShowMoreOpenTasksButton')
 jest.mock('./BottomShowMoreButtonContainer', () => 'BottomShowMoreButtonContainer')
 jest.mock('../OKRs/OKRSection', () => 'OKRSection')

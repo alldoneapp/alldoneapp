@@ -54,7 +54,7 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 jest.mock('../../../utils/HelperFunctions', () => ({ dismissAllPopups: jest.fn() }))
 jest.mock('../../../utils/SharedHelper', () => ({
     __esModule: true,
-    default: { checkIfUserHasAccessToProject: () => true },
+    default: { checkIfUserHasAccessToProject: jest.fn(() => true) },
 }))
 jest.mock('../../../utils/backends/Goals/goalsFirestore', () => ({ getGoalData: jest.fn(), watchGoal: jest.fn() }))
 jest.mock('../../../utils/backends/firestore', () => ({ unwatch: jest.fn() }))
@@ -75,7 +75,8 @@ jest.mock('../Utils/TasksHelper', () => ({
     BACKLOG_DATE_NUMERIC: Number.MAX_SAFE_INTEGER,
     BACKLOG_DATE_STRING: '99999999',
 }))
-jest.mock('../../../utils/editingGuard', () => ({ useIsUserEditing: () => false }))
+let mockEditing = false
+jest.mock('../../../utils/editingGuard', () => ({ useIsUserEditing: () => mockEditing }))
 
 let mockStoreState = {}
 jest.mock('react-redux', () => ({
@@ -96,7 +97,8 @@ import {
     publishGoalTaskPostpone,
     resetGoalTaskCompletionListeners,
 } from './goalCompletionSignal'
-import { TODAY_DATE } from '../../../utils/backends/openTasks'
+import { NOT_PARENT_GOAL_INDEX, TODAY_DATE } from '../../../utils/backends/openTasks'
+import SharedHelper from '../../../utils/SharedHelper'
 
 const PROJECT = 'project-1'
 const USER = 'user-1'
@@ -182,6 +184,92 @@ const element = () => (
         setPressedShowMoreMainSection={() => {}}
     />
 )
+
+describe('task rows without milestone sorting data (AT-2672)', () => {
+    it.each(['openMilestonesByProjectInTasks', 'doneMilestonesByProjectInTasks'])(
+        'keeps the empty board composer when %s has not loaded',
+        async slice => {
+            setBoard({ mainTasks: [], emptyGoals: [] })
+            delete mockStoreState[slice][PROJECT]
+            let tree
+            await act(async () => {
+                tree = renderer.create(element())
+            })
+            expect(tree.root.findAllByType('NewTaskSection')).toHaveLength(1)
+            act(() => tree.unmount())
+        }
+    )
+
+    it('keeps general and goal task rows, then restores grouping when milestones arrive', async () => {
+        const generalTask = task('general-task')
+        const goalTask = task('goal-task')
+        const mainTasks = [
+            [NOT_PARENT_GOAL_INDEX, [generalTask]],
+            [TASK_ONLY_GOAL, [goalTask]],
+        ]
+        setBoard({ mainTasks, emptyGoals: [] })
+        delete mockStoreState.doneMilestonesByProjectInTasks[PROJECT]
+        let tree
+        await act(async () => {
+            tree = renderer.create(element())
+        })
+        const list = tree.root.findByType('TasksList')
+        expect(list.props.taskList).toEqual([generalTask, goalTask])
+        expect(tree.root.findAllByType('NewTaskSection')).toHaveLength(1)
+        // The fallback is presentation only; it must not reparent the stored task group.
+        expect(mainTasks).toEqual([
+            [NOT_PARENT_GOAL_INDEX, [generalTask]],
+            [TASK_ONLY_GOAL, [goalTask]],
+        ])
+
+        await act(async () => {
+            mockEditing = true
+            mockStoreState.doneMilestonesByProjectInTasks[PROJECT] = []
+            tree.update(element())
+        })
+        expect(tree.root.findByType('TasksList').props.taskList).toEqual([generalTask, goalTask])
+        expect(tree.root.findAllByType('ParentGoalSection')).toHaveLength(0)
+        await act(async () => {
+            mockEditing = false
+            tree.update(element())
+        })
+        expect(tree.root.findByType('TasksList').props.taskList).toEqual([generalTask])
+        expect(tree.root.findByType('ParentGoalSection').props.taskList).toEqual([goalTask])
+        act(() => tree.unmount())
+    })
+
+    it.each(['template', 'assistant', 'organize'])(
+        'keeps the existing composer restriction for %s boards',
+        async mode => {
+            setBoard({ mainTasks: [], emptyGoals: [] })
+            delete mockStoreState.doneMilestonesByProjectInTasks[PROJECT]
+            if (mode === 'template') mockStoreState.loggedUser.templateProjectIds = [PROJECT]
+            if (mode === 'assistant') mockStoreState.currentUser.temperature = 0.7
+            let tree
+            await act(async () => {
+                tree = renderer.create(React.cloneElement(element(), { isActiveOrganizeMode: mode === 'organize' }))
+            })
+            expect(tree.root.findAllByType('NewTaskSection')).toHaveLength(0)
+            act(() => tree.unmount())
+        }
+    )
+
+    it('does not expose a composer when project access is denied', async () => {
+        setBoard({ mainTasks: [], emptyGoals: [] })
+        delete mockStoreState.doneMilestonesByProjectInTasks[PROJECT]
+        SharedHelper.checkIfUserHasAccessToProject.mockReturnValue(false)
+        let tree
+        try {
+            await act(async () => {
+                tree = renderer.create(element())
+            })
+            expect(tree.root.findAllByType('NewTaskSection')).toHaveLength(0)
+        } finally {
+            act(() => tree?.unmount())
+            SharedHelper.checkIfUserHasAccessToProject.mockReturnValue(true)
+        }
+    })
+})
 
 describe('the board deciding a goal has left today (AT-2521)', () => {
     const originalIsReduceMotionEnabled = AccessibilityInfo.isReduceMotionEnabled

@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { View } from 'react-native'
 import { useSelector, shallowEqual, useDispatch } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import ProjectHeader from '../Header/ProjectHeader'
 import OpenTasksByDate from '../OpenTasksView/OpenTasksByDate'
-import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import ProjectHelper, { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import {
     AMOUNT_TASKS_INDEX,
     DATE_TASK_INDEX,
@@ -30,6 +30,9 @@ import { buildAssistantProfileTimelineDates } from '../../../utils/assistantSche
 import TaskListSkeleton from '../TaskListSkeleton'
 import ProjectSection, { ProjectSectionBody } from '../ProjectSection'
 import useTaskCompletionProjectExit from './useTaskCompletionProjectExit'
+import NewTaskSection from './NewTaskSection'
+import SharedHelper from '../../../utils/SharedHelper'
+import { useIsUserEditing } from '../../../utils/editingGuard'
 
 function OpenTasksByProject({
     firstProject,
@@ -53,6 +56,8 @@ function OpenTasksByProject({
     const tasksArrowButtonIsExpanded = useSelector(state => state.tasksArrowButtonIsExpanded)
     const okrsInProject = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const [pressedShowMoreMainSection, setPressedShowMoreMainSection] = useState(false)
+    const isUserEditing = useIsUserEditing()
+    const missingDatesComposerRef = useRef(false)
 
     const instanceKey = projectId + currentUserId
 
@@ -121,6 +126,19 @@ function OpenTasksByProject({
         !singleTaskIsLoading &&
         (!initialLoadingEndOpenTasks || !initialLoadingEndObservedTasks)
     const showSingleTaskSkeleton = singleTaskIsLoading && filteredOpenTasksDates.length === 0
+    // A settled view can temporarily have no published date sections while its listeners
+    // reconnect. Its composer must not depend on a task snapshot existing. Keep an opened
+    // fallback editor mounted if a snapshot arrives while the user is still typing.
+    const missingTaskDates = filteredOpenTasksDates.length === 0 && !showInitialSkeleton && !showSingleTaskSkeleton
+    if (!isUserEditing) missingDatesComposerRef.current = missingTaskDates
+    const showMissingDatesComposer =
+        inSelectedProject &&
+        (missingTaskDates || (isUserEditing && missingDatesComposerRef.current)) &&
+        !assistantProfileMode &&
+        !isAssistant &&
+        !loggedUser.templateProjectIds.includes(projectId) &&
+        SharedHelper.checkIfUserHasAccessToProject(isAnonymous, loggedUser.projectIds, projectId, false) &&
+        (loggedUser.uid === currentUserId || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(projectId))
 
     useEffect(() => {
         if (!projectDecorationsReady) return undefined
@@ -200,6 +218,9 @@ function OpenTasksByProject({
                         )}
                         {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
                         {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
+                        {showMissingDatesComposer && (
+                            <NewTaskSection projectId={projectId} instanceKey={instanceKey} dateIndex={0} />
+                        )}
                         {assistantProfileTimelineDates.map((timelineDate, timelineIndex) => {
                             return timelineDate.dateIndex !== null ? (
                                 <OpenTasksByDate
