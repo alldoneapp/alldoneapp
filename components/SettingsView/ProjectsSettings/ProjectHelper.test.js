@@ -7,6 +7,15 @@ jest.mock('../../../redux/store', () => ({
     default: { getState: jest.fn() },
 }))
 
+jest.mock('./ProjectsSettings', () => ({
+    PROJECT_TYPE_ACTIVE: 'active',
+    PROJECT_TYPE_ARCHIVED: 'archived',
+    PROJECT_TYPE_TEMPLATE: 'template',
+    PROJECT_TYPE_SHARED: 'shared',
+    PROJECT_TYPE_GUIDE: 'guide',
+}))
+jest.mock('../../../utils/BackendBridge', () => ({}))
+
 describe('ProjectHelper.getProjectColorById', () => {
     it('returns the stored color for a loaded project', () => {
         store.getState.mockReturnValue({
@@ -28,5 +37,38 @@ describe('ProjectHelper.getProjectColorById', () => {
         })
 
         expect(ProjectHelper.getProjectColorById('project-1')).toBe(PROJECT_COLOR_DEFAULT)
+    })
+})
+
+describe('ProjectHelper.getGlobalFeedProjects', () => {
+    const user = {
+        uid: 'member',
+        projectIds: ['active', 'archived', 'template', 'community', 'revoked'],
+        archivedProjectIds: ['archived'],
+        templateProjectIds: ['template'],
+        guideProjectIds: ['community', 'unjoined-community'],
+    }
+    const projects = ['active', 'archived', 'template', 'community', 'shared', 'revoked', 'unjoined-community'].map(
+        id => ({
+            id,
+            userIds: id === 'revoked' || id === 'unjoined-community' ? ['someone-else'] : ['member'],
+        })
+    )
+
+    it('preserves active + joined community scope and excludes archived/templates/shared projects', () => {
+        expect(ProjectHelper.getGlobalFeedProjects(projects, user).map(project => project.id)).toEqual([
+            'active',
+            'community',
+        ])
+    })
+
+    it('requires membership even when stale user navigation lists contain a project', () => {
+        expect(
+            ProjectHelper.getGlobalFeedProjects([...projects, { id: 'missing-membership' }], {
+                ...user,
+                projectIds: [...user.projectIds, 'missing-membership'],
+            }).map(project => project.id)
+        ).toEqual(['active', 'community'])
+        expect(ProjectHelper.getGlobalFeedProjects(projects, { ...user, uid: 'outsider' })).toEqual([])
     })
 })

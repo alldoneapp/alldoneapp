@@ -10,7 +10,6 @@ import ProjectHelper, {
 } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import URLSystem from '../../URLSystem/URLSystem'
 import { getURLConstantByFollowedState } from './Utils/HelperFunctions'
-import { PROJECT_TYPE_ACTIVE, PROJECT_TYPE_GUIDE } from '../SettingsView/ProjectsSettings/ProjectsSettings'
 import { setReloadGlobalFeeds, updateFeedActiveTab } from '../../redux/actions'
 import { FOLLOWED_TAB, ALL_TAB } from './Utils/FeedsConstants'
 
@@ -36,13 +35,21 @@ export default function RootViewFeedsGlobalProject() {
     const [amountAllFeeds, setAmountAllFeeds] = useState(0)
 
     const [amountNewFeedsProjects, setAmountNewFeedsProjects] = useState({})
-    const [sortedProjects, setSortedProjects] = useState([])
     const [isFirstRender, setIsFirstRender] = useState(true)
 
     const [globalActiveMode, setGlobalActiveMode] = useState(LOADING_MODE)
 
     const isProjectSelected = checkIfSelectedProject(selectedProjectIndex)
     const project = isProjectSelected ? loggedUserProjects[selectedProjectIndex] : ALL_PROJECTS_INDEX
+
+    const sortedProjects = useMemo(() => {
+        const projects = ProjectHelper.getGlobalFeedProjects(loggedUserProjects, loggedUser)
+        // Preserve active-before-community ordering and newest activity first within each group.
+        const normalProjects = projects.filter(project => !loggedUser.guideProjectIds.includes(project.id))
+        const guideProjects = projects.filter(project => loggedUser.guideProjectIds.includes(project.id))
+        const byLastAction = (a, b) => (b.lastActionDate || 0) - (a.lastActionDate || 0)
+        return [...normalProjects.sort(byLastAction), ...guideProjects.sort(byLastAction)]
+    }, [loggedUserProjects, loggedUser])
 
     const activeFeedTab = followedAmount === 0 && allAmount > 0 ? ALL_TAB : FOLLOWED_TAB
 
@@ -83,19 +90,6 @@ export default function RootViewFeedsGlobalProject() {
     useEffect(() => {
         feedActiveTab === FOLLOWED_TAB ? setAmountAllFeeds(allAmount) : setAmountFollowedFeeds(followedAmount)
     }, [followedAmount, allAmount])
-
-    useEffect(() => {
-        const normalProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_ACTIVE)
-        const guideProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_GUIDE)
-
-        normalProjects.sort((a, b) =>
-            a.lastActionDate < b.lastActionDate ? 1 : b.lastActionDate < a.lastActionDate ? -1 : 0
-        )
-        guideProjects.sort((a, b) =>
-            a.lastActionDate < b.lastActionDate ? 1 : b.lastActionDate < a.lastActionDate ? -1 : 0
-        )
-        setSortedProjects([...normalProjects, ...guideProjects])
-    }, [loggedUserProjects, selectedProjectIndex])
 
     const sortedProjectIds = useMemo(() => sortedProjects.map(project => project.id), [sortedProjects])
     const projectMembershipKey = useMemo(() => [...sortedProjectIds].sort().join('\u001f'), [sortedProjectIds])

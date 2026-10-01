@@ -17,7 +17,7 @@ import store from '../../../redux/store'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import { ALL_TAB, FOLLOWED_TAB } from '../../Feeds/Utils/FeedsConstants'
-import { ALL_PROJECTS_INDEX, checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
+import { ALL_PROJECTS_INDEX } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../utils/NavigationService'
 import ChatsButton from '../ChatsButton'
 
@@ -39,7 +39,7 @@ export default function MobileNotificationArea({ expandSecondaryBar }) {
     }
 
     const onPressUpdates = e => {
-        const { selectedProjectIndex, route, expandedNavPicker } = store.getState()
+        const { route, expandedNavPicker } = store.getState()
 
         dismissAllPopups(true, true, true)
 
@@ -47,9 +47,7 @@ export default function MobileNotificationArea({ expandSecondaryBar }) {
             hideFloatPopup(),
             setReloadGlobalFeeds(true),
             navigateToUpdates({
-                selectedProjectIndex: checkIfSelectedProject(selectedProjectIndex)
-                    ? selectedProjectIndex
-                    : ALL_PROJECTS_INDEX,
+                selectedProjectIndex: ALL_PROJECTS_INDEX,
             }),
         ])
 

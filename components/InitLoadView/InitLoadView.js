@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect } from 'react'
 import { View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Backend from '../../utils/BackendBridge'
-import ProjectHelper, { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
+import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import {
     setAllFeedsAmount,
     setFollowedFeedsAmount,
@@ -13,11 +13,7 @@ import {
 } from '../../redux/actions'
 import useReachEmptyInbox from '../../hooks/useReachEmptyInbox'
 import useReachProjectEmptyInbox from '../../hooks/useReachProjectEmptyInbox'
-import {
-    PROJECT_TYPE_ACTIVE,
-    PROJECT_TYPE_GUIDE,
-    PROJECT_TYPE_SHARED,
-} from '../SettingsView/ProjectsSettings/ProjectsSettings'
+import { PROJECT_TYPE_SHARED } from '../SettingsView/ProjectsSettings/ProjectsSettings'
 import useSideBarTasksAmount from '../../hooks/Tasks/useSideBarTasksAmount'
 import SharedProjectsUnmountLogic from './SharedProjectsUnmountLogic'
 import ObservedForWatchOutsideNewProjectsChats from './ObservedForWatchOutsideNewProjectsChats'
@@ -25,136 +21,73 @@ import useDeferredStartupWork from '../../hooks/useDeferredStartupWork'
 
 function InitLoadWatchers() {
     const dispatch = useDispatch()
-    const followedFeedsData = useSelector(state => state.followedFeedsData)
     const selectedTypeOfProject = useSelector(state => state.selectedTypeOfProject)
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
-    const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
-    const [timeOfFeedsLoaded, setTimeOfFeedsLoaded] = useState(0)
-    const [watchedProjectsIds, setWatchedProjectsIds] = useState([])
-    // The listeners actually open right now. The effect cleanup runs with the closure of the render
-    // that subscribed, whose state copy is one generation behind, so it reads this ref instead.
-    const openFeedProjectIdsRef = useRef([])
     useReachEmptyInbox()
     // AT-2492: the per-project sibling. Records "this project's today list was cleared" wherever the
     // user happens to be when it happens; the selected-project board decides what to do with it.
     useReachProjectEmptyInbox()
     useSideBarTasksAmount()
 
-    const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
+    const feedProjects = ProjectHelper.getGlobalFeedProjects(loggedUserProjects, loggedUser)
+    // A project snapshot or navigation change must not restart the global badge subscriptions.
+    const watchedFeedsKey = feedProjects
+        .map(project => project.id)
+        .sort()
+        .join(',')
 
-    let followedCounters = {}
-    let allCounters = {}
-    let followedData = {}
-    let allData = {}
-    let timeOfFeedsLoadedInternal = 0
+    useEffect(() => {
+        let active = true
+        const projectIds = feedProjects.map(project => project.id)
+        const allowedProjectIds = new Set(projectIds)
+        const followedCounters = {}
+        const allCounters = {}
+        let followedData = {}
+        let allData = {}
 
-    //////////////////////// Feeds counting ////////////////////////
+        const clearFeedData = () => {
+            dispatch([setFollowedFeedsAmount(0), setAllFeedsAmount(0), setFollowedFeedsData({}), setAllFeedsData({})])
+        }
+        clearFeedData()
 
-    const updateFollowedFeedsData = (projectId, newFeedsData) => {
-        followedCounters = updateFeedsData(
-            projectId,
-            newFeedsData,
-            followedCounters,
-            setFollowedFeedsAmount,
-            followedData,
-            setFollowedFeedsData
-        )
-    }
-
-    const updateAllFeedsData = (projectId, newFeedsData) => {
-        allCounters = updateFeedsData(projectId, newFeedsData, allCounters, setAllFeedsAmount, allData, setAllFeedsData)
-    }
-
-    const updateFeedsData = (
-        projectId,
-        newFeedsData,
-        projectsCounters,
-        setAmountDispatch,
-        currentFeedsData,
-        setFeedsDataDispatch
-    ) => {
-        const { feedsAmount, feedsData } = newFeedsData
-
-        currentFeedsData[projectId] = feedsData
-        dispatch(setFeedsDataDispatch(currentFeedsData))
-
-        if (inSelectedProject) {
-            projectsCounters = {}
-            dispatch(setAmountDispatch(feedsAmount))
-        } else {
-            projectsCounters[projectId] = feedsAmount
-            let totalCount = 0
-            const counters = Object.values(projectsCounters)
-            for (let i = 0; i < counters.length; i++) {
-                totalCount += counters[i]
+        const updateFeedsData = (projectId, newFeedsData, followed) => {
+            // Ignore deliveries from a retired user/membership generation, including queued snapshots.
+            if (!active || !allowedProjectIds.has(projectId)) return
+            const { feedsAmount, feedsData } = newFeedsData
+            const counters = followed ? followedCounters : allCounters
+            counters[projectId] = feedsAmount
+            const amount = Object.values(counters).reduce((total, count) => total + count, 0)
+            if (followed) {
+                followedData = { ...followedData, [projectId]: feedsData }
+                dispatch([setFollowedFeedsData(followedData), setFollowedFeedsAmount(amount)])
+            } else {
+                allData = { ...allData, [projectId]: feedsData }
+                dispatch([setAllFeedsData(allData), setAllFeedsAmount(amount)])
             }
-            dispatch(setAmountDispatch(totalCount))
+            if (
+                Object.keys(followedCounters).length === projectIds.length &&
+                Object.keys(allCounters).length === projectIds.length
+            )
+                dispatch(setLoadedNewFeeds())
         }
-        timeOfFeedsLoadedInternal++
-        setTimeOfFeedsLoaded(timeOfFeedsLoadedInternal)
-        return projectsCounters
-    }
 
-    //////////////////////// Feeds counting ////////////////////////
+        Backend.watchAllNewFeedsAllTabs(
+            feedProjects,
+            loggedUser.uid,
+            (projectId, data) => updateFeedsData(projectId, data, true),
+            (projectId, data) => updateFeedsData(projectId, data, false)
+        )
+        if (projectIds.length === 0) dispatch(setLoadedNewFeeds())
 
-    useEffect(() => {
-        if (watchedProjectsIds.length > 0 && Object.keys(followedFeedsData).length === watchedProjectsIds.length) {
-            dispatch(setLoadedNewFeeds())
+        return () => {
+            active = false
+            projectIds.forEach(projectId => {
+                Backend.unsubNewFeedsTab(projectId, 'followed')
+                Backend.unsubNewFeedsTab(projectId, 'all')
+            })
+            clearFeedData()
         }
-    }, [timeOfFeedsLoaded])
-
-    const cleanComponent = () => {
-        const openIds = openFeedProjectIdsRef.current
-        for (let i = 0; i < openIds.length; i++) {
-            Backend.unsubNewFeedsTab(openIds[i], 'followed')
-            Backend.unsubNewFeedsTab(openIds[i], 'all')
-        }
-        openFeedProjectIdsRef.current = []
-    }
-
-    const getAllFeedProjects = () => {
-        const filteredProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_ACTIVE)
-        const guideProjects = ProjectHelper.getProjectsByType(loggedUserProjects, loggedUser, PROJECT_TYPE_GUIDE)
-        return [...filteredProjects, ...guideProjects]
-    }
-
-    const watchAllProjects = () => {
-        cleanComponent()
-        const filteredProjects = getAllFeedProjects()
-        Backend.watchAllNewFeedsAllTabs(filteredProjects, loggedUser.uid, updateFollowedFeedsData, updateAllFeedsData)
-        const newWatchedProjectsIds = []
-        for (let i = 0; i < filteredProjects.length; i++) {
-            newWatchedProjectsIds.push(filteredProjects[i].id)
-        }
-        openFeedProjectIdsRef.current = newWatchedProjectsIds
-        setWatchedProjectsIds(newWatchedProjectsIds)
-    }
-
-    const watchProject = () => {
-        cleanComponent()
-        if (loggedUserProjects[selectedProjectIndex]) {
-            const projectId = loggedUserProjects[selectedProjectIndex].id
-            Backend.watchNewFeedsAllTabs(projectId, loggedUser.uid, updateFollowedFeedsData, updateAllFeedsData)
-            openFeedProjectIdsRef.current = [projectId]
-            setWatchedProjectsIds([projectId])
-        }
-    }
-
-    // Keyed on WHICH documents are watched, not on the `loggedUserProjects` array: that array gets a
-    // new identity whenever any project document changes, and at boot every project delivers a
-    // cached and then a server snapshot. Measured on the dogfooding Pixel, that re-subscribed all
-    // 2 x 13 unread-badge listeners about 25 times in the first 30 seconds (~650 billed reads and
-    // listener round trips competing with the initial sync) for an unchanged set of documents.
-    const watchedFeedsKey = inSelectedProject
-        ? `project:${loggedUserProjects[selectedProjectIndex]?.id || ''}`
-        : `all:${getAllFeedProjects()
-              .map(project => project.id)
-              .join(',')}`
-
-    useEffect(() => {
-        inSelectedProject ? watchProject() : watchAllProjects()
-        return cleanComponent
     }, [watchedFeedsKey, loggedUser.uid])
 
     return (
