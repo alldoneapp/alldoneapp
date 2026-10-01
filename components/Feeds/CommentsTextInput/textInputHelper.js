@@ -36,6 +36,10 @@ import {
 } from '../../../functions/Utils/parseTextUtils'
 import { addFilesAsAttachments } from './attachmentFileUtils'
 import { unmountEmbedReactRoots } from './autoformat/formats/embedReactRoot'
+import {
+    markdownTableClipboardHtml,
+    markdownTableClipboardText,
+} from '../../NotesView/NotesDV/EditorView/markdownTableClipboard'
 
 export const MENTION_MODAL_TASKS_TAB = 0
 export const MENTION_MODAL_GOALS_TAB = 1
@@ -789,6 +793,7 @@ export const onCopy = (event, editor, projectId, isCuting) => {
             videoFormat,
             karma,
             taskTagFormat,
+            markdownTable,
         } = insert
 
         if (mention) {
@@ -836,14 +841,22 @@ export const onCopy = (event, editor, projectId, isCuting) => {
             const { userId } = karma
             parsedText += `${KARMA_TRIGGER}${userId}`
             op.insert = `${KARMA_TRIGGER}${userId}`
+        } else if (markdownTable) {
+            if (parsedText && !parsedText.endsWith('\n')) parsedText += '\n'
+            parsedText += markdownTableClipboardText(markdownTable)
         } else if (typeof insert === 'string') {
             parsedText += insert
         }
     }
 
     if (isCuting) {
-        const selection = document.getSelection()
-        selection.deleteFromDocument()
+        if (selectedContent.ops.some(op => op.insert?.markdownTable)) {
+            // Browser DOM deletion can leave an immutable table embed behind.
+            editor.deleteText(index, length, 'user')
+        } else {
+            const selection = document.getSelection()
+            selection.deleteFromDocument()
+        }
     }
 
     if (copiedBlockTail) selectedContent.ops.push(copiedBlockTail)
@@ -853,14 +866,22 @@ export const onCopy = (event, editor, projectId, isCuting) => {
     tempQuill.setContents(selectedContent)
 
     const tempQuillContent = tempQuill.getContents()
+    tempQuillContent.ops.forEach(op => {
+        if (op.insert?.markdownTable) op.attributes = { ...op.attributes, renderAsBlock: true }
+    })
     // This editor exists for exactly the two lines above, but building its document mounts one
     // React root per embed in the selection. Nothing would ever take them down again — copying
     // a note full of tags used to leak a root (and its redux subscription) per tag, per copy.
     unmountEmbedReactRoots(tempQuill.root)
     var converter = new QuillDeltaToHtmlConverter(tempQuillContent.ops, {})
+    converter.renderCustomWith(op =>
+        op.insert.type === 'markdownTable' ? markdownTableClipboardHtml(op.insert.value) : ''
+    )
     var html = converter.convert()
 
-    if (html.length >= 7 && html.substring(0, 3) === `<p>` && html.substring(html.length - 4, html.length) === `</p>`) {
+    // Strip only a single paragraph. Removing the first/last tags around several
+    // blocks leaves a stray </p>, which HTML parsing turns into an empty line.
+    if (html.length >= 7 && html.substring(0, 3) === `<p>` && html.indexOf('</p>') === html.length - 4) {
         html = html.substring(3, html.length - 4)
     }
     event.clipboardData.setData('text/html', html)

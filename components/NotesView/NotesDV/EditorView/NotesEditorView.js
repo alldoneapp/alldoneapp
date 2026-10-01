@@ -80,6 +80,7 @@ import {
 } from './mentionsHelper'
 import { getNotePreviewText, getScrollTolerance } from '../../NotesHelper'
 import { markdownToDelta, containsMarkdown } from './markdownToDelta'
+import { hasMarkdownTableClipboardHtml } from './markdownTableClipboard'
 import { updateNewAttachmentsDataInNotes } from '../../../Feeds/Utils/HelperFunctions'
 import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKGROUND_COLORS, TEXT_COLORS } from '../../../../utils/ColorConstants'
@@ -743,7 +744,9 @@ const NotesEditorView = ({
         // listener so the listener itself is only about OWNING the event (see AT-2519 below).
         const convertPastedClipboard = (editor, textData, htmlData) => {
             // Check if plain text contains markdown - if so, prioritize markdown conversion
-            if (textData && containsMarkdown(textData)) {
+            // Our table HTML preserves surrounding lists/headings/inline formats.
+            // Its plain Markdown fallback is for destinations without rich HTML.
+            if (textData && containsMarkdown(textData) && !hasMarkdownTableClipboardHtml(htmlData)) {
                 const parsedDelta = markdownToDelta(textData, Delta)
                 if (parsedDelta) return parsedDelta
             }
