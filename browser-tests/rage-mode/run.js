@@ -19,6 +19,7 @@
  *   npx playwright install chromium   (or PLAYWRIGHT_HOME=<dir with playwright installed>)
  * Usage:
  *   node browser-tests/rage-mode/run.js [--touch] [--headed]
+ *   node browser-tests/rage-mode/run.js --escape  # AT-2673: continuous fire + ESC
  *   node browser-tests/rage-mode/run.js --serve     # build, then serve it to play by hand
  */
 const path = require('path')
@@ -453,6 +454,93 @@ async function gameOver(browser, url) {
     await page.close()
 }
 
+async function escapeWhileFiring(browser, url) {
+    const errors = []
+    const newPage = async () => {
+        const page = await browser.newPage({ viewport: { width: 2400, height: 900 } })
+        page.on('pageerror', error => {
+            errors.push(error.message)
+            console.log(`Browser error: ${error.message}`)
+        })
+        page.on('console', message => {
+            if (message.type() === 'error') {
+                errors.push(message.text())
+                console.log(`Browser error: ${message.text()}`)
+            }
+        })
+        await page.goto(`${url}?god=1&owned=all&escRegression=1`)
+        return page
+    }
+    let page = await newPage()
+    // The first three rounds reuse the page, checking for leaked listeners/frames on reopening.
+    const rounds = ['blaster', 'blaster', 'blaster', 'shotgun', 'rocket', 'flamethrower', 'laser', 'blackhole', 'snap']
+    for (const [round, weapon] of rounds.entries()) {
+        // SwiftShader blocks a page after too many rapid context resets. Keep the repeated
+        // transitions together, then give each remaining weapon a fresh page/context budget.
+        if (round >= 3) {
+            await page.close()
+            page = await newPage()
+        }
+        await page.click('#rage')
+        // Wait for the asynchronous ownership profile before selecting an owned weapon. Using
+        // number keys also exercises the production keyboard handler without a moving HUD chip.
+        await page.waitForSelector('[data-rage-mode-layer="weapons"] [data-weapon="snap"]')
+        const index = ['blaster', 'shotgun', 'rocket', 'flamethrower', 'laser', 'blackhole', 'snap'].indexOf(weapon)
+        await page.keyboard.press(`Digit${index + 1}`)
+        check(`${weapon} round ${round + 1}: requested weapon is equipped`, (await hudData(page)).weapon === weapon)
+        const paragraph = await centreOf(page, '#paragraph')
+        await page.mouse.move(paragraph.x, paragraph.y)
+        await page.keyboard.press('Space')
+        check(`${weapon} round ${round + 1}: continuous fire is enabled`, (await hudData(page)).autoFire === 'on')
+        if (weapon === 'blaster') {
+            const damaged = await waitForHud(page, data => Number(data.destroyed) > 0)
+            check(`${weapon} round ${round + 1}: debris exists before ESC`, damaged)
+        }
+        await page.mouse.move(2390, 100)
+        if (['blaster', 'shotgun'].includes(weapon)) {
+            await page.waitForFunction(() => window.__rage.liveProjectiles() >= 2, null, { timeout: 15000 })
+            check(`${weapon} round ${round + 1}: multiple projectiles are in flight`, true)
+        } else if (weapon === 'laser') {
+            check('laser: beam is active before ESC', await waitForHud(page, data => data.laser === 'on'))
+        } else {
+            check(
+                `${weapon}: fired before ESC`,
+                await waitForHud(page, data => Number(data.shots) > 0),
+                JSON.stringify(await hudData(page))
+            )
+        }
+        if (round === 1) {
+            await page.keyboard.press('KeyB')
+            await page.keyboard.press('Escape')
+            const data = await hudData(page)
+            check('ESC closes the shop and preserves continuous fire', !data.shop && data.autoFire === 'on')
+        }
+        await page.keyboard.press('Escape')
+        if (round === 2) await page.setViewportSize({ width: 2400, height: 880 })
+        // Repeated ESC/Space during rewind must not restart shooting or interrupt cleanup.
+        await page.keyboard.press('Escape')
+        await page.keyboard.press('Space')
+        await waitForArenaGone(page)
+        const state = await page.evaluate(() => ({
+            intact: document.body.innerHTML === window.__rage.pageHtml,
+            exits: window.__rage.exitCount,
+            appKeys: window.__rage.appKeys,
+        }))
+        check(`${weapon} round ${round + 1}: ESC removes every arena layer`, (await layerCount(page)) === 0)
+        check(
+            `${weapon} round ${round + 1}: page restored and exit called once`,
+            state.intact && state.exits === (round < 3 ? round + 1 : 1)
+        )
+        check(`${weapon} round ${round + 1}: keys stay inside the arena until exit`, state.appKeys === 0, state.appKeys)
+    }
+    await page.click('#primary')
+    await page.keyboard.press('x')
+    const input = await page.evaluate(() => ({ clicks: window.__rage.appClicks, keys: window.__rage.appKeys }))
+    check('app input works after repeated ESC exits', input.clicks === 1 && input.keys === 1, JSON.stringify(input))
+    check('continuous fire + ESC: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await page.close()
+}
+
 async function touch(browser, url) {
     const context = await browser.newContext({
         viewport: { width: 390, height: 844 },
@@ -498,7 +586,8 @@ async function touch(browser, url) {
         args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
     })
     try {
-        if (args.has('--touch')) await touch(browser, url)
+        if (args.has('--escape')) await escapeWhileFiring(browser, url)
+        else if (args.has('--touch')) await touch(browser, url)
         else if (args.has('--game')) {
             await shop(browser, url)
             await weapons(browser, url)

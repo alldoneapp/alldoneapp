@@ -602,8 +602,15 @@ a 390×844 touch viewport; `--serve` just builds and serves the harness so you c
 
 ```bash
 node browser-tests/rage-mode/run.js [--touch] [--headed]
+node browser-tests/rage-mode/run.js --escape
 node browser-tests/rage-mode/run.js --serve
 ```
+
+`--escape` covers AT-2673: ESC during continuous fire with multiple live projectiles and debris,
+repeated opening/closing, shop-first ESC, resize during rewind and all seven weapons. It checks
+that the page is restored, exit is delivered exactly once per round, input works again and no
+browser errors occur. Jest's `components/RageMode/rageArena.test.js` also drives the real arena
+lifecycle with a renderer stub to cover cancelled/stale frames and debris geometry disposal.
 
 ### `at2660/` — opening the add-task popup a second time
 

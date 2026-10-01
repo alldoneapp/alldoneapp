@@ -42,7 +42,7 @@ export default function ChatsEmailConnectionStatus() {
         : reconnectRequired
           ? translate('Reconnect email in Settings > Integrations')
           : translate('Could not verify email connections')
-    const color = reconnectRequired && !checking ? colors.UtilityRed200 : colors.Text03
+    const color = reconnectRequired && !checking ? colors.UtilityRed200 : colors.Text02
     const cadenceMessages = connections.map((connection, index) => {
         const cadence = cadences[index]
         const broken =
