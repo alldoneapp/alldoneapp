@@ -1341,6 +1341,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
     let shake = 0
     let time = 0
     let phase = 'playing'
+    let finished = false
     let rewindStart = 0
 
     // The game on top of the toy: score, health, weapons and the boss.
@@ -1428,7 +1429,8 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
     updateHealth()
 
     document.body.append(inputLayer, canvas, hud, help, ui.weaponBar, ui.bossBar, ui.toast)
-    requestAnimationFrame(() => {
+    const entranceFrameId = requestAnimationFrame(() => {
+        if (phase !== 'playing' || finished) return
         inputLayer.style.boxShadow = 'inset 0 0 90px rgba(224,0,0,0.14)'
     })
     const helpTimer = setTimeout(() => {
@@ -1971,11 +1973,14 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
         sound.pew()
     }
 
-    const removeBolt = index => {
-        const bolt = bolts[index]
+    const removeBolt = bolt => {
+        // Removal is by identity: a snapshot may outlive an earlier removal, and a shrinking
+        // list must never be indexed using the snapshot's iteration index (AT-2673).
+        const index = bolts.indexOf(bolt)
+        if (index < 0) return
+        bolts.splice(index, 1)
         scene.remove(bolt.mesh)
         bolt.glow.material.dispose()
-        bolts.splice(index, 1)
     }
 
     /**
@@ -2023,7 +2028,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
                 bolt.age += dt
                 if (bolt.type === 'blackhole' && bolt.age >= bolt.weapon.travel) {
                     startBlackhole(bolt.x, bolt.y, bolt.weapon)
-                    removeBolt(i)
+                    removeBolt(bolt)
                     continue
                 }
                 const step = (bolt.speed * dt) / BOLT_SAMPLES
@@ -2068,7 +2073,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
                 const offScreen =
                     bolt.x < -40 || bolt.y < -40 || bolt.x > viewport.width + 40 || bolt.y > viewport.height + 40
                 const spent = bolt.weapon.range && bolt.travelled > bolt.weapon.range
-                if (hitSomething || offScreen || spent || bolt.age > 3) removeBolt(i)
+                if (hitSomething || offScreen || spent || bolt.age > 3) removeBolt(bolt)
                 else {
                     toWorldOnScreen(bolt.mesh, bolt.x, bolt.y, BOLT_Z)
                     if (bolt.type === 'blackhole') bolt.mesh.rotation.set(time * 3, time * 4, time * 5)
@@ -2739,20 +2744,20 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
             hole.ringMaterial.dispose()
         })
         laserGroup.visible = false
-        autoFire = false
+        setAutoFire(false)
         character.root.visible = true
         ui.weaponBar.style.opacity = '0'
         ui.weaponBar.style.transition = 'opacity 300ms ease'
-        phase = 'rewinding'
-        rewindStart = time
         pointerFiring = false
+        pendingShot = false
+        touchSeek = false
         held.clear()
         if (greeting) {
             greeting = null
             removeBubble()
             resetRig()
         }
-        bolts.slice().forEach((bolt, index) => removeBolt(bolts.length - 1 - index))
+        bolts.slice().forEach(removeBolt)
         // Every snake still crawling flies home too, tile by tile, to the letters it came from.
         snakes
             .splice(0)
@@ -2763,6 +2768,9 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
             piece.snapshot = { x: piece.x, y: piece.y, z: piece.z, rx: piece.rx, ry: piece.ry, rz: piece.rz }
             piece.snapshotScale = piece.mesh.scale.x
         })
+        // Publish the rewind phase only after every surviving piece has its starting pose.
+        phase = 'rewinding'
+        rewindStart = time
         inputLayer.style.boxShadow = 'inset 0 0 0 rgba(224,0,0,0)'
         help.style.opacity = '0'
         hud.style.opacity = '0'
@@ -3121,6 +3129,9 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
     let frameId = 0
     let lastTimestamp = 0
     const frame = timestamp => {
+        // A cancelled callback can still be delivered after teardown. It belongs to this arena,
+        // never to a later one, and must not touch disposed meshes or restart the frame loop.
+        if (finished) return
         frameId = 0
         const dt = lastTimestamp ? Math.min(0.05, (timestamp - lastTimestamp) / 1000) : 1 / 60
         lastTimestamp = timestamp
@@ -3156,6 +3167,8 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
         } else {
             updateRewind()
         }
+        // updateRewind may finish and dispose the renderer on this very frame.
+        if (finished) return
         updateEffects(dt)
         updateBossDebris(dt)
         updateAnchors()
@@ -3173,6 +3186,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
     const onPointerDown = event => {
         event.preventDefault()
         event.stopPropagation()
+        if (phase !== 'playing' || paused) return
         sound.unlock()
         setAimFromEvent(event)
         touchSeek = event.pointerType === 'touch'
@@ -3320,12 +3334,12 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
     })
 
     /* Teardown. */
-    let finished = false
     function finish() {
         if (finished) return
         finished = true
         phase = 'done'
         if (frameId) cancelAnimationFrame(frameId)
+        cancelAnimationFrame(entranceFrameId)
         clearTimeout(helpTimer)
         window.removeEventListener('keydown', onKey, true)
         window.removeEventListener('keyup', onKey, true)
@@ -3362,7 +3376,7 @@ export function startRageArena({ strings, from, onExit, services = {}, tuning = 
         anchors.forEach(anchor => anchor.scorchMaterial && anchor.scorchMaterial.dispose())
         tileTextureCache.clear()
         effects.forEach(effect => effect.material && effect.material.dispose())
-        bolts.forEach(bolt => bolt.glow.material.dispose())
+        bolts.slice().forEach(removeBolt)
         character.root.traverse(node => {
             if (node.geometry) node.geometry.dispose()
             if (node.material && node.material.dispose) node.material.dispose()

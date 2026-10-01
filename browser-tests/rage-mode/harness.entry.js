@@ -13,6 +13,7 @@
 import { startRageArena } from '../../components/RageMode/rageArena'
 import { buildRageStrings } from '../../components/RageMode/rageStrings'
 import { RAGE_WEAPONS } from '../../components/RageMode/rageWeapons'
+import { Scene } from 'three'
 import en from '../../i18n/translations/en.json'
 
 const PARAGRAPH =
@@ -60,7 +61,7 @@ const makeImage = () => {
     return canvas.toDataURL()
 }
 
-const state = { appClicks: 0, appKeys: 0, arena: null, exited: false }
+const state = { appClicks: 0, appKeys: 0, arena: null, exited: false, exitCount: 0 }
 window.__rage = state
 
 const style = document.createElement('style')
@@ -128,6 +129,17 @@ const strings = buildRageStrings(key => en[key] || key)
 // Fake services, steered by the query string: ?gold=1500&tasks=3&best=120&owned=all
 // &bossHeadStart=42&health=10. `state.calls` records what the arena asked for.
 const params = new URLSearchParams(window.location.search)
+// Observe real live projectiles without adding test-only hooks to the production arena. This
+// proves ESC happens with multiple shots still in flight, the precondition of AT-2673.
+if (params.has('escRegression')) {
+    let lastScene = null
+    const add = Scene.prototype.add
+    Scene.prototype.add = function (...objects) {
+        lastScene = this
+        return add.apply(this, objects)
+    }
+    state.liveProjectiles = () => (lastScene ? lastScene.children.filter(mesh => mesh.renderOrder === 4).length : 0)
+}
 state.gold = Number(params.get('gold') || 1500)
 state.profile = {
     owned: params.get('owned') === 'all' ? RAGE_WEAPONS.map(weapon => weapon.id) : ['blaster'],
@@ -170,6 +182,7 @@ state.start = () => {
         from: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
         onExit: () => {
             state.exited = true
+            state.exitCount += 1
             state.arena = null
         },
     })
