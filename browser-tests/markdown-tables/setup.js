@@ -8,5 +8,13 @@ module.exports = (config, webpack) => ({
                 resource.request = path.join(__dirname, 'textInputMeta.js')
             }
         }),
+        new webpack.NormalModuleReplacementPlugin(
+            /(?:BackendBridge|PremiumHelper|LinkingHelper|HelperFunctions|attachmentFileUtils)$/,
+            resource => {
+                if (resource.context.endsWith('CommentsTextInput')) {
+                    resource.request = path.join(__dirname, 'clipboardDependencies.js')
+                }
+            }
+        ),
     ],
 })

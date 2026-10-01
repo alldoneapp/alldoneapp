@@ -3,6 +3,10 @@ import '../../components/Feeds/CommentsTextInput/quill2Setup'
 import MarkdownTableFormat from '../../components/NotesView/NotesDV/EditorView/MarkdownTableFormat'
 import '../../components/NotesView/NotesDV/EditorView/markdownTableEditing'
 import '../../components/NotesView/NotesDV/EditorView/toolbar-styles.css'
+import { onCopy } from '../../components/Feeds/CommentsTextInput/textInputHelper'
+import { applyPastedClipboard } from '../../components/NotesView/NotesDV/EditorView/notePaste'
+import { markdownToDelta } from '../../components/NotesView/NotesDV/EditorView/markdownToDelta'
+import { hasMarkdownTableClipboardHtml } from '../../components/NotesView/NotesDV/EditorView/markdownTableClipboard'
 
 Quill.register('formats/markdownTable', MarkdownTableFormat, true)
 const editor = new Quill(document.getElementById('editor'), {
@@ -38,6 +42,19 @@ window.documentClipboardEvents = []
     editor.root.addEventListener(type, event => {
         window.documentClipboardEvents.push(type)
         event.preventDefault()
+        if (type === 'copy' || type === 'cut') onCopy(event, editor, 'PROJ1', type === 'cut')
+        else {
+            const textData = event.clipboardData.getData('text/plain')
+            const htmlData = event.clipboardData.getData('text/html')
+            applyPastedClipboard(
+                editor,
+                { textData, htmlData },
+                (target, text, html) =>
+                    (hasMarkdownTableClipboardHtml(html) ? null : markdownToDelta(text, Quill.import('delta'))) ||
+                    target.clipboard.convert({ html, text }),
+                Quill.import('delta')
+            )
+        }
     })
 )
 window.editor = editor

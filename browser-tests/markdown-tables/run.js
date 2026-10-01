@@ -149,6 +149,28 @@ const server = http.createServer((req, res) => {
             assert.equal(await page.evaluate(() => editor.getText()), 'Note typing Before the table\nAfter the table\n')
             await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Z' : 'Control+Z')
             assert.equal(await page.evaluate(() => editor.getText()), 'Before the table\nAfter the table\n')
+            const copiedTable = await page.evaluate(() => tableValue())
+            await page.evaluate(() => editor.setSelection(0, editor.getLength() - 1, 'user'))
+            await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C')
+            const clipboard = await page.evaluate(async () => {
+                const items = await navigator.clipboard.read()
+                const item = items[0]
+                return {
+                    text: await (await item.getType('text/plain')).text(),
+                    html: await (await item.getType('text/html')).text(),
+                }
+            })
+            assert.ok(clipboard.text.includes('Second line'), 'Native note copy must include multiline table text')
+            assert.ok(clipboard.html.includes('data-markdown-table'), 'Native note copy must include the table embed')
+            await page.evaluate(() => {
+                editor.setContents([{ insert: '\n' }])
+                editor.setSelection(0, 0, 'user')
+            })
+            await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V')
+            await page.waitForFunction(() => !!editor.getContents().ops.find(op => op.insert?.markdownTable))
+            assert.deepEqual(await page.evaluate(() => tableValue().rows), copiedTable.rows)
+            assert.deepEqual(await page.evaluate(() => tableValue().alignments), copiedTable.alignments)
+            assert.equal(await page.evaluate(() => editor.getText()), 'Before the table\nAfter the table\n')
             assert.deepEqual(errors, [])
             console.log(
                 `${mobile ? 'Mobile touch' : 'Desktop'}: cell wrapping, multiline save/reopen, native editing and table controls passed`

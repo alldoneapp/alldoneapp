@@ -74,6 +74,10 @@ import { blockAttributesOf, resolveCopiedBlockTail } from './quillBlockFormats'
 import { onCopy, processPastedTextWithBreakLines } from './textInputHelper'
 import { applyPastedDeltaToEditor, normalizePastedLineEndings } from '../../NotesView/NotesDV/EditorView/notePaste'
 import { containsMarkdown, markdownToDelta } from '../../NotesView/NotesDV/EditorView/markdownToDelta'
+import MarkdownTableFormat from '../../NotesView/NotesDV/EditorView/MarkdownTableFormat'
+import { hasMarkdownTableClipboardHtml } from '../../NotesView/NotesDV/EditorView/markdownTableClipboard'
+
+Quill.register('formats/markdownTable', MarkdownTableFormat, true)
 
 const Delta = Quill.import('delta')
 
@@ -124,6 +128,98 @@ const copyFrom = (editor, { cut = false } = {}) => {
 const clipboardHtmlWithoutTheFix = (editor, index, length) =>
     new QuillDeltaToHtmlConverter(editor.getContents(index, length).ops, {}).convert()
 
+describe('copying Markdown tables from notes', () => {
+    const table = {
+        id: 'original-table',
+        rows: [
+            ['Name', 'Plan'],
+            ['**Alice**', 'First line\nSecond | line'],
+            ['<img src=x onerror=alert(1)>', 'Open'],
+        ],
+        alignments: ['left', 'right'],
+    }
+    const tableValue = editor => editor.getContents().ops.find(op => op.insert?.markdownTable)?.insert.markdownTable
+
+    it('copies the table into Markdown text and readable HTML without editing controls', () => {
+        const editor = buildEditor(new Delta().insert({ markdownTable: table }).insert('\n'), 0, 1)
+        const clipboard = copyFrom(editor)
+        expect(clipboard['text/plain']).toContain('| Name | Plan |\n| :--- | ---: |')
+        expect(clipboard['text/plain']).toContain('First line<br>Second \\| line')
+        const html = new DOMParser().parseFromString(clipboard['text/html'], 'text/html')
+        expect(html.querySelector('table')).not.toBeNull()
+        expect(html.querySelector('td').textContent).toBe('Alice')
+        expect(html.querySelector('br')).not.toBeNull()
+        expect(html.querySelector('img')).toBeNull()
+        expect(html.querySelector('.ql-table-controls, textarea')).toBeNull()
+        expect(tableValue(editor)).toEqual(table)
+    })
+
+    it('pastes the table with its exact cell text, line breaks and alignment alongside formatted note content', () => {
+        const contents = new Delta()
+            .insert('Roadmap')
+            .insert('\n', { header: 2 })
+            .insert('Before', { bold: true })
+            .insert('\n', { list: 'bullet' })
+            .insert({ markdownTable: table })
+            .insert('After', { italic: true })
+            .insert('\n')
+        const editor = buildEditor(contents, 0, contents.length())
+        const clipboard = copyFrom(editor)
+        const target = pasteInto(buildEditor(), clipboard)
+        expect(tableValue(target)).toEqual({ rows: table.rows, alignments: table.alignments })
+        expect(target.getContents().ops).toEqual([
+            { insert: 'Roadmap' },
+            { insert: '\n', attributes: { header: 2 } },
+            { insert: 'Before', attributes: { bold: true } },
+            { insert: '\n', attributes: { list: 'bullet' } },
+            { insert: { markdownTable: { rows: table.rows, alignments: table.alignments } } },
+            { insert: 'After', attributes: { italic: true } },
+            { insert: '\n' },
+        ])
+    })
+
+    it('keeps table content when only the plain text clipboard flavour is available', () => {
+        const editor = buildEditor(new Delta().insert({ markdownTable: table }).insert('\n'), 0, 1)
+        const clipboard = copyFrom(editor)
+        delete clipboard['text/html']
+        const target = pasteInto(buildEditor(), clipboard)
+        expect(tableValue(target)).toEqual({ rows: table.rows, alignments: table.alignments })
+    })
+
+    it('does not add empty paragraphs around a table between ordinary paragraphs', () => {
+        const contents = new Delta().insert('Before\n').insert({ markdownTable: table }).insert('After\n')
+        const editor = buildEditor(contents, 0, contents.length() - 1)
+        const clipboard = copyFrom(editor)
+        const target = pasteInto(buildEditor(), clipboard)
+        expect(target.getText()).toBe('Before\nAfter\n')
+        expect(tableValue(target)).toEqual({ rows: table.rows, alignments: table.alignments })
+    })
+
+    it('keeps adjacent tables separate in the plain text fallback', () => {
+        const contents = new Delta().insert({ markdownTable: table }).insert({ markdownTable: table }).insert('\n')
+        const editor = buildEditor(contents, 0, 2)
+        const clipboard = copyFrom(editor)
+        delete clipboard['text/html']
+        const target = pasteInto(buildEditor(), clipboard)
+        const tables = target.getContents().ops.filter(op => op.insert?.markdownTable)
+        expect(tables).toHaveLength(2)
+        tables.forEach(op => expect(op.insert.markdownTable.rows).toEqual(table.rows))
+    })
+
+    it('copies the table before a cut removes it and restores it on paste', () => {
+        const editor = buildEditor(
+            new Delta().insert('Before\n').insert({ markdownTable: table }).insert('After\n'),
+            7,
+            1
+        )
+        const clipboard = copyFrom(editor, { cut: true })
+        editor.update('user') // Flush Quill's observer after the native DOM deletion.
+        expect(tableValue(editor)).toBeUndefined()
+        const target = pasteInto(buildEditor(), clipboard)
+        expect(tableValue(target)).toEqual({ rows: table.rows, alignments: table.alignments })
+    })
+})
+
 /**
  * NotesEditorView's `convertPastedClipboard`, replicated so a clipboard payload can be driven all
  * the way into a document. The handler itself cannot be imported (it is created inside a mount
@@ -131,7 +227,7 @@ const clipboardHtmlWithoutTheFix = (editor, index, length) =>
  * file ratchets the real source against this replication.
  */
 const convertPastedClipboard = (editor, textData, htmlData) => {
-    if (textData && containsMarkdown(textData)) {
+    if (textData && containsMarkdown(textData) && !hasMarkdownTableClipboardHtml(htmlData)) {
         const parsedDelta = markdownToDelta(textData, Delta)
         if (parsedDelta) return parsedDelta
     }
