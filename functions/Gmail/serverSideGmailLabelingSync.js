@@ -29,7 +29,6 @@ const {
     GMAIL_DIRECTION_SCOPE_BOTH,
     GMAIL_DIRECTION_SCOPE_INCOMING,
     GMAIL_DIRECTION_SCOPE_OUTGOING,
-    DEFAULT_SYNC_INTERVAL_MINUTES,
     DEFAULT_GMAIL_LABELING_MODEL,
     GMAIL_LABELING_MODEL_KEYS,
     buildConfigWriteData,
@@ -43,6 +42,7 @@ const {
     normalizePromptMode,
     slugifyLabelKey,
 } = require('./gmailLabelingConfig')
+const { getConfiguredSyncIntervalMinutes } = require('./gmailSyncInterval')
 const {
     extractEmailAddresses,
     getGmailMessageDirection,
@@ -135,12 +135,6 @@ function normalizeTimestampToMillis(value) {
 
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? 0 : date.getTime()
-}
-
-function getConfiguredSyncIntervalMinutes(config = {}) {
-    const parsedInterval = Number(config?.syncIntervalMinutes)
-    if (!Number.isFinite(parsedInterval)) return DEFAULT_SYNC_INTERVAL_MINUTES
-    return Math.max(DEFAULT_SYNC_INTERVAL_MINUTES, Math.trunc(parsedInterval))
 }
 
 function isScheduledSyncDue(state = {}, config = {}) {

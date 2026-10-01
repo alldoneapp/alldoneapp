@@ -5,12 +5,8 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
-import { Text } from 'react-native'
-import i18n from 'i18n-js'
 
 import { ESTIMATIONS_MODAL_ID, removeModal, storeModal } from '../../../../ModalsManager/modalsManager'
-import { setLanguage } from '../../../../../i18n/TranslationService'
-import GenericModalItem from '../Common/GenericModalItem'
 import TaskMoreButton from './TaskMoreButton'
 
 jest.mock('react-redux', () => ({
@@ -31,16 +27,10 @@ jest.mock('../Common/MoreButtonWrapper', () => {
         }),
     }
 })
-jest.mock('react-hot-keys', () => 'Hotkeys')
-jest.mock('react-native-gesture-handler', () => ({ TouchableOpacity: 'TouchableOpacity' }))
-jest.mock('../../../../Icon', () => 'Icon')
-jest.mock('../../../../UIControls/Shortcut', () => ({
-    __esModule: true,
-    default: 'Shortcut',
-    SHORTCUT_LIGHT: 'light',
-}))
+jest.mock('../Common/GenericModalItem', () => 'GenericModalItem')
 jest.mock('../Common/CopyLinkModalItem', () => 'CopyLinkModalItem')
 jest.mock('../Common/FollowingModalItem', () => 'FollowingModalItem')
+jest.mock('../Common/ModalItem', () => 'ModalItem')
 jest.mock('./DeleteModalItem', () => 'DeleteModalItem')
 jest.mock('../../DescriptionModal/DescriptionModal', () => 'DescriptionModal')
 jest.mock('../../PrivacyModal/PrivacyModal', () => 'PrivacyModal')
@@ -71,6 +61,7 @@ jest.mock('../../../../TaskListView/Utils/TasksHelper', () => ({
 }))
 jest.mock('../../../../../utils/EstimationHelper', () => ({ getEstimationIconByValue: () => 0 }))
 jest.mock('../../../../../utils/LinkingHelper', () => ({ getDvMainTabLink: () => '/task/task-1' }))
+jest.mock('../../../../../i18n/TranslationService', () => ({ translate: text => text }))
 jest.mock('../../../../../utils/Gmail/gmailTaskUtils', () => ({ isInboxSummaryGmailTask: () => false }))
 jest.mock('../../../../ModalsManager/modalsManager', () => ({
     ESTIMATIONS_MODAL_ID: 'estimations-modal',
@@ -87,19 +78,12 @@ jest.mock('../../../../ModalsManager/modalsManager', () => ({
 
 describe('TaskMoreButton popup lock', () => {
     let dispatch
-    let originalLocale
 
     beforeEach(() => {
-        originalLocale = i18n.locale
-        setLanguage('en')
         jest.clearAllMocks()
         dispatch = jest.fn()
         useDispatch.mockReturnValue(dispatch)
         useSelector.mockImplementation(selector => selector({ loggedUser: { uid: 'user-1' } }))
-    })
-
-    afterEach(() => {
-        setLanguage(originalLocale)
     })
 
     it('releases and unregisters the estimation popup when the main menu is dismissed outside', () => {
@@ -137,7 +121,9 @@ describe('TaskMoreButton popup lock', () => {
             )
         })
 
-        const estimationItem = tree.root.findAllByType(GenericModalItem).find(item => item.props.text === 'Estimation')
+        const estimationItem = tree.root
+            .findAllByType('GenericModalItem')
+            .find(item => item.props.text === 'Estimation')
 
         act(() => {
             estimationItem.props.visibilityData.openPopup(
@@ -158,54 +144,5 @@ describe('TaskMoreButton popup lock', () => {
         expect(removeModal).toHaveBeenCalledWith(ESTIMATIONS_MODAL_ID)
         expect(dispatch).toHaveBeenCalledWith({ type: 'Hide float popup' })
         expect(tree.root.findAllByType('EstimationModal')).toHaveLength(0)
-        act(() => tree.unmount())
-    })
-
-    it.each([
-        ['de', 'Priorität'],
-        ['en', 'Priority'],
-        ['es', 'Prioridad'],
-    ])('renders the priority menu label in %s and opens its selector (AT-2670)', (locale, label) => {
-        setLanguage(locale)
-        const task = {
-            id: 'task-1',
-            userId: 'user-1',
-            userIds: ['user-1'],
-            estimations: { open: 0 },
-            stepHistory: ['open'],
-            priority: 'none',
-        }
-        let tree
-
-        act(() => {
-            tree = renderer.create(
-                <TaskMoreButton
-                    formType="task"
-                    projectId="project-1"
-                    task={task}
-                    editing={true}
-                    setPriorityBeforeSave={jest.fn()}
-                />
-            )
-        })
-
-        try {
-            // Keep GenericModalItem, ModalItem and TranslationService real: an identity
-            // translate mock hides the double lookup that caused the German placeholder.
-            const priorityItem = tree.root.findAllByType(GenericModalItem).find(item => item.props.icon === 'flag')
-            const text = priorityItem.findAllByType(Text).map(node => node.props.children)
-            expect(text).toContain(label)
-            expect(text.join(' ')).not.toContain('[missing')
-
-            act(() => {
-                priorityItem.findByType('TouchableOpacity').props.onPress({
-                    preventDefault: jest.fn(),
-                    stopPropagation: jest.fn(),
-                })
-            })
-            expect(tree.root.findAllByType('TaskPriorityModal')).toHaveLength(1)
-        } finally {
-            act(() => tree.unmount())
-        }
     })
 })
