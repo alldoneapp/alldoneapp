@@ -1486,10 +1486,23 @@ scroll-driven off-axis "flyover" with a fixed ground (looked wrong in practice),
 (outer buildings fanned outwards).
 
 **Interaction.** Hover/tap shows a day; there is no drag or zoom, and the only event the canvas stops
-is `click` (the all-projects card is itself a link). Tapping is also a hit in a DEMOLITION toy: a
-random number of hits per building (`rollHitPoints`, bigger types take more, 15% double-damage
-criticals), floors knocked off per hit (`getIntegrity` keeps a third standing until the final blow,
-so the collapse stays an event), then a dust-cloud collapse leaving rubble. Memory-only and keyed by
+is `click` (the all-projects card is itself a link). Every tap on the city also launches an
+ASTEROID — at the tapped building, or at the tapped spot on the ground (a tap off the city's ground
+launches nothing). It appears high over the city by scale (never across the canvas edge), streaks in
+trailing fire and smoke while a red ring tightens on its target, and does its damage only where it
+lands: `getAsteroidDamage` (pure, in `skylineData.js`) gives 2 hit points for a direct hit and 1 to
+anything else in the blast, whose radius stops short of the next block, so aiming at a building
+never hurts a neighbour; a road strike catches both sides, and the 15% big ones (`CRITICAL_HIT_CHANCE`)
+hit for 4 and reach the four neighbours. Buildings still roll their hit points (`rollHitPoints`) and
+lose floors per hit (`getIntegrity` keeps a third standing until the final blow, so the collapse
+stays an event), then collapse into dust and rubble. The impact is flash, fireball, a ring of fire on
+the ground, shockwave, smoke column with a mushroom cap, debris, embers, one real `PointLight` (always
+in the scene at intensity 0, so shaders never recompile), camera shake and a scorch mark that stays.
+Fire is **opaque, unlit, flat-shaded** puffs coloured along a white→yellow→orange→red→soot ramp —
+additive glow is invisible on the card's white sky. What lies on the ground (shockwave, scorch) is
+clipped to the city's ground with `localClippingEnabled` clipping planes, and debris that leaves the
+city burns out before it lands, so an edge strike cannot paint the card. The week strip has no sky above its towers, so there a rock aims at a tall tower's lower floors, the blast is smaller, and fire and smoke flatten out under the highest roof (`blastCeiling`) instead of rising off the canvas. Six rocks can be in the air;
+under reduced motion there is no flight or explosion, only the damage. Memory-only and keyed by
 date — a statistics refresh must not resurrect a demolished day, a reload brings everything back.
 The celebration run that pops the 2D today dot pops today's flag instead, and the first hit on
 a building knocks its flag and rooftop equipment off.

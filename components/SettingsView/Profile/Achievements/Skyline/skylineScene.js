@@ -10,6 +10,7 @@ import {
     DoubleSide,
     Group,
     HemisphereLight,
+    IcosahedronGeometry,
     InstancedMesh,
     Mesh,
     MeshBasicMaterial,
@@ -18,11 +19,14 @@ import {
     AdditiveBlending,
     Object3D,
     PCFShadowMap,
+    Plane,
     PMREMGenerator,
+    PointLight,
     Quaternion,
     PerspectiveCamera,
     PlaneGeometry,
     Raycaster,
+    RingGeometry,
     Scene,
     SphereGeometry,
     Sprite,
@@ -37,7 +41,11 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 
 import { colors } from '../../../../styles/global'
 import {
+    ASTEROID_BIG_BLAST_RADIUS,
+    ASTEROID_BLAST_RADIUS,
+    ASTEROID_DIRECT_RADIUS,
     CRITICAL_HIT_CHANCE,
+    getAsteroidDamage,
     getBuildingType,
     getDaylight,
     getIntegrity,
@@ -69,12 +77,15 @@ import {
  *    to be a green roof, which clashed as soon as buildings took their projects' colours — a green
  *    project's building was indistinguishable from an inbox-zero one. A flag on a pole reads the
  *    same on any colour.)
- *  - DEMOLITION is the toy on top: every tap on a building is a hit. A building takes a random
- *    number of hits (`rollHitPoints`, more for bigger types, sometimes a double-damage critical);
- *    each hit shakes it, flashes it, knocks floors off in a burst of debris and sparks, and the
- *    last one collapses it into a cloud of dust with a little camera shake, leaving rubble. It is
- *    purely local and temporary — kept in memory by date, so a statistics refresh does not undo
- *    it, and a reload brings the whole city back.
+ *  - ASTEROIDS are the toy on top: every tap launches one at the building or the spot on the
+ *    ground that was tapped. It streaks in trailing fire and smoke and does its damage where it
+ *    lands (`getAsteroidDamage`: two hit points for a direct hit, one for anything else inside the
+ *    blast, double and wider for the occasional big one). A building takes a random number of hit
+ *    points (`rollHitPoints`, more for bigger types); each hit shakes it, flashes it and knocks
+ *    floors off, and the last one collapses it into a cloud of dust, leaving rubble. The impact
+ *    itself — flash, fireball, ground fire, shockwave, smoke column, embers, an orange light, a
+ *    camera shake and a scorch mark — plays over all of it. Purely local and temporary: kept in
+ *    memory by date, so a statistics refresh does not undo it, and a reload brings the city back.
  *  - THE LIFE is decoration only and carries no data: a soft light sweep up the facades, cars
  *    on the road grid between the blocks, a single small flock of birds, and now and then a
  *    hot-air balloon or a small plane with its shadow. None of it is interactive, and all of it stops for reduced motion.
@@ -156,8 +167,31 @@ const NEUTRAL_ACCENT = ['#6F7A86', '#8C7B6B', '#5F6F7F']
 const CAR_COLORS = ['#F4F4F2', '#2B2F36', '#B7BCC2', '#2D4A7A', '#A63D3D', '#D9D6CF', '#44505C']
 const CAR_GLASS = '#3A4350'
 
-const STRIPPED_KINDS = new Set(['fan', 'spire', 'beacon', 'flag', 'flagPole', 'tank'])
+// Asteroids. A dark faceted rock glowing where the atmosphere heats it, a fire and a smoke trail
+// behind it, and on impact a fireball that cools from white through yellow, orange and red to soot,
+// a shockwave racing over the ground and a scorch mark that stays. Opaque, flat-shaded fire rather
+// than additive glow: the sky is the card's white, and additive light on white is invisible.
+const ROCK = '#4A3F38'
+const ROCK_HEAT = colors.UtilityOrange300
+const FIRE_RAMP = [
+    '#FFFBEA',
+    colors.UtilityYellow150,
+    colors.UtilityYellow200,
+    colors.UtilityOrange200,
+    colors.UtilityOrange300,
+    '#9A2E12',
+    '#3B3431',
+]
+const SMOKE_DARK = '#46413E'
+const SMOKE_LIGHT = '#A8A29C'
+const SCORCH = '#2A2420'
+const TARGET_MARK = colors.UtilityRed200
+const SHOCKWAVE = colors.UtilityOrange200
+const BLAST_FLASH = '#FFF7E0'
+// How many rocks can be in the air at once. A tap while all of them are flying launches nothing.
+const MAX_ASTEROIDS = 6
 
+const STRIPPED_KINDS = new Set(['fan', 'spire', 'beacon', 'flag', 'flagPole', 'tank'])
 
 // Deterministic pseudo-random numbers: the city must look the same on every visit and every
 // re-render, so nothing here may use Math.random.
@@ -1179,6 +1213,10 @@ export function createSkylineScene(
                         p.spin *= 0.5
                     }
                     p.rot += p.spin * dt
+                    // Whatever is thrown off the city burns out before it can land on the card.
+                    if (Math.abs(p.x) > cityExtentX + 0.2 || Math.abs(p.z) > cityExtentZ + 0.2) {
+                        p.life = Math.min(p.life, p.age + 0.15)
+                    }
                     const fade = Math.min(1, (p.life - p.age) / 0.35)
                     const size = p.size * fade
                     dummy.position.set(p.x, p.y, p.z)
@@ -1235,13 +1273,11 @@ export function createSkylineScene(
         }
     }
 
-    const dustCloud = (b, amount) => {
-        const day = days[b]
-        const x = cellX(day)
-        const z = cellZ(day)
+    const dustCloud = (b, amount) => dustRing(cellX(days[b]), cellZ(days[b]), amount)
+    const dustRing = (x, z, amount, push = 1) => {
         for (let i = 0; i < amount; i++) {
             const angle = (i / amount) * Math.PI * 2 + Math.random() * 0.4
-            const speed = 0.8 + Math.random() * 1.4
+            const speed = (0.8 + Math.random() * 1.4) * push
             emit(dust, {
                 x: x + Math.cos(angle) * 0.2,
                 y: 0.1 + Math.random() * 0.4,
@@ -1281,10 +1317,10 @@ export function createSkylineScene(
 
     const currentTop = b => getSkylineHeight(days[b].tasks, scale) * rise[b] * (damageOf(b) ? damageOf(b).integrity : 1)
 
-    /** One tap on building `b`. */
-    const hit = b => {
+    /** `amount` hit points of damage to building `b`, from an asteroid landing on or near it. */
+    const damageBuilding = (b, amount, strength = 1) => {
         const day = days[b]
-        if (!day) return
+        if (!day || amount <= 0) return
         let state = damage.get(day.dateKey)
         if (!state) {
             const maxHitPoints = rollHitPoints(getBuildingType(day.tasks, scale))
@@ -1304,16 +1340,14 @@ export function createSkylineScene(
         }
         if (state.collapsed) return
         const now = performance.now() / 1000
-        const critical = Math.random() < CRITICAL_HIT_CHANCE
         const top = currentTop(b)
-        state.hitPoints -= critical ? 2 : 1
+        state.hitPoints -= amount
         state.shakeStart = now
         state.flashStart = now
         state.flashing = true
         state.stripped = true
         state.target = getIntegrity(state.hitPoints, state.maxHitPoints)
-        if (!reduceMotion) burst(b, critical ? 1.8 : 1, Math.max(top, 0.2))
-        if (critical && !reduceMotion) cameraShake = Math.max(cameraShake, 0.12)
+        if (!reduceMotion) burst(b, strength, Math.max(top, 0.2))
         if (state.hitPoints <= 0) {
             state.collapsed = true
             state.target = 0
@@ -1338,6 +1372,588 @@ export function createSkylineScene(
             state.integrity = Math.abs(next - state.target) < 0.002 ? state.target : next
         })
         cameraShake = Math.max(0, cameraShake - dt * 0.9)
+    }
+
+    // ---------------------------------------------------------------- asteroids
+    // A tap launches a rock at whatever was tapped. It appears high over the city (by scale, never by
+    // crossing the canvas edge, like everything else that flies), streaks down trailing fire and
+    // smoke while a red target ring tightens on the ground, and the damage is done where it lands
+    // (`getAsteroidDamage`). The impact is the payoff: a white flash, a fireball cooling to soot, a
+    // ring of fire rolling out along the ground, a shockwave, a smoke column with a mushroom cap,
+    // flying rock and burning debris, embers, an orange light washing over the neighbours, a camera
+    // shake, and a scorch mark that stays until reload.
+    const fireBall = track(new IcosahedronGeometry(0.5, 1))
+    const rockGeometry = track(new IcosahedronGeometry(1, 1))
+    ;(() => {
+        // Lumpy, not round: each corner pushed in or out a little, the same for every face sharing it.
+        const random = seeded(5309)
+        const bumps = new Map()
+        const position = rockGeometry.attributes.position
+        for (let i = 0; i < position.count; i++) {
+            const key = [position.getX(i), position.getY(i), position.getZ(i)].map(v => v.toFixed(3)).join()
+            if (!bumps.has(key)) bumps.set(key, 0.7 + random() * 0.55)
+            const k = bumps.get(key)
+            position.setXYZ(i, position.getX(i) * k, position.getY(i) * k * 0.85, position.getZ(i) * k)
+        }
+        rockGeometry.computeVertexNormals()
+    })()
+    const rockMaterial = track(
+        new MeshStandardMaterial({
+            color: new Color(ROCK),
+            roughness: 0.92,
+            metalness: 0.05,
+            flatShading: true,
+            emissive: new Color(ROCK_HEAT),
+            emissiveIntensity: 0.55,
+        })
+    )
+    const haloMaterial = track(
+        new MeshBasicMaterial({
+            color: new Color(colors.UtilityYellow200),
+            transparent: true,
+            opacity: 0.4,
+            depthWrite: false,
+            toneMapped: false,
+        })
+    )
+    // What lies on the ground (the shockwave, the scorch marks) is clipped to the city's own ground,
+    // so a strike near the edge cannot paint past it onto the card.
+    renderer.localClippingEnabled = true
+    const cityExtentX = CITY_HALF_WIDTH + ROAD_WIDTH / 2
+    const cityExtentZ = CITY_HALF_DEPTH + ROAD_WIDTH / 2
+    const cityClip = [
+        new Plane(new Vector3(-1, 0, 0), cityExtentX),
+        new Plane(new Vector3(1, 0, 0), cityExtentX),
+        new Plane(new Vector3(0, 0, -1), cityExtentZ),
+        new Plane(new Vector3(0, 0, 1), cityExtentZ),
+    ]
+    const flatRing = (inner, segments) => {
+        const geometry = track(new RingGeometry(inner, 1, segments))
+        geometry.rotateX(-Math.PI / 2)
+        return geometry
+    }
+    const markerRing = flatRing(0.8, 40)
+    const shockRing = flatRing(0.72, 56)
+    const fadingMaterial = (color, clippingPlanes = null) =>
+        track(
+            new MeshBasicMaterial({
+                color: new Color(color),
+                transparent: true,
+                opacity: 0,
+                depthWrite: false,
+                toneMapped: false,
+                side: DoubleSide,
+                clippingPlanes,
+            })
+        )
+    const asteroids = Array.from({ length: MAX_ASTEROIDS }, () => {
+        const group = new Group()
+        const rock = new Mesh(rockGeometry, rockMaterial)
+        rock.castShadow = true
+        const halo = new Mesh(fireBall, haloMaterial)
+        group.add(rock, halo)
+        group.visible = false
+        const marker = new Mesh(markerRing, fadingMaterial(TARGET_MARK))
+        marker.renderOrder = 4
+        marker.visible = false
+        scene.add(group, marker)
+        return {
+            group,
+            rock,
+            halo,
+            marker,
+            active: false,
+            start: new Vector3(),
+            end: new Vector3(),
+            last: new Vector3(),
+        }
+    })
+    const shockwaves = Array.from({ length: 4 }, () => {
+        const ring = new Mesh(shockRing, fadingMaterial(SHOCKWAVE, cityClip))
+        const dome = new Mesh(fireBall, fadingMaterial(BLAST_FLASH))
+        ring.renderOrder = 4
+        dome.renderOrder = 5
+        ring.visible = false
+        dome.visible = false
+        scene.add(ring, dome)
+        return { ring, dome, age: 1, life: 0 }
+    })
+    let nextShockwave = 0
+
+    // Fire is unlit and opaque so it stays saturated on the white card; smoke is lit, so it has a
+    // sunny and a shaded side like the buildings it rises past.
+    const fire = makePool(fireBall, track(new MeshBasicMaterial({ color: 0xffffff, toneMapped: false })), 720, true)
+    fire.mesh.castShadow = false
+    const smoke = makePool(
+        fireBall,
+        track(
+            new MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 1,
+                metalness: 0,
+                flatShading: true,
+                transparent: true,
+                opacity: 0.82,
+                depthWrite: false,
+            })
+        ),
+        340,
+        true
+    )
+    smoke.mesh.castShadow = false
+    // Scorch marks: a dark splash with a ragged edge, laid on the ground where a rock landed.
+    const scorchTexture = (() => {
+        const scorchCanvas = document.createElement('canvas')
+        scorchCanvas.width = scorchCanvas.height = 128
+        const context = scorchCanvas.getContext('2d')
+        if (context && context.createRadialGradient) {
+            context.fillStyle = '#000000'
+            context.fillRect(0, 0, 128, 128)
+            const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 50)
+            if (gradient) {
+                gradient.addColorStop(0, 'rgb(255,255,255)')
+                gradient.addColorStop(0.55, 'rgb(205,205,205)')
+                gradient.addColorStop(1, 'rgb(0,0,0)')
+                context.fillStyle = gradient
+                context.fillRect(0, 0, 128, 128)
+            }
+            // Splatter thrown out of the crater.
+            const splatter = seeded(733)
+            context.fillStyle = 'rgb(150,150,150)'
+            for (let i = 0; i < 34; i++) {
+                const angle = splatter() * Math.PI * 2
+                const reach = 26 + splatter() * 34
+                context.beginPath()
+                context.arc(
+                    64 + Math.cos(angle) * reach,
+                    64 + Math.sin(angle) * reach,
+                    1.5 + splatter() * 4.5 * (1 - reach / 70),
+                    0,
+                    Math.PI * 2
+                )
+                context.fill()
+            }
+        }
+        return track(new CanvasTexture(scorchCanvas))
+    })()
+    const scorchDisc = track(new PlaneGeometry(1, 1))
+    scorchDisc.rotateX(-Math.PI / 2)
+    const scorches = makePool(
+        scorchDisc,
+        track(
+            new MeshBasicMaterial({
+                color: new Color(SCORCH),
+                alphaMap: scorchTexture,
+                transparent: true,
+                opacity: 0.78,
+                depthWrite: false,
+                clippingPlanes: cityClip,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+            })
+        ),
+        48,
+        false
+    )
+    scorches.mesh.castShadow = false
+    scorches.mesh.renderOrder = 1
+    // The one real light here: an orange flash lighting the facades around the impact. Always in the
+    // scene (at zero) so the shaders never recompile for it.
+    const impactLight = new PointLight(new Color(colors.UtilityOrange200), 0, 7, 2)
+    let impactLightPeak = 0
+    let impactLightStart = -10
+    scene.add(impactLight)
+
+    const blastCeiling = () => Math.max(1, skylineTop * 0.9)
+
+    const fireRamp = FIRE_RAMP.map(color => new Color(color))
+    const fireColor = new Color()
+    const sampleFire = k => {
+        const f = Math.min(0.999, Math.max(0, k)) * (fireRamp.length - 1)
+        const i = Math.floor(f)
+        return fireColor.copy(fireRamp[i]).lerp(fireRamp[i + 1], f - i)
+    }
+    const smokeDark = new Color(SMOKE_DARK)
+    const smokeLight = new Color(SMOKE_LIGHT)
+    const smokeColor = new Color()
+    const puff = (pool, x, y, z, vx, vy, vz, size, life, extra) =>
+        emit(pool, { x, y, z, vx, vy, vz, size, life, cleared: false, ...extra })
+    const updateFireAndSmoke = dt => {
+        ;[fire, smoke].forEach(pool => {
+            let changed = false
+            pool.items.forEach((p, i) => {
+                if (p.age >= p.life) {
+                    if (!p.cleared) {
+                        p.cleared = true
+                        dummy.position.set(0, -10, 0)
+                        dummy.scale.set(0, 0, 0)
+                        dummy.updateMatrix()
+                        pool.mesh.setMatrixAt(i, dummy.matrix)
+                        changed = true
+                    }
+                    return
+                }
+                p.age += dt
+                changed = true
+                const k = Math.min(1, p.age / p.life)
+                const drag = Math.exp(-dt * (p.damping || 0))
+                p.vx = p.vx * drag + (p.wind || 0) * dt
+                p.vz *= drag
+                p.vy = p.vy * drag + (p.lift || 0) * dt
+                p.x += p.vx * dt
+                p.y = Math.max(p.y + p.vy * dt, p.size * 0.2)
+                // A single week is framed tightly round its own towers, with no sky above them: fire
+                // and smoke flatten out under the highest roof instead of rising off the canvas.
+                if (ROWS === 1 && p.y > blastCeiling()) {
+                    p.y = blastCeiling()
+                    p.vy = Math.min(p.vy, 0)
+                }
+                p.z += p.vz * dt
+                let size
+                if (pool === fire) {
+                    // Swells fast, then burns away.
+                    size = p.size * (k < 0.12 ? 0.55 + (k / 0.12) * 0.45 : 1 + (k - 0.12) * 0.5) * (1 - k * k * k)
+                    pool.mesh.setColorAt(i, sampleFire((p.heat || 0) + k * (1 - (p.heat || 0))))
+                } else {
+                    size = p.size * (0.45 + 1.1 * Math.sqrt(k)) * (1 - k * k * k * k)
+                    pool.mesh.setColorAt(i, smokeColor.copy(smokeDark).lerp(smokeLight, Math.min(1, k * 1.3)))
+                }
+                dummy.position.set(p.x, p.y, p.z)
+                dummy.rotation.set(p.age * (p.spin || 0), p.age * (p.spin || 0) * 0.6, 0)
+                dummy.scale.set(size, size * (p.squash || 1), size)
+                dummy.updateMatrix()
+                pool.mesh.setMatrixAt(i, dummy.matrix)
+            })
+            if (changed) {
+                pool.mesh.instanceMatrix.needsUpdate = true
+                if (pool.mesh.instanceColor) pool.mesh.instanceColor.needsUpdate = true
+            }
+        })
+    }
+
+    const rand = (min, max) => min + Math.random() * (max - min)
+    const impact = ({ x, y, z, critical }) => {
+        // Damage first, so a building that falls has started falling under its own fireball.
+        days.forEach((day, b) => {
+            const distance = Math.hypot(cellX(day) - x, cellZ(day) - z)
+            damageBuilding(b, getAsteroidDamage(distance, critical), distance <= ASTEROID_DIRECT_RADIUS ? 1.6 : 0.9)
+        })
+        if (reduceMotion) return
+        const now = performance.now() / 1000
+        // The week strip has no sky to spare, so its explosions are smaller.
+        const s = (critical ? 1.6 : 1) * (ROWS === 1 ? 0.65 : 1)
+        // The flash: one white-hot ball that is gone almost as soon as it appears.
+        puff(fire, x, y + 0.1, z, 0, 0, 0, 1.5 * s, 0.2, { heat: 0 })
+        // The fireball, thrown up and out, rising as it burns.
+        for (let i = 0; i < Math.round(26 * s); i++) {
+            const angle = Math.random() * Math.PI * 2
+            const up = rand(0.15, 1)
+            const speed = rand(1.4, 3.2) * s
+            const out = Math.sqrt(1 - up * up)
+            puff(
+                fire,
+                x,
+                y + 0.15,
+                z,
+                Math.cos(angle) * out * speed,
+                up * speed,
+                Math.sin(angle) * out * speed,
+                rand(0.3, 0.58) * s,
+                rand(0.6, 1.1),
+                { heat: rand(0, 0.15), lift: 1.5, damping: 4.2, spin: rand(-4, 4) }
+            )
+        }
+        // A ring of fire rolling out along the ground.
+        for (let i = 0; i < Math.round(18 * s); i++) {
+            const angle = (i / Math.round(18 * s)) * Math.PI * 2
+            const speed = rand(3.2, 4.4) * s
+            puff(
+                fire,
+                x,
+                0.12,
+                z,
+                Math.cos(angle) * speed,
+                0.1,
+                Math.sin(angle) * speed,
+                rand(0.26, 0.38) * s,
+                rand(0.45, 0.7),
+                {
+                    heat: 0.2,
+                    damping: 3.6,
+                    squash: 0.7,
+                }
+            )
+        }
+        // The smoke column and its mushroom cap, drifting a little with the wind.
+        for (let i = 0; i < Math.round(14 * s); i++) {
+            puff(
+                smoke,
+                x + rand(-0.15, 0.15),
+                y + 0.2,
+                z + rand(-0.15, 0.15),
+                rand(-0.2, 0.2),
+                rand(1.2, 3) * s,
+                rand(-0.2, 0.2),
+                rand(0.35, 0.6) * s,
+                rand(2, 3.2),
+                {
+                    damping: 1.5,
+                    lift: 0.12,
+                    wind: 0.08,
+                    spin: rand(-1, 1),
+                }
+            )
+        }
+        for (let i = 0; i < Math.round(9 * s); i++) {
+            const angle = (i / Math.round(9 * s)) * Math.PI * 2
+            puff(
+                smoke,
+                x,
+                y + 0.3,
+                z,
+                Math.cos(angle) * 1.1 * s,
+                rand(3.2, 3.8) * s,
+                Math.sin(angle) * 1.1 * s,
+                rand(0.55, 0.8) * s,
+                rand(2.4, 3.2),
+                {
+                    damping: 1.4,
+                    lift: 0.1,
+                    wind: 0.08,
+                    squash: 0.75,
+                }
+            )
+        }
+        // Rock, burning debris and embers — slow enough to land on the city, not off the card.
+        for (let i = 0; i < Math.round(12 * s); i++) {
+            const angle = Math.random() * Math.PI * 2
+            const speed = rand(1.2, 3.2) * s
+            emit(debris, {
+                x,
+                y: y + 0.1,
+                z,
+                vx: Math.cos(angle) * speed,
+                vy: rand(2, 5) * s,
+                vz: Math.sin(angle) * speed,
+                rot: Math.random() * 6,
+                spin: rand(-14, 14),
+                size: rand(0.06, 0.15),
+                flat: rand(0.6, 1),
+                life: rand(1.5, 2.4),
+                color: i % 3 === 0 ? ROCK_HEAT : ROCK,
+            })
+        }
+        for (let i = 0; i < Math.round(16 * s); i++) {
+            const angle = Math.random() * Math.PI * 2
+            const speed = rand(2.5, 5) * s
+            emit(sparks, {
+                x,
+                y: y + 0.15,
+                z,
+                vx: Math.cos(angle) * speed,
+                vy: rand(2, 6),
+                vz: Math.sin(angle) * speed,
+                rot: 0,
+                spin: 0,
+                size: rand(0.035, 0.07),
+                life: rand(0.5, 1.1),
+            })
+        }
+        dustRing(x, z, Math.round(14 * s), 1.6 * s)
+        // The shockwave and a brief dome of light over the impact.
+        const wave = shockwaves[nextShockwave]
+        nextShockwave = (nextShockwave + 1) % shockwaves.length
+        Object.assign(wave, {
+            age: 0,
+            life: 0.7,
+            x,
+            z,
+            y,
+            reach: (critical ? ASTEROID_BIG_BLAST_RADIUS : ASTEROID_BLAST_RADIUS) * 1.6,
+            domeSize: 1.1 * s,
+        })
+        wave.ring.visible = true
+        wave.dome.visible = true
+        // The scorch mark stays where it landed.
+        const index = emit(scorches, { life: Infinity })
+        const scorchSize = (critical ? 1.6 : 1.1) * rand(0.9, 1.1)
+        dummy.position.set(x, 0.008, z)
+        dummy.rotation.set(0, Math.random() * Math.PI * 2, 0)
+        dummy.scale.set(scorchSize, 1, scorchSize)
+        dummy.updateMatrix()
+        scorches.mesh.setMatrixAt(index, dummy.matrix)
+        scorches.mesh.instanceMatrix.needsUpdate = true
+        impactLight.position.set(x, y + 0.6, z)
+        impactLightPeak = critical ? 42 : 26
+        impactLightStart = now
+        cameraShake = Math.max(cameraShake, critical ? 0.8 : 0.5)
+    }
+
+    const updateShockwaves = (now, dt) => {
+        shockwaves.forEach(wave => {
+            if (wave.age >= wave.life) return
+            wave.age += dt
+            const k = Math.min(1, wave.age / wave.life)
+            const eased = 1 - Math.pow(1 - k, 3)
+            const radius = 0.3 + wave.reach * eased
+            wave.ring.position.set(wave.x, 0.03, wave.z)
+            wave.ring.scale.set(radius, 1, radius)
+            wave.ring.material.opacity = 0.9 * (1 - k) * (1 - k)
+            const domeK = Math.min(1, wave.age / 0.25)
+            const domeRadius = wave.domeSize * (0.4 + 0.6 * Math.sqrt(domeK))
+            wave.dome.position.set(wave.x, wave.y * 0.5, wave.z)
+            wave.dome.scale.set(domeRadius * 2, domeRadius * 1.4, domeRadius * 2)
+            wave.dome.material.opacity = 0.7 * (1 - domeK)
+            if (k >= 1) {
+                wave.ring.visible = false
+                wave.dome.visible = false
+            }
+        })
+        const lightAge = now - impactLightStart
+        impactLight.intensity =
+            lightAge < 0 || lightAge > 1.2
+                ? 0
+                : impactLightPeak * Math.exp(-lightAge * 4.5) * (0.85 + 0.15 * Math.sin(now * 53))
+    }
+
+    const right = new Vector3()
+    const away = new Vector3()
+    const launchProbe = new Vector3()
+    const flightPoint = new Vector3()
+    const trailPoint = new Vector3()
+    const TRAIL_SPACING = 0.05
+
+    /**
+     * Sends a rock at building `b`, or — with `b` = -1 — at `point` on the ground. Under reduced
+     * motion there is no flight and no explosion, only the damage.
+     */
+    const launchAsteroid = (b, point) => {
+        const critical = Math.random() < CRITICAL_HIT_CHANCE
+        let target
+        if (b >= 0) {
+            const day = days[b]
+            const state = damageOf(b)
+            const top = state && state.collapsed ? 0.1 : currentTop(b)
+            // Over a single week a rock aims at the lower floors of a tall tower, not its roof, so the
+            // blast stays inside the tight frame.
+            const aimHeight = ROWS === 1 ? Math.min(top * 0.82, blastCeiling() * 0.45) : top * 0.82
+            target = { x: cellX(day), y: Math.max(0.12, aimHeight), z: cellZ(day) }
+        } else {
+            target = { x: point.x, y: 0, z: point.z }
+        }
+        if (reduceMotion) {
+            impact({ ...target, critical })
+            return
+        }
+        const asteroid = asteroids.find(candidate => !candidate.active)
+        if (!asteroid) return
+        // In from high up, off to one side and from beyond the target, so it streaks diagonally
+        // across the picture towards the viewer — pulled in until the whole flight is on the canvas.
+        right.setFromMatrixColumn(camera.matrixWorld, 0).setY(0).normalize()
+        away.setFromMatrixColumn(camera.matrixWorld, 2).setY(0).normalize().negate()
+        const side = Math.random() < 0.5 ? -1 : 1
+        const lateral = rand(1.8, 2.6)
+        const height = rand(4.6, 5.6)
+        for (let k = 1; k >= 0.2; k -= 0.08) {
+            launchProbe.set(
+                target.x + (right.x * side * lateral + away.x * 2) * k,
+                target.y + height * k,
+                target.z + (right.z * side * lateral + away.z * 2) * k
+            )
+            flightPoint.copy(launchProbe).project(camera)
+            if (flightPoint.z < 1 && Math.abs(flightPoint.x) < 0.84 && Math.abs(flightPoint.y) < 0.72) break
+        }
+        const now = performance.now() / 1000
+        asteroid.start.copy(launchProbe)
+        asteroid.end.set(target.x, target.y, target.z)
+        asteroid.last.copy(launchProbe)
+        Object.assign(asteroid, {
+            active: true,
+            critical,
+            startTime: now,
+            duration: Math.min(1.05, Math.max(0.65, launchProbe.distanceTo(asteroid.end) / 6.5)),
+            size: critical ? 0.34 : 0.22,
+            spinX: rand(-7, 7),
+            spinY: rand(-7, 7),
+            phase: Math.random() * 10,
+            trailLeft: 0,
+            puffs: 0,
+            // A building target gets a ring the size of its block; a spot on the ground a smaller one.
+            markerSize: b >= 0 ? BLOCK * 0.78 : 0.55,
+        })
+        asteroid.group.position.copy(launchProbe)
+        asteroid.group.visible = true
+        asteroid.marker.position.set(target.x, 0.02, target.z)
+        asteroid.marker.visible = true
+        // It flares as it hits the atmosphere.
+        puff(fire, launchProbe.x, launchProbe.y, launchProbe.z, 0, 0, 0, asteroid.size * 3.2, 0.3, { heat: 0 })
+    }
+
+    const updateAsteroids = (now, dt) => {
+        asteroids.forEach(asteroid => {
+            if (!asteroid.active) return
+            const k = Math.min(1, (now - asteroid.startTime) / asteroid.duration)
+            // Picks up speed as it falls.
+            const eased = 0.25 * k + 0.75 * k * k
+            flightPoint.lerpVectors(asteroid.start, asteroid.end, eased)
+            asteroid.group.position.copy(flightPoint)
+            const appear = Math.min(1, k / 0.12)
+            asteroid.rock.scale.setScalar(asteroid.size * appear)
+            asteroid.rock.rotation.x += asteroid.spinX * dt
+            asteroid.rock.rotation.y += asteroid.spinY * dt
+            asteroid.halo.scale.setScalar(
+                asteroid.size * 1.9 * appear * (1 + 0.16 * Math.sin(now * 41 + asteroid.phase))
+            )
+            // The trail is laid by distance, not by frame, so it is as dense on a slow device as on a
+            // fast one: fire right behind the rock, smoke every other puff, both left hanging.
+            const travelled = asteroid.last.distanceTo(flightPoint)
+            let along = asteroid.trailLeft
+            while (travelled > 0 && along <= travelled) {
+                trailPoint.lerpVectors(asteroid.last, flightPoint, along / travelled)
+                const jitter = asteroid.size * 0.4
+                puff(
+                    fire,
+                    trailPoint.x + rand(-jitter, jitter),
+                    trailPoint.y + rand(-jitter, jitter),
+                    trailPoint.z + rand(-jitter, jitter),
+                    rand(-0.3, 0.3),
+                    rand(0, 0.4),
+                    rand(-0.3, 0.3),
+                    asteroid.size * rand(1.1, 1.6),
+                    rand(0.18, 0.32),
+                    { heat: rand(0, 0.12), damping: 2, spin: rand(-5, 5) }
+                )
+                asteroid.puffs += 1
+                if (asteroid.puffs % 3 === 0) {
+                    puff(
+                        smoke,
+                        trailPoint.x,
+                        trailPoint.y,
+                        trailPoint.z,
+                        rand(-0.1, 0.1),
+                        rand(0.1, 0.3),
+                        rand(-0.1, 0.1),
+                        asteroid.size * rand(1.1, 1.6),
+                        rand(0.6, 1),
+                        { damping: 1, wind: 0.1, spin: rand(-1, 1) }
+                    )
+                }
+                along += TRAIL_SPACING
+            }
+            asteroid.trailLeft = along - travelled
+            asteroid.last.copy(flightPoint)
+            // The target ring tightens and blinks faster as the rock comes in.
+            const ring = asteroid.markerSize * (1.5 - 0.6 * k)
+            asteroid.marker.scale.set(ring, 1, ring)
+            asteroid.marker.rotation.y = now * 2
+            asteroid.marker.material.opacity = 0.55 + 0.35 * Math.sin(now * (10 + k * 22))
+            if (k >= 1) {
+                asteroid.active = false
+                asteroid.group.visible = false
+                asteroid.marker.visible = false
+                impact({ x: asteroid.end.x, y: asteroid.end.y, z: asteroid.end.z, critical: asteroid.critical })
+            }
+        })
     }
 
     // ---------------------------------------------------------------- street furniture
@@ -1980,20 +2596,37 @@ export function createSkylineScene(
 
     // ---------------------------------------------------------------- interaction
     // Hover (mouse) and tap only. Page scrolling is never intercepted; the one event stopped here is
-    // the click, so a tap on the city is not also a press on the card around it.
+    // the click, so a tap on the city is not also a press on the card around it. A tap on a building
+    // shows its day and launches an asteroid at it; a tap anywhere else on the city launches one at
+    // that spot on the ground.
     const raycaster = new Raycaster()
     const pointerNdc = new Vector2()
     let downAt = null
-    const pick = (clientX, clientY) => {
-        const pickables = [...buildingOfInstance.keys()]
-        if (!pickables.length) return -1
+    const aim = (clientX, clientY) => {
         const rect = canvas.getBoundingClientRect()
         pointerNdc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1)
         raycaster.setFromCamera(pointerNdc, camera)
+    }
+    const pick = (clientX, clientY) => {
+        const pickables = [...buildingOfInstance.keys()]
+        if (!pickables.length) return -1
+        aim(clientX, clientY)
         const hit = raycaster.intersectObjects(pickables, false)[0]
         if (!hit || hit.instanceId == null) return -1
         const owner = buildingOfInstance.get(hit.object)[hit.instanceId]
         return owner == null ? -1 : owner
+    }
+    // Where the pointer meets the ground, if that is on the city (its blocks and the roads round
+    // them); null off the city, so a tap on the legends or the empty card launches nothing.
+    const groundPlane = new Plane(new Vector3(0, 1, 0), 0)
+    const groundPoint = new Vector3()
+    const pickGround = (clientX, clientY) => {
+        aim(clientX, clientY)
+        if (!raycaster.ray.intersectPlane(groundPlane, groundPoint)) return null
+        const onCity =
+            Math.abs(groundPoint.x) <= CITY_HALF_WIDTH + ROAD_WIDTH / 2 &&
+            Math.abs(groundPoint.z) <= CITY_HALF_DEPTH + ROAD_WIDTH / 2
+        return onCity ? groundPoint : null
     }
     const setHover = index => {
         if (index === hoverIndex) return
@@ -2001,7 +2634,6 @@ export function createSkylineScene(
         hoverIndex = index
         paint(previous)
         paint(index)
-        canvas.style.cursor = index >= 0 && !(damageOf(index) && damageOf(index).collapsed) ? 'crosshair' : 'default'
         onHover(index)
     }
     const selectIndex = index => {
@@ -2014,7 +2646,10 @@ export function createSkylineScene(
         downAt = { x: event.clientX, y: event.clientY }
     }
     const onPointerMove = event => {
-        if (event.pointerType === 'mouse') setHover(pick(event.clientX, event.clientY))
+        if (event.pointerType !== 'mouse') return
+        const index = pick(event.clientX, event.clientY)
+        setHover(index)
+        canvas.style.cursor = index >= 0 || pickGround(event.clientX, event.clientY) ? 'crosshair' : 'default'
     }
     const onPointerUp = event => {
         if (!downAt) return
@@ -2024,13 +2659,19 @@ export function createSkylineScene(
         const index = pick(event.clientX, event.clientY)
         selectIndex(index)
         onSelect(index)
-        if (index >= 0) hit(index)
+        if (index >= 0) launchAsteroid(index, null)
+        else {
+            const point = pickGround(event.clientX, event.clientY)
+            if (point) launchAsteroid(-1, point)
+        }
     }
     const onPointerCancel = () => {
         downAt = null
     }
     const onPointerLeave = event => {
-        if (event.pointerType === 'mouse') setHover(-1)
+        if (event.pointerType !== 'mouse') return
+        setHover(-1)
+        canvas.style.cursor = 'default'
     }
     const stopClick = event => event.stopPropagation()
     canvas.addEventListener('pointerdown', onPointerDown)
@@ -2069,8 +2710,11 @@ export function createSkylineScene(
         }
         updateLamps()
         stepRise(now)
+        updateAsteroids(now, dt)
         stepDamage(dt)
         updatePools(dt)
+        updateFireAndSmoke(dt)
+        updateShockwaves(now, dt)
         updateBuildings(now, t)
         if (!reduceMotion) {
             updateCars(t)
@@ -2167,7 +2811,7 @@ export function createSkylineScene(
             ;[treeMesh, trunkMesh, lampPosts, lampLights, lampPools, headlights, tailLights, headBeams].forEach(mesh =>
                 mesh.dispose()
             )
-            ;[debris, sparks, dust, rubble].forEach(pool => pool.mesh.dispose())
+            ;[debris, sparks, dust, rubble, fire, smoke, scorches].forEach(pool => pool.mesh.dispose())
             disposables.forEach(item => item.dispose())
             renderer.dispose()
             if (renderer.forceContextLoss) renderer.forceContextLoss()

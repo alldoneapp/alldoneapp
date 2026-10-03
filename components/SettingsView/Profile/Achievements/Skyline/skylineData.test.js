@@ -7,6 +7,7 @@ import {
     getDaylight,
     getSunPosition,
     guessLocation,
+    getAsteroidDamage,
     getIntegrity,
     HIT_POINTS,
     rollHitPoints,
@@ -188,6 +189,27 @@ describe('skyline data', () => {
             expect(guessLocation('Australia/Perth', -480).latitude).toBeLessThan(0)
             expect(guessLocation('', 0)).toEqual({ latitude: 48, longitude: -0 })
         })
+    })
+
+    it('lets an asteroid hurt only what is inside its blast', () => {
+        const PITCH = 1.55
+        // Aimed at a building: that building only, never the next block.
+        expect(getAsteroidDamage(0)).toBe(2)
+        expect(getAsteroidDamage(PITCH)).toBe(0)
+        // On the road between two blocks: both catch the edge of it.
+        expect(getAsteroidDamage(PITCH / 2)).toBe(1)
+        // A big one hits twice as hard and reaches the four neighbours, but not the diagonals.
+        expect(getAsteroidDamage(0, true)).toBe(4)
+        expect(getAsteroidDamage(PITCH, true)).toBe(1)
+        expect(getAsteroidDamage(PITCH * Math.SQRT2, true)).toBe(0)
+        expect(getAsteroidDamage(NaN)).toBe(0)
+    })
+
+    it('rolls more hit points for bigger buildings and keeps a third standing until the end', () => {
+        expect(rollHitPoints('park', () => 0)).toBe(HIT_POINTS.park[0])
+        expect(rollHitPoints('skyscraper', () => 0.999)).toBe(HIT_POINTS.skyscraper[1])
+        expect(getIntegrity(1, 9)).toBeGreaterThan(0.32)
+        expect(getIntegrity(0, 9)).toBe(0)
     })
 
     it('formats logged time', () => {
