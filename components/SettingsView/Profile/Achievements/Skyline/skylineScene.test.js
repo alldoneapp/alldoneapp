@@ -81,7 +81,7 @@ describe('skyline scene (smoke)', () => {
         return buildSkylineDays(weeks, statistics, [{ id: 'p', name: 'P', color: '#007FFF' }])
     }
 
-    it('builds, animates, demolishes and tears down without throwing', () => {
+    const mountCity = (options = {}) => {
         const container = document.createElement('div')
         Object.defineProperty(container, 'clientWidth', { value: 600 })
         Object.defineProperty(container, 'clientHeight', { value: 540 })
@@ -89,67 +89,97 @@ describe('skyline scene (smoke)', () => {
         document.body.appendChild(container)
         const onDemolish = jest.fn()
         const onSelect = jest.fn()
-
-        const scene = createSkylineScene(container, { onHover: () => {}, onSelect, onDemolish })
-        const days = makeDays()
-        scene.setDays(days, { columns: [{ column: 0, text: 'Mo' }], rows: [{ row: 0, text: '25 Aug' }] })
+        const onHover = jest.fn()
+        const scene = createSkylineScene(container, { onHover, onSelect, onDemolish, ...options })
+        scene.setDays(makeDays(), { columns: [{ column: 0, text: 'Mo' }], rows: [{ row: 0, text: '25 Aug' }] })
         runFrames(120)
-        scene.celebrateToday()
-        runFrames(30)
-
-        // Hammer the centre of the canvas; whatever is there gets hit until it collapses.
         const canvas = container.querySelector('canvas')
         canvas.getBoundingClientRect = () => ({ left: 0, top: 100, width: 600, height: 540 })
+        const pointer = (type, x, y) =>
+            canvas.dispatchEvent(Object.assign(new Event(type), { clientX: x, clientY: y, pointerType: 'mouse' }))
+        // Which building the pointer is over, without launching anything.
+        const hoverAt = (x, y) => {
+            pointer('pointerleave', x, y)
+            onHover.mockClear()
+            pointer('pointermove', x, y)
+            return onHover.mock.calls.length ? onHover.mock.calls[onHover.mock.calls.length - 1][0] : -1
+        }
         const tap = (x, y) => {
-            canvas.dispatchEvent(
-                Object.assign(new Event('pointerdown'), { clientX: x, clientY: y, pointerType: 'mouse' })
-            )
-            canvas.dispatchEvent(
-                Object.assign(new Event('pointerup'), { clientX: x, clientY: y, pointerType: 'mouse' })
-            )
-            runFrames(3)
+            pointer('pointerdown', x, y)
+            pointer('pointerup', x, y)
         }
-        // Find a point on screen that lands on a building (the camera moves, so probe for one).
-        let spot = null
-        for (let y = 140; y < 620 && !spot; y += 20) {
-            for (let x = 40; x < 580 && !spot; x += 20) {
-                onSelect.mockClear()
-                tap(x, y)
-                if (onSelect.mock.calls.some(([index]) => index >= 0)) spot = { x, y }
+        // The highest point of any building on screen, scanning from the top.
+        const findBuilding = () => {
+            for (let y = 140; y < 620; y += 12) {
+                for (let x = 40; x < 580; x += 12) {
+                    const index = hoverAt(x, y)
+                    if (index >= 0) return { spot: { x, y }, target: index }
+                }
             }
+            return { spot: null, target: -1 }
         }
-        expect(spot).not.toBeNull()
-        const target = onSelect.mock.calls.find(([index]) => index >= 0)[0]
-        // Keep hitting that building. It loses floors with every hit, so its top sinks on screen;
+        // Strike `target` until it falls. It loses floors with every hit, so its top sinks on screen;
         // follow it downwards the way a player would.
-        for (let i = 0; i < 60 && !onDemolish.mock.calls.length; i++) {
-            onSelect.mockClear()
-            tap(spot.x, spot.y)
-            if (!onSelect.mock.calls.some(([index]) => index === target)) {
-                for (let dy = 4; dy <= 80; dy += 4) {
-                    onSelect.mockClear()
-                    tap(spot.x, spot.y + dy)
-                    if (onSelect.mock.calls.some(([index]) => index === target)) {
+        const demolish = (start, target, framesPerStrike) => {
+            let spot = start
+            for (let i = 0; i < 30 && !onDemolish.mock.calls.length; i++) {
+                tap(spot.x, spot.y)
+                runFrames(framesPerStrike)
+                if (hoverAt(spot.x, spot.y) === target) continue
+                for (let dy = 4; dy <= 160; dy += 4) {
+                    if (hoverAt(spot.x, spot.y + dy) === target) {
                         spot = { x: spot.x, y: spot.y + dy }
                         break
                     }
                 }
             }
         }
-        runFrames(200)
+        return { container, scene, onDemolish, onSelect, hoverAt, tap, findBuilding, demolish }
+    }
 
-        expect(onSelect).toHaveBeenCalled()
-        expect(onSelect.mock.calls.some(([index]) => index >= 0)).toBe(true)
+    it('builds, animates, flies asteroids into the city and tears down without throwing', () => {
+        // No big ones, so every strike on a building is a direct hit that cannot spill onto another.
+        jest.spyOn(Math, 'random').mockReturnValue(0.5)
+        const { container, scene, onDemolish, onSelect, tap, findBuilding, demolish } = mountCity()
+        scene.celebrateToday()
+        runFrames(30)
+
+        const { spot, target } = findBuilding()
+        expect(spot).not.toBeNull()
+        // A rock needs its flight time (at most ~1s) before it lands and does any damage.
+        tap(spot.x, spot.y)
+        runFrames(2)
+        expect(onSelect).toHaveBeenCalledWith(target)
+        expect(onDemolish).not.toHaveBeenCalled()
+        runFrames(70)
+        demolish(spot, target, 70)
+        runFrames(200)
+        expect(onDemolish).toHaveBeenCalledTimes(1)
         expect(onDemolish).toHaveBeenCalledWith(1)
 
-        // A statistics refresh must not resurrect the demolished building.
-        scene.setDays(makeDays())
-        runFrames(20)
-        tap(spot.x, spot.y)
-        expect(onDemolish).toHaveBeenCalledTimes(1)
+        // A strike on a spot off every building launches at the ground, and its blast plays out.
+        tap(300, 625)
+        runFrames(240)
 
         scene.destroy()
         expect(container.querySelector('canvas')).toBeNull()
+    })
+
+    it('demolishes at once under reduced motion, and a statistics refresh does not rebuild it', () => {
+        jest.spyOn(Math, 'random').mockReturnValue(0.5)
+        const { scene, onDemolish, hoverAt, findBuilding, demolish } = mountCity({ reduceMotion: true })
+        const { spot, target } = findBuilding()
+        expect(spot).not.toBeNull()
+        demolish(spot, target, 1)
+        expect(onDemolish).toHaveBeenCalledWith(1)
+        // Its top is gone: the pointer no longer finds it where it stood.
+        expect(hoverAt(spot.x, spot.y)).not.toBe(target)
+
+        scene.setDays(makeDays())
+        runFrames(20)
+        expect(hoverAt(spot.x, spot.y)).not.toBe(target)
+        expect(onDemolish).toHaveBeenCalledTimes(1)
+        scene.destroy()
     })
 
     it('runs a night — lamps, headlights, helicopter and searchlight — without throwing', () => {

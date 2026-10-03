@@ -97,8 +97,9 @@ export function getBuildingType(tasks, scale = 5) {
 }
 
 /**
- * Demolition: how many taps a building takes. Deliberately a range, rolled per building per visit,
- * so the player never quite knows which tap will bring it down — and bigger buildings take longer.
+ * Demolition: how many hit points a building has. Deliberately a range, rolled per building per
+ * visit, so the player never quite knows which asteroid will bring it down — and bigger buildings
+ * take longer.
  */
 export const HIT_POINTS = {
     park: [1, 2],
@@ -107,8 +108,26 @@ export const HIT_POINTS = {
     tower: [4, 7],
     skyscraper: [5, 9],
 }
-/** A lucky tap counts double (and looks it). */
+/** Now and then a launch is a big one: a larger rock, a bigger blast, double damage. */
 export const CRITICAL_HIT_CHANCE = 0.15
+
+/**
+ * Asteroids. A tap launches one at whatever was tapped — a building or a spot on the ground — and
+ * the damage is done where it lands, so it falls off with distance from the impact. A direct hit
+ * takes two hit points (four for a big one); anything else inside the blast radius takes one. The
+ * normal blast stops short of the next block (blocks are `PITCH` = 1.55 apart), so aiming at a
+ * building only ever hurts that building; a strike on the road between two blocks catches both,
+ * and a big one also reaches the four blocks around the one it hit.
+ */
+export const ASTEROID_DIRECT_RADIUS = 0.55
+export const ASTEROID_BLAST_RADIUS = 1.15
+export const ASTEROID_BIG_BLAST_RADIUS = 1.9
+
+export function getAsteroidDamage(distance, critical = false) {
+    if (!(distance >= 0)) return 0
+    if (distance <= ASTEROID_DIRECT_RADIUS) return critical ? 4 : 2
+    return distance <= (critical ? ASTEROID_BIG_BLAST_RADIUS : ASTEROID_BLAST_RADIUS) ? 1 : 0
+}
 
 export function rollHitPoints(type, random = Math.random) {
     const [min, max] = HIT_POINTS[type] || HIT_POINTS.house
