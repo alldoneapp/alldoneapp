@@ -14,6 +14,11 @@ const { v4: uuidv4 } = require('uuid')
 const admin = require('firebase-admin')
 const crypto = require('crypto')
 const { executeToolCallBatch, canRunToolInParallel } = require('./toolCallBatch')
+const {
+    prepareResearchRequest,
+    compactResearchConversation,
+    FINAL_REPLY_INSTRUCTION,
+} = require('./assistantResearchGuard')
 const moment = require('moment')
 const OpenAI = require('openai')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
@@ -2803,6 +2808,9 @@ async function interactWithChatStream(
     toolRuntimeContext = null
 ) {
     const streamStartTime = Date.now()
+    const researchRequest = prepareResearchRequest(formattedPrompt)
+    formattedPrompt = researchRequest.messages
+    const finalizeResearch = !!researchRequest.stopReason
     const runtimeAllowedTools = filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext)
     // Server-authored channel controls (for example voice hangup), never supplied by model arguments.
     const additionalToolSchemas = toolRuntimeContext?.additionalToolSchemas || []
@@ -2855,6 +2863,7 @@ async function interactWithChatStream(
 
         let openRouterTools = null
         if (
+            !finalizeResearch &&
             modelSupportsNativeTools(modelKey) &&
             (runtimeAllowedTools.length > 0 || additionalToolSchemas.length > 0)
         ) {
@@ -3028,6 +3037,7 @@ async function interactWithChatStream(
 
         // Add tools if model supports native tools and tools are allowed
         if (
+            !finalizeResearch &&
             modelSupportsNativeTools(modelKey) &&
             (runtimeAllowedTools.length > 0 || additionalToolSchemas.length > 0)
         ) {
@@ -3207,7 +3217,38 @@ async function interactWithChatStream(
                 return openai.responses.create(activeRequestParams)
             }
         }
-        const stream = await createResponsesStream()
+        let stream
+        try {
+            stream = await createResponsesStream()
+        } catch (error) {
+            if (
+                error.code !== 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' ||
+                !messages.some(message => message.role === 'tool')
+            ) {
+                throw error
+            }
+            console.warn('Assistant: Recovering oversized research request with partial findings', {
+                route: toolRuntimeContext?.sourceChannel || toolRuntimeContext?.objectType || 'assistant',
+            })
+            const recoveryMessages = [
+                ...compactResearchConversation(messages, true),
+                { role: 'system', content: FINAL_REPLY_INSTRUCTION },
+            ]
+            activeRequestParams = {
+                ...requestParams,
+                input: convertMessagesToResponsesInput(recoveryMessages),
+            }
+            delete activeRequestParams.tools
+            responsesToolConfig = null
+            try {
+                stream = await createResponsesStream()
+            } catch (recoveryError) {
+                if (recoveryError.code !== 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT') throw recoveryError
+                return (async function* () {
+                    yield { content: researchRequest.fallback(), additional_kwargs: {} }
+                })()
+            }
+        }
         const apiCallDuration = Date.now() - apiCallStart
         console.log(`✅ [TIMING] OpenAI API call successful: ${apiCallDuration}ms`)
 
