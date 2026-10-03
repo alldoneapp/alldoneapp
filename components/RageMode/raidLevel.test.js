@@ -28,20 +28,43 @@ describe('raid level', () => {
         expect(a).toEqual(b)
     })
 
-    it('flies six scripted waves before the boss', () => {
+    it('introduces the cast in mission 1, one wave at a time, before the boss', () => {
         const waves = missionWaves(1, 5)
-        const groups = new Set(waves.map(wave => Math.floor(wave.at / 10)))
-        expect(groups.size).toBe(6)
+        const types = new Set(waves.map(wave => wave.type))
+        ;['fighter', 'mail', 'chat', 'ping', 'carrier', 'note', 'mine'].forEach(type =>
+            expect(types.has(type)).toBe(true)
+        )
         waves.forEach(wave => expect(wave.at).toBeLessThan(BOSS_AT - 8))
         expect(waves.map(wave => wave.at)).toEqual([...waves.map(wave => wave.at)].sort((x, y) => x - y))
     })
 
-    it('reshuffles and grows the flights in later missions, keeping the timing', () => {
-        const first = missionWaves(1, 9)
-        const third = missionWaves(3, 9)
-        expect(third.length).toBe(first.length)
-        expect(third.reduce((sum, w) => sum + w.count, 0)).toBeGreaterThan(first.reduce((sum, w) => sum + w.count, 0))
-        expect(third[third.length - 1].at).toBeLessThan(BOSS_AT)
+    it('unlocks meetings in mission 2 and the deadline in mission 3, and always sends a carrier', () => {
+        for (let seed = 1; seed < 30; seed++) {
+            const second = new Set(missionWaves(2, seed).map(wave => wave.type))
+            expect(second.has('meeting')).toBe(true)
+            expect(second.has('note')).toBe(true)
+            expect(second.has('mine')).toBe(true)
+            expect(second.has('deadline')).toBe(false)
+            const third = missionWaves(3, seed)
+            const deadline = third.find(wave => wave.type === 'deadline')
+            expect(deadline).toBeTruthy()
+            // A mini-boss in the middle of the mission, not at its start or end.
+            expect(deadline.at).toBeGreaterThan(20)
+            expect(deadline.at).toBeLessThan(50)
+            ;[1, 2, 3, 6].forEach(mission =>
+                expect(missionWaves(mission, seed).filter(wave => wave.type === 'carrier')).toHaveLength(1)
+            )
+        }
+    })
+
+    it('draws later missions from the day, with bigger flights, all before the boss', () => {
+        expect(missionWaves(4, 9)).toEqual(missionWaves(4, 9))
+        expect(missionWaves(4, 9)).not.toEqual(missionWaves(4, 10))
+        const total = mission => missionWaves(mission, 9).reduce((sum, wave) => sum + wave.count, 0)
+        expect(total(5)).toBeGreaterThan(total(2))
+        ;[2, 3, 7].forEach(mission =>
+            missionWaves(mission, 9).forEach(wave => expect(wave.at).toBeLessThan(BOSS_AT - 4))
+        )
     })
 
     it("digs today's tasks in as labelled bunkers, padding a short list", () => {

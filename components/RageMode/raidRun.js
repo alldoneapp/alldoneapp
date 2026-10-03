@@ -24,8 +24,44 @@ export const DAMAGE = {
     bossContact: 20,
 }
 
-export const POINTS = { mail: 40, fighter: 120, bunker: 150, armoured: 300, pageTask: 100, boss: 2000 }
-export const CREDITS = { mail: 12, fighter: 35, bunker: 45, armoured: 90, pageTask: 30, boss: 400 }
+export const POINTS = {
+    mail: 40,
+    fighter: 120,
+    chat: 90,
+    ping: 60,
+    note: 110,
+    noteSmall: 30,
+    mine: 70,
+    meeting: 400,
+    deadline: 1500,
+    carrier: 250,
+    bunker: 150,
+    armoured: 300,
+    pageTask: 100,
+    boss: 2000,
+}
+export const CREDITS = {
+    mail: 12,
+    fighter: 35,
+    chat: 25,
+    ping: 15,
+    note: 30,
+    noteSmall: 8,
+    mine: 20,
+    meeting: 110,
+    deadline: 350,
+    carrier: 80,
+    bunker: 45,
+    armoured: 90,
+    pageTask: 30,
+    boss: 400,
+}
+
+// Kills chained within this window build a combo; every 5 in a row adds half a point multiplier,
+// up to 3x. Credits are never multiplied — the combo is for the score.
+export const COMBO_WINDOW = 1.8
+export const COMBO_STEP = 5
+export const MAX_COMBO_MULTIPLIER = 3
 export const MISSION_BONUS_CREDITS = 150
 
 /** How much harder mission `n` (1-based) is: enemy health, fire rate and bullet speed scale with it. */
@@ -40,6 +76,9 @@ export const createRun = ({ startShield } = {}) => ({
     bombs: START_BOMBS,
     cannonLevel: 1,
     invulnerableUntil: 0,
+    combo: 0,
+    comboAt: -Infinity,
+    bestCombo: 0,
     // Per mission, for the hangar's debrief.
     kills: 0,
     missionCredits: 0,
@@ -59,9 +98,26 @@ export const applyDamage = (run, amount, now) => {
     return { hit: true, dead: run.shield <= 0 }
 }
 
-/** Something was destroyed: score and credits for it. `kind` is a key of POINTS. */
-export const recordKill = (run, kind) => {
-    const points = POINTS[kind] || 0
+export const comboMultiplier = combo => Math.min(MAX_COMBO_MULTIPLIER, 1 + Math.floor(combo / COMBO_STEP) * 0.5)
+
+/** The combo still alive at `now` (0 once the window has passed without a kill). */
+export const currentCombo = (run, now) => (now - run.comboAt <= COMBO_WINDOW ? run.combo : 0)
+
+/** Count a kill at `now` into the combo; returns the score multiplier it earns. */
+export const registerKill = (run, now) => {
+    if (now - run.comboAt > COMBO_WINDOW) run.combo = 0
+    run.combo += 1
+    run.comboAt = now
+    run.bestCombo = Math.max(run.bestCombo, run.combo)
+    return comboMultiplier(run.combo)
+}
+
+/**
+ * Something was destroyed: score and credits for it. `kind` is a key of POINTS; `multiplier`
+ * (combo × gold star) scales the points only.
+ */
+export const recordKill = (run, kind, multiplier = 1) => {
+    const points = Math.round((POINTS[kind] || 0) * multiplier)
     const credits = CREDITS[kind] || 0
     run.score += points
     run.missionScore += points

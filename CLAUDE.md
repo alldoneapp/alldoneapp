@@ -1618,11 +1618,30 @@ and drops back into formation. An orthographic camera has no perspective, so "to
 done by SCALE (`GREETING_GROW`); the pose's `z` runs 0 → 1 for exactly that. She stays steerable and
 vulnerable but holds fire, and the greeting is cancelled by a game over, the hangar or leaving.
 
-**The boss is built from today's open-task count** — the same number the Home button's badge shows
-(`getAllProjectsOpenTasksAmount` over `sidebarNumbers`) — as a big red voxel block with that number
-on its chest; 12 hit points per task (times the mission's difficulty), the number counting down as
-it takes damage (`rageBoss.js`). On a day with nothing open there is no boss and the mission ends
-once the last wave is gone.
+**The cast is Alldone's working day** (`raidEnemies.js`): mail swarms and fighters, chat bubbles
+that zigzag and fire three-dot spreads, notification pings that HOME on Anna (the one steered path,
+turn-rate limited so a sideways dodge works), sticky notes that split into two when destroyed,
+checkbox mines that arm within `MINE_TRIGGER_RADIUS` and burst into a ring, meeting invites that fire
+rotating rings, the deadline clock — a mid-mission mini-boss whose spiral turns with its hands — and
+a golden starred task that never shoots and always drops power-ups. Fire patterns (aimed, spread,
+ring, spiral) and each kind's tint, health and contact damage live in `ENEMY_TYPES`; the arena only
+draws them. Mission 1 is hand-written and introduces the cast a wave at a time; later missions draw
+from `WAVE_POOL` (seeded by the day), which unlocks notes, mines and meetings in mission 2 and the
+deadline in mission 3, always flies a carrier, and puts a drawn deadline in the middle slot. The
+first appearance of each new kind in a run is announced with how to deal with it.
+
+**Power-ups** (`raidPickups.js`) drop from kills by `DROP_CHANCE` per kind (a carrier, a deadline and
+the boss always drop): ☕ coffee (rapid fire), 💡 brainstorm (spread shot), 🛡️ shield bubble, 🩹 repair,
+💣 bomb, 🤖 assistants (two drones that orbit and shoot), ⏳ deadline extension (the whole enemy side —
+movement, fire, bullets, the boss — runs at `SLOWMO_SCALE`), ⭐ gold star (double score), 🧲 magnet,
+💳 credits. A battered shield makes repairs three times as likely; a second pickup of a running buff
+extends it, up to twice its duration. Kills chained within `COMBO_WINDOW` build a combo (`raidRun.js`)
+worth up to ×3 on POINTS, never on credits.
+
+**There is always a boss**, equally hard every day (`BOSS_HP`, scaled only by the mission) — on an
+empty inbox too. Today's open-task count — the number the Home button's badge shows
+(`getAllProjectsOpenTasksAmount` over `sidebarNumbers`) — is only what it wears on its chest, counting
+down as it takes damage, and 0 the whole fight on an empty inbox (`rageBoss.js`).
 
 **Weapons are bought with Gold on the SERVER, never granted by the client.** The main gun always
 fires and is upgraded with credits; ON TOP of it fires one special weapon bought with Gold
@@ -1639,7 +1658,8 @@ charged at most once ever. The server's price list is `functions/RageMode/rageWe
 best score and caps it at 10 million. The arena stays free of backend imports: `RageModeButton` hands
 it `services` (the three calls via the lazily-required `rageModeBackend.js`, plus live getters), and
 the harness passes fakes. `tuning` (`seed`, `bossAt`, `noWaves`, `startShield`, `invincible`) exists
-for tests only. All strings come from one table, `rageStrings.js`.
+for tests only (plus `waves`, `bossHp` and `pickups`, which `browser-tests/rage-mode --cast` uses to
+show the whole cast at once). All strings come from one table, `rageStrings.js`.
 
 **Light ground needs opaque effects**: explosions, flames and enemy fire are opaque tinted sprites,
 never additive glow, which vanishes on a light background (the skyline learned the same). Particles,

@@ -23,25 +23,94 @@ export const MIN_BUNKERS = 6
 export const BUNKER_HEIGHT = 46
 export const TERRAIN_THEMES = 3
 
-// The six scripted waves of a mission (some have a second flight attached). Times are seconds
-// after the mission starts; the boss arrives once the last wave has had time to play out.
-const WAVE_SCRIPT = [
+/*
+ * The waves. Mission 1 is written by hand: it introduces the cast one or two at a time, with room
+ * to learn each before the next arrives. Later missions are drawn (seeded by the day) from a pool of
+ * wave templates that unlocks more of the cast as you go — sticky notes, mines and meeting invites
+ * from mission 2, the deadline clock from mission 3 — and every mission flies at least one golden
+ * starred task carrying power-ups. Times are seconds after the mission starts; `offset` places a
+ * template's second flight relative to its first.
+ */
+const MISSION_ONE = [
     [{ at: 3, pattern: 'vee', type: 'fighter', count: 5, spacing: 0, x: 0.5 }],
     [
-        { at: 12, pattern: 'weave', type: 'mail', count: 7, spacing: 0.32, x: 0.28 },
-        { at: 14, pattern: 'weave', type: 'mail', count: 7, spacing: 0.32, x: 0.72 },
+        { at: 10, pattern: 'weave', type: 'mail', count: 7, spacing: 0.32, x: 0.28 },
+        { at: 12, pattern: 'weave', type: 'mail', count: 7, spacing: 0.32, x: 0.72 },
     ],
-    [{ at: 23, pattern: 'swoop', type: 'fighter', count: 3, spacing: 0.7, side: 'left' }],
+    [{ at: 19, pattern: 'zigzag', type: 'chat', count: 4, spacing: 0.6 }],
+    [{ at: 26, pattern: 'sweep', type: 'carrier', count: 1, spacing: 0, y: 0.18, side: 'left', duration: 6 }],
+    [{ at: 30, pattern: 'swarm', type: 'ping', count: 5, spacing: 0.45 }],
     [
-        { at: 33, pattern: 'sweep', type: 'mail', count: 8, spacing: 0.26, y: 0.24, side: 'right' },
-        { at: 35, pattern: 'sweep', type: 'mail', count: 8, spacing: 0.26, y: 0.4, side: 'left' },
+        { at: 38, pattern: 'sweep', type: 'mail', count: 8, spacing: 0.26, y: 0.24, side: 'right' },
+        { at: 40, pattern: 'hover', type: 'fighter', count: 3, spacing: 0, y: 0.2 },
     ],
-    [{ at: 44, pattern: 'hover', type: 'fighter', count: 4, spacing: 0, y: 0.2 }],
+    [{ at: 48, pattern: 'drift', type: 'note', count: 3, spacing: 1.2 }],
     [
-        { at: 55, pattern: 'swoop', type: 'fighter', count: 3, spacing: 0.7, side: 'right' },
-        { at: 57, pattern: 'vee', type: 'mail', count: 7, spacing: 0, x: 0.5 },
+        { at: 56, pattern: 'swoop', type: 'fighter', count: 3, spacing: 0.7, side: 'right' },
+        { at: 58, pattern: 'drift', type: 'mine', count: 3, spacing: 1 },
     ],
 ]
+
+export const WAVE_POOL = [
+    { id: 'vee', min: 1, waves: [{ pattern: 'vee', type: 'fighter', count: 5, spacing: 0, x: 0.5 }] },
+    {
+        id: 'mailWeave',
+        min: 1,
+        waves: [
+            { pattern: 'weave', type: 'mail', count: 7, spacing: 0.32, x: 0.3 },
+            { offset: 2, pattern: 'weave', type: 'mail', count: 7, spacing: 0.32, x: 0.7 },
+        ],
+    },
+    { id: 'chat', min: 1, waves: [{ pattern: 'zigzag', type: 'chat', count: 4, spacing: 0.6 }] },
+    { id: 'pings', min: 1, waves: [{ pattern: 'swarm', type: 'ping', count: 6, spacing: 0.4 }] },
+    {
+        id: 'swoopPings',
+        min: 1,
+        waves: [
+            { pattern: 'swoop', type: 'fighter', count: 3, spacing: 0.7, side: 'left' },
+            { offset: 1.5, pattern: 'swarm', type: 'ping', count: 3, spacing: 0.5 },
+        ],
+    },
+    { id: 'notes', min: 2, waves: [{ pattern: 'drift', type: 'note', count: 4, spacing: 1 }] },
+    {
+        id: 'minefield',
+        min: 2,
+        waves: [
+            { pattern: 'drift', type: 'mine', count: 5, spacing: 0.8 },
+            { offset: 1, pattern: 'zigzag', type: 'chat', count: 3, spacing: 0.6 },
+        ],
+    },
+    { id: 'meetings', min: 2, waves: [{ pattern: 'hover', type: 'meeting', count: 2, spacing: 0, y: 0.2, hold: 5 }] },
+    {
+        id: 'mailSweeps',
+        min: 2,
+        waves: [
+            { pattern: 'sweep', type: 'mail', count: 8, spacing: 0.26, y: 0.24, side: 'right' },
+            { offset: 2, pattern: 'sweep', type: 'mail', count: 8, spacing: 0.26, y: 0.4, side: 'left' },
+        ],
+    },
+    {
+        id: 'deadline',
+        min: 3,
+        waves: [
+            { pattern: 'single', type: 'deadline', count: 1, spacing: 0, y: 0.24, hold: 9 },
+            { offset: 3, pattern: 'swarm', type: 'ping', count: 4, spacing: 0.6 },
+        ],
+    },
+    {
+        id: 'boardroom',
+        min: 3,
+        waves: [
+            { pattern: 'hover', type: 'meeting', count: 3, spacing: 0, y: 0.22, hold: 5 },
+            { offset: 2, pattern: 'drift', type: 'mine', count: 3, spacing: 1 },
+        ],
+    },
+]
+const SLOT_TIMES = [3, 11, 19, 27, 35, 43, 51, 59]
+const CARRIER_TIMES = [23, 47]
+// Big enemies do not come in bigger numbers later on — they come more often.
+const FIXED_COUNT = new Set(['deadline', 'meeting', 'carrier'])
+
 export const BOSS_AT = 68
 
 const hashSeed = (...parts) => parts.reduce((acc, part) => Math.imul(acc ^ (part | 0), 2654435761) >>> 0 || 1, 7)
@@ -108,23 +177,46 @@ export const placeBunkers = ({ tasks, width, seed, mission, length }) => {
  * order (seeded) and bring bigger flights.
  */
 export const missionWaves = (mission, seed) => {
-    const groups = WAVE_SCRIPT.map(group => group.map(wave => ({ ...wave })))
-    if (mission > 1) {
-        const random = createRandom(hashSeed(seed, mission, 23))
-        const times = groups.map(group => group[0].at)
-        for (let i = groups.length - 1; i > 0; i--) {
-            const j = Math.floor(random() * (i + 1))
-            ;[groups[i], groups[j]] = [groups[j], groups[i]]
-        }
-        groups.forEach((group, i) => {
-            const shift = times[i] - group[0].at
-            group.forEach(wave => {
-                wave.at += shift
-                wave.count += Math.min(4, mission - 1)
+    if (mission <= 1) return MISSION_ONE.flat().map(wave => ({ ...wave }))
+    const random = createRandom(hashSeed(seed, mission, 23))
+    const allowed = WAVE_POOL.filter(template => template.min <= mission)
+    // Whatever this mission unlocks is flown at least once; the rest of the slots are drawn.
+    const chosen = WAVE_POOL.filter(template => template.min === mission)
+    while (chosen.length < SLOT_TIMES.length) chosen.push(allowed[Math.floor(random() * allowed.length)])
+    for (let i = chosen.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1))
+        ;[chosen[i], chosen[j]] = [chosen[j], chosen[i]]
+    }
+    // A deadline is a mid-mission mini-boss: if one was drawn, it takes the middle slot.
+    const deadlineAt = chosen.findIndex(template => template.id === 'deadline')
+    if (deadlineAt >= 0) {
+        const middle = Math.floor(SLOT_TIMES.length / 2)
+        ;[chosen[deadlineAt], chosen[middle]] = [chosen[middle], chosen[deadlineAt]]
+    }
+    const extra = Math.min(4, mission - 1)
+    const waves = []
+    chosen.slice(0, SLOT_TIMES.length).forEach((template, slot) =>
+        template.waves.forEach(wave => {
+            const { offset = 0, ...rest } = wave
+            waves.push({
+                ...rest,
+                at: SLOT_TIMES[slot] + offset,
+                count: FIXED_COUNT.has(wave.type) ? wave.count + (mission >= 5 ? 1 : 0) : wave.count + extra,
             })
         })
-    }
-    return groups.flat().sort((a, b) => a.at - b.at)
+    )
+    const carrierAt = CARRIER_TIMES[Math.floor(random() * CARRIER_TIMES.length)]
+    waves.push({
+        at: carrierAt,
+        pattern: 'sweep',
+        type: 'carrier',
+        count: 1,
+        spacing: 0,
+        y: 0.18,
+        side: random() < 0.5 ? 'left' : 'right',
+        duration: 6,
+    })
+    return waves.sort((a, b) => a.at - b.at)
 }
 
 /** How fast the ground scrolls on mission `n` (1-based). */

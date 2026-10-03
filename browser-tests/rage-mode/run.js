@@ -12,6 +12,7 @@
  *   6. No page errors along the way.
  *   `--touch`  a phone: relative drag steering, the 💣 button, leaving through ✕.
  *   `--game`   boss → hangar (credits, Gold shop) → mission 2, and a game over → play again.
+ *   `--cast`   every new enemy at once, power-ups and their buffs, and the empty-inbox boss.
  *
  * Requirements (not part of CI's Jest jobs):
  *   nvm use 22
@@ -258,7 +259,11 @@ async function touch(browser, url) {
 
 async function game(browser, url) {
     {
-        const { context, page, errors } = await openRaid(browser, url, 'god=1&bossAt=2&noWaves=1&tasks=3&gold=1500')
+        const { context, page, errors } = await openRaid(
+            browser,
+            url,
+            'god=1&bossAt=2&noWaves=1&tasks=3&gold=1500&bossHp=40'
+        )
         check('boss: arrives with today’s open-task count (3)', await waitForHud(page, data => data.boss === '3'))
         await page.screenshot({ path: path.join(BUILD_DIR, 'boss.png') })
         await page.keyboard.press('Space')
@@ -334,7 +339,11 @@ async function game(browser, url) {
         await context.close()
     }
     {
-        const { context, page, errors } = await openRaid(browser, url, 'shield=1&bossAt=1&noWaves=1&tasks=3&best=10')
+        const { context, page, errors } = await openRaid(
+            browser,
+            url,
+            'shield=1&bossAt=1&noWaves=1&tasks=3&best=10&bossHp=40'
+        )
         check(
             'game over: an empty shield ends the raid',
             await waitForHud(page, data => data.phase === 'gameover', null, 40000)
@@ -357,6 +366,47 @@ async function game(browser, url) {
     }
 }
 
+async function cast(browser, url) {
+    const { context, page, errors } = await openRaid(browser, url, 'god=1&waves=showcase&pickups=drones,spread')
+    check('cast: power-ups picked up at lift-off', await waitForHud(page, data => data.collected === '2'))
+    check(
+        'cast: the drones and the spread shot are running',
+        await waitForHud(page, data => /drones/.test(data.buffs || '') && /spread/.test(data.buffs || ''))
+    )
+    check('cast: the new enemies fly in', await waitForHud(page, data => Number(data.enemies) >= 8, null, 20000))
+    await page.mouse.move(640, 640)
+    await sleep(2500)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'cast.png') })
+    check(
+        'cast: shooting them builds a combo and scores',
+        await waitForHud(page, data => Number(data.kills) >= 5, null, 25000)
+    )
+    check(
+        'cast: things drop power-ups',
+        await waitForHud(page, data => Number(data.pickups) > 0 || Number(data.collected) > 2, null, 25000)
+    )
+    await sleep(3000)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'cast-later.png') })
+    await page.keyboard.press('Escape')
+    await waitForArenaGone(page)
+    check('cast: leaving puts the page back', (await pageRestored(page)).intact)
+    check('cast: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await context.close()
+
+    // An empty inbox still has its boss, at full strength, showing 0.
+    const empty = await openRaid(browser, url, 'god=1&bossAt=1&noWaves=1&tasks=0')
+    check(
+        'boss: an empty inbox still gets the boss, showing 0',
+        await waitForHud(empty.page, data => data.boss === '0' && data.phase === 'flying')
+    )
+    await sleep(1500)
+    await empty.page.screenshot({ path: path.join(BUILD_DIR, 'boss-zero.png') })
+    await empty.page.keyboard.press('Escape')
+    await waitForArenaGone(empty.page)
+    check('boss (empty inbox): no page errors', empty.errors.length === 0, empty.errors.slice(0, 3).join(' | '))
+    await empty.context.close()
+}
+
 ;(async () => {
     build()
     if (args.has('--serve')) {
@@ -374,6 +424,7 @@ async function game(browser, url) {
     try {
         if (args.has('--touch')) await touch(browser, url)
         else if (args.has('--game')) await game(browser, url)
+        else if (args.has('--cast')) await cast(browser, url)
         else await desktop(browser, url)
     } catch (error) {
         check('harness ran to completion', false, error.message)

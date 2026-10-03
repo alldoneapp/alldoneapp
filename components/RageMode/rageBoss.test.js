@@ -1,14 +1,5 @@
 import { createRandom } from './rageDebris'
-import {
-    BOSS_HP_PER_TASK,
-    BOSS_MIN_HP,
-    bossMaxHp,
-    createBoss,
-    damageBoss,
-    displayedCount,
-    insideBoss,
-    stepBoss,
-} from './rageBoss'
+import { BOSS_HP, createBoss, damageBoss, displayedCount, insideBoss, stepBoss } from './rageBoss'
 
 const viewport = { width: 1280, height: 800 }
 const hero = { x: 300, y: 600 }
@@ -19,11 +10,18 @@ const settle = boss => {
 }
 
 describe('the boss', () => {
-    it('is built from today’s open-task count', () => {
-        expect(bossMaxHp(10)).toBe(10 * BOSS_HP_PER_TASK)
-        expect(bossMaxHp(1)).toBe(BOSS_MIN_HP)
-        const boss = createBoss(12, viewport)
-        expect(displayedCount(boss)).toBe(12)
+    it('is equally hard every day, and only wears the open-task count on its chest', () => {
+        expect(createBoss(40, viewport).maxHp).toBe(BOSS_HP)
+        expect(createBoss(1, viewport).maxHp).toBe(BOSS_HP)
+        expect(displayedCount(createBoss(12, viewport))).toBe(12)
+    })
+
+    it('still comes on an empty inbox, showing 0 the whole fight', () => {
+        const boss = createBoss(0, viewport)
+        expect(boss.maxHp).toBe(BOSS_HP)
+        expect(displayedCount(boss)).toBe(0)
+        damageBoss(boss, BOSS_HP / 2)
+        expect(displayedCount(boss)).toBe(0)
     })
 
     it('counts its number down as it takes damage, and hits 0 only when dead', () => {

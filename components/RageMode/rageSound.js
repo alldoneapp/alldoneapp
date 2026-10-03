@@ -80,6 +80,25 @@ export const createSound = () => {
             source.start(now)
             source.stop(now + 0.32)
         },
+        // A rising two-note chime: a power-up picked up.
+        chime() {
+            if (this.muted) return
+            const ctx = ensure()
+            if (!ctx) return
+            const now = ctx.currentTime
+            ;[880, 1320].forEach((frequency, i) => {
+                const osc = ctx.createOscillator()
+                const gain = ctx.createGain()
+                osc.type = 'sine'
+                osc.frequency.setValueAtTime(frequency, now + i * 0.07)
+                gain.gain.setValueAtTime(0.0001, now + i * 0.07)
+                gain.gain.exponentialRampToValueAtTime(0.09, now + i * 0.07 + 0.02)
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.07 + 0.22)
+                osc.connect(gain).connect(ctx.destination)
+                osc.start(now + i * 0.07)
+                osc.stop(now + i * 0.07 + 0.24)
+            })
+        },
         hurt() {
             if (this.muted) return
             const ctx = ensure()
