@@ -23,7 +23,7 @@ export const PICKUP_TYPES = {
     slowmo: { icon: '⏳', color: '#26A69A', duration: 6, weight: 7 },
     star: { icon: '⭐', color: '#FFC107', duration: 12, weight: 9 },
     magnet: { icon: '🧲', color: '#E53935', duration: 12, weight: 8 },
-    credits: { icon: '💳', color: '#09A87A', amount: 60, weight: 12 },
+    credits: { icon: '💳', color: '#09A87A', amount: 20, weight: 10 },
 }
 export const PICKUP_IDS = Object.keys(PICKUP_TYPES)
 export const PICKUP_POINTS = 25
@@ -31,21 +31,21 @@ export const PICKUP_POINTS = 25
 // How likely each kind of enemy is to drop something, and how many tokens a sure drop gives.
 export const DROP_CHANCE = {
     mail: 0.03,
-    fighter: 0.12,
-    chat: 0.12,
+    fighter: 0.08,
+    chat: 0.08,
     ping: 0.05,
     note: 0.1,
     noteSmall: 0.03,
     mine: 0.06,
-    meeting: 0.4,
+    meeting: 0.3,
     deadline: 1,
     carrier: 1,
-    bunker: 0.2,
-    armoured: 0.35,
-    pageTask: 0.12,
+    bunker: 0.15,
+    armoured: 0.25,
+    pageTask: 0.08,
     boss: 1,
 }
-export const DROP_COUNT = { carrier: 2, deadline: 2, boss: 3 }
+export const DROP_COUNT = { carrier: 2, deadline: 1, boss: 2 }
 
 // While a slow-motion pickup lasts, the enemy side runs at this share of normal speed.
 export const SLOWMO_SCALE = 0.45

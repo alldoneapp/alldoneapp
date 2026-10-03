@@ -5,6 +5,7 @@ import {
     collectPickup,
     createBuffs,
     DROP_CHANCE,
+    DROP_COUNT,
     enemyTimeScale,
     fireIntervalFactor,
     isActive,
@@ -29,7 +30,7 @@ describe('raid pickups', () => {
         const random = createRandom(3)
         expect(rollDrops('nothing', random, createRun())).toEqual([])
         expect(rollDrops('carrier', random, createRun())).toHaveLength(2)
-        expect(rollDrops('boss', random, createRun())).toHaveLength(3)
+        expect(rollDrops('boss', random, createRun())).toHaveLength(DROP_COUNT.boss)
         expect(DROP_CHANCE.meeting).toBeGreaterThan(DROP_CHANCE.mail)
     })
 

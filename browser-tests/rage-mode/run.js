@@ -286,7 +286,7 @@ async function game(browser, url) {
         await page.click('[data-hangar-item="bomb"] button')
         check(
             'hangar: buying a bomb costs credits',
-            await waitForHud(page, (data, value) => data.bombs === '2' && Number(data.credits) === value - 180, credits)
+            await waitForHud(page, (data, value) => data.bombs === '2' && Number(data.credits) === value - 200, credits)
         )
         await page.screenshot({ path: path.join(BUILD_DIR, 'hangar.png') })
         await page.click('[data-rage-mode-layer="hangar"] button:has-text("Special weapons")')

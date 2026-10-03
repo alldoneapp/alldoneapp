@@ -42,21 +42,24 @@ export const POINTS = {
     pageTask: 100,
     boss: 2000,
 }
+// Balanced so a mission flown well pays ~600 credits early on and ~1,200 by mission 6, and the
+// permanent upgrades (cannon + shield generator, ~6,700 in all) take seven or eight missions to max
+// out — buying everything after two missions made every later mission trivial.
 export const CREDITS = {
-    mail: 12,
-    fighter: 35,
-    chat: 25,
-    ping: 15,
-    note: 30,
-    noteSmall: 8,
-    mine: 20,
-    meeting: 110,
-    deadline: 350,
-    carrier: 80,
-    bunker: 45,
-    armoured: 90,
-    pageTask: 30,
-    boss: 400,
+    mail: 3,
+    fighter: 10,
+    chat: 7,
+    ping: 4,
+    note: 8,
+    noteSmall: 2,
+    mine: 5,
+    meeting: 30,
+    deadline: 100,
+    carrier: 25,
+    bunker: 12,
+    armoured: 25,
+    pageTask: 8,
+    boss: 120,
 }
 
 // Kills chained within this window build a combo; every 5 in a row adds half a point multiplier,
@@ -64,10 +67,10 @@ export const CREDITS = {
 export const COMBO_WINDOW = 1.8
 export const COMBO_STEP = 5
 export const MAX_COMBO_MULTIPLIER = 3
-export const MISSION_BONUS_CREDITS = 150
+export const MISSION_BONUS_CREDITS = 80
 
 /** How much harder mission `n` (1-based) is: enemy health, fire rate and bullet speed scale with it. */
-export const missionDifficulty = mission => 1 + 0.22 * Math.max(0, mission - 1)
+export const missionDifficulty = mission => 1 + 0.3 * Math.max(0, mission - 1)
 
 export const createRun = ({ startShield } = {}) => ({
     mission: 1,
@@ -166,7 +169,7 @@ export const HANGAR_ITEMS = [
     {
         id: 'repair',
         icon: '🛠️',
-        price: () => 120,
+        price: () => 150,
         available: run => run.shield < run.maxShield,
         apply: run => {
             run.shield = Math.min(run.maxShield, run.shield + 35)
@@ -175,7 +178,7 @@ export const HANGAR_ITEMS = [
     {
         id: 'bomb',
         icon: '💣',
-        price: () => 180,
+        price: () => 200,
         available: run => run.bombs < MAX_BOMBS,
         apply: run => {
             run.bombs = Math.min(MAX_BOMBS, run.bombs + 1)
@@ -184,7 +187,7 @@ export const HANGAR_ITEMS = [
     {
         id: 'cannon',
         icon: '🔫',
-        price: run => (run.cannonLevel === 1 ? 450 : 1100),
+        price: run => (run.cannonLevel === 1 ? 900 : 2200),
         available: run => run.cannonLevel < MAX_CANNON_LEVEL,
         apply: run => {
             run.cannonLevel = Math.min(MAX_CANNON_LEVEL, run.cannonLevel + 1)
@@ -193,7 +196,8 @@ export const HANGAR_ITEMS = [
     {
         id: 'shieldMax',
         icon: '🛡️',
-        price: () => 700,
+        // Dearer with every step: 800, 1200, 1600.
+        price: run => 800 + 400 * Math.round((run.maxShield - BASE_MAX_SHIELD) / 25),
         available: run => run.maxShield < SHIELD_CAP,
         apply: run => {
             run.maxShield = Math.min(SHIELD_CAP, run.maxShield + 25)

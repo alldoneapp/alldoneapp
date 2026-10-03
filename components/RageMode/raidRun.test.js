@@ -19,6 +19,8 @@ import {
     startNextMission,
     useBomb,
 } from './raidRun'
+import { buildMission } from './raidLevel'
+import { expandWave } from './raidEnemies'
 
 describe('raid run', () => {
     it('starts on mission 1 with a full shield, two bombs and no credits', () => {
@@ -102,7 +104,7 @@ describe('raid run', () => {
             expect(run.shield).toBe(75)
             expect(buyHangarItem(run, 'bomb').ok).toBe(true)
             expect(run.bombs).toBe(3)
-            expect(run.credits).toBe(1000 - 120 - 180)
+            expect(run.credits).toBe(1000 - 150 - 200)
         })
 
         it('stops selling what is already maxed', () => {
@@ -111,14 +113,50 @@ describe('raid run', () => {
             expect(buyHangarItem(run, 'repair')).toEqual({ ok: false, reason: 'maxed' })
             while (run.bombs < MAX_BOMBS) buyHangarItem(run, 'bomb')
             expect(buyHangarItem(run, 'bomb').reason).toBe('maxed')
-            expect(buyHangarItem(run, 'cannon').price).toBe(450)
-            expect(buyHangarItem(run, 'cannon').price).toBe(1100)
+            expect(buyHangarItem(run, 'cannon').price).toBe(900)
+            expect(buyHangarItem(run, 'cannon').price).toBe(2200)
             expect(run.cannonLevel).toBe(MAX_CANNON_LEVEL)
             expect(buyHangarItem(run, 'cannon').reason).toBe('maxed')
-            while (run.maxShield < SHIELD_CAP) buyHangarItem(run, 'shieldMax')
+            expect([1, 2, 3].map(() => buyHangarItem(run, 'shieldMax').price)).toEqual([800, 1200, 1600])
             expect(run.maxShield).toBe(SHIELD_CAP)
             expect(buyHangarItem(run, 'shieldMax').reason).toBe('maxed')
             expect(buyHangarItem(run, 'nope').reason).toBe('unknown')
+        })
+    })
+
+    describe('balance', () => {
+        // Every kill of a whole mission, plus the bonus — what a perfect pilot earns.
+        const perfectMissionCredits = mission => {
+            const tasks = Array.from({ length: 12 }, (_, i) => ({ label: `t${i}` }))
+            const level = buildMission({ mission, seed: 20261004, tasks, width: 1280 })
+            const kills = level.waves.flatMap(wave => expandWave(wave, { width: 1280, height: 800 }))
+            return (
+                kills.reduce((sum, enemy) => sum + (CREDITS[enemy.type] || 0), 0) +
+                level.bunkers.length * CREDITS.bunker +
+                CREDITS.boss +
+                MISSION_BONUS_CREDITS
+            )
+        }
+        const permanentUpgradesCost = () => {
+            const run = createRun()
+            run.credits = 1e9
+            let spent = 0
+            ;['cannon', 'shieldMax'].forEach(id => {
+                for (let result = buyHangarItem(run, id); result.ok; result = buyHangarItem(run, id))
+                    spent += result.price
+            })
+            return spent
+        }
+
+        it('pays for one upgrade per mission or two, not the whole hangar', () => {
+            expect(perfectMissionCredits(1)).toBeGreaterThan(400)
+            expect(perfectMissionCredits(1)).toBeLessThan(900)
+            const firstFive = [1, 2, 3, 4, 5].reduce((sum, mission) => sum + perfectMissionCredits(mission), 0)
+            expect(firstFive).toBeLessThan(permanentUpgradesCost())
+        })
+
+        it('gets noticeably harder every mission', () => {
+            expect(missionDifficulty(4)).toBeGreaterThanOrEqual(1.9)
         })
     })
 })
