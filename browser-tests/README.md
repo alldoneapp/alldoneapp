@@ -588,29 +588,31 @@ The desktop case pins the existing centered 640×512 card.
 node browser-tests/at2594/run.js
 ```
 
-### `rage-mode/` — the rage-mode arena over a real page
+### `rage-mode/` — the rage-mode raid over a real page
 
-Runs the REAL three.js arena (`components/RageMode/rageArena.js`) over a stand-in page in
-Chromium (SwiftShader WebGL). Asserts that bolts knock letters out of a paragraph and
-shatter an image through the input layer; that task rows (found by their real `task_body_…`
-ids) peel out as snakes, shrink tile by tile when shot and burst; that Space greets instead of
-shooting; that the wheel and the bottom edge scroll the page; that no click or key reaches the
-page's own handlers while the arena is up; and that leaving removes every arena layer and leaves
-the page's DOM byte-identical. It waits on the arena's own signals (`data-greeting`, layers gone)
-rather than fixed delays, because software WebGL slows the arena's clock. Screenshots land in `rage-mode/.build/`. `--touch` repeats it on
-a 390×844 touch viewport; `--serve` just builds and serves the harness so you can play it.
+Runs the REAL three.js raid (`components/RageMode/raidArena.js`) over a stand-in page wrapped in
+a `#root` like the app's, in Chromium (SwiftShader WebGL). The default run asserts that Anna takes
+off and mission 1 starts; that the task rows on screen (found by their real `task_body_…` ids)
+become targets and the auto-firing main gun knocks them off; that `#root` slides down while
+generated ground is drawn above it (a pixel read from the canvas in the frame it was rendered);
+that the first wave arrives; that no click or key reaches the page's own handlers; and that
+leaving removes every layer, leaves the page DOM byte-identical and leaves no `style` attribute
+on `#root`, `<html>` or `<body>`. `--touch` covers a 390×844 phone: relative drag steering
+(real CDP touch events), the 💣 button and leaving through ✕. `--game` covers the boss built from
+the open-task count, a mega bomb finishing it, the hangar (credits, buying a bomb, the Gold weapon
+shop with a fake server, Escape closing the shop before the raid), launching mission 2, and a game
+over that submits the score once and plays again on Enter. It waits on the arena's own `data-*`
+signals rather than fixed delays, because software WebGL slows the arena's clock. Screenshots land
+in `rage-mode/.build/`; `--serve` just builds and serves the harness so you can play it.
 
 ```bash
-node browser-tests/rage-mode/run.js [--touch] [--headed]
-node browser-tests/rage-mode/run.js --escape
+node browser-tests/rage-mode/run.js [--touch | --game] [--headed]
 node browser-tests/rage-mode/run.js --serve
 ```
 
-`--escape` covers AT-2673: ESC during continuous fire with multiple live projectiles and debris,
-repeated opening/closing, shop-first ESC, resize during rewind and all seven weapons. It checks
-that the page is restored, exit is delivered exactly once per round, input works again and no
-browser errors occur. Jest's `components/RageMode/rageArena.test.js` also drives the real arena
-lifecycle with a renderer stub to cover cancelled/stale frames and debris geometry disposal.
+Jest's `components/RageMode/raidArena.test.js` drives the real arena lifecycle with a renderer
+stub: take-off, the page transform and its exact restoration, keys kept from the app, bombs, boss →
+hangar → mission 2, game over → play again, stale frames after an immediate stop, and resize.
 
 ### `at2660/` — opening the add-task popup a second time
 

@@ -1,8 +1,8 @@
 /**
- * The boss: today's open tasks, as one big angry block with the number on its chest. Its health is
- * built from that count and the number counts down as it takes damage, so beating it reads as
- * "12 … 7 … 3 … 0". It hovers over the page, throws task-coloured orbs at Anna and every so often
- * charges at her.
+ * The boss at the end of every raid mission: today's open tasks, as one big angry block with the
+ * number on its chest. Its health is built from that count and the number counts down as it takes
+ * damage, so beating it reads as "12 … 7 … 3 … 0". It hovers over the top of the screen, throws
+ * orbs at Anna and every so often charges at her.
  *
  * Pure: position, health and attacks. The arena draws it and resolves collisions.
  */
@@ -13,15 +13,8 @@ export const BOSS_HP_PER_TASK = 12
 export const BOSS_MIN_HP = 36
 export const ORB_SPEED = 290
 export const ORB_RADIUS = 11
-export const ORB_LIFE = 5
-// When it turns up: after this many snakes, or after this many seconds, whichever comes first.
-export const BOSS_AFTER_SNAKES = 3
-export const BOSS_AFTER_SECONDS = 45
 
 export const bossMaxHp = openTasks => Math.max(BOSS_MIN_HP, Math.round((openTasks || 0) * BOSS_HP_PER_TASK))
-
-export const shouldSummonBoss = ({ snakesKilled, elapsed, summoned, openTasks }) =>
-    !summoned && openTasks > 0 && (snakesKilled >= BOSS_AFTER_SNAKES || elapsed >= BOSS_AFTER_SECONDS)
 
 export const createBoss = (openTasks, viewport) => ({
     openTasks,
@@ -104,16 +97,6 @@ export const stepBoss = (boss, dt, hero, viewport, random) => {
         boss.charge = { t: 0, duration: 1.1, from: { x: boss.x, y: boss.y }, to: { x: hero.x, y: hero.y } }
     }
     return orbs
-}
-
-/** Move an orb on; returns false once it has expired or left the screen. */
-export const stepOrb = (orb, dt, viewport) => {
-    orb.age += dt
-    orb.x += orb.vx * dt
-    orb.y += orb.vy * dt
-    return (
-        orb.age < ORB_LIFE && orb.x > -40 && orb.y > -40 && orb.x < viewport.width + 40 && orb.y < viewport.height + 40
-    )
 }
 
 export const insideBoss = (boss, x, y, pad = 0) =>

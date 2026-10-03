@@ -12,6 +12,7 @@ jest.mock('react-redux', () => ({
     useSelector: selector => selector(mockState),
 }))
 jest.mock('../Icon', () => 'Icon')
+jest.mock('../../redux/store', () => ({ __esModule: true, default: { getState: () => mockState } }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: key => key }))
 jest.mock('../SettingsView/Profile/Achievements/Skyline/webglSupport', () => ({
     canRenderSkyline: () => mockWebGl,
@@ -73,6 +74,18 @@ describe('RageModeButton', () => {
 
         act(() => options.onExit())
         expect(component.root.findByType('Icon').props.color).toBe('grey')
+    })
+
+    it("hands the arena each project's marker colour, read from the store when asked", async () => {
+        const { PROJECT_COLOR_SYSTEM } = require('../../Themes/Modern/ProjectColors')
+        const colorKey = Object.keys(PROJECT_COLOR_SYSTEM)[0]
+        const component = render()
+        act(() => component.root.findByProps({ accessibilityLabel: 'Rage mode' }).props.onPress())
+        await flush()
+        const { services } = mockStart.mock.calls[0][0]
+        mockState.loggedUserProjectsMap = { p1: { color: colorKey } }
+        expect(services.getProjectColor('p1')).toBe(PROJECT_COLOR_SYSTEM[colorKey].MARKER)
+        expect(services.getProjectColor('missing')).toBeNull()
     })
 
     it('does not open a second arena while one is running', async () => {

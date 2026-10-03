@@ -1,19 +1,18 @@
 /**
- * Rage mode browser harness — the REAL arena (`components/RageMode/rageArena.js`, three.js and all)
- * over a stand-in app page: a wrapped paragraph, a task list whose checkboxes COUNT their clicks, an
- * image, a background-image avatar and a few coloured buttons.
+ * Rage mode browser harness — the REAL raid (`components/RageMode/raidArena.js`, three.js and all)
+ * over a stand-in app page inside a `#root` like the app's: a paragraph, a task list whose
+ * checkboxes COUNT their clicks, an image and a few coloured buttons.
  *
- * jsdom has no WebGL, no `caretRangeFromPoint` and no layout, so every question this exists for is
- * unanswerable from jest: does the arena render, do bolts actually find letters and images through
- * the input layer, can a click ever reach the app underneath, and does leaving put the page back
- * exactly as it was. `window.__rage` exposes what `run.js` asserts on.
+ * jsdom has no WebGL and no layout, so every question this exists for is unanswerable from jest:
+ * does the raid render, does the page really slide away and come back, do shots find the task rows
+ * on it, can a click ever reach the app underneath, and does leaving put the page back exactly as it
+ * was. `window.__rage` exposes what `run.js` asserts on.
  *
  * Open the built page by hand (`node browser-tests/rage-mode/run.js --serve`) to simply play it.
  */
-import { startRageArena } from '../../components/RageMode/rageArena'
+import { startRageArena } from '../../components/RageMode/raidArena'
 import { buildRageStrings } from '../../components/RageMode/rageStrings'
 import { RAGE_WEAPONS } from '../../components/RageMode/rageWeapons'
-import { Scene } from 'three'
 import en from '../../i18n/translations/en.json'
 
 const PARAGRAPH =
@@ -85,7 +84,7 @@ style.textContent = `
 document.head.appendChild(style)
 
 const image = makeImage()
-document.body.innerHTML = `
+document.body.innerHTML = `<div id="root">
   <div class="topbar"><strong>Alldone</strong><span class="assistant">Anna Alldone: How can I help?<button id="rage" aria-label="Rage mode">⌖</button></span><span></span></div>
   <div class="page" id="page">
     <h1 id="title">Stick figure</h1>
@@ -110,7 +109,7 @@ document.body.innerHTML = `
         (task, i) => `<div class="row" id="task_body_p_m${i}_false"><div class="check"></div><span>${task}</span></div>`
     ).join('')}
   </div>
-`
+</div>`
 
 document.querySelectorAll('.check, .btn:not(#rage)').forEach(node =>
     node.addEventListener('click', () => {
@@ -127,19 +126,8 @@ state.pageHtml = document.body.innerHTML
 const strings = buildRageStrings(key => en[key] || key)
 
 // Fake services, steered by the query string: ?gold=1500&tasks=3&best=120&owned=all
-// &bossHeadStart=42&health=10. `state.calls` records what the arena asked for.
+// &bossAt=2&noWaves=1&shield=10&god=1&seed=7. `state.calls` records what the arena asked for.
 const params = new URLSearchParams(window.location.search)
-// Observe real live projectiles without adding test-only hooks to the production arena. This
-// proves ESC happens with multiple shots still in flight, the precondition of AT-2673.
-if (params.has('escRegression')) {
-    let lastScene = null
-    const add = Scene.prototype.add
-    Scene.prototype.add = function (...objects) {
-        lastScene = this
-        return add.apply(this, objects)
-    }
-    state.liveProjectiles = () => (lastScene ? lastScene.children.filter(mesh => mesh.renderOrder === 4).length : 0)
-}
 state.gold = Number(params.get('gold') || 1500)
 state.profile = {
     owned: params.get('owned') === 'all' ? RAGE_WEAPONS.map(weapon => weapon.id) : ['blaster'],
@@ -165,10 +153,13 @@ const services = {
     },
     getGold: () => state.gold,
     getOpenTasksToday: () => Number(params.get('tasks') || 3),
+    getProjectColor: () => '#7E57C2',
 }
 const tuning = {
-    bossHeadStart: Number(params.get('bossHeadStart') || 0),
-    ...(params.get('health') ? { startHealth: Number(params.get('health')) } : {}),
+    seed: Number(params.get('seed') || 20261003),
+    ...(params.get('bossAt') ? { bossAt: Number(params.get('bossAt')) } : {}),
+    ...(params.get('noWaves') ? { noWaves: true } : {}),
+    ...(params.get('shield') ? { startShield: Number(params.get('shield')) } : {}),
     ...(params.get('god') ? { invincible: true } : {}),
 }
 

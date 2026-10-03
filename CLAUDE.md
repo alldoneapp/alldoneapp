@@ -1523,91 +1523,88 @@ while the card intersects the viewport. `skylineScene.test.js` drives the real s
 only the WebGL renderer and the 2D canvas stubbed — it is the one test that executes this module,
 which needs `three` in Jest's transform allowlist and the class-static-block Babel transform.
 
-### Rage mode — shoot the page apart, change nothing
+### Rage mode — a vertical-scrolling raid that takes off from your page
 
 A small crosshair after "Anna Alldone: How can I help?" in the assistant line (`AssistantOptions` →
-`components/RageMode/RageModeButton.js`) turns the current page into a level:
-a voxel Anna Alldone (blonde bob, light-blue shirt) with a jetpack flies over it, bolts knock letters out, shatter images and crack small
-coloured blocks, and Escape / ✕ rewinds every piece back into place. She faces where she shoots;
-Enter (👋 on touch) makes her fly ONE loop towards the camera: up and over to its front, where she
-greets with a random pose and a speech bubble, then down and under back to where she was
-(`rageGreeting.js`, pure and tested). The loop is an OFFSET from wherever you steer her, so she stays
-controllable throughout (she only stops shooting), and her edge margins grow with her close-up size. It is purely for fun: **no
-data is ever written.** It is on for everyone; the button is hidden only for anonymous viewers,
-without WebGL, under reduced motion, or on a browser that opted out with `?rageMode=off`
-(`?rageMode=on` undoes it; `rageModeFlag.js`). The arena is its own lazy `rage-mode`
-chunk (three.js is shared with the skyline chunk).
+`components/RageMode/RageModeButton.js`) starts a vertical-scrolling shooter in the style of the
+early-90s classics (`raidArena.js`). A voxel Anna Alldone with a jetpack takes off from the button,
+**the page you are on slides down off the screen and generated ground scrolls in above it**, and
+the mission is flown over that ground: today's tasks are dug in as labelled bunkers, scripted waves
+of fighters and incoming mail come in, and the boss at the end is built from today's open-task
+count. Between missions a hangar sells repairs, mega bombs and upgrades for credits earned in the
+run. It replaced the earlier free-flight "shoot the page apart" mode (snakes, greetings, letter
+knock-outs), which is gone. Purely for fun: **no data is ever written.** On for everyone; hidden only
+for anonymous viewers, without WebGL, under reduced motion, or on a browser that opted out with
+`?rageMode=off` (`?rageMode=on` undoes it; `rageModeFlag.js`). The arena is its own lazy
+`rage-mode` chunk (three.js is shared with the skyline chunk).
 
-Three rules are load-bearing. **The app's DOM is never mutated**: a destroyed letter is measured
-(`caretRangeFromPoint` + `Range.getClientRects`, `rageTargets.js`), covered on the WebGL canvas
-by a plane in the colour behind it, and a copy of the glyph flies off. Removing or splitting the
-real nodes would hit the React/Quill `NotFoundError` class described above, and leaving would
-need a repair; this way leaving just clears the canvas. **Nothing may reach the app**: a
-transparent input layer covers the viewport under the canvas (a click meant as a shot must never
-tick the checkbox beneath it), keys are swallowed in the `window` capture phase, which runs
-before every document-level listener including the escape stack (Cmd/Ctrl/Alt combinations
-stay with the browser), and hit testing switches that layer to `pointer-events: none` only for
-one synchronous query per frame (`withLayerTransparent`). **The camera maps z = 0 to CSS
-pixels**: a perspective camera at `h / 2 / tan(fov / 2)`, so a piece built at a character's box
-sits exactly on it and grows as it flies out at the viewer; things that must appear at a screen
-point while floating in front (hero, bolts) go through `toWorldOnScreen`.
+**The app's DOM is never mutated, and the take-off is a STYLE, not a node.** The only things the
+arena touches are inline style properties: `transform` + `will-change` on `#root` (the slide) and
+`overflow: hidden` on `<html>` and `<body>` (a transformed root would otherwise grow a scrollbar).
+React never renders those properties on those elements, and `setTemporaryStyle` restores each one to
+exactly what it was — including removing a `style` attribute that did not exist — so the markup is
+byte-identical afterwards (`browser-tests/rage-mode` asserts it). Everything else is drawn on the
+arena's own canvas: a destroyed task row is covered with a plane in the colour behind it
+(`resolveBackgroundColor`) and breaks into shards of a canvas copy of itself. Removing or moving real
+nodes would hit the React/Quill `NotFoundError` class described above. **Nothing may reach the app**:
+a transparent input layer covers the viewport under the canvas, and keys are swallowed in the
+`window` capture phase, before every document-level listener including the escape stack
+(Cmd/Ctrl/Alt combinations stay with the browser).
 
-**Damage belongs to the content it was done to (scroll anchors).** Anna can fly over the whole page:
-the wheel scrolls whatever is under the pointer, and flying into the top or bottom edge scrolls the
-page under her. So every hole and burn mark is filed under the scroll container of the element it
-hit (`findScrollContainer`), its group is shifted by how far that container has scrolled since, and
-its materials are clipped to the container's box (`renderer.localClippingEnabled`) — without the
-clip, a hole scrolled up past the list would paint over the fixed top bar. Pieces remember their
-anchor too, so the rewind sends them to where their letter is NOW. Damage outside any scroller (the
-top bar) stays screen-anchored. A window resize still repairs everything at once: every rect was
-measured against the old layout.
+**The seam.** The camera is orthographic, one world unit per CSS pixel, so a hole drawn at a row's
+`getBoundingClientRect()` covers exactly that row. Ground objects live in one group that scrolls with
+the level: a point at ground distance `g` sits at screen y = `scroll − g`. While the page is on
+screen, the ground must exist only ABOVE its top edge, so every ground material shares one clipping
+plane (`seamPlane`) whose constant is the page's top edge; a soft shadow strip under the seam makes
+the ground read as lying on top of the page. Leaving reverses it: the seam is re-anchored at the
+bottom of the screen and rises with the page as it slides back up, so the ground never jumps. The
+page's task rows on screen at take-off are the welcome committee (`pageTargets`): every other one
+carries a turret that shoots back, and their titles (plus every other task row in the DOM) become the
+bunker labels further up. Rows are found by the id every task row already has
+(`task_body_<project>_<task>_…`, TaskPresentation's `nativeID`); bunkers take the project's marker
+colour through `services.getProjectColor`, which reads the projects map from the store on demand
+(lazily required) rather than subscribing the button to it (AT-2336).
 
-**Task snakes** (`rageSnake.js`, pure and tested). Up to five task rows at a time peel out of the
-list, one by one at random 1.2–2.8s intervals, and crawl around like the old game: a chain of 3D
-tiles, one per letter of the title plus a head with eyes, moving on a grid and turning at right
-angles, the body retracing the head's trail. Every hit knocks the tail tile off — the snake gets
-SHORTER, never smaller, and a little faster — until only its head is left and it bursts. Rows are found by the DOM id every task row already
-has (`task_body_<project>_<task>_…`, TaskPresentation's `nativeID`) — no hook in the task row
-itself. A peeled row is covered by a hole and listed in `coveredRows`, so a bolt through its empty
-spot never hits the checkbox or chip still hidden underneath; on the rewind every tile flies back to
-the letter it came from and shrinks to that letter's size before the hole fades. Pure physics and controls live
-in `rageDebris.js` / `rageControls.js`; `browser-tests/rage-mode` is the only place the arena
-actually runs (jsdom has no WebGL, caret hit testing or layout). The button deliberately imports nothing that pulls in the redux store (it sits in `AssistantOptions`,
-whose suites load it).
+**The game logic is pure and seeded** — `raidLevel.js` (missions, the six-wave script, bunker
+placement that never lands in the river, terrain chunks), `raidEnemies.js` (scripted flight paths,
+aimed fire), `raidArmory.js` (main gun levels, special volleys, rocket homing), `raidRun.js` (shield,
+bombs, score, credits, the hangar price list), `raidControls.js` (mouse follow, keyboard, RELATIVE
+touch drag so the thumb never covers her). The seed is the date (`daySeed`), so today's level is a
+fixed thing you can get better at. **Credits are never Gold**: they are earned by shooting, live only
+as long as the run and buy consumables; a game that paid out Gold would let a modified client mint
+real currency.
 
-**The game on top: score, health, a Gold weapon shop and a boss.** The HUD shows the score, the
-player's best and Anna's health. Snakes that crawl into her bite (10), the boss's orbs hit (12) and
-touching the boss hurts (20); after a hit she blinks and cannot be hit for 1.1s, and every snake
-killed heals her a little (`rageCombat.js`). At zero it is game over: a card with the score and
-"play again" / "exit". **The boss is built from today's open-task count** — the same number the Home
-button's badge shows (`getAllProjectsOpenTasksAmount` over `sidebarNumbers`), falling back to the
-task rows on the page — as a big red voxel block with that number on its chest; its health is 12 per
-task and the number counts down as it takes damage (`rageBoss.js`, pure and tested). It arrives after
-3 snakes or 45 seconds, once per round, and never on a day with no open tasks.
+**The boss is built from today's open-task count** — the same number the Home button's badge shows
+(`getAllProjectsOpenTasksAmount` over `sidebarNumbers`) — as a big red voxel block with that number
+on its chest; 12 hit points per task (times the mission's difficulty), the number counting down as
+it takes damage (`rageBoss.js`). On a day with nothing open there is no boss and the mission ends
+once the last wave is gone.
 
-**Weapons are bought with Gold on the SERVER, never granted by the client.** Seven weapons
-(`rageWeapons.js`: blaster free, shotgun 100, rocket 250, flamethrower 400, laser 600, black hole
-1000, finger snap 2000), switched with 1–7 or the weapon bar (Space, or its ⟳ button, toggles
-auto-fire: she keeps shooting at the cursor with nothing held), bought in a shop panel (🛒 or B) that
-pauses the game and always asks to confirm. `functions/RageMode/rageModeProfile.js` hosts three
+**Weapons are bought with Gold on the SERVER, never granted by the client.** The main gun always
+fires and is upgraded with credits; ON TOP of it fires one special weapon bought with Gold
+(`rageWeapons.js`: blaster = none, shotgun 100, rocket 250, flamethrower 400, laser 600, black hole
+1000, finger snap 2000), switched with 1–7 or the weapon bar and bought in the shop panel reached
+from the hangar, which always asks to confirm. `functions/RageMode/rageModeProfile.js` hosts three
 callables — `getRageModeProfile`, `purchaseRageModeItem`, `submitRageModeScore` — over
 `rageModeProfiles/{uid}`, a collection with NO client rule at all, so Firestore's default deny keeps
 ownership and highscores out of reach of the browser (deliberately not `users/{uid}` or
 `users/{uid}/private/**`, which are owner-writable). A purchase goes through `deductGold` with source
-`rage_mode_item` (labelled in the Gold history) and the idempotency key `rage_mode_item:<weapon>`,
-which is scoped per user — so each weapon is charged at most once ever, and a retry after a failed
-ownership write finds the claim, skips the charge and finishes the write. The price list the server
-charges is `functions/RageMode/rageWeaponsCatalog.js`; the client copy is for display, and
-`rageWeapons.test.js` fails the build if they disagree. `submitRageModeScore` keeps the best score,
-accepts only a real number (`Number(null)` is 0) and caps it at 10 million. The arena itself stays
-free of backend imports: `RageModeButton` hands it `services` (the three calls via the lazily-required
-`rageModeBackend.js`, plus live getters for Gold and the open-task count), and the harness passes
-fakes. `tuning` (`bossHeadStart`, `startHealth`, `invincible`) exists for `browser-tests/rage-mode`
-only. All HUD strings come from one table, `rageStrings.js`.
+`rage_mode_item` and the idempotency key `rage_mode_item:<weapon>`, scoped per user — each weapon is
+charged at most once ever. The server's price list is `functions/RageMode/rageWeaponsCatalog.js`;
+`rageWeapons.test.js` fails the build if the display copy disagrees. `submitRageModeScore` keeps the
+best score and caps it at 10 million. The arena stays free of backend imports: `RageModeButton` hands
+it `services` (the three calls via the lazily-required `rageModeBackend.js`, plus live getters), and
+the harness passes fakes. `tuning` (`seed`, `bossAt`, `noWaves`, `startShield`, `invincible`) exists
+for tests only. All strings come from one table, `rageStrings.js`.
 
-**Overlays are placed on the VISIBLE viewport** (`visibleWidth`/`visibleHeight`): on a phone a page
-that overflows sideways widens `innerWidth` past the screen, and `left: 50%` / `bottom: 16px` on a
-fixed element then land off screen — which is how ✕ and the weapon bar went missing on a 390px phone.
+**Light ground needs opaque effects**: explosions, flames and enemy fire are opaque tinted sprites,
+never additive glow, which vanishes on a light background (the skyline learned the same). Particles,
+shots and sparks are `InstancedMesh`es with `frustumCulled = false` (their bounding sphere is the
+unit geometry at the origin). **Overlays are placed on the VISIBLE viewport**
+(`visibleWidth`/`visibleHeight` in `raidHud.js`): on a phone a page that overflows sideways widens
+`innerWidth` past the screen, and `left: 50%` on a fixed element then lands off screen.
+`raidArena.test.js` drives the real arena in jsdom with only the renderer stubbed;
+`browser-tests/rage-mode` (`--touch`, `--game`) is the only place it actually renders.
 
 ### Per-project empty inbox — the completed sweep (AT-2492)
 
