@@ -11,16 +11,30 @@ import { loadRageArena } from './loadRageArena'
 import { loadRageProfile, purchaseRageItem, submitRageScore } from './rageModeBackend'
 import { buildRageStrings } from './rageStrings'
 import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
+import { PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
 
 export const RAGE_ACTIVE_COLOR = '#E00000'
 
 const rageStrings = () => buildRageStrings(translate)
 
+// The bunkers on the ground wear their project's colour. The map is read from the store when the
+// game asks, not subscribed to: the button must not re-render on every write to it (AT-2336). The
+// store is required lazily, like `rageModeBackend.js`, so suites rendering the assistant line do
+// not pull it in.
+const readProjectsMap = () => {
+    try {
+        const store = require('../../redux/store').default
+        return store.getState().loggedUserProjectsMap || {}
+    } catch (error) {
+        return {}
+    }
+}
+
 /**
- * The entry to rage mode, next to "Anna Alldone: How can I help?" in the assistant line: Anna flies
- * out of it and turns the page you are on into a level you can shoot apart, then rewinds it when you
- * leave. Purely for fun — nothing is written, and the app's DOM is never touched
- * (see `rageArena.js`).
+ * The entry to rage mode, next to "Anna Alldone: How can I help?" in the assistant line: Anna takes
+ * off from it, the page slides away under her and a vertical-scrolling raid begins over ground built
+ * from your day (`raidArena.js`); leaving slides the page back. Purely for fun — nothing is written,
+ * and the app's DOM is never touched.
  *
  * Renders nothing for anonymous viewers, without WebGL, under reduced motion, or on a browser that
  * opted out with `?rageMode=off` (`rageModeFlag.js`) — the arena IS motion, so there is no calmer version to offer.
@@ -79,6 +93,12 @@ export default function RageModeButton({ color, style, size = 24 }) {
                         submitScore: submitRageScore,
                         getGold: () => goldRef.current,
                         getOpenTasksToday: () => openTasksRef.current,
+                        getProjectColor: projectId => {
+                            const projects = readProjectsMap()
+                            const project = projects && projects[projectId]
+                            const color = project && PROJECT_COLOR_SYSTEM[project.color]
+                            return color ? color.MARKER : null
+                        },
                     },
                     onExit: () => {
                         arenaRef.current = null

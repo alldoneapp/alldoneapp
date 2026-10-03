@@ -1,4 +1,5 @@
 import { RAGE_WEAPONS } from './rageWeapons'
+import { HANGAR_ITEMS } from './raidRun'
 
 /**
  * Every string the arena shows, from one `translate(key)` function: the button passes the app's
@@ -8,20 +9,36 @@ import { RAGE_WEAPONS } from './rageWeapons'
 export const buildRageStrings = translate => ({
     title: translate('Rage mode'),
     exitHint: translate('Esc to exit'),
-    destroyed: translate('destroyed'),
-    desktopHelp: translate('Rage mode desktop help'),
-    touchHelp: translate('Rage mode touch help'),
+    desktopHelp: translate('Raid desktop help'),
+    touchHelp: translate('Raid touch help'),
     mute: translate('Mute'),
     unmute: translate('Unmute'),
     exit: translate('Exit rage mode'),
-    greet: translate('Say hi'),
-    autoFire: translate('Auto-fire'),
-    autoFireOn: translate('Auto-fire on'),
-    autoFireOff: translate('Auto-fire off'),
-    greetings: [1, 2, 3, 4].map(n => translate(`Rage mode greeting ${n}`)),
     score: translate('Score'),
     best: translate('Best'),
-    health: translate('Health'),
+    shield: translate('Shield'),
+    bomb: translate('Mega bomb'),
+    bombs: translate('Mega bombs'),
+    credits: translate('Credits'),
+    mission: translate('Mission {n}'),
+    missionStart: translate('Mission {n}: take off!'),
+    missionComplete: translate('Mission {n} complete!'),
+    debrief: translate('{kills} destroyed · +{credits} credits'),
+    hangar: translate('Hangar'),
+    launchMission: translate('Launch mission {n}'),
+    goldWeapons: translate('Special weapons'),
+    maxed: translate('Maxed'),
+    notEnoughCredits: translate('Not enough credits'),
+    noBoss: translate('Nothing open today: no boss!'),
+    hangarItems: Object.fromEntries(
+        HANGAR_ITEMS.map(item => [
+            item.id,
+            {
+                name: translate(`Raid hangar ${item.id}`),
+                description: translate(`Raid hangar ${item.id} description`),
+            },
+        ])
+    ),
     shop: translate('Weapon shop'),
     shopTitle: translate('Weapon shop'),
     gold: translate('Gold'),

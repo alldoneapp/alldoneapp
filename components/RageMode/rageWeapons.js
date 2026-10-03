@@ -1,19 +1,20 @@
 /**
- * Rage mode's weapons: how each one fires, and what it costs in the shop.
+ * Rage mode's special weapons: how each one fires in the raid, and what it costs in the shop. They
+ * are bought with Gold and owned for good; in the raid the chosen one fires automatically ON TOP of
+ * the main gun (`raidArmory.js`). The blaster is free and means "main gun only".
  *
  * The price here is for DISPLAY. The server's copy (`functions/RageMode/rageWeaponsCatalog.js`) is
  * the one that charges, and `rageWeapons.test.js` fails the build if the two disagree. Functions
  * code cannot enter the web bundle, hence the two copies.
  *
- * `kind` picks the firing code in the arena:
- *   bolt       straight projectiles (`pellets` of them, fanned over `spread` radians)
- *   rocket     a slow projectile that explodes over `blast` px
- *   flame      a short-lived cone of flame particles, `range` px long
- *   laser      a hitscan beam that burns along its whole length while held
- *   blackhole  a projectile that stops, pulls everything within `blast` px in, then implodes
- *   snap       the ultimate: dusts a share of the visible text and hits every enemy on screen
- * `damage` is per hit: text within `radius` is knocked out, a snake loses that many tiles
- * (fractions accumulate), the boss loses that much health.
+ * `kind` picks the firing code in `raidArena.js`:
+ *   bolt       a fan of `pellets` pellets over `spread` radians, lasting `range` px
+ *   rocket     a homing rocket that explodes over `blast` px
+ *   flame      a short cone of flame particles, `range` px long, burning each target once
+ *   laser      a beam straight up from Anna, ticking `damage` every `interval` while equipped
+ *   blackhole  flies out for `travel` s, swallows enemy fire for `pull` s, then implodes over `blast` px
+ *   snap       every `interval` s: `damage` to everything on screen
+ * `damage` is per hit, against enemy health (a fighter has 5, the boss 12 per open task).
  */
 export const RAGE_DEFAULT_WEAPON = 'blaster'
 
@@ -73,25 +74,3 @@ export const RAGE_WEAPONS = [
 ]
 
 export const weaponById = id => RAGE_WEAPONS.find(weapon => weapon.id === id) || RAGE_WEAPONS[0]
-
-/** The angles a volley leaves at: `pellets` of them fanned evenly around `angle`. */
-export const volleyAngles = (weapon, angle) => {
-    const pellets = weapon.pellets || 1
-    if (pellets === 1) return [angle]
-    const spread = weapon.spread || 0
-    return Array.from({ length: pellets }, (_, i) => angle - spread / 2 + (spread * i) / (pellets - 1))
-}
-
-/** Sample points covering a disc, for area damage (a rocket blast, a black hole). */
-export const blastPoints = (centre, blast, rings = 2, perRing = 8) => {
-    const points = [{ x: centre.x, y: centre.y }]
-    for (let r = 1; r <= rings; r++) {
-        const distance = (blast * r) / (rings + 0.5)
-        const count = perRing * r
-        for (let i = 0; i < count; i++) {
-            const angle = (Math.PI * 2 * i) / count + r * 0.4
-            points.push({ x: centre.x + Math.cos(angle) * distance, y: centre.y + Math.sin(angle) * distance })
-        }
-    }
-    return points
-}

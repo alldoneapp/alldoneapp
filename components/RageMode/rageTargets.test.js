@@ -1,4 +1,4 @@
-import { isTransparentColor, resolveBackgroundColor, withLayerTransparent } from './rageTargets'
+import { isTransparentColor, resolveBackgroundColor } from './rageTargets'
 
 describe('rage mode targets', () => {
     it('recognises transparent colours', () => {
@@ -27,23 +27,5 @@ describe('rage mode targets', () => {
     it('falls back to white when nothing on the way up is opaque', () => {
         const lonely = document.createElement('div')
         expect(resolveBackgroundColor(lonely, () => ({ backgroundColor: 'transparent' }))).toBe('#ffffff')
-    })
-
-    it('switches the input layer off only for the duration of a hit test, even when it throws', () => {
-        const layer = document.createElement('div')
-        layer.style.pointerEvents = 'auto'
-        let during = null
-        withLayerTransparent(layer, () => {
-            during = layer.style.pointerEvents
-        })
-        expect(during).toBe('none')
-        expect(layer.style.pointerEvents).toBe('auto')
-
-        expect(() =>
-            withLayerTransparent(layer, () => {
-                throw new Error('boom')
-            })
-        ).toThrow('boom')
-        expect(layer.style.pointerEvents).toBe('auto')
     })
 })
