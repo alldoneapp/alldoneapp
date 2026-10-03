@@ -1,6 +1,7 @@
 import { WebGLRenderer } from 'three'
 import { isRageArenaActive, startRageArena } from './raidArena'
 import { buildRageStrings } from './rageStrings'
+import { PICKUP_TYPES } from './raidPickups'
 
 // The real scene, meshes, game logic, input handlers and lifecycle; only GPU rendering needs a
 // substitute in jsdom. `browser-tests/rage-mode` covers what only a real browser can show.
@@ -248,7 +249,7 @@ describe('rage mode raid arena', () => {
         layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
         step()
         expect(hud().dataset.bombs).toBe('2')
-        expect(Number(hud().dataset.credits)).toBe(before - 180)
+        expect(Number(hud().dataset.credits)).toBe(before - 200)
         layer('hangar').querySelector('[data-launch]').click()
         step()
         expect(hud().dataset.phase).toBe('flying')
@@ -401,7 +402,7 @@ describe('rage mode raid arena', () => {
         it('keeps saves in order: one in flight, the newest sent last', async () => {
             const resolvers = []
             services.saveProgress = jest.fn(() => new Promise(resolve => resolvers.push(resolve)))
-            start({ bossAt: 1, noWaves: true, bossHp: 40 })
+            start({ bossAt: 1, noWaves: true, bossHp: 40, startCredits: 1000 })
             fly()
             step(90)
             key(' ', 'Space')
@@ -467,7 +468,7 @@ describe('rage mode raid arena', () => {
             start({ pickups: ['bomb', 'credits'] })
             fly()
             expect(hud().dataset.bombs).toBe('3')
-            expect(Number(hud().dataset.credits)).toBeGreaterThanOrEqual(60)
+            expect(Number(hud().dataset.credits)).toBeGreaterThanOrEqual(PICKUP_TYPES.credits.amount)
         })
     })
 

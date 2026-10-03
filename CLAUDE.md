@@ -1701,9 +1701,24 @@ charged at most once ever. The server's price list is `functions/RageMode/rageWe
 `rageWeapons.test.js` fails the build if the display copy disagrees. `submitRageModeScore` keeps the
 best score and caps it at 10 million. The arena stays free of backend imports: `RageModeButton` hands
 it `services` (the three calls via the lazily-required `rageModeBackend.js`, plus live getters), and
-the harness passes fakes. `tuning` (`seed`, `bossAt`, `noWaves`, `startShield`, `invincible`) exists
+the harness passes fakes. `tuning` (`seed`, `bossAt`, `noWaves`, `startShield`, `startCredits`, `invincible`) exists
 for tests only (plus `waves`, `bossHp` and `pickups`, which `browser-tests/rage-mode --cast` uses to
 show the whole cast at once). All strings come from one table, `rageStrings.js`.
+
+**Credits are balanced against the hangar, and a test holds it there.** A perfect mission 1 pays
+~650 credits and mission 6 ~1,250 (`CREDITS` + `MISSION_BONUS_CREDITS` in `raidRun.js`), while the
+permanent upgrades cost ~6,700 (cannon 900 → 2,200, shield generator 800 → 1,200 → 1,600) — so even
+flawless flying needs seven or eight missions to max out, and `missionDifficulty` (+30% per mission)
+keeps climbing meanwhile. The previous rates paid ~2,200 for mission 1 and everything was bought
+after two missions, after which nothing was hard. The `balance` block in `raidRun.test.js` sums every
+kill of the real generated missions and fails if five perfect missions can buy every upgrade.
+
+**The HUD must fit a 320px phone with a 12px edge gap** (`EDGE` in `raidHud.js`): the status pill and
+the weapon bar are `width: max-content` capped at `100vw - 24px` and wrap (a fixed element at
+`left: 50%` is otherwise offered only half the screen and wraps far too early); the buff chips and the
+bomb button sit above the weapon bar's MEASURED height; the boss bar sits below the pill's measured
+height; toasts wrap within `min(460px, 100vw - 48px)`; panels pad by `EDGE` plus the safe-area insets
+and put the launch / play-again button first, full width.
 
 **Light ground needs opaque effects**: explosions, flames and enemy fire are opaque tinted sprites,
 never additive glow, which vanishes on a light background (the skyline learned the same). Particles,

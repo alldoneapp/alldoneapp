@@ -9,6 +9,8 @@ import { PICKUP_TYPES } from './raidPickups'
  */
 
 export const NARROW_HUD_WIDTH = 460
+// The gap every overlay keeps to the screen edge (on top of the safe-area insets).
+const EDGE = 12
 
 /**
  * The width the user can actually SEE. On a phone a page that overflows sideways widens the layout
@@ -75,7 +77,7 @@ const wideButton = (text, primary, onClick) => {
     const button = hudButton(text, text, onClick)
     Object.assign(button.style, {
         height: 'auto',
-        padding: '10px 16px',
+        padding: 'clamp(8px, 2.4vw, 10px) clamp(10px, 3.6vw, 16px)',
         borderRadius: '16px',
         background: primary ? '#FFAE47' : 'rgba(255,255,255,0.14)',
         color: primary ? NAVY : '#FFFFFF',
@@ -147,17 +149,25 @@ const fixedCentre = (zIndex, style) =>
  * equip(id), buyHangar(id), launch, openGoldShop, playAgain.
  */
 export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions }) => {
+    // On a phone the pill wraps onto a second row rather than running off the screen.
     const hud = fixedCentre(zIndex + 2, {
         top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
         display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
         alignItems: 'center',
-        gap: narrow ? '6px' : '10px',
-        padding: narrow ? '4px 4px 4px 10px' : '5px 5px 5px 14px',
-        borderRadius: '20px',
+        gap: narrow ? '4px 8px' : '10px',
+        padding: narrow ? '5px 6px 5px 10px' : '5px 5px 5px 14px',
+        // Sized to its content, capped at the screen: a fixed element at left: 50% would otherwise
+        // only be offered half the screen and wrap far too early.
+        width: 'max-content',
+        maxWidth: `calc(100vw - ${EDGE * 2}px)`,
+        boxSizing: 'border-box',
+        borderRadius: narrow ? '16px' : '20px',
         background: NAVY,
         boxShadow: '0 6px 24px rgba(9,21,64,0.35)',
         color: '#fff',
-        font: `600 13px ${FONT}`,
+        font: `600 ${narrow ? 12 : 13}px ${FONT}`,
         whiteSpace: 'nowrap',
         userSelect: 'none',
         pointerEvents: 'none',
@@ -172,6 +182,8 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     shield.track.title = strings.shield
     const bombsValue = pillElement('span', { fontVariantNumeric: 'tabular-nums' })
     bombsValue.title = strings.bombs
+    // On touch the 💣 button already shows the count; the pill needs the room.
+    if (touch) bombsValue.style.display = 'none'
     const hint = pillElement('span', { color: 'rgba(255,255,255,0.6)', fontWeight: '400' })
     hint.textContent = strings.exitHint
     if (touch || narrow) hint.style.display = 'none'
@@ -211,7 +223,7 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     // The power-ups running, bottom left: an icon and a bar draining as it runs out.
     const buffBar = pillElement('div', {
         position: 'fixed',
-        left: '16px',
+        left: `calc(env(safe-area-inset-left, 0px) + ${EDGE}px)`,
         zIndex: String(zIndex + 2),
         display: 'flex',
         flexDirection: 'column-reverse',
@@ -247,7 +259,7 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
                 const icon = pillElement('span', { fontSize: '16px' })
                 icon.textContent = type.icon
                 const track = pillElement('span', {
-                    width: '54px',
+                    width: narrow ? '34px' : '54px',
                     height: '6px',
                     borderRadius: '3px',
                     background: 'rgba(255,255,255,0.18)',
@@ -301,7 +313,14 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     // The special weapons you own, bottom centre: tap one, or press its number.
     const weaponBar = fixedCentre(zIndex + 2, {
         display: 'flex',
-        gap: '6px',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        // Sized to its content, capped at the screen: a fixed element at left: 50% would otherwise
+        // only be offered half the screen and wrap far too early.
+        width: 'max-content',
+        maxWidth: `calc(100vw - ${EDGE * 2}px)`,
+        boxSizing: 'border-box',
+        gap: narrow ? '4px' : '6px',
         padding: '5px',
         borderRadius: '18px',
         background: NAVY,
@@ -363,19 +382,21 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
         left: '50%',
         transform: 'translate(-50%, -50%)',
         zIndex: String(zIndex + 3),
-        padding: '12px 22px',
+        padding: narrow ? '10px 16px' : '12px 22px',
         borderRadius: '18px',
         background: NAVY,
         color: '#FFFFFF',
-        font: `800 20px ${FONT}`,
+        font: `800 ${narrow ? 16 : 20}px ${FONT}`,
         boxShadow: '0 10px 40px rgba(9,21,64,0.45)',
         opacity: '0',
         transition: 'opacity 250ms ease',
         pointerEvents: 'none',
-        whiteSpace: 'nowrap',
-        maxWidth: 'calc(100vw - 32px)',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
+        // Long announcements wrap instead of being cut off at the screen edge.
+        width: 'max-content',
+        maxWidth: `min(460px, calc(100vw - ${EDGE * 4}px))`,
+        boxSizing: 'border-box',
+        textAlign: 'center',
+        lineHeight: '1.3',
     })
     toast.setAttribute(RAGE_LAYER_ATTRIBUTE, 'toast')
 
@@ -405,6 +426,7 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
             shield: String(run.shield),
             bombs: String(run.bombs),
         })
+        placeBossBar()
     }
 
     const setMuted = isMuted => {
@@ -421,10 +443,11 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
             const chip = hudButton(`${label} (${index + 1})`, weapon.icon, () => actions.equip(weapon.id))
             chip.setAttribute('data-weapon', weapon.id)
             Object.assign(chip.style, {
-                width: '38px',
-                height: '34px',
-                borderRadius: '13px',
-                fontSize: '18px',
+                width: narrow ? '32px' : '38px',
+                height: narrow ? '30px' : '34px',
+                minWidth: '0',
+                borderRadius: '12px',
+                fontSize: narrow ? '15px' : '18px',
                 padding: '0',
                 background: weapon.id === equipped ? '#FFAE47' : 'rgba(255,255,255,0.12)',
             })
@@ -434,15 +457,17 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
         const shop = hudButton(`${strings.shop} (B)`, '🛒', actions.openGoldShop)
         shop.setAttribute('data-shop', 'true')
         Object.assign(shop.style, {
-            width: '38px',
-            height: '34px',
-            borderRadius: '13px',
-            fontSize: '17px',
+            width: narrow ? '32px' : '38px',
+            height: narrow ? '30px' : '34px',
+            minWidth: '0',
+            borderRadius: '12px',
+            fontSize: narrow ? '15px' : '17px',
             padding: '0',
             background: 'rgba(255,255,255,0.12)',
         })
         weaponBar.appendChild(shop)
         hud.dataset.weapon = equipped
+        layout()
     }
 
     // Everything bottom-anchored is placed against the VISIBLE height, which may be shorter than
@@ -453,13 +478,26 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
             node.style.left = centre
         })
         const height = visibleHeight()
-        weaponBar.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 60px)`
-        help.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 70px)`
+        // The weapon bar sits on the bottom edge (it may wrap to two rows on a small phone); the
+        // help line, the power-up chips and the bomb button all stack ABOVE it, never on it.
+        weaponBar.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - ${EDGE}px)`
+        weaponBar.style.transform = 'translate(-50%, -100%)'
+        const barHeight = weaponBar.offsetHeight || 44
+        const above = `calc(${height}px - env(safe-area-inset-bottom, 0px) - ${EDGE + barHeight + 8}px)`
+        help.style.top = above
         help.style.transform = 'translate(-50%, -100%)'
-        bombButton.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 136px)`
         buffBar.style.bottom = 'auto'
-        buffBar.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 18px)`
+        buffBar.style.top = above
         buffBar.style.transform = 'translateY(-100%)'
+        bombButton.style.top = above
+        bombButton.style.transform = 'translateY(-100%)'
+        bombButton.style.right = `calc(env(safe-area-inset-right, 0px) + ${EDGE}px)`
+        placeBossBar()
+    }
+    // The boss bar hangs just under the pill, however many rows the pill has wrapped to.
+    const placeBossBar = () => {
+        const bottom = hud.offsetHeight ? hud.offsetTop + hud.offsetHeight : 0
+        bossBar.style.top = bottom ? `${bottom + 8}px` : 'calc(env(safe-area-inset-top, 0px) + 56px)'
     }
     layout()
 
@@ -505,7 +543,7 @@ const panel = zIndex => {
         alignItems: 'center',
         justifyContent: 'center',
         background: 'rgba(9,21,64,0.35)',
-        padding: 'calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px)',
+        padding: `calc(env(safe-area-inset-top, 0px) + ${EDGE}px) calc(env(safe-area-inset-right, 0px) + ${EDGE}px) calc(env(safe-area-inset-bottom, 0px) + ${EDGE}px) calc(env(safe-area-inset-left, 0px) + ${EDGE}px)`,
         boxSizing: 'border-box',
     })
     stopPointer(backdrop)
@@ -519,7 +557,7 @@ const panel = zIndex => {
         borderRadius: '22px',
         boxShadow: '0 12px 48px rgba(9,21,64,0.5)',
         font: `400 14px ${FONT}`,
-        padding: '20px 20px 14px',
+        padding: 'clamp(14px, 4.5vw, 20px) clamp(12px, 4.5vw, 20px) clamp(10px, 3vw, 14px)',
         boxSizing: 'border-box',
     })
     backdrop.appendChild(card)
@@ -769,7 +807,12 @@ const buildHangar = ({ strings, zIndex, actions }) => {
         const leave = wideButton(strings.exit, false, actions.exit)
         const launch = wideButton(`🚀 ${strings.launchMission.replace('{n}', run.mission + 1)}`, true, actions.launch)
         launch.setAttribute('data-launch', 'true')
-        footer.append(gold, restart, leave, launch)
+        // The thing you came for first, full width; the rest share the row(s) below.
+        launch.style.flex = '1 1 100%'
+        ;[gold, restart, leave].forEach(button => {
+            button.style.flex = '1 1 auto'
+        })
+        footer.append(launch, gold, restart, leave)
         card.appendChild(footer)
         card.appendChild(leaderboard.element)
     }
@@ -813,12 +856,13 @@ const buildGameOver = ({ strings, zIndex, actions, canStartOver }) => {
     // Spend the Gold on a better weapon before the next go.
     const shop = wideButton(`🪙 ${strings.goldWeapons}`, false, actions.openGoldShop)
     shop.setAttribute('data-shop', 'true')
-    buttons.append(
-        wideButton(strings.playAgain, true, actions.playAgain),
-        shop,
-        restart,
-        wideButton(strings.exit, false, actions.exit)
-    )
+    const again = wideButton(strings.playAgain, true, actions.playAgain)
+    const leave = wideButton(strings.exit, false, actions.exit)
+    again.style.flex = '1 1 100%'
+    ;[shop, restart, leave].forEach(button => {
+        button.style.flex = '1 1 auto'
+    })
+    buttons.append(again, shop, restart, leave)
     const leaderboard = buildLeaderboard({ strings, actions })
     card.style.maxWidth = '380px'
     card.append(title, scoreLine, missionLine, bestLine, newBest, buttons, leaderboard.element)

@@ -30,7 +30,7 @@ describe('raid progress', () => {
         buyHangarItem(run, 'cannon')
         writeRecord('u1', { checkpoint: checkpointFromRun(run), savedAt: 5, pending: false })
         const resumed = runFromCheckpoint(readRecord('u1').checkpoint)
-        expect(resumed).toMatchObject({ mission: 3, score: 4200, credits: 1550, cannonLevel: 2, kills: 0 })
+        expect(resumed).toMatchObject({ mission: 3, score: 4200, credits: 1100, cannonLevel: 2, kills: 0 })
     })
 
     it('starts at mission 1 with nothing saved, and after a start over', () => {

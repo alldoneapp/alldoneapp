@@ -1105,6 +1105,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         const next = checkpoint ? runFromCheckpoint(checkpoint) : createRun()
         if (typeof tuning.startShield === 'number')
             next.shield = Math.max(1, Math.min(next.maxShield, tuning.startShield))
+        if (typeof tuning.startCredits === 'number') next.credits = Math.max(0, tuning.startCredits)
         return next
     }
     let run = freshRun()
