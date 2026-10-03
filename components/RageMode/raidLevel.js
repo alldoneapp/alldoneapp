@@ -1,4 +1,5 @@
 import { createRandom } from './rageDebris'
+import { scaleCount } from './raidScreen'
 
 /**
  * A raid mission, generated from the user's own day: which waves come when, where today's tasks
@@ -137,11 +138,12 @@ const estimateBunkerWidth = (label, width) =>
  * Today's tasks, dug in along the route. Each task becomes one bunker carrying its title; a short
  * list is padded with unlabelled ones so a quiet day is still a fight. Never in the river.
  */
-export const placeBunkers = ({ tasks, width, seed, mission, length }) => {
+export const placeBunkers = ({ tasks, width, seed, mission, length, density = 1 }) => {
     const random = createRandom(hashSeed(seed, mission, 11))
-    const labelled = tasks.slice(0, MAX_BUNKERS)
+    // A smaller screen digs in fewer bunkers along the same route (raidScreen.js).
+    const labelled = tasks.slice(0, scaleCount(MAX_BUNKERS, density))
     const list = labelled.map(task => ({ ...task }))
-    while (list.length < MIN_BUNKERS) list.push({ label: '', color: null })
+    while (list.length < scaleCount(MIN_BUNKERS, density)) list.push({ label: '', color: null })
     const start = 380
     const end = Math.max(start + 400, length - 500)
     const gap = (end - start) / list.length
@@ -226,7 +228,7 @@ export const missionScrollSpeed = mission =>
 /**
  * Everything the arena needs to fly mission `mission`. `tasks` is `[{ label, color?, armoured? }]`.
  */
-export const buildMission = ({ mission = 1, seed = 1, tasks = [], width }) => {
+export const buildMission = ({ mission = 1, seed = 1, tasks = [], width, density = 1 }) => {
     const scrollSpeed = missionScrollSpeed(mission)
     const length = BOSS_AT * scrollSpeed
     return {
@@ -234,7 +236,7 @@ export const buildMission = ({ mission = 1, seed = 1, tasks = [], width }) => {
         seed,
         scrollSpeed,
         waves: missionWaves(mission, seed),
-        bunkers: placeBunkers({ tasks, width, seed, mission, length }),
+        bunkers: placeBunkers({ tasks, width, seed, mission, length, density }),
         bossAt: BOSS_AT,
         theme: (mission - 1) % TERRAIN_THEMES,
     }

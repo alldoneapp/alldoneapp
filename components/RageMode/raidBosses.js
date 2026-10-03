@@ -1,4 +1,5 @@
 import { BOSS_HP } from './rageBoss'
+import { FULL_SCREEN, scaleCount } from './raidScreen'
 
 /**
  * The five raid bosses, one per mission in turn: how each moves, what it throws, and when it gets
@@ -124,7 +125,7 @@ const hoverPoint = (boss, viewport) => {
  * `{ orbs, beams, waves, spawns }` — bullets, beams (`{kind:'column', x}` or
  * `{kind:'sweep', from, to}` in radians), expanding rings (`{gapAngle}`) and wave specs for minions.
  */
-export const stepRaidBoss = (boss, dt, target, viewport, random) => {
+export const stepRaidBoss = (boss, dt, target, viewport, random, screen = FULL_SCREEN) => {
     boss.t += dt
     boss.hurt = Math.max(0, boss.hurt - dt)
     const out = { orbs: [], beams: [], waves: [], spawns: [] }
@@ -157,9 +158,10 @@ export const stepRaidBoss = (boss, dt, target, viewport, random) => {
     const enraged = isEnraged(boss)
     const fury = enraged ? 0.65 : 1
     const timers = boss.timers
-    timers.a -= dt
-    timers.b -= dt
-    timers.c -= dt
+    // A smaller screen gets the same moves, a little less often (raidScreen.js).
+    timers.a -= dt * screen.pace
+    timers.b -= dt * screen.pace
+    timers.c -= dt * screen.pace
 
     switch (boss.kind) {
         case 'inbox': {
@@ -206,7 +208,7 @@ export const stepRaidBoss = (boss, dt, target, viewport, random) => {
                         ...ring(
                             boss.x + sx * boss.halfWidth * 0.8,
                             boss.y + sy * boss.halfHeight * 0.8,
-                            enraged ? 10 : 8,
+                            scaleCount(enraged ? 10 : 8, Math.max(0.6, screen.density)),
                             200,
                             i * 0.2 + boss.t,
                             '#7E57C2'

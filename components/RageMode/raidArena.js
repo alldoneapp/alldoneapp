@@ -107,6 +107,7 @@ import {
 } from './raidBosses'
 import { BOSS_HP } from './rageBoss'
 import { buildRaidBossModel, DISC_TEXTURE_TURN } from './raidBossModels'
+import { scaleCount, screenFactors } from './raidScreen'
 import { buildCharacter } from './rageModels'
 import { createSound, writeMuted } from './rageSound'
 import { buildRaidHud, NARROW_HUD_WIDTH, visibleWidth } from './raidHud'
@@ -786,6 +787,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const random = createRandom(Date.now() & 0xffff)
     const touchDevice = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
     const viewport = { width: window.innerWidth, height: window.innerHeight }
+    // How much raid fits on this screen (raidScreen.js): fewer enemies, less often, on a phone.
+    let screen = screenFactors(viewport)
     const seed = typeof tuning.seed === 'number' ? tuning.seed : daySeed()
 
     // A focused editor or input would keep its caret blinking under the arena; nothing may type now.
@@ -1933,7 +1936,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                     hole: null,
                 }
                 // Every other row is armed, so the page shoots back without becoming a wall of fire.
-                if (index % 2 === 0 && turrets < MAX_PAGE_TURRETS) {
+                if (index % 2 === 0 && turrets < scaleCount(MAX_PAGE_TURRETS, screen.density)) {
                     turrets += 1
                     target.turret = buildTurret()
                     target.turret.group.position.set(row.rect.left + 20, -(row.rect.top + row.rect.height / 2), 14)
@@ -1952,7 +1955,13 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     /* Missions. */
     const startMission = (number, { fromPage = false, resumed = false } = {}) => {
         const difficulty = missionDifficulty(number)
-        mission = buildMission({ mission: number, seed, tasks: levelTasks, width: viewport.width })
+        mission = buildMission({
+            mission: number,
+            seed,
+            tasks: levelTasks,
+            width: viewport.width,
+            density: screen.density,
+        })
         if (typeof tuning.bossAt === 'number') {
             mission.bossAt = tuning.bossAt
             mission.waves = mission.waves.filter(wave => wave.at < tuning.bossAt)
@@ -2970,7 +2979,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         missionTime += dt
         while (pendingWaves.length && pendingWaves[0].at <= missionTime) {
             const wave = pendingWaves.shift()
-            expandWave(wave, viewport).forEach(spec => pendingSpawns.push({ at: wave.at + spec.delay, spec }))
+            expandWave(wave, viewport, screen.density).forEach(spec =>
+                pendingSpawns.push({ at: wave.at + spec.delay, spec })
+            )
         }
         for (let i = pendingSpawns.length - 1; i >= 0; i--) {
             if (pendingSpawns[i].at <= missionTime) {
@@ -2999,7 +3010,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 continue
             }
             if (phase === 'flying') {
-                const fired = stepEnemyFire(enemy, dt, ship, viewport, difficulty, random)
+                const fired = stepEnemyFire(enemy, dt, ship, viewport, difficulty, random, screen)
                 fired.forEach(bullet => enemyShots.push({ ...bullet, r: 7, damage: DAMAGE.bullet }))
                 if (fired.length) sound.enemyShot(enemy.type)
                 const distance = Math.hypot(enemy.x - ship.x, enemy.y - ship.y)
@@ -3086,7 +3097,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             bunker.enemy.y = y
             aimTurret(bunker.model.pivot, ship.x - turretX, ship.y - y)
             if (phase === 'flying')
-                stepEnemyFire(bunker.enemy, dt, ship, viewport, difficulty, random).forEach(bullet =>
+                stepEnemyFire(bunker.enemy, dt, ship, viewport, difficulty, random, screen).forEach(bullet =>
                     enemyShots.push({ ...bullet, r: 7, damage: DAMAGE.bullet })
                 )
         })
@@ -3098,7 +3109,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             target.enemy.y = y
             aimTurret(target.turret.pivot, ship.x - x, ship.y - y)
             if (phase === 'flying')
-                stepEnemyFire(target.enemy, dt, ship, viewport, 1, random).forEach(bullet =>
+                stepEnemyFire(target.enemy, dt, ship, viewport, 1, random, screen).forEach(bullet =>
                     enemyShots.push({ ...bullet, r: 7, damage: DAMAGE.bullet })
                 )
         })
@@ -3109,14 +3120,16 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         if (!boss || !bossModel) return
         const dt = realDt * enemyTimeScale(buffs, time)
         if (boss.hp > 0 && phase === 'flying') {
-            const out = stepRaidBoss(boss, dt, ship, viewport, random)
+            const out = stepRaidBoss(boss, dt, ship, viewport, random, screen)
             out.orbs.forEach(orb => enemyShots.push({ ...orb, r: ORB_RADIUS, damage: DAMAGE.bossOrb, orb: true }))
             if (out.orbs.length) sound.enemyShot(boss.kind === 'clock' ? 'deadline' : 'boss')
             if (boss.kind === 'clock') sound.tick(Math.floor(boss.t * 2) % 2 === 1)
             out.beams.forEach(spec => addBeam(createBeam(spec, boss)))
             out.waves.forEach(spec => addWave(createWave(spec, boss)))
             out.spawns.forEach(wave =>
-                expandWave(wave, viewport).forEach(spec => pendingSpawns.push({ at: missionTime + spec.delay, spec }))
+                expandWave(wave, viewport, screen.density).forEach(spec =>
+                    pendingSpawns.push({ at: missionTime + spec.delay, spec })
+                )
             )
             if (insideRaidBoss(boss, ship.x, ship.y, 6)) hurtShip(DAMAGE.bossContact)
         }
@@ -3873,6 +3886,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const onResize = () => {
         const oldWidth = viewport.width
         resizeCamera()
+        screen = screenFactors(viewport)
+        hud.dataset.density = screen.density.toFixed(2)
         ui.layout()
         clearTerrain()
         // Bunkers keep their place relative to the width; the page's rows were measured on the
@@ -3915,6 +3930,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }, 5000)
     hud.dataset.shots = '0'
     hud.dataset.kills = '0'
+    hud.dataset.density = screen.density.toFixed(2)
     hud.dataset.pageTargets = String(pageTargets.length)
     updateTerrain()
 
