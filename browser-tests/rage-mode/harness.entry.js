@@ -170,6 +170,7 @@ const tuning = {
     ...(params.get('shield') ? { startShield: Number(params.get('shield')) } : {}),
     ...(params.get('god') ? { invincible: true } : {}),
     ...(params.get('bossHp') ? { bossHp: Number(params.get('bossHp')) } : {}),
+    ...(params.get('bossKind') ? { bossKind: params.get('bossKind') } : {}),
     ...(params.get('pickups') ? { pickups: params.get('pickups').split(',') } : {}),
     // ?waves=showcase flies every new member of the cast within a few seconds.
     ...(params.get('waves') === 'showcase'

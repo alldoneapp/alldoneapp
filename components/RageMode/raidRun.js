@@ -22,6 +22,8 @@ export const DAMAGE = {
     fighter: 18,
     bossOrb: 12,
     bossContact: 20,
+    beam: 22,
+    wave: 16,
 }
 
 export const POINTS = {

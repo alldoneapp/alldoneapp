@@ -20,6 +20,7 @@ import {
     PCFSoftShadowMap,
     Plane,
     PlaneGeometry,
+    RingGeometry,
     Scene,
     ShadowMaterial,
     SphereGeometry,
@@ -84,8 +85,29 @@ import {
     terrainChunk,
 } from './raidLevel'
 import { MAIN_GUN_DAMAGE, MAIN_GUN_SPEED, mainGun, nearestAhead, specialAngles, steerTowards, UP } from './raidArmory'
-import { createBoss, damageBoss, displayedCount, insideBoss, ORB_RADIUS, stepBoss } from './rageBoss'
-import { buildBoss, buildCharacter } from './rageModels'
+import {
+    beamHits,
+    BEAM_WARN,
+    bossKindFor,
+    COLUMN_WIDTH,
+    createBeam,
+    createRaidBoss,
+    createWave,
+    damageRaidBoss,
+    displayedCount,
+    insideRaidBoss,
+    ORB_RADIUS,
+    stepBeam,
+    stepRaidBoss,
+    stepWave,
+    SWEEP_WIDTH,
+    WAVE_GAP,
+    WAVE_THICKNESS,
+    waveHits,
+} from './raidBosses'
+import { BOSS_HP } from './rageBoss'
+import { buildRaidBossModel, DISC_TEXTURE_TURN } from './raidBossModels'
+import { buildCharacter } from './rageModels'
 import { createSound, writeMuted } from './rageSound'
 import { buildRaidHud, NARROW_HUD_WIDTH, visibleWidth } from './raidHud'
 import {
@@ -152,10 +174,16 @@ const Z = {
 const SUN_DIRECTION = new Vector3(-0.3, 0.34, 1).normalize()
 const TAKEOFF_SECONDS = 1.1
 // The run-up on the page: she runs while the page starts to move, then the jetpack fires.
-const RUNUP_MIN_SECONDS = 1.7
-const RUNUP_MAX_SECONDS = 4
-const RUNUP_SCROLL_FROM = 0.12
-const RUNUP_SCROLL_TO = 0.3
+const RUNUP_MIN_SECONDS = 5
+const RUNUP_MAX_SECONDS = 7
+const RUNUP_SCROLL_FROM = 0.05
+const RUNUP_SCROLL_TO = 0.75
+// She lands low on the page and runs up it to where she will fly from.
+const RUNUP_START_Y = 0.92
+const FLY_Y = 0.8
+// Mouse steering is relative to where she is when you take over; the gap between the (hidden)
+// cursor and her closes as you move, fading by e every this many pixels of movement.
+const STEER_OFFSET_FADE = 320
 const LIFTOFF_SECONDS = 0.9
 const RUN_TILT = 0.95
 const RUN_SCALE = 0.86
@@ -750,7 +778,7 @@ const shardGeometry = (vertices, centroid, size) => {
  *   getOpenTasksToday() → number, getProjectColor(projectId) → css colour | null
  * @param {object} [options.tuning] for tests only: `startShield`, `invincible`, `seed`, `bossAt`
  *   (seconds; waves scheduled later are dropped), `noWaves`, `waves` (a wave list to fly instead),
- *   `bossHp` and `pickups` (ids dropped right in front of her at lift-off).
+ *   `bossHp`, `bossKind` and `pickups` (ids dropped right in front of her at lift-off).
  */
 export function startRageArena({ strings, from, onExit, pageRoot, progressScope, services = {}, tuning = {} }) {
     if (activeArena) return activeArena
@@ -1142,7 +1170,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     let gameOverShown = false
     let missionEndAt = null
     let hudDirty = true
-    const ship = { x: viewport.width / 2, y: viewport.height * 0.8, vx: 0 }
+    const ship = { x: viewport.width / 2, y: viewport.height * RUNUP_START_Y, vx: 0 }
     const launch = from ? { x: from.x, y: from.y } : { x: viewport.width / 2, y: viewport.height + 40 }
     // She comes out of the avatar at its size, and shrinks back into it on the way home.
     const launchScale = Math.max(0.2, Math.min(1, (from && from.size ? from.size : 20) / ANNA_HEIGHT))
@@ -1150,12 +1178,26 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     let runupStart = 0
     let liftoffAt = -Infinity
     let runupPuffIn = 0
+    let lastStride = -1
     // The raid waits (a little) for the server's copy of your progress before the mission starts.
     let progressSettled = !services.loadProfile
     let lastGreetingStyle = null
     let bubble = null
     let bankAngle = 0
-    const pointer = { x: ship.x, y: ship.y, active: false }
+    const pointer = { x: ship.x, y: ship.y, active: false, anchored: false, offsetX: 0, offsetY: 0 }
+    // Where the mouse wants her: the cursor plus the gap that was there when steering began.
+    const steerTarget = () =>
+        pointer.active && touchId === null ? { x: pointer.x + pointer.offsetX, y: pointer.y + pointer.offsetY } : null
+    /**
+     * Forget where the cursor was. A browser cannot move the real cursor, so instead the next mouse
+     * movement is taken as "the cursor is where Anna is" — she never jumps to wherever the hidden
+     * cursor was left (on the crosshair at take-off, on a shop button, on the hangar's launch button).
+     */
+    const resetSteering = () => {
+        pointer.active = false
+        pointer.anchored = false
+    }
+    let paused = false
     const held = new Set()
     let touchId = null
     let touchLast = null
@@ -1204,7 +1246,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         actions: {
             exit: () => beginReturn(),
             toggleMute: () => {
-                sound.muted = !sound.muted
+                sound.setMuted(!sound.muted)
                 writeMuted(sound.muted)
                 ui.setMuted(sound.muted)
             },
@@ -1288,7 +1330,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         addSparks(x, y, Math.round(8 * size), Math.min(1.6, size))
         if (size >= 1) addRing(x, y, 120 * size, 0.4, 0.6)
         shake = Math.min(14, shake + 3 * size)
-        sound.boom(Math.min(2, 0.7 + size * 0.4))
+        sound.explosion(size)
     }
     const flashScreen = strength => {
         flashMaterial.opacity = Math.max(flashMaterial.opacity, strength)
@@ -1619,6 +1661,14 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         return mesh
     }
 
+    // A cylinder's cap texture sits a quarter turn off once the disc faces the camera; turn it back.
+    const uprightDisc = texture => {
+        if (texture && texture.center) {
+            texture.center.set(0.5, 0.5)
+            texture.rotation = DISC_TEXTURE_TURN
+        }
+        return texture
+    }
     // A box with a face: the shape most of the cast is made of.
     const card = (look, w, h, d) => {
         const mesh = new Mesh(boxGeometry, [look.edge, look.edge, look.edge, look.edge, look.face, look.edge])
@@ -1628,6 +1678,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
     // A disc facing the camera (a badge, a clock).
     const disc = (look, radius, depth) => {
+        uprightDisc(look.face.map)
         const mesh = new Mesh(cylinderGeometry, [look.edge, look.face, look.edge])
         mesh.rotation.x = Math.PI / 2
         mesh.scale.set(radius, depth, radius)
@@ -1733,6 +1784,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             introduced.add(spec.type)
             const text = strings.enemies && strings.enemies[spec.type]
             if (text) ui.showToast(`⚠️ ${text.name}: ${text.hint}`, 2.6)
+            sound.announce()
         }
     }
 
@@ -1743,7 +1795,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         if (!pickupLooks[id]) {
             const type = PICKUP_TYPES[id]
             pickupLooks[id] = {
-                face: keep(new MeshBasicMaterial({ map: keep(pickupTexture(type.icon, type.color)) })),
+                face: keep(new MeshBasicMaterial({ map: uprightDisc(keep(pickupTexture(type.icon, type.color))) })),
                 edge: standard(type.color),
                 halo: keep(
                     new MeshBasicMaterial({
@@ -1817,6 +1869,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         return { group, cooldown: 0, x: 0, y: 0 }
     })
     let lastBuffHud = -1
+    let lastMultiplier = 1
 
     const removeAirEnemy = enemy => {
         scene.remove(enemy.mesh)
@@ -1922,6 +1975,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         }
         hud.dataset.bunkers = String(bunkers.length)
         ui.showToast((resumed ? strings.continueAt : strings.missionStart).replace('{n}', number), 2.2)
+        sound.missionStart()
         hudDirty = true
     }
 
@@ -1958,7 +2012,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
     const hits = (hostile, x, y, r) => {
         if (hostile.kind === 'air') return Math.hypot(hostile.x - x, hostile.y - y) <= hostile.r + r
-        if (hostile.kind === 'boss') return insideBoss(hostile.ref, x, y, r)
+        if (hostile.kind === 'boss') return insideRaidBoss(hostile.ref, x, y, r)
         return Math.abs(hostile.x - x) <= hostile.halfW + r && Math.abs(hostile.y - y) <= hostile.halfH + r
     }
 
@@ -1978,11 +2032,14 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
 
     const damageHostile = (hostile, amount) => {
         if (hostile.kind === 'boss') {
-            if (damageBoss(hostile.ref, amount)) killBoss()
+            if (damageRaidBoss(hostile.ref, amount)) killBoss()
             return
         }
         const enemy = hostile.kind === 'air' ? hostile.ref : hostile.ref.enemy
-        if (!damageEnemy(enemy, amount)) return
+        if (!damageEnemy(enemy, amount)) {
+            if (enemy.hp > 0) sound.hit()
+            return
+        }
         const multiplier = killMultiplier()
         if (hostile.kind === 'air') {
             recordKill(run, enemy.type, multiplier)
@@ -2052,6 +2109,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         const openTasks = boss.openTasks
         run.score += 25 * openTasks
         recordKill(run, 'boss', killMultiplier())
+        sound.bossDown()
         dropFrom('boss', boss.x, boss.y)
         for (let i = 0; i < 6; i++)
             setTimeout(() => {
@@ -2062,6 +2120,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         flashScreen(0.7)
         ui.showToast(`🏆 ${strings.bossDefeated}`, 2.2)
         bossState = 'dead'
+        clearHazards()
         ui.bossBar.style.display = 'none'
         setTimeout(() => removeBoss(), 900)
         finishMission()
@@ -2080,19 +2139,24 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const summonBoss = () => {
         // Every mission ends with the boss — on an empty inbox too. It is equally hard every day;
         // the open-task count is only what it wears on its chest.
+        // Five different bosses, one per mission in turn (raidBosses.js).
         const openTasks = Math.max(0, Math.round(services.getOpenTasksToday ? services.getOpenTasksToday() || 0 : 0))
-        boss = createBoss(openTasks, viewport)
-        boss.maxHp =
-            typeof tuning.bossHp === 'number' ? tuning.bossHp : Math.round(boss.maxHp * missionDifficulty(run.mission))
-        boss.hp = boss.maxHp
-        bossModel = buildBoss(strings.bossCaption)
+        const kind = tuning.bossKind || bossKindFor(run.mission)
+        const hp =
+            typeof tuning.bossHp === 'number' ? tuning.bossHp : Math.round(BOSS_HP * missionDifficulty(run.mission))
+        boss = createRaidBoss(kind, openTasks, viewport, hp)
+        bossModel = buildRaidBossModel(boss.kind, strings.bossCaption)
         bossModel.setCount(openTasks)
         scene.add(bossModel.group)
         bossState = 'active'
-        ui.showToast(`⚠️ ${strings.bossIncoming}`, 2.2)
+        const name = (strings.bosses && strings.bosses[boss.kind]) || strings.bossIncoming
+        ui.showToast(`⚠️ ${name}`, 2.4)
         ui.bossBar.style.display = 'flex'
-        ui.bossLabel.textContent = strings.bossName.replace('{count}', openTasks)
-        sound.boom(1.6)
+        ui.bossLabel.textContent = `${name} · ${strings.bossName.replace('{count}', openTasks)}`
+        hud.dataset.bossKind = boss.kind
+        flashScreen(0.35)
+        shake = Math.min(16, shake + 8)
+        sound.bossArrive(boss.kind)
     }
 
     const finishMission = () => {
@@ -2133,7 +2197,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         addPuff(from.x - 9, from.y + 2, 11, { life: 0.07 })
         addPuff(from.x + 9, from.y + 2, 11, { life: 0.07 })
         volleyCount += 1
-        if (volleyCount % 2 === 0) sound.pew(0.35)
+        sound.gun(run.cannonLevel)
         return gun.interval * fireIntervalFactor(buffs, time)
     }
 
@@ -2154,7 +2218,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                         kind: 'pellet',
                     })
                 )
-                sound.pew(0.6)
+                sound.weapon('bolt')
                 break
             case 'rocket': {
                 rocketSide = -rocketSide
@@ -2166,6 +2230,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 tip.position.y = 11
                 mesh.add(body, tip)
                 scene.add(mesh)
+                sound.weapon('rocket')
                 rockets.push({
                     mesh,
                     x: ship.x + rocketSide * 18,
@@ -2180,6 +2245,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 break
             }
             case 'flame':
+                sound.weapon('flame')
                 for (let i = 0; i < 2; i++) {
                     const angle = UP + (random() - 0.5) * weapon.spread * 2
                     shots.push({
@@ -2212,6 +2278,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 core.renderOrder = 6
                 ring.renderOrder = 6
                 scene.add(core, ring)
+                sound.weapon('blackhole')
                 blackholes.push({ core, ring, x: from.x, y: from.y, age: 0, weapon })
                 break
             }
@@ -2224,7 +2291,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                     addSparks(hostile.x, hostile.y, 6)
                     damageHostile(hostile, weapon.damage)
                 })
-                sound.boom(2)
+                sound.weapon('snap')
                 break
             }
             default:
@@ -2236,6 +2303,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const updateLaser = (weapon, dt) => {
         const active = weapon.kind === 'laser' && (phase === 'flying' || phase === 'cleared') && !greeting
         laserGroup.visible = active
+        sound.laser(active && !paused)
         if (!active) return
         const from = muzzle()
         const length = from.y + 20
@@ -2249,7 +2317,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         laserTick = weapon.interval
         hostiles().forEach(hostile => {
             if (hostile.y > from.y) return
-            const halfW = hostile.kind === 'air' ? hostile.r : hostile.kind === 'boss' ? 78 : hostile.halfW
+            const halfW =
+                hostile.kind === 'air' ? hostile.r : hostile.kind === 'boss' ? hostile.ref.halfWidth : hostile.halfW
             if (Math.abs(hostile.x - from.x) > halfW + weapon.radius) return
             damageHostile(hostile, weapon.damage)
             if (random() < 0.4) addSparks(hostile.x + (random() - 0.5) * 10, hostile.y + 10, 1, 0.5)
@@ -2264,8 +2333,15 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         hudDirty = true
         flashScreen(0.9)
         shake = 18
-        sound.boom(2)
+        sound.bomb()
         enemyShots.length = 0
+        // A bomb also blows away shockwaves and beams that have not fired yet.
+        waves.splice(0).forEach(removeWave)
+        for (let i = beams.length - 1; i >= 0; i--)
+            if (beams[i].age < BEAM_WARN) {
+                removeBeam(beams[i])
+                beams.splice(i, 1)
+            }
         const ring = new Mesh(
             unitPlane,
             keep(new MeshBasicMaterial({ map: textures.ring, transparent: true, depthWrite: false }))
@@ -2291,6 +2367,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         if (!result.hit) return
         hudDirty = true
         sound.hurt()
+        if (run.shield < run.maxShield * 0.25) sound.alarm()
         shake = Math.min(14, shake + 6)
         addSparks(ship.x, ship.y, 10)
         if (result.dead) gameOver()
@@ -2333,6 +2410,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
 
     const equip = id => {
         if (!owned.has(id)) return
+        if (equipped !== id) sound.click()
         equipped = id
         writeStoredWeapon(id)
         specialCooldown = 0
@@ -2360,7 +2438,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                     if (typeof result.newBalance === 'number') knownGold = result.newBalance
                     shopMessage = { id, text: strings.bought, tone: 'ok' }
                     equip(id)
-                    sound.boom(0.5)
+                    sound.purchase()
                 } else {
                     if (result && typeof result.currentGold === 'number') knownGold = result.currentGold
                     const text =
@@ -2380,17 +2458,29 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 if (!finished) shopUi.render()
             })
     }
+    // The shop opens from the hangar or in the middle of a mission (🛒 or B); while it is open
+    // the game is paused, so browsing can never get her killed.
     const openShop = () => {
-        if (phase !== 'hangar' || shopUi.isOpen()) return
+        if (shopUi.isOpen() || !['hangar', 'flying', 'cleared', 'gameover'].includes(phase)) return
+        if (phase === 'flying' || phase === 'cleared') paused = true
+        held.clear()
+        sound.whoosh()
+        sound.engine(0)
+        sound.laser(false)
         shopConfirm = null
         shopMessage = null
         shopUi.open()
         hud.dataset.shop = 'open'
+        hud.dataset.paused = paused ? 'true' : 'false'
     }
     const closeShop = () => {
         if (!shopUi.isOpen()) return
         shopUi.close()
         delete hud.dataset.shop
+        paused = false
+        hud.dataset.paused = 'false'
+        lastTimestamp = 0
+        resetSteering()
     }
 
     /* Hangar. */
@@ -2399,6 +2489,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const openHangar = () => {
         setPhase('hangar')
         cancelGreeting()
+        sound.engine(0)
+        sound.laser(false)
+        sound.missionComplete()
         buffs = createBuffs()
         ui.setBuffs([])
         debrief = completeMission(run)
@@ -2420,7 +2513,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         const result = buyHangarItem(run, id)
         hangarMessage = result.ok ? null : result.reason === 'credits' ? { id, text: strings.notEnoughCredits } : null
         if (result.ok) {
-            sound.boom(0.4)
+            sound.purchase()
             saveProgress()
         }
         ui.hangar.update({ run, message: hangarMessage })
@@ -2430,6 +2523,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         if (phase !== 'hangar') return
         closeShop()
         ui.hangar.hide()
+        resetSteering()
         startNextMission(run)
         setPhase('flying')
         scrollRamp = 0.5
@@ -2457,6 +2551,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
 
     const gameOver = () => {
         cancelGreeting()
+        sound.engine(0)
+        sound.laser(false)
+        sound.gameOver()
         setPhase('gameover')
         gameOverAt = time
         gameOverShown = false
@@ -2490,6 +2587,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         ui.bossBar.style.display = 'none'
         laserGroup.visible = false
         pickups.splice(0).forEach(removePickup)
+        clearHazards()
         buffs = createBuffs()
         shieldBubble.visible = false
         drones.forEach(drone => {
@@ -2513,7 +2611,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         run = freshRun()
         scoreSubmitted = false
         ship.x = viewport.width / 2
-        ship.y = viewport.height * 0.8
+        ship.y = viewport.height * FLY_Y
+        resetSteering()
         shipNode.visible = true
         setPhase('flying')
         scrollRamp = 0.5
@@ -2567,7 +2666,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         hud.style.opacity = '0'
         shipNode.visible = true
         setPhase('returning')
-        sound.boom(0.4)
+        sound.engine(0)
+        sound.laser(false)
+        sound.whoosh()
     }
 
     const updateReturn = () => {
@@ -2650,7 +2751,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 style,
             },
         }
-        sound.boom(0.35)
+        sound.greet()
     }
     const updateGreeting = dt => {
         greeting.t += dt
@@ -2744,7 +2845,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
      * ground picks up speed. The mission itself starts at lift-off.
      */
     const runPose = (elapsed, amount) => {
-        const cadence = 10 + 7 * clamp01(elapsed / RUNUP_MIN_SECONDS)
+        const cadence = 8 + 12 * clamp01(elapsed / RUNUP_MIN_SECONDS) ** 1.3
         const swing = Math.sin(elapsed * cadence) * 0.9 * amount
         character.legs[0].rotation.z = swing
         character.legs[1].rotation.z = -swing
@@ -2755,18 +2856,35 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
     const updateRunup = dt => {
         const elapsed = time - runupStart
+        const k = clamp01(elapsed / RUNUP_MIN_SECONDS)
+        // You can steer her across the page; up it, she runs on her own.
         const thrust = moveVector(held)
-        stepShip(ship, { thrust, target: pointer.active && touchId === null ? pointer : null }, dt, viewport)
+        stepShip(ship, { thrust: { x: thrust.x, y: 0 }, target: steerTarget() }, dt, viewport)
+        ship.y = viewport.height * (RUNUP_START_Y + (FLY_Y - RUNUP_START_Y) * easeInOut(k))
         bankAngle *= 1 - Math.min(1, dt * 8)
         const bob = runPose(elapsed, 1)
+        // A footstep every time a foot comes down (twice per stride).
+        const cadence = 8 + 12 * k ** 1.3
+        const stride = Math.floor((elapsed * cadence) / Math.PI)
+        if (stride !== lastStride) {
+            lastStride = stride
+            sound.step(k)
+        }
         shipNode.rotation.x = RUN_TILT
-        // The jetpack only coughs while she runs.
-        const sputter = 0.18 + (Math.random() < 0.15 ? 0.4 : 0)
+        // The jetpack coughs at first and roars into life as she picks up speed.
+        const sputter = 0.15 + 0.6 * k * k + (Math.random() < 0.15 ? 0.35 : 0)
         positionShip(ship.x, ship.y - bob, RUN_SCALE, Z.shipGround, sputter)
+        shake = Math.max(shake, k * k * 2.5)
         runupPuffIn -= dt
         if (runupPuffIn <= 0) {
-            runupPuffIn = 0.16
-            addPuff(ship.x + (random() - 0.5) * 8, ship.y + 22, 8 + random() * 6, { life: 0.6, smoke: true, vy: 40 })
+            // Kicked-up dust, faster and further the faster she runs.
+            runupPuffIn = 0.22 - 0.16 * k
+            addPuff(ship.x + (random() - 0.5) * 10, ship.y + 22, 8 + random() * 6 + k * 8, {
+                life: 0.5 + k * 0.4,
+                smoke: true,
+                vx: (random() - 0.5) * 40,
+                vy: 40 + k * 260,
+            })
         }
         if (elapsed >= RUNUP_MIN_SECONDS && (progressSettled || elapsed >= RUNUP_MAX_SECONDS)) liftOff()
     }
@@ -2787,7 +2905,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         }
         addPuff(ship.x, ship.y + 20, 30, { life: 0.25 })
         shake = Math.min(14, shake + 5)
-        sound.boom(0.9)
+        sound.ignition()
         startMission(run.mission, { fromPage: true, resumed: !!checkpoint })
         ;(tuning.pickups || []).forEach((id, i) => spawnPickup(id, ship.x + (i - 0.5) * 6, ship.y - 4, false))
     }
@@ -2805,7 +2923,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
 
     const updateShip = dt => {
         const thrust = moveVector(held)
-        stepShip(ship, { thrust, target: pointer.active && touchId === null ? pointer : null }, dt, viewport)
+        stepShip(ship, { thrust, target: steerTarget() }, dt, viewport)
         bankAngle += (Math.max(-0.7, Math.min(0.7, ship.vx / 900)) - bankAngle) * Math.min(1, dt * 8)
         const lift = liftoffProgress()
         if (greeting) updateGreeting(dt)
@@ -2881,9 +2999,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 continue
             }
             if (phase === 'flying') {
-                stepEnemyFire(enemy, dt, ship, viewport, difficulty, random).forEach(bullet =>
-                    enemyShots.push({ ...bullet, r: 7, damage: DAMAGE.bullet })
-                )
+                const fired = stepEnemyFire(enemy, dt, ship, viewport, difficulty, random)
+                fired.forEach(bullet => enemyShots.push({ ...bullet, r: 7, damage: DAMAGE.bullet }))
+                if (fired.length) sound.enemyShot(enemy.type)
                 const distance = Math.hypot(enemy.x - ship.x, enemy.y - ship.y)
                 if (type.contact && distance < enemy.radius + SHIP_HIT_RADIUS) {
                     hurtShip(type.contact)
@@ -2893,7 +3011,10 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 }
                 // A mine arms when she comes close, blinks, and goes off.
                 if (type.mine && enemy.hp > 0) {
-                    if (!enemy.armedAt && distance < MINE_TRIGGER_RADIUS) enemy.armedAt = time
+                    if (!enemy.armedAt && distance < MINE_TRIGGER_RADIUS) {
+                        enemy.armedAt = time
+                        sound.mine()
+                    }
                     if (enemy.armedAt && time - enemy.armedAt > MINE_FUSE_SECONDS) {
                         mineBurst(enemy, true, difficulty).forEach(shot =>
                             enemyShots.push({ ...shot, r: 7, damage: DAMAGE.bullet })
@@ -2988,17 +3109,134 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         if (!boss || !bossModel) return
         const dt = realDt * enemyTimeScale(buffs, time)
         if (boss.hp > 0 && phase === 'flying') {
-            stepBoss(boss, dt, ship, viewport, random).forEach(orb =>
-                enemyShots.push({ ...orb, r: ORB_RADIUS, damage: DAMAGE.bossOrb, orb: true })
+            const out = stepRaidBoss(boss, dt, ship, viewport, random)
+            out.orbs.forEach(orb => enemyShots.push({ ...orb, r: ORB_RADIUS, damage: DAMAGE.bossOrb, orb: true }))
+            if (out.orbs.length) sound.enemyShot(boss.kind === 'clock' ? 'deadline' : 'boss')
+            if (boss.kind === 'clock') sound.tick(Math.floor(boss.t * 2) % 2 === 1)
+            out.beams.forEach(spec => addBeam(createBeam(spec, boss)))
+            out.waves.forEach(spec => addWave(createWave(spec, boss)))
+            out.spawns.forEach(wave =>
+                expandWave(wave, viewport).forEach(spec => pendingSpawns.push({ at: missionTime + spec.delay, spec }))
             )
-            if (insideBoss(boss, ship.x, ship.y, 6)) hurtShip(DAMAGE.bossContact)
+            if (insideRaidBoss(boss, ship.x, ship.y, 6)) hurtShip(DAMAGE.bossContact)
         }
         toWorld(bossModel.group, boss.x, boss.y, Z.boss)
         bossModel.setCount(displayedCount(boss))
-        bossModel.lookAt(ship.x - boss.x, ship.y - boss.y)
+        bossModel.animate(boss, ship)
         bossModel.bodyMaterial.emissiveIntensity = boss.hurt > 0 ? 0.5 : 0
         ui.bossFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`
         hud.dataset.boss = String(displayedCount(boss))
+    }
+
+    /*
+     * Boss hazards beyond bullets. A beam is a thin flickering warning line first and only burns
+     * after BEAM_WARN; a wave is a growing ring whose one gap is visible from the moment it leaves.
+     */
+    const beams = []
+    const waves = []
+    const addBeam = beam => {
+        const glow = new MeshBasicMaterial({ color: '#FF3B30', transparent: true, depthWrite: false, depthTest: false })
+        const core = new MeshBasicMaterial({ color: '#FFFFFF', transparent: true, depthWrite: false, depthTest: false })
+        const group = new Group()
+        const glowMesh = new Mesh(unitPlane, glow)
+        const coreMesh = new Mesh(unitPlane, core)
+        glowMesh.renderOrder = 8
+        coreMesh.renderOrder = 9
+        group.add(glowMesh, coreMesh)
+        scene.add(group)
+        beams.push({ ...beam, group, glow, core, glowMesh, coreMesh })
+        sound.beamWarn()
+    }
+    const removeBeam = beam => {
+        scene.remove(beam.group)
+        beam.glow.dispose()
+        beam.core.dispose()
+    }
+    const addWave = wave => {
+        const material = new MeshBasicMaterial({
+            color: '#E53935',
+            transparent: true,
+            opacity: 0.85,
+            depthWrite: false,
+            depthTest: false,
+            side: DoubleSide,
+        })
+        const mesh = new Mesh(new BufferGeometry(), material)
+        mesh.renderOrder = 7
+        scene.add(mesh)
+        waves.push({ ...wave, mesh, material })
+        sound.wave(boss && boss.kind === 'bell' ? 'bell' : 'pulse')
+    }
+    const removeWave = wave => {
+        scene.remove(wave.mesh)
+        wave.mesh.geometry.dispose()
+        wave.material.dispose()
+    }
+    const clearHazards = () => {
+        beams.splice(0).forEach(removeBeam)
+        waves.splice(0).forEach(removeWave)
+    }
+    const updateHazards = realDt => {
+        const dt = realDt * enemyTimeScale(buffs, time)
+        for (let i = beams.length - 1; i >= 0; i--) {
+            const beam = beams[i]
+            if (!stepBeam(beam, dt, boss)) {
+                removeBeam(beam)
+                beams.splice(i, 1)
+                continue
+            }
+            const warning = beam.age < BEAM_WARN
+            const flicker = Math.floor(beam.age * 16) % 2 === 0
+            const width = beam.kind === 'column' ? COLUMN_WIDTH : SWEEP_WIDTH
+            const glowWidth = warning ? 3 : width
+            const coreWidth = warning ? 0 : width * 0.35
+            beam.glow.opacity = warning ? (flicker ? 0.8 : 0.35) : 0.85
+            beam.core.opacity = warning ? 0 : 1
+            if (beam.kind === 'column') {
+                beam.group.position.set(beam.x, -viewport.height / 2, Z.fx - 2)
+                beam.group.rotation.z = 0
+                beam.glowMesh.scale.set(glowWidth, viewport.height + 40, 1)
+                beam.coreMesh.scale.set(Math.max(0.01, coreWidth), viewport.height + 40, 1)
+            } else {
+                const length = Math.hypot(viewport.width, viewport.height) * 1.2
+                beam.group.position.set(beam.cx, -beam.cy, Z.fx - 2)
+                // Screen angle a points along (cos a, sin a), i.e. world (cos a, -sin a).
+                beam.group.rotation.z = -beam.angle
+                beam.glowMesh.position.set(length / 2, 0, 0)
+                beam.coreMesh.position.set(length / 2, 0, 0.1)
+                beam.glowMesh.scale.set(length, glowWidth, 1)
+                beam.coreMesh.scale.set(length, Math.max(0.01, coreWidth), 1)
+            }
+            if (beam.live && !beam.fired) {
+                beam.fired = true
+                sound.beamFire()
+            }
+            if (phase === 'flying' && beamHits(beam, ship.x, ship.y, SHIP_HIT_RADIUS)) hurtShip(DAMAGE.beam)
+        }
+        for (let i = waves.length - 1; i >= 0; i--) {
+            const wave = waves[i]
+            if (!stepWave(wave, dt, viewport)) {
+                removeWave(wave)
+                waves.splice(i, 1)
+                continue
+            }
+            // The ring is redrawn at its true thickness every frame, its gap where the hit test has it.
+            wave.mesh.geometry.dispose()
+            const inner = Math.max(1, wave.radius - WAVE_THICKNESS / 2)
+            wave.mesh.geometry = new RingGeometry(
+                inner,
+                wave.radius + WAVE_THICKNESS / 2,
+                72,
+                1,
+                -wave.gapAngle + WAVE_GAP / 2,
+                Math.PI * 2 - WAVE_GAP
+            )
+            wave.mesh.position.set(wave.x, -wave.y, Z.fx - 3)
+            wave.material.opacity = 0.85 * Math.min(1, wave.age * 4)
+            if (phase === 'flying' && waveHits(wave, ship.x, ship.y, SHIP_HIT_RADIUS)) hurtShip(DAMAGE.wave)
+        }
+        hud.dataset.beams = String(beams.length)
+        hud.dataset.waves = String(waves.length)
     }
 
     const updateShots = dt => {
@@ -3091,6 +3329,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 }
             }
             if (hole.age >= weapon.travel + weapon.pull) {
+                sound.weapon('implode')
                 explode(hole.x, hole.y, 1.6)
                 hostiles().forEach(hostile => {
                     if (Math.hypot(hostile.x - hole.x, hostile.y - hole.y) <= weapon.blast + (hostile.r || 40))
@@ -3170,7 +3409,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         ui.showToast(`${type.icon} ${text || pickup.id}`, 1.6)
         addRing(pickup.x, pickup.y, 110, 0.4, 0.8)
         addSparks(pickup.x, pickup.y, 12, 0.8)
-        sound.chime()
+        sound.pickup(pickup.id)
         hud.dataset.collected = String(Number(hud.dataset.collected || 0) + 1)
         hud.dataset.lastPickup = pickup.id
         hudDirty = true
@@ -3228,7 +3467,15 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             lastBuffHud = now
             ui.setBuffs(activeBuffs(buffs, now))
             const combo = currentCombo(run, now)
-            ui.setCombo(combo, comboMultiplier(combo) * (isActive(buffs, 'star', now) ? 2 : 1))
+            const multiplier = comboMultiplier(combo) * (isActive(buffs, 'star', now) ? 2 : 1)
+            if (multiplier > lastMultiplier && multiplier > 1) sound.combo(multiplier)
+            lastMultiplier = multiplier
+            ui.setCombo(combo, multiplier)
+            // The jetpack's rumble follows the ground speed; a battered shield keeps warning.
+            if (phase === 'flying' || phase === 'cleared') {
+                sound.engine(0.4 + 0.6 * scrollRamp)
+                if (phase === 'flying' && run.shield < run.maxShield * 0.25) sound.alarm()
+            }
             hud.dataset.buffs = activeBuffs(buffs, now)
                 .map(buff => buff.id)
                 .join(',')
@@ -3404,6 +3651,12 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         frameId = 0
         const dt = lastTimestamp ? Math.min(0.05, (timestamp - lastTimestamp) / 1000) : 1 / 60
         lastTimestamp = timestamp
+        if (paused) {
+            // The shop is open: everything holds still (buff timers too), the picture stays.
+            renderer.render(scene, camera)
+            frameId = requestAnimationFrame(frame)
+            return
+        }
         time += dt
         if (phase === 'takeoff') {
             const k = easeInOut(clamp01(time / TAKEOFF_SECONDS))
@@ -3466,6 +3719,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             updateEnemyShots(dt)
             updatePickups(dt)
             updateBuffs(dt)
+            updateHazards(dt)
         }
         // updateReturn may finish and dispose the renderer on this very frame.
         if (finished) return
@@ -3481,6 +3735,41 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
 
     /* Input. */
+    // The first movement after a reset only records the gap to Anna; after that every movement
+    // moves her with the mouse and closes the gap a little. The closing is bounded so it can never
+    // feel wrong: she always moves the way the mouse moved, at least two thirds and at most twice as
+    // far, with only a little sideways drift.
+    const steerTo = (x, y) => {
+        if (!pointer.anchored) {
+            pointer.offsetX = ship.x - x
+            pointer.offsetY = ship.y - y
+            pointer.anchored = true
+        } else {
+            const dx = x - pointer.x
+            const dy = y - pointer.y
+            const length = Math.hypot(dx, dy)
+            if (length > 0) {
+                const ux = dx / length
+                const uy = dy / length
+                const fade = 1 - Math.exp(-length / STEER_OFFSET_FADE)
+                const gx = -pointer.offsetX * fade
+                const gy = -pointer.offsetY * fade
+                const along = Math.max(-length / 3, Math.min(length, gx * ux + gy * uy))
+                let px = gx - (gx * ux + gy * uy) * ux
+                let py = gy - (gx * ux + gy * uy) * uy
+                const side = Math.hypot(px, py)
+                if (side > length / 2) {
+                    px *= length / 2 / side
+                    py *= length / 2 / side
+                }
+                pointer.offsetX += along * ux + px
+                pointer.offsetY += along * uy + py
+            }
+        }
+        pointer.x = x
+        pointer.y = y
+        pointer.active = true
+    }
     const onPointerDown = event => {
         event.preventDefault()
         event.stopPropagation()
@@ -3489,9 +3778,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             touchId = event.pointerId
             touchLast = { x: event.clientX, y: event.clientY }
         } else {
-            pointer.x = event.clientX
-            pointer.y = event.clientY
-            pointer.active = true
+            steerTo(event.clientX, event.clientY)
             // The right button drops a bomb, for those who play with one hand on the mouse.
             if (event.button === 2) dropBomb()
         }
@@ -3512,9 +3799,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             return
         }
         if (event.pointerType === 'touch') return
-        pointer.x = event.clientX
-        pointer.y = event.clientY
-        pointer.active = true
+        steerTo(event.clientX, event.clientY)
         held.clear()
     }
     const onPointerUp = event => {
@@ -3547,14 +3832,20 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         if (shopUi.isOpen()) return
         if (phase === 'hangar') {
             if (down && event.key === 'Enter') launchNextMission()
+            if (down && event.code === 'KeyB') openShop()
             return
         }
         if (phase === 'gameover') {
             if (down && event.key === 'Enter' && gameOverShown) playAgain()
+            if (down && event.code === 'KeyB' && gameOverShown) openShop()
             return
         }
         if (event.code === 'Space') {
             if (down && !event.repeat) dropBomb()
+            return
+        }
+        if (down && event.code === 'KeyB') {
+            openShop()
             return
         }
         if (event.key === 'Enter') {
@@ -3569,6 +3860,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         }
         const direction = directionForKey(event.code)
         if (!direction) return
+        // Steering with the keyboard: the mouse takes over again from wherever she ends up.
+        if (down) resetSteering()
         if (down) held.add(direction)
         else held.delete(direction)
     }
