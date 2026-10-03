@@ -22,6 +22,7 @@ import {
     PlaneGeometry,
     Scene,
     ShadowMaterial,
+    SphereGeometry,
     SRGBColorSpace,
     Vector3,
     WebGLRenderer,
@@ -40,10 +41,37 @@ import {
     isBlinking,
     missionDifficulty,
     recordKill,
+    registerKill,
+    currentCombo,
+    comboMultiplier,
     startNextMission,
     useBomb,
 } from './raidRun'
-import { createEnemy, damageEnemy, expandWave, stepAirEnemy, stepBullet, stepEnemyFire } from './raidEnemies'
+import {
+    createEnemy,
+    damageEnemy,
+    DEFAULT_TINT,
+    ENEMY_TYPES,
+    expandWave,
+    MINE_FUSE_SECONDS,
+    MINE_TRIGGER_RADIUS,
+    mineBurst,
+    splitSpecs,
+    stepAirEnemy,
+    stepBullet,
+    stepEnemyFire,
+} from './raidEnemies'
+import {
+    activeBuffs,
+    collectPickup,
+    createBuffs,
+    enemyTimeScale,
+    fireIntervalFactor,
+    isActive,
+    MAGNET_RADIUS,
+    PICKUP_TYPES,
+    rollDrops,
+} from './raidPickups'
 import {
     buildMission,
     CHUNK_HEIGHT,
@@ -145,6 +173,13 @@ const MAX_PUFFS = 520
 const MAX_SPARKS = 400
 const MAX_DEBRIS = 260
 const MAX_WRECKS = 40
+const MAX_PICKUPS = 24
+const PICKUP_COLLECT_RADIUS = 34
+const PICKUP_LIFE = 14
+const DRONE_ORBIT = 54
+const DRONE_FIRE_INTERVAL = 0.24
+// The cast that gets a "New:" announcement the first time it shows up in a run.
+const INTRODUCED_TYPES = ['chat', 'ping', 'note', 'mine', 'meeting', 'deadline', 'carrier']
 const MAX_PAGE_TURRETS = 8
 const WEAPON_KEY = 'alldone.rageMode.weapon'
 // Anna's height on screen at scale 1, for shrinking her into (and out of) the avatar she launches from.
@@ -302,20 +337,181 @@ const boltTexture = () =>
     })
 
 // Enemy fire: a red ring around a white core, the colour of danger in every shooter.
+// Enemy fire: a soft disc, tinted per enemy (red by default, blue chat, purple meetings…), with a
+// separate white core drawn over it so every shot reads as a glowing ball whatever its colour.
 const orbTexture = () =>
     canvasTexture(48, 48, (context, w) => {
-        context.fillStyle = '#7F0000'
+        context.fillStyle = 'rgba(40,40,40,0.9)'
         context.beginPath()
         context.arc(w / 2, w / 2, w / 2 - 1, 0, Math.PI * 2)
         context.fill()
-        context.fillStyle = '#FF3B30'
+        context.fillStyle = '#FFFFFF'
         context.beginPath()
         context.arc(w / 2, w / 2, w / 2 - 5, 0, Math.PI * 2)
         context.fill()
-        context.fillStyle = '#FFFFFF'
-        context.beginPath()
-        context.arc(w / 2, w / 2, w / 4, 0, Math.PI * 2)
-        context.fill()
+    })
+
+/* The cast's faces. Each is a card texture for the +z face of a box, drawn at 2x. */
+const cardTexture = (width, height, draw) =>
+    canvasTexture(width * 2, height * 2, (context, w, h) => {
+        context.scale(2, 2)
+        draw(context, w / 2, h / 2)
+    })
+
+const chatTexture = () =>
+    cardTexture(48, 34, (c, w, h) => {
+        c.fillStyle = '#FFFFFF'
+        roundedRect(c, 1, 1, w - 2, h - 2, 12)
+        c.fill()
+        c.strokeStyle = '#2F80ED'
+        c.lineWidth = 3
+        roundedRect(c, 2.5, 2.5, w - 5, h - 5, 11)
+        c.stroke()
+        c.fillStyle = '#2F80ED'
+        ;[-11, 0, 11].forEach(dx => {
+            c.beginPath()
+            c.arc(w / 2 + dx, h / 2, 4, 0, Math.PI * 2)
+            c.fill()
+        })
+    })
+
+const badgeTexture = () =>
+    cardTexture(32, 32, (c, w) => {
+        c.fillStyle = '#E53935'
+        c.beginPath()
+        c.arc(w / 2, w / 2, w / 2 - 1, 0, Math.PI * 2)
+        c.fill()
+        c.strokeStyle = '#FFFFFF'
+        c.lineWidth = 2.5
+        c.beginPath()
+        c.arc(w / 2, w / 2, w / 2 - 3, 0, Math.PI * 2)
+        c.stroke()
+        c.fillStyle = '#FFFFFF'
+        c.font = '800 18px Roboto, system-ui, sans-serif'
+        c.textAlign = 'center'
+        c.textBaseline = 'middle'
+        c.fillText('1', w / 2, w / 2 + 1)
+    })
+
+const noteTexture = () =>
+    cardTexture(48, 48, (c, w, h) => {
+        c.fillStyle = '#FFE082'
+        c.fillRect(0, 0, w, h)
+        c.fillStyle = '#FFCA28'
+        c.beginPath()
+        c.moveTo(w - 12, h)
+        c.lineTo(w, h - 12)
+        c.lineTo(w, h)
+        c.fill()
+        c.strokeStyle = 'rgba(120,80,0,0.45)'
+        c.lineWidth = 2
+        ;[13, 21, 29, 37].forEach((y, i) => {
+            c.beginPath()
+            c.moveTo(8, y)
+            c.lineTo(w - 10 - (i % 2) * 10, y)
+            c.stroke()
+        })
+    })
+
+const checkboxTexture = () =>
+    cardTexture(40, 40, (c, w) => {
+        c.fillStyle = '#FFFFFF'
+        roundedRect(c, 1, 1, w - 2, w - 2, 9)
+        c.fill()
+        c.strokeStyle = '#2E7D32'
+        c.lineWidth = 4
+        roundedRect(c, 3, 3, w - 6, w - 6, 8)
+        c.stroke()
+        c.lineCap = 'round'
+        c.lineWidth = 5
+        c.beginPath()
+        c.moveTo(11, 21)
+        c.lineTo(18, 28)
+        c.lineTo(30, 12)
+        c.stroke()
+    })
+
+const calendarTexture = () =>
+    cardTexture(72, 62, (c, w, h) => {
+        c.fillStyle = '#FFFFFF'
+        roundedRect(c, 1, 1, w - 2, h - 2, 8)
+        c.fill()
+        c.fillStyle = '#7E57C2'
+        roundedRect(c, 1, 1, w - 2, 18, 8)
+        c.fill()
+        c.fillRect(1, 10, w - 2, 9)
+        c.fillStyle = '#FFFFFF'
+        c.font = '800 10px Roboto, system-ui, sans-serif'
+        c.textAlign = 'center'
+        c.textBaseline = 'middle'
+        c.fillText('MEETING', w / 2, 11)
+        c.fillStyle = '#31264F'
+        c.font = '800 20px Roboto, system-ui, sans-serif'
+        c.fillText('10:00', w / 2, 37)
+        c.fillStyle = 'rgba(126,87,194,0.35)'
+        c.fillRect(12, 50, w - 24, 4)
+    })
+
+const clockTexture = () =>
+    cardTexture(84, 84, (c, w) => {
+        const r = w / 2
+        c.fillStyle = '#EF6C00'
+        c.beginPath()
+        c.arc(r, r, r - 1, 0, Math.PI * 2)
+        c.fill()
+        c.fillStyle = '#FFFFFF'
+        c.beginPath()
+        c.arc(r, r, r - 7, 0, Math.PI * 2)
+        c.fill()
+        c.fillStyle = '#3A2A1E'
+        for (let i = 0; i < 12; i++) {
+            const a = (Math.PI * 2 * i) / 12
+            const long = i % 3 === 0
+            c.beginPath()
+            c.arc(r + Math.cos(a) * (r - 14), r + Math.sin(a) * (r - 14), long ? 3 : 1.8, 0, Math.PI * 2)
+            c.fill()
+        }
+    })
+
+// The starred task: a golden card with a white star, the one thing worth chasing.
+const starCardTexture = () =>
+    cardTexture(48, 34, (c, w, h) => {
+        const gradient = c.createLinearGradient(0, 0, w, h)
+        gradient.addColorStop(0, '#FFE082')
+        gradient.addColorStop(1, '#FFB300')
+        c.fillStyle = gradient
+        roundedRect(c, 1, 1, w - 2, h - 2, 7)
+        c.fill()
+        c.fillStyle = '#FFFFFF'
+        c.beginPath()
+        for (let i = 0; i < 10; i++) {
+            const a = -Math.PI / 2 + (Math.PI * i) / 5
+            const radius = i % 2 ? 5 : 12
+            const x = w / 2 + Math.cos(a) * radius
+            const y = h / 2 + Math.sin(a) * radius
+            if (i) c.lineTo(x, y)
+            else c.moveTo(x, y)
+        }
+        c.closePath()
+        c.fill()
+    })
+
+// A power-up token's face: its colour round the rim, its icon in the middle.
+const pickupTexture = (icon, color) =>
+    canvasTexture(96, 96, (c, w) => {
+        const r = w / 2
+        c.fillStyle = color
+        c.beginPath()
+        c.arc(r, r, r - 2, 0, Math.PI * 2)
+        c.fill()
+        c.fillStyle = '#FFFFFF'
+        c.beginPath()
+        c.arc(r, r, r - 10, 0, Math.PI * 2)
+        c.fill()
+        c.font = '44px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
+        c.textAlign = 'center'
+        c.textBaseline = 'middle'
+        c.fillText(icon, r, r + 3)
     })
 
 // The shadow the ground throws onto the page below the seam: it is what makes the generated ground
@@ -553,7 +749,8 @@ const shardGeometry = (vertices, centroid, size) => {
  *   submitScore(score) → Promise<{ok, highscore, isNew}>, getGold() → number,
  *   getOpenTasksToday() → number, getProjectColor(projectId) → css colour | null
  * @param {object} [options.tuning] for tests only: `startShield`, `invincible`, `seed`, `bossAt`
- *   (seconds; waves scheduled later are dropped) and `noWaves`.
+ *   (seconds; waves scheduled later are dropped), `noWaves`, `waves` (a wave list to fly instead),
+ *   `bossHp` and `pickups` (ids dropped right in front of her at lift-off).
  */
 export function startRageArena({ strings, from, onExit, pageRoot, progressScope, services = {}, tuning = {} }) {
     if (activeArena) return activeArena
@@ -704,6 +901,23 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         envelopeFace: keep(new MeshBasicMaterial({ map: textures.envelope })),
         engine: keep(new MeshBasicMaterial({ color: '#FFAE47' })),
     }
+    // Each member of the cast: its face texture and the colour of its edges, made on first use.
+    const castLooks = {}
+    const castLook = (type, makeTexture, edge) => {
+        if (!castLooks[type]) {
+            const face = keep(new MeshBasicMaterial({ map: keep(makeTexture()), transparent: true }))
+            castLooks[type] = { face, edge: standard(edge) }
+        }
+        return castLooks[type]
+    }
+    const cylinderGeometry = keep(new CylinderGeometry(1, 1, 1, 28))
+    const spikeGeometry = keep(new ConeGeometry(3.2, 9, 5))
+    const coreTexture = keep(puffTexture())
+    const tintColors = new Map()
+    const tintColor = css => {
+        if (!tintColors.has(css)) tintColors.set(css, new Color(css))
+        return tintColors.get(css)
+    }
 
     /* Layers of the scene. */
     const ground = new Group()
@@ -747,6 +961,13 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         MAX_ENEMY_SHOTS,
         5
     )
+    // The white heart of every enemy shot, drawn over its tinted body.
+    const enemyCoreMesh = instanced(
+        unitPlane,
+        keep(new MeshBasicMaterial({ map: textures.puff, transparent: true, depthWrite: false, depthTest: false })),
+        MAX_ENEMY_SHOTS,
+        6
+    )
     const puffMesh = instanced(
         unitPlane,
         keep(new MeshBasicMaterial({ map: textures.puff, transparent: true, depthWrite: false, depthTest: false })),
@@ -757,6 +978,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     // Instance colours exist only once something is written; write white everywhere first.
     const white = new Color('#ffffff')
     for (let i = 0; i < MAX_PUFFS; i++) puffMesh.setColorAt(i, white)
+    for (let i = 0; i < MAX_ENEMY_SHOTS; i++) enemyShotMesh.setColorAt(i, white)
 
     // The laser: a red beam with a white core, both scaled to reach from the muzzle to the top.
     const laserGlow = new Mesh(unitPlane, keep(new MeshBasicMaterial({ color: '#FF3B30' })))
@@ -1397,15 +1619,204 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         return mesh
     }
 
+    // A box with a face: the shape most of the cast is made of.
+    const card = (look, w, h, d) => {
+        const mesh = new Mesh(boxGeometry, [look.edge, look.edge, look.edge, look.edge, look.face, look.edge])
+        mesh.scale.set(w, h, d)
+        mesh.castShadow = true
+        return mesh
+    }
+    // A disc facing the camera (a badge, a clock).
+    const disc = (look, radius, depth) => {
+        const mesh = new Mesh(cylinderGeometry, [look.edge, look.face, look.edge])
+        mesh.rotation.x = Math.PI / 2
+        mesh.scale.set(radius, depth, radius)
+        mesh.castShadow = true
+        return mesh
+    }
+    const buildCast = type => {
+        const group = new Group()
+        switch (type) {
+            case 'chat': {
+                const look = castLook('chat', chatTexture, '#BBD3F7')
+                group.add(card(look, 46, 33, 7))
+                const tail = new Mesh(spikeGeometry, look.edge)
+                tail.position.set(-12, -19, 0)
+                tail.rotation.z = Math.PI * 0.85
+                group.add(tail)
+                break
+            }
+            case 'ping':
+                group.add(disc(castLook('ping', badgeTexture, '#B71C1C'), 15, 7))
+                break
+            case 'note':
+            case 'noteSmall': {
+                const size = type === 'note' ? 46 : 26
+                group.add(card(castLook('note', noteTexture, '#F9C846'), size, size, 3))
+                group.rotation.z = (random() - 0.5) * 0.5
+                break
+            }
+            case 'mine': {
+                const look = castLook('mine', checkboxTexture, '#A5D6A7')
+                group.add(card(look, 36, 36, 9))
+                const spikes = standard('#2E7D32')
+                ;[0, 1, 2, 3].forEach(i => {
+                    const spike = new Mesh(spikeGeometry, spikes)
+                    const angle = (Math.PI / 2) * i + Math.PI / 4
+                    spike.position.set(Math.cos(angle) * 24, Math.sin(angle) * 24, 0)
+                    spike.rotation.z = angle - Math.PI / 2
+                    spike.castShadow = true
+                    group.add(spike)
+                })
+                group.userData.blink = look.edge
+                break
+            }
+            case 'meeting': {
+                group.add(card(castLook('meeting', calendarTexture, '#D1C4E9'), 70, 60, 12))
+                const rings = standard('#5E35B1')
+                ;[-18, 18].forEach(x => {
+                    const ring = new Mesh(cylinderGeometry, rings)
+                    ring.rotation.x = Math.PI / 2
+                    ring.scale.set(4, 16, 4)
+                    ring.position.set(x, 30, 4)
+                    ring.castShadow = true
+                    group.add(ring)
+                })
+                break
+            }
+            case 'deadline': {
+                group.add(disc(castLook('deadline', clockTexture, '#BF360C'), 40, 14))
+                const hand = standard('#3A2A1E')
+                const makeHand = (length, width) => {
+                    const pivot = new Group()
+                    pivot.position.z = 8
+                    const bar = new Mesh(boxGeometry, hand)
+                    bar.scale.set(width, length, 3)
+                    bar.position.y = length / 2 - 3
+                    pivot.add(bar)
+                    group.add(pivot)
+                    return pivot
+                }
+                group.userData.hands = [makeHand(30, 3.5), makeHand(20, 5)]
+                // Two little bells on top, like an alarm clock.
+                ;[-26, 26].forEach(x => {
+                    const bell = new Mesh(cylinderGeometry, castLook('deadline', clockTexture, '#BF360C').edge)
+                    bell.rotation.x = Math.PI / 2
+                    bell.scale.set(9, 6, 9)
+                    bell.position.set(x, 34, 4)
+                    group.add(bell)
+                })
+                break
+            }
+            case 'carrier':
+                group.add(card(castLook('carrier', starCardTexture, '#FFB300'), 46, 32, 6))
+                break
+            default:
+                return null
+        }
+        group.rotation.x = -0.3
+        return group
+    }
+
     /* Spawning. */
+    const introduced = new Set()
     const spawnAirEnemy = spec => {
         const enemy = createEnemy(spec, missionDifficulty(run.mission), random)
-        enemy.mesh = spec.type === 'mail' ? buildEnvelope() : buildFighter()
+        enemy.mesh =
+            spec.type === 'mail' ? buildEnvelope() : spec.type === 'fighter' ? buildFighter() : buildCast(spec.type)
         enemy.spin = random() * Math.PI * 2
         scene.add(enemy.mesh)
-        stepAirEnemy(enemy, 0)
+        stepAirEnemy(enemy, 0, ship)
         airEnemies.push(enemy)
+        // The first of a new kind is announced, with how to deal with it.
+        if (INTRODUCED_TYPES.includes(spec.type) && !introduced.has(spec.type)) {
+            introduced.add(spec.type)
+            const text = strings.enemies && strings.enemies[spec.type]
+            if (text) ui.showToast(`⚠️ ${text.name}: ${text.hint}`, 2.6)
+        }
     }
+
+    /* Power-ups. */
+    const pickups = []
+    const pickupLooks = {}
+    const pickupLook = id => {
+        if (!pickupLooks[id]) {
+            const type = PICKUP_TYPES[id]
+            pickupLooks[id] = {
+                face: keep(new MeshBasicMaterial({ map: keep(pickupTexture(type.icon, type.color)) })),
+                edge: standard(type.color),
+                halo: keep(
+                    new MeshBasicMaterial({
+                        map: textures.ring,
+                        color: type.color,
+                        transparent: true,
+                        depthWrite: false,
+                        opacity: 0.8,
+                    })
+                ),
+            }
+        }
+        return pickupLooks[id]
+    }
+    /** A token tossed up from (x, y) that then drifts down the screen until collected or gone. */
+    const spawnPickup = (id, x, y, toss = true) => {
+        if (pickups.length >= MAX_PICKUPS) return
+        const look = pickupLook(id)
+        const group = new Group()
+        const token = new Mesh(cylinderGeometry, [look.edge, look.face, look.edge])
+        token.rotation.x = Math.PI / 2
+        token.scale.set(17, 6, 17)
+        token.castShadow = true
+        const halo = new Mesh(unitPlane, look.halo)
+        halo.renderOrder = 3
+        halo.position.z = -2
+        group.add(halo, token)
+        scene.add(group)
+        pickups.push({
+            id,
+            group,
+            token,
+            halo,
+            x,
+            y,
+            vx: toss ? (random() - 0.5) * 140 : 0,
+            vy: toss ? -120 - random() * 60 : 0,
+            age: 0,
+            phase: random() * Math.PI * 2,
+        })
+    }
+    const dropFrom = (kind, x, y) =>
+        rollDrops(kind, random, run).forEach((id, i) => spawnPickup(id, x + (i - 0.5) * 18, y))
+    const removePickup = pickup => scene.remove(pickup.group)
+
+    /* Buffs. */
+    let buffs = createBuffs()
+    const shieldBubble = new Mesh(
+        keep(new SphereGeometry(1, 24, 16)),
+        keep(new MeshBasicMaterial({ color: '#4FC3F7', transparent: true, opacity: 0.22, depthWrite: false }))
+    )
+    shieldBubble.renderOrder = 8
+    shieldBubble.visible = false
+    scene.add(shieldBubble)
+    // The assistants: two little helper bots orbiting Anna while the pickup lasts.
+    const drones = [0, 1].map(() => {
+        const group = new Group()
+        const body = new Mesh(boxGeometry, standard('#F4F6FB'))
+        body.scale.set(16, 14, 10)
+        body.castShadow = true
+        const visor = new Mesh(boxGeometry, enemyMaterials.glass)
+        visor.scale.set(12, 5, 3)
+        visor.position.set(0, 1, 6)
+        const antenna = new Mesh(boxGeometry, standard('#7E57C2'))
+        antenna.scale.set(2, 2, 8)
+        antenna.position.set(0, 5, 8)
+        group.add(body, visor, antenna)
+        group.scale.setScalar(1.35)
+        group.visible = false
+        scene.add(group)
+        return { group, cooldown: 0, x: 0, y: 0 }
+    })
+    let lastBuffHud = -1
 
     const removeAirEnemy = enemy => {
         scene.remove(enemy.mesh)
@@ -1494,6 +1905,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             mission.waves = mission.waves.filter(wave => wave.at < tuning.bossAt)
         }
         if (tuning.noWaves) mission.waves = []
+        if (Array.isArray(tuning.waves)) mission.waves = tuning.waves.map(wave => ({ ...wave }))
         mission.difficulty = difficulty
         missionTime = 0
         // Mission 1 starts at the page's top edge; later ones start just above the screen.
@@ -1550,6 +1962,20 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         return Math.abs(hostile.x - x) <= hostile.halfW + r && Math.abs(hostile.y - y) <= hostile.halfH + r
     }
 
+    const EXPLOSION_SIZE = {
+        mail: 0.7,
+        ping: 0.7,
+        noteSmall: 0.6,
+        note: 0.9,
+        chat: 0.9,
+        mine: 1,
+        meeting: 1.7,
+        deadline: 2.4,
+        carrier: 1.2,
+    }
+    // A kill feeds the combo; the gold star doubles whatever the combo is worth.
+    const killMultiplier = () => registerKill(run, time) * (isActive(buffs, 'star', time) ? 2 : 1)
+
     const damageHostile = (hostile, amount) => {
         if (hostile.kind === 'boss') {
             if (damageBoss(hostile.ref, amount)) killBoss()
@@ -1557,13 +1983,26 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         }
         const enemy = hostile.kind === 'air' ? hostile.ref : hostile.ref.enemy
         if (!damageEnemy(enemy, amount)) return
+        const multiplier = killMultiplier()
         if (hostile.kind === 'air') {
-            recordKill(run, enemy.type)
-            explode(hostile.x, hostile.y, enemy.type === 'mail' ? 0.7 : 1.1)
+            recordKill(run, enemy.type, multiplier)
+            explode(hostile.x, hostile.y, EXPLOSION_SIZE[enemy.type] || 1.1)
+            dropFrom(enemy.type, hostile.x, hostile.y)
+            splitSpecs(enemy, viewport).forEach(spec => spawnAirEnemy(spec))
+            if (enemy.type === 'mine')
+                mineBurst(enemy, false, missionDifficulty(run.mission)).forEach(shot =>
+                    enemyShots.push({ ...shot, r: 7, damage: DAMAGE.bullet })
+                )
+            if (enemy.type === 'deadline') {
+                flashScreen(0.4)
+                for (let i = 0; i < 4; i++)
+                    explode(hostile.x + (random() - 0.5) * 70, hostile.y + (random() - 0.5) * 70, 1.2)
+            }
         } else if (hostile.kind === 'bunker') {
             const bunker = hostile.ref
             bunker.dead = true
-            recordKill(run, bunker.armoured ? 'armoured' : 'bunker')
+            recordKill(run, bunker.armoured ? 'armoured' : 'bunker', multiplier)
+            dropFrom(bunker.armoured ? 'armoured' : 'bunker', hostile.x, hostile.y)
             explode(hostile.x, hostile.y, bunker.armoured ? 1.7 : 1.3)
             addWreck(hostile.x, hostile.y, bunker.w, bunker.h, bunker.armoured ? '#3A4152' : bunker.tint)
             shatter(bunker.texture, {
@@ -1580,7 +2019,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
 
     const destroyPageTarget = (target, hostile) => {
-        recordKill(run, 'pageTask')
+        recordKill(run, 'pageTask', killMultiplier())
+        dropFrom('pageTask', hostile.x, hostile.y)
         const material = new MeshBasicMaterial({
             color: opaqueColor(target.background),
             transparent: true,
@@ -1611,7 +2051,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const killBoss = () => {
         const openTasks = boss.openTasks
         run.score += 25 * openTasks
-        recordKill(run, 'boss')
+        recordKill(run, 'boss', killMultiplier())
+        dropFrom('boss', boss.x, boss.y)
         for (let i = 0; i < 6; i++)
             setTimeout(() => {
                 if (!finished && bossModel)
@@ -1637,14 +2078,12 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
 
     const summonBoss = () => {
+        // Every mission ends with the boss — on an empty inbox too. It is equally hard every day;
+        // the open-task count is only what it wears on its chest.
         const openTasks = Math.max(0, Math.round(services.getOpenTasksToday ? services.getOpenTasksToday() || 0 : 0))
-        if (!openTasks) {
-            bossState = 'none'
-            ui.showToast(strings.noBoss, 2.2)
-            return
-        }
         boss = createBoss(openTasks, viewport)
-        boss.maxHp = Math.round(boss.maxHp * missionDifficulty(run.mission))
+        boss.maxHp =
+            typeof tuning.bossHp === 'number' ? tuning.bossHp : Math.round(boss.maxHp * missionDifficulty(run.mission))
         boss.hp = boss.maxHp
         bossModel = buildBoss(strings.bossCaption)
         bossModel.setCount(openTasks)
@@ -1666,7 +2105,17 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const fireMainGun = () => {
         const gun = mainGun(run.cannonLevel)
         const from = muzzle()
-        gun.barrels.forEach(barrel =>
+        // A brainstorm fans the gun out: four extra bolts on wider angles.
+        const barrels = isActive(buffs, 'spread', time)
+            ? [
+                  ...gun.barrels,
+                  { dx: -14, angle: UP - 0.3 },
+                  { dx: 14, angle: UP + 0.3 },
+                  { dx: -18, angle: UP - 0.55 },
+                  { dx: 18, angle: UP + 0.55 },
+              ]
+            : gun.barrels
+        barrels.forEach(barrel =>
             shots.push({
                 x: from.x + barrel.dx,
                 y: from.y,
@@ -1679,13 +2128,13 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 kind: 'bolt',
             })
         )
-        shotsFired += gun.barrels.length
+        shotsFired += barrels.length
         hud.dataset.shots = String(shotsFired)
         addPuff(from.x - 9, from.y + 2, 11, { life: 0.07 })
         addPuff(from.x + 9, from.y + 2, 11, { life: 0.07 })
         volleyCount += 1
         if (volleyCount % 2 === 0) sound.pew(0.35)
-        return gun.interval
+        return gun.interval * fireIntervalFactor(buffs, time)
     }
 
     const fireSpecial = weapon => {
@@ -1834,6 +2283,10 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     /* Damage to Anna. */
     const hurtShip = amount => {
         if (tuning.invincible || phase !== 'flying') return
+        if (isActive(buffs, 'shield', time)) {
+            addSparks(ship.x, ship.y - 10, 6, 0.6)
+            return
+        }
         const result = applyDamage(run, amount, time)
         if (!result.hit) return
         hudDirty = true
@@ -1946,6 +2399,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const openHangar = () => {
         setPhase('hangar')
         cancelGreeting()
+        buffs = createBuffs()
+        ui.setBuffs([])
         debrief = completeMission(run)
         saveProgress()
         hangarMessage = null
@@ -2034,6 +2489,16 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         boss = null
         ui.bossBar.style.display = 'none'
         laserGroup.visible = false
+        pickups.splice(0).forEach(removePickup)
+        buffs = createBuffs()
+        shieldBubble.visible = false
+        drones.forEach(drone => {
+            drone.group.visible = false
+        })
+        inputLayer.style.boxShadow = 'none'
+        delete inputLayer.dataset.slow
+        ui.setBuffs([])
+        ui.setCombo(0, 1)
     }
 
     const playAgain = () => {
@@ -2324,6 +2789,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         shake = Math.min(14, shake + 5)
         sound.boom(0.9)
         startMission(run.mission, { fromPage: true, resumed: !!checkpoint })
+        ;(tuning.pickups || []).forEach((id, i) => spawnPickup(id, ship.x + (i - 0.5) * 6, ship.y - 4, false))
     }
     // 0 → 1 over the lift-off; 1 when she is flying normally.
     const liftoffProgress = () => clamp01((time - liftoffAt) / LIFTOFF_SECONDS)
@@ -2397,16 +2863,18 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         if (bossState === 'waiting' && missionTime >= mission.bossAt && !pendingWaves.length && !pendingSpawns.length) {
             summonBoss()
         }
-        if (bossState === 'none' && !airEnemies.length) finishMission()
         if (missionEndAt !== null && phase === 'flying') setPhase('cleared')
         if (missionEndAt !== null && time >= missionEndAt) openHangar()
     }
 
-    const updateAir = dt => {
+    const updateAir = realDt => {
         const difficulty = missionDifficulty(run.mission)
+        // A deadline extension slows the whole enemy side down.
+        const dt = realDt * enemyTimeScale(buffs, time)
         for (let i = airEnemies.length - 1; i >= 0; i--) {
             const enemy = airEnemies[i]
-            const alive = stepAirEnemy(enemy, dt)
+            const type = ENEMY_TYPES[enemy.type]
+            const alive = stepAirEnemy(enemy, dt, ship)
             if (!alive || enemy.hp <= 0) {
                 removeAirEnemy(enemy)
                 airEnemies.splice(i, 1)
@@ -2416,26 +2884,57 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 stepEnemyFire(enemy, dt, ship, viewport, difficulty, random).forEach(bullet =>
                     enemyShots.push({ ...bullet, r: 7, damage: DAMAGE.bullet })
                 )
-                if (Math.hypot(enemy.x - ship.x, enemy.y - ship.y) < enemy.radius + SHIP_HIT_RADIUS) {
-                    hurtShip(enemy.type === 'mail' ? DAMAGE.mail : DAMAGE.fighter)
-                    damageHostile(
-                        { kind: 'air', ref: enemy, x: enemy.x, y: enemy.y, r: enemy.radius },
-                        enemy.type === 'mail' ? 99 : 3
-                    )
+                const distance = Math.hypot(enemy.x - ship.x, enemy.y - ship.y)
+                if (type.contact && distance < enemy.radius + SHIP_HIT_RADIUS) {
+                    hurtShip(type.contact)
+                    // Small things break on her; big ones only take a knock.
+                    const smash = type.kamikaze || type.mine || enemy.type === 'mail' || enemy.type === 'noteSmall'
+                    damageHostile({ kind: 'air', ref: enemy, x: enemy.x, y: enemy.y, r: enemy.radius }, smash ? 99 : 3)
+                }
+                // A mine arms when she comes close, blinks, and goes off.
+                if (type.mine && enemy.hp > 0) {
+                    if (!enemy.armedAt && distance < MINE_TRIGGER_RADIUS) enemy.armedAt = time
+                    if (enemy.armedAt && time - enemy.armedAt > MINE_FUSE_SECONDS) {
+                        mineBurst(enemy, true, difficulty).forEach(shot =>
+                            enemyShots.push({ ...shot, r: 7, damage: DAMAGE.bullet })
+                        )
+                        explode(enemy.x, enemy.y, 1.1)
+                        enemy.hp = 0
+                    }
                 }
             }
             enemy.spin += dt * 3
             toWorld(enemy.mesh, enemy.x, enemy.y, Z.enemy)
+            const look = enemy.mesh.userData
+            if (enemy.type === 'deadline') {
+                look.hands[0].rotation.z = -enemy.t * 4
+                look.hands[1].rotation.z = -enemy.t * 0.6
+            } else if (enemy.type === 'mine') {
+                enemy.mesh.rotation.z += dt * 0.8
+                const blinking = enemy.armedAt && Math.floor((time - enemy.armedAt) * 14) % 2 === 0
+                look.blink.emissive.set(blinking ? '#FF1744' : '#000000')
+                look.blink.emissiveIntensity = blinking ? 1 : 0
+            } else if (enemy.type === 'ping') {
+                enemy.mesh.rotation.z = Math.sin(enemy.spin * 2) * 0.3
+            } else if (enemy.type === 'chat' || enemy.type === 'carrier') {
+                enemy.mesh.rotation.z = Math.max(-0.4, Math.min(0.4, -(enemy.vx || 0) / 400))
+                if (enemy.type === 'carrier' && Math.random() < realDt * 12)
+                    addSparks(enemy.x + (random() - 0.5) * 40, enemy.y + (random() - 0.5) * 26, 1, 0.3)
+            } else if (enemy.type === 'note' || enemy.type === 'noteSmall') {
+                enemy.mesh.rotation.y = Math.sin(enemy.spin) * 0.25
+            }
             if (enemy.type === 'mail')
                 enemy.mesh.rotation.set(
                     Math.sin(enemy.spin) * 0.3,
                     Math.cos(enemy.spin * 0.7) * 0.3,
                     Math.sin(enemy.spin * 0.5) * 0.25
                 )
-            else enemy.mesh.rotation.y = Math.max(-0.6, Math.min(0.6, -(enemy.vx || 0) / 500))
+            else if (enemy.type === 'fighter')
+                enemy.mesh.rotation.y = Math.max(-0.6, Math.min(0.6, -(enemy.vx || 0) / 500))
             const pulse = 1 + enemy.hurt * 2.5
             if (enemy.type === 'mail') enemy.mesh.scale.set(34 * pulse, 24 * pulse, 5)
-            else enemy.mesh.scale.setScalar(pulse)
+            else if (enemy.type === 'fighter') enemy.mesh.scale.setScalar(pulse)
+            else enemy.mesh.scale.setScalar(1 + enemy.hurt * 1.5)
             const flashes = enemy.mesh.userData.flash
             if (flashes) {
                 flashes.forEach(material => {
@@ -2448,8 +2947,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         hud.dataset.enemies = String(airEnemies.length)
     }
 
-    const updateGround = dt => {
+    const updateGround = realDt => {
         const difficulty = missionDifficulty(run.mission)
+        const dt = realDt * enemyTimeScale(buffs, time)
         bunkers.forEach(bunker => {
             if (bunker.dead) return
             const y = bunkerScreenY(bunker)
@@ -2484,8 +2984,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         hud.dataset.pageTargets = String(pageTargets.filter(target => target.enemy.hp > 0).length)
     }
 
-    const updateBoss = dt => {
+    const updateBoss = realDt => {
         if (!boss || !bossModel) return
+        const dt = realDt * enemyTimeScale(buffs, time)
         if (boss.hp > 0 && phase === 'flying') {
             stepBoss(boss, dt, ship, viewport, random).forEach(orb =>
                 enemyShots.push({ ...orb, r: ORB_RADIUS, damage: DAMAGE.bossOrb, orb: true })
@@ -2601,7 +3102,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         }
     }
 
-    const updateEnemyShots = dt => {
+    const updateEnemyShots = realDt => {
+        const dt = realDt * enemyTimeScale(buffs, time)
         for (let i = enemyShots.length - 1; i >= 0; i--) {
             const shot = enemyShots[i]
             if (!stepBullet(shot, dt, viewport) || shot.age > 8) {
@@ -2614,6 +3116,123 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             }
         }
         while (enemyShots.length > MAX_ENEMY_SHOTS) enemyShots.shift()
+    }
+
+    const updatePickups = dt => {
+        const magnet = isActive(buffs, 'magnet', time)
+        const drift = phase === 'flying' || phase === 'cleared' ? 70 : 30
+        for (let i = pickups.length - 1; i >= 0; i--) {
+            const pickup = pickups[i]
+            pickup.age += dt
+            const dx = ship.x - pickup.x
+            const dy = ship.y - pickup.y
+            const distance = Math.hypot(dx, dy)
+            if (magnet && distance < MAGNET_RADIUS) {
+                pickup.vx += (dx / (distance || 1)) * 1600 * dt
+                pickup.vy += (dy / (distance || 1)) * 1600 * dt
+            } else {
+                // Tossed up, it falls back to the drift speed of the ground and sways.
+                pickup.vy += (drift - pickup.vy) * Math.min(1, dt * 2.2)
+                pickup.vx *= 1 - Math.min(1, dt * 1.8)
+            }
+            pickup.x += pickup.vx * dt
+            pickup.y += pickup.vy * dt
+            pickup.x = Math.max(16, Math.min(viewport.width - 16, pickup.x))
+            const collectable = phase === 'flying' || phase === 'cleared'
+            if (collectable && distance < PICKUP_COLLECT_RADIUS) {
+                collect(pickup)
+                removePickup(pickup)
+                pickups.splice(i, 1)
+                continue
+            }
+            if (pickup.y > viewport.height + 40 || pickup.age > PICKUP_LIFE) {
+                removePickup(pickup)
+                pickups.splice(i, 1)
+                continue
+            }
+            const bob = Math.sin(pickup.age * 4 + pickup.phase)
+            toWorld(pickup.group, pickup.x, pickup.y, Z.enemy + 10)
+            pickup.token.rotation.y = pickup.age * 3
+            pickup.token.scale.set(17, 6, 17 * (0.85 + 0.15 * Math.abs(Math.cos(pickup.age * 3))))
+            const halo = 56 + bob * 8
+            pickup.halo.scale.set(halo, halo, 1)
+            // About to vanish: it blinks.
+            pickup.group.visible = pickup.age < PICKUP_LIFE - 2 || Math.floor(pickup.age * 8) % 2 === 0
+        }
+        hud.dataset.pickups = String(pickups.length)
+    }
+
+    const collect = pickup => {
+        const result = collectPickup(buffs, run, pickup.id, time)
+        if (!result) return
+        const type = PICKUP_TYPES[pickup.id]
+        const text = strings.pickups && strings.pickups[pickup.id]
+        ui.showToast(`${type.icon} ${text || pickup.id}`, 1.6)
+        addRing(pickup.x, pickup.y, 110, 0.4, 0.8)
+        addSparks(pickup.x, pickup.y, 12, 0.8)
+        sound.chime()
+        hud.dataset.collected = String(Number(hud.dataset.collected || 0) + 1)
+        hud.dataset.lastPickup = pickup.id
+        hudDirty = true
+        lastBuffHud = -1
+    }
+
+    const updateBuffs = dt => {
+        const now = time
+        // The shield bubble: a pulsing sphere round her that flickers before it runs out.
+        const shieldLeft = isActive(buffs, 'shield', now) ? buffs.until.shield - now : 0
+        shieldBubble.visible = shieldLeft > 0 && (shieldLeft > 1.5 || Math.floor(now * 10) % 2 === 0)
+        if (shieldBubble.visible) {
+            const r = 46 + Math.sin(now * 6) * 3
+            shieldBubble.scale.set(r, r, r * 0.6)
+            toWorld(shieldBubble, ship.x, ship.y - 4, Z.ship)
+        }
+        // The assistants orbit her and shoot at the nearest thing ahead.
+        const dronesOn = isActive(buffs, 'drones', now) && (phase === 'flying' || phase === 'cleared')
+        drones.forEach((drone, index) => {
+            drone.group.visible = dronesOn
+            if (!dronesOn) return
+            const angle = now * 2.2 + index * Math.PI
+            drone.x = ship.x + Math.cos(angle) * DRONE_ORBIT
+            drone.y = ship.y - 6 + Math.sin(angle) * DRONE_ORBIT * 0.45
+            toWorld(drone.group, drone.x, drone.y, Z.ship + 8)
+            drone.group.rotation.set(-0.4, 0, Math.sin(now * 3 + index) * 0.2)
+            drone.cooldown -= dt
+            if (drone.cooldown > 0 || greeting) return
+            drone.cooldown = DRONE_FIRE_INTERVAL
+            const target = nearestAhead({ x: drone.x, y: drone.y }, hostiles())
+            const shotAngle = target ? Math.atan2(target.y - drone.y, target.x - drone.x) : UP
+            shots.push({
+                x: drone.x,
+                y: drone.y - 10,
+                vx: Math.cos(shotAngle) * MAIN_GUN_SPEED,
+                vy: Math.sin(shotAngle) * MAIN_GUN_SPEED,
+                damage: 0.8,
+                r: 5,
+                life: 1.6,
+                age: 0,
+                kind: 'pellet',
+            })
+        })
+        // A gold star makes her sparkle.
+        if (isActive(buffs, 'star', now) && Math.random() < dt * 14)
+            addSparks(ship.x + (random() - 0.5) * 50, ship.y + (random() - 0.5) * 60, 1, 0.25)
+        // A deadline extension tints the edges of the screen.
+        const slow = isActive(buffs, 'slowmo', now)
+        if (slow !== inputLayer.dataset.slow) {
+            inputLayer.dataset.slow = slow
+            inputLayer.style.boxShadow = slow ? 'inset 0 0 120px rgba(38,166,154,0.45)' : 'none'
+        }
+        // The HUD: the buffs running and the combo, refreshed a few times a second.
+        if (now - lastBuffHud > 0.1) {
+            lastBuffHud = now
+            ui.setBuffs(activeBuffs(buffs, now))
+            const combo = currentCombo(run, now)
+            ui.setCombo(combo, comboMultiplier(combo) * (isActive(buffs, 'star', now) ? 2 : 1))
+            hud.dataset.buffs = activeBuffs(buffs, now)
+                .map(buff => buff.id)
+                .join(',')
+        }
     }
 
     const updateEffects = dt => {
@@ -2704,10 +3323,18 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             const size = shot.r * 2.2
             dummy.scale.set(size, size, 1)
             dummy.updateMatrix()
-            enemyShotMesh.setMatrixAt(n++, dummy.matrix)
+            enemyShotMesh.setMatrixAt(n, dummy.matrix)
+            enemyShotMesh.setColorAt(n, tintColor(shot.tint || DEFAULT_TINT))
+            dummy.position.z += 1
+            dummy.scale.set(size * 0.62, size * 0.62, 1)
+            dummy.updateMatrix()
+            enemyCoreMesh.setMatrixAt(n++, dummy.matrix)
         })
         enemyShotMesh.count = n
+        enemyCoreMesh.count = n
         enemyShotMesh.instanceMatrix.needsUpdate = true
+        enemyCoreMesh.instanceMatrix.needsUpdate = true
+        if (enemyShotMesh.instanceColor) enemyShotMesh.instanceColor.needsUpdate = true
         n = 0
         const writePuff = (x, y, size, color) => {
             if (n >= MAX_PUFFS) return
@@ -2837,6 +3464,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             updateBoss(dt)
             updateShots(dt)
             updateEnemyShots(dt)
+            updatePickups(dt)
+            updateBuffs(dt)
         }
         // updateReturn may finish and dispose the renderer on this very frame.
         if (finished) return

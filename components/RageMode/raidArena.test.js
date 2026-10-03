@@ -209,13 +209,13 @@ describe('rage mode raid arena', () => {
         expect(hud().dataset.bombsDropped).toBe('2')
     })
 
-    it('summons the boss built from the open-task count, and a dead boss opens the hangar', () => {
-        start({ bossAt: 1, noWaves: true })
+    it('summons the boss wearing the open-task count, and a dead boss opens the hangar', () => {
+        start({ bossAt: 1, noWaves: true, bossHp: 40 })
         fly()
         step(90)
         expect(hud().dataset.boss).toBe('3')
         expect(layer('boss').style.display).toBe('flex')
-        // A mega bomb takes 50 off; 36 hit points (3 tasks × 12) do not survive it.
+        // A mega bomb takes 50 off; this boss was tuned to 40.
         key(' ', 'Space')
         step(2)
         expect(hud().dataset.boss).toBe('0')
@@ -225,18 +225,21 @@ describe('rage mode raid arena', () => {
         expect(Number(hud().dataset.credits)).toBeGreaterThan(0)
     })
 
-    it('says so and skips the boss on a day with nothing open', () => {
+    it('still sends the boss on an empty inbox, just as tough, showing 0', () => {
         services.getOpenTasksToday = () => 0
         start({ bossAt: 1, noWaves: true })
         fly()
         step(90)
-        expect(layer('toast').textContent).toBe('Nothing open today: no boss!')
-        step(60 * 3)
-        expect(hud().dataset.phase).toBe('hangar')
+        expect(layer('boss').style.display).toBe('flex')
+        expect(hud().dataset.boss).toBe('0')
+        // A bomb does not finish it: it has the full strength of any other day's boss.
+        key(' ', 'Space')
+        step(60 * 4)
+        expect(hud().dataset.phase).not.toBe('hangar')
     })
 
     it('sells hangar items for credits and launches the next mission from the hangar', () => {
-        start({ bossAt: 1, noWaves: true })
+        start({ bossAt: 1, noWaves: true, bossHp: 40 })
         fly()
         step(90)
         key(' ', 'Space')
@@ -254,7 +257,7 @@ describe('rage mode raid arena', () => {
     })
 
     it('ends in a game over when the shield runs out, submits the score once and can play again', () => {
-        start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true })
+        start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40 })
         fly()
         step(90)
         // Let the boss's orbs find her.
@@ -270,7 +273,7 @@ describe('rage mode raid arena', () => {
     })
 
     it('remembers a completed mission and takes off from the next one next time', () => {
-        start({ bossAt: 1, noWaves: true })
+        start({ bossAt: 1, noWaves: true, bossHp: 40 })
         fly()
         step(90)
         key(' ', 'Space')
@@ -318,7 +321,7 @@ describe('rage mode raid arena', () => {
 
     it('replays from the checkpoint after a game over', () => {
         saveLocal({ completed: 1, credits: 200 })
-        start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true })
+        start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40 })
         fly()
         step(90)
         for (let i = 0; i < 60 * 30 && hud().dataset.phase !== 'gameover'; i++) step()
@@ -371,7 +374,7 @@ describe('rage mode raid arena', () => {
 
         it('saves a completed mission to the server and keeps the server timestamp', async () => {
             services.saveProgress = jest.fn(() => Promise.resolve({ ok: true, savedAt: 4242 }))
-            start({ bossAt: 1, noWaves: true })
+            start({ bossAt: 1, noWaves: true, bossHp: 40 })
             fly()
             step(90)
             key(' ', 'Space')
@@ -398,7 +401,7 @@ describe('rage mode raid arena', () => {
         it('keeps saves in order: one in flight, the newest sent last', async () => {
             const resolvers = []
             services.saveProgress = jest.fn(() => new Promise(resolve => resolvers.push(resolve)))
-            start({ bossAt: 1, noWaves: true })
+            start({ bossAt: 1, noWaves: true, bossHp: 40 })
             fly()
             step(90)
             key(' ', 'Space')
@@ -414,6 +417,57 @@ describe('rage mode raid arena', () => {
             expect(services.saveProgress).toHaveBeenCalledTimes(2)
             // Only the newest state follows, never the stale one in between.
             expect(services.saveProgress.mock.calls[1][0].bombs).toBe(services.saveProgress.mock.calls[0][0].bombs + 2)
+        })
+    })
+
+    describe('the cast and its power-ups', () => {
+        it('announces each new kind of enemy the first time it shows up', () => {
+            start({ waves: [{ at: 0.5, pattern: 'zigzag', type: 'chat', count: 2, spacing: 0.3 }] })
+            fly()
+            step(30)
+            expect(Number(hud().dataset.enemies)).toBeGreaterThan(0)
+            expect(layer('toast').textContent).toContain('Raid enemy chat')
+        })
+
+        it('gives a power-up the moment she flies into it, and shows it running', () => {
+            start({ pickups: ['coffee'] })
+            fly()
+            expect(hud().dataset.collected).toBe('1')
+            expect(hud().dataset.lastPickup).toBe('coffee')
+            step(10)
+            expect(hud().dataset.buffs).toContain('coffee')
+            expect(layer('buffs').querySelector('[data-buff="coffee"]')).toBeTruthy()
+            step(60 * 9)
+            expect(hud().dataset.buffs).not.toContain('coffee')
+        })
+
+        it('fires faster on coffee', () => {
+            start()
+            fly()
+            const before = Number(hud().dataset.shots)
+            step(60)
+            const normal = Number(hud().dataset.shots) - before
+            arena.stop({ immediate: true })
+            start({ pickups: ['coffee'] })
+            fly()
+            const boosted = Number(hud().dataset.shots)
+            step(60)
+            expect(Number(hud().dataset.shots) - boosted).toBeGreaterThan(normal * 1.5)
+        })
+
+        it('keeps her unhurt inside the shield bubble', () => {
+            start({ invincible: false, startShield: 50, pickups: ['shield'], bossAt: 1, noWaves: true })
+            fly()
+            const shield = hud().dataset.shield
+            step(60 * 3)
+            expect(hud().dataset.shield).toBe(shield)
+        })
+
+        it('applies instant pickups straight away', () => {
+            start({ pickups: ['bomb', 'credits'] })
+            fly()
+            expect(hud().dataset.bombs).toBe('3')
+            expect(Number(hud().dataset.credits)).toBeGreaterThanOrEqual(60)
         })
     })
 

@@ -128,7 +128,7 @@ state.pageHtml = document.body.innerHTML
 const strings = buildRageStrings(key => en[key] || key)
 
 // Fake services, steered by the query string: ?gold=1500&tasks=3&best=120&owned=all
-// &bossAt=2&noWaves=1&shield=10&god=1&seed=7. `state.calls` records what the arena asked for.
+// &bossAt=2&noWaves=1&shield=10&god=1&seed=7&bossHp=40&pickups=coffee,drones&waves=showcase. `state.calls` records what the arena asked for.
 const params = new URLSearchParams(window.location.search)
 state.gold = Number(params.get('gold') || 1500)
 state.profile = {
@@ -169,6 +169,31 @@ const tuning = {
     ...(params.get('noWaves') ? { noWaves: true } : {}),
     ...(params.get('shield') ? { startShield: Number(params.get('shield')) } : {}),
     ...(params.get('god') ? { invincible: true } : {}),
+    ...(params.get('bossHp') ? { bossHp: Number(params.get('bossHp')) } : {}),
+    ...(params.get('pickups') ? { pickups: params.get('pickups').split(',') } : {}),
+    // ?waves=showcase flies every new member of the cast within a few seconds.
+    ...(params.get('waves') === 'showcase'
+        ? {
+              waves: [
+                  { at: 0.5, pattern: 'zigzag', type: 'chat', count: 3, spacing: 0.5 },
+                  { at: 1, pattern: 'swarm', type: 'ping', count: 4, spacing: 0.4 },
+                  { at: 1.5, pattern: 'drift', type: 'note', count: 2, spacing: 0.6 },
+                  { at: 1.8, pattern: 'drift', type: 'mine', count: 3, spacing: 0.5 },
+                  { at: 2, pattern: 'hover', type: 'meeting', count: 2, spacing: 0, y: 0.2, hold: 6 },
+                  { at: 2.5, pattern: 'single', type: 'deadline', count: 1, spacing: 0, y: 0.3, hold: 9 },
+                  {
+                      at: 3,
+                      pattern: 'sweep',
+                      type: 'carrier',
+                      count: 1,
+                      spacing: 0,
+                      y: 0.15,
+                      side: 'left',
+                      duration: 6,
+                  },
+              ],
+          }
+        : {}),
 }
 
 // Progress is remembered per scope, in the browser AND on the (fake) server, which keeps its copy

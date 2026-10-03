@@ -2,7 +2,10 @@ import {
     applyDamage,
     BASE_MAX_SHIELD,
     buyHangarItem,
+    COMBO_WINDOW,
+    comboMultiplier,
     completeMission,
+    currentCombo,
     createRun,
     CREDITS,
     INVULNERABLE_SECONDS,
@@ -11,6 +14,7 @@ import {
     MISSION_BONUS_CREDITS,
     missionDifficulty,
     recordKill,
+    registerKill,
     SHIELD_CAP,
     startNextMission,
     useBomb,
@@ -52,6 +56,22 @@ describe('raid run', () => {
         startNextMission(run)
         expect(run).toMatchObject({ mission: 2, kills: 0, missionCredits: 0, missionScore: 0 })
         expect(run.credits).toBe(debrief.credits)
+    })
+
+    it('builds a combo from quick kills and multiplies the points, never the credits', () => {
+        const run = createRun()
+        let multiplier = 1
+        for (let i = 0; i < 10; i++) multiplier = registerKill(run, i * 0.5)
+        expect(run.combo).toBe(10)
+        expect(multiplier).toBe(2)
+        recordKill(run, 'fighter', multiplier)
+        expect(run.score).toBe(240)
+        expect(run.credits).toBe(CREDITS.fighter)
+        expect(currentCombo(run, 4.5 + COMBO_WINDOW + 0.1)).toBe(0)
+        registerKill(run, 4.5 + COMBO_WINDOW + 0.1)
+        expect(run.combo).toBe(1)
+        expect(run.bestCombo).toBe(10)
+        expect(comboMultiplier(1000)).toBe(3)
     })
 
     it('gets harder mission by mission', () => {

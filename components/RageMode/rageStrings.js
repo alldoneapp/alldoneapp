@@ -1,5 +1,6 @@
 import { RAGE_WEAPONS } from './rageWeapons'
 import { HANGAR_ITEMS } from './raidRun'
+import { PICKUP_IDS } from './raidPickups'
 
 /**
  * Every string the arena shows, from one `translate(key)` function: the button passes the app's
@@ -29,12 +30,19 @@ export const buildRageStrings = translate => ({
     goldWeapons: translate('Special weapons'),
     maxed: translate('Maxed'),
     notEnoughCredits: translate('Not enough credits'),
-    noBoss: translate('Nothing open today: no boss!'),
     continueAt: translate('Continuing at mission {n}'),
     startOver: translate('Start over'),
     startOverConfirm: translate('Sure? Start over'),
     confirmStartOver: translate('Press ↺ again to start over from mission 1'),
     greet: translate('Say hi'),
+    combo: translate('Combo'),
+    enemies: Object.fromEntries(
+        ['chat', 'ping', 'note', 'mine', 'meeting', 'deadline', 'carrier'].map(id => [
+            id,
+            { name: translate(`Raid enemy ${id}`), hint: translate(`Raid enemy ${id} hint`) },
+        ])
+    ),
+    pickups: Object.fromEntries(PICKUP_IDS.map(id => [id, translate(`Raid pickup ${id}`)])),
     greetings: [1, 2, 3, 4].map(n => translate(`Rage mode greeting ${n}`)),
     hangarItems: Object.fromEntries(
         HANGAR_ITEMS.map(item => [

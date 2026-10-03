@@ -1,5 +1,6 @@
 import { RAGE_LAYER_ATTRIBUTE } from './rageTargets'
 import { HANGAR_ITEMS, MAX_BOMBS, MAX_CANNON_LEVEL } from './raidRun'
+import { PICKUP_TYPES } from './raidPickups'
 
 /**
  * The raid's on-screen chrome, as plain DOM inside the arena's own layers (the arena is not React):
@@ -181,7 +182,105 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     restart.setAttribute('data-start-over', 'true')
     const mute = hudButton(muted ? strings.unmute : strings.mute, muted ? '🔇' : '🔊', actions.toggleMute)
     const exit = hudButton(strings.exit, '✕', actions.exit)
-    hud.append(mission, scoreValue, creditsValue, shield.track, bombsValue, hint, greet, restart, mute, exit)
+    // The combo: hidden until it is worth something, then ×1.5 … ×3 (×6 with a gold star).
+    const comboValue = pillElement('span', {
+        display: 'none',
+        padding: '1px 7px',
+        borderRadius: '9px',
+        background: '#FF7043',
+        color: '#FFFFFF',
+        fontWeight: '800',
+        fontVariantNumeric: 'tabular-nums',
+        transition: 'transform 120ms ease',
+    })
+    comboValue.title = strings.combo
+    hud.append(
+        mission,
+        scoreValue,
+        comboValue,
+        creditsValue,
+        shield.track,
+        bombsValue,
+        hint,
+        greet,
+        restart,
+        mute,
+        exit
+    )
+
+    // The power-ups running, bottom left: an icon and a bar draining as it runs out.
+    const buffBar = pillElement('div', {
+        position: 'fixed',
+        left: '16px',
+        zIndex: String(zIndex + 2),
+        display: 'flex',
+        flexDirection: 'column-reverse',
+        gap: '6px',
+        pointerEvents: 'none',
+    })
+    buffBar.setAttribute(RAGE_LAYER_ATTRIBUTE, 'buffs')
+    const buffChips = new Map()
+    const setBuffs = list => {
+        const ids = new Set(list.map(buff => buff.id))
+        buffChips.forEach((chip, id) => {
+            if (!ids.has(id)) {
+                chip.root.remove()
+                buffChips.delete(id)
+            }
+        })
+        list.forEach(buff => {
+            let chip = buffChips.get(buff.id)
+            if (!chip) {
+                const type = PICKUP_TYPES[buff.id]
+                const root = pillElement('div', {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 8px 4px 6px',
+                    borderRadius: '14px',
+                    background: NAVY,
+                    boxShadow: '0 4px 16px rgba(9,21,64,0.3)',
+                    color: '#FFFFFF',
+                    font: `600 12px ${FONT}`,
+                })
+                root.setAttribute('data-buff', buff.id)
+                const icon = pillElement('span', { fontSize: '16px' })
+                icon.textContent = type.icon
+                const track = pillElement('span', {
+                    width: '54px',
+                    height: '6px',
+                    borderRadius: '3px',
+                    background: 'rgba(255,255,255,0.18)',
+                    overflow: 'hidden',
+                })
+                const fill = pillElement('span', { display: 'block', height: '100%', background: type.color })
+                track.appendChild(fill)
+                root.append(icon, track)
+                buffBar.appendChild(root)
+                chip = { root, fill }
+                buffChips.set(buff.id, chip)
+            }
+            chip.fill.style.width = `${Math.max(0, Math.min(1, buff.share)) * 100}%`
+        })
+    }
+    let shownCombo = 0
+    const setCombo = (combo, multiplier) => {
+        hud.dataset.combo = String(combo)
+        if (multiplier <= 1) {
+            comboValue.style.display = 'none'
+            shownCombo = combo
+            return
+        }
+        comboValue.style.display = 'inline-block'
+        comboValue.textContent = `×${multiplier % 1 ? multiplier.toFixed(1) : multiplier}`
+        if (combo !== shownCombo) {
+            comboValue.style.transform = 'scale(1.25)'
+            setTimeout(() => {
+                comboValue.style.transform = 'scale(1)'
+            }, 120)
+        }
+        shownCombo = combo
+    }
 
     const help = fixedCentre(zIndex + 2, {
         padding: '8px 16px',
@@ -346,6 +445,9 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
         help.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 70px)`
         help.style.transform = 'translate(-50%, -100%)'
         bombButton.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 136px)`
+        buffBar.style.bottom = 'auto'
+        buffBar.style.top = `calc(${height}px - env(safe-area-inset-bottom, 0px) - 18px)`
+        buffBar.style.transform = 'translateY(-100%)'
     }
     layout()
 
@@ -359,7 +461,7 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     }
 
     return {
-        elements: [hud, help, weaponBar, bombButton, bossBar, toast, hangar.element, gameOver.element],
+        elements: [hud, help, weaponBar, bombButton, buffBar, bossBar, toast, hangar.element, gameOver.element],
         hud,
         help,
         weaponBar,
@@ -372,6 +474,8 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
         update,
         setMuted,
         setCanStartOver,
+        setBuffs,
+        setCombo,
         renderWeapons,
         layout,
         dispose() {

@@ -1,7 +1,7 @@
 /**
  * The boss at the end of every raid mission: today's open tasks, as one big angry block with the
- * number on its chest. Its health is built from that count and the number counts down as it takes
- * damage, so beating it reads as "12 … 7 … 3 … 0". It hovers over the top of the screen, throws
+ * number on its chest. Its health is the same every day; the number counts down as it takes
+ * damage, so beating it reads as "12 … 7 … 3 … 0" (an empty inbox shows a 0 the whole fight). It hovers over the top of the screen, throws
  * orbs at Anna and every so often charges at her.
  *
  * Pure: position, health and attacks. The arena draws it and resolves collisions.
@@ -9,17 +9,16 @@
 
 export const BOSS_HALF_WIDTH = 78
 export const BOSS_HALF_HEIGHT = 66
-export const BOSS_HP_PER_TASK = 12
-export const BOSS_MIN_HP = 36
+// The boss is equally hard every day: its health does not depend on how many tasks are open.
+// (The raid scales it per mission; the count on its chest is the day's, for show.)
+export const BOSS_HP = 150
 export const ORB_SPEED = 290
 export const ORB_RADIUS = 11
 
-export const bossMaxHp = openTasks => Math.max(BOSS_MIN_HP, Math.round((openTasks || 0) * BOSS_HP_PER_TASK))
-
 export const createBoss = (openTasks, viewport) => ({
     openTasks,
-    hp: bossMaxHp(openTasks),
-    maxHp: bossMaxHp(openTasks),
+    hp: BOSS_HP,
+    maxHp: BOSS_HP,
     x: viewport.width / 2,
     y: -BOSS_HALF_HEIGHT * 2,
     t: 0,
@@ -32,7 +31,7 @@ export const createBoss = (openTasks, viewport) => ({
 
 /** The number on its chest: the open-task count, scaled down with its health. Never 0 while alive. */
 export const displayedCount = boss =>
-    boss.hp <= 0 ? 0 : Math.max(1, Math.ceil((boss.hp / boss.maxHp) * boss.openTasks))
+    boss.hp <= 0 || !boss.openTasks ? 0 : Math.max(1, Math.ceil((boss.hp / boss.maxHp) * boss.openTasks))
 
 const hoverPoint = (boss, viewport) => ({
     x: viewport.width / 2 + Math.sin(boss.t * 0.55) * viewport.width * 0.3,
