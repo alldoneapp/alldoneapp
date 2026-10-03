@@ -4,6 +4,7 @@ import { normalizeMarkdownTableCell } from '../../../../utils/markdownTableParse
 const Delta = Quill.import('delta')
 const CELL_SELECTOR = '.ql-markdown-table [data-row][data-column]'
 const INPUT_SELECTOR = '.ql-table-cell-input'
+const TAP_SLOP = 10 // CSS pixels; allow small finger jitter in either direction.
 const INPUT_EVENTS = ['copy', 'cut', 'paste', 'beforeinput', 'compositionstart', 'compositionupdate', 'compositionend']
 
 // Cell inputs live inside an immutable BlockEmbed. Only a committed Quill delta
@@ -15,6 +16,8 @@ export default class MarkdownTableEditing {
         this.active = null
         this.selected = null
         this.listeners = []
+        this.touchGesture = null
+        this.touchListeners = []
         // Quill 2 restores the document selection after DOM mutations. A
         // textarea has its own native selection: interpreting it as a note
         // caret replaces its editing selection with a DOM Range on TEXTAREA,
@@ -28,6 +31,14 @@ export default class MarkdownTableEditing {
         }
         selection.getNativeRange = this.cellNativeRange
         this.listen('pointerdown', event => this.onPointerDown(event))
+        this.listen('mousedown', event => {
+            // Touch synthesizes mousedown before click. Do not let it blur a
+            // draft and replace the tapped table before onClick can open it.
+            if (this.touchGesture && event.target.closest?.(CELL_SELECTOR) && !event.target.closest(INPUT_SELECTOR)) {
+                event.preventDefault()
+                event.stopPropagation()
+            }
+        })
         this.listen('click', event => this.onClick(event))
         this.listen('keydown', event => {
             if (!event.target.closest?.(INPUT_SELECTOR)) this.onKeyDown(event)
@@ -41,6 +52,8 @@ export default class MarkdownTableEditing {
         quill.on('text-change', this.onChange)
         this.enabledObserver = new MutationObserver(() => {
             if (!quill.isEnabled()) {
+                if (this.touchGesture) this.touchGesture.cancelled = true
+                this.stopTouchTracking()
                 this.preserveDraft()
                 this.clearControls()
             }
@@ -68,6 +81,10 @@ export default class MarkdownTableEditing {
     }
 
     onPointerDown(event) {
+        // A second finger must not replace the first finger's cancelled gesture.
+        if (this.touchListeners.length && event.pointerId !== this.touchGesture.pointerId) return
+        this.stopTouchTracking()
+        this.touchGesture = null
         if (!this.quill.isEnabled()) return
         if (event.target.closest?.('.ql-table-controls')) {
             // A toolbar click must not blur/replace the table before click fires.
@@ -83,9 +100,64 @@ export default class MarkdownTableEditing {
             return
         }
         if (event.target.closest(INPUT_SELECTOR)) return
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+            this.trackTouchTap(event, cell)
+            return // Leave native horizontal table and vertical page panning intact.
+        }
         event.preventDefault()
         event.stopPropagation()
         this.openCell(cell)
+    }
+
+    trackTouchTap(event, cell) {
+        const gesture = {
+            cell,
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            cancelled: event.isPrimary === false,
+            ended: false,
+        }
+        this.touchGesture = gesture
+        const move = event => {
+            if (event.pointerId !== gesture.pointerId) return
+            if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > TAP_SLOP) gesture.cancelled = true
+        }
+        const end = event => {
+            if (event.pointerId !== gesture.pointerId) return
+            move(event)
+            if (event.type === 'pointercancel') gesture.cancelled = true
+            gesture.ended = true
+            this.stopTouchTracking()
+            // Keep the result until the next pointerdown to reject a delayed
+            // compatibility click after a swipe or cancelled native pan.
+        }
+        this.touchListeners = [
+            [
+                'pointerdown',
+                event => {
+                    if (event.pointerId !== gesture.pointerId) gesture.cancelled = true
+                },
+            ],
+            ['pointermove', move],
+            ['pointerup', end],
+            ['pointercancel', end],
+            [
+                'scroll',
+                event => {
+                    if (event.target.contains?.(cell)) gesture.cancelled = true
+                },
+            ],
+        ]
+        // Track outside the editor too, including scrolls on its ancestors.
+        this.touchListeners.forEach(([type, handler]) =>
+            document.addEventListener(type, handler, { capture: true, passive: true })
+        )
+    }
+
+    stopTouchTracking() {
+        this.touchListeners.forEach(([type, handler]) => document.removeEventListener(type, handler, true))
+        this.touchListeners = []
     }
 
     onClick(event) {
@@ -99,6 +171,13 @@ export default class MarkdownTableEditing {
         const cell = event.target.closest?.(CELL_SELECTOR)
         if (cell && !event.target.closest(INPUT_SELECTOR)) {
             event.stopPropagation()
+            // Keyboard/programmatic clicks (detail 0) retain their usual path.
+            if (
+                event.detail !== 0 &&
+                this.touchGesture &&
+                (!this.touchGesture.ended || this.touchGesture.cancelled || this.touchGesture.cell !== cell)
+            )
+                return
             this.openCell(cell)
         }
     }
@@ -389,6 +468,8 @@ export default class MarkdownTableEditing {
     }
 
     destroy() {
+        this.stopTouchTracking()
+        this.touchGesture = null
         this.finish(false)
         if (this.quill.selection.getNativeRange === this.cellNativeRange) {
             this.quill.selection.getNativeRange = this.originalNativeRange

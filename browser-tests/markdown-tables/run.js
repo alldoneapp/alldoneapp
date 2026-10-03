@@ -7,6 +7,93 @@ const { execFileSync } = require('node:child_process')
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const root = path.resolve(__dirname, '../..')
 const output = path.join(__dirname, '.build')
+
+async function verifyTouchScrolling(page, context) {
+    const original = await page.evaluate(() => editor.getContents())
+    await page.evaluate(() => {
+        editor.setContents([
+            { insert: 'Before the table\n' },
+            {
+                insert: {
+                    markdownTable: {
+                        rows: Array.from({ length: 30 }, (_, row) =>
+                            Array.from({ length: 8 }, (_, column) => `Cell ${row}, ${column}`)
+                        ),
+                        alignments: [],
+                    },
+                },
+            },
+            { insert: 'After the table\n' },
+        ])
+        editor.history.clear()
+    })
+    const initialValue = await page.evaluate(() => tableValue())
+    const session = await context.newCDPSession(page)
+    // CDP sends genuine touch input through Chromium's native scroll recognizer.
+    // Dispatching DOM pointermove alone cannot prove that scrolling still works.
+    for (const direction of ['vertical', 'horizontal']) {
+        await page.evaluate(() => {
+            window.scrollTo(0, 0)
+            document.querySelector('.ql-markdown-table-scroll').scrollLeft = 0
+        })
+        const box = await page.locator('[data-row="3"][data-column="1"]').boundingBox()
+        const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+        await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] })
+        assert.equal(await page.locator('.ql-table-cell-input').count(), 0, 'Finger down must not open a cell editor')
+        for (let step = 1; step <= 8; step++) {
+            await session.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [
+                    {
+                        x: start.x - (direction === 'horizontal' ? step * 15 : 0),
+                        y: start.y - (direction === 'vertical' ? step * 15 : 0),
+                    },
+                ],
+            })
+            await page.waitForTimeout(25)
+        }
+        await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+        await page.waitForFunction(
+            direction =>
+                (direction === 'vertical'
+                    ? window.scrollY
+                    : document.querySelector('.ql-markdown-table-scroll').scrollLeft) > 30,
+            direction
+        )
+        await page.waitForTimeout(200)
+        assert.equal(await page.locator('.ql-table-cell-input').count(), 0, `${direction} swipe must not open editing`)
+        assert.equal(await page.locator('.ql-table-controls').count(), 0, `${direction} swipe must not select a table`)
+        assert.deepEqual(await page.evaluate(() => tableValue()), initialValue)
+        assert.equal(await page.evaluate(() => editor.history.stack.undo.length), 0)
+        console.log(`Mobile: native ${direction} scrolling over a table passed`)
+    }
+    await session.detach()
+    await page.screenshot({ path: path.join(output, 'mobile-scrolling.png'), fullPage: true })
+    await page.evaluate(original => {
+        editor.setContents(original)
+        editor.history.clear()
+        window.scrollTo(0, 0)
+    }, original)
+    const first = page.locator('[data-row="1"][data-column="0"]')
+    await first.tap()
+    await page.locator('.ql-table-cell-input').fill('Touch draft')
+    await page.locator('[data-row="2"][data-column="1"]').tap()
+    assert.equal(
+        await page.locator('.ql-table-cell-input').inputValue(),
+        'Done',
+        'A tap must switch cells after committing a draft'
+    )
+    assert.equal(await page.evaluate(() => tableValue().rows[1][0]), 'Touch draft')
+    await page.locator('[data-table-action="add-row"]').tap()
+    assert.equal(await page.evaluate(() => tableValue().rows.length), 4, 'Touch table controls must still work')
+    await page.locator('.ql-table-cell-input').press('Escape')
+    await page.evaluate(original => {
+        editor.setContents(original)
+        editor.history.clear()
+    }, original)
+    console.log('Mobile: intentional tap, draft commit, cell switching and table control tap passed')
+}
+
 execFileSync(
     path.join(root, 'web-bundler/node_modules/.bin/webpack'),
     [
@@ -49,6 +136,7 @@ const server = http.createServer((req, res) => {
             page.on('pageerror', error => errors.push(error.message))
             await page.goto(`http://127.0.0.1:${server.address().port}`)
             await page.waitForFunction(() => !!window.editor)
+            if (mobile) await verifyTouchScrolling(page, context)
             const first = page.locator('[data-row="1"][data-column="0"]')
             if (mobile) await first.tap()
             else await first.click()
