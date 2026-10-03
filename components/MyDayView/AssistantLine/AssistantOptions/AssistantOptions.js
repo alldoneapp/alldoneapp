@@ -35,6 +35,7 @@ import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
 import AssistantTaskSearchButtonWrapper from './Search/AssistantTaskSearchButtonWrapper'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import RageModeButton from '../../../RageMode/RageModeButton'
+import { RAGE_LAUNCH_ANCHOR_ID } from '../../../RageMode/rageLaunchAnchor'
 import {
     getAssistantControlsStacked,
     getAssistantInputDisplayHeight,
@@ -418,7 +419,8 @@ export default function AssistantOptions({
                 )}
             </HeaderContainer>
             <View style={localStyles.firstRow}>
-                <View style={localStyles.avatarWrapper}>
+                {/* Rage mode's Anna takes off from this avatar and lands back on it. */}
+                <View style={localStyles.avatarWrapper} nativeID={RAGE_LAUNCH_ANCHOR_ID}>
                     <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={48} />
                 </View>
                 <CustomTextInput3

@@ -1527,7 +1527,8 @@ which needs `three` in Jest's transform allowlist and the class-static-block Bab
 
 A small crosshair after "Anna Alldone: How can I help?" in the assistant line (`AssistantOptions` →
 `components/RageMode/RageModeButton.js`) starts a vertical-scrolling shooter in the style of the
-early-90s classics (`raidArena.js`). A voxel Anna Alldone with a jetpack takes off from the button,
+early-90s classics (`raidArena.js`). A voxel Anna Alldone with a jetpack takes off from the
+assistant's avatar in the same line (and lands back on it when you leave),
 **the page you are on slides down off the screen and generated ground scrolls in above it**, and
 the mission is flown over that ground: today's tasks are dug in as labelled bunkers, scripted waves
 of fighters and incoming mail come in, and the boss at the end is built from today's open-task
@@ -1573,6 +1574,49 @@ touch drag so the thumb never covers her). The seed is the date (`daySeed`), so 
 fixed thing you can get better at. **Credits are never Gold**: they are earned by shooting, live only
 as long as the run and buy consumables; a game that paid out Gold would let a modified client mint
 real currency.
+
+**Where she launches from** is the avatar wrapper in `AssistantOptions`, tagged with
+`RAGE_LAUNCH_ANCHOR_ID` (`rageLaunchAnchor.js`). `findLaunchPoint` searches OUTWARDS from the
+crosshair for the nearest ancestor containing one, so two assistant lines on one screen never launch
+from each other's avatar, and it falls back to the crosshair itself. The avatar's size is passed too:
+she grows out of it and shrinks back into it.
+
+**Progress follows the user across devices** (`raidProgress.js`). Clearing a mission saves a
+checkpoint — the mission number plus the run as it leaves the hangar — and every hangar purchase
+updates it; the next raid takes off at the following mission, and a game over replays from the
+checkpoint rather than from mission 1. Only "Start over" clears it (↺ in the status pill pressed
+twice, or the confirming button in the hangar and on the game-over card), and a start over is saved
+as an EMPTY checkpoint so other devices drop theirs too. Two copies: the server's
+(`rageModeProfiles/{uid}.progress`, written by `saveRageModeProgress`, returned by
+`getRageModeProfile`) and the browser's (localStorage per uid) for an instant take-off and for saves
+that could not reach the server yet (`pending`). The server stamps `savedAt`, so devices with
+different clocks agree, and `reconcile` picks the newer copy while Anna does her run-up — which
+waits up to `RUNUP_MAX_SECONDS` for the profile, so a mission is never started from a stale copy on
+an ordinary connection. Saves go out ONE at a time, newest last, so two quick hangar purchases can
+never reach the server in the wrong order. Both copies are owner-editable, so a checkpoint is always
+read through `sanitizeCheckpoint`; the server's copy of those rules is
+`functions/RageMode/rageModeProgress.js`, and `raidProgress.test.js` fails the build if the two
+disagree. Since credits only buy in-run consumables, a forged checkpoint cheats nobody. Missions scroll faster as they go (`missionScrollSpeed`: 96 px/s, +12% per mission, at
+most 1.8×), and the route is stretched to match so a mission keeps its length in time.
+
+**The run-up.** On the page she does not simply fly off: she lands out of the avatar, RUNS (legs
+on hip pivots in `rageModels.js`, jetpack sputtering) while the page starts to move slowly, then the
+jetpack fires — a ring of dust, she rises, tips into flight, and the ground accelerates to the
+mission's speed. The mission (and its first wave) starts at lift-off, and nothing fires before it.
+
+**Shadows are real, not painted.** A shadow-casting sun throws every flying and standing object's
+silhouette onto an invisible `ShadowMaterial` catcher plane, so shadows land on the ground and on the
+page alike, and fall further away the higher something flies (heights in `Z`). Blurry blob shadows and
+dark crater decals were removed because they read as dirt on the light ground; a destroyed bunker now
+leaves a soft, light foundation patch with rubble that smokes for a moment. Keep the ground light:
+fire cools into light smoke, never soot, and the hemisphere light's ground colour is bright so shaded
+faces do not turn into dark spots.
+
+**Enter (or 👋) is the greeting** (`rageGreeting.js`, pure and tested): one loop towards the camera in
+which she turns from flying away up the screen to face you, greets with a pose and a speech bubble
+and drops back into formation. An orthographic camera has no perspective, so "towards the camera" is
+done by SCALE (`GREETING_GROW`); the pose's `z` runs 0 → 1 for exactly that. She stays steerable and
+vulnerable but holds fire, and the greeting is cancelled by a game over, the hangar or leaving.
 
 **The boss is built from today's open-task count** — the same number the Home button's badge shows
 (`getAllProjectsOpenTasksAmount` over `sidebarNumbers`) — as a big red voxel block with that number

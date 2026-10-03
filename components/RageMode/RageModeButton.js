@@ -8,7 +8,8 @@ import { canRenderSkyline } from '../SettingsView/Profile/Achievements/Skyline/w
 import { useReducedMotion } from '../UIComponents/Ghosts/ghostAnimation'
 import { isRageModeEnabled } from './rageModeFlag'
 import { loadRageArena } from './loadRageArena'
-import { loadRageProfile, purchaseRageItem, submitRageScore } from './rageModeBackend'
+import { findLaunchPoint } from './rageLaunchAnchor'
+import { loadRageProfile, purchaseRageItem, saveRageProgress, submitRageScore } from './rageModeBackend'
 import { buildRageStrings } from './rageStrings'
 import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
 import { PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
@@ -32,9 +33,9 @@ const readProjectsMap = () => {
 
 /**
  * The entry to rage mode, next to "Anna Alldone: How can I help?" in the assistant line: Anna takes
- * off from it, the page slides away under her and a vertical-scrolling raid begins over ground built
- * from your day (`raidArena.js`); leaving slides the page back. Purely for fun — nothing is written,
- * and the app's DOM is never touched.
+ * off from the assistant's avatar beside it, the page slides away under her and a vertical-scrolling raid begins over ground built
+ * from your day (`raidArena.js`); leaving slides the page back. Purely for fun — none of the app's
+ * data is written (only the raid's own profile and progress), and its DOM is never touched.
  *
  * Renders nothing for anonymous viewers, without WebGL, under reduced motion, or on a browser that
  * opted out with `?rageMode=off` (`rageModeFlag.js`) — the arena IS motion, so there is no calmer version to offer.
@@ -42,6 +43,7 @@ const readProjectsMap = () => {
  */
 export default function RageModeButton({ color, style, size = 24 }) {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const uid = useSelector(state => state.loggedUser.uid)
     const gold = useSelector(state => state.loggedUser.gold)
     const openTasksToday = useSelector(state =>
         getAllProjectsOpenTasksAmount(
@@ -78,19 +80,21 @@ export default function RageModeButton({ color, style, size = 24 }) {
 
     const onPress = () => {
         if (active) return
-        const node = buttonRef.current
-        const rect = node && node.getBoundingClientRect ? node.getBoundingClientRect() : null
-        const from = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null
+        // She comes out of (and goes back into) her avatar next to the input, not the crosshair.
+        const from = findLaunchPoint(buttonRef.current)
         setActive(true)
         loadRageArena()
             .then(({ startRageArena }) => {
                 arenaRef.current = startRageArena({
                     strings: rageStrings(),
                     from,
+                    // Missions completed are remembered per user, on every device (raidProgress.js).
+                    progressScope: uid,
                     services: {
                         loadProfile: loadRageProfile,
                         purchase: purchaseRageItem,
                         submitScore: submitRageScore,
+                        saveProgress: saveRageProgress,
                         getGold: () => goldRef.current,
                         getOpenTasksToday: () => openTasksRef.current,
                         getProjectColor: projectId => {

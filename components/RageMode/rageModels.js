@@ -98,11 +98,18 @@ export const buildCharacter = (scale = CHARACTER_SCALE) => {
     const yaw = new Group()
     lean.add(yaw)
 
-    // Navy trousers and shoes.
-    yaw.add(box(8, 15, 8.5, PALETTE.trousers, -1, -19, 4.5))
-    yaw.add(box(8, 15, 8.5, PALETTE.trousers, 1, -19, -4.5))
-    yaw.add(box(10, 4, 9, PALETTE.shoes, 1, -27.5, 4.5))
-    yaw.add(box(10, 4, 9, PALETTE.shoes, 3, -27.5, -4.5))
+    // Navy trousers and shoes, each leg on a pivot at the hip so she can run (local +x is forward).
+    const legs = [
+        [-1, 1, 4.5],
+        [1, 3, -4.5],
+    ].map(([legX, shoeX, z]) => {
+        const hip = new Group()
+        hip.position.set(legX, -11.5, z)
+        hip.add(box(8, 15, 8.5, PALETTE.trousers, 0, -7.5, 0))
+        hip.add(box(10, 4, 9, PALETTE.shoes, shoeX - legX, -16, 0))
+        yaw.add(hip)
+        return hip
+    })
     yaw.add(box(19.5, 3, 17.5, PALETTE.trousers, 0, -10, 0))
 
     // The light-blue shirt: collar, V-neck, button placket.
@@ -194,7 +201,7 @@ export const buildCharacter = (scale = CHARACTER_SCALE) => {
     yaw.add(arm)
 
     lean.scale.setScalar(scale)
-    return { root: lean, yaw, head, arm, rearArm, flames, materials: Object.values(materials) }
+    return { root: lean, yaw, head, arm, rearArm, legs, flames, materials: Object.values(materials) }
 }
 
 /** The boss's chest: today's open-task count, big, with a caption. Redrawn as the number counts down. */

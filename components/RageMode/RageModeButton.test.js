@@ -88,6 +88,24 @@ describe('RageModeButton', () => {
         expect(services.getProjectColor('missing')).toBeNull()
     })
 
+    it('launches Anna from the avatar in its own assistant line, and scopes progress to the user', async () => {
+        mockState.loggedUser.uid = 'user-7'
+        const { findLaunchPoint, RAGE_LAUNCH_ANCHOR_ID } = require('./rageLaunchAnchor')
+        document.body.innerHTML = `<div id="card"><div id="${RAGE_LAUNCH_ANCHOR_ID}"></div><span><button id="b"></button></span></div>`
+        const avatar = document.getElementById(RAGE_LAUNCH_ANCHOR_ID)
+        avatar.getBoundingClientRect = () => ({ left: 10, top: 100, width: 48, height: 48 })
+        const button = document.getElementById('b')
+        button.getBoundingClientRect = () => ({ left: 500, top: 20, width: 18, height: 18 })
+        expect(findLaunchPoint(button)).toEqual({ x: 34, y: 124, size: 48 })
+        avatar.remove()
+        expect(findLaunchPoint(button)).toEqual({ x: 509, y: 29, size: 18 })
+
+        const component = render()
+        act(() => component.root.findByProps({ accessibilityLabel: 'Rage mode' }).props.onPress())
+        await flush()
+        expect(mockStart.mock.calls[0][0].progressScope).toBe('user-7')
+    })
+
     it('does not open a second arena while one is running', async () => {
         const component = render()
         const button = component.root.findByProps({ accessibilityLabel: 'Rage mode' })

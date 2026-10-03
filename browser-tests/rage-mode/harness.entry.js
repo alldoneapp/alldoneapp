@@ -11,6 +11,7 @@
  * Open the built page by hand (`node browser-tests/rage-mode/run.js --serve`) to simply play it.
  */
 import { startRageArena } from '../../components/RageMode/raidArena'
+import { findLaunchPoint, RAGE_LAUNCH_ANCHOR_ID } from '../../components/RageMode/rageLaunchAnchor'
 import { buildRageStrings } from '../../components/RageMode/rageStrings'
 import { RAGE_WEAPONS } from '../../components/RageMode/rageWeapons'
 import en from '../../i18n/translations/en.json'
@@ -79,13 +80,14 @@ style.textContent = `
   .avatar { width: 64px; height: 64px; border-radius: 32px; background-size: cover; }
   .btn { background: #0C66FF; color: #fff; border: none; border-radius: 8px; padding: 10px 18px; font-size: 14px; cursor: pointer; }
   .assistant { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .anna { width: 32px; height: 32px; border-radius: 10px; background: #F7DC96; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
   #rage { background: none; border: none; font-size: 18px; color: #8C95A8; cursor: pointer; padding: 0; }
 `
 document.head.appendChild(style)
 
 const image = makeImage()
 document.body.innerHTML = `<div id="root">
-  <div class="topbar"><strong>Alldone</strong><span class="assistant">Anna Alldone: How can I help?<button id="rage" aria-label="Rage mode">⌖</button></span><span></span></div>
+  <div class="topbar"><strong>Alldone</strong><span class="assistant"><span class="anna" id="${RAGE_LAUNCH_ANCHOR_ID}">A</span>Anna Alldone: How can I help?<button id="rage" aria-label="Rage mode">⌖</button></span><span></span></div>
   <div class="page" id="page">
     <h1 id="title">Stick figure</h1>
     <p id="paragraph">${PARAGRAPH}</p>
@@ -135,7 +137,13 @@ state.profile = {
 }
 state.calls = { purchase: [], submitScore: [] }
 const services = {
-    loadProfile: () => Promise.resolve({ ...state.profile }),
+    loadProfile: () => Promise.resolve({ ...state.profile, progress: serverProgress() }),
+    saveProgress: checkpoint => {
+        state.calls.saveProgress.push(checkpoint)
+        const savedAt = Date.now()
+        localStorage.setItem(SERVER_PROGRESS_KEY, JSON.stringify({ checkpoint, savedAt }))
+        return Promise.resolve({ ok: true, savedAt, checkpoint })
+    },
     purchase: id => {
         state.calls.purchase.push(id)
         const price = RAGE_WEAPONS.find(weapon => weapon.id === id).price
@@ -163,14 +171,32 @@ const tuning = {
     ...(params.get('god') ? { invincible: true } : {}),
 }
 
+// Progress is remembered per scope, in the browser AND on the (fake) server, which keeps its copy
+// in its own localStorage key so it survives a reload — standing in for "another device".
+// ?fresh=1 wipes both; ?newDevice=1 wipes only the browser's copy.
+const SERVER_PROGRESS_KEY = 'harness.server.progress'
+if (params.get('fresh')) {
+    localStorage.removeItem('alldone.rageMode.progress.harness')
+    localStorage.removeItem(SERVER_PROGRESS_KEY)
+}
+if (params.get('newDevice')) localStorage.removeItem('alldone.rageMode.progress.harness')
+const serverProgress = () => {
+    try {
+        return JSON.parse(localStorage.getItem(SERVER_PROGRESS_KEY))
+    } catch (error) {
+        return null
+    }
+}
+state.calls.saveProgress = []
+
 state.start = () => {
-    const rect = document.getElementById('rage').getBoundingClientRect()
     state.exited = false
     state.arena = startRageArena({
         strings,
         services,
         tuning,
-        from: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+        from: findLaunchPoint(document.getElementById('rage')),
+        progressScope: 'harness',
         onExit: () => {
             state.exited = true
             state.exitCount += 1

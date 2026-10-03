@@ -2,9 +2,11 @@ const admin = require('firebase-admin')
 const { FieldValue } = require('firebase-admin/firestore')
 
 const { RAGE_DEFAULT_WEAPON, RAGE_WEAPON_PRICES } = require('./rageWeaponsCatalog')
+const { normalizeProgress, sanitizeCheckpoint } = require('./rageModeProgress')
 
 /**
- * A user's rage-mode profile: the weapons they own and their highscore.
+ * A user's rage-mode profile: the weapons they own, their highscore, and how far they got in the
+ * raid (`progress`, see rageModeProgress.js) so it follows them from device to device.
  *
  * It lives in `rageModeProfiles/{userId}`, a collection with NO client rule at all — Firestore's
  * default deny means only the Admin SDK can read or write it, so neither ownership nor the
@@ -41,6 +43,7 @@ const normalizeProfile = (data = {}) => {
         owned,
         highscore: Number.isFinite(highscore) && highscore > 0 ? Math.floor(highscore) : 0,
         games: Number.isFinite(Number(data.games)) ? Math.max(0, Math.floor(Number(data.games))) : 0,
+        progress: normalizeProgress(data.progress),
     }
 }
 
@@ -115,11 +118,25 @@ const submitRageModeScore = async ({ userId, score }) => {
     return result
 }
 
+/**
+ * Save the raid's progress: a checkpoint after a completed mission (or a hangar purchase), or `null`
+ * for "start over". The SERVER stamps `savedAt`, so devices with different clocks still agree on
+ * which save is the newest; the client keeps that stamp with its own copy.
+ */
+const saveRageModeProgress = async ({ userId, checkpoint }) => {
+    const sanitized = checkpoint === null ? null : sanitizeCheckpoint(checkpoint)
+    if (checkpoint !== null && !sanitized) return { ok: false, reason: 'invalid_progress' }
+    const savedAt = Date.now()
+    await profileRef(userId).set({ progress: { checkpoint: sanitized, savedAt }, updatedAt: savedAt }, { merge: true })
+    return { ok: true, savedAt, checkpoint: sanitized }
+}
+
 module.exports = {
     COLLECTION,
     MAX_SCORE,
     getRageModeProfile,
     normalizeProfile,
     purchaseRageModeItem,
+    saveRageModeProgress,
     submitRageModeScore,
 }

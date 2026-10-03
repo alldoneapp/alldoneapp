@@ -30,6 +30,12 @@ export const buildRageStrings = translate => ({
     maxed: translate('Maxed'),
     notEnoughCredits: translate('Not enough credits'),
     noBoss: translate('Nothing open today: no boss!'),
+    continueAt: translate('Continuing at mission {n}'),
+    startOver: translate('Start over'),
+    startOverConfirm: translate('Sure? Start over'),
+    confirmStartOver: translate('Press ↺ again to start over from mission 1'),
+    greet: translate('Say hi'),
+    greetings: [1, 2, 3, 4].map(n => translate(`Rage mode greeting ${n}`)),
     hangarItems: Object.fromEntries(
         HANGAR_ITEMS.map(item => [
             item.id,
