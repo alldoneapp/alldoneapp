@@ -534,11 +534,171 @@ const itemStatus = (strings, item, run) => {
 }
 
 /**
+ * The global leaderboard: the top five, where you stand if you are not among them, and the name
+ * you play under (editable in place). Shown on the hangar and the game-over card. `set(state)`
+ * takes `{ status: 'loading' | 'ready' | 'error', top, you, total, name, nameChosen, nameError }`.
+ */
+export const NAME_INPUT_ATTRIBUTE = 'data-rage-name-input'
+const buildLeaderboard = ({ strings, actions }) => {
+    const root = pillElement('div', {
+        marginTop: '14px',
+        padding: '12px 12px 10px',
+        borderRadius: '14px',
+        background: 'rgba(255,255,255,0.07)',
+        textAlign: 'left',
+    })
+    root.setAttribute('data-leaderboard', 'true')
+    let state = { status: 'loading' }
+    let editing = false
+    const text = (tag, content, style) => {
+        const element = pillElement(tag, style)
+        element.textContent = content
+        return element
+    }
+    const row = (entry, you) => {
+        const line = pillElement('div', {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '4px 8px',
+            borderRadius: '8px',
+            background: you ? 'rgba(255,174,71,0.22)' : 'transparent',
+            fontWeight: you ? '700' : '400',
+        })
+        line.setAttribute('data-rank', String(entry.rank))
+        if (you) line.setAttribute('data-you', 'true')
+        const medal = entry.rank === 1 ? '🥇' : entry.rank === 2 ? '🥈' : entry.rank === 3 ? '🥉' : `#${entry.rank}`
+        line.append(
+            text('span', medal, { width: '30px', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }),
+            text('span', you ? `${entry.name} (${strings.leaderboard.you})` : entry.name, {
+                flex: '1',
+                minWidth: '0',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+            }),
+            text('span', entry.score.toLocaleString(), { color: '#FFCE8F', fontVariantNumeric: 'tabular-nums' })
+        )
+        return line
+    }
+    const render = () => {
+        root.textContent = ''
+        const labels = strings.leaderboard
+        const header = pillElement('div', { display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' })
+        header.append(text('div', `🏆 ${labels.title}`, { font: `700 15px ${FONT}`, flex: '1' }))
+        if (state.status === 'ready' && state.you)
+            header.append(
+                text(
+                    'div',
+                    labels.rank.replace('{rank}', state.you.rank).replace('{total}', state.total || state.you.rank),
+                    { color: '#9CF0C8', fontWeight: '700', fontSize: '13px' }
+                )
+            )
+        root.appendChild(header)
+        if (state.status === 'loading')
+            root.appendChild(text('div', labels.loading, { opacity: '0.7', fontSize: '13px' }))
+        else if (state.status === 'error')
+            root.appendChild(text('div', labels.error, { opacity: '0.7', fontSize: '13px' }))
+        else {
+            const top = state.top || []
+            if (!top.length) root.appendChild(text('div', labels.empty, { opacity: '0.7', fontSize: '13px' }))
+            top.forEach(entry => root.appendChild(row(entry, entry.you)))
+            const youInTop = top.some(entry => entry.you)
+            if (state.you && !youInTop) {
+                root.appendChild(text('div', '⋯', { textAlign: 'center', opacity: '0.5', lineHeight: '12px' }))
+                root.appendChild(row(state.you, true))
+            }
+            if (!state.you)
+                root.appendChild(text('div', labels.notRanked, { opacity: '0.7', fontSize: '12px', marginTop: '4px' }))
+        }
+        // The name you play under, and changing it.
+        const nameLine = pillElement('div', {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            marginTop: '10px',
+            fontSize: '12px',
+            flexWrap: 'wrap',
+        })
+        if (editing) {
+            const input = document.createElement('input')
+            input.setAttribute(NAME_INPUT_ATTRIBUTE, 'true')
+            input.type = 'text'
+            input.maxLength = 20
+            input.value = state.name || ''
+            input.setAttribute('aria-label', labels.rename)
+            Object.assign(input.style, {
+                flex: '1',
+                minWidth: '120px',
+                padding: '7px 10px',
+                borderRadius: '10px',
+                border: '1px solid rgba(255,255,255,0.3)',
+                background: 'rgba(255,255,255,0.1)',
+                color: '#FFFFFF',
+                font: `600 13px ${FONT}`,
+                outline: 'none',
+            })
+            stopPointer(input)
+            const save = wideButton(labels.save, true, () => actions.saveName(input.value))
+            save.style.padding = '7px 12px'
+            const cancel = wideButton('✕', false, () => {
+                editing = false
+                render()
+            })
+            cancel.style.padding = '7px 10px'
+            nameLine.append(input, save, cancel)
+            root.appendChild(nameLine)
+            if (state.nameError)
+                root.appendChild(
+                    text('div', labels.invalidName, { color: '#FF8A80', fontSize: '12px', marginTop: '4px' })
+                )
+            setTimeout(() => {
+                input.focus()
+                input.select()
+            }, 0)
+        } else {
+            nameLine.append(
+                text('span', labels.playingAs.replace('{name}', state.name || '…'), { opacity: '0.8' }),
+                (() => {
+                    const edit = wideButton(`✎ ${labels.rename}`, false, () => {
+                        editing = true
+                        render()
+                    })
+                    edit.setAttribute('data-rename', 'true')
+                    edit.style.padding = '4px 10px'
+                    edit.style.fontSize = '12px'
+                    return edit
+                })()
+            )
+            root.appendChild(nameLine)
+            root.appendChild(text('div', labels.public, { opacity: '0.5', fontSize: '11px', marginTop: '4px' }))
+        }
+    }
+    render()
+    return {
+        element: root,
+        set(next) {
+            state = { ...state, ...next }
+            if (next.nameSaved) editing = false
+            render()
+        },
+        cancelEdit() {
+            if (!editing) return false
+            editing = false
+            render()
+            return true
+        },
+        isEditing: () => editing,
+    }
+}
+
+/**
  * Between missions: the debrief, the credits you have, what they buy, the Gold weapon shop, and the
  * button that launches the next mission.
  */
 const buildHangar = ({ strings, zIndex, actions }) => {
     const { backdrop, card } = panel(zIndex)
+    const leaderboard = buildLeaderboard({ strings, actions })
     backdrop.setAttribute(RAGE_LAYER_ATTRIBUTE, 'hangar')
     let current = null
 
@@ -611,10 +771,12 @@ const buildHangar = ({ strings, zIndex, actions }) => {
         launch.setAttribute('data-launch', 'true')
         footer.append(gold, restart, leave, launch)
         card.appendChild(footer)
+        card.appendChild(leaderboard.element)
     }
 
     return {
         element: backdrop,
+        leaderboard,
         show(state) {
             current = state
             render()
@@ -657,9 +819,12 @@ const buildGameOver = ({ strings, zIndex, actions, canStartOver }) => {
         restart,
         wideButton(strings.exit, false, actions.exit)
     )
-    card.append(title, scoreLine, missionLine, bestLine, newBest, buttons)
+    const leaderboard = buildLeaderboard({ strings, actions })
+    card.style.maxWidth = '380px'
+    card.append(title, scoreLine, missionLine, bestLine, newBest, buttons, leaderboard.element)
     return {
         element: backdrop,
+        leaderboard,
         show({ score, best, isNew, mission }) {
             scoreLine.textContent = score.toLocaleString()
             missionLine.textContent = strings.mission.replace('{n}', mission)

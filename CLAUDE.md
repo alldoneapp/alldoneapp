@@ -1651,6 +1651,20 @@ on an empty inbox. Beams and waves ALWAYS telegraph before they can hurt (`BEAM_
 is drawn exactly where `waveHits` has it). Text on a disc (a cylinder turned to the camera — the clock
 face, badges, pickup tokens) needs `DISC_TEXTURE_TURN`, or it shows a quarter turn off.
 
+**There is a GLOBAL leaderboard** (`functions/RageMode/rageModeLeaderboard.js`), shown after every
+game over and every completed mission: the top five, the player's own row highlighted (or shown
+below the five with its rank when it is not among them), and the name they play under, editable in
+place. One document per player in `rageModeLeaderboard/{uid}` — no client rule, so only the callables
+`getRageModeLeaderboard` / `setRageModeName` and `submitRageModeScore` touch it; a new best is written
+to the board in the SAME transaction that keeps the profile highscore (also carrying a best from before
+the board existed). Rank is a `count()` of strictly higher scores plus one, so ties share a rank and
+nothing reads the whole board. The board is visible to every Alldone user across workspaces, so a real
+name is never shown by default: until a player chooses one they are "Pilot ####" (derived from the uid),
+and a chosen name must be 2–20 letters, digits, spaces or `. _ - '` — nothing that can carry a link,
+markup or a mention. A score posted after a mission passes `final: false`, so it can set a best without
+counting as a finished game. Keys typed into the name field are kept from the game and the app
+(`NAME_INPUT_ATTRIBUTE`): the window capture handler lets them type and stops everything else.
+
 **The raid is fitted to the screen** (`raidScreen.js`): the same waves on a phone would be three times
 as dense as on a laptop, with the same Anna and the same hit box. Against a 1280×800 reference area,
 `density` (√ of the area ratio, 0.5–1.15) scales HOW MANY — enemies per wave, bullets per ring, bunkers,
@@ -1677,7 +1691,8 @@ fires and is upgraded with credits; ON TOP of it fires one special weapon bought
 (`rageWeapons.js`: blaster = none, shotgun 100, rocket 250, flamethrower 400, laser 600, black hole
 1000, finger snap 2000), switched with 1–7 or the weapon bar and bought in the shop panel reached
 from the hangar, which always asks to confirm. `functions/RageMode/rageModeProfile.js` hosts three
-callables — `getRageModeProfile`, `purchaseRageModeItem`, `submitRageModeScore` — over
+callables — `getRageModeProfile`, `purchaseRageModeItem`, `submitRageModeScore` (plus
+`saveRageModeProgress` and the leaderboard's two) — over
 `rageModeProfiles/{uid}`, a collection with NO client rule at all, so Firestore's default deny keeps
 ownership and highscores out of reach of the browser (deliberately not `users/{uid}` or
 `users/{uid}/private/**`, which are owner-writable). A purchase goes through `deductGold` with source

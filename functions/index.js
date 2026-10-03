@@ -1563,7 +1563,43 @@ exports.submitRageModeScore = onCall(
         const { data, auth } = request
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
         const { submitRageModeScore } = require('./RageMode/rageModeProfile')
-        return await submitRageModeScore({ userId: auth.uid, score: data && data.score })
+        return await submitRageModeScore({
+            userId: auth.uid,
+            score: data && data.score,
+            final: !(data && data.final === false),
+        })
+    }
+)
+
+// The global leaderboard (functions/RageMode/rageModeLeaderboard.js): the top five and the caller's
+// rank, and the name the caller wants to appear under.
+exports.getRageModeLeaderboard = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { getRageModeLeaderboard } = require('./RageMode/rageModeLeaderboard')
+        return await getRageModeLeaderboard({ userId: auth.uid })
+    }
+)
+
+exports.setRageModeName = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setRageModeName } = require('./RageMode/rageModeLeaderboard')
+        return await setRageModeName({ userId: auth.uid, name: data && data.name })
     }
 )
 

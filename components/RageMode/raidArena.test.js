@@ -32,7 +32,7 @@ const PROGRESS_KEY = 'alldone.rageMode.progress.user-1'
 const saveLocal = (checkpoint, savedAt = 1, pending = false) =>
     localStorage.setItem(PROGRESS_KEY, JSON.stringify({ checkpoint, savedAt, pending }))
 const flushPromises = async () => {
-    for (let i = 0; i < 5; i++) await Promise.resolve()
+    for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 const layer = name => document.querySelector(`[data-rage-mode-layer="${name}"]`)
 
@@ -591,6 +591,111 @@ describe('rage mode raid arena', () => {
         expect(Number(hud().dataset.density)).toBeLessThan(0.65)
         fly()
         expect(peak()).toBeLessThan(laptop)
+    })
+
+    describe('global leaderboard', () => {
+        const top = [
+            { rank: 1, name: 'Zoë', score: 9000, you: false },
+            { rank: 2, name: 'Pilot 4821', score: 7000, you: false },
+            { rank: 3, name: 'Max', score: 5000, you: false },
+            { rank: 4, name: 'Ana', score: 3000, you: false },
+            { rank: 5, name: 'Bo', score: 2000, you: false },
+        ]
+        const board = () => layer('gameover').querySelector('[data-leaderboard]')
+        const dieQuickly = async () => {
+            start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40 })
+            fly()
+            for (let i = 0; i < 60 * 30 && hud().dataset.phase !== 'gameover'; i++) step()
+            await flushPromises()
+            step(90)
+        }
+
+        beforeEach(() => {
+            let name = 'Pilot 1234'
+            services.submitScore = jest.fn(() => Promise.resolve({ ok: true, highscore: 400, isNew: true }))
+            services.loadLeaderboard = jest.fn(() =>
+                Promise.resolve({ top, you: { rank: 12, name, score: 400 }, total: 40, name })
+            )
+            services.setName = jest.fn(next => {
+                if (next.length < 2) return Promise.resolve({ ok: false })
+                name = next
+                return Promise.resolve({ ok: true, name })
+            })
+        })
+
+        it('shows the top five and your rank below them after a game over, once the score is posted', async () => {
+            await dieQuickly()
+            expect(services.submitScore).toHaveBeenCalled()
+            expect(services.loadLeaderboard).toHaveBeenCalled()
+            expect(board().querySelectorAll('[data-rank]')).toHaveLength(6)
+            expect(board().querySelector('[data-you]').textContent).toContain('Pilot 1234')
+            expect(board().textContent).toContain('Zoë')
+            expect(hud().dataset.boardRank).toBe('12')
+        })
+
+        it('highlights you inside the top five when you are there', async () => {
+            services.loadLeaderboard = jest.fn(() =>
+                Promise.resolve({
+                    top: top.map((row, i) => (i === 2 ? { ...row, name: 'Me', you: true } : row)),
+                    you: { rank: 3, name: 'Me', score: 5000 },
+                    total: 40,
+                    name: 'Me',
+                })
+            )
+            await dieQuickly()
+            expect(board().querySelectorAll('[data-rank]')).toHaveLength(5)
+            expect(board().querySelector('[data-you]').getAttribute('data-rank')).toBe('3')
+        })
+
+        it('lets you pick the name you play under, typing without setting off the game', async () => {
+            const appKey = jest.fn()
+            document.addEventListener('keydown', appKey)
+            await dieQuickly()
+            board().querySelector('[data-rename]').click()
+            jest.runOnlyPendingTimers()
+            const input = board().querySelector('input')
+            input.value = 'Space Ace'
+            const bombs = hud().dataset.bombs
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', code: 'KeyB', bubbles: true }))
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true }))
+            expect(hud().dataset.shop).toBeUndefined()
+            expect(hud().dataset.bombs).toBe(bombs)
+            expect(appKey).not.toHaveBeenCalled()
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+            await flushPromises()
+            expect(services.setName).toHaveBeenCalledWith('Space Ace')
+            expect(board().querySelector('input')).toBeNull()
+            expect(board().querySelector('[data-you]').textContent).toContain('Space Ace')
+            document.removeEventListener('keydown', appKey)
+        })
+
+        it('says so when a name is not allowed', async () => {
+            await dieQuickly()
+            board().querySelector('[data-rename]').click()
+            const input = board().querySelector('input')
+            input.value = 'x'
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+            await flushPromises()
+            expect(board().textContent).toContain('Raid leaderboard invalid name')
+        })
+
+        it('shows the board in the hangar too, posting the score without counting a finished game', async () => {
+            start({ bossAt: 1, noWaves: true, bossHp: 40 })
+            fly()
+            step(90)
+            key(' ', 'Space')
+            step(60 * 4)
+            expect(hud().dataset.phase).toBe('hangar')
+            await flushPromises()
+            expect(services.submitScore).toHaveBeenCalledWith(expect.any(Number), { final: false })
+            expect(layer('hangar').querySelector('[data-leaderboard] [data-you]')).toBeTruthy()
+        })
+
+        it('copes with a board that cannot be loaded', async () => {
+            services.loadLeaderboard = jest.fn(() => Promise.reject(new Error('offline')))
+            await dieQuickly()
+            expect(board().textContent).toContain('Raid leaderboard error')
+        })
     })
 
     it('greets on Enter, holds fire while she does, and is back in formation afterwards', () => {
