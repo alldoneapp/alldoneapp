@@ -1488,9 +1488,27 @@ class AlldoneSimpleMCPServer {
     }
 
     // HTTP Transport implementation (2025-03-26 spec)
+    getOAuthChallengeHeaders() {
+        const metadataUrl = `${getBaseUrl()}/.well-known/oauth-protected-resource/mcpServer`
+        return {
+            'WWW-Authenticate': `Bearer realm="mcp-server", resource_metadata="${metadataUrl}", scope="read write mcp:tools", error="invalid_token", error_description="Authentication required"`,
+            Link: `<${metadataUrl}>; rel="oauth-protected-resource"`,
+            'Cache-Control': 'no-store',
+        }
+    }
+
     async handleHTTP(req, res) {
         try {
             if (req.method === 'GET') {
+                try {
+                    await this.getAuthenticatedUserForClient(req)
+                } catch (_) {
+                    res.status(401).set(this.getOAuthChallengeHeaders()).json({
+                        error: 'unauthorized',
+                        error_description: 'Authentication required. Please authenticate via OAuth.',
+                    })
+                    return
+                }
                 // Return proper MCP server info as per transport specification
                 res.set('Content-Type', 'application/json; charset=utf-8').json({
                     jsonrpc: '2.0',
@@ -1816,11 +1834,7 @@ class AlldoneSimpleMCPServer {
                     // But since we're in the JSON-RPC handler, we'll throw an error that the HTTP handler will catch
                     const authError = new Error('Authentication required')
                     authError.statusCode = 401
-                    authError.headers = {
-                        'WWW-Authenticate': `Bearer realm="mcp-server", error="invalid_token", error_description="Authentication required"`,
-                        Link: `<${baseUrl}/.well-known/oauth-protected-resource>; rel="oauth-protected-resource"`,
-                        'Cache-Control': 'no-store',
-                    }
+                    authError.headers = this.getOAuthChallengeHeaders()
                     authError.body = {
                         error: 'unauthorized',
                         error_description: 'Authentication required. Please authenticate via OAuth.',
@@ -3372,10 +3386,7 @@ class AlldoneSimpleMCPServer {
                             const baseUrl = `${getBaseUrl()}/mcpServer`
 
                             res.status(401)
-                                .set({
-                                    'WWW-Authenticate': `Bearer realm="mcp-server", error="invalid_token", error_description="Authentication required"`,
-                                    Link: `<${baseUrl}/.well-known/oauth-protected-resource>; rel="oauth-protected-resource"`,
-                                })
+                                .set(this.getOAuthChallengeHeaders())
                                 .json({
                                     error: 'unauthorized',
                                     error_description: 'Authentication required. Please authenticate via OAuth.',

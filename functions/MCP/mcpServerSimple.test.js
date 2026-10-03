@@ -50,6 +50,93 @@ jest.mock('../Assistant/assistantHelper', () => ({
     executeToolNatively: mockExecuteToolNatively,
 }))
 
+describe('MCP OAuth discovery challenges', () => {
+    let server, res
+    beforeEach(() => {
+        const { AlldoneSimpleMCPServer } = require('./mcpServerSimple')
+        server = Object.create(AlldoneSimpleMCPServer.prototype)
+        server.getAuthenticatedUserForClient = jest.fn().mockRejectedValue(new Error('Authentication required'))
+        res = {
+            status: jest.fn().mockReturnThis(),
+            set: jest.fn().mockReturnThis(),
+            json: jest.fn().mockReturnThis(),
+        }
+        jest.spyOn(console, 'log').mockImplementation(() => {})
+        jest.spyOn(console, 'error').mockImplementation(() => {})
+    })
+    afterEach(() => jest.restoreAllMocks())
+
+    const expectChallenge = () => {
+        expect(res.status).toHaveBeenCalledWith(401)
+        const headers = res.set.mock.calls.map(([value]) => value).find(value => value['WWW-Authenticate'])
+        expect(headers['WWW-Authenticate']).toContain(
+            'resource_metadata="https://my.alldone.app/.well-known/oauth-protected-resource/mcpServer"'
+        )
+        expect(headers['Cache-Control']).toBe('no-store')
+    }
+
+    test.each([{}, { authorization: 'Bearer expired-token' }])(
+        'GET advertises discovery before credentials can be used (%j)',
+        async headers => {
+            await server.handleRequest({ method: 'GET', path: '/mcpServer', headers }, res)
+            expectChallenge()
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'unauthorized' }))
+        }
+    )
+
+    test('POST initialize advertises the same metadata URL', async () => {
+        server.clientSessions = new Map()
+        server.getOrCreateMCPSession = jest.fn().mockReturnValue('session-test')
+        await server.handleRequest(
+            {
+                method: 'POST',
+                path: '/mcpServer',
+                headers: { 'content-type': 'application/json' },
+                body: { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
+            },
+            res
+        )
+        expectChallenge()
+    })
+
+    test('protected tool requests advertise the same metadata URL', async () => {
+        await server.handleRequest(
+            {
+                method: 'POST',
+                path: '/mcpServer',
+                headers: { 'content-type': 'application/json' },
+                body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_tasks' } },
+            },
+            res
+        )
+        expectChallenge()
+    })
+
+    test('metadata discovery stays public and identifies the configured MCP resource', async () => {
+        await server.handleRequest(
+            {
+                method: 'GET',
+                path: '/.well-known/oauth-protected-resource/mcpServer',
+                headers: {},
+            },
+            res
+        )
+        expect(server.getAuthenticatedUserForClient).not.toHaveBeenCalled()
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ resource: 'https://my.alldone.app/mcpServer' }))
+        expect(res.status).not.toHaveBeenCalledWith(401)
+    })
+
+    test('the MCP SDK resolves the challenge to the public metadata endpoint', () => {
+        const { extractWWWAuthenticateParams } = require('@modelcontextprotocol/sdk/client/auth')
+        const headers = server.getOAuthChallengeHeaders()
+        const discovery = extractWWWAuthenticateParams({ headers: { get: name => headers[name] } })
+        expect(discovery.resourceMetadataUrl.toString()).toBe(
+            'https://my.alldone.app/.well-known/oauth-protected-resource/mcpServer'
+        )
+        expect(discovery.scope).toBe('read write mcp:tools')
+    })
+})
+
 describe('AlldoneSimpleMCPServer tools/list', () => {
     let originalSetTimeout
     let AlldoneSimpleMCPServer

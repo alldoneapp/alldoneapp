@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const { v4: uuidv4 } = require('uuid')
 const { getEnvironmentConfig } = require('../config/environments.js')
 const { Timestamp } = require('firebase-admin/firestore')
+const { submitOAuthCallback } = require('./submitOAuthCallback')
 
 // Helper function to get the correct base URL based on environment
 function getBaseUrl() {
@@ -259,10 +260,13 @@ class CloudOAuthHandler {
     }
 
     // Handle OAuth callback
-    async handleOAuthCallback(sessionId, firebaseToken) {
+    async handleOAuthCallback(sessionId, firebaseToken, authorization = {}) {
         try {
             // Verify the Firebase token
             const decodedToken = await admin.auth().verifyIdToken(firebaseToken)
+            if (authorization.authCode) {
+                return await this.completeAuthorizationCallback(sessionId, firebaseToken, decodedToken, authorization)
+            }
             const userId = decodedToken.uid
             const userData = {
                 email: decodedToken.email,
@@ -293,9 +297,103 @@ class CloudOAuthHandler {
 
             return { success: true, sessionId: mcpSessionId, userId, bearerToken: firebaseToken }
         } catch (error) {
-            console.error('OAuth callback error:', error)
+            console.error('OAuth callback failed', { code: error.code || 'invalid_authorization' })
+            if (
+                [4, 8, 10, 13, 14, 'unavailable', 'deadline-exceeded', 'aborted', 'resource-exhausted'].includes(
+                    error.code
+                )
+            ) {
+                return {
+                    success: false,
+                    retryable: true,
+                    error: 'Authentication temporarily unavailable. Please retry.',
+                }
+            }
             return { success: false, error: error.message }
         }
+    }
+
+    async completeAuthorizationCallback(sessionId, firebaseToken, decodedToken, { authCode, redirectUri, state }) {
+        const authRef = this.db.collection('oauthAuthSessions').doc(authCode)
+        const sessionRef = this.db.collection('mcpSessions').doc(uuidv4())
+        const now = Timestamp.now()
+        const expiresAt = Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+        const userId = decodedToken.uid
+
+        // Commit the session and authorization together. If the response is lost,
+        // a retry (including a concurrent request) returns the original session.
+        return this.db.runTransaction(async transaction => {
+            const authDoc = await transaction.get(authRef)
+            if (!authDoc.exists) throw new Error('Authorization not found. Please start a new connection.')
+            const auth = authDoc.data()
+            if (!auth.expiresAt || auth.expiresAt.toMillis() <= now.toMillis()) {
+                throw new Error('Authorization expired. Please start a new connection.')
+            }
+            if (
+                auth.sessionId !== sessionId ||
+                auth.redirectUri !== redirectUri ||
+                (auth.state || '') !== (state || '')
+            ) {
+                throw new Error('Authorization request does not match the login session.')
+            }
+            if (!decodedToken.email) throw new Error('An email address is required to connect Alldone.')
+
+            const redirectUrl = new URL(auth.redirectUri)
+            redirectUrl.searchParams.set('code', authCode)
+            if (auth.state) redirectUrl.searchParams.set('state', auth.state)
+
+            let mcpSessionId
+            if (auth.status === 'completed') {
+                if (auth.userId !== userId || !auth.mcpSessionId) {
+                    throw new Error('Authorization was completed by a different login.')
+                }
+                const existingSession = await transaction.get(this.db.collection('mcpSessions').doc(auth.mcpSessionId))
+                const session = existingSession.exists ? existingSession.data() : null
+                if (!session || session.userId !== userId || session.expiresAt.toMillis() <= now.toMillis()) {
+                    throw new Error('Login session expired. Please start a new connection.')
+                }
+                mcpSessionId = auth.mcpSessionId
+            } else if (auth.status === 'pending') {
+                mcpSessionId = sessionRef.id
+                transaction.set(sessionRef, {
+                    sessionId: mcpSessionId,
+                    userId,
+                    userData: {
+                        email: decodedToken.email,
+                        name: decodedToken.name || decodedToken.email,
+                        uid: userId,
+                        bearerToken: firebaseToken,
+                    },
+                    createdAt: now,
+                    expiresAt,
+                })
+                transaction.set(this.db.collection('mcpUserSessions').doc(userId), {
+                    userId,
+                    email: decodedToken.email,
+                    bearerToken: firebaseToken,
+                    sessionId: mcpSessionId,
+                    createdAt: now,
+                    expiresAt,
+                    lastUsed: now,
+                })
+                transaction.set(this.db.collection('mcpUserAuth').doc(decodedToken.email), {
+                    email: decodedToken.email,
+                    userId,
+                    sessionId: mcpSessionId,
+                    timestamp: now,
+                    expiresAt,
+                })
+                transaction.update(authRef, {
+                    status: 'completed',
+                    userId,
+                    mcpSessionId,
+                    completedAt: now,
+                })
+            } else {
+                throw new Error('Authorization is no longer available. Please start a new connection.')
+            }
+            return { success: true, sessionId: mcpSessionId, userId, authCode, redirect_to: redirectUrl.toString() }
+        })
     }
 
     // Check auth status
@@ -435,7 +533,10 @@ class CloudOAuthHandler {
         const loginBtn = document.getElementById('loginBtn');
         const closeBtn = document.getElementById('closeBtn');
         const status = document.getElementById('status');
-        const sessionId = '${sessionId}';
+        const sessionId = ${JSON.stringify(sessionId).replace(/</g, '\\u003c')};
+        const authorization = ${JSON.stringify({ authCode, redirectUri, state }).replace(/</g, '\\u003c')};
+        const submitOAuthCallback = ${submitOAuthCallback.toString()};
+        let callbackPayload = null;
 
         function showStatus(message, isError = false) {
             status.innerHTML = \`<div class="status \${isError ? 'error' : 'success'}">\${message}</div>\`;
@@ -468,47 +569,26 @@ class CloudOAuthHandler {
                 loginBtn.disabled = true;
                 loginBtn.textContent = 'Signing in...';
                 
-                const provider = new firebase.auth.GoogleAuthProvider();
-                provider.addScope('email');
-                provider.addScope('profile');
-                
-                const result = await auth.signInWithPopup(provider);
-                const user = result.user;
-                const token = await user.getIdToken();
-                
-                // Use dedicated OAuth callback endpoint
-                const params = new URLSearchParams({
-                    sessionId: sessionId,
-                    firebaseToken: token,
-                    authCode: '${authCode || ''}',
-                    redirectUri: '${redirectUri || ''}',
-                    state: '${state || ''}'
-                });
-                
-                // Use the dedicated OAuth callback Cloud Function  
-                const callbackUrl = window.location.origin + '/mcpOAuthCallback';
-                const response = await fetch(callbackUrl + '?' + params.toString(), {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                    }
-                });
-                
-                let data;
-                try {
-                    data = await response.json();
-                } catch (jsonError) {
-                    console.error('JSON parse error:', jsonError);
-                    console.log('Response status:', response.status);
-                    console.log('Response text:', await response.text());
-                    showStatus('❌ Authentication failed: Invalid response from server (status: ' + response.status + ')', true);
-                    return;
+                if (!callbackPayload) {
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    provider.addScope('email');
+                    provider.addScope('profile');
+                    const result = await auth.signInWithPopup(provider);
+                    callbackPayload = {
+                        sessionId,
+                        firebaseToken: await result.user.getIdToken(),
+                        ...authorization,
+                    };
                 }
+
+                const callbackUrl = window.location.origin + '/mcpOAuthCallback';
+                const data = await submitOAuthCallback(callbackUrl, callbackPayload, () => {
+                    showStatus('Connection interrupted. Reconnecting...');
+                });
                 
                 if (data.success) {
                     // Check if we need to redirect to Claude's callback
                     if (data.redirect_to) {
-                        console.log('🔀 Redirecting browser to OAuth callback:', data.redirect_to);
                         showStatus('✅ Authentication successful! Redirecting ...', false);
                         
                         // Redirect browser to Claude's callback URL with authorization code
@@ -524,17 +604,18 @@ class CloudOAuthHandler {
                     showStatus(successMessage);
                     showCloseButton();
                 } else {
+                    callbackPayload = null;
                     showStatus('❌ Authentication failed: ' + data.error, true);
                     // Reset button state on error
                     loginBtn.disabled = false;
                     loginBtn.textContent = 'Sign in with Google';
                 }
             } catch (error) {
-                console.error('Auth error:', error);
+                console.error('MCP sign-in failed:', error.name);
                 showStatus('❌ Authentication failed: ' + error.message, true);
                 // Reset button state on error
                 loginBtn.disabled = false;
-                loginBtn.textContent = 'Sign in with Google';
+                loginBtn.textContent = callbackPayload ? 'Retry connection' : 'Sign in with Google';
             }
         });
     </script>
