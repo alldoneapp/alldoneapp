@@ -13,6 +13,7 @@
  *   `--touch`  a phone: relative drag steering, the 💣 button, leaving through ✕.
  *   `--game`   boss → hangar (credits, Gold shop) → mission 2, and a game over → play again.
  *   `--cast`   every new enemy at once, power-ups and their buffs, and the empty-inbox boss.
+ *   `--bosses` each of the five boss fights, with a screenshot of each in .build/.
  *
  * Requirements (not part of CI's Jest jobs):
  *   nvm use 22
@@ -92,7 +93,7 @@ const hudData = page =>
         const hud = document.querySelector('[data-rage-mode-layer="hud"]')
         return hud ? { ...hud.dataset } : {}
     })
-const waitForHud = (page, predicate, arg, timeout = 15000) =>
+const waitForHud = (page, predicate, arg, timeout = 30000) =>
     page
         .waitForFunction(
             ([source, value]) => {
@@ -175,6 +176,17 @@ async function desktop(browser, url) {
     )
     check('the task rows on screen become targets', await waitForHud(page, data => Number(data.pageTargets) >= 4))
 
+    // Taking over the mouse must not make her jump to where the cursor was left (the crosshair).
+    await waitForHud(page, data => data.shipX !== undefined)
+    const beforeX = Number((await hudData(page)).shipX)
+    await page.mouse.move(1240, 20)
+    await sleep(400)
+    const afterX = Number((await hudData(page)).shipX)
+    check(
+        'the first mouse movement does not pull Anna across the screen',
+        Math.abs(afterX - beforeX) < 40,
+        `${beforeX} → ${afterX}`
+    )
     // Steer under the task list; the main gun fires on its own.
     const row = await centreOf(page, '#task_body_p_t1_false')
     await page.mouse.move(row.x, 680)
@@ -299,6 +311,20 @@ async function game(browser, url) {
         await page.mouse.move(640, 650)
         await sleep(2500)
         await page.screenshot({ path: path.join(BUILD_DIR, 'mission-2.png') })
+        // The shop mid-mission: B opens it and holds the game still; Escape carries on.
+        await page.keyboard.press('b')
+        check(
+            'shop: B opens it mid-mission and pauses',
+            await waitForHud(page, data => data.shop === 'open' && data.paused === 'true')
+        )
+        const pausedShots = (await hudData(page)).shots
+        await sleep(800)
+        check('shop: nothing moves while it is open', (await hudData(page)).shots === pausedShots)
+        await page.keyboard.press('Escape')
+        check(
+            'shop: Escape closes it and the mission goes on',
+            await waitForHud(page, data => !data.shop && data.phase === 'flying')
+        )
         await page.keyboard.press('Escape')
         await waitForArenaGone(page)
         check('mission 2: leaving puts the page back', (await pageRestored(page)).intact)
@@ -407,6 +433,25 @@ async function cast(browser, url) {
     await empty.context.close()
 }
 
+async function bosses(browser, url) {
+    for (const kind of ['backlog', 'inbox', 'calendar', 'bell', 'clock']) {
+        const { context, page, errors } = await openRaid(
+            browser,
+            url,
+            `god=1&bossAt=1&noWaves=1&tasks=7&bossKind=${kind}`
+        )
+        check(
+            `${kind}: arrives wearing the count`,
+            await waitForHud(page, (data, k) => data.bossKind === k && data.boss === '7', kind)
+        )
+        await page.mouse.move(640, 640)
+        await sleep(5000)
+        await page.screenshot({ path: path.join(BUILD_DIR, `boss-${kind}.png`) })
+        check(`${kind}: no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '))
+        await context.close()
+    }
+}
+
 ;(async () => {
     build()
     if (args.has('--serve')) {
@@ -425,6 +470,7 @@ async function cast(browser, url) {
         if (args.has('--touch')) await touch(browser, url)
         else if (args.has('--game')) await game(browser, url)
         else if (args.has('--cast')) await cast(browser, url)
+        else if (args.has('--bosses')) await bosses(browser, url)
         else await desktop(browser, url)
     } catch (error) {
         check('harness ran to completion', false, error.message)

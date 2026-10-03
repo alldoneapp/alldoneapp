@@ -430,6 +430,18 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
             })
             weaponBar.appendChild(chip)
         })
+        // The Gold weapon shop, reachable in the middle of a mission too (B on a keyboard).
+        const shop = hudButton(`${strings.shop} (B)`, '🛒', actions.openGoldShop)
+        shop.setAttribute('data-shop', 'true')
+        Object.assign(shop.style, {
+            width: '38px',
+            height: '34px',
+            borderRadius: '13px',
+            fontSize: '17px',
+            padding: '0',
+            background: 'rgba(255,255,255,0.12)',
+        })
+        weaponBar.appendChild(shop)
         hud.dataset.weapon = equipped
     }
 
@@ -636,8 +648,12 @@ const buildGameOver = ({ strings, zIndex, actions, canStartOver }) => {
     const buttons = pillElement('div', { display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '16px' })
     const restart = confirmingButton(`↺ ${strings.startOver}`, strings.startOverConfirm, actions.startOver)
     buttons.style.flexWrap = 'wrap'
+    // Spend the Gold on a better weapon before the next go.
+    const shop = wideButton(`🪙 ${strings.goldWeapons}`, false, actions.openGoldShop)
+    shop.setAttribute('data-shop', 'true')
     buttons.append(
         wideButton(strings.playAgain, true, actions.playAgain),
+        shop,
         restart,
         wideButton(strings.exit, false, actions.exit)
     )

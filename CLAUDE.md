@@ -1638,10 +1638,33 @@ movement, fire, bullets, the boss — runs at `SLOWMO_SCALE`), ⭐ gold star (do
 extends it, up to twice its duration. Kills chained within `COMBO_WINDOW` build a combo (`raidRun.js`)
 worth up to ×3 on POINTS, never on credits.
 
-**There is always a boss**, equally hard every day (`BOSS_HP`, scaled only by the mission) — on an
-empty inbox too. Today's open-task count — the number the Home button's badge shows
-(`getAllProjectsOpenTasksAmount` over `sidebarNumbers`) — is only what it wears on its chest, counting
-down as it takes damage, and 0 the whole fight on an empty inbox (`rageBoss.js`).
+**There is always a boss, and there are five of them** (`raidBosses.js` for how they fight,
+`raidBossModels.js` for how they look), one per mission in turn: the Backlog (aimed fans, lunges, mail
+swarms), Inbox Overlord (rows of falling letters with gaps to find), Calendar Colossus (column beams
+that flash a warning before they burn, one always on Anna; corner bursts), Notification Storm (a
+swinging bell whose shockwave rings each leave one gap; homing pings) and the Grand Deadline
+(counter-rotating spirals, its hands sweeping as beams). Each gets angrier below half health. All
+are equally hard every day (`BOSS_HP`, scaled only by the mission) — on an empty inbox too: today's
+open-task count (the number the Home button's badge shows, `getAllProjectsOpenTasksAmount` over
+`sidebarNumbers`) is only what each wears, counting down as it takes damage, and 0 the whole fight
+on an empty inbox. Beams and waves ALWAYS telegraph before they can hurt (`BEAM_WARN`, and a wave's gap
+is drawn exactly where `waveHits` has it). Text on a disc (a cylinder turned to the camera — the clock
+face, badges, pickup tokens) needs `DISC_TEXTURE_TURN`, or it shows a quarter turn off.
+
+**Steering is relative where it has to be.** A browser cannot move the real cursor, and at take-off
+it is still on the crosshair, so the first mouse movement after a reset only records the gap between
+the (hidden) cursor and Anna; later movements move her by as much and close the gap a little,
+bounded so she always moves the way the mouse moved. It resets after the shop, the hangar, a game
+over and keyboard steering. The weapon shop opens mid-mission too (🛒 / B) and pauses everything,
+buff timers included; it is also on the hangar and the game-over card.
+
+**Sound** (`rageSound.js`) is synthesised: a compressor bus with a short generated reverb, small
+random detunes so repeats never sound identical, rate limits for rapid fire, and a voice per event —
+each special weapon, explosions by size, every enemy's fire, mines arming, each power-up's own chime,
+combo steps, every boss's arrival plus the bell's dong, the clock's tick and charging/firing beams,
+the run-up's footsteps and ignition, a jetpack rumble that follows the ground speed, a low-shield
+alarm, and stings for mission start, mission complete and game over. Loops (engine, laser hum) stop
+on mute, pause, the hangar, game over and exit.
 
 **Weapons are bought with Gold on the SERVER, never granted by the client.** The main gun always
 fires and is upgraded with credits; ON TOP of it fires one special weapon bought with Gold

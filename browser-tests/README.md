@@ -603,12 +603,13 @@ the open-task count, a mega bomb finishing it, the hangar (credits, buying a bom
 shop with a fake server, Escape closing the shop before the raid), launching mission 2, and a game
 over that submits the score once and plays again on Enter. `--cast` flies every new enemy at once
 with power-ups collected at lift-off (drones, spread), checks kills, combos and drops, and that an
-empty inbox still gets its boss showing 0. It waits on the arena's own `data-*`
+empty inbox still gets its boss showing 0. `--bosses` fights each of the five bosses and leaves a
+screenshot of each in `.build/`. It waits on the arena's own `data-*`
 signals rather than fixed delays, because software WebGL slows the arena's clock. Screenshots land
 in `rage-mode/.build/`; `--serve` just builds and serves the harness so you can play it.
 
 ```bash
-node browser-tests/rage-mode/run.js [--touch | --game | --cast] [--headed]
+node browser-tests/rage-mode/run.js [--touch | --game | --cast | --bosses] [--headed]
 node browser-tests/rage-mode/run.js --serve
 ```
 

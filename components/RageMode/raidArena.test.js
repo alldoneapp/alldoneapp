@@ -92,7 +92,7 @@ describe('rage mode raid arena', () => {
     }
     // Through the take-off from the avatar and the run-up on the page, to lift-off.
     const fly = () => {
-        for (let i = 0; i < 600 && hud().dataset.phase !== 'flying'; i++) step()
+        for (let i = 0; i < 900 && hud().dataset.phase !== 'flying'; i++) step()
         step(60)
     }
     const leave = () => {
@@ -469,6 +469,106 @@ describe('rage mode raid arena', () => {
             expect(hud().dataset.bombs).toBe('3')
             expect(Number(hud().dataset.credits)).toBeGreaterThanOrEqual(60)
         })
+    })
+
+    it('opens the weapon shop mid-mission with B, holds the game still, and resumes on Escape', () => {
+        start()
+        fly()
+        key('b', 'KeyB')
+        expect(hud().dataset.shop).toBe('open')
+        expect(hud().dataset.paused).toBe('true')
+        const shots = hud().dataset.shots
+        step(60)
+        expect(hud().dataset.shots).toBe(shots)
+        key('Escape')
+        expect(hud().dataset.shop).toBeUndefined()
+        expect(isRageArenaActive()).toBe(true)
+        step(30)
+        expect(Number(hud().dataset.shots)).toBeGreaterThan(Number(shots))
+        // The 🛒 in the weapon bar does the same.
+        layer('weapons').querySelector('[data-shop]').click()
+        expect(hud().dataset.shop).toBe('open')
+    })
+
+    it('steers relative to where Anna is, so taking over the mouse never makes her jump', () => {
+        const move = (x, y) =>
+            layer('input').dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: y, bubbles: true }))
+        start()
+        fly()
+        const x0 = Number(hud().dataset.shipX)
+        // The hidden cursor is still far away (on the crosshair): the first movement must not pull her there.
+        move(1150, 30)
+        step(30)
+        expect(Math.abs(Number(hud().dataset.shipX) - x0)).toBeLessThan(2)
+        // Moving the mouse 100px left moves her left too — never the other way, even though the
+        // gap to the cursor (far right) is closing.
+        move(1050, 30)
+        step(60)
+        const moved = x0 - Number(hud().dataset.shipX)
+        expect(moved).toBeGreaterThanOrEqual(60)
+        expect(moved).toBeLessThanOrEqual(101)
+        // Moving towards the cursor's side catches up faster.
+        const x1 = Number(hud().dataset.shipX)
+        move(1150, 30)
+        step(60)
+        expect(Number(hud().dataset.shipX) - x1).toBeGreaterThan(100)
+    })
+
+    describe('five boss fights', () => {
+        it.each(['backlog', 'inbox', 'calendar', 'bell', 'clock'])('%s: arrives, is announced and fights', kind => {
+            start({ bossAt: 1, noWaves: true, bossKind: kind })
+            fly()
+            step(60 * 7)
+            expect(hud().dataset.bossKind).toBe(kind)
+            expect(layer('boss').textContent).toContain(`Raid boss ${kind}`)
+            // It wears the count (3) and counts down as Anna's auto-fire wears it away.
+            expect(Number(hud().dataset.boss)).toBeGreaterThan(0)
+            expect(Number(hud().dataset.boss)).toBeLessThanOrEqual(3)
+        })
+
+        it('sends a different boss each mission', () => {
+            start({ bossAt: 1, noWaves: true, bossHp: 40 })
+            fly()
+            step(90)
+            expect(hud().dataset.bossKind).toBe('backlog')
+            key(' ', 'Space')
+            step(60 * 4)
+            layer('hangar').querySelector('[data-launch]').click()
+            step(60 * 3)
+            expect(hud().dataset.bossKind).toBe('inbox')
+        })
+
+        it('warns with the calendar beams and rings out the bell before they can hurt', () => {
+            start({ bossAt: 1, noWaves: true, bossKind: 'calendar' })
+            fly()
+            let beams = 0
+            for (let i = 0; i < 60 * 8; i++) {
+                step()
+                beams = Math.max(beams, Number(hud().dataset.beams || 0))
+            }
+            expect(beams).toBeGreaterThan(0)
+            arena.stop({ immediate: true })
+            start({ bossAt: 1, noWaves: true, bossKind: 'bell' })
+            fly()
+            let waves = 0
+            for (let i = 0; i < 60 * 8; i++) {
+                step()
+                waves = Math.max(waves, Number(hud().dataset.waves || 0))
+            }
+            expect(waves).toBeGreaterThan(0)
+        })
+    })
+
+    it('offers the weapon shop on the game-over card', () => {
+        start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40 })
+        fly()
+        for (let i = 0; i < 60 * 30 && hud().dataset.phase !== 'gameover'; i++) step()
+        step(90)
+        layer('gameover').querySelector('[data-shop]').click()
+        expect(hud().dataset.shop).toBe('open')
+        key('Escape')
+        expect(hud().dataset.shop).toBeUndefined()
+        expect(hud().dataset.phase).toBe('gameover')
     })
 
     it('greets on Enter, holds fire while she does, and is back in formation afterwards', () => {

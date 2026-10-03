@@ -74,6 +74,9 @@ export const buildRageStrings = translate => ({
     bossCaption: translate('open today'),
     bossIncoming: translate('Boss: your open tasks for today!'),
     bossDefeated: translate('Boss defeated!'),
+    bosses: Object.fromEntries(
+        ['backlog', 'inbox', 'calendar', 'bell', 'clock'].map(id => [id, translate(`Raid boss ${id}`)])
+    ),
     weapons: Object.fromEntries(
         RAGE_WEAPONS.map(weapon => [
             weapon.id,
