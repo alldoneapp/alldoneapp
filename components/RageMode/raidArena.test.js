@@ -571,6 +571,28 @@ describe('rage mode raid arena', () => {
         expect(hud().dataset.phase).toBe('gameover')
     })
 
+    it('fits the raid to a phone: a sparser wave than on a laptop', () => {
+        const wave = [{ at: 0.5, pattern: 'weave', type: 'mail', count: 8, spacing: 0.1, x: 0.5 }]
+        const peak = () => {
+            let most = 0
+            for (let i = 0; i < 90; i++) {
+                step()
+                most = Math.max(most, Number(hud().dataset.enemies || 0))
+            }
+            return most
+        }
+        start({ waves: wave })
+        fly()
+        const laptop = peak()
+        arena.stop({ immediate: true })
+        jest.replaceProperty(window, 'innerWidth', 390)
+        jest.replaceProperty(window, 'innerHeight', 844)
+        start({ waves: wave })
+        expect(Number(hud().dataset.density)).toBeLessThan(0.65)
+        fly()
+        expect(peak()).toBeLessThan(laptop)
+    })
+
     it('greets on Enter, holds fire while she does, and is back in formation afterwards', () => {
         start()
         fly()

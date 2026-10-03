@@ -16,6 +16,8 @@
  * personality) and the halves of a split sticky note scatter from wherever the note died.
  */
 
+import { FULL_SCREEN, scaleCount } from './raidScreen'
+
 /**
  * `fire.pattern`: aimed (a fan of `count` at the ship), spread (a wider fan), ring (`count` evenly
  * around), spiral (`arms` streams rotating by `step` every shot, in bursts). `fire.speed` scales
@@ -169,10 +171,12 @@ const goldenLane = (i, width) => width * (0.1 + 0.8 * ((i * 0.618034 + 0.31) % 1
  * A wave's spec (from `raidLevel.js`) expanded into individual enemies for this viewport:
  * `[{ delay, type, path }]`, `delay` in seconds after the wave starts.
  */
-export const expandWave = (wave, viewport) => {
+export const expandWave = (wave, viewport, density = 1) => {
     const { width, height } = viewport
     const enemies = []
-    for (let i = 0; i < wave.count; i++) {
+    // Fewer enemies per wave on a smaller screen (raidScreen.js).
+    const count = density === 1 ? wave.count : scaleCount(wave.count, density)
+    for (let i = 0; i < count; i++) {
         const delay = i * wave.spacing
         let path
         switch (wave.pattern) {
@@ -204,7 +208,7 @@ export const expandWave = (wave, viewport) => {
                 }
                 break
             case 'zigzag': {
-                const lanes = Math.max(1, wave.count)
+                const lanes = Math.max(1, count)
                 path = {
                     kind: 'zigzag',
                     x: width * (0.15 + (0.7 * (i + 0.5)) / lanes),
@@ -268,7 +272,7 @@ export const expandWave = (wave, viewport) => {
                 break
             case 'hover':
             default: {
-                const lanes = Math.max(1, wave.count)
+                const lanes = Math.max(1, count)
                 path = {
                     kind: 'hover',
                     x: width * (0.15 + (0.7 * (i + 0.5)) / lanes),
@@ -365,7 +369,7 @@ export const ringBullets = (enemy, count, speed, offset = 0, tint = DEFAULT_TINT
  * Count down a shooter's timer; when it fires, return its bullets. Works for air and ground
  * enemies alike. Spirals fire in bursts and keep turning between shots.
  */
-export const stepEnemyFire = (enemy, dt, target, viewport, difficulty, random) => {
+export const stepEnemyFire = (enemy, dt, target, viewport, difficulty, random, screen = FULL_SCREEN) => {
     const type = ENEMY_TYPES[enemy.type]
     const fire = type.fire
     if (!fire || enemy.hp <= 0) return []
@@ -381,25 +385,26 @@ export const stepEnemyFire = (enemy, dt, target, viewport, difficulty, random) =
         }
         spiral.burst -= dt
         if (spiral.burst <= 0) {
-            spiral.pause = fire.pause / Math.sqrt(difficulty)
+            spiral.pause = fire.pause / Math.sqrt(difficulty) / screen.pace
             return []
         }
         enemy.fireIn -= dt
         if (enemy.fireIn > 0 || !canFireFrom(enemy.y, viewport)) return []
-        enemy.fireIn = fire.every
+        enemy.fireIn = fire.every / screen.pace
         spiral.angle += fire.step
         return ringBullets(enemy, fire.arms, speed, spiral.angle, tint)
     }
 
     enemy.fireIn -= dt
     if (enemy.fireIn > 0) return []
-    enemy.fireIn = (fire.every * (0.75 + random() * 0.5)) / Math.sqrt(difficulty)
+    enemy.fireIn = (fire.every * (0.75 + random() * 0.5)) / Math.sqrt(difficulty) / screen.pace
     if (!canFireFrom(enemy.y, viewport)) return []
     const aim = Math.atan2(target.y - enemy.y, target.x - enemy.x)
     if (fire.pattern === 'ring') {
         // Each ring is turned half a gap from the last, so standing still never stays safe.
         enemy.ringTurn = (enemy.ringTurn || 0) + Math.PI / fire.count
-        return ringBullets(enemy, fire.count + (difficulty >= 1.4 ? 2 : 0), speed, enemy.ringTurn, tint)
+        const ringCount = scaleCount(fire.count + (difficulty >= 1.4 ? 2 : 0), Math.max(0.6, screen.density))
+        return ringBullets(enemy, ringCount, speed, enemy.ringTurn, tint)
     }
     const count = fire.count || (difficulty >= 1.4 ? 3 : 1)
     const gap = fire.pattern === 'spread' ? fire.spread / Math.max(1, count - 1) : 0.18

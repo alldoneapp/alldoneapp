@@ -1651,6 +1651,12 @@ on an empty inbox. Beams and waves ALWAYS telegraph before they can hurt (`BEAM_
 is drawn exactly where `waveHits` has it). Text on a disc (a cylinder turned to the camera — the clock
 face, badges, pickup tokens) needs `DISC_TEXTURE_TURN`, or it shows a quarter turn off.
 
+**The raid is fitted to the screen** (`raidScreen.js`): the same waves on a phone would be three times
+as dense as on a laptop, with the same Anna and the same hit box. Against a 1280×800 reference area,
+`density` (√ of the area ratio, 0.5–1.15) scales HOW MANY — enemies per wave, bullets per ring, bunkers,
+armed rows at take-off — and `pace` (0.65–1) scales HOW OFTEN enemies, bunkers and bosses fire. Health,
+damage, scoring and mission length do not change. Recomputed on resize.
+
 **Steering is relative where it has to be.** A browser cannot move the real cursor, and at take-off
 it is still on the crosshair, so the first mouse movement after a reset only records the gap between
 the (hidden) cursor and Anna; later movements move her by as much and close the gap a little,
