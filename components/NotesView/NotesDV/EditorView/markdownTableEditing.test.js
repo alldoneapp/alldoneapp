@@ -44,6 +44,21 @@ const key = (input, name, options = {}) => {
     return event
 }
 const action = (quill, name) => tableNode(quill).querySelector(`[data-table-action="${name}"]`).click()
+// JSDOM has no PointerEvent constructor. Dispatch real DOM mouse events with
+// pointer metadata through the module's capture listeners instead of calling it.
+const pointer = (target, type, options = {}) => {
+    const { pointerType = 'touch', pointerId = 1, isPrimary = true, ...coordinates } = options
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 100, clientY: 100, ...coordinates })
+    Object.assign(event, { pointerType, pointerId, isPrimary })
+    target.dispatchEvent(event)
+    return event
+}
+const touchClick = target => target.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))
+const tap = target => {
+    pointer(target, 'pointerdown')
+    pointer(target, 'pointerup')
+    touchClick(target)
+}
 
 afterEach(() => {
     editors.forEach(quill => quill.getModule('markdownTableEditing').destroy())
@@ -52,6 +67,123 @@ afterEach(() => {
 })
 
 describe('inline Markdown table editing with real Quill', () => {
+    it.each(['touch', 'pen'])('opens a %s tap only after release and click, allowing finger jitter', pointerType => {
+        const quill = buildEditor()
+        const target = cell(quill).querySelector('span')
+        expect(pointer(target, 'pointerdown', { pointerType }).defaultPrevented).toBe(false)
+        expect(quill.root.querySelector('.ql-table-cell-input')).toBeNull()
+        expect(quill.root.querySelector('.ql-table-controls')).toBeNull()
+        expect(pointer(target, 'pointermove', { pointerType, clientX: 104, clientY: 105 }).defaultPrevented).toBe(false)
+        pointer(target, 'pointerup', { pointerType, clientX: 104, clientY: 105 })
+        expect(quill.root.querySelector('.ql-table-cell-input')).toBeNull()
+        touchClick(target)
+        expect(document.activeElement).toBe(quill.root.querySelector('.ql-table-cell-input'))
+        expect(document.activeElement.value).toBe('**Alice**')
+    })
+
+    it.each([
+        ['horizontal', 140, 100],
+        ['vertical', 100, 140],
+        ['diagonal', 108, 108],
+    ])('rejects a %s swipe and its delayed click, then accepts the next tap', (_direction, clientX, clientY) => {
+        const quill = buildEditor()
+        const target = cell(quill)
+        const changes = jest.fn()
+        quill.on('text-change', changes)
+        pointer(target, 'pointerdown')
+        expect(pointer(target, 'pointermove', { clientX, clientY }).defaultPrevented).toBe(false)
+        // Returning to the start must not turn a scroll back into a tap.
+        pointer(target, 'pointerup')
+        touchClick(target)
+        expect(quill.root.querySelector('.ql-table-cell-input')).toBeNull()
+        expect(quill.root.querySelector('.ql-table-controls')).toBeNull()
+        expect(value(quill)).toEqual(TABLE)
+        expect(changes).not.toHaveBeenCalled()
+        tap(target)
+        expect(document.activeElement.value).toBe('**Alice**')
+    })
+
+    it('checks release coordinates when no pointermove was delivered', () => {
+        const quill = buildEditor()
+        const target = cell(quill)
+        pointer(target, 'pointerdown')
+        pointer(document.body, 'pointerup', { clientY: 160 })
+        touchClick(target)
+        expect(quill.root.querySelector('.ql-table-cell-input')).toBeNull()
+    })
+
+    it.each(['pointercancel', 'table scroll', 'page scroll', 'second finger'])(
+        'rejects a click after %s even without pointer movement',
+        reason => {
+            const quill = buildEditor()
+            const target = cell(quill)
+            pointer(target, 'pointerdown')
+            if (reason === 'pointercancel') pointer(target, 'pointercancel')
+            else if (reason === 'second finger') {
+                pointer(document.body, 'pointerdown', { pointerId: 2, isPrimary: false })
+                pointer(document.body, 'pointerup', { pointerId: 2, isPrimary: false })
+            } else {
+                const scroller = reason === 'table scroll' ? target.closest('.ql-markdown-table-scroll') : document
+                scroller.dispatchEvent(new Event('scroll'))
+            }
+            pointer(target, 'pointerup')
+            touchClick(target)
+            expect(quill.root.querySelector('.ql-table-cell-input')).toBeNull()
+            expect(quill.root.querySelector('.ql-table-controls')).toBeNull()
+        }
+    )
+
+    it('prevents compatibility mousedown from replacing a draft before a touch click switches cells', () => {
+        const quill = buildEditor()
+        const input = open(quill)
+        input.value = 'Updated by touch'
+        const target = cell(quill, 2, 1)
+        pointer(target, 'pointerdown')
+        pointer(target, 'pointerup')
+        const mouse = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+        target.dispatchEvent(mouse)
+        expect(mouse.defaultPrevented).toBe(true)
+        expect(document.activeElement).toBe(input)
+        touchClick(target)
+        expect(value(quill).rows[1][0]).toBe('Updated by touch')
+        const next = quill.root.querySelector('.ql-table-cell-input')
+        expect(next.value).toBe('Done')
+        expect(pointer(next, 'pointerdown').defaultPrevented).toBe(false)
+        expect(quill.root.querySelector('.ql-table-cell-input')).toBe(next)
+    })
+
+    it('retains immediate mouse editing and keyboard activation after a cancelled touch', () => {
+        const quill = buildEditor()
+        const target = cell(quill)
+        pointer(target, 'pointerdown')
+        pointer(target, 'pointercancel')
+        expect(pointer(target, 'pointerdown', { pointerType: 'mouse' }).defaultPrevented).toBe(true)
+        expect(document.activeElement.value).toBe('**Alice**')
+        key(document.activeElement, 'Escape')
+        pointer(target, 'pointerdown')
+        pointer(target, 'pointercancel')
+        key(target, 'Enter')
+        expect(document.activeElement.value).toBe('**Alice**')
+        key(document.activeElement, 'Escape')
+        target.click()
+        expect(document.activeElement.value).toBe('**Alice**')
+    })
+
+    it('releases document gesture listeners when destroyed during a touch', () => {
+        const quill = buildEditor()
+        const target = cell(quill)
+        pointer(target, 'pointerdown')
+        const remove = jest.spyOn(document, 'removeEventListener')
+        quill.getModule('markdownTableEditing').destroy()
+        for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'scroll']) {
+            expect(remove).toHaveBeenCalledWith(type, expect.any(Function), true)
+        }
+        remove.mockRestore()
+        pointer(target, 'pointerup')
+        touchClick(target)
+        expect(quill.root.querySelector('.ql-table-cell-input')).toBeNull()
+    })
+
     it('keeps manual cell breaks through commit, Yjs persistence and Markdown paste', () => {
         const quill = buildEditor()
         const doc = new Y.Doc()
