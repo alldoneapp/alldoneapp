@@ -10,5 +10,8 @@ const call = (name, data) => {
 
 export const loadRageProfile = () => call('getRageModeProfile', {})
 export const purchaseRageItem = itemId => call('purchaseRageModeItem', { itemId })
-export const submitRageScore = score => call('submitRageModeScore', { score })
+export const submitRageScore = (score, options = {}) =>
+    call('submitRageModeScore', { score, final: options.final !== false })
+export const loadRageLeaderboard = () => call('getRageModeLeaderboard', {})
+export const setRageName = name => call('setRageModeName', { name })
 export const saveRageProgress = checkpoint => call('saveRageModeProgress', { checkpoint })

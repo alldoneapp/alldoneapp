@@ -379,6 +379,39 @@ async function game(browser, url) {
             .catch(() => {})
         const calls = await page.evaluate(() => window.__rage.calls.submitScore)
         check('game over: the score is submitted once', calls.length === 1, JSON.stringify(calls))
+        check(
+            'game over: the leaderboard shows the top five and your rank',
+            await page
+                .waitForFunction(
+                    () => document.querySelectorAll('[data-rage-mode-layer="gameover"] [data-rank]').length >= 5,
+                    null,
+                    { timeout: 15000 }
+                )
+                .then(() => true)
+                .catch(() => false)
+        )
+        await page.screenshot({ path: path.join(BUILD_DIR, 'leaderboard.png') })
+        await page.click('[data-rage-mode-layer="gameover"] [data-rename]')
+        await page.fill('[data-rage-mode-layer="gameover"] [data-rage-name-input]', 'Space Ace')
+        await page.keyboard.press('Enter')
+        check(
+            'leaderboard: a chosen name is saved and shown',
+            await page
+                .waitForFunction(
+                    () =>
+                        /Space Ace/.test(
+                            document.querySelector('[data-rage-mode-layer="gameover"] [data-you]')?.textContent || ''
+                        ),
+                    null,
+                    { timeout: 10000 }
+                )
+                .then(() => true)
+                .catch(() => false)
+        )
+        check(
+            'leaderboard: typing the name did not reach the app',
+            (await page.evaluate(() => window.__rage.appKeys)) === 0
+        )
         await page.keyboard.press('Enter')
         check(
             'game over: Enter plays again from mission 1',

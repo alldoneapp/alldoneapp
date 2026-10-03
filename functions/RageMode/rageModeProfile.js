@@ -3,6 +3,7 @@ const { FieldValue } = require('firebase-admin/firestore')
 
 const { RAGE_DEFAULT_WEAPON, RAGE_WEAPON_PRICES } = require('./rageWeaponsCatalog')
 const { normalizeProgress, sanitizeCheckpoint } = require('./rageModeProgress')
+const { boardRef, leaderboardUpdate } = require('./rageModeLeaderboard')
 
 /**
  * A user's rage-mode profile: the weapons they own, their highscore, and how far they got in the
@@ -94,7 +95,12 @@ const purchaseRageModeItem = async ({ userId, itemId }) => {
     }
 }
 
-const submitRageModeScore = async ({ userId, score }) => {
+/**
+ * Record a score. The best one is kept on the profile AND on the global leaderboard, in one
+ * transaction. `final: false` is a score posted mid-run (after a mission, to show the board in the
+ * hangar): it can set a new best, but it does not count as a finished game.
+ */
+const submitRageModeScore = async ({ userId, score, final = true }) => {
     // Only a real number counts: `Number(null)` is 0, which would quietly log a game with no score.
     const value = typeof score === 'number' ? score : NaN
     if (!Number.isFinite(value) || value < 0 || value > MAX_SCORE) {
@@ -105,14 +111,22 @@ const submitRageModeScore = async ({ userId, score }) => {
     let result = null
     await admin.firestore().runTransaction(async transaction => {
         const snapshot = await transaction.get(ref)
-        const profile = normalizeProfile(snapshot.exists ? snapshot.data() : {})
+        const entry = await transaction.get(boardRef(userId))
+        const data = snapshot.exists ? snapshot.data() : {}
+        const profile = normalizeProfile(data)
         const isNew = points > profile.highscore
-        const update = { games: profile.games + 1, lastScore: points, updatedAt: Date.now() }
+        const update = { lastScore: points, updatedAt: Date.now() }
+        if (final !== false) update.games = profile.games + 1
         if (isNew) {
             update.highscore = points
             update.highscoreAt = Date.now()
         }
         transaction.set(ref, update, { merge: true })
+        // The board holds the best score — also one set before the board existed.
+        const best = isNew ? points : profile.highscore
+        const onBoard = entry.exists ? Number((entry.data() || {}).score) || 0 : 0
+        if (best > onBoard)
+            transaction.set(boardRef(userId), leaderboardUpdate(userId, best, data.name), { merge: true })
         result = { ok: true, isNew, highscore: isNew ? points : profile.highscore, previous: profile.highscore }
     })
     return result

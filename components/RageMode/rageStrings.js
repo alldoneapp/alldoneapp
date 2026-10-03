@@ -35,6 +35,20 @@ export const buildRageStrings = translate => ({
     startOverConfirm: translate('Sure? Start over'),
     confirmStartOver: translate('Press ↺ again to start over from mission 1'),
     greet: translate('Say hi'),
+    leaderboard: {
+        title: translate('Raid leaderboard title'),
+        loading: translate('Raid leaderboard loading'),
+        error: translate('Raid leaderboard error'),
+        empty: translate('Raid leaderboard empty'),
+        you: translate('Raid leaderboard you'),
+        notRanked: translate('Raid leaderboard not ranked'),
+        playingAs: translate('Raid leaderboard playing as'),
+        rename: translate('Raid leaderboard rename'),
+        save: translate('Raid leaderboard save'),
+        invalidName: translate('Raid leaderboard invalid name'),
+        public: translate('Raid leaderboard public'),
+        rank: translate('Raid leaderboard rank'),
+    },
     combo: translate('Combo'),
     enemies: Object.fromEntries(
         ['chat', 'ping', 'note', 'mine', 'meeting', 'deadline', 'carrier'].map(id => [

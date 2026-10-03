@@ -160,6 +160,31 @@ const services = {
         return Promise.resolve({ ok: true, isNew, highscore: state.profile.highscore })
     },
     getGold: () => state.gold,
+    // A fake global leaderboard: four other players and you, ranked by best score.
+    loadLeaderboard: () => {
+        const name = localStorage.getItem('harness.leaderboard.name') || 'Pilot 4242'
+        const others = [
+            { name: 'Zoë', score: 48000 },
+            { name: 'Max', score: 21000 },
+            { name: 'Pilot 1837', score: 9000 },
+            { name: 'Ana', score: 4000 },
+            { name: 'Bo', score: 900 },
+        ]
+        const mine = state.profile.highscore
+        const rows = [...others, ...(mine > 0 ? [{ name, score: mine, you: true }] : [])].sort(
+            (a, b) => b.score - a.score
+        )
+        const ranked = rows.map((row, i) => ({ rank: i + 1, name: row.name, score: row.score, you: !!row.you }))
+        const you = ranked.find(row => row.you) || null
+        return Promise.resolve({ top: ranked.slice(0, 5), you, total: ranked.length, name, nameChosen: true })
+    },
+    setName: name => {
+        state.calls.setName = [...(state.calls.setName || []), name]
+        const clean = String(name || '').trim()
+        if (clean.length < 2 || clean.length > 20) return Promise.resolve({ ok: false, reason: 'invalid_name' })
+        localStorage.setItem('harness.leaderboard.name', clean)
+        return Promise.resolve({ ok: true, name: clean })
+    },
     getOpenTasksToday: () => Number(params.get('tasks') || 3),
     getProjectColor: () => '#7E57C2',
 }
@@ -202,6 +227,7 @@ const tuning = {
 // ?fresh=1 wipes both; ?newDevice=1 wipes only the browser's copy.
 const SERVER_PROGRESS_KEY = 'harness.server.progress'
 if (params.get('fresh')) {
+    localStorage.removeItem('harness.leaderboard.name')
     localStorage.removeItem('alldone.rageMode.progress.harness')
     localStorage.removeItem(SERVER_PROGRESS_KEY)
 }

@@ -9,7 +9,14 @@ import { useReducedMotion } from '../UIComponents/Ghosts/ghostAnimation'
 import { isRageModeEnabled } from './rageModeFlag'
 import { loadRageArena } from './loadRageArena'
 import { findLaunchPoint } from './rageLaunchAnchor'
-import { loadRageProfile, purchaseRageItem, saveRageProgress, submitRageScore } from './rageModeBackend'
+import {
+    loadRageLeaderboard,
+    loadRageProfile,
+    purchaseRageItem,
+    saveRageProgress,
+    setRageName,
+    submitRageScore,
+} from './rageModeBackend'
 import { buildRageStrings } from './rageStrings'
 import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
 import { PROJECT_COLOR_SYSTEM } from '../../Themes/Modern/ProjectColors'
@@ -95,6 +102,8 @@ export default function RageModeButton({ color, style, size = 24 }) {
                         purchase: purchaseRageItem,
                         submitScore: submitRageScore,
                         saveProgress: saveRageProgress,
+                        loadLeaderboard: loadRageLeaderboard,
+                        setName: setRageName,
                         getGold: () => goldRef.current,
                         getOpenTasksToday: () => openTasksRef.current,
                         getProjectColor: projectId => {

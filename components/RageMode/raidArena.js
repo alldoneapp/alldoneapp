@@ -110,7 +110,7 @@ import { buildRaidBossModel, DISC_TEXTURE_TURN } from './raidBossModels'
 import { scaleCount, screenFactors } from './raidScreen'
 import { buildCharacter } from './rageModels'
 import { createSound, writeMuted } from './rageSound'
-import { buildRaidHud, NARROW_HUD_WIDTH, visibleWidth } from './raidHud'
+import { buildRaidHud, NAME_INPUT_ATTRIBUTE, NARROW_HUD_WIDTH, visibleWidth } from './raidHud'
 import {
     checkpointFromRun,
     readRecord,
@@ -1260,6 +1260,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             openGoldShop: () => openShop(),
             playAgain: () => playAgain(),
             greet: () => startGreeting(),
+            saveName: name => saveName(name),
             startOver: () => startOver(),
             requestStartOver: () => requestStartOver(),
         },
@@ -2505,6 +2506,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         ui.setBuffs([])
         debrief = completeMission(run)
         saveProgress()
+        refreshLeaderboard(postProgressScore())
         hangarMessage = null
         laserGroup.visible = false
         enemyShots.length = 0
@@ -2540,6 +2542,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
 
     /* Score, game over, another go. */
+    // The score posted last, so the leaderboard is only read once the server has it.
+    let scorePosted = Promise.resolve()
     const submitScore = () => {
         if (scoreSubmitted) return false
         scoreSubmitted = true
@@ -2547,7 +2551,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         const wasNew = final > best
         best = Math.max(best, final)
         if (final <= 0 || !services.submitScore) return wasNew
-        Promise.resolve()
+        scorePosted = Promise.resolve()
             .then(() => services.submitScore(final))
             .then(result => {
                 if (!result || !result.ok) return
@@ -2556,6 +2560,62 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             })
             .catch(() => {})
         return wasNew
+    }
+
+    /*
+     * The global leaderboard (functions/RageMode/rageModeLeaderboard.js): read after every game
+     * over and every completed mission, once the score is posted, and shown on both cards.
+     */
+    let board = { status: 'loading' }
+    const setBoard = next => {
+        board = { ...board, ...next }
+        ui.hangar.leaderboard.set(next)
+        ui.gameOver.leaderboard.set(next)
+        if (board.you) hud.dataset.boardRank = String(board.you.rank)
+        hud.dataset.board = board.status
+    }
+    const refreshLeaderboard = posted => {
+        if (!services.loadLeaderboard) {
+            setBoard({ status: 'error' })
+            return
+        }
+        setBoard({ status: 'loading' })
+        Promise.resolve(posted)
+            .catch(() => {})
+            .then(() => services.loadLeaderboard())
+            .then(result => {
+                if (finished) return
+                if (!result || !Array.isArray(result.top)) throw new Error('no leaderboard')
+                setBoard({ status: 'ready', ...result })
+            })
+            .catch(() => {
+                if (!finished) setBoard({ status: 'error' })
+            })
+    }
+    // A mid-run score (after a mission): it can set a new best, but it is not a finished game.
+    const postProgressScore = () =>
+        run.score > 0 && services.submitScore
+            ? Promise.resolve()
+                  .then(() => services.submitScore(run.score, { final: false }))
+                  .catch(() => {})
+            : Promise.resolve()
+    const saveName = name => {
+        if (!services.setName) return
+        Promise.resolve()
+            .then(() => services.setName(name))
+            .then(result => {
+                if (finished) return
+                if (!result || !result.ok) {
+                    setBoard({ nameError: true })
+                    return
+                }
+                sound.purchase()
+                setBoard({ name: result.name, nameChosen: true, nameError: false, nameSaved: true })
+                refreshLeaderboard()
+            })
+            .catch(() => {
+                if (!finished) setBoard({ nameError: true })
+            })
     }
 
     const gameOver = () => {
@@ -2571,6 +2631,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         flashScreen(0.5)
         shipNode.visible = false
         lastRoundNew = submitScore()
+        refreshLeaderboard(scorePosted)
     }
 
     const clearBattlefield = ({ withExplosions = false } = {}) => {
@@ -3829,6 +3890,21 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
     const onKey = event => {
         const down = event.type === 'keydown'
+        // Typing a leaderboard name: the keys type, nothing else hears them (no shortcuts, no app).
+        const target = event.target
+        if (target && target.getAttribute && target.getAttribute(NAME_INPUT_ATTRIBUTE) !== null) {
+            event.stopImmediatePropagation()
+            if (down && event.key === 'Enter') {
+                event.preventDefault()
+                saveName(target.value)
+            }
+            if (down && event.key === 'Escape') {
+                event.preventDefault()
+                ui.hangar.leaderboard.cancelEdit()
+                ui.gameOver.leaderboard.cancelEdit()
+            }
+            return
+        }
         if (isBrowserShortcut(event)) {
             // Let Cmd+R, Ctrl+W & co. work, but keep the app's own shortcuts out of it.
             event.stopImmediatePropagation()
