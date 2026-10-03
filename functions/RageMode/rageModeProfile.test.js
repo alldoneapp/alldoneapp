@@ -47,6 +47,7 @@ const {
     MAX_SCORE,
     normalizeProfile,
     purchaseRageModeItem,
+    saveRageModeProgress,
     submitRageModeScore,
 } = require('./rageModeProfile')
 const { RAGE_WEAPON_PRICES } = require('./rageWeaponsCatalog')
@@ -58,7 +59,12 @@ describe('rage mode profile', () => {
     })
 
     it('gives everyone the blaster and no highscore to start with', async () => {
-        expect(await getRageModeProfile({ userId: 'u1' })).toEqual({ owned: ['blaster'], highscore: 0, games: 0 })
+        expect(await getRageModeProfile({ userId: 'u1' })).toEqual({
+            owned: ['blaster'],
+            highscore: 0,
+            games: 0,
+            progress: null,
+        })
     })
 
     it('ignores weapons that are not in the catalog and duplicates', () => {
@@ -134,6 +140,63 @@ describe('rage mode profile', () => {
 
         it.each([[-1], [MAX_SCORE + 1], ['lots'], [NaN], [null]])('rejects an invalid score %p', async score => {
             expect(await submitRageModeScore({ userId: 'u1', score })).toEqual({ ok: false, reason: 'invalid_score' })
+        })
+    })
+
+    describe('raid progress', () => {
+        it('has none to start with', async () => {
+            expect((await getRageModeProfile({ userId: 'u1' })).progress).toBeNull()
+        })
+
+        it('saves a checkpoint with a server timestamp and hands it back on every device', async () => {
+            const saved = await saveRageModeProgress({
+                userId: 'u1',
+                checkpoint: { completed: 3, credits: 420, bombs: 4 },
+            })
+            expect(saved).toMatchObject({ ok: true, checkpoint: { completed: 3, credits: 420, bombs: 4 } })
+            expect(typeof saved.savedAt).toBe('number')
+            const { progress } = await getRageModeProfile({ userId: 'u1' })
+            expect(progress).toEqual({ checkpoint: saved.checkpoint, savedAt: saved.savedAt })
+        })
+
+        it('records a start-over as an empty checkpoint, so other devices drop theirs too', async () => {
+            await saveRageModeProgress({ userId: 'u1', checkpoint: { completed: 2 } })
+            const cleared = await saveRageModeProgress({ userId: 'u1', checkpoint: null })
+            expect(cleared).toMatchObject({ ok: true, checkpoint: null })
+            expect((await getRageModeProfile({ userId: 'u1' })).progress).toEqual({
+                checkpoint: null,
+                savedAt: cleared.savedAt,
+            })
+        })
+
+        it('clamps forged numbers and refuses something that is not a checkpoint', async () => {
+            const saved = await saveRageModeProgress({
+                userId: 'u1',
+                checkpoint: { completed: 1e9, credits: -4, bombs: 99, cannonLevel: 7, maxShield: 1e6, shield: 0 },
+            })
+            expect(saved.checkpoint).toEqual({
+                completed: 999,
+                score: 0,
+                credits: 0,
+                maxShield: 175,
+                shield: 1,
+                bombs: 5,
+                cannonLevel: 3,
+            })
+            expect(await saveRageModeProgress({ userId: 'u1', checkpoint: 'mission 9' })).toEqual({
+                ok: false,
+                reason: 'invalid_progress',
+            })
+            expect(await saveRageModeProgress({ userId: 'u1', checkpoint: undefined })).toEqual({
+                ok: false,
+                reason: 'invalid_progress',
+            })
+        })
+
+        it('keeps weapons and the highscore when progress is saved', async () => {
+            await submitRageModeScore({ userId: 'u1', score: 900 })
+            await saveRageModeProgress({ userId: 'u1', checkpoint: { completed: 1 } })
+            expect((await getRageModeProfile({ userId: 'u1' })).highscore).toBe(900)
         })
     })
 })

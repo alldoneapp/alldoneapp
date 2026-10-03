@@ -5,9 +5,12 @@ import {
     daySeed,
     MIN_BUNKERS,
     MAX_BUNKERS,
+    MAX_SPEEDUP,
+    missionScrollSpeed,
     missionWaves,
     RIVER_HALF_WIDTH,
     riverX,
+    SCROLL_SPEED,
     terrainChunk,
 } from './raidLevel'
 
@@ -66,6 +69,16 @@ describe('raid level', () => {
         const gs = bunkers.map(b => b.g)
         expect(gs).toEqual([...gs].sort((x, y) => x - y))
         expect(gs[gs.length - 1]).toBeLessThan(BOSS_AT * scrollSpeed)
+    })
+
+    it('scrolls faster mission by mission, up to a cap, and stretches the route to match', () => {
+        expect(missionScrollSpeed(2)).toBeGreaterThan(missionScrollSpeed(1))
+        expect(missionScrollSpeed(4)).toBeGreaterThan(missionScrollSpeed(3))
+        expect(missionScrollSpeed(50)).toBe(Math.round(SCROLL_SPEED * MAX_SPEEDUP))
+        const first = buildMission({ mission: 1, seed: 8, tasks, width: 1000 })
+        const fifth = buildMission({ mission: 5, seed: 8, tasks, width: 1000 })
+        expect(fifth.scrollSpeed).toBeGreaterThan(first.scrollSpeed)
+        expect(fifth.bunkers[fifth.bunkers.length - 1].g).toBeGreaterThan(first.bunkers[first.bunkers.length - 1].g)
     })
 
     it('keeps the river on screen', () => {

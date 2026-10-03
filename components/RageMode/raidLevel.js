@@ -11,7 +11,10 @@ import { createRandom } from './rageDebris'
  * started, growing upwards. The arena turns `g` into a screen y as the ground scrolls past.
  */
 
-export const SCROLL_SPEED = 64
+// Ground speed (px/s) on mission 1; every later mission scrolls faster, up to MAX_SPEEDUP times.
+export const SCROLL_SPEED = 96
+export const SPEEDUP_PER_MISSION = 0.12
+export const MAX_SPEEDUP = 1.8
 export const CHUNK_HEIGHT = 512
 export const RIVER_HALF_WIDTH = 36
 export const ROAD_HALF_WIDTH = 13
@@ -124,15 +127,20 @@ export const missionWaves = (mission, seed) => {
     return groups.flat().sort((a, b) => a.at - b.at)
 }
 
+/** How fast the ground scrolls on mission `n` (1-based). */
+export const missionScrollSpeed = mission =>
+    Math.round(SCROLL_SPEED * Math.min(MAX_SPEEDUP, 1 + SPEEDUP_PER_MISSION * Math.max(0, mission - 1)))
+
 /**
  * Everything the arena needs to fly mission `mission`. `tasks` is `[{ label, color?, armoured? }]`.
  */
 export const buildMission = ({ mission = 1, seed = 1, tasks = [], width }) => {
-    const length = BOSS_AT * SCROLL_SPEED
+    const scrollSpeed = missionScrollSpeed(mission)
+    const length = BOSS_AT * scrollSpeed
     return {
         mission,
         seed,
-        scrollSpeed: SCROLL_SPEED,
+        scrollSpeed,
         waves: missionWaves(mission, seed),
         bunkers: placeBunkers({ tasks, width, seed, mission, length }),
         bossAt: BOSS_AT,

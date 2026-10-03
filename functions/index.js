@@ -1520,8 +1520,8 @@ exports.getVmSubscriptionStatus = onCall(
     }
 )
 
-// Rage mode (components/RageMode): the player's owned weapons and highscore, and the Gold weapon
-// shop. The profile lives in a server-only collection; see functions/RageMode/rageModeProfile.js.
+// Rage mode (components/RageMode): the player's owned weapons, highscore and raid progress, and
+// the Gold weapon shop. The profile lives in a server-only collection; see functions/RageMode/rageModeProfile.js.
 exports.getRageModeProfile = onCall(
     {
         timeoutSeconds: 30,
@@ -1564,6 +1564,21 @@ exports.submitRageModeScore = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
         const { submitRageModeScore } = require('./RageMode/rageModeProfile')
         return await submitRageModeScore({ userId: auth.uid, score: data && data.score })
+    }
+)
+
+exports.saveRageModeProgress = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { saveRageModeProgress } = require('./RageMode/rageModeProfile')
+        return await saveRageModeProgress({ userId: auth.uid, checkpoint: data ? data.checkpoint : undefined })
     }
 )
 

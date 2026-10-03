@@ -83,6 +83,35 @@ const wideButton = (text, primary, onClick) => {
     return button
 }
 
+/**
+ * A button that throws progress away asks twice: the first press turns it into "Sure? …" for a
+ * few seconds, only a second press inside that window acts.
+ */
+const confirmingButton = (text, confirmText, onConfirm) => {
+    let armed = false
+    let timer = 0
+    const button = wideButton(text, false, () => {
+        if (armed) {
+            clearTimeout(timer)
+            armed = false
+            button.textContent = text
+            button.style.background = 'rgba(255,255,255,0.14)'
+            onConfirm()
+            return
+        }
+        armed = true
+        button.textContent = confirmText
+        button.style.background = '#E00000'
+        timer = setTimeout(() => {
+            armed = false
+            button.textContent = text
+            button.style.background = 'rgba(255,255,255,0.14)'
+        }, 3000)
+    })
+    button.setAttribute('data-start-over', 'true')
+    return button
+}
+
 const meter = (width, color) => {
     const track = pillElement('span', {
         display: 'inline-block',
@@ -145,9 +174,14 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     const hint = pillElement('span', { color: 'rgba(255,255,255,0.6)', fontWeight: '400' })
     hint.textContent = strings.exitHint
     if (touch || narrow) hint.style.display = 'none'
+    const greet = hudButton(strings.greet, '👋', actions.greet)
+    // Only while there is progress to throw away.
+    const restart = hudButton(strings.startOver, '↺', actions.requestStartOver)
+    restart.style.display = 'none'
+    restart.setAttribute('data-start-over', 'true')
     const mute = hudButton(muted ? strings.unmute : strings.mute, muted ? '🔇' : '🔊', actions.toggleMute)
     const exit = hudButton(strings.exit, '✕', actions.exit)
-    hud.append(mission, scoreValue, creditsValue, shield.track, bombsValue, hint, mute, exit)
+    hud.append(mission, scoreValue, creditsValue, shield.track, bombsValue, hint, greet, restart, mute, exit)
 
     const help = fixedCentre(zIndex + 2, {
         padding: '8px 16px',
@@ -315,8 +349,14 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     }
     layout()
 
+    let canStartOver = false
     const hangar = buildHangar({ strings, zIndex: zIndex + 4, actions })
-    const gameOver = buildGameOver({ strings, zIndex: zIndex + 4, actions })
+    const gameOver = buildGameOver({ strings, zIndex: zIndex + 4, actions, canStartOver: () => canStartOver })
+    const setCanStartOver = value => {
+        canStartOver = !!value
+        restart.style.display = canStartOver ? 'flex' : 'none'
+        hud.dataset.saved = canStartOver ? 'true' : 'false'
+    }
 
     return {
         elements: [hud, help, weaponBar, bombButton, bossBar, toast, hangar.element, gameOver.element],
@@ -331,6 +371,7 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
         showToast,
         update,
         setMuted,
+        setCanStartOver,
         renderWeapons,
         layout,
         dispose() {
@@ -448,10 +489,11 @@ const buildHangar = ({ strings, zIndex, actions }) => {
             marginTop: '14px',
         })
         const gold = wideButton(`🪙 ${strings.goldWeapons}`, false, actions.openGoldShop)
+        const restart = confirmingButton(`↺ ${strings.startOver}`, strings.startOverConfirm, actions.startOver)
         const leave = wideButton(strings.exit, false, actions.exit)
         const launch = wideButton(`🚀 ${strings.launchMission.replace('{n}', run.mission + 1)}`, true, actions.launch)
         launch.setAttribute('data-launch', 'true')
-        footer.append(gold, leave, launch)
+        footer.append(gold, restart, leave, launch)
         card.appendChild(footer)
     }
 
@@ -475,7 +517,7 @@ const buildHangar = ({ strings, zIndex, actions }) => {
 }
 
 /** The game-over card: score, best, and "play again" / "exit". */
-const buildGameOver = ({ strings, zIndex, actions }) => {
+const buildGameOver = ({ strings, zIndex, actions, canStartOver }) => {
     const { backdrop, card } = panel(zIndex)
     backdrop.setAttribute(RAGE_LAYER_ATTRIBUTE, 'gameover')
     card.style.textAlign = 'center'
@@ -488,8 +530,11 @@ const buildGameOver = ({ strings, zIndex, actions }) => {
     const newBest = pillElement('div', { color: '#9CF0C8', fontWeight: '700', marginTop: '6px', display: 'none' })
     newBest.textContent = `🏆 ${strings.newHighscore}`
     const buttons = pillElement('div', { display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '16px' })
+    const restart = confirmingButton(`↺ ${strings.startOver}`, strings.startOverConfirm, actions.startOver)
+    buttons.style.flexWrap = 'wrap'
     buttons.append(
         wideButton(strings.playAgain, true, actions.playAgain),
+        restart,
         wideButton(strings.exit, false, actions.exit)
     )
     card.append(title, scoreLine, missionLine, bestLine, newBest, buttons)
@@ -500,6 +545,7 @@ const buildGameOver = ({ strings, zIndex, actions }) => {
             missionLine.textContent = strings.mission.replace('{n}', mission)
             bestLine.textContent = `${strings.best}: ${best.toLocaleString()}`
             newBest.style.display = isNew ? 'block' : 'none'
+            restart.style.display = canStartOver() ? 'flex' : 'none'
             backdrop.style.display = 'flex'
         },
         update({ best, isNew }) {

@@ -110,7 +110,7 @@ const openRaid = async (browser, url, query, options = {}) => {
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => message.type() === 'error' && errors.push(message.text()))
-    await page.goto(`${url}?${query}`)
+    await page.goto(`${url}?${options.keepProgress ? '' : 'fresh=1&'}${query}`)
     if (options.tap) await page.tap('#rage')
     else await page.click('#rage')
     return { context, page, errors }
@@ -157,6 +157,17 @@ const canvasPixel = (page, x, y) =>
 async function desktop(browser, url) {
     const { context, page, errors } = await openRaid(browser, url, 'god=1')
     check('raid layers are on the page', (await layerCount(page)) >= 5, await layerCount(page))
+    // The run-up: she lands on the page and runs while it starts to move, slowly; nothing fires yet.
+    check('Anna lands on the page and runs', await waitForHud(page, data => data.phase === 'runup'))
+    const runStart = Number((await hudData(page)).pageOffset || 0)
+    await sleep(900)
+    const running = await hudData(page)
+    check(
+        'during the run-up the page moves slowly and she holds fire',
+        running.phase !== 'runup' ||
+            (Number(running.pageOffset) > runStart && Number(running.pageOffset) < 120 && running.shots === '0'),
+        `${runStart} → ${running.pageOffset}, shots ${running.shots}`
+    )
     check(
         'Anna takes off and mission 1 starts',
         await waitForHud(page, data => data.phase === 'flying' && data.mission === '1')
@@ -179,6 +190,12 @@ async function desktop(browser, url) {
     check('generated ground is drawn above the page', sky[3] === 255 && sky[1] > sky[2], sky.join(','))
     check('the first wave arrives', await waitForHud(page, data => Number(data.enemies) > 0, null, 12000))
     await page.screenshot({ path: path.join(BUILD_DIR, 'desktop-flying.png') })
+
+    // Enter: the greeting loop towards the camera, without shooting, then back to work.
+    await page.keyboard.press('Enter')
+    check('Enter starts the greeting', await waitForHud(page, data => !!data.greeting))
+    await page.screenshot({ path: path.join(BUILD_DIR, 'greeting.png') })
+    check('the greeting ends and she flies on', await waitForHud(page, data => !data.greeting, null, 20000))
 
     // Nothing may reach the app: clicks where checkboxes and buttons are, and keys.
     const check0 = await centreOf(page, '#check-0')
@@ -280,6 +297,39 @@ async function game(browser, url) {
         await page.keyboard.press('Escape')
         await waitForArenaGone(page)
         check('mission 2: leaving puts the page back', (await pageRestored(page)).intact)
+        // The completed mission is remembered: the next raid takes off at mission 2.
+        await page.goto(`${url}?god=1&noWaves=1`)
+        await page.click('#rage')
+        check(
+            'progress: the next raid continues at mission 2',
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2' && data.saved === 'true')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        // …on every device: with this browser's copy wiped, the server's copy still says mission 2.
+        await page.goto(`${url}?god=1&noWaves=1&newDevice=1`)
+        await page.click('#rage')
+        check(
+            'progress: another device continues at mission 2 too',
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2' && data.saved === 'true')
+        )
+        await page.click('[data-rage-mode-layer="hud"] [data-start-over]')
+        await page.click('[data-rage-mode-layer="hud"] [data-start-over]')
+        check(
+            'progress: ↺ twice starts over at mission 1',
+            await waitForHud(page, data => data.mission === '1' && data.saved === 'false')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        // Another device: this browser's copy is gone, the server's copy is not.
+        await page.goto(`${url}?god=1&noWaves=1&newDevice=1`)
+        await page.click('#rage')
+        check(
+            'progress: another device starts at mission 1 after a start over',
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '1')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
         check('boss/hangar: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
         await context.close()
     }

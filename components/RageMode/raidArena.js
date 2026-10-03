@@ -3,6 +3,7 @@ import {
     BufferGeometry,
     CanvasTexture,
     Color,
+    ConeGeometry,
     CylinderGeometry,
     DirectionalLight,
     DoubleSide,
@@ -16,9 +17,11 @@ import {
     MeshStandardMaterial,
     Object3D,
     OrthographicCamera,
+    PCFSoftShadowMap,
     Plane,
     PlaneGeometry,
     Scene,
+    ShadowMaterial,
     SRGBColorSpace,
     Vector3,
     WebGLRenderer,
@@ -49,6 +52,7 @@ import {
     riverX,
     ROAD_HALF_WIDTH,
     roadX,
+    SCROLL_SPEED,
     terrainChunk,
 } from './raidLevel'
 import { MAIN_GUN_DAMAGE, MAIN_GUN_SPEED, mainGun, nearestAhead, specialAngles, steerTowards, UP } from './raidArmory'
@@ -56,6 +60,15 @@ import { createBoss, damageBoss, displayedCount, insideBoss, ORB_RADIUS, stepBos
 import { buildBoss, buildCharacter } from './rageModels'
 import { createSound, writeMuted } from './rageSound'
 import { buildRaidHud, NARROW_HUD_WIDTH, visibleWidth } from './raidHud'
+import {
+    checkpointFromRun,
+    readRecord,
+    reconcile,
+    runFromCheckpoint,
+    sanitizeRecord,
+    writeRecord,
+} from './raidProgress'
+import { GREETING_TIMING, greetingPose, pickGreetingStyle } from './rageGreeting'
 import { buildShop } from './rageShop'
 
 /**
@@ -91,21 +104,35 @@ import { buildShop } from './rageShop'
  */
 
 const Z_INDEX = 2147482000
+// Heights above the ground (world z). In an orthographic view they only decide what is drawn in
+// front of what — except for shadows, which fall further away the higher something flies.
 const Z = {
     page: 2,
     bunker: 7,
-    shadow: 60,
-    boss: 150,
-    enemy: 200,
-    playerShot: 240,
-    ship: 300,
-    enemyShot: 400,
-    fx: 450,
-    debris: 470,
+    cloud: 95,
+    boss: 110,
+    enemy: 120,
+    playerShot: 140,
+    shipGround: 18,
+    ship: 150,
+    enemyShot: 170,
+    fx: 180,
+    debris: 185,
     flash: 900,
 }
+// The sun: shadows fall down and to the right, a little further for every unit of height.
+const SUN_DIRECTION = new Vector3(-0.3, 0.34, 1).normalize()
 const TAKEOFF_SECONDS = 1.1
+// The run-up on the page: she runs while the page starts to move, then the jetpack fires.
+const RUNUP_MIN_SECONDS = 1.7
+const RUNUP_MAX_SECONDS = 4
+const RUNUP_SCROLL_FROM = 0.12
+const RUNUP_SCROLL_TO = 0.3
+const LIFTOFF_SECONDS = 0.9
+const RUN_TILT = 0.95
+const RUN_SCALE = 0.86
 const SCROLL_RAMP_SECONDS = 2.5
+const CLOUD_COUNT = 4
 const PAGE_CAP_EXTRA = 40
 const RETURN_SECONDS = 1.15
 const HOLE_FADE_SECONDS = 0.3
@@ -117,9 +144,16 @@ const MAX_ENEMY_SHOTS = 600
 const MAX_PUFFS = 520
 const MAX_SPARKS = 400
 const MAX_DEBRIS = 260
-const MAX_DECALS = 90
+const MAX_WRECKS = 40
 const MAX_PAGE_TURRETS = 8
 const WEAPON_KEY = 'alldone.rageMode.weapon'
+// Anna's height on screen at scale 1, for shrinking her into (and out of) the avatar she launches from.
+const ANNA_HEIGHT = 70
+// At the front of the greeting loop she is this much bigger: "towards the camera" for an
+// orthographic camera, which has no perspective to do it for her.
+const GREETING_GROW = 1.6
+const BUBBLE_SCALE = 1.2
+const START_OVER_CONFIRM_SECONDS = 3
 const BUNKER_COLORS = ['#0C66FF', '#09A87A', '#7E57C2', '#E64A19', '#0097A7']
 
 // Three seasons of ground, one per mission in turn. App colours, kept soft so the bright game
@@ -253,34 +287,6 @@ const puffTexture = () =>
         context.fillRect(0, 0, w, w)
     })
 
-const shadowTexture = () =>
-    canvasTexture(64, 64, (context, w) => {
-        const gradient = context.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2)
-        gradient.addColorStop(0, 'rgba(20,28,48,0.42)')
-        gradient.addColorStop(0.6, 'rgba(20,28,48,0.26)')
-        gradient.addColorStop(1, 'rgba(20,28,48,0)')
-        context.fillStyle = gradient
-        context.fillRect(0, 0, w, w)
-    })
-
-const craterTexture = () =>
-    canvasTexture(128, 128, (context, w) => {
-        const random = createRandom(11)
-        for (let i = 0; i < 22; i++) {
-            const angle = random() * Math.PI * 2
-            const distance = random() * w * 0.2
-            const x = w / 2 + Math.cos(angle) * distance
-            const y = w / 2 + Math.sin(angle) * distance
-            const radius = w * (0.12 + random() * 0.2)
-            const gradient = context.createRadialGradient(x, y, 0, x, y, radius)
-            gradient.addColorStop(0, 'rgba(36,24,16,0.5)')
-            gradient.addColorStop(0.6, 'rgba(52,36,22,0.22)')
-            gradient.addColorStop(1, 'rgba(52,36,22,0)')
-            context.fillStyle = gradient
-            context.fillRect(0, 0, w, w)
-        }
-    })
-
 // Anna's shot: an orange capsule with a dark rim, readable on light ground and dark water alike.
 const boltTexture = () =>
     canvasTexture(16, 48, (context, w, h) => {
@@ -370,8 +376,11 @@ const bunkerTexture = (label, color, armoured, width, height) => {
         context.scale(scale, scale)
         const cw = w / scale
         const ch = h / scale
+        // The slab's own edge colour behind the rounded corners, so they read as a bevel.
+        context.fillStyle = armoured ? '#262B38' : opaqueColor(color).multiplyScalar(0.72).getStyle()
+        context.fillRect(0, 0, cw, ch)
         context.fillStyle = armoured ? '#3A4152' : color
-        roundedRect(context, 0, 0, cw, ch, 9)
+        roundedRect(context, 1.5, 1.5, cw - 3, ch - 3, 8)
         context.fill()
         if (armoured) {
             context.strokeStyle = '#FFAE47'
@@ -390,6 +399,48 @@ const bunkerTexture = (label, color, armoured, width, height) => {
             context.fillText(ellipsize(context, label, cw - 52), 42, ch / 2 + 1)
         }
     })
+}
+
+/** A white speech bubble with a tail, for Anna's greeting. Returns the texture and its CSS size. */
+const bubbleTexture = text => {
+    const scale = 3
+    const font = '600 17px Roboto, system-ui, sans-serif'
+    const measure = document.createElement('canvas').getContext('2d')
+    measure.font = font
+    const width = Math.ceil(measure.measureText(text).width) + 32
+    const height = 46
+    const canvas = document.createElement('canvas')
+    canvas.width = width * scale
+    canvas.height = (height + 12) * scale
+    const context = canvas.getContext('2d')
+    context.scale(scale, scale)
+    context.fillStyle = '#FFFFFF'
+    context.strokeStyle = 'rgba(9,21,64,0.18)'
+    context.lineWidth = 1.5
+    context.beginPath()
+    const r = 20
+    context.moveTo(r, 1)
+    context.lineTo(width - r, 1)
+    context.arcTo(width - 1, 1, width - 1, r, r)
+    context.lineTo(width - 1, height - r)
+    context.arcTo(width - 1, height - 1, width - r, height - 1, r)
+    context.lineTo(34, height - 1)
+    context.lineTo(18, height + 11)
+    context.lineTo(22, height - 1)
+    context.lineTo(r, height - 1)
+    context.arcTo(1, height - 1, 1, height - r, r)
+    context.lineTo(1, r)
+    context.arcTo(1, 1, r, 1, r)
+    context.closePath()
+    context.fill()
+    context.stroke()
+    context.fillStyle = '#04142F'
+    context.font = font
+    context.textBaseline = 'middle'
+    context.fillText(text, 16, height / 2 + 1)
+    const texture = new CanvasTexture(canvas)
+    texture.colorSpace = SRGBColorSpace
+    return { texture, width, height: height + 12 }
 }
 
 /** A task row as it looks on the page, for the shards it breaks into. */
@@ -441,6 +492,31 @@ const createQuadBuilder = () => {
     }
 }
 
+/**
+ * A pitched roof, one unit wide (x), deep (y) and high (z), its ridge along x. Seen from above its
+ * two slopes catch the sun differently, which is what makes a house read as a house.
+ */
+const roofGeometry = () => {
+    const ridgeL = [-0.5, 0, 1]
+    const ridgeR = [0.5, 0, 1]
+    const frontL = [-0.5, -0.5, 0]
+    const frontR = [0.5, -0.5, 0]
+    const backL = [-0.5, 0.5, 0]
+    const backR = [0.5, 0.5, 0]
+    const triangles = [
+        [frontL, frontR, ridgeR],
+        [frontL, ridgeR, ridgeL],
+        [backR, backL, ridgeL],
+        [backR, ridgeL, ridgeR],
+        [frontL, ridgeL, backL],
+        [frontR, backR, ridgeR],
+    ]
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new Float32BufferAttribute(triangles.flat(2), 3))
+    geometry.computeVertexNormals()
+    return geometry
+}
+
 /** A flat triangle around its own centroid, textured from the rectangle it was cut out of. */
 const shardGeometry = (vertices, centroid, size) => {
     const positions = []
@@ -465,7 +541,11 @@ const shardGeometry = (vertices, centroid, size) => {
  *
  * @param {object} options
  * @param {object} options.strings  translated strings (`rageStrings.js`)
- * @param {{x:number,y:number}} [options.from] where Anna takes off from (the button)
+ * @param {{x:number,y:number,size?:number}} [options.from] where Anna takes off from and lands
+ *   again (Anna's avatar in the assistant line); `size` is its height, which she shrinks into
+ * @param {string} [options.progressScope] whose progress this is (the user id); see `raidProgress.js`
+ *   (`services.saveProgress(checkpoint | null)` → Promise<{ok, savedAt}> keeps the server's copy;
+ *   `loadProfile()` returns it as `progress`)
  * @param {() => void} [options.onExit] called once the arena is fully gone
  * @param {HTMLElement} [options.pageRoot] the element that slides away (default `#root`)
  * @param {object} [options.services] the outside world, all optional (a harness passes fakes):
@@ -475,7 +555,7 @@ const shardGeometry = (vertices, centroid, size) => {
  * @param {object} [options.tuning] for tests only: `startShield`, `invincible`, `seed`, `bossAt`
  *   (seconds; waves scheduled later are dropped) and `noWaves`.
  */
-export function startRageArena({ strings, from, onExit, pageRoot, services = {}, tuning = {} }) {
+export function startRageArena({ strings, from, onExit, pageRoot, progressScope, services = {}, tuning = {} }) {
     if (activeArena) return activeArena
 
     const random = createRandom(Date.now() & 0xffff)
@@ -520,10 +600,39 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     const scene = new Scene()
     const camera = new OrthographicCamera(0, 1, 0, -1, 0.1, 3000)
     camera.position.set(0, 0, 1500)
-    scene.add(new HemisphereLight('#ffffff', '#7d8aa0', 1.6))
-    const sun = new DirectionalLight('#ffffff', 1.7)
-    sun.position.set(-0.5, 0.8, 1)
-    scene.add(sun)
+    // A bright sky-and-ground fill: the shaded sides of trees, roofs and rubble stay light, so
+    // nothing on the ground reads as a dark spot.
+    scene.add(new HemisphereLight('#ffffff', '#b4bdcc', 1.6))
+    // Real shadows instead of painted blobs: everything above the ground casts a crisp silhouette
+    // onto an invisible catcher plane, and the higher it flies the further away its shadow falls —
+    // on the ground and on your page alike.
+    const sun = new DirectionalLight('#ffffff', 1.8)
+    if (renderer.shadowMap) {
+        renderer.shadowMap.enabled = true
+        renderer.shadowMap.type = PCFSoftShadowMap
+    }
+    sun.castShadow = true
+    sun.shadow.mapSize.set(touchDevice ? 1024 : 2048, touchDevice ? 1024 : 2048)
+    sun.shadow.bias = -0.0008
+    scene.add(sun, sun.target)
+    const shadowCatcher = new Mesh(
+        new PlaneGeometry(1, 1),
+        new ShadowMaterial({ color: '#14203D', opacity: 0.2, depthWrite: false })
+    )
+    shadowCatcher.receiveShadow = true
+    shadowCatcher.renderOrder = 1
+    scene.add(shadowCatcher)
+    const aimSun = () => {
+        const cx = viewport.width / 2
+        const cy = -viewport.height / 2
+        sun.target.position.set(cx, cy, 0)
+        sun.position.set(cx + SUN_DIRECTION.x * 1500, cy + SUN_DIRECTION.y * 1500, SUN_DIRECTION.z * 1500)
+        const reach = Math.hypot(viewport.width, viewport.height) / 2 + 260
+        Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, near: 1, far: 4000 })
+        sun.shadow.camera.updateProjectionMatrix()
+        shadowCatcher.position.set(cx, cy, 0.9)
+        shadowCatcher.scale.set(viewport.width + 400, viewport.height + 400, 1)
+    }
 
     const resizeCamera = () => {
         viewport.width = window.innerWidth
@@ -534,6 +643,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         camera.top = 0
         camera.bottom = -viewport.height
         camera.updateProjectionMatrix()
+        aimSun()
     }
     resizeCamera()
 
@@ -546,8 +656,6 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     const unitPlane = keep(new PlaneGeometry(1, 1))
     const textures = {
         puff: keep(puffTexture()),
-        shadow: keep(shadowTexture()),
-        crater: keep(craterTexture()),
         bolt: keep(boltTexture()),
         orb: keep(orbTexture()),
         ring: keep(ringTexture()),
@@ -562,15 +670,25 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     }
     const groundMaterial = clipped(new MeshBasicMaterial({ vertexColors: true }))
     const treeMaterial = clipped(new MeshStandardMaterial({ roughness: 0.9, flatShading: true }))
-    const houseMaterial = clipped(new MeshStandardMaterial({ roughness: 0.8, flatShading: true }))
-    const groundShadowMaterial = clipped(
-        new MeshBasicMaterial({ map: textures.shadow, transparent: true, depthWrite: false })
+    const wallMaterial = clipped(new MeshStandardMaterial({ color: '#F4EEE3', roughness: 0.9, flatShading: true }))
+    const roofMaterial = clipped(new MeshStandardMaterial({ roughness: 0.7, flatShading: true }))
+    const rubbleMaterial = clipped(new MeshStandardMaterial({ roughness: 0.9, flatShading: true }))
+    const cloudMaterial = clipped(
+        new MeshBasicMaterial({ map: textures.puff, transparent: true, opacity: 0.42, depthWrite: false })
     )
-    const craterMaterial = clipped(
-        new MeshBasicMaterial({ map: textures.crater, transparent: true, depthWrite: false })
-    )
-    const shadowMaterial = keep(new MeshBasicMaterial({ map: textures.shadow, transparent: true, depthWrite: false }))
+    const foundationMaterials = new Map()
+    // A soft-edged patch (the puff texture, tinted), so a wreck fades into the ground around it.
+    const foundationMaterial = css => {
+        if (!foundationMaterials.has(css))
+            foundationMaterials.set(
+                css,
+                clipped(new MeshBasicMaterial({ map: textures.puff, color: css, transparent: true, depthWrite: false }))
+            )
+        return foundationMaterials.get(css)
+    }
     const treeGeometry = keep(new IcosahedronGeometry(1, 0))
+    const roofPrism = keep(roofGeometry())
+    const noseGeometry = keep(new ConeGeometry(5, 14, 6))
     const boxGeometry = keep(new BoxGeometry(1, 1, 1))
     const turretBaseGeometry = keep(new CylinderGeometry(11, 13, 10, 12))
     const barrelGeometry = keep(new BoxGeometry(5, 20, 5))
@@ -584,6 +702,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         glass: keep(new MeshStandardMaterial({ color: '#6FD3FF', emissive: '#2F8FCF', emissiveIntensity: 0.5 })),
         envelopeSide: standard('#C9D6EA'),
         envelopeFace: keep(new MeshBasicMaterial({ map: textures.envelope })),
+        engine: keep(new MeshBasicMaterial({ color: '#FFAE47' })),
     }
 
     /* Layers of the scene. */
@@ -601,9 +720,10 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     const shipNode = new Group()
     shipNode.rotation.x = 0.5
     shipNode.add(bank)
-    const shipShadow = new Mesh(unitPlane, shadowMaterial)
-    shipShadow.scale.set(56, 40, 1)
-    scene.add(shipNode, shipShadow)
+    character.root.traverse(node => {
+        if (node.isMesh && !character.flames.includes(node)) node.castShadow = true
+    })
+    scene.add(shipNode)
 
     /* Instanced projectiles and particles. */
     const dummy = new Object3D()
@@ -617,19 +737,19 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     }
     const shotMesh = instanced(
         unitPlane,
-        keep(new MeshBasicMaterial({ map: textures.bolt, transparent: true, depthWrite: false })),
+        keep(new MeshBasicMaterial({ map: textures.bolt, transparent: true, depthWrite: false, depthTest: false })),
         MAX_SHOTS,
         3
     )
     const enemyShotMesh = instanced(
         unitPlane,
-        keep(new MeshBasicMaterial({ map: textures.orb, transparent: true, depthWrite: false })),
+        keep(new MeshBasicMaterial({ map: textures.orb, transparent: true, depthWrite: false, depthTest: false })),
         MAX_ENEMY_SHOTS,
         5
     )
     const puffMesh = instanced(
         unitPlane,
-        keep(new MeshBasicMaterial({ map: textures.puff, transparent: true, depthWrite: false })),
+        keep(new MeshBasicMaterial({ map: textures.puff, transparent: true, depthWrite: false, depthTest: false })),
         MAX_PUFFS,
         4
     )
@@ -723,7 +843,66 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     }
 
     /* State. */
-    let run = createRun({ startShield: tuning.startShield })
+    // Pick up where the last raid left off (raidProgress.js), unless there is nothing to pick up.
+    // This browser's copy first, so take-off is instant; the server's copy (which may come from
+    // another device) is reconciled with it when the profile arrives, during the run-up.
+    let record = readRecord(progressScope)
+    let checkpoint = record ? record.checkpoint : null
+    const freshRun = () => {
+        const next = checkpoint ? runFromCheckpoint(checkpoint) : createRun()
+        if (typeof tuning.startShield === 'number')
+            next.shield = Math.max(1, Math.min(next.maxShield, tuning.startShield))
+        return next
+    }
+    let run = freshRun()
+    // One save in flight at a time, newest last: two quick hangar purchases must never reach the
+    // server in the wrong order.
+    let syncing = false
+    const syncProgress = () => {
+        if (syncing || !services.saveProgress || !record || !record.pending) return
+        syncing = true
+        const sending = record
+        Promise.resolve()
+            .then(() => services.saveProgress(sending.checkpoint))
+            .then(result => {
+                if (result && result.ok && record === sending) {
+                    record = { checkpoint: sending.checkpoint, savedAt: result.savedAt, pending: false }
+                    writeRecord(progressScope, record)
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                syncing = false
+                if (record && record.pending && record !== sending) syncProgress()
+            })
+    }
+    /** Remember `next` (a checkpoint, or null for "start over") here and on the server. */
+    const storeProgress = next => {
+        checkpoint = next
+        record = { checkpoint: next, savedAt: Date.now(), pending: true }
+        writeRecord(progressScope, record)
+        ui.setCanStartOver(!!next)
+        syncProgress()
+    }
+    const saveProgress = () => storeProgress(checkpointFromRun(run))
+    /** The server's copy arrived: fly with whichever is newer, and push ours up if it is. */
+    const adoptServerProgress = progress => {
+        const remote = progress ? sanitizeRecord({ ...progress, pending: false }) : null
+        const { record: chosen, push } = reconcile(record, remote)
+        const next = chosen ? chosen.checkpoint : null
+        const changed = JSON.stringify(next) !== JSON.stringify(checkpoint)
+        record = chosen
+        writeRecord(progressScope, chosen)
+        // Before lift-off the raid can still switch to it; mid-mission it applies next time.
+        if (changed && (phase === 'takeoff' || phase === 'runup')) {
+            checkpoint = next
+            run = freshRun()
+            ui.setCanStartOver(!!checkpoint)
+            hudDirty = true
+        }
+        if (push) syncProgress()
+    }
+    let startOverArmedUntil = -Infinity
     let best = 0
     let phase = 'takeoff'
     let finished = false
@@ -743,6 +922,16 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     let hudDirty = true
     const ship = { x: viewport.width / 2, y: viewport.height * 0.8, vx: 0 }
     const launch = from ? { x: from.x, y: from.y } : { x: viewport.width / 2, y: viewport.height + 40 }
+    // She comes out of the avatar at its size, and shrinks back into it on the way home.
+    const launchScale = Math.max(0.2, Math.min(1, (from && from.size ? from.size : 20) / ANNA_HEIGHT))
+    let greeting = null
+    let runupStart = 0
+    let liftoffAt = -Infinity
+    let runupPuffIn = 0
+    // The raid waits (a little) for the server's copy of your progress before the mission starts.
+    let progressSettled = !services.loadProfile
+    let lastGreetingStyle = null
+    let bubble = null
     let bankAngle = 0
     const pointer = { x: ship.x, y: ship.y, active: false }
     const held = new Set()
@@ -766,7 +955,6 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     const puffs = []
     const sparks = []
     const debris = []
-    const decals = []
     const airEnemies = []
     const pendingSpawns = []
     let pendingWaves = []
@@ -804,8 +992,12 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
             launch: () => launchNextMission(),
             openGoldShop: () => openShop(),
             playAgain: () => playAgain(),
+            greet: () => startGreeting(),
+            startOver: () => startOver(),
+            requestStartOver: () => requestStartOver(),
         },
     })
+    ui.setCanStartOver(!!checkpoint)
     const hud = ui.hud
     const setPhase = next => {
         phase = next
@@ -814,8 +1006,26 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     setPhase('takeoff')
 
     /* Effects. */
-    const FIRE_RAMP = ['#FFFFFF', '#FFE36B', '#FFAE47', '#FF7043', '#D84315', '#6D4C41'].map(c => new Color(c))
-    const SMOKE = new Color('#8A8F99')
+    // Fire cools from white through yellow and orange into a light smoke — never into soot, which
+    // reads as a dark stain on the light ground.
+    const FIRE_RAMP = ['#FFFFFF', '#FFF1A8', '#FFC857', '#FF8A3D', '#F0643A', '#D9D4CF'].map(c => new Color(c))
+    const SMOKE = new Color('#E2E5EA')
+    const rings = []
+    const addRing = (x, y, size, life = 0.45, opacity = 0.75) => {
+        const mesh = new Mesh(
+            unitPlane,
+            new MeshBasicMaterial({
+                map: textures.ring,
+                transparent: true,
+                depthWrite: false,
+                depthTest: false,
+                opacity,
+            })
+        )
+        mesh.renderOrder = 7
+        scene.add(mesh)
+        rings.push({ mesh, x, y, size, age: 0, life, opacity })
+    }
     const addPuff = (x, y, size, { life = 0.55, smoke = false, vx = 0, vy = 0 } = {}) => {
         puffs.push({ x, y, size, life, age: 0, smoke, vx, vy })
         if (puffs.length > MAX_PUFFS) puffs.shift()
@@ -854,6 +1064,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
                 vy: -12,
             })
         addSparks(x, y, Math.round(8 * size), Math.min(1.6, size))
+        if (size >= 1) addRing(x, y, 120 * size, 0.4, 0.6)
         shake = Math.min(14, shake + 3 * size)
         sound.boom(Math.min(2, 0.7 + size * 0.4))
     }
@@ -861,18 +1072,66 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         flashMaterial.opacity = Math.max(flashMaterial.opacity, strength)
     }
 
-    /** A crater on the ground at screen point (x, y): it scrolls away with the ground. */
-    const addCrater = (x, y, size) => {
-        const mesh = new Mesh(unitPlane, craterMaterial)
-        mesh.scale.set(size, size, 1)
-        mesh.rotation.z = random() * Math.PI * 2
-        mesh.position.set(x, scroll - y, 1.2)
-        ground.add(mesh)
-        decals.push(mesh)
-        while (decals.length > MAX_DECALS) {
-            const old = decals.shift()
-            if (old.parent) old.parent.remove(old)
+    /**
+     * What a destroyed bunker leaves on the ground at screen point (x, y): its scorched foundation
+     * in a lighter shade of its own colour and a little heap of rubble that smokes for a moment,
+     * all scrolling away with the ground. Light on purpose — a dark crater reads as a stain.
+     */
+    const wrecks = []
+    const addWreck = (x, y, w, h, color) => {
+        const group = new Group()
+        group.position.set(x, scroll - y, 1.1)
+        const base = new Color(color).lerp(new Color(THEMES[terrainTheme].ground), 0.8).lerp(new Color('#FFFFFF'), 0.1)
+        const foundation = new Mesh(unitPlane, foundationMaterial(`#${base.getHexString()}`))
+        foundation.scale.set(w * 1.1, h * 1.6, 1)
+        group.add(foundation)
+        const count = 12
+        const rubble = new InstancedMesh(boxGeometry, rubbleMaterial, count)
+        rubble.castShadow = true
+        rubble.frustumCulled = false
+        const light = new Color(color).lerp(new Color('#FFFFFF'), 0.35)
+        const tints = [
+            light,
+            new Color(color).lerp(new Color('#FFFFFF'), 0.6),
+            new Color('#ECE7DD'),
+            new Color('#D9D2C5'),
+        ]
+        for (let i = 0; i < count; i++) {
+            const size = 6 + random() * 9
+            dummy.position.set((random() - 0.5) * w * 0.7, (random() - 0.5) * h * 0.6, size / 2)
+            dummy.rotation.set(random(), random(), random() * Math.PI)
+            dummy.scale.set(size, size * (0.6 + random() * 0.6), size * 0.7)
+            dummy.updateMatrix()
+            rubble.setMatrixAt(i, dummy.matrix)
+            rubble.setColorAt(i, tints[i % tints.length])
         }
+        group.add(rubble)
+        ground.add(group)
+        wrecks.push({ group, rubble, g: scroll - y, smokeUntil: time + 3, smokeIn: 0 })
+        while (wrecks.length > MAX_WRECKS) removeWreck(wrecks.shift())
+    }
+    const removeWreck = wreck => {
+        ground.remove(wreck.group)
+        wreck.rubble.dispose()
+    }
+    // A thin plume rising from each fresh wreck, drifting with the ground.
+    const updateWrecks = dt => {
+        const groundSpeed =
+            phase === 'flying' || phase === 'cleared' ? (mission ? mission.scrollSpeed : SCROLL_SPEED) : 0
+        wrecks.forEach(wreck => {
+            if (time > wreck.smokeUntil) return
+            wreck.smokeIn -= dt
+            if (wreck.smokeIn > 0) return
+            wreck.smokeIn = 0.12
+            const y = scroll - wreck.g
+            if (y < -40 || y > viewport.height + 40) return
+            addPuff(wreck.group.position.x + (random() - 0.5) * 16, y, 12 + random() * 10, {
+                life: 1.2,
+                smoke: true,
+                vx: 14,
+                vy: groundSpeed * 0.8 - 30,
+            })
+        })
     }
 
     /** Break a textured rectangle (screen coords) into shards that scatter across the ground. */
@@ -922,16 +1181,32 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         const color = css => new Color(css)
         quads.rect(0, 0, viewport.width, CHUNK_HEIGHT, 0, color(theme.ground))
         const fieldColors = theme.fields.map(color)
-        data.fields.forEach(field => quads.rect(field.x, field.y, field.w, field.h, 0.1, fieldColors[field.shade]))
-        // The river, as a ribbon following its meander, on a slightly wider band of bank.
-        const bank = color(theme.bank)
+        data.fields.forEach(field => {
+            quads.rect(field.x, field.y, field.w, field.h, 0.1, fieldColors[field.shade])
+            // Every other field is ploughed: rows a shade darker than the field itself.
+            if (field.shade % 2 === 0) {
+                const rows = fieldColors[field.shade].clone().multiplyScalar(0.94)
+                for (let y = field.y + 5; y < field.y + field.h - 3; y += 9)
+                    quads.rect(field.x + 4, y, field.w - 8, 3, 0.12, rows)
+            }
+        })
+        // The river: a ribbon following its meander on a band of sand, a darker channel down its
+        // middle and a few light ripples on top.
+        const sand = color(theme.bank).lerp(color('#F3E7C9'), 0.45)
         const water = color(theme.water)
+        const deep = water.clone().multiplyScalar(0.88)
+        const ripple = water.clone().lerp(color('#FFFFFF'), 0.45)
         for (let y = 0; y < CHUNK_HEIGHT; y += 16) {
             const x0 = riverX(base + y, viewport.width, seed)
             const x1 = riverX(base + y + 16, viewport.width, seed)
+            if ((base + y) % 112 === 0 || (base + y + 48) % 112 === 0) {
+                const side = (base + y) % 224 === 0 ? -0.45 : 0.35
+                quads.rect(x0 + RIVER_HALF_WIDTH * side - 7, y + 4, 14, 2, 0.35, ripple)
+            }
             ;[
-                [RIVER_HALF_WIDTH + 9, 0.2, bank],
+                [RIVER_HALF_WIDTH + 10, 0.2, sand],
                 [RIVER_HALF_WIDTH, 0.3, water],
+                [RIVER_HALF_WIDTH * 0.45, 0.32, deep],
             ].forEach(([half, z, tint]) =>
                 quads.quad(
                     [
@@ -963,51 +1238,54 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         const flat = new Mesh(quads.build(), groundMaterial)
         group.add(flat)
 
-        const shadowCount = data.trees.length + data.houses.length
-        if (shadowCount) {
-            const shadows = new InstancedMesh(unitPlane, groundShadowMaterial, shadowCount)
-            shadows.frustumCulled = false
-            let i = 0
-            data.trees.forEach(tree => {
-                dummy.position.set(tree.x + tree.r * 0.6, tree.y - tree.r * 0.7, 0.6)
-                dummy.rotation.set(0, 0, 0)
-                dummy.scale.set(tree.r * 2.6, tree.r * 2.2, 1)
-                dummy.updateMatrix()
-                shadows.setMatrixAt(i++, dummy.matrix)
-            })
-            data.houses.forEach(house => {
-                dummy.position.set(house.x + house.h * 0.45, house.y - house.h * 0.55, 0.6)
-                dummy.scale.set(house.w * 1.5, house.d * 1.5, 1)
-                dummy.updateMatrix()
-                shadows.setMatrixAt(i++, dummy.matrix)
-            })
-            group.add(shadows)
-        }
         if (data.trees.length) {
-            const trees = new InstancedMesh(treeGeometry, treeMaterial, data.trees.length)
+            // Each tree is a small cluster: a big crown and a smaller one beside it.
+            const trees = new InstancedMesh(treeGeometry, treeMaterial, data.trees.length * 2)
             trees.frustumCulled = false
+            trees.castShadow = true
             data.trees.forEach((tree, i) => {
+                const tint = color(theme.trees[i % theme.trees.length])
                 dummy.position.set(tree.x, tree.y, tree.r)
-                dummy.rotation.set(0, 0, i)
+                dummy.rotation.set(i, i * 0.7, i)
                 dummy.scale.setScalar(tree.r)
                 dummy.updateMatrix()
-                trees.setMatrixAt(i, dummy.matrix)
-                trees.setColorAt(i, color(theme.trees[i % theme.trees.length]))
+                trees.setMatrixAt(i * 2, dummy.matrix)
+                trees.setColorAt(i * 2, tint)
+                const angle = i * 2.4
+                dummy.position.set(
+                    tree.x + Math.cos(angle) * tree.r * 0.8,
+                    tree.y + Math.sin(angle) * tree.r * 0.8,
+                    tree.r * 0.7
+                )
+                dummy.scale.setScalar(tree.r * 0.62)
+                dummy.updateMatrix()
+                trees.setMatrixAt(i * 2 + 1, dummy.matrix)
+                trees.setColorAt(i * 2 + 1, tint.clone().lerp(color('#FFFFFF'), 0.12))
             })
             group.add(trees)
         }
         if (data.houses.length) {
-            const houses = new InstancedMesh(boxGeometry, houseMaterial, data.houses.length)
-            houses.frustumCulled = false
-            data.houses.forEach((house, i) => {
-                dummy.position.set(house.x, house.y, house.h / 2)
-                dummy.rotation.set(0, 0, 0)
-                dummy.scale.set(house.w, house.d, house.h)
-                dummy.updateMatrix()
-                houses.setMatrixAt(i, dummy.matrix)
-                houses.setColorAt(i, color(theme.roofs[i % theme.roofs.length]))
+            // Cream walls under a pitched roof in one of the theme's roof colours.
+            const walls = new InstancedMesh(boxGeometry, wallMaterial, data.houses.length)
+            const roofs = new InstancedMesh(roofPrism, roofMaterial, data.houses.length)
+            ;[walls, roofs].forEach(mesh => {
+                mesh.frustumCulled = false
+                mesh.castShadow = true
             })
-            group.add(houses)
+            data.houses.forEach((house, i) => {
+                const wallHeight = house.h * 0.6
+                dummy.rotation.set(0, 0, i % 3 === 0 ? Math.PI / 2 : 0)
+                dummy.position.set(house.x, house.y, wallHeight / 2)
+                dummy.scale.set(house.w, house.d, wallHeight)
+                dummy.updateMatrix()
+                walls.setMatrixAt(i, dummy.matrix)
+                dummy.position.set(house.x, house.y, wallHeight)
+                dummy.scale.set(house.w * 1.08, house.d * 1.16, house.h * 0.55)
+                dummy.updateMatrix()
+                roofs.setMatrixAt(i, dummy.matrix)
+                roofs.setColorAt(i, color(theme.roofs[i % theme.roofs.length]))
+            })
+            group.add(walls, roofs)
         }
         ground.add(group)
         return group
@@ -1019,6 +1297,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
                 child.geometry &&
                 child.geometry !== unitPlane &&
                 child.geometry !== treeGeometry &&
+                child.geometry !== roofPrism &&
                 child.geometry !== boxGeometry
             )
                 child.geometry.dispose()
@@ -1032,6 +1311,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     // `renderScroll` is the scroll the ground is DRAWN at; it differs from `scroll` only while
     // leaving. `seamG` is the ground distance at the page's top edge.
     let renderScroll = 0
+    let scrollDelta = 0
     let seamG = 0
     const updateTerrain = () => {
         const low = Math.max(seamG, renderScroll - viewport.height - 20)
@@ -1067,6 +1347,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         barrel.position.y = -12
         pivot.add(barrel)
         group.add(base, pivot)
+        base.castShadow = true
+        barrel.castShadow = true
         return { group, pivot }
     }
     // Points a turret's barrel (local −y) at a screen-space direction.
@@ -1074,27 +1356,44 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         pivot.rotation.z = Math.atan2(dx, dy)
     }
 
+    // Each fighter gets its own hull and wing materials, so a hit can flash it white.
     const buildFighter = () => {
         const group = new Group()
-        const part = (w, h, d, material, x, y, z) => {
-            const mesh = new Mesh(boxGeometry, material)
+        const hull = enemyMaterials.hull.clone()
+        const wing = enemyMaterials.accent.clone()
+        const part = (geometry, w, h, d, material, x, y, z, rz = 0) => {
+            const mesh = new Mesh(geometry, material)
             mesh.scale.set(w, h, d)
             mesh.position.set(x, y, z)
+            mesh.rotation.z = rz
+            mesh.castShadow = true
             group.add(mesh)
+            return mesh
         }
         // Nose towards the bottom of the screen (world −y): it is coming for Anna.
-        part(12, 44, 10, enemyMaterials.hull, 0, 0, 0)
-        part(8, 8, 8, enemyMaterials.hull, 0, -25, 0)
-        part(54, 14, 4, enemyMaterials.accent, 0, 3, 0)
-        part(22, 7, 3, enemyMaterials.accent, 0, 20, 2)
-        part(7, 11, 5, enemyMaterials.glass, 0, -8, 6)
-        group.rotation.x = -0.35
+        part(boxGeometry, 10, 38, 9, hull, 0, 2, 0)
+        const nose = part(noseGeometry, 1, 1, 1, hull, 0, -24, 0)
+        nose.rotation.z = Math.PI
+        // Swept wings, tailplane and fin.
+        part(boxGeometry, 28, 13, 3, wing, -13, 2, 0, -0.32)
+        part(boxGeometry, 28, 13, 3, wing, 13, 2, 0, 0.32)
+        part(boxGeometry, 20, 6, 2, wing, 0, 19, 1)
+        part(boxGeometry, 2, 10, 9, hull, 0, 18, 5)
+        part(boxGeometry, 6, 11, 5, enemyMaterials.glass, 0, -8, 5)
+        const engine = new Mesh(boxGeometry, enemyMaterials.engine)
+        engine.scale.set(6, 4, 4)
+        engine.position.set(0, 23, 0)
+        group.add(engine)
+        group.rotation.x = -0.3
+        group.userData.flash = [hull, wing]
+        group.userData.engine = engine
         return group
     }
     const buildEnvelope = () => {
         const side = enemyMaterials.envelopeSide
         const mesh = new Mesh(boxGeometry, [side, side, side, side, enemyMaterials.envelopeFace, side])
         mesh.scale.set(34, 24, 5)
+        mesh.castShadow = true
         return mesh
     }
 
@@ -1102,17 +1401,16 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     const spawnAirEnemy = spec => {
         const enemy = createEnemy(spec, missionDifficulty(run.mission), random)
         enemy.mesh = spec.type === 'mail' ? buildEnvelope() : buildFighter()
-        enemy.shadow = new Mesh(unitPlane, shadowMaterial)
-        enemy.shadow.scale.set(enemy.radius * 2.2, enemy.radius * 1.7, 1)
         enemy.spin = random() * Math.PI * 2
-        scene.add(enemy.mesh, enemy.shadow)
+        scene.add(enemy.mesh)
         stepAirEnemy(enemy, 0)
         airEnemies.push(enemy)
     }
 
     const removeAirEnemy = enemy => {
-        scene.remove(enemy.mesh, enemy.shadow)
+        scene.remove(enemy.mesh)
         if (enemy.mesh.isMesh) return
+        ;(enemy.mesh.userData.flash || []).forEach(material => material.dispose())
         enemy.mesh.clear()
     }
 
@@ -1127,6 +1425,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         )
         const slab = new Mesh(boxGeometry, [side, side, side, side, roof, side])
         slab.scale.set(bunker.w, bunker.h, 14)
+        slab.castShadow = true
         const group = new Group()
         group.add(slab)
         const turret = buildTurret()
@@ -1136,16 +1435,13 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
             if (node.isMesh) node.material = node.material === turretMaterial ? turretClipped : barrelClipped
         })
         group.add(turret.group)
-        const shadow = new Mesh(unitPlane, groundShadowMaterial)
-        shadow.scale.set(bunker.w + 26, bunker.h + 22, 1)
-        shadow.position.set(8, -9, 0.7)
-        group.add(shadow)
         group.position.set(bunker.x, bunker.g, Z.bunker)
         ground.add(group)
         const type = bunker.armoured ? 'armoured' : 'bunker'
         bunker.enemy = createEnemy({ type }, missionDifficulty(run.mission), random)
         bunker.model = { group, pivot: turret.pivot, texture, roof, side }
         bunker.texture = texture
+        bunker.tint = color
     }
     const removeBunkerModel = bunker => {
         if (!bunker.model) return
@@ -1190,7 +1486,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     const holeMaterials = []
 
     /* Missions. */
-    const startMission = (number, { fromPage = false } = {}) => {
+    const startMission = (number, { fromPage = false, resumed = false } = {}) => {
         const difficulty = missionDifficulty(number)
         mission = buildMission({ mission: number, seed, tasks: levelTasks, width: viewport.width })
         if (typeof tuning.bossAt === 'number') {
@@ -1213,7 +1509,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
             clearTerrain()
         }
         hud.dataset.bunkers = String(bunkers.length)
-        ui.showToast(strings.missionStart.replace('{n}', number), 2)
+        ui.showToast((resumed ? strings.continueAt : strings.missionStart).replace('{n}', number), 2.2)
         hudDirty = true
     }
 
@@ -1269,7 +1565,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
             bunker.dead = true
             recordKill(run, bunker.armoured ? 'armoured' : 'bunker')
             explode(hostile.x, hostile.y, bunker.armoured ? 1.7 : 1.3)
-            addCrater(hostile.x, hostile.y, Math.max(bunker.w, bunker.h) * 1.1)
+            addWreck(hostile.x, hostile.y, bunker.w, bunker.h, bunker.armoured ? '#3A4152' : bunker.tint)
             shatter(bunker.texture, {
                 left: hostile.x - bunker.w / 2,
                 top: hostile.y - bunker.h / 2,
@@ -1385,6 +1681,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         )
         shotsFired += gun.barrels.length
         hud.dataset.shots = String(shotsFired)
+        addPuff(from.x - 9, from.y + 2, 11, { life: 0.07 })
+        addPuff(from.x + 9, from.y + 2, 11, { life: 0.07 })
         volleyCount += 1
         if (volleyCount % 2 === 0) sound.pew(0.35)
         return gun.interval
@@ -1487,7 +1785,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     }
 
     const updateLaser = (weapon, dt) => {
-        const active = weapon.kind === 'laser' && (phase === 'flying' || phase === 'cleared')
+        const active = weapon.kind === 'laser' && (phase === 'flying' || phase === 'cleared') && !greeting
         laserGroup.visible = active
         if (!active) return
         const from = muzzle()
@@ -1647,7 +1945,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     let hangarMessage = null
     const openHangar = () => {
         setPhase('hangar')
+        cancelGreeting()
         debrief = completeMission(run)
+        saveProgress()
         hangarMessage = null
         laserGroup.visible = false
         enemyShots.length = 0
@@ -1664,7 +1964,10 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         if (phase !== 'hangar') return
         const result = buyHangarItem(run, id)
         hangarMessage = result.ok ? null : result.reason === 'credits' ? { id, text: strings.notEnoughCredits } : null
-        if (result.ok) sound.boom(0.4)
+        if (result.ok) {
+            sound.boom(0.4)
+            saveProgress()
+        }
         ui.hangar.update({ run, message: hangarMessage })
         hudDirty = true
     }
@@ -1698,6 +2001,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     }
 
     const gameOver = () => {
+        cancelGreeting()
         setPhase('gameover')
         gameOverAt = time
         gameOverShown = false
@@ -1705,7 +2009,6 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         explode(ship.x, ship.y, 2)
         flashScreen(0.5)
         shipNode.visible = false
-        shipShadow.visible = false
         lastRoundNew = submitScore()
     }
 
@@ -1736,21 +2039,52 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
     const playAgain = () => {
         if (phase !== 'gameover') return
         ui.gameOver.hide()
+        relaunch()
+    }
+
+    // Another go from the checkpoint (or from mission 1 when there is none).
+    const relaunch = () => {
         clearBattlefield()
-        run = createRun()
+        run = freshRun()
         scoreSubmitted = false
         ship.x = viewport.width / 2
         ship.y = viewport.height * 0.8
         shipNode.visible = true
-        shipShadow.visible = true
         setPhase('flying')
         scrollRamp = 0.5
-        startMission(1)
+        startMission(run.mission, { resumed: !!checkpoint })
+        hudDirty = true
+    }
+
+    /** Forget the saved progress and fly again from mission 1. */
+    const startOver = () => {
+        if (phase === 'takeoff' || phase === 'returning' || phase === 'done') return
+        cancelGreeting()
+        submitScore()
+        storeProgress(null)
+        closeShop()
+        ui.hangar.hide()
+        ui.gameOver.hide()
+        relaunch()
+        ui.showToast(strings.missionStart.replace('{n}', 1), 2)
+    }
+    // The ↺ in the status pill asks twice: a stray tap must not throw away five missions.
+    const requestStartOver = () => {
+        if (time < startOverArmedUntil) {
+            startOverArmedUntil = -Infinity
+            startOver()
+            return
+        }
+        startOverArmedUntil = time + START_OVER_CONFIRM_SECONDS
+        ui.showToast(strings.confirmStartOver, START_OVER_CONFIRM_SECONDS)
     }
 
     /* Leaving: everything flies home and the page slides back up under the ground. */
     const beginReturn = () => {
         if (phase === 'returning' || phase === 'done') return
+        cancelGreeting()
+        resetRig()
+        liftoffAt = -Infinity
         submitScore()
         closeShop()
         ui.hangar.hide()
@@ -1779,7 +2113,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         setPageOffset(pageTop)
         pageGroup.position.y = -pageTop
         const home = launch
-        const shrink = 1 - k * 0.8
+        const shrink = 1 - k * (1 - launchScale)
         positionShip(ship.x + (home.x - ship.x) * k, ship.y + (home.y - ship.y) * k, shrink)
         if (elapsed >= RETURN_SECONDS) {
             const fade = clamp01((elapsed - RETURN_SECONDS) / HOLE_FADE_SECONDS)
@@ -1790,37 +2124,256 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
                 if (!child.material || !holeMaterials.includes(child.material)) child.visible = false
             })
             shipNode.visible = false
-            shipShadow.visible = false
             if (fade >= 1) finish()
         }
     }
 
-    /* Per-frame updates. */
-    const positionShip = (x, y, scale = 1) => {
-        toWorld(shipNode, x, y, Z.ship)
+    /*
+     * The greeting (Enter, or 👋): ONE loop towards the camera (`rageGreeting.js`). She turns from
+     * flying away up the screen to face you, rises and grows to the front of the loop — growing is
+     * what "towards the camera" means to an orthographic camera — greets with a pose and a speech
+     * bubble, and drops back into formation. She stays steerable throughout (the loop is an OFFSET
+     * from wherever you fly her) but does not shoot.
+     */
+    const removeBubble = () => {
+        if (!bubble) return
+        scene.remove(bubble.mesh)
+        bubble.mesh.material.map.dispose()
+        bubble.mesh.material.dispose()
+        bubble = null
+    }
+    const resetRig = () => {
+        shipNode.rotation.set(0.5, 0, 0)
+        character.root.rotation.set(0, 0, 0)
+        character.yaw.rotation.set(0, Math.PI / 2, 0)
+        character.arm.rotation.set(0, 0, Math.PI / 2)
+        character.rearArm.rotation.set(0.15, 0, 0)
+        character.head.rotation.set(0, 0, 0)
+        character.legs.forEach(leg => leg.rotation.set(0, 0, 0))
+    }
+    const cancelGreeting = () => {
+        if (!greeting) return
+        greeting = null
+        delete hud.dataset.greeting
+        removeBubble()
+        resetRig()
+    }
+    const startGreeting = () => {
+        if ((phase !== 'flying' && phase !== 'cleared') || greeting) return
+        const style = pickGreetingStyle(random, lastGreetingStyle)
+        lastGreetingStyle = style
+        const lines = strings.greetings && strings.greetings.length ? strings.greetings : ['Hi! 👋']
+        const { texture, width, height } = bubbleTexture(lines[Math.floor(random() * lines.length)])
+        removeBubble()
+        const mesh = new Mesh(
+            unitPlane,
+            new MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false })
+        )
+        mesh.renderOrder = 9
+        mesh.visible = false
+        scene.add(mesh)
+        bubble = { mesh, width, height }
+        // Observable from outside (browser-tests/rage-mode waits on it rather than guessing a delay).
+        hud.dataset.greeting = style
+        greeting = {
+            t: 0,
+            plan: {
+                start: { x: ship.x, y: ship.y, z: 0, yaw: Math.PI / 2, facing: 1 },
+                stage: { x: viewport.width / 2, y: viewport.height * 0.5 },
+                // `z` runs 0 → 1 towards the front of the loop; it becomes her size, see below.
+                closeZ: 1,
+                style,
+            },
+        }
+        sound.boom(0.35)
+    }
+    const updateGreeting = dt => {
+        greeting.t += dt
+        const { plan } = greeting
+        const loop = greetingPose(greeting.t, plan)
+        const t = greeting.t
+        const holdEnd = GREETING_TIMING.in + GREETING_TIMING.hold
+        const ease = k => (k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2)
+        // How far she has turned from her flying rig into the upright greeting rig.
+        const blend =
+            t < GREETING_TIMING.in
+                ? ease(clamp01(t / GREETING_TIMING.in))
+                : t < holdEnd
+                  ? 1
+                  : 1 - ease(clamp01((t - holdEnd) / GREETING_TIMING.out))
+        const scale = 1 + GREETING_GROW * clamp01(loop.z)
+        // Keep all of her on screen while she is big.
+        const half = (ANNA_HEIGHT / 2) * scale
+        const x = Math.max(half * 0.6, Math.min(viewport.width - half * 0.6, ship.x + loop.x - plan.start.x))
+        const y = Math.max(half, Math.min(viewport.height - half * 0.7, ship.y + loop.y - plan.start.y))
+        toWorld(shipNode, x, y, Z.ship + 180 * clamp01(loop.z))
         shipNode.scale.setScalar(scale)
-        shipShadow.position.set(x + 22, -(y + 30), Z.shadow)
-        shipShadow.scale.set(56 * scale, 40 * scale, 1)
-        bank.rotation.y = bankAngle
+        shipNode.rotation.set(0.5 * (1 - blend), 0, 0)
+        bank.rotation.y = bankAngle * (1 - blend)
+        character.root.rotation.set(loop.pitch, 0, loop.roll)
+        character.yaw.rotation.set(0, loop.yaw, 0)
+        character.arm.rotation.set(loop.armSpread, 0, loop.armPitch + (Math.PI / 2) * (1 - blend))
+        character.rearArm.rotation.set(loop.rearArm, 0, 0)
+        character.head.rotation.set(loop.headTilt, 0, 0)
         const flicker = 0.8 + Math.random() * 0.4
         character.flames.forEach(flame => flame.scale.set(1, flicker, 1))
+
+        if (bubble) {
+            // A little overshoot as it pops in; a fixed size (it is text), beside her head, and slid
+            // inwards rather than off screen near an edge.
+            const pop = loop.bubble < 1 ? loop.bubble * (1 + 0.25 * Math.sin(Math.PI * loop.bubble)) : 1
+            const size = BUBBLE_SCALE * pop
+            const halfWidth = (bubble.width / 2) * size
+            const halfHeight = (bubble.height / 2) * size
+            const tipX = x + 16 * scale
+            const tipY = y - (ANNA_HEIGHT / 2) * scale
+            bubble.mesh.visible = loop.bubble > 0.01
+            bubble.mesh.scale.set(bubble.width * size, bubble.height * size, 1)
+            toWorld(
+                bubble.mesh,
+                Math.max(halfWidth + 8, Math.min(viewport.width - halfWidth - 8, tipX + halfWidth - 20 * size)),
+                Math.max(halfHeight + 8, tipY - halfHeight),
+                Z.flash - 10
+            )
+        }
+        if (loop.done) cancelGreeting()
+    }
+
+    /*
+     * Clouds: a few soft white puffs drifting over the ground (never over the page), a little faster
+     * than the ground itself so they read as higher up.
+     */
+    const clouds = []
+    const spawnCloud = y => {
+        const group = new Group()
+        const puffsInCloud = 3 + Math.floor(random() * 3)
+        const width = 100 + random() * 130
+        for (let i = 0; i < puffsInCloud; i++) {
+            const puff = new Mesh(unitPlane, cloudMaterial)
+            const size = width * (0.45 + random() * 0.4)
+            puff.scale.set(size, size * 0.8, 1)
+            puff.position.set((random() - 0.5) * width * 0.8, (random() - 0.5) * width * 0.22, i * 0.1)
+            group.add(puff)
+        }
+        group.renderOrder = 2
+        scene.add(group)
+        clouds.push({ group, x: random() * viewport.width, y, drift: (random() - 0.5) * 12 })
+    }
+    for (let i = 0; i < CLOUD_COUNT; i++) spawnCloud(-150 - random() * viewport.height * 1.5)
+    const updateClouds = dt => {
+        clouds.forEach(cloud => {
+            cloud.y += scrollDelta * 1.35
+            cloud.x += cloud.drift * dt
+            if (cloud.y > viewport.height + 180) {
+                cloud.y = -180 - random() * 300
+                cloud.x = random() * viewport.width
+            }
+            toWorld(cloud.group, cloud.x, cloud.y, Z.cloud)
+        })
+    }
+
+    /*
+     * The run-up. Anna lands on the page from her avatar and RUNS — legs pumping, jetpack sputtering
+     * — while the page starts to move under her, slowly at first. Then the jetpack fires: a burst of
+     * dust, she rises (her real shadow slides away from her feet), tips forward into flight, and the
+     * ground picks up speed. The mission itself starts at lift-off.
+     */
+    const runPose = (elapsed, amount) => {
+        const cadence = 10 + 7 * clamp01(elapsed / RUNUP_MIN_SECONDS)
+        const swing = Math.sin(elapsed * cadence) * 0.9 * amount
+        character.legs[0].rotation.z = swing
+        character.legs[1].rotation.z = -swing
+        character.rearArm.rotation.set(0.15, 0, -swing * 0.7)
+        character.arm.rotation.z = Math.PI / 2 - (Math.PI / 2 - 0.35 + swing * 0.25) * amount
+        character.head.rotation.set(0, 0, Math.sin(elapsed * cadence * 2) * 0.05 * amount)
+        return Math.abs(Math.sin(elapsed * cadence)) * 5 * amount
+    }
+    const updateRunup = dt => {
+        const elapsed = time - runupStart
+        const thrust = moveVector(held)
+        stepShip(ship, { thrust, target: pointer.active && touchId === null ? pointer : null }, dt, viewport)
+        bankAngle *= 1 - Math.min(1, dt * 8)
+        const bob = runPose(elapsed, 1)
+        shipNode.rotation.x = RUN_TILT
+        // The jetpack only coughs while she runs.
+        const sputter = 0.18 + (Math.random() < 0.15 ? 0.4 : 0)
+        positionShip(ship.x, ship.y - bob, RUN_SCALE, Z.shipGround, sputter)
+        runupPuffIn -= dt
+        if (runupPuffIn <= 0) {
+            runupPuffIn = 0.16
+            addPuff(ship.x + (random() - 0.5) * 8, ship.y + 22, 8 + random() * 6, { life: 0.6, smoke: true, vy: 40 })
+        }
+        if (elapsed >= RUNUP_MIN_SECONDS && (progressSettled || elapsed >= RUNUP_MAX_SECONDS)) liftOff()
+    }
+    const liftOff = () => {
+        setPhase('flying')
+        liftoffAt = time
+        scrollRamp = RUNUP_SCROLL_TO
+        // Ignition: a ring of dust and a burst of exhaust at her feet.
+        addRing(ship.x, ship.y + 16, 150, 0.55, 0.5)
+        for (let i = 0; i < 14; i++) {
+            const angle = (i / 14) * Math.PI * 2
+            addPuff(ship.x + Math.cos(angle) * 10, ship.y + 18 + Math.sin(angle) * 6, 30 + random() * 14, {
+                life: 0.7,
+                smoke: true,
+                vx: Math.cos(angle) * 90,
+                vy: Math.sin(angle) * 50 + 30,
+            })
+        }
+        addPuff(ship.x, ship.y + 20, 30, { life: 0.25 })
+        shake = Math.min(14, shake + 5)
+        sound.boom(0.9)
+        startMission(run.mission, { fromPage: true, resumed: !!checkpoint })
+    }
+    // 0 → 1 over the lift-off; 1 when she is flying normally.
+    const liftoffProgress = () => clamp01((time - liftoffAt) / LIFTOFF_SECONDS)
+
+    /* Per-frame updates. */
+    const positionShip = (x, y, scale = 1, z = Z.ship, thrust = 1) => {
+        toWorld(shipNode, x, y, z)
+        shipNode.scale.setScalar(scale)
+        bank.rotation.y = bankAngle
+        const flicker = (0.8 + Math.random() * 0.4) * thrust
+        character.flames.forEach(flame => flame.scale.set(Math.min(1.3, 0.6 + thrust * 0.4), flicker, 1))
     }
 
     const updateShip = dt => {
         const thrust = moveVector(held)
         stepShip(ship, { thrust, target: pointer.active && touchId === null ? pointer : null }, dt, viewport)
         bankAngle += (Math.max(-0.7, Math.min(0.7, ship.vx / 900)) - bankAngle) * Math.min(1, dt * 8)
-        positionShip(ship.x, ship.y)
+        const lift = liftoffProgress()
+        if (greeting) updateGreeting(dt)
+        else if (lift < 1) {
+            const k = easeInOut(lift)
+            runPose(time - runupStart, 1 - k)
+            shipNode.rotation.x = RUN_TILT + (0.5 - RUN_TILT) * k
+            positionShip(
+                ship.x,
+                ship.y,
+                RUN_SCALE + (1 - RUN_SCALE) * k,
+                Z.shipGround + (Z.ship - Z.shipGround) * k,
+                1.6 - 0.6 * k
+            )
+        } else positionShip(ship.x, ship.y)
         shipNode.visible = !isBlinking(run, time) || Math.floor(time * 14) % 2 === 0
         const shipX = String(Math.round(ship.x))
         if (hud.dataset.shipX !== shipX) hud.dataset.shipX = shipX
     }
 
     const updateScroll = dt => {
-        scrollRamp = Math.min(1, scrollRamp + dt / SCROLL_RAMP_SECONDS)
-        const speed =
-            (mission ? mission.scrollSpeed : 64) * (phase === 'hangar' ? 0.35 : bossState === 'active' ? 0.5 : 1)
-        scroll += speed * scrollRamp * dt
+        let factor
+        if (phase === 'runup') {
+            // Running: the page starts to move under her, slowly, a little faster with every step.
+            const k = clamp01((time - runupStart) / RUNUP_MIN_SECONDS)
+            factor = RUNUP_SCROLL_FROM + (RUNUP_SCROLL_TO - RUNUP_SCROLL_FROM) * k * k
+        } else {
+            // In the air: the ground picks up speed until it reaches the mission's own.
+            scrollRamp = Math.min(1, scrollRamp + dt / SCROLL_RAMP_SECONDS)
+            factor = scrollRamp * (phase === 'hangar' ? 0.35 : bossState === 'active' ? 0.5 : 1)
+        }
+        const before = scroll
+        scroll += (mission ? mission.scrollSpeed : SCROLL_SPEED) * factor * dt
+        scrollDelta = scroll - before
         renderScroll = scroll
         seamG = 0
         const offset = Math.min(scroll, pageCap())
@@ -1883,7 +2436,14 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
             const pulse = 1 + enemy.hurt * 2.5
             if (enemy.type === 'mail') enemy.mesh.scale.set(34 * pulse, 24 * pulse, 5)
             else enemy.mesh.scale.setScalar(pulse)
-            enemy.shadow.position.set(enemy.x + 18, -(enemy.y + 26), Z.shadow)
+            const flashes = enemy.mesh.userData.flash
+            if (flashes) {
+                flashes.forEach(material => {
+                    material.emissive.set('#FFFFFF')
+                    material.emissiveIntensity = enemy.hurt > 0 ? 0.9 : 0
+                })
+                enemy.mesh.userData.engine.scale.set(6, 4 + Math.random() * 3, 4)
+            }
         }
         hud.dataset.enemies = String(airEnemies.length)
     }
@@ -2103,6 +2663,20 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
                 bombRings.splice(i, 1)
             }
         }
+        for (let i = rings.length - 1; i >= 0; i--) {
+            const ring = rings[i]
+            ring.age += dt
+            const k = ring.age / ring.life
+            toWorld(ring.mesh, ring.x, ring.y, Z.fx)
+            const size = ring.size * (0.2 + 0.8 * (1 - (1 - k) * (1 - k)))
+            ring.mesh.scale.set(size, size, 1)
+            ring.mesh.material.opacity = ring.opacity * (1 - k)
+            if (k >= 1) {
+                scene.remove(ring.mesh)
+                ring.mesh.material.dispose()
+                rings.splice(i, 1)
+            }
+        }
         flashMaterial.opacity = Math.max(0, flashMaterial.opacity - dt * 2.4)
         flash.visible = flashMaterial.opacity > 0.01
         flash.position.set(viewport.width / 2, -viewport.height / 2, Z.flash)
@@ -2209,11 +2783,22 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
             const x = launch.x + (ship.x - launch.x) * k
             const y = launch.y + (ship.y - launch.y) * k
             bankAngle = Math.sin(k * Math.PI) * 0.5
-            positionShip(x, y, 0.3 + 0.7 * k)
+            // Out of the avatar and down onto the page, where she will start running.
+            shipNode.rotation.x = 0.5 + (RUN_TILT - 0.5) * k
+            positionShip(
+                x,
+                y,
+                launchScale + (RUN_SCALE - launchScale) * k,
+                Z.ship + (Z.shipGround - Z.ship) * k,
+                1 - 0.7 * k
+            )
             if (time >= TAKEOFF_SECONDS) {
-                setPhase('flying')
-                startMission(1, { fromPage: true })
+                setPhase('runup')
+                runupStart = time
             }
+        } else if (phase === 'runup') {
+            updateScroll(dt)
+            updateRunup(dt)
         } else if (phase === 'returning') {
             updateReturn()
         } else {
@@ -2223,7 +2808,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
                     updateShip(dt)
                     mainCooldown -= dt
                     specialCooldown -= dt
-                    if (phase === 'flying' || phase === 'cleared') {
+                    if ((phase === 'flying' || phase === 'cleared') && !greeting && liftoffProgress() > 0.6) {
                         if (mainCooldown <= 0) mainCooldown = fireMainGun()
                         const weapon = weaponById(equipped)
                         if (equipped !== RAGE_DEFAULT_WEAPON && weapon.kind !== 'laser' && specialCooldown <= 0)
@@ -2255,6 +2840,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         }
         // updateReturn may finish and dispose the renderer on this very frame.
         if (finished) return
+        if (phase !== 'returning') updateClouds(dt)
+        updateWrecks(dt)
         updateTerrain()
         updateEffects(dt)
         writeInstances()
@@ -2341,6 +2928,10 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
             if (down && !event.repeat) dropBomb()
             return
         }
+        if (event.key === 'Enter') {
+            if (down && !event.repeat) startGreeting()
+            return
+        }
         const digit = /^Digit([1-9])$/.exec(event.code)
         if (down && digit) {
             const weapon = RAGE_WEAPONS[Number(digit[1]) - 1]
@@ -2410,14 +3001,20 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         Promise.resolve()
             .then(() => services.loadProfile())
             .then(profile => {
+                progressSettled = true
                 if (!profile || finished) return
+                adoptServerProgress(profile.progress)
                 owned = new Set([RAGE_DEFAULT_WEAPON, ...(Array.isArray(profile.owned) ? profile.owned : [])])
                 best = Math.max(best, Number(profile.highscore) || 0)
                 if (preferredWeapon && owned.has(preferredWeapon)) equip(preferredWeapon)
                 else ui.renderWeapons(RAGE_WEAPONS, owned, equipped)
                 if (shopUi.isOpen()) shopUi.render()
             })
-            .catch(() => {})
+            .catch(() => {
+                // Offline: fly with this browser's copy, and try to deliver a pending save anyway.
+                progressSettled = true
+                syncProgress()
+            })
     } else if (preferredWeapon && owned.has(preferredWeapon)) equip(preferredWeapon)
 
     frameId = requestAnimationFrame(frame)
@@ -2442,6 +3039,11 @@ export function startRageArena({ strings, from, onExit, pageRoot, services = {},
         restoreStyles.forEach(restore => restore())
         clearBattlefield()
         clearTerrain()
+        removeBubble()
+        wrecks.splice(0).forEach(removeWreck)
+        rings.splice(0).forEach(ring => ring.mesh.material.dispose())
+        shadowCatcher.geometry.dispose()
+        shadowCatcher.material.dispose()
         debris.forEach(piece => piece.mesh.geometry.dispose())
         character.root.traverse(node => {
             if (node.geometry) node.geometry.dispose()
