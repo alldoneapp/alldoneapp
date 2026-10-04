@@ -393,8 +393,9 @@ const onUpdateTask = async (taskId, projectId, change, eventId) => {
     )
 
     // Handle recurring task creation when task is completed
-    // Skip assistant tasks - they have their own recurring logic in assistantRecurringTasks.js
-    const isAssistantTask = newTask.assigneeType === 'assistant' || newTask.assistantId
+    // Assistant-owned tasks use assistantRecurringTasks.js. A chat assistant attached to a human
+    // task does not own its recurrence. Client and scheduler use different assignee type casing.
+    const isAssistantTask = String(newTask.assigneeType || '').toLowerCase() === 'assistant'
 
     if (!isAssistantTask && newTask.recurrence && newTask.recurrence !== 'never') {
         console.log('🔄 RECURRING TASK CHECK:', {
