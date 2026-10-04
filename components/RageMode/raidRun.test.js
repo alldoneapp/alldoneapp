@@ -104,7 +104,7 @@ describe('raid run', () => {
             expect(run.shield).toBe(75)
             expect(buyHangarItem(run, 'bomb').ok).toBe(true)
             expect(run.bombs).toBe(3)
-            expect(run.credits).toBe(1000 - 150 - 200)
+            expect(run.credits).toBe(1000 - 60 - 80)
         })
 
         it('stops selling what is already maxed', () => {
@@ -113,11 +113,11 @@ describe('raid run', () => {
             expect(buyHangarItem(run, 'repair')).toEqual({ ok: false, reason: 'maxed' })
             while (run.bombs < MAX_BOMBS) buyHangarItem(run, 'bomb')
             expect(buyHangarItem(run, 'bomb').reason).toBe('maxed')
-            expect(buyHangarItem(run, 'cannon').price).toBe(900)
-            expect(buyHangarItem(run, 'cannon').price).toBe(2200)
+            expect(buyHangarItem(run, 'cannon').price).toBe(3000)
+            expect(buyHangarItem(run, 'cannon').price).toBe(7000)
             expect(run.cannonLevel).toBe(MAX_CANNON_LEVEL)
             expect(buyHangarItem(run, 'cannon').reason).toBe('maxed')
-            expect([1, 2, 3].map(() => buyHangarItem(run, 'shieldMax').price)).toEqual([800, 1200, 1600])
+            expect([1, 2, 3].map(() => buyHangarItem(run, 'shieldMax').price)).toEqual([2500, 3500, 4500])
             expect(run.maxShield).toBe(SHIELD_CAP)
             expect(buyHangarItem(run, 'shieldMax').reason).toBe('maxed')
             expect(buyHangarItem(run, 'nope').reason).toBe('unknown')
@@ -148,15 +148,24 @@ describe('raid run', () => {
             return spent
         }
 
-        it('pays for one upgrade per mission or two, not the whole hangar', () => {
-            expect(perfectMissionCredits(1)).toBeGreaterThan(400)
-            expect(perfectMissionCredits(1)).toBeLessThan(900)
-            const firstFive = [1, 2, 3, 4, 5].reduce((sum, mission) => sum + perfectMissionCredits(mission), 0)
-            expect(firstFive).toBeLessThan(permanentUpgradesCost())
+        it('takes about a hundred games to buy every upgrade', () => {
+            expect(perfectMissionCredits(1)).toBeGreaterThan(150)
+            expect(perfectMissionCredits(1)).toBeLessThan(400)
+            // Even flawless flying, cleared mission after cleared mission, needs dozens of them …
+            const flawless = permanentUpgradesCost() / perfectMissionCredits(6)
+            expect(flawless).toBeGreaterThan(35)
+            // … and an ordinary game, earning about half of a perfect one, about a hundred.
+            const ordinary = permanentUpgradesCost() / (perfectMissionCredits(6) * 0.45)
+            expect(ordinary).toBeGreaterThan(80)
+            expect(ordinary).toBeLessThan(130)
         })
 
-        it('gets noticeably harder every mission', () => {
-            expect(missionDifficulty(4)).toBeGreaterThanOrEqual(1.9)
+        it('keeps getting harder, by a little less each mission', () => {
+            const step = mission => missionDifficulty(mission + 1) - missionDifficulty(mission)
+            expect(missionDifficulty(2)).toBeCloseTo(1.3)
+            for (let mission = 1; mission < 200; mission++) expect(step(mission)).toBeGreaterThan(0)
+            expect(step(50)).toBeLessThan(step(5))
+            expect(missionDifficulty(100)).toBeLessThan(1 + 0.3 * 99)
         })
     })
 })

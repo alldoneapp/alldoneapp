@@ -1,4 +1,5 @@
 import {
+    bankCredits,
     checkpointFromRun,
     progressKey,
     readRecord,
@@ -26,11 +27,11 @@ describe('raid progress', () => {
         const run = createRun()
         run.mission = 2
         run.score = 4200
-        run.credits = 2000
+        run.credits = 5000
         buyHangarItem(run, 'cannon')
         writeRecord('u1', { checkpoint: checkpointFromRun(run), savedAt: 5, pending: false })
         const resumed = runFromCheckpoint(readRecord('u1').checkpoint)
-        expect(resumed).toMatchObject({ mission: 3, score: 4200, credits: 1100, cannonLevel: 2, kills: 0 })
+        expect(resumed).toMatchObject({ mission: 3, score: 4200, credits: 2000, cannonLevel: 2, kills: 0 })
     })
 
     it('starts at mission 1 with nothing saved, and after a start over', () => {
@@ -101,12 +102,25 @@ describe('raid progress', () => {
         expect(sanitizeRecord({ checkpoint: forged, savedAt: 3, pending: 'yes' }).pending).toBe(false)
     })
 
+    it('banks what a lost game earned, before mission 1 was ever cleared too', () => {
+        const first = sanitizeCheckpoint(bankCredits(null, 120))
+        expect(first).toMatchObject({ completed: 0, credits: 120, cannonLevel: 1 })
+        expect(runFromCheckpoint(first)).toMatchObject({ mission: 1, credits: 120 })
+        const later = bankCredits(sanitizeCheckpoint({ completed: 4, credits: 300, cannonLevel: 2 }), 75.9)
+        expect(sanitizeCheckpoint(later)).toMatchObject({ completed: 4, credits: 375, cannonLevel: 2 })
+        expect(bankCredits(later, -50).credits).toBe(375)
+        // An empty mission-0 checkpoint is still no checkpoint at all.
+        expect(sanitizeCheckpoint({ completed: 0, credits: 0 })).toBeNull()
+    })
+
     it('applies exactly the rules the server applies', () => {
         const samples = [
             { completed: 3, score: 1200, credits: 400, maxShield: 125, shield: 80, bombs: 3, cannonLevel: 2 },
             { completed: '7.9', score: -5, credits: 'lots', maxShield: 9999, shield: 0, bombs: 99, cannonLevel: 42 },
             { completed: 1e9, credits: 2e9 },
             { completed: 0 },
+            { completed: 0, credits: 120 },
+            { completed: 0, cannonLevel: 2 },
             null,
             'nope',
         ]

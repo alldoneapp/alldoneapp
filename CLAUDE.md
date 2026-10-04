@@ -1584,7 +1584,7 @@ she grows out of it and shrinks back into it.
 **Progress follows the user across devices** (`raidProgress.js`). Clearing a mission saves a
 checkpoint — the mission number plus the run as it leaves the hangar — and every hangar purchase
 updates it; the next raid takes off at the following mission, and a game over replays from the
-checkpoint rather than from mission 1. Only "Start over" clears it (↺ in the status pill pressed
+checkpoint (with that game's credits banked) rather than from mission 1. Only "Start over" clears it (↺ in the status pill pressed
 twice, or the confirming button in the hangar and on the game-over card), and a start over is saved
 as an EMPTY checkpoint so other devices drop theirs too. Two copies: the server's
 (`rageModeProfiles/{uid}.progress`, written by `saveRageModeProgress`, returned by
@@ -1705,13 +1705,20 @@ the harness passes fakes. `tuning` (`seed`, `bossAt`, `noWaves`, `startShield`, 
 for tests only (plus `waves`, `bossHp` and `pickups`, which `browser-tests/rage-mode --cast` uses to
 show the whole cast at once). All strings come from one table, `rageStrings.js`.
 
-**Credits are balanced against the hangar, and a test holds it there.** A perfect mission 1 pays
-~650 credits and mission 6 ~1,250 (`CREDITS` + `MISSION_BONUS_CREDITS` in `raidRun.js`), while the
-permanent upgrades cost ~6,700 (cannon 900 → 2,200, shield generator 800 → 1,200 → 1,600) — so even
-flawless flying needs seven or eight missions to max out, and `missionDifficulty` (+30% per mission)
-keeps climbing meanwhile. The previous rates paid ~2,200 for mission 1 and everything was bought
-after two missions, after which nothing was hard. The `balance` block in `raidRun.test.js` sums every
-kill of the real generated missions and fails if five perfect missions can buy every upgrade.
+**Credits are balanced for about a hundred games, and a test holds it there.** A perfect mission
+pays ~250 credits early and ~500 later (`CREDITS` + `MISSION_BONUS_CREDITS` in `raidRun.js`), an
+ordinary game about half that, while the permanent upgrades cost ~20,500 (cannon 3,000 → 7,000,
+shield generator 2,500 → 3,500 → 4,500); repairs (60) and bombs (80) stay cheap enough for every go.
+That only works because **a lost game keeps what it earned**: `gameOver` banks the attempt's
+`missionCredits` into the checkpoint (`bankCredits` in `raidProgress.js` — before mission 1 is ever
+cleared that is a `completed: 0` checkpoint, which `sanitizeCheckpoint` keeps only while it carries
+credits or upgrades; the server copy applies the same rule), and the game-over card opens the hangar
+(🛠️, or H) to spend them before another go at the same mission. Without banking, a grind this long
+would strand players at the first mission they cannot clear. Difficulty never stops rising but each
+mission adds less (`missionDifficulty`: `1 + 0.3·(n−1)^0.7` — 1.3 at mission 2, 2.4 at 10, 3.5 at 30).
+An earlier tuning paid ~2,200 for mission 1 and everything was bought after two missions, after
+which nothing was hard. The `balance` block in `raidRun.test.js` sums every kill of the real
+generated missions and fails if the hundred-game target drifts.
 
 **The HUD must fit a 320px phone with a 12px edge gap** (`EDGE` in `raidHud.js`): the status pill and
 the weapon bar are `width: max-content` capped at `100vw - 24px` and wrap (a fixed element at
