@@ -146,7 +146,7 @@ const fixedCentre = (zIndex, style) =>
 
 /**
  * Build every overlay. `actions` are the callbacks the buttons call: exit, toggleMute, bomb,
- * equip(id), buyHangar(id), launch, openGoldShop, playAgain.
+ * equip(id), buyHangar(id), launch, openGoldShop, playAgain, openHangar.
  */
 export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions }) => {
     // On a phone the pill wraps onto a second row rather than running off the screen.
@@ -745,9 +745,12 @@ const buildHangar = ({ strings, zIndex, actions }) => {
         const { run, debrief, message } = current
         card.textContent = ''
         const title = pillElement('div', { font: `800 20px ${FONT}`, marginBottom: '4px' })
-        title.textContent = `🏁 ${strings.missionComplete.replace('{n}', debrief.mission)}`
+        // Opened from the game-over card, it says what the lost game still earned.
+        title.textContent = debrief.lost
+            ? `💥 ${strings.missionLost.replace('{n}', debrief.mission)}`
+            : `🏁 ${strings.missionComplete.replace('{n}', debrief.mission)}`
         const summary = pillElement('div', { color: 'rgba(255,255,255,0.75)', marginBottom: '12px' })
-        summary.textContent = strings.debrief
+        summary.textContent = (debrief.lost ? strings.creditsKept : strings.debrief)
             .replace('{kills}', debrief.kills.toLocaleString())
             .replace('{credits}', debrief.credits.toLocaleString())
         const heading = pillElement('div', { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' })
@@ -849,6 +852,7 @@ const buildGameOver = ({ strings, zIndex, actions, canStartOver }) => {
     const missionLine = pillElement('div', { color: 'rgba(255,255,255,0.7)', marginTop: '2px' })
     const bestLine = pillElement('div', { color: 'rgba(255,255,255,0.7)', marginTop: '4px' })
     const newBest = pillElement('div', { color: '#9CF0C8', fontWeight: '700', marginTop: '6px', display: 'none' })
+    const keptLine = pillElement('div', { color: '#9CF0C8', marginTop: '6px', display: 'none' })
     newBest.textContent = `🏆 ${strings.newHighscore}`
     const buttons = pillElement('div', { display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '16px' })
     const restart = confirmingButton(`↺ ${strings.startOver}`, strings.startOverConfirm, actions.startOver)
@@ -858,20 +862,26 @@ const buildGameOver = ({ strings, zIndex, actions, canStartOver }) => {
     shop.setAttribute('data-shop', 'true')
     const again = wideButton(strings.playAgain, true, actions.playAgain)
     const leave = wideButton(strings.exit, false, actions.exit)
+    // The credits this game earned are banked: spend them before the next go.
+    const hangar = wideButton(`🛠️ ${strings.hangar}`, false, actions.openHangar)
+    hangar.setAttribute('data-open-hangar', 'true')
     again.style.flex = '1 1 100%'
-    ;[shop, restart, leave].forEach(button => {
+    ;[hangar, shop, restart, leave].forEach(button => {
         button.style.flex = '1 1 auto'
     })
-    buttons.append(again, shop, restart, leave)
+    buttons.append(again, hangar, shop, restart, leave)
     const leaderboard = buildLeaderboard({ strings, actions })
     card.style.maxWidth = '380px'
-    card.append(title, scoreLine, missionLine, bestLine, newBest, buttons, leaderboard.element)
+    card.append(title, scoreLine, missionLine, bestLine, newBest, keptLine, buttons, leaderboard.element)
     return {
         element: backdrop,
         leaderboard,
-        show({ score, best, isNew, mission }) {
+        show({ score, best, isNew, mission, credits = 0, kept = 0 }) {
             scoreLine.textContent = score.toLocaleString()
             missionLine.textContent = strings.mission.replace('{n}', mission)
+            hangar.textContent = `🛠️ ${strings.hangar} · 💳 ${credits.toLocaleString()}`
+            keptLine.textContent = strings.creditsKeptShort.replace('{credits}', kept.toLocaleString())
+            keptLine.style.display = kept > 0 ? 'block' : 'none'
             bestLine.textContent = `${strings.best}: ${best.toLocaleString()}`
             newBest.style.display = isNew ? 'block' : 'none'
             restart.style.display = canStartOver() ? 'flex' : 'none'

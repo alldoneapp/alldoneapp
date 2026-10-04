@@ -23,7 +23,7 @@ export const PICKUP_TYPES = {
     slowmo: { icon: '⏳', color: '#26A69A', duration: 6, weight: 7 },
     star: { icon: '⭐', color: '#FFC107', duration: 12, weight: 9 },
     magnet: { icon: '🧲', color: '#E53935', duration: 12, weight: 8 },
-    credits: { icon: '💳', color: '#09A87A', amount: 20, weight: 10 },
+    credits: { icon: '💳', color: '#09A87A', amount: 8, weight: 10 },
 }
 export const PICKUP_IDS = Object.keys(PICKUP_TYPES)
 export const PICKUP_POINTS = 25

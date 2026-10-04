@@ -249,7 +249,7 @@ describe('rage mode raid arena', () => {
         layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
         step()
         expect(hud().dataset.bombs).toBe('2')
-        expect(Number(hud().dataset.credits)).toBe(before - 200)
+        expect(Number(hud().dataset.credits)).toBe(before - 80)
         layer('hangar').querySelector('[data-launch]').click()
         step()
         expect(hud().dataset.phase).toBe('flying')
@@ -331,7 +331,55 @@ describe('rage mode raid arena', () => {
         key('Enter')
         step()
         expect(hud().dataset.mission).toBe('2')
-        expect(hud().dataset.credits).toBe('200')
+        // The checkpoint's credits, plus whatever the lost go earned on the way.
+        expect(Number(hud().dataset.credits)).toBeGreaterThanOrEqual(200)
+    })
+
+    it('keeps what a lost game earned, and lets it be spent in the hangar before the next go', () => {
+        saveLocal({ completed: 1, credits: 200 })
+        start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40, pickups: ['credits'] })
+        fly()
+        step(90)
+        for (let i = 0; i < 60 * 30 && hud().dataset.phase !== 'gameover'; i++) step()
+        step(90)
+        const atDeath = Number(hud().dataset.credits)
+        const earned = atDeath - 200
+        expect(earned).toBeGreaterThanOrEqual(PICKUP_TYPES.credits.amount)
+        expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint).toMatchObject({
+            completed: 1,
+            credits: atDeath,
+        })
+        const card = layer('gameover')
+        expect(card.textContent).toContain(`+${earned} credits kept`)
+        card.querySelector('[data-open-hangar]').click()
+        step()
+        expect(hud().dataset.phase).toBe('hangar')
+        expect(layer('hangar').textContent).toContain('Mission 2 lost')
+        layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+        step()
+        expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint).toMatchObject({
+            completed: 1,
+            credits: atDeath - 80,
+        })
+        layer('hangar').querySelector('[data-launch]').click()
+        step()
+        expect(hud().dataset.phase).toBe('flying')
+        expect(hud().dataset.mission).toBe('2')
+        expect(Number(hud().dataset.credits)).toBe(atDeath - 80)
+    })
+
+    it('banks a lost first game even before mission 1 was ever cleared', () => {
+        start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40, pickups: ['credits'] })
+        fly()
+        step(90)
+        for (let i = 0; i < 60 * 30 && hud().dataset.phase !== 'gameover'; i++) step()
+        step(90)
+        const atDeath = Number(hud().dataset.credits)
+        expect(atDeath).toBeGreaterThanOrEqual(PICKUP_TYPES.credits.amount)
+        key('Enter')
+        step()
+        expect(hud().dataset.mission).toBe('1')
+        expect(Number(hud().dataset.credits)).toBe(atDeath)
     })
 
     describe('progress on every device', () => {

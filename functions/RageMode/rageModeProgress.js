@@ -29,16 +29,19 @@ const wholeNumber = (value, min, max, fallback) => {
 const sanitizeCheckpoint = raw => {
     if (!raw || typeof raw !== 'object') return null
     const completed = wholeNumber(raw.completed, 0, LIMITS.maxMission, 0)
-    if (completed < 1) return null
     const maxShield = wholeNumber(raw.maxShield, LIMITS.baseMaxShield, LIMITS.shieldCap, LIMITS.baseMaxShield)
+    // Before mission 1 is cleared a checkpoint can still hold credits banked from lost games.
+    const credits = wholeNumber(raw.credits, 0, LIMITS.maxNumber, 0)
+    const cannonLevel = wholeNumber(raw.cannonLevel, 1, LIMITS.maxCannonLevel, 1)
+    if (completed < 1 && credits <= 0 && cannonLevel <= 1 && maxShield <= LIMITS.baseMaxShield) return null
     return {
         completed,
         score: wholeNumber(raw.score, 0, LIMITS.maxNumber, 0),
-        credits: wholeNumber(raw.credits, 0, LIMITS.maxNumber, 0),
+        credits,
         maxShield,
         shield: wholeNumber(raw.shield, 1, maxShield, maxShield),
         bombs: wholeNumber(raw.bombs, 0, LIMITS.maxBombs, 0),
-        cannonLevel: wholeNumber(raw.cannonLevel, 1, LIMITS.maxCannonLevel, 1),
+        cannonLevel,
     }
 }
 

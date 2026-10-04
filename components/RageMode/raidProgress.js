@@ -35,17 +35,21 @@ const wholeNumber = (value, min, max, fallback) => {
 export const sanitizeCheckpoint = raw => {
     if (!raw || typeof raw !== 'object') return null
     const completed = wholeNumber(raw.completed, 0, MAX_SAVED_MISSION, 0)
-    if (completed < 1) return null
     const maxShield = wholeNumber(raw.maxShield, BASE_MAX_SHIELD, SHIELD_CAP, BASE_MAX_SHIELD)
+    // Before mission 1 is ever cleared a checkpoint can still hold credits banked from lost games
+    // (and what they bought); one that holds nothing is no checkpoint.
+    const credits = wholeNumber(raw.credits, 0, MAX_SAVED_NUMBER, 0)
+    const cannonLevel = wholeNumber(raw.cannonLevel, 1, MAX_CANNON_LEVEL, 1)
+    if (completed < 1 && credits <= 0 && cannonLevel <= 1 && maxShield <= BASE_MAX_SHIELD) return null
     return {
         completed,
         score: wholeNumber(raw.score, 0, MAX_SAVED_NUMBER, 0),
-        credits: wholeNumber(raw.credits, 0, MAX_SAVED_NUMBER, 0),
+        credits,
         maxShield,
         // A checkpoint never sends you out on an empty shield.
         shield: wholeNumber(raw.shield, 1, maxShield, maxShield),
         bombs: wholeNumber(raw.bombs, 0, MAX_BOMBS, 0),
-        cannonLevel: wholeNumber(raw.cannonLevel, 1, MAX_CANNON_LEVEL, 1),
+        cannonLevel,
     }
 }
 
@@ -59,6 +63,16 @@ export const checkpointFromRun = run => ({
     bombs: run.bombs,
     cannonLevel: run.cannonLevel,
 })
+
+/**
+ * The checkpoint after a LOST game: the same progress, plus the credits earned on that go — a lost
+ * game still pays, so the upgrades can be ground out by playing again and again.
+ */
+export const bankCredits = (checkpoint, earned) => {
+    const amount = Math.max(0, Math.floor(Number(earned) || 0))
+    const base = checkpoint || { ...checkpointFromRun(createRun()), completed: 0, score: 0 }
+    return { ...base, credits: base.credits + amount }
+}
 
 /** A fresh run that continues from a checkpoint, at the mission after the one it completed. */
 export const runFromCheckpoint = checkpoint => {

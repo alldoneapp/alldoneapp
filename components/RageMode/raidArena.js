@@ -112,6 +112,7 @@ import { buildCharacter } from './rageModels'
 import { createSound, writeMuted } from './rageSound'
 import { buildRaidHud, NAME_INPUT_ATTRIBUTE, NARROW_HUD_WIDTH, visibleWidth } from './raidHud'
 import {
+    bankCredits,
     checkpointFromRun,
     readRecord,
     reconcile,
@@ -1260,6 +1261,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             launch: () => launchNextMission(),
             openGoldShop: () => openShop(),
             playAgain: () => playAgain(),
+            openHangar: () => openRetryHangar(),
             greet: () => startGreeting(),
             saveName: name => saveName(name),
             startOver: () => startOver(),
@@ -2531,8 +2533,37 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         ui.hangar.update({ run, message: hangarMessage })
         hudDirty = true
     }
+    // The hangar opened from the game-over card: the run as it will take off again (the checkpoint,
+    // with the lost game's credits banked), spending them before another go at the same mission.
+    let lostDebrief = null
+    let retrying = false
+    const openRetryHangar = () => {
+        if (phase !== 'gameover' || !gameOverShown) return
+        ui.gameOver.hide()
+        closeShop()
+        clearBattlefield()
+        run = freshRun()
+        // The hangar's run is the one that has completed the mission before; launching moves it on.
+        run.mission -= 1
+        retrying = true
+        setPhase('hangar')
+        hangarMessage = null
+        ui.hangar.show({
+            run,
+            debrief: lostDebrief || { mission: run.mission + 1, kills: 0, credits: 0, lost: true },
+            message: null,
+        })
+        hudDirty = true
+    }
     const launchNextMission = () => {
         if (phase !== 'hangar') return
+        if (retrying) {
+            retrying = false
+            closeShop()
+            ui.hangar.hide()
+            relaunch()
+            return
+        }
         closeShop()
         ui.hangar.hide()
         resetSteering()
@@ -2633,6 +2664,10 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         shipNode.visible = false
         lastRoundNew = submitScore()
         refreshLeaderboard(scorePosted)
+        // A lost game still pays: what it earned is banked into the checkpoint, so the next go —
+        // and the hangar on the game-over card — starts with it.
+        lostDebrief = { mission: run.mission, kills: run.kills, credits: run.missionCredits, lost: true }
+        if (run.missionCredits > 0) storeProgress(bankCredits(checkpoint, run.missionCredits))
     }
 
     const clearBattlefield = ({ withExplosions = false } = {}) => {
@@ -2678,6 +2713,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
 
     // Another go from the checkpoint (or from mission 1 when there is none).
     const relaunch = () => {
+        retrying = false
         clearBattlefield()
         run = freshRun()
         scoreSubmitted = false
@@ -2687,7 +2723,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         shipNode.visible = true
         setPhase('flying')
         scrollRamp = 0.5
-        startMission(run.mission, { resumed: !!checkpoint })
+        startMission(run.mission, { resumed: run.mission > 1 })
         hudDirty = true
     }
 
@@ -2977,7 +3013,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         addPuff(ship.x, ship.y + 20, 30, { life: 0.25 })
         shake = Math.min(14, shake + 5)
         sound.ignition()
-        startMission(run.mission, { fromPage: true, resumed: !!checkpoint })
+        startMission(run.mission, { fromPage: true, resumed: run.mission > 1 })
         ;(tuning.pickups || []).forEach((id, i) => spawnPickup(id, ship.x + (i - 0.5) * 6, ship.y - 4, false))
     }
     // 0 → 1 over the lift-off; 1 when she is flying normally.
@@ -3784,6 +3820,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                         best: Math.max(best, run.score),
                         isNew: lastRoundNew,
                         mission: run.mission,
+                        credits: run.credits,
+                        kept: run.missionCredits,
                     })
                 }
             }
@@ -3927,6 +3965,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         }
         if (phase === 'gameover') {
             if (down && event.key === 'Enter' && gameOverShown) playAgain()
+            if (down && event.code === 'KeyH' && gameOverShown) openRetryHangar()
             if (down && event.code === 'KeyB' && gameOverShown) openShop()
             return
         }
