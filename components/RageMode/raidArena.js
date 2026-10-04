@@ -176,8 +176,8 @@ const Z = {
 const SUN_DIRECTION = new Vector3(-0.3, 0.34, 1).normalize()
 const TAKEOFF_SECONDS = 1.1
 // The run-up on the page: she runs while the page starts to move, then the jetpack fires.
-const RUNUP_MIN_SECONDS = 5
-const RUNUP_MAX_SECONDS = 7
+const RUNUP_MIN_SECONDS = 2.5
+const RUNUP_MAX_SECONDS = 3.5
 const RUNUP_SCROLL_FROM = 0.05
 const RUNUP_SCROLL_TO = 0.75
 // She lands low on the page and runs up it to where she will fly from.
@@ -189,7 +189,7 @@ const STEER_OFFSET_FADE = 320
 const LIFTOFF_SECONDS = 0.9
 const RUN_TILT = 0.95
 const RUN_SCALE = 0.86
-const SCROLL_RAMP_SECONDS = 2.5
+const SCROLL_RAMP_SECONDS = 1.25
 const CLOUD_COUNT = 4
 const PAGE_CAP_EXTRA = 40
 const RETURN_SECONDS = 1.15
