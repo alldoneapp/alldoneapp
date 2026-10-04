@@ -11,7 +11,7 @@ export const BOSS_HALF_WIDTH = 78
 export const BOSS_HALF_HEIGHT = 66
 // The boss is equally hard every day: its health does not depend on how many tasks are open.
 // (The raid scales it per mission; the count on its chest is the day's, for show.)
-export const BOSS_HP = 150
+export const BOSS_HP = 300
 export const ORB_SPEED = 290
 export const ORB_RADIUS = 11
 
