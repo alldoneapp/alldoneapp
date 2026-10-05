@@ -13,6 +13,7 @@ jest.mock('./TasksList', () => 'TasksList')
 jest.mock('./ParentGoalSection', () => 'ParentGoalSection')
 jest.mock('./SwipeableGeneralTasksHeader', () => 'SwipeableGeneralTasksHeader')
 jest.mock('../../UIComponents/ReloadCalendar', () => 'ReloadCalendar')
+jest.mock('../../UIComponents/FloatModals/PrepareMeetings/CalendarSectionMoreButton', () => 'CalendarSectionMoreButton')
 jest.mock('../../../assets/svg/GoogleCalendar', () => 'GoogleCalendar')
 jest.mock('../../../i18n/TranslationService', () => ({ translate: key => key }))
 // The real module pulls in firestore.js, which needs the build-injected .env.
@@ -82,6 +83,22 @@ describe('CalendarSection', () => {
         const tree = renderSection([[GENERAL_TASKS, [timed('a', '2026-08-21T09:00:00+02:00')]]])
 
         expect(renderedText(tree.toJSON())).toContain('Google Calendar')
+    })
+
+    it('passes all displayed project calendar tasks across dates to the heading menu', () => {
+        const today = timed('today', '2026-10-05T09:00:00+02:00')
+        const tomorrow = timed('tomorrow', '2026-10-06T09:00:00+02:00')
+        const day = groups => Object.assign([], { 10: groups })
+        mockState.filteredOpenTasksStore = {
+            instance: [day([[GENERAL_TASKS, [today]]]), day([['goal-1', [tomorrow]]])],
+            otherProject: [day([[GENERAL_TASKS, [timed('unrelated', '2026-10-07T09:00:00+02:00')]]])],
+        }
+        const tree = renderSection([[GENERAL_TASKS, [today]]])
+        expect(tree.root.findByType('CalendarSectionMoreButton').props).toMatchObject({
+            projectId: 'project-1',
+            tasks: [today, tomorrow],
+        })
+        act(() => tree.unmount())
     })
 
     it('names Outlook when the events come from a Microsoft calendar', () => {

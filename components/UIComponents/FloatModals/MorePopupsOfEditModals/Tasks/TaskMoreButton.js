@@ -46,6 +46,7 @@ import { isInboxSummaryGmailTask } from '../../../../../utils/Gmail/gmailTaskUti
 import ModalItem from '../Common/ModalItem'
 import TaskPriorityModal from '../../TaskPriorityModal/TaskPriorityModal'
 import useFloatPopupLock from '../../../../../hooks/useFloatPopupLock'
+import PrepareMeetingsItem from '../../PrepareMeetings/PrepareMeetingsItem'
 
 export default function TaskMoreButton({
     formType,
@@ -229,6 +230,19 @@ export default function TaskMoreButton({
 
     const renderItems = () => {
         const list = []
+
+        if (editing && task.id && task.calendarData) {
+            list.push(shortcut => (
+                <PrepareMeetingsItem
+                    key="mbtn-prepare-meetings"
+                    projectId={projectId}
+                    tasks={[task]}
+                    specificTask={true}
+                    shortcut={shortcut}
+                    closeModal={hideNoModalsProperties}
+                />
+            ))
+        }
 
         if (editing) {
             list.push(shortcut => {
