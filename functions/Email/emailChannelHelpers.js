@@ -119,6 +119,17 @@ function normalizeEmailAddressList(values = []) {
     return normalized
 }
 
+function isAssistantBlindCopied({ toEmails = [], ccEmails = [], assistantEmailAddresses = [] } = {}) {
+    const assistantEmails = new Set(
+        normalizeEmailAddressList([...DEFAULT_ASSISTANT_EMAIL_ADDRESSES, ...assistantEmailAddresses])
+    )
+    // BCC headers are usually stripped before delivery. An inbound message that does
+    // not visibly address Anna must stay private to its sender.
+    return ![...normalizeEmailAddressList(toEmails), ...normalizeEmailAddressList(ccEmails)].some(email =>
+        assistantEmails.has(email)
+    )
+}
+
 function buildReplyAllRecipients({ fromEmail, toEmails = [], ccEmails = [], assistantEmailAddresses = [] } = {}) {
     const excluded = new Set(
         normalizeEmailAddressList([...DEFAULT_ASSISTANT_EMAIL_ADDRESSES, ...assistantEmailAddresses])
@@ -133,8 +144,10 @@ function buildReplyAllRecipients({ fromEmail, toEmails = [], ccEmails = [], assi
     }
 
     append(replyToEmails, normalizedFrom)
-    normalizeEmailAddressList(toEmails).forEach(email => append(replyToEmails, email))
-    normalizeEmailAddressList(ccEmails).forEach(email => append(replyCcEmails, email))
+    if (!isAssistantBlindCopied({ toEmails, ccEmails, assistantEmailAddresses })) {
+        normalizeEmailAddressList(toEmails).forEach(email => append(replyToEmails, email))
+        normalizeEmailAddressList(ccEmails).forEach(email => append(replyCcEmails, email))
+    }
 
     return {
         toEmails: replyToEmails,
@@ -645,6 +658,7 @@ module.exports = {
     normalizeEmailDisplayName,
     normalizeSafeEmailActionContext,
     parseEmailHeaderAddresses,
+    isAssistantBlindCopied,
     isInvoiceLikeAttachment,
     pickActionableAttachment,
     looksLikeForwardedEmail,

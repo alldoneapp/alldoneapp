@@ -16,6 +16,7 @@ const {
 const {
     DEFAULT_PUBLIC_EMAIL,
     buildReplyAllRecipients,
+    isAssistantBlindCopied,
     buildEmailCommentText,
     pickActionableAttachment,
     shouldAutoAttachInvoice,
@@ -109,6 +110,7 @@ async function processQueueItem(userId, item) {
                 initialPendingAttachmentPayload,
                 autoAttachInvoice: shouldAutoAttachInvoice(actionableAttachment, messageText),
                 hasAdditionalRecipients: replyDelivery.toEmails.length + replyDelivery.ccEmails.length > 1,
+                replyToSenderOnly: replyDelivery.replyToSenderOnly,
                 isParticipantScopedTopic,
                 skipCurrentMessageAppend: true,
                 returnExecutionMetadata: true,
@@ -292,6 +294,11 @@ function getReplyDeliveryForQueueItem(data) {
     })
     return {
         fromEmail,
+        replyToSenderOnly: isAssistantBlindCopied({
+            toEmails: data.toEmails || [],
+            ccEmails: data.ccEmails || [],
+            assistantEmailAddresses: [fromEmail],
+        }),
         ...recipients,
     }
 }
