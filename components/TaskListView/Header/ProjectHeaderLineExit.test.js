@@ -15,7 +15,6 @@ jest.mock('../../../redux/actions', () => ({ setSelectedNavItem: jest.fn(() => (
 jest.mock('../../../utils/NavigationService', () => ({ navigate: jest.fn() }))
 jest.mock('./ProjectAndUserData', () => 'ProjectAndUserData')
 jest.mock('./TagsArea', () => 'TagsArea')
-jest.mock('./ProjectPostponeSwipe', () => props => props.children)
 jest.mock('../../RootView/RootSectionNavigation', () => 'RootSectionNavigation')
 
 /**

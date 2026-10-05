@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { View, StyleSheet } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
@@ -11,6 +11,7 @@ import {
     removeNoteInnerTasks,
 } from '../../../../redux/actions'
 import Backend from '../../../../utils/BackendBridge'
+import { subscribeSharedNoteData } from '../../../../utils/Notes/sharedNoteSubscriptions'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import SharedHelper from '../../../../utils/SharedHelper'
 
@@ -29,7 +30,6 @@ export default function NoteEditorContainer({
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const loggedUser = useSelector(state => state.loggedUser)
-    const [editorKey, setEditorKey] = useState(v4())
     const dispatch = useDispatch()
     // App-wide connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1) — fed by
     // utils/connectionState.js. '' until the first transition, then 'offline' or
@@ -68,26 +68,33 @@ export default function NoteEditorContainer({
     }
 
     useEffect(() => {
-        const watcherKey = v4()
-        Backend.watchNoteInnerTasks(project.id, note.id, watcherKey, updateInnerTasks)
+        const release = subscribeSharedNoteData(
+            `tasks/${loggedUserId}/${project.id}/${note.id}`,
+            callback => {
+                const watcherKey = v4()
+                Backend.watchNoteInnerTasks(project.id, note.id, watcherKey, callback)
+                return watcherKey
+            },
+            watcherKey => Backend.unwatch(watcherKey),
+            updateInnerTasks
+        )
         return () => {
-            Backend.unwatch(watcherKey)
-            dispatch(removeNoteInnerTasks(note.id))
+            if (release()) dispatch(removeNoteInnerTasks(note.id))
         }
-    }, [])
+    }, [project.id, note.id, loggedUserId])
 
     useEffect(() => {
         dispatch(setActiveNoteId(note.id))
         return () => {
             dispatch(setActiveNoteId(''))
         }
-    }, [])
+    }, [note.id])
 
     return (
         <View style={localstyles.container}>
             {visibilityStateRef.current !== 'hidden' && (
                 <NotesEditorView
-                    key={editorKey}
+                    key={`${project.id}/${note.id}`}
                     project={project}
                     note={note}
                     isFullscreen={isFullscreen}

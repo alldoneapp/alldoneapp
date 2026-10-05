@@ -62,9 +62,6 @@ jest.mock('../../utils/backends/Tasks/tasksFirestore', () => ({
     setTaskDueDate: jest.fn(),
     setTaskToBacklog: jest.fn(),
 }))
-jest.mock('../../utils/backends/Tasks/projectPostpone', () => ({
-    postponeProjectTasks: jest.fn(),
-}))
 jest.mock('../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper', () => ({
     checkIfInMyDayOpenTab: jest.fn(() => false),
 }))

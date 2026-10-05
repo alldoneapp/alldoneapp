@@ -1,4 +1,5 @@
 import React from 'react'
+import { getPopoverWidth } from '../../../../../utils/HelperFunctions'
 import v4 from 'uuid/v4'
 
 import CustomVideoContainer from '../tags/CustomVideoContainer'
@@ -28,7 +29,14 @@ export default class VideoFormat extends ReactEmbedBlot {
             node,
             <Provider store={store}>
                 <CustomVideoContainer editorId={editorId} uri={uri} isLoading={isLoading} />
-            </Provider>
+            </Provider>,
+            {
+                editorId,
+                kind: 'media',
+                label: text,
+                width: getPopoverWidth() - 60,
+                height: store.getState().smallScreenNavigation ? 100 : store.getState().isMiddleScreen ? 150 : 200,
+            }
         )
 
         return node

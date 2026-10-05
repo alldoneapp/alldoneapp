@@ -39,20 +39,4 @@ describe('Project tag component', () => {
         expect(tree.root.findByType(Text).props.children).toBe('Project ...')
         expect(tree.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe(dummyProject.name)
     })
-
-    it('allows responsive truncation without removing the full project name', () => {
-        const project = { ...dummyProject, name: 'A very long project name that must fit inside a DV header' }
-        const tree = renderer.create(<ProjectTag project={project} truncate />)
-
-        expect(tree.root.findByType(Text).props.children).toBe(project.name)
-        expect(tree.root.findByType(Text).props.numberOfLines).toBe(1)
-        expect(tree.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe(project.name)
-    })
-
-    it('keeps the project accessible when a compact DV displays only its icon', () => {
-        const tree = renderer.create(<ProjectTag project={dummyProject} truncate isMobile />)
-
-        expect(tree.root.findAllByType(Text)).toHaveLength(0)
-        expect(tree.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe(dummyProject.name)
-    })
 })

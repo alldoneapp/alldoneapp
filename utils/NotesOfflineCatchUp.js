@@ -35,7 +35,12 @@ import store from '../redux/store'
 import Backend from './BackendBridge'
 import { notesStorage } from './backends/firestore'
 import { isBrowserOffline } from './connectionState'
-import { clearPendingNoteUpload, readPendingNoteUploads } from './Notes/pendingNoteUploads'
+import { queueNoteUpload } from './Notes/noteUploadQueue'
+import {
+    getPendingNoteUploadRevision,
+    clearPendingNoteUpload,
+    readPendingNoteUploads,
+} from './Notes/pendingNoteUploads'
 import { createNoteLocalPersistence } from '../components/NotesView/NotesDV/EditorView/noteLocalPersistence'
 import { storageIsMissingLocalState } from '../components/NotesView/NotesDV/EditorView/noteCollaborationRecovery'
 import { performanceNow, startPerformanceTrace } from './performance/performanceLogger'
@@ -104,27 +109,39 @@ export const runNotesOfflineCatchUp = async () => {
             // module must not create.
             if (store.getState().activeNoteId === noteId) continue
             try {
-                const downloadStartedAt = performanceNow()
-                const data = await Backend.getNoteData(projectId, noteId)
-                networkDurationMs += performanceNow() - downloadStartedAt
-                const storageBytes = data ? new Uint8Array(data) : new Uint8Array(0)
-                byteCount += storageBytes.length
-                const indexedDbStartedAt = performanceNow()
-                const catchUpState = await resolveNoteCatchUpState(noteId, storageBytes)
-                indexedDbDurationMs += performanceNow() - indexedDbStartedAt
-                if (!catchUpState) {
+                // Serialize the read/merge too: an older catch-up must not
+                // overwrite a newer editor upload queued during its download.
+                let persistenceUnavailable = false
+                await queueNoteUpload(projectId, noteId, async () => {
+                    if (store.getState().activeNoteId === noteId) return
+                    const revision = getPendingNoteUploadRevision(noteId)
+                    const downloadStartedAt = performanceNow()
+                    const data = await Backend.getNoteData(projectId, noteId)
+                    networkDurationMs += performanceNow() - downloadStartedAt
+                    const storageBytes = data ? new Uint8Array(data) : new Uint8Array(0)
+                    byteCount += storageBytes.length
+                    const indexedDbStartedAt = performanceNow()
+                    const catchUpState = await resolveNoteCatchUpState(noteId, storageBytes)
+                    indexedDbDurationMs += performanceNow() - indexedDbStartedAt
+                    if (!catchUpState) {
+                        persistenceUnavailable = true
+                        return
+                    }
+                    if (catchUpState.needsUpload) {
+                        const uploadStartedAt = performanceNow()
+                        if (store.getState().activeNoteId === noteId) return
+                        await uploadNoteContent(projectId, noteId, catchUpState.encodedState)
+                        networkDurationMs += performanceNow() - uploadStartedAt
+                        uploaded++
+                    }
+                    // Either it is uploaded or the server already had it; both mean
+                    // there is nothing left to catch up for this note.
+                    clearPendingNoteUpload(noteId, revision)
+                })
+                if (persistenceUnavailable) {
                     trace.end('indexeddb_unavailable', { outcome: 'skipped', note_count: uploaded })
                     return // no IndexedDB in this browser: nothing is recoverable
                 }
-                if (catchUpState.needsUpload) {
-                    const uploadStartedAt = performanceNow()
-                    await uploadNoteContent(projectId, noteId, catchUpState.encodedState)
-                    networkDurationMs += performanceNow() - uploadStartedAt
-                    uploaded++
-                }
-                // Either it is uploaded or the server already had it; both mean
-                // there is nothing left to catch up for this note.
-                clearPendingNoteUpload(noteId)
             } catch (error) {
                 errorCount++
                 // Keep the entry: the next reconnect retries it. A note that

@@ -19,6 +19,7 @@ const PENDING_UPLOADS_STORAGE_KEY = 'alldone_notes_pending_upload_v1'
 // Bounded so a long offline session cannot grow the entry unboundedly; the
 // oldest entries are dropped first and are recovered by opening the note.
 const PENDING_UPLOADS_LIMIT = 100
+let revisionCounter = 0
 
 const readRawPendingNoteUploads = () => {
     try {
@@ -57,6 +58,8 @@ export const readPendingNoteUploads = () => {
 
 export const hasPendingNoteUpload = noteId => !!readRawPendingNoteUploads()[noteId]
 
+export const getPendingNoteUploadRevision = noteId => readRawPendingNoteUploads()[noteId]?.revision
+
 export const registerPendingNoteUpload = (projectId, noteId) => {
     if (!projectId || !noteId) return
     const entries = readRawPendingNoteUploads()
@@ -65,13 +68,17 @@ export const registerPendingNoteUpload = (projectId, noteId) => {
     // failing immortal at the expense of older ones.
     if (!entries[noteId]) entries[noteId] = { projectId, registeredAt: Date.now() }
     else entries[noteId] = { ...entries[noteId], projectId }
+    const revision = `${Date.now()}-${++revisionCounter}-${Math.random().toString(36).slice(2)}`
+    entries[noteId].revision = revision
     writePendingNoteUploads(entries)
+    return revision
 }
 
-export const clearPendingNoteUpload = noteId => {
+export const clearPendingNoteUpload = (noteId, expectedRevision) => {
     if (!noteId) return
     const entries = readRawPendingNoteUploads()
     if (!entries[noteId]) return
+    if (expectedRevision !== undefined && entries[noteId].revision !== expectedRevision) return
     delete entries[noteId]
     writePendingNoteUploads(entries)
 }

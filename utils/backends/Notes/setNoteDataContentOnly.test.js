@@ -42,6 +42,24 @@ jest.mock('../../Notes/pendingNoteUploads', () => ({
     clearPendingNoteUpload: jest.fn(),
 }))
 
+// Keep this persistence regression at the backend boundary; importing the
+// unrelated modal/task graph both consumes gigabytes and initializes Firebase.
+jest.mock('./noteUpdates', () => ({}))
+jest.mock('../../../components/SettingsView/ProjectsSettings/ProjectHelper', () => ({}))
+jest.mock('../Tasks/tasksFirestore', () => ({}))
+jest.mock('../../../components/TaskListView/Utils/TasksHelper', () => ({}))
+jest.mock('../../../components/Feeds/CommentsTextInput/textInputHelper', () => ({}))
+jest.mock('../../../components/NotesView/NotesDV/EditorView/notesHelper', () => ({}))
+jest.mock('../../../components/UIComponents/FloatModals/RevisionHistoryModal/RevisionHistoryModal', () => ({}))
+jest.mock('../Goals/goalsFirestore', () => ({}))
+jest.mock('../../../components/NotesView/NoteFilters/noteOwnerFilterHelper', () => ({}))
+jest.mock('../Users/usersFirestore', () => ({}))
+jest.mock('../Contacts/contactsFirestore', () => ({}))
+jest.mock('../Skills/skillsFirestore', () => ({}))
+jest.mock('../Assistants/assistantsFirestore', () => ({}))
+jest.mock('../Chats/chatsFirestore', () => ({}))
+jest.mock('../../NavigationService', () => ({}))
+
 const { setNoteData } = require('./notesFirestore')
 
 /**
@@ -92,4 +110,53 @@ describe('setNoteData', () => {
 
         expect(mockUpdate).not.toHaveBeenCalled()
     })
+})
+
+it('keeps metadata durable but defers unverified cached bytes instead of overwriting Storage', async () => {
+    mockPut.mockClear()
+    mockUpdate.mockClear()
+    const uploaded = await setNoteData('p', 'n', new Uint8Array([1]), 'offline preview', { current: false }, true, {
+        deferContentUpload: true,
+        pendingRevision: 'latest-edit',
+    })
+    expect(uploaded).toBe(false)
+    expect(mockPut).not.toHaveBeenCalled()
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ preview: 'offline preview' }))
+})
+it('serializes older and newer snapshots to the same canonical Storage object', async () => {
+    mockPut.mockClear()
+    let release
+    mockPut
+        .mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    release = resolve
+                })
+        )
+        .mockResolvedValueOnce()
+    const first = setNoteData('p', 'n', new Uint8Array([1]), null, null, true, { contentOnly: true })
+    const second = setNoteData('p', 'n', new Uint8Array([2]), null, null, true, { contentOnly: true })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mockPut).toHaveBeenCalledTimes(1)
+    release()
+    await first
+    await second
+    expect(mockPut.mock.calls.map(([bytes]) => Array.from(bytes))).toEqual([[1], [2]])
+})
+it('retains the pending upload on network failure and allows a subsequent retry', async () => {
+    const { registerPendingNoteUpload, clearPendingNoteUpload } = require('../../Notes/pendingNoteUploads')
+    jest.clearAllMocks()
+    const warning = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    mockPut.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce()
+    await expect(setNoteData('p', 'n', new Uint8Array([1]), null, null, true, { contentOnly: true })).resolves.toBe(
+        false
+    )
+    expect(registerPendingNoteUpload).toHaveBeenCalled()
+    expect(clearPendingNoteUpload).not.toHaveBeenCalled()
+    await expect(setNoteData('p', 'n', new Uint8Array([2]), null, null, true, { contentOnly: true })).resolves.toBe(
+        true
+    )
+    expect(clearPendingNoteUpload).toHaveBeenCalledTimes(1)
+    warning.mockRestore()
 })

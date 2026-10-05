@@ -1,5 +1,5 @@
 import React from 'react'
-import DetailViewHeaderTags from '../../UIComponents/DetailViewHeaderTags'
+import { StyleSheet, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import SharedHelper from '../../../utils/SharedHelper'
 import { FEED_NOTE_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
@@ -29,45 +29,71 @@ export default function TagList({
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile
 
     return (
-        <DetailViewHeaderTags
-            projectTag={<ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} truncate />}
-            privacyTag={
-                <PrivacyTag
-                    projectId={projectId}
-                    object={note}
-                    objectType={FEED_NOTE_OBJECT_TYPE}
-                    disabled={!accessGranted || disabled}
-                    isMobile={isMobile}
-                />
-            }
-            actions={
-                <>
-                    <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
-                    {accessGranted && (
-                        <>
-                            <DvSearchButton style={{ top: -5 }} />
-                            <DvBotButton
-                                style={{ top: -5 }}
-                                navItem={DV_TAB_NOTE_CHAT}
-                                projectId={projectId}
-                                assistantId={assistantId}
-                                setAssistantId={setAssistantId}
-                                objectId={note.id}
-                                showThreadModelBadge={true}
-                                objectType={FEED_NOTE_OBJECT_TYPE}
-                                parentObject={note}
-                                updateObjectState={updateObjectState}
-                                onOpenSideChat={
-                                    onOpenSideChat
-                                        ? () => onOpenSideChat({ objectType: 'notes', objectId: note.id, projectId })
-                                        : undefined
-                                }
-                            />
-                        </>
-                    )}
-                    <OpenInNewWindowButton style={{ top: -5 }} />
-                </>
-            }
-        />
+        <View style={localStyles.container}>
+            <View style={[localStyles.tagList, (mobile || tablet) && localStyles.tagListCompact]}>
+                <View style={{ marginRight: 12 }}>
+                    <ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} />
+                </View>
+                <View style={{ marginRight: 12 }}>
+                    <PrivacyTag
+                        projectId={projectId}
+                        object={note}
+                        objectType={FEED_NOTE_OBJECT_TYPE}
+                        disabled={!accessGranted || disabled}
+                        isMobile={isMobile}
+                    />
+                </View>
+            </View>
+            <View style={localStyles.actions}>
+                <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
+                {accessGranted && (
+                    <>
+                        <DvSearchButton style={{ top: -5 }} />
+                        <DvBotButton
+                            style={{ top: -5 }}
+                            navItem={DV_TAB_NOTE_CHAT}
+                            projectId={projectId}
+                            assistantId={assistantId}
+                            setAssistantId={setAssistantId}
+                            objectId={note.id}
+                            showThreadModelBadge={true}
+                            objectType={FEED_NOTE_OBJECT_TYPE}
+                            parentObject={note}
+                            updateObjectState={updateObjectState}
+                            onOpenSideChat={
+                                onOpenSideChat
+                                    ? () => onOpenSideChat({ objectType: 'notes', objectId: note.id, projectId })
+                                    : undefined
+                            }
+                        />
+                    </>
+                )}
+                <OpenInNewWindowButton style={{ top: -5 }} />
+            </View>
+        </View>
     )
 }
+
+const localStyles = StyleSheet.create({
+    container: {
+        flex: 1,
+        flexDirection: 'row',
+        minWidth: 0,
+        alignItems: 'flex-start',
+    },
+    tagList: {
+        flex: 1,
+        flexGrow: 1,
+        flexShrink: 1,
+        flexDirection: 'row',
+        minWidth: 0,
+    },
+    tagListCompact: {
+        flexWrap: 'wrap',
+    },
+    actions: {
+        flexDirection: 'row',
+        flexShrink: 0,
+        marginLeft: 8,
+    },
+})

@@ -40,7 +40,14 @@ export default class CustomImageFormat extends ReactEmbedBlot {
                     isLoading={isLoading}
                     maxWidth={maxWidth}
                 />
-            </Provider>
+            </Provider>,
+            {
+                editorId,
+                kind: 'media',
+                label: text,
+                width: maxWidth,
+                height: store.getState().smallScreenNavigation ? 100 : store.getState().isMiddleScreen ? 150 : 200,
+            }
         )
 
         return node

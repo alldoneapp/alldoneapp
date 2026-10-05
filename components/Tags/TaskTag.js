@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
+import { subscribeSharedNoteData } from '../../utils/Notes/sharedNoteSubscriptions'
 
 import Icon from '../Icon'
 import styles, { colors, windowTagStyle } from '../styles/global'
@@ -83,19 +84,27 @@ export default function TaskTag({
 
     useEffect(() => {
         if (!isLoading && task) {
-            const watcherKey = v4()
-            Backend.watchSubtasks(projectId, taskId, watcherKey, subtasks => {
-                setSubtasks(subtasks)
-                setSumEstimation(
-                    subtasks.reduce((sum, subTask) => {
-                        return sum + getEstimationRealValue(projectId, subTask.estimations?.[OPEN_STEP])
-                    }, 0)
-                )
-            })
-
-            return () => Backend.unwatch(watcherKey)
+            return subscribeSharedNoteData(
+                `subtasks/${loggedUser.uid}/${projectId}/${taskId}`,
+                callback => {
+                    const watcherKey = v4()
+                    Backend.watchSubtasks(projectId, taskId, watcherKey, callback)
+                    return watcherKey
+                },
+                watcherKey => Backend.unwatch(watcherKey),
+                setSubtasks
+            )
         }
-    }, [isLoading, task])
+    }, [isLoading, !!task, projectId, taskId, loggedUser.uid])
+
+    useEffect(() => {
+        setSumEstimation(
+            subtasks.reduce(
+                (sum, subTask) => sum + getEstimationRealValue(projectId, subTask.estimations?.[OPEN_STEP]),
+                0
+            )
+        )
+    }, [subtasks, projectId])
 
     // AT-2454: this used to subtract `(previousWidth - width) + 50` from a stale-closure
     // `maxWidth` on every narrowing step and never gave the 50 back, so dragging the window
