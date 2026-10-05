@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import DetailViewHeaderTags from '../../UIComponents/DetailViewHeaderTags'
 import ProjectTag from '../../Tags/ProjectTag'
 import { FEED_USER_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import CopyLinkButton from '../../UIControls/CopyLinkButton'
@@ -25,47 +25,31 @@ export default function TagList({ project, user }) {
         userIsLoggedUser || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(project.id)
 
     return (
-        <View style={localStyles.container}>
-            <View style={localStyles.tagList}>
-                <View style={{ marginRight: 12 }}>
-                    <ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} />
-                </View>
-                <View style={{ marginRight: 12 }}>
-                    <PrivacyTag
-                        projectId={project.id}
-                        object={user}
-                        objectType={FEED_USER_OBJECT_TYPE}
-                        disabled={!accessGranted || !loggedUserCanUpdateObject}
-                        isMobile={isMobile}
-                    />
-                </View>
-            </View>
-
-            <View style={{ flexDirection: 'row' }}>
-                <CopyLinkButton style={{ top: 3, marginRight: 8 }} />
-                {accessGranted && (
-                    <DvBotButton
-                        style={{ top: 3 }}
-                        navItem={DV_TAB_USER_CHAT}
-                        projectId={project.id}
-                        assistantId={user.assistantId}
-                    />
-                )}
-                <OpenInNewWindowButton style={{ top: 3 }} />
-            </View>
-        </View>
+        <DetailViewHeaderTags
+            projectTag={<ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} truncate />}
+            privacyTag={
+                <PrivacyTag
+                    projectId={project.id}
+                    object={user}
+                    objectType={FEED_USER_OBJECT_TYPE}
+                    disabled={!accessGranted || !loggedUserCanUpdateObject}
+                    isMobile={isMobile}
+                />
+            }
+            actions={
+                <>
+                    <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
+                    {accessGranted && (
+                        <DvBotButton
+                            style={{ top: -5 }}
+                            navItem={DV_TAB_USER_CHAT}
+                            projectId={project.id}
+                            assistantId={user.assistantId}
+                        />
+                    )}
+                    <OpenInNewWindowButton style={{ top: -5 }} />
+                </>
+            }
+        />
     )
 }
-
-const localStyles = StyleSheet.create({
-    container: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-    },
-    tagList: {
-        flex: 1,
-        flexGrow: 1,
-        flexDirection: 'row',
-    },
-})
