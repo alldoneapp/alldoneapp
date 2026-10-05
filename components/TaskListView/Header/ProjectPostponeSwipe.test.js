@@ -17,6 +17,7 @@ jest.mock('../../../redux/actions', () => ({
     setSwipeDueDatePopupData: data => ({ type: 'DATA', data }),
 }))
 jest.mock('../../GoalsView/GoalsSwipeBackground', () => 'GoalsSwipeBackground')
+jest.mock('../../../hooks/useProjectPostponePreview', () => () => undefined)
 
 beforeEach(() => {
     jest.useFakeTimers()

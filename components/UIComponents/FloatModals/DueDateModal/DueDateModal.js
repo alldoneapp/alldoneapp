@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import v4 from 'uuid/v4'
 import moment from 'moment'
 
@@ -45,7 +45,6 @@ function DueDateModal({
     postponeProject,
 }) {
     const currentUser = useSelector(state => state.currentUser)
-    const [projectError, setProjectError] = useState('')
     const projectApplying = useRef(false)
     const [parentGoal, setParentGoal] = useState(null)
     const [visibleCalendar, setVisibleCalendar] = useState(false)
@@ -106,16 +105,13 @@ function DueDateModal({
     const runProjectPostpone = (date, mode = 'date') => {
         if (projectApplying.current) return Promise.resolve(null)
         projectApplying.current = true
-        setProjectError('')
+        closePopover()
         return Promise.resolve()
             .then(() => postponeProject(date, mode))
-            .then(result => {
-                closePopover()
-                return result
-            })
             .catch(error => {
                 console.error('[DueDateModal] Error postponing project tasks:', error)
-                setProjectError(
+                // The picker is already unmounted. Feedback must outlive it, as must rollback.
+                alert(
                     translate(
                         error.code?.endsWith('failed-precondition')
                             ? 'Too many tasks to postpone together (maximum 450)'
@@ -123,9 +119,6 @@ function DueDateModal({
                     )
                 )
                 return null
-            })
-            .finally(() => {
-                projectApplying.current = false
             })
     }
 
@@ -226,14 +219,6 @@ function DueDateModal({
                     description={description}
                     showTabs={showTabs}
                 />
-                {!!projectError && (
-                    <Text
-                        accessibilityRole="alert"
-                        style={{ color: colors.Text03, marginHorizontal: 16, marginBottom: 12 }}
-                    >
-                        {projectError}
-                    </Text>
-                )}
                 {visibleCalendar ? (
                     <View>
                         <DueDateCalendarModal

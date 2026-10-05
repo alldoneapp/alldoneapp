@@ -101,7 +101,6 @@ import { createLocalFirstNoteSession } from './noteLocalFirst'
 import { storageIsMissingLocalState } from './noteCollaborationRecovery'
 import { createNoteLocalPersistence } from './noteLocalPersistence'
 import { isBrowserOffline } from '../../../../utils/connectionState'
-import { subscribePageHidden } from '../../../../utils/appResume'
 import {
     registerPendingNoteUpload,
     getPendingNoteUploadRevision,
@@ -839,10 +838,12 @@ const NotesEditorView = ({
             saveSchedulerRef.current?.flushForPageHide()
             closingRef.current = false
         }
-        // The shared owner covers visibilitychange, pagehide and freeze. Capture
-        // immediately on absence, before browser timers/uploads can be suspended.
-        const unsubscribePageHidden = subscribePageHidden(flushOnHide)
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') flushOnHide()
+        }
+        window.addEventListener('pagehide', flushOnHide)
         window.addEventListener('beforeunload', flushOnHide)
+        document.addEventListener('visibilitychange', onVisibilityChange)
 
         // Collaboration presence is member-owned mutable state. A shared/read-only note can still
         // load its content, but must not start this write/listener pair.
@@ -986,8 +987,9 @@ const NotesEditorView = ({
             // hashtags, images) leaks its React root and redux subscription on the way out, and
             // reopening the note simply adds another set.
             const editorRoot = quillRef.current?.root
-            unsubscribePageHidden()
+            window.removeEventListener('pagehide', flushOnHide)
             window.removeEventListener('beforeunload', flushOnHide)
+            document.removeEventListener('visibilitychange', onVisibilityChange)
             cleanup()
             disableDeferredEmbeds()
             quillRef.current?.getModule('markdownTableEditing')?.destroy()
