@@ -2783,5 +2783,9 @@
     "Rage mode greeting 2": "Hi du!",
     "Rage mode greeting 3": "Du schaffst das!",
     "Rage mode greeting 4": "Guter Schuss!",
-    "1 Gold ≈ %{tokens} tokens": "1 Gold ≈ %{tokens} Token"
+    "1 Gold ≈ %{tokens} tokens": "1 Gold ≈ %{tokens} Token",
+    "Prioritize tasks": "Aufgaben priorisieren",
+    "Prioritize tasks all projects prompt": "Bitte hilf mir, meine Aufgaben für heute über alle Projekte hinweg zu priorisieren, und verwende dafür das Tool update_task. Berücksichtige die OKRs jedes Projekts, den relevanten Projekt- und Nutzerkontext, die Tageszeit, den Wochentag und die verfügbare Zeit unter Berücksichtigung eventuell vorhandener Kalenderaufgaben.",
+    "Prioritize tasks project prompt": "Bitte hilf mir, meine Aufgaben für heute im Projekt \"%{projectName}\" zu priorisieren, und verwende dafür das Tool update_task. Aktualisiere nur Aufgaben in diesem Projekt. Berücksichtige die OKRs dieses Projekts, den relevanten Projekt- und Nutzerkontext, die Tageszeit, den Wochentag und die verfügbare Zeit unter Berücksichtigung eventuell vorhandener Kalenderaufgaben aus allen Projekten.",
+    "Could not start task prioritization chat. Please try again.": "Der Chat zur Aufgabenpriorisierung konnte nicht gestartet werden. Bitte versuche es erneut."
 }
