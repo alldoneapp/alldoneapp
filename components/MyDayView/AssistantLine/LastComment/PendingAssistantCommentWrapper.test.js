@@ -22,6 +22,14 @@ jest.mock('../../../../i18n/TranslationService', () => ({
 
 jest.mock('../../../UIComponents/Ghosts/ghostAnimation', () => ({ useReducedMotion: () => false }))
 
+// This suite exercises thread opening and replies. The real text renderer's mention parsing is
+// covered by LastCommentText.test.js and would load the backend graph behind these wrapper mocks.
+jest.mock('./LastCommentText', () => {
+    const React = require('react')
+    const { Text } = require('react-native')
+    return ({ commentText, testID }) => <Text testID={testID}>{commentText}</Text>
+})
+
 // The popover half. Everything below is only reachable once the thread exists, and each of these
 // modules drags the redux store or the comments backend into the suite.
 jest.mock('../../../UIComponents/ModalShell/AppPopover', () => {
