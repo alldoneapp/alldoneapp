@@ -38,7 +38,7 @@ jest.mock('../Users/usersFirestore', () => ({
 }))
 jest.mock('./chatsFirestore', () => ({ getChatMeta: jest.fn() }))
 jest.mock('../../../components/AdminPanel/Assistants/assistantsHelper', () => ({
-    resolveAssistantForProjectObject: () => ({ uid: 'assistant' }),
+    resolveAssistantForProjectObject: (projectId, assistantId) => ({ uid: assistantId || 'assistant' }),
     isGlobalAssistant: id => id === 'global-assistant',
     getAssistantInProject: () => ({ creatorId: 'u', displayName: 'Global assistant' }),
 }))
@@ -109,6 +109,87 @@ beforeEach(() => {
 const submit = () => createObjectMessage('p', 't', 'Keep our chat interface', 'tasks', 'comment')
 const goOnline = () =>
     commentOutbox.configure({ activeUser: () => 'u', canSend: () => true, send: sendQueuedObjectMessage })
+
+it('prepares in a private calendar task thread with the project assistant and exactly one bot trigger', async () => {
+    getTaskData.mockResolvedValue({
+        isPublicFor: ['u'],
+        assistantId: 'old-task-assistant',
+        creatorId: 'u',
+        extendedName: 'Meeting',
+        calendarData: { originalProjectId: 'calendar-source' },
+        isAssistantEnabled: false,
+    })
+    const settled = jest.fn()
+    runHttpsCallableFunction.mockResolvedValue({})
+    await createObjectMessage(
+        'p',
+        't',
+        'Prepare this meeting',
+        'tasks',
+        2,
+        null,
+        null,
+        false,
+        true,
+        'project-assistant',
+        settled
+    )
+    goOnline()
+    await commentOutbox.flush()
+    expect(docs.get('chatComments/p/tasks/t/comments/stable-id').commentText).toBe('Prepare this meeting')
+    expect(docs.get('chatObjects/p/chats/t')).toMatchObject({
+        id: 't',
+        type: 'tasks',
+        isPublicFor: ['u'],
+        assistantId: 'project-assistant',
+    })
+    expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+    expect(runHttpsCallableFunction).toHaveBeenCalledWith(
+        'askToBotSecondGen',
+        expect.objectContaining({
+            projectId: 'p',
+            objectId: 't',
+            objectType: 'tasks',
+            messageId: 'stable-id',
+            assistantId: 'project-assistant',
+            isPublicFor: ['u'],
+        }),
+        expect.any(Object)
+    )
+    expect(settled).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }))
+    expect(commits).toHaveLength(1)
+    expect(Array.from(docs.keys()).some(path => path.includes('/topics/'))).toBe(false)
+})
+
+it('reuses the existing task thread and overrides its disabled assistant only for the preparation request', async () => {
+    const chat = { id: 't', type: 'tasks', members: ['u'], commentsData: {}, isAssistantEnabled: false }
+    getChatMeta.mockResolvedValue(chat)
+    docs.set('chatObjects/p/chats/t', chat)
+    runHttpsCallableFunction.mockResolvedValue({})
+    await createObjectMessage(
+        'p',
+        't',
+        'Prepare this meeting',
+        'tasks',
+        2,
+        null,
+        null,
+        false,
+        true,
+        'project-assistant'
+    )
+    goOnline()
+    await commentOutbox.flush()
+    expect(Array.from(docs.keys()).filter(path => path.startsWith('chatObjects/'))).toEqual(['chatObjects/p/chats/t'])
+    expect(commits[0].find(write => write.path === 'chatObjects/p/chats/t').data).not.toHaveProperty('isPublicFor')
+    expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+    expect(runHttpsCallableFunction.mock.calls[0][1]).toMatchObject({
+        projectId: 'p',
+        objectId: 't',
+        objectType: 'tasks',
+        assistantId: 'project-assistant',
+    })
+})
 
 it('durably accepts offline text before parent reads and retries a failed cold-cache read', async () => {
     await expect(submit()).resolves.toBe('stable-id')
