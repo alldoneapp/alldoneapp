@@ -3179,5 +3179,9 @@
     "Project tasks reminder": "Posponer tareas del proyecto",
     "Postpone your open project tasks due today or earlier": "Pospón tus tareas abiertas del proyecto que vencen hoy o antes",
     "Too many tasks to postpone together (maximum 450)": "Demasiadas tareas para posponer juntas (máximo 450)",
-    "Could not postpone project tasks. Please try again.": "No se pudieron posponer las tareas del proyecto. Inténtalo de nuevo."
+    "Could not postpone project tasks. Please try again.": "No se pudieron posponer las tareas del proyecto. Inténtalo de nuevo.",
+    "Prioritize tasks all projects prompt": "Por favor, ayúdame a priorizar mis tareas de hoy en todos los proyectos y utiliza la herramienta update_task para ello. Considera los OKRs de cada proyecto, el contexto relevante del proyecto y del usuario, la hora del día, el día de la semana y el tiempo disponible teniendo en cuenta las tareas que pueda haber en el calendario.",
+    "Prioritize tasks": "Priorizar tareas",
+    "Prioritize tasks project prompt": "Por favor, ayúdame a priorizar mis tareas de hoy en el proyecto \"%{projectName}\" y utiliza la herramienta update_task para ello. Actualiza solo las tareas de este proyecto. Considera los OKRs de este proyecto, el contexto relevante del proyecto y del usuario, la hora del día, el día de la semana y el tiempo disponible teniendo en cuenta las tareas que pueda haber en el calendario de todos los proyectos.",
+    "Could not start task prioritization chat. Please try again.": "No se pudo iniciar el chat para priorizar tareas. Por favor, inténtalo de nuevo."
 }
