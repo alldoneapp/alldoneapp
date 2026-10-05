@@ -16,7 +16,7 @@ export const LAST_COMMENT_PREVIEW_HEIGHT = PREVIEW_TITLE_HEIGHT + PREVIEW_BODY_H
  *
  * AT-2523 — moved here from `LastCommentRow` so the card shell can lay a row out without importing
  * the row itself. That import is the whole comment/tag/navigation graph (hashtags, mentions, links,
- * `TasksHelper`, the redux store), and the pending-send card needs the geometry without any of it.
+ * `TasksHelper`, the redux store), while the card shell only needs the geometry.
  * This module is the declared home for exactly that: values every consumer of the card shares,
  * carrying no dependencies of their own.
  */

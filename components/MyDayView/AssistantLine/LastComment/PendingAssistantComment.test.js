@@ -3,10 +3,11 @@
  */
 
 import React from 'react'
-import { StyleSheet, TouchableOpacity } from 'react-native'
+import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import PendingAssistantComment from './PendingAssistantComment'
+import LastCommentText from './LastCommentText'
 import { LAST_COMMENT_PREVIEW_HEIGHT, PREVIEW_BODY_HEIGHT, PREVIEW_TITLE_HEIGHT } from './lastCommentLayout'
 import { PENDING_SEND_AWAITING_REPLY, PENDING_SEND_FAILED, PENDING_SEND_SENDING } from '../assistantLinePendingSend'
 import {
@@ -77,10 +78,14 @@ describe('PendingAssistantComment (AT-2504)', () => {
         expect(style.height).toBe(LAST_COMMENT_PREVIEW_HEIGHT)
 
         const title = tree.root.findByProps({ testID: 'assistant-pending-send-status' })
-        const body = tree.root.findByProps({ testID: 'assistant-pending-send-text' })
+        const bodyContainers = tree.root
+            .findAllByType(View)
+            .map(node => StyleSheet.flatten(node.props.style))
+            .filter(style => style?.height === PREVIEW_BODY_HEIGHT)
         expect(title.props.numberOfLines).toBe(1)
         // One clipped title line plus two clipped body lines, same as the real preview.
-        expect(body.props.numberOfLines).toBe(2)
+        expect(bodyContainers).toHaveLength(1)
+        expect(bodyContainers[0].overflow).toBe('hidden')
         expect(PREVIEW_TITLE_HEIGHT + PREVIEW_BODY_HEIGHT).toBeLessThan(LAST_COMMENT_PREVIEW_HEIGHT)
 
         act(() => tree.unmount())
@@ -88,7 +93,7 @@ describe('PendingAssistantComment (AT-2504)', () => {
 
     it('echoes the submitted text, because the composer no longer holds it', async () => {
         const tree = await render({ pending: pending({ text: 'ship the thing' }) })
-        expect(tree.root.findByProps({ testID: 'assistant-pending-send-text' }).props.children).toBe('ship the thing')
+        expect(tree.root.findByType(LastCommentText).props.commentText).toBe('ship the thing')
         act(() => tree.unmount())
     })
 
@@ -97,7 +102,7 @@ describe('PendingAssistantComment (AT-2504)', () => {
         // (AT-2444). Echoing that verbatim would fill the card with machine text.
         const attachment = `${ATTACHMENT_TRIGGER}blob:http://localhost/9f2${ATTACHMENT_TRIGGER}screenshot.png${ATTACHMENT_TRIGGER}true`
         const tree = await render({ pending: pending({ text: `look at ${attachment} please` }) })
-        const text = tree.root.findByProps({ testID: 'assistant-pending-send-text' }).props.children
+        const text = tree.root.findByType(LastCommentText).props.commentText
 
         expect(text).toBe('look at screenshot.png please')
         expect(text).not.toContain('blob:')
@@ -281,4 +286,12 @@ describe('PendingAssistantComment (AT-2504)', () => {
             })
         })
     })
+})
+
+// Layout/status tests keep the tag/backend graph isolated; mention rendering is covered by
+// LastCommentText.test.js through the real pending and saved cards.
+jest.mock('./LastCommentText', () => {
+    const React = require('react')
+    const { Text } = require('react-native')
+    return ({ commentText, testID }) => <Text testID={testID}>{commentText}</Text>
 })

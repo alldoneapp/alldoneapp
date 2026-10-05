@@ -7,16 +7,8 @@ import { useLastCommentArrivalMotion } from './lastCommentArrivalMotion'
 import { getLastCommentSlotRow, recordLastCommentSlotRow } from './lastCommentSlotRow'
 import { useProjectSectionLastCommentTint } from '../../../TaskListView/TaskHierarchy'
 
-/**
- * Required at the point of use, not imported at the top.
- *
- * `LastCommentRow` is the whole comment/tag/navigation graph — hashtags, mentions, links,
- * `TasksHelper`, and through them the redux store — and it is needed ONLY to draw the row that is
- * rolling away, which exists for 420ms and only when an arrival is actually animating. A static
- * import would drag that graph into the pending-send card, which draws its own content and has
- * never needed any of it. The module is in the same bundle either way, so this costs nothing at
- * runtime; what it buys is that a card which never rolls never touches it.
- */
+// The card shell only needs the full row when an outgoing comment is rolling away. Both
+// incoming variants share LastCommentText; the outgoing row also carries its title and icon.
 const getLastCommentRow = () => require('./LastCommentRow').default
 
 /**

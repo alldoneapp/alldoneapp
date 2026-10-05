@@ -8,6 +8,7 @@ import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
 import { cleanTextMetaData, removeFormatTagsFromText } from '../../../../functions/Utils/parseTextUtils'
 import { PENDING_SEND_AWAITING_REPLY, PENDING_SEND_FAILED } from '../assistantLinePendingSend'
 import LastCommentRollCard from './LastCommentRollCard'
+import LastCommentText from './LastCommentText'
 import { LAST_COMMENT_ROW_PENDING } from './lastCommentSlotRow'
 import { PREVIEW_BODY_HEIGHT, PREVIEW_TITLE_HEIGHT } from './lastCommentLayout'
 
@@ -53,9 +54,13 @@ export default function PendingAssistantComment({
     const awaitingReply = pending?.status === PENDING_SEND_AWAITING_REPLY
     const hasFailed = pending?.status === PENDING_SEND_FAILED
 
-    // The composer serializes mentions, hashtags and attachments as trigger-delimited tokens; the
-    // real preview strips them the same way before rendering (`LastAssistantCommentWrapper`).
-    const text = cleanTextMetaData(removeFormatTagsFromText(pending?.text || ''), true, true).replace(/\s\s+/g, ' ')
+    // Preserve mention identities for the shared tag renderer; media tokens become readable labels
+    // just as in the saved preview (`LastAssistantCommentWrapper`).
+    const text = cleanTextMetaData(
+        removeFormatTagsFromText(pending?.text || '').replace(/\s+/g, ' '),
+        true,
+        true
+    ).replace(/\s\s+/g, ' ')
 
     // `opening` outranks the send's own status on purpose: the user has asked for something and is
     // waiting on THAT, so the card reports the thing it is doing for them rather than the thing it
@@ -90,9 +95,7 @@ export default function PendingAssistantComment({
     const body = compact ? (
         <>
             {activity}
-            <Text numberOfLines={1} style={localStyles.compactText}>
-                {text || statusText}
-            </Text>
+            <LastCommentText projectId={pending?.projectId} commentText={text || statusText} compact />
         </>
     ) : (
         <>
@@ -109,9 +112,11 @@ export default function PendingAssistantComment({
                     </Text>
                 </View>
                 <View style={localStyles.bodyContainer}>
-                    <Text numberOfLines={2} style={localStyles.text} testID="assistant-pending-send-text">
-                        {text}
-                    </Text>
+                    <LastCommentText
+                        projectId={pending?.projectId}
+                        commentText={text}
+                        testID="assistant-pending-send-text"
+                    />
                 </View>
             </View>
         </>
@@ -186,10 +191,6 @@ const localStyles = StyleSheet.create({
         flexShrink: 0,
         overflow: 'hidden',
     },
-    text: {
-        ...styles.subtitle2,
-        color: colors.Text03,
-    },
     failureTitle: {
         color: colors.UtilityRed200,
     },
@@ -204,11 +205,5 @@ const localStyles = StyleSheet.create({
         ...styles.subtitle2,
         color: colors.Primary100,
         marginRight: 6,
-    },
-    compactText: {
-        ...styles.subtitle2,
-        color: colors.Text03,
-        marginLeft: 2,
-        flexShrink: 1,
     },
 })
