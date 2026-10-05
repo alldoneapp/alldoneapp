@@ -15,6 +15,8 @@ import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import EditTask from '../TaskItem/EditTask'
 import { sortTasksByPriority } from '../../../utils/TaskPriority'
 import { useIsUserEditing } from '../../../utils/editingGuard'
+import useProjectPostponePreview from '../../../hooks/useProjectPostponePreview'
+import { projectTaskPreview } from '../../../utils/backends/Tasks/optimisticProjectPostpone'
 
 export default function SubTasksView({
     projectId,
@@ -45,7 +47,17 @@ export default function SubTasksView({
     const parentRefsList = useRef([])
 
     const parentInTaskOutOfOpen = isPending || isToReviewTask || parentTask.inDone
-    const renderedSubtaskList = parentInTaskOutOfOpen ? subtaskList : sortTasksByPriority(subtaskList, focusedTaskId)
+    const postponeEntry = useProjectPostponePreview(projectId)
+    const displayedSubtasks =
+        !postponeEntry || parentInTaskOutOfOpen || isObservedTask
+            ? subtaskList
+            : subtaskList.flatMap(task => {
+                  const preview = projectTaskPreview(task, postponeEntry)
+                  return preview.hidden ? [] : [preview.task]
+              })
+    const renderedSubtaskList = parentInTaskOutOfOpen
+        ? displayedSubtasks
+        : sortTasksByPriority(displayedSubtasks, focusedTaskId)
 
     const setAriaTaskId = () => {
         for (let index in renderedSubtaskList) {
