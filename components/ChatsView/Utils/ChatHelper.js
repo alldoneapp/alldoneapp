@@ -1,5 +1,3 @@
-import moment from 'moment'
-
 import store from '../../../redux/store'
 import { ALL_TAB, FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 import {
@@ -26,6 +24,7 @@ import { exitsOpenModals } from '../../ModalsManager/modalsManager'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import NavigationService from '../../../utils/NavigationService'
 import { getDateFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
+import { formatLastEditDate } from '../../../i18n/relativeTime'
 import { translate } from '../../../i18n/TranslationService'
 import { getChatMeta } from '../../../utils/backends/Chats/chatsFirestore'
 
@@ -187,33 +186,7 @@ export const parseLastEdited = (serverTime, lastEdition) => {
         return translate('Just now')
     }
     if (serverTime > lastEdition) {
-        const today = moment(serverTime)
-        const lastEdit = moment(lastEdition)
-        const secondsDiff = today.diff(lastEdit, 'seconds')
-        if (secondsDiff < 60) {
-            if (secondsDiff === 1) {
-                return translate(tablet ? '1 sec ago' : '1 second ago')
-            }
-            return `${secondsDiff} ${translate(tablet ? 'sec ago' : 'seconds ago')}`
-        } else {
-            const minutesDiff = today.diff(lastEdit, 'minutes')
-            if (minutesDiff < 60) {
-                if (minutesDiff === 1) {
-                    return translate(tablet ? '1 min ago' : '1 minute ago')
-                }
-                return `${minutesDiff} ${translate(tablet ? 'min ago' : 'minutes ago')}`
-            } else {
-                const hoursDiff = today.diff(lastEdit, 'hours')
-                if (hoursDiff < 24) {
-                    if (hoursDiff === 1) {
-                        return translate('1 hour ago')
-                    }
-                    return `${hoursDiff} ${translate('hours ago')}`
-                } else {
-                    return moment(lastEdition).format(getDateFormat())
-                }
-            }
-        }
+        return formatLastEditDate(serverTime, lastEdition, { tablet, dateFormat: getDateFormat() })
     }
 }
 

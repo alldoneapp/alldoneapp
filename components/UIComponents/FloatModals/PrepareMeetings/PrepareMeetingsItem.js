@@ -19,12 +19,5 @@ export default function PrepareMeetingsItem({ projectId, tasks, specificTask = f
         }
     }
 
-    return (
-        <ModalItem
-            icon="calendar"
-            text={specificTask ? 'Prepare meeting' : 'Prepare meetings'}
-            shortcut={shortcut}
-            onPress={prepare}
-        />
-    )
+    return <ModalItem icon="calendar" text="Prepare meetings" shortcut={shortcut} onPress={prepare} />
 }

@@ -1,71 +1,34 @@
-import { useEffect, useRef, useState } from 'react'
-import moment from 'moment'
+import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 
-import store from '../redux/store'
 import Backend from '../utils/BackendBridge'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
+import { formatLastEditDate } from '../i18n/relativeTime'
 
 const useLastEditDate = (lastEditDate, time = 1000, compact = false) => {
-    const tablet = store.getState().isMiddleScreen
+    const tablet = useSelector(state => state.isMiddleScreen)
+    const language = useSelector(state => state.loggedUser?.language)
+    const dateFormat = useSelector(state => state.dateFormat)
     const [relativeDateText, setRelativeDateText] = useState('')
-    const interval = useRef()
-
-    const callback = async () => {
-        const serverDate = await Backend.getFirebaseTimestampDirectly()
-        if (serverDate) {
-            let text = ''
-            const today = moment(serverDate)
-            const lastEdit = moment(lastEditDate)
-
-            const secondsDiff = today.diff(lastEdit, 'seconds')
-            if (secondsDiff < 60) {
-                if (compact) {
-                    text = `${secondsDiff}s ago`
-                } else if (secondsDiff === 1) {
-                    text = tablet ? '1 sec ago' : '1 second ago'
-                } else {
-                    text = `${secondsDiff} ${tablet ? 'sec ago' : 'seconds ago'}`
-                }
-            } else {
-                const minutesDiff = today.diff(lastEdit, 'minutes')
-                if (minutesDiff < 60) {
-                    if (compact) {
-                        text = `${minutesDiff}m ago`
-                    } else if (minutesDiff === 1) {
-                        text = tablet ? '1 min ago' : '1 minute ago'
-                    } else {
-                        text = `${minutesDiff} ${tablet ? 'min ago' : 'minutes ago'}`
-                    }
-                } else {
-                    const hoursDiff = today.diff(lastEdit, 'hours')
-                    if (hoursDiff < 24) {
-                        if (compact) {
-                            text = `${hoursDiff}h ago`
-                        } else if (hoursDiff === 1) {
-                            text = '1 hour ago'
-                        } else {
-                            text = `${hoursDiff} hours ago`
-                        }
-                    } else {
-                        text = moment(lastEditDate).format(getDateFormat())
-                    }
-                }
-            }
-
-            setRelativeDateText(text)
-        }
-    }
-
-    const cleanInterval = () => {
-        if (interval.current != null) clearInterval(interval.current)
-    }
 
     useEffect(() => {
-        cleanInterval()
-        interval.current = setInterval(callback, time)
+        let active = true
+        const callback = async () => {
+            const serverDate = await Backend.getFirebaseTimestampDirectly()
+            if (active && serverDate) {
+                setRelativeDateText(
+                    formatLastEditDate(serverDate, lastEditDate, { compact, tablet, dateFormat: getDateFormat() })
+                )
+            }
+        }
 
-        return () => cleanInterval()
-    }, [lastEditDate, compact])
+        callback()
+        const interval = setInterval(callback, time)
+        return () => {
+            active = false
+            clearInterval(interval)
+        }
+    }, [lastEditDate, time, compact, tablet, language, dateFormat])
 
     return relativeDateText
 }

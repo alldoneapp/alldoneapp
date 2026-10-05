@@ -4,49 +4,11 @@ import styles, { colors } from '../../../styles/global'
 import SelectedAvatar from '../GoalAssigneesModal/SelectedAvatar'
 import HelperFunctions from '../../../../utils/HelperFunctions'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import moment from 'moment'
+import { formatLastEditDate } from '../../../../i18n/relativeTime'
 import { CURRENT_DAY_VERSION_ID } from './RevisionHistoryModal'
 import { translate } from '../../../../i18n/TranslationService'
 
 export default function CurrentVersionItem({ projectId, note, isSelected, setSelectedVersionId, serverTimestamp }) {
-    const parseLastEditionTime = timestamp => {
-        var text = ''
-
-        if (serverTimestamp) {
-            const today = moment(serverTimestamp)
-            const lastEdit = moment(timestamp)
-
-            const secondsDiff = today.diff(lastEdit, 'seconds')
-            if (secondsDiff < 60) {
-                text =
-                    secondsDiff === 1
-                        ? translate('1 second ago')
-                        : translate(`Amount seconds ago`, { amount: secondsDiff })
-            } else {
-                const minutesDiff = today.diff(lastEdit, 'minutes')
-                if (minutesDiff < 60) {
-                    text =
-                        minutesDiff === 1
-                            ? translate('1 minute ago')
-                            : translate(`Amount minutes ago`, { amount: minutesDiff })
-                } else {
-                    const hoursDiff = today.diff(lastEdit, 'hours')
-                    if (hoursDiff < 24) {
-                        text =
-                            hoursDiff === 1
-                                ? translate('1 hour ago')
-                                : translate(`Amount hours ago`, { amount: hoursDiff })
-                    } else {
-                        const daysDiff = today.diff(lastEdit, 'days')
-                        text =
-                            daysDiff === 1 ? translate('1 day ago') : translate(`Amount days ago`, { amount: daysDiff })
-                    }
-                }
-            }
-        }
-        return text
-    }
-
     const selectVersion = () => {
         setSelectedVersionId(CURRENT_DAY_VERSION_ID)
     }
@@ -56,7 +18,9 @@ export default function CurrentVersionItem({ projectId, note, isSelected, setSel
     const { displayName, photoURL } = lastUserEditing
     const name = HelperFunctions.getFirstName(displayName)
 
-    const lastEdition = parseLastEditionTime(lastEditionDate)
+    const lastEdition = serverTimestamp
+        ? formatLastEditDate(serverTimestamp, lastEditionDate, { relativeDays: true })
+        : ''
 
     return (
         <View style={localStyles.container}>

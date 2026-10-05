@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import moment from 'moment'
 
 import Button from '../../../UIControls/Button'
 import Icon from '../../../Icon'
 import styles, { colors } from '../../../styles/global'
+import { localizedMoment } from '../../../../i18n/localizedMoment'
 import { translate } from '../../../../i18n/TranslationService'
 import { rebuildProjectVmGolden } from '../../../../utils/backends/firestore'
 
@@ -28,7 +28,7 @@ export default function VmGoldenProperty({ project, disabled }) {
     if (building) statusText = translate('VM environment building')
     else if (ready)
         statusText = golden.builtAt
-            ? translate('VM environment ready built', { time: moment(golden.builtAt).fromNow() })
+            ? translate('VM environment ready built', { time: localizedMoment(golden.builtAt).fromNow() })
             : translate('VM environment ready')
     else if (failed) statusText = translate('VM environment build failed')
     else statusText = translate('VM environment not built')
