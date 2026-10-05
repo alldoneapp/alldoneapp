@@ -22,6 +22,7 @@ const { readThreadAssistantModelOverride } = require('./threadAssistantModelStor
 const { getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { getUserData } = require('../Users/usersFirestore')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
+const { encodeOrdinaryText } = require('./assistantTextSafety')
 
 const ENCODE_INITIAL_GAP = 3
 const {
@@ -428,7 +429,7 @@ function generateContextOptimized(messages, model) {
     try {
         for (let i = messages.length - 1; i >= 0; i--) {
             const messageText = getMessageTextForTokenCounting(messages[i][1])
-            const encodedMessage = encoder.encode(messageText)
+            const encodedMessage = encodeOrdinaryText(encoder, messageText)
             const messageTokens = encodedMessage.length + ENCODE_MESSAGE_GAP
 
             if (unusedTokens - messageTokens >= ENCODE_INITIAL_GAP) {

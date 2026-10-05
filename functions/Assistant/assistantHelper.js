@@ -22,6 +22,7 @@ const {
 const moment = require('moment')
 const OpenAI = require('openai')
 const { Tiktoken } = require('@dqbd/tiktoken/lite')
+const { encodeOrdinaryText, sanitizeAssistantResponseText } = require('./assistantTextSafety')
 const cl100k_base = require('@dqbd/tiktoken/encoders/cl100k_base.json')
 const { getAccessibleProjectIdsFromUserData, getDelegationScopeProjectIdsFromUserData } = require('./projectScope')
 
@@ -724,7 +725,7 @@ function buildConversationAfterToolExecution({
         ...currentConversation,
         {
             role: 'assistant',
-            content: responseText,
+            content: sanitizeAssistantResponseText(responseText),
             tool_calls: [
                 {
                     id: toolCallId,
@@ -789,7 +790,7 @@ function buildConversationAfterToolExecutions({
         ...currentConversation,
         {
             role: 'assistant',
-            content: responseText,
+            content: sanitizeAssistantResponseText(responseText),
             tool_calls: executions.map(execution => ({
                 id: execution.toolCallId,
                 type: 'function',
@@ -2471,6 +2472,8 @@ async function collectAssistantTextWithToolCalls({
                 assistantText += chunk.content
             }
         }
+        assistantText = sanitizeAssistantResponseText(assistantText)
+        responseText = sanitizeAssistantResponseText(responseText)
         if (onRoundComplete)
             await onRoundComplete({ assistantText, conversation: currentConversation, round: toolCallRound })
         return { toolCalls: nextToolCalls, assistantText }
@@ -2748,13 +2751,13 @@ const calculateTokens = (aiText, contextMessages, modelKey, encoder = null) => {
     // For other models, use token encoding
     // Reuse provided encoder or create a new one
     const encoding = encoder || new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
-    let aiTokens = encoding.encode(aiText).length
+    let aiTokens = encodeOrdinaryText(encoding, aiText).length
     let contextTokens = 0
     let gapTokens = ENCODE_MESSAGE_GAP // Gap for AI response
 
     contextMessages.forEach(msg => {
         const msgText = getMessageTextForTokenCounting(msg[1])
-        const msgTokens = encoding.encode(msgText).length
+        const msgTokens = encodeOrdinaryText(encoding, msgText).length
         contextTokens += msgTokens
         gapTokens += ENCODE_MESSAGE_GAP
         // Per-message token counts are not logged: this loop runs once per context message on every
@@ -10226,7 +10229,9 @@ async function storeChunks(
         // is not the silent marker. ensureCommitted() writes the deferred comment on demand.
         const ensureCommitted = async () => {
             if (committed) return
-            comment.commentText = typeof commentText === 'string' ? commentText : comment.commentText
+            comment.commentText = sanitizeAssistantResponseText(
+                typeof commentText === 'string' ? commentText : comment.commentText
+            )
             await commentRef.set(comment)
             if (streamOutput && typeof streamOutput === 'object') {
                 streamOutput.commentId = commentId
@@ -10302,6 +10307,9 @@ async function storeChunks(
         // writes to this comment in one chain so the newest accumulated text always wins.
         let commentUpdateWriteChain = Promise.resolve()
         const queueCommentUpdate = updateData => {
+            if (typeof updateData.commentText === 'string') {
+                updateData = { ...updateData, commentText: sanitizeAssistantResponseText(updateData.commentText) }
+            }
             const writePromise = commentUpdateWriteChain
                 .catch(() => {})
                 .then(async () => {
@@ -11118,6 +11126,21 @@ async function storeChunks(
             // Tools are only available for GPT models that support native tool calling
         }
 
+        const sanitizedCommentText = sanitizeAssistantResponseText(commentText)
+        if (sanitizedCommentText !== commentText) {
+            console.warn('Assistant transcript artifacts removed', { projectId, objectType, objectId, commentId })
+            if (!sanitizedCommentText.trim()) {
+                const error = new Error(
+                    'The assistant returned an invalid transcript instead of an answer. Please try again.'
+                )
+                error.code = 'INVALID_ASSISTANT_RESPONSE'
+                throw error
+            }
+            commentText = sanitizedCommentText
+            answerContent = sanitizeAssistantResponseText(answerContent)
+            await safeCommentUpdate({ commentText, isThinking: false, isLoading: false })
+        }
+
         if (createdNoteResults.length > 0 || startedVmJobResults.length > 0) {
             await flushPendingUpdate()
             const responseWithLinks = ensureVmHostThreadLinksInResponse(
@@ -11353,7 +11376,11 @@ async function storeChunks(
             }
         } else if (typeof finalizeFailedAssistantRunComment === 'function') {
             await finalizeFailedAssistantRunComment(
-                isEmptyOpenAiResponseError(error) ? EMPTY_ASSISTANT_RESPONSE_TEXT : null
+                isEmptyOpenAiResponseError(error)
+                    ? EMPTY_ASSISTANT_RESPONSE_TEXT
+                    : error.code === 'INVALID_ASSISTANT_RESPONSE'
+                      ? error.message
+                      : null
             )
         }
         console.error('❌ [TIMING] Error in storeChunks:', {
@@ -12107,7 +12134,8 @@ async function buildVmThreadContext({
             const attachments = []
             for (const doc of docs) {
                 const data = doc.data() || {}
-                const text = typeof data.commentText === 'string' ? data.commentText.trim() : ''
+                const rawText = typeof data.commentText === 'string' ? data.commentText.trim() : ''
+                const text = data.fromAssistant ? sanitizeAssistantResponseText(rawText) : rawText
                 if (opts.conversationHistory && text) {
                     const role = data.fromAssistant ? 'assistant' : 'user'
                     transcriptLines.push(`[${role}]: ${parseTextForUseLiKePrompt(text)}`)
@@ -13422,7 +13450,7 @@ function estimateOpenAiRequestInputTokens(requestParams = {}) {
     const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
     try {
         return {
-            estimatedInputTokens: encoder.encode(serializedPayload).length,
+            estimatedInputTokens: encodeOrdinaryText(encoder, serializedPayload).length,
             payloadBytes,
             usedTokenizer: true,
         }
@@ -13912,7 +13940,7 @@ async function getOptimizedContextMessages(
                     ])
                 } else {
                     const assistantCommentText = ensureCreatedNoteLinksInResponse(
-                        commentText,
+                        sanitizeAssistantResponseText(commentText),
                         messageData?.assistantRun?.createdEntities || []
                     )
                     // Assistant turns are the assistant's own prior output. They need the
