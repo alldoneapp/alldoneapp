@@ -27,6 +27,7 @@ import {
 import Backend from './BackendBridge'
 import { registerPopupDismiss } from './popupDismissGuard'
 import { centerPopoverInWindow, clampToRange } from './popoverPositioning'
+import { formatLastEditDate } from '../i18n/relativeTime'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKWARD_COMMENT, FORDWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { DONE_STEP, OPEN_STEP } from '../components/TaskListView/Utils/TasksHelper'
@@ -596,37 +597,7 @@ export const parseLastEdit = async (lastEditDate, setEditionText) => {
     const serverDate = await Backend.getFirebaseTimestampDirectly()
 
     if (serverDate) {
-        let text = ''
-        const today = moment(serverDate)
-        const lastEdit = moment(lastEditDate)
-
-        const secondsDiff = today.diff(lastEdit, 'seconds')
-        if (secondsDiff < 60) {
-            if (secondsDiff === 1) {
-                text = tablet ? '1 sec ago' : '1 second ago'
-            }
-            text = `${secondsDiff} ${tablet ? 'sec ago' : 'seconds ago'}`
-        } else {
-            const minutesDiff = today.diff(lastEdit, 'minutes')
-            if (minutesDiff < 60) {
-                if (minutesDiff === 1) {
-                    text = tablet ? '1 min ago' : '1 minute ago'
-                }
-                text = `${minutesDiff} ${tablet ? 'min ago' : 'minutes ago'}`
-            } else {
-                const hoursDiff = today.diff(lastEdit, 'hours')
-                if (hoursDiff < 24) {
-                    if (hoursDiff === 1) {
-                        text = '1 hour ago'
-                    }
-                    text = `${hoursDiff} hours ago`
-                } else {
-                    text = moment(lastEditDate).format(getDateFormat())
-                }
-            }
-        }
-
-        setEditionText(text)
+        setEditionText(formatLastEditDate(serverDate, lastEditDate, { tablet, dateFormat: getDateFormat() }))
     }
 }
 
