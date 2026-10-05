@@ -50,6 +50,26 @@ async function run() {
         assert.deepEqual(payload.attachments, [])
     }
 
+    // SMTP BCC delivery must not appear in the visible recipients, even without a To header.
+    for (const visibleHeaders of [
+        [],
+        [
+            ['to', 'bob@example.com'],
+            ['cc', 'carol@example.com'],
+        ],
+    ]) {
+        const payload = await buildNormalizedPayload({
+            from: 'alice@example.com',
+            to: 'anna@alldoneapp.com',
+            headers: createHeaders(visibleHeaders),
+            text: 'Please help privately',
+            attachments: [],
+        })
+        assert.deepEqual(payload.toEmails, visibleHeaders.length ? ['bob@example.com'] : [])
+        assert.deepEqual(payload.ccEmails, visibleHeaders.length ? ['carol@example.com'] : [])
+        assert.ok(!payload.toEmails.includes('anna@alldoneapp.com'))
+    }
+
     {
         const payload = await buildNormalizedPayload({
             from: 'attacker@example.com',

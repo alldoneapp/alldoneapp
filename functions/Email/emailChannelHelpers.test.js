@@ -105,6 +105,31 @@ describe('emailChannelHelpers', () => {
         })
     })
 
+    test.each([
+        { toEmails: ['bob@example.com'], ccEmails: ['carol@example.com'] },
+        { toEmails: [], ccEmails: ['carol@example.com'] },
+        { toEmails: [], ccEmails: [] },
+    ])('replies only to the sender when Anna is not visible in To or CC: %j', recipients => {
+        expect(buildReplyAllRecipients({ fromEmail: 'Owner@Example.com', ...recipients })).toEqual({
+            toEmails: ['owner@example.com'],
+            ccEmails: [],
+        })
+    })
+
+    test.each(['Anna <ANNA@ALLDONE.APP>', 'Custom Anna <assistant@example.com>'])(
+        'keeps reply-all when Anna is visibly copied as %s',
+        annaAddress => {
+            expect(
+                buildReplyAllRecipients({
+                    fromEmail: 'owner@example.com',
+                    toEmails: ['bob@example.com'],
+                    ccEmails: [annaAddress, 'carol@example.com'],
+                    assistantEmailAddresses: ['assistant@example.com'],
+                })
+            ).toEqual({ toEmails: ['owner@example.com', 'bob@example.com'], ccEmails: ['carol@example.com'] })
+        }
+    )
+
     test('builds current-message participant metadata without Anna addresses', () => {
         expect(
             buildCurrentEmailParticipants({

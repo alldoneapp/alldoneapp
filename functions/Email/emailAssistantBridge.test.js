@@ -110,6 +110,23 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         mockInteractWithChatStream.mockReturnValue([{ content: 'Termin erstellt.' }])
     })
 
+    test('tells Anna that a BCC reply is private to the sender', async () => {
+        await processAnnaEmailAssistantMessage('user-1', 'project-1', 'chat-1', 'Please help', 'assistant-1', {
+            fromEmail: 'owner@example.com',
+            toEmails: ['guest@example.com'],
+            ccEmails: [],
+            replyToSenderOnly: true,
+            hasAdditionalRecipients: false,
+        })
+        const systemText = mockInteractWithChatStream.mock.calls[0][0]
+            .filter(message => message[0] === 'system')
+            .map(message => message[1])
+            .join('\n')
+        expect(systemText).toContain('Your final reply will be sent only to the sender')
+        expect(systemText).not.toContain('Continue replying to all participants')
+        expect(systemText).not.toContain('Your reply may be sent to the sender and every original')
+    })
+
     test('supplies current CC addresses and only the prior privacy-safe availability context', async () => {
         await processAnnaEmailAssistantMessage(
             'user-1',

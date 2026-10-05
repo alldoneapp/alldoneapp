@@ -174,6 +174,47 @@ describe('emailInboundQueueProcessor', () => {
         expect(getAssistantForChat).toHaveBeenCalledWith('project-1', 'assistant-1', 'user-1')
     })
 
+    test.each([false, true])('keeps BCC delivery private on success or failure (failure=%s)', async fail => {
+        const queueRef = {
+            delete: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+        }
+        if (fail) processAnnaEmailAssistantMessage.mockRejectedValueOnce(new Error('Processing failed'))
+        await __private__.processQueueItem('user-1', {
+            id: 'bcc-message',
+            ref: queueRef,
+            data: {
+                projectId: 'project-1',
+                assistantId: 'assistant-1',
+                fromEmail: 'sender@example.com',
+                toEmails: ['teammate@example.com'],
+                ccEmails: ['observer@example.com'],
+                subject: 'Private request',
+                textBody: 'Please create a task',
+                attachments: [],
+            },
+        })
+        expect(getOrCreateDailyEmailTopic).toHaveBeenCalledWith('user-1', 'project-1', 'assistant-1', {
+            ownerEmail: 'sender@example.com',
+            participantEmails: ['sender@example.com'],
+        })
+        expect(processAnnaEmailAssistantMessage).toHaveBeenCalledWith(
+            'user-1',
+            'project-1',
+            'chat-1',
+            expect.any(String),
+            'assistant-1',
+            expect.objectContaining({ replyToSenderOnly: true, hasAdditionalRecipients: false })
+        )
+        expect(sendAnnaEmailReply).toHaveBeenCalledTimes(1)
+        expect(sendAnnaEmailReply).toHaveBeenCalledWith(
+            expect.objectContaining({
+                toEmails: ['sender@example.com'],
+                ccEmails: [],
+            })
+        )
+    })
+
     test('continues without attachment payload when no supported attachment exists', async () => {
         const queueRef = {
             delete: jest.fn().mockResolvedValue(undefined),

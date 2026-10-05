@@ -13,6 +13,7 @@ const {
     DEFAULT_PUBLIC_EMAIL,
     buildDailyEmailParticipantEmails,
     getEmailParticipantDisplayName,
+    isAssistantBlindCopied,
     normalizeEmailAddress,
     normalizeSafeEmailActionContext,
     splitQuotedReplyText,
@@ -508,7 +509,9 @@ async function sendGuestMeetingReply(grant, payload, replyText) {
         .filter(Boolean)
         .join(' ')
     return sendAnnaEmailReply({
-        toEmails: buildDailyEmailParticipantEmails(grant.participantEmails || [grant.ownerEmail, grant.guestEmail]),
+        toEmails: isAssistantBlindCopied({ ...payload, assistantEmailAddresses: [fromEmail] })
+            ? buildDailyEmailParticipantEmails([payload.fromEmail], [fromEmail])
+            : buildDailyEmailParticipantEmails(grant.participantEmails || [grant.ownerEmail, grant.guestEmail]),
         subject: buildReplySubject(grant.subject || payload.subject),
         replyText,
         inReplyTo: sanitizeThreadHeader(payload.messageId || payload.threadHeaders?.inReplyTo || ''),
