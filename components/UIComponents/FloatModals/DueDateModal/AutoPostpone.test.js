@@ -102,16 +102,6 @@ describe('DueDateModal AutoPostpone', () => {
         baseProps.closePopover = jest.fn()
     })
 
-    test('routes project auto-postpone to the project cloud operation without deriving a single-task date', async () => {
-        const postponeProject = jest.fn().mockResolvedValue(null)
-        const tree = await renderAndPress({ task: { dueDate: 123 }, postponeProject })
-        expect(postponeProject).toHaveBeenCalledTimes(1)
-        expect(mockSetTaskDueDate).not.toHaveBeenCalled()
-        expect(mockAutoPostponeMultipleTasks).not.toHaveBeenCalled()
-        expect(tree.root.findByType(TouchableOpacity).props.disabled).toBe(false)
-        tree.unmount()
-    })
-
     test('applies a persisted single task via a direct due-date write', async () => {
         const task = { id: 'task-1', timesPostponed: 2 }
         await renderAndPress({ task })

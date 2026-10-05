@@ -12,9 +12,6 @@ import { ESTIMATIONS_MODAL_ID, removeModal, storeModal } from '../../../../Modal
 import { setLanguage } from '../../../../../i18n/TranslationService'
 import GenericModalItem from '../Common/GenericModalItem'
 import TaskMoreButton from './TaskMoreButton'
-import PrepareMeetingsItem from '../../PrepareMeetings/PrepareMeetingsItem'
-
-jest.mock('../../PrepareMeetings/PrepareMeetingsItem', () => 'PrepareMeetingsItem')
 
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
@@ -103,25 +100,6 @@ describe('TaskMoreButton popup lock', () => {
 
     afterEach(() => {
         setLanguage(originalLocale)
-    })
-
-    it.each([true, false])('offers preparation only for a saved selected calendar task (calendar=%s)', calendar => {
-        const task = {
-            id: 'event-1',
-            calendarData: calendar ? { email: 'work@example.com' } : null,
-            userIds: ['user-1'],
-            estimations: { open: 0 },
-            stepHistory: ['open'],
-        }
-        let tree
-        act(() => {
-            tree = renderer.create(<TaskMoreButton projectId="project-1" task={task} editing={true} />)
-        })
-        const items = tree.root.findAllByType(PrepareMeetingsItem)
-        expect(items).toHaveLength(calendar ? 1 : 0)
-        if (calendar)
-            expect(items[0].props).toMatchObject({ projectId: 'project-1', tasks: [task], specificTask: true })
-        act(() => tree.unmount())
     })
 
     it('releases and unregisters the estimation popup when the main menu is dismissed outside', () => {

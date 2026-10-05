@@ -11,8 +11,6 @@ import { setTaskDueDate, setTaskToBacklog } from '../../utils/backends/Tasks/tas
 import { checkIfInMyDayOpenTab } from '../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { popoverToCenter, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
 import { postponeTaskWithMotion } from '../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion'
-import { postponeProjectTasks } from '../../utils/backends/Tasks/projectPostpone'
-import moment from 'moment'
 
 // This popup is mounted from inside a swipe RELEASE handler (Swipeable's
 // onSwipeableRightWillOpen, see TaskPresentation/GoalItemPresentation/
@@ -54,20 +52,9 @@ export default function DueDateSinglePopup() {
         taskViewToggleIndex
     )
 
-    if (!data || (!data.task && !data.isProjectPostpone)) return null
+    if (!data || !data.task) return null // Ensure data and task exist before proceeding
 
-    const {
-        projectId,
-        isObservedTask,
-        isToReviewTask,
-        multipleTasks,
-        goal,
-        parentGoaltasks,
-        inParentGoal,
-        isProjectPostpone,
-    } = data
-    // The project scope is selected in the cloud. This date-picker placeholder never becomes a task write.
-    const task = data.task || { dueDate: moment().valueOf() }
+    const { task, projectId, isObservedTask, isToReviewTask, multipleTasks, goal, parentGoaltasks, inParentGoal } = data
 
     const hidePopover = () => {
         if (!visibleCalendar) dispatch([hideFloatPopup(), hideSwipeDueDatePopup(), setSwipeDueDatePopupData(null)])
@@ -207,11 +194,6 @@ export default function DueDateSinglePopup() {
                                 goalStartingDate={goal ? goal.startingMilestoneDate : undefined}
                                 goal={goal}
                                 animateGoalPostpone={!!goal}
-                                postponeProject={
-                                    isProjectPostpone
-                                        ? (date, mode) => postponeProjectTasks(projectId, date, mode)
-                                        : undefined
-                                }
                             />
                         </>
                     }
