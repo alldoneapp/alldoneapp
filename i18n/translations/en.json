@@ -3226,5 +3226,9 @@
     "Rage mode greeting 2": "Hello there!",
     "Rage mode greeting 3": "You've got this!",
     "Rage mode greeting 4": "Nice aim!",
-    "1 Gold ≈ %{tokens} tokens": "1 Gold ≈ %{tokens} tokens"
+    "1 Gold ≈ %{tokens} tokens": "1 Gold ≈ %{tokens} tokens",
+    "Prioritize tasks": "Prioritize tasks",
+    "Prioritize tasks all projects prompt": "Please help me prioritize my tasks for today across all projects and use the update_task tool for that. Consider the OKRs of each project, relevant project and user context, the time of day, the day of the week, and the time available given any existing calendar tasks.",
+    "Prioritize tasks project prompt": "Please help me prioritize my tasks for today in the project \"%{projectName}\" and use the update_task tool for that. Only update tasks in this project. Consider this project's OKRs, relevant project and user context, the time of day, the day of the week, and the time available given any existing calendar tasks across all projects.",
+    "Could not start task prioritization chat. Please try again.": "Could not start task prioritization chat. Please try again."
 }

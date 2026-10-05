@@ -9,13 +9,18 @@ import Shortcut, { SHORTCUT_LIGHT } from '../../../../UIControls/Shortcut'
 import Icon from '../../../../Icon'
 import { translate } from '../../../../../i18n/TranslationService'
 
-export default function ModalItem({ icon, text, notTranslatedText, shortcut, onPress }) {
+export default function ModalItem({ icon, text, notTranslatedText, shortcut, onPress, disabled }) {
     const mobile = useSelector(state => state.smallScreenNavigation)
 
     return (
         <View>
-            <Hotkeys keyName={shortcut} onKeyDown={(sht, event) => onPress(event)} filter={e => true}>
-                <TouchableOpacity style={localStyles.sectionItem} onPress={onPress} accessible={false}>
+            <Hotkeys keyName={shortcut} onKeyDown={(sht, event) => !disabled && onPress(event)} filter={e => true}>
+                <TouchableOpacity
+                    style={disabled ? [localStyles.sectionItem, { opacity: 0.4 }] : localStyles.sectionItem}
+                    onPress={disabled ? undefined : onPress}
+                    disabled={disabled}
+                    accessible={false}
+                >
                     <View style={localStyles.sectionItem}>
                         <View style={localStyles.sectionItemText}>
                             <Icon name={icon} size={24} color={'#ffffff'} style={localStyles.icon} />
