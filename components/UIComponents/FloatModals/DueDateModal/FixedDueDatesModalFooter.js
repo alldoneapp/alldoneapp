@@ -23,6 +23,7 @@ export default function FixedDueDatesModalFooter({
     showAutoPostpone,
     goal,
     animateGoalPostpone,
+    postponeProject,
 }) {
     const lastSelectedDueDate = useSelector(state => state.lastSelectedDueDate)
 
@@ -61,6 +62,7 @@ export default function FixedDueDatesModalFooter({
                     inParentGoal={inParentGoal}
                     saveDueDateBeforeSaveTask={saveDueDateBeforeSaveTask}
                     animateGoalPostpone={animateGoalPostpone}
+                    postponeProject={postponeProject}
                 />
             )}
         </View>
