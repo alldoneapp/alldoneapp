@@ -3974,6 +3974,25 @@ exports.onUpdateProjectSecondGen = onDocumentUpdated(
     }
 )
 
+exports.reconcileDayRateStatisticsSecondGen = onDocumentWritten(
+    {
+        document: 'statistics/{projectId}/{userId}/{dateKey}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+        retry: true,
+    },
+    async event => {
+        const { reconcileDayRateStatisticsOnWrite } = require('./Tasks/dayRateStatistics')
+        return reconcileDayRateStatisticsOnWrite({
+            db: admin.firestore(),
+            ...event.params,
+            before: event.data.before.data(),
+            after: event.data.after.data(),
+        })
+    }
+)
+
 // Unread badges: mirror each user's per-project counters into one document the client watches
 // (functions/Feeds/activityUnreadSummary.js). Small and idempotent, so no retries and a short timeout.
 exports.mirrorFeedsCountToUnreadSummarySecondGen = onDocumentWritten(
