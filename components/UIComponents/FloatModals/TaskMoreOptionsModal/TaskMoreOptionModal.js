@@ -15,7 +15,6 @@ import { FEED_TASK_OBJECT_TYPE } from '../../../Feeds/Utils/FeedsConstants'
 import EstimationModal from '../EstimationModal/EstimationModal'
 import HighlightColorModal from '../HighlightColorModal/HighlightColorModal'
 import { getTaskAutoEstimation, OPEN_STEP } from '../../../TaskListView/Utils/TasksHelper'
-import PrepareMeetingsItem from '../PrepareMeetings/PrepareMeetingsItem'
 
 export default function TaskMoreOptionModal({
     saveDescription,
@@ -82,15 +81,6 @@ export default function TaskMoreOptionModal({
                     <ModalItem icon={'droplet-off'} text={'Highlight'} shortcut="1" onPress={showHighlight} />
                     <ModalItem icon={'info'} text={'Description'} shortcut="2" onPress={showDescription} />
                     <ModalItem icon={'clock'} text={'Estimation'} shortcut="3" onPress={showEstimation} />
-                    {task.id && task.calendarData && (
-                        <PrepareMeetingsItem
-                            projectId={projectId}
-                            tasks={[task]}
-                            specificTask={true}
-                            shortcut="4"
-                            closeModal={closeModal}
-                        />
-                    )}
                 </View>
             )}
         </CustomScrollView>

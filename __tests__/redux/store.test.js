@@ -37,6 +37,7 @@ import {
 } from '../../redux/actions'
 import theStore, { initialState, resetCircularStructures, theReducer } from '../../redux/store'
 import { PROJECT_TYPE_ARCHIVED } from '../../components/SettingsView/ProjectsSettings/ProjectsSettings'
+import { SET_OKR_TODAY_OPERATION, getOkrTodayOperation } from '../../redux/okrTodayVisibility'
 
 describe('Redux Reducers', () => {
     it('should return the initial state', () => {
@@ -66,6 +67,28 @@ describe('Redux Reducers', () => {
         const state = theReducer(undefined, storeLoggedUser({ uid: 'user-1' }))
 
         expect(state.loggedUser.uid).toEqual('user-1')
+    })
+
+    it('keeps OKR operations pending through optimistic user snapshots and reconciles acknowledged writes', () => {
+        const user = { uid: 'user-1' }
+        const operation = {
+            userId: user.uid,
+            projectId: 'p1',
+            okrId: 'o1',
+            previousValue: null,
+            targetValue: '2026-10-05',
+            status: 'pending',
+        }
+        const snapshotUser = {
+            ...user,
+            okrsHiddenInAllProjectsTodayByProjectAndOkr: { p1: { o1: operation.targetValue } },
+        }
+        let state = theReducer(undefined, storeLoggedUser(user))
+        state = theReducer(state, { type: SET_OKR_TODAY_OPERATION, operations: [operation] })
+        state = theReducer(state, storeLoggedUser(snapshotUser))
+        expect(getOkrTodayOperation(state.okrTodayOperations, user.uid, 'p1', 'o1').status).toBe('pending')
+        state = theReducer(state, { type: SET_OKR_TODAY_OPERATION, operations: [{ ...operation, status: 'saved' }] })
+        expect(state.okrTodayOperations).toEqual({})
     })
 
     it('should store current user', () => {
