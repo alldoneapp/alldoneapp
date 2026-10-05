@@ -5555,22 +5555,6 @@ exports.autoReminderTasksSecondGen = onCall(
     }
 )
 
-exports.postponeProjectTasksWithUndoSecondGen = onCall(
-    { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
-    async request => {
-        if (!request.auth) throw new HttpsError('permission-denied', 'Authentication required')
-        try {
-            const { executeProjectPostpone } = require('./Tasks/projectPostponeService')
-            return await executeProjectPostpone({ actorUserId: request.auth.uid, data: request.data })
-        } catch (error) {
-            const supportedCodes = new Set(['invalid-argument', 'permission-denied', 'failed-precondition'])
-            const code = supportedCodes.has(error.code) ? error.code : 'internal'
-            console.error('[postponeProjectTasksWithUndoSecondGen] Failed', { code, error: error.message })
-            throw new HttpsError(code, code === 'internal' ? 'Failed to postpone project tasks' : error.message)
-        }
-    }
-)
-
 exports.postponeGoalWithUndoSecondGen = onCall(
     {
         timeoutSeconds: 60,

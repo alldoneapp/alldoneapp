@@ -23,6 +23,8 @@ import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../../../../TaskL
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../../../utils/NavigationService'
 import { DV_TAB_PROJECT_OKRS } from '../../../../../utils/TabNavigationConstants'
+import PrioritizeTasksModalItem from './PrioritizeTasksModalItem'
+import RunOutOfGoldAssistantModal from '../../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 
 export default function TaskHeaderMoreButton({
     projectIdOverride,
@@ -43,7 +45,7 @@ export default function TaskHeaderMoreButton({
               ? loggedUserProjects[selectedProjectIndex].id
               : null
     })
-    const projectId = projectIdOverride || selectedProjectId
+    const projectId = projectIdOverride !== undefined ? projectIdOverride : selectedProjectId
     const projectOKRs = useSelector(state => (projectId ? state.okrsByProjectInTasks[projectId] || [] : []))
     // Organize / Select all act on the "Today" section of this project's task list. The date-section
     // store is keyed by `projectId + userId` and each section carries its own date string, so we find
@@ -59,6 +61,7 @@ export default function TaskHeaderMoreButton({
     const loggedUser = useSelector(state => state.loggedUser)
     const [showAddOKR, setShowAddOKR] = useState(false)
     const [showAutoPostpone, setShowAutoPostpone] = useState(false)
+    const [showRunOutOfGold, setShowRunOutOfGold] = useState(false)
     const modalRef = useRef()
     const openAddOKRTimeoutRef = useRef()
     const openAutoPostponeTimeoutRef = useRef()
@@ -154,6 +157,7 @@ export default function TaskHeaderMoreButton({
         clearOpenAutoPostponeTimeout()
         setShowAddOKR(false)
         setShowAutoPostpone(false)
+        setShowRunOutOfGold(false)
     }
 
     useEffect(() => {
@@ -165,6 +169,16 @@ export default function TaskHeaderMoreButton({
 
     const renderItems = () => {
         const list = []
+
+        list.push(shortcut => (
+            <PrioritizeTasksModalItem
+                key="gmbtn-prioritize"
+                projectId={projectId}
+                shortcut={shortcut}
+                onPress={dismissModal}
+                onRunOutOfGold={() => setShowRunOutOfGold(true)}
+            />
+        ))
 
         if (showOrganizeItems) {
             list.push(shortcut => {
@@ -296,7 +310,12 @@ export default function TaskHeaderMoreButton({
             iconColor={iconColor}
             onCloseModal={onCloseMainModal}
             customModal={
-                showAddOKR ? (
+                showRunOutOfGold ? (
+                    <RunOutOfGoldAssistantModal
+                        closeModal={dismissModal}
+                        closeModalWhenNavigateToPremium={dismissModal}
+                    />
+                ) : showAddOKR ? (
                     <OKRModal projectId={projectId} closePopover={closeAddOKR} />
                 ) : showAutoPostpone ? (
                     <AutoPostponeTasksModal projectId={projectId} closePopover={closeAutoPostpone} />
