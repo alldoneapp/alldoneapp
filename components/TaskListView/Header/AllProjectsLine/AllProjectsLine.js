@@ -46,6 +46,7 @@ export default function AllProjectsLine({
                     {customRight}
                     {showActions && inOpenSection && (
                         <TaskHeaderMoreButton
+                            projectIdOverride={null}
                             userId={loggedUserId}
                             wrapperStyle={localStyles.taskMoreWrapper}
                             buttonStyle={[localStyles.taskMoreButton, mobile && { width: 36, height: 36 }]}

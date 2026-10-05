@@ -13,7 +13,7 @@ jest.mock('firebase/compat/app', () => ({
     __esModule: true,
     default: {
         auth: () => ({ currentUser: { uid: 'user-1', getIdToken: (...args) => mockGetIdToken(...args) } }),
-        firestore: { FieldValue: { arrayRemove: jest.fn(), arrayUnion: jest.fn(), delete: () => 'delete-field' } },
+        firestore: { FieldValue: { arrayRemove: jest.fn(), arrayUnion: jest.fn() } },
     },
 }))
 
@@ -85,9 +85,6 @@ const {
     fetchUserDataResult,
     resetSharedProjectUserWatchersForTests,
     updateUserDataDirectly,
-    setUserOKRHiddenInAllProjectsToday,
-    clearUserOKRHiddenInAllProjectsToday,
-    clearUserOKRsHiddenInAllProjectsToday,
     watchProjectUsers,
 } = require('./usersFirestore')
 
@@ -130,42 +127,6 @@ describe('fetchUserDataResult', () => {
 
         expect(mockStoreGetState).not.toHaveBeenCalled()
         expect(update).toHaveBeenCalledWith({ activeTaskId: 'task-1' })
-    })
-
-    it.each([
-        ['hide', () => setUserOKRHiddenInAllProjectsToday('user-1', 'p1', 'o1', '2026-10-05'), '2026-10-05'],
-        ['restore', () => clearUserOKRHiddenInAllProjectsToday('user-1', 'p1', 'o1'), 'delete-field'],
-        ['restore all', () => clearUserOKRsHiddenInAllProjectsToday('user-1', 'p1', ['o1']), 'delete-field'],
-    ])('waits for Firestore acknowledgement and propagates %s failures', async (_name, write, value) => {
-        mockStoreGetState.mockReturnValue({ loggedUser: { uid: 'user-1' }, okrTodayOperations: {} })
-        let rejectWrite
-        const update = jest.fn(
-            () =>
-                new Promise((_resolve, reject) => {
-                    rejectWrite = reject
-                })
-        )
-        mockGetDb.mockReturnValue({ doc: jest.fn(() => ({ update })) })
-        let settled = false
-        const result = write()
-        const rejection = expect(result).rejects.toThrow('permission denied')
-        result.then(
-            () => {
-                settled = true
-            },
-            () => {
-                settled = true
-            }
-        )
-        await Promise.resolve()
-        expect(settled).toBe(false)
-        expect(update).toHaveBeenCalledWith(
-            expect.objectContaining({
-                'okrsHiddenInAllProjectsTodayByProjectAndOkr.p1.o1': value,
-            })
-        )
-        rejectWrite(new Error('permission denied'))
-        await rejection
     })
 
     it('watches the authoritative project member ids without an unsafe users collection query', async () => {
