@@ -6,6 +6,7 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 
 import LastCommentArea from './LastCommentArea'
+import LastCommentText from './LastComment/LastCommentText'
 import {
     beginAssistantLineSend,
     markAssistantLineSendCreated,
@@ -80,9 +81,8 @@ jest.mock('../../UIComponents/Ghosts/ghostAnimation', () => ({
  *
  * `PendingAssistantCommentWrapper` owns the popover, which means `RichCommentModal`,
  * `AppPopover`, `redux/actions` and `createObjectMessage` — the whole graph this suite mocks
- * `LastComment` away to avoid. The CARD it renders is deliberately still the real one (it was kept
- * free of that graph for exactly this reason), so every assertion below about what the slot shows
- * is unchanged and still exercises real code. The popover half has its own suite,
+ * `LastComment` away to avoid. The CARD it renders is still the real one; only its shared text renderer is
+ * mocked here to keep the slot wiring isolated. LastCommentText.test.js covers the real renderer. The popover half has its own suite,
  * `LastComment/PendingAssistantCommentWrapper.test.js`.
  */
 let lastWrapperProps = null
@@ -223,9 +223,7 @@ describe('LastCommentArea pending send (AT-2504)', () => {
 
         expect(has(tree, 'assistant-pending-send')).toBe(true)
         expect(has(tree, 'assistant-last-comment-loading-skeleton')).toBe(false)
-        expect(tree.root.findByProps({ testID: 'assistant-pending-send-text' }).props.children).toBe(
-            'a message I just sent'
-        )
+        expect(tree.root.findByType(LastCommentText).props.commentText).toBe('a message I just sent')
         act(() => tree.unmount())
     })
 
@@ -367,4 +365,11 @@ describe('LastCommentArea pending send (AT-2504)', () => {
             act(() => tree.unmount())
         })
     })
+})
+
+// The slot wiring is covered here; real tag rendering lives in LastCommentText.test.js.
+jest.mock('./LastComment/LastCommentText', () => {
+    const React = require('react')
+    const { Text } = require('react-native')
+    return ({ commentText, testID }) => <Text testID={testID}>{commentText}</Text>
 })
