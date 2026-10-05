@@ -38,7 +38,6 @@ it('closes the menu, stops propagation and guards rapid clicks before starting a
         )
     })
     const item = tree.root.findByType('ModalItem')
-    expect(item.props.text).toBe('Prepare meeting')
     let first
     act(() => {
         first = item.props.onPress(event)

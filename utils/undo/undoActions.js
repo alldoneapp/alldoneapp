@@ -3,6 +3,7 @@ import firebase from 'firebase/compat/app'
 import store from '../../redux/store'
 import { isBrowserOffline } from '../connectionState'
 import { buildUndoGroupingKey } from './undoActionGrouping'
+import { clearProjectPostponeForUndo } from '../backends/Tasks/optimisticProjectPostpone'
 
 export const UNDO_ACTION_STATUS_APPLIED = 'applied'
 export const UNDO_ACTION_STATUS_UNDONE = 'undone'
@@ -121,5 +122,8 @@ export const reverseUndoAction = (actionId, direction) => {
         return Promise.reject(offlineError)
     }
     const callable = firebase.app().functions('europe-west1').httpsCallable('reverseUndoActionSecondGen')
-    return callable({ actionId, direction }).then(result => result?.data || result)
+    return callable({ actionId, direction }).then(result => {
+        clearProjectPostponeForUndo(actionId)
+        return result?.data || result
+    })
 }
