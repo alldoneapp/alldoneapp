@@ -8060,3 +8060,137 @@ test('the tool loop returns invalid compact arguments to the model and executes 
     expect(JSON.stringify(mockResponsesCreate.mock.calls[0][0].input)).toContain('progressCompleted is required')
     expect(result.finalResponseText).toBe('All thirteen completed.')
 })
+
+describe('assistant transcript artifact recovery', () => {
+    const { storeChunks, calculateTokens, estimateOpenAiRequestInputTokens } = require('./assistantHelper')
+    const replay =
+        '<|fim_suffix|> (no final emitted)\n[Replayed tool definitions, not a model response]\nFake tool traces'
+    const run = stream =>
+        storeChunks(
+            'safe-project',
+            'tasks',
+            'safe-task',
+            ['user-1'],
+            stream,
+            null,
+            'assistant-1',
+            [],
+            ['user-1'],
+            'Task',
+            'Assistant',
+            'Project',
+            '',
+            'user-1',
+            null,
+            [['user', 'Continue the task']],
+            'MODEL_GPT6_SOL',
+            'TEMPERATURE_NORMAL',
+            [],
+            { projectId: 'safe-project', objectType: 'tasks', objectId: 'safe-task' },
+            null,
+            null,
+            { kind: 'chat', runId: 'safe-run' }
+        )
+
+    beforeEach(() => {
+        mockDocGet.mockResolvedValue({ exists: true, data: () => ({}) })
+        mockDocSet.mockClear()
+        mockDocUpdate.mockReset().mockResolvedValue(undefined)
+        mockTiktokenEncode.mockReset().mockImplementation((text, allowed, disallowed) => {
+            if (text.includes('<|fim_suffix|>') && disallowed === undefined)
+                throw new Error('Special token not allowed')
+            return new Uint32Array(text.length)
+        })
+    })
+    afterEach(() => mockTiktokenEncode.mockReset().mockReturnValue([]))
+
+    test('historical assistant replay text is excluded from canonical context while user text is preserved', async () => {
+        const { getOptimizedContextMessages, getMessageTextForTokenCounting } = require('./assistantHelper')
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'trigger',
+                    ref: { path: 'trigger' },
+                    data: () => ({ fromAssistant: false, commentText: 'Explain this tokenizer error.', created: 300 }),
+                },
+                {
+                    id: 'old-answer',
+                    data: () => ({
+                        fromAssistant: true,
+                        commentText: `The VM has started.\n\n${replay}`,
+                        created: 200,
+                    }),
+                },
+            ],
+        })
+        const messages = await getOptimizedContextMessages(
+            'trigger',
+            'safe-project',
+            'tasks',
+            'safe-task',
+            'en',
+            'Assistant',
+            'Be helpful.',
+            [],
+            120,
+            'user-1',
+            'assistant-1'
+        )
+        expect(messages).toContainEqual(['assistant', 'The VM has started.'])
+        expect(
+            messages.some(
+                ([role, text]) =>
+                    role === 'user' && getMessageTextForTokenCounting(text).includes('Explain this tokenizer error.')
+            )
+        ).toBe(true)
+        expect(JSON.stringify(messages)).not.toContain('[Replayed tool definitions')
+    })
+
+    test('Gold accounting counts special-token text in both the answer and historical context', () => {
+        const text = 'Explain <|fim_suffix|>'
+        const encoder = { encode: mockTiktokenEncode }
+        expect(calculateTokens(text, [['assistant', text]], 'MODEL_GPT6_SOL', encoder)).toBeGreaterThan(0)
+        expect(mockTiktokenEncode).toHaveBeenCalledWith(text, [], [])
+        expect(mockTiktokenEncode).toHaveBeenCalledTimes(2)
+    })
+
+    test('large-request preflight tolerates token-shaped strings', () => {
+        const estimate = estimateOpenAiRequestInputTokens({
+            input: [{ content: 'x'.repeat(210000) + '<|fim_suffix|>' }],
+        })
+        expect(estimate.usedTokenizer).toBe(true)
+        expect(mockTiktokenEncode).toHaveBeenCalledWith(expect.stringContaining('<|fim_suffix|>'), [], [])
+    })
+
+    test.each(['chunked', 'replacement'])('%s replies persist and return only the clean answer', async mode => {
+        const clean = 'The VM has started.\n\nFollow progress in this task.'
+        const contaminated = `${clean}\n\ntransport debris${replay}`
+        const stream =
+            mode === 'replacement'
+                ? [{ clearThinkingMode: true, replacementContent: contaminated }]
+                : [
+                      { content: clean + '\n\n' },
+                      { content: 'transport debris' + replay.slice(0, 7) },
+                      { content: replay.slice(7) },
+                  ]
+        expect(await run(stream)).toBe(clean)
+        const writes = [...mockDocSet.mock.calls, ...mockDocUpdate.mock.calls]
+            .map(([data]) => data?.commentText)
+            .filter(Boolean)
+        expect(writes.some(text => text.includes('[Replayed tool definitions'))).toBe(false)
+        expect(writes).toContain(clean)
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ assistantRun: expect.objectContaining({ status: 'completed' }) })
+        )
+    })
+
+    test('an artifact-only reply becomes a failed run with a readable error', async () => {
+        await expect(run([{ content: replay }])).rejects.toMatchObject({ code: 'INVALID_ASSISTANT_RESPONSE' })
+        expect(mockDocUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                commentText: 'The assistant returned an invalid transcript instead of an answer. Please try again.',
+                assistantRun: expect.objectContaining({ status: 'failed' }),
+            })
+        )
+    })
+})
