@@ -9,7 +9,6 @@ import GoalTasksList from './GoalTasksList'
 import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import { orderCalendarTasksLast } from '../../../utils/CalendarTaskOrder'
-import CalendarSectionMoreButton from '../../UIComponents/FloatModals/PrepareMeetings/CalendarSectionMoreButton'
 import {
     getCalendarConnectedProjectIds,
     getCalendarProviderUrl,
@@ -38,7 +37,6 @@ export default function GoalOpenTasksCalendarSection({ projectId, calendarTasks,
                         <GoogleCalendar />
                         <Text style={localStyles.title}>{getCalendarSectionTitle(firstCalendarData)}</Text>
                     </TouchableOpacity>
-                    <CalendarSectionMoreButton projectId={projectId} tasks={calendarTasks} />
                     {syncProjectId && <ReloadCalendar projectId={syncProjectId} Promise={checkIfCalendarConnected} />}
                 </View>
             </View>

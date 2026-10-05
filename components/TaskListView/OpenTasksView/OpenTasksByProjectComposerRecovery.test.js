@@ -101,6 +101,17 @@ describe('selected project composer without published task dates (AT-2672)', () 
         expect(tree.root.findAllByType('UpcomingMilestoneRow')).toHaveLength(1)
     })
 
+    it.each(['self', 'other-user', 'anonymous', 'assistant'])(
+        'enables project postponement only on the logged-in user’s own planning board: %s',
+        async mode => {
+            if (mode === 'other-user') mockState.currentUser.uid = 'other-user'
+            if (mode === 'anonymous') mockState.loggedUser.isAnonymous = true
+            if (mode === 'assistant') mockState.currentUser.temperature = 0.7
+            await render()
+            expect(tree.root.findByType('ProjectHeader').props.allowProjectPostpone).toBe(mode === 'self')
+        }
+    )
+
     it('keeps an opened fallback editor mounted until typing finishes', async () => {
         await render()
         mockEditing = true

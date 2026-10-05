@@ -24,7 +24,6 @@ describe('AllProjectsLine task actions', () => {
 
         expect(tree.root.findAllByType('AddTaskTag')).toHaveLength(0)
         expect(tree.root.findAllByType('More')).toHaveLength(1)
-        expect(tree.root.findByType('More').props.projectIdOverride).toBeNull()
     })
 
     it('keeps the existing more action limited to the Open tab', () => {

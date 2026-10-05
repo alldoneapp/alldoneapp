@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { StyleSheet, View } from 'react-native'
+import React, { useState, useEffect, useRef } from 'react'
+import { StyleSheet, Text, View } from 'react-native'
 import v4 from 'uuid/v4'
 import moment from 'moment'
 
@@ -42,8 +42,11 @@ function DueDateModal({
     goalStartingDate,
     goal,
     animateGoalPostpone = false,
+    postponeProject,
 }) {
     const currentUser = useSelector(state => state.currentUser)
+    const [projectError, setProjectError] = useState('')
+    const projectApplying = useRef(false)
     const [parentGoal, setParentGoal] = useState(null)
     const [visibleCalendar, setVisibleCalendar] = useState(false)
     const [showGoalBasedOptions, setShowGoalBasedOptions] = useState(false)
@@ -88,13 +91,43 @@ function DueDateModal({
     const taskList = inParentGoal ? parentGoalTaskList : tasks
     const title = visibleCalendar
         ? translate('Pick date')
+        : postponeProject
+          ? translate('Project tasks reminder')
+          : inParentGoal
+            ? translate('Goal tasks reminder')
+            : translate('Select reminder')
+    const description = postponeProject
+        ? translate('Postpone your open project tasks due today or earlier')
         : inParentGoal
-          ? translate('Goal tasks reminder')
-          : translate('Select reminder')
-    const description = inParentGoal
-        ? translate('Select a date to postpone this goal and its tasks')
-        : `${translate('Select the date to postpone the')} ${translate(updateParentGoalReminderDate ? 'goal' : 'task')}`
+          ? translate('Select a date to postpone this goal and its tasks')
+          : `${translate('Select the date to postpone the')} ${translate(updateParentGoalReminderDate ? 'goal' : 'task')}`
     const showTabs = !updateParentGoalReminderDate && isObservedTask && !visibleCalendar
+
+    const runProjectPostpone = (date, mode = 'date') => {
+        if (projectApplying.current) return Promise.resolve(null)
+        projectApplying.current = true
+        setProjectError('')
+        return Promise.resolve()
+            .then(() => postponeProject(date, mode))
+            .then(result => {
+                closePopover()
+                return result
+            })
+            .catch(error => {
+                console.error('[DueDateModal] Error postponing project tasks:', error)
+                setProjectError(
+                    translate(
+                        error.code?.endsWith('failed-precondition')
+                            ? 'Too many tasks to postpone together (maximum 450)'
+                            : 'Could not postpone project tasks. Please try again.'
+                    )
+                )
+                return null
+            })
+            .finally(() => {
+                projectApplying.current = false
+            })
+    }
 
     const runGoalPostpone = (targetDate, write) => {
         const operation =
@@ -110,6 +143,7 @@ function DueDateModal({
     }
 
     const wrappedSaveDueDate = (date, isObserved) => {
+        if (postponeProject) return runProjectPostpone(date)
         const write = async () => {
             if (multipleTasks && tasks && tasks.length > 0) {
                 if (!saveDueDateBeforeSaveTask) {
@@ -141,6 +175,7 @@ function DueDateModal({
     }
 
     const wrappedSetToBacklog = isObserved => {
+        if (postponeProject) return runProjectPostpone(BACKLOG_DATE_NUMERIC)
         const write = async () => {
             if (multipleTasks && tasks && tasks.length > 0) {
                 if (!setToBacklogBeforeSaveTask) {
@@ -191,13 +226,21 @@ function DueDateModal({
                     description={description}
                     showTabs={showTabs}
                 />
+                {!!projectError && (
+                    <Text
+                        accessibilityRole="alert"
+                        style={{ color: colors.Text03, marginHorizontal: 16, marginBottom: 12 }}
+                    >
+                        {projectError}
+                    </Text>
+                )}
                 {visibleCalendar ? (
                     <View>
                         <DueDateCalendarModal
                             inParentGoal={inParentGoal}
                             task={task}
                             projectId={projectId}
-                            closePopover={delayClosePopover}
+                            closePopover={postponeProject ? () => {} : delayClosePopover}
                             inEditTask={inEditTask}
                             saveDueDateBeforeSaveTask={wrappedSaveDueDate}
                             multipleTasks={multipleTasks}
@@ -235,7 +278,7 @@ function DueDateModal({
                             task={task}
                             projectId={projectId}
                             closePopover={closePopover}
-                            delayClosePopover={delayClosePopover}
+                            delayClosePopover={postponeProject ? () => {} : delayClosePopover}
                             saveDueDateBeforeSaveTask={wrappedSaveDueDate}
                             multipleTasks={multipleTasks}
                             tasks={taskList}
@@ -253,7 +296,7 @@ function DueDateModal({
                             task={task}
                             projectId={projectId}
                             closePopover={closePopover}
-                            delayClosePopover={delayClosePopover}
+                            delayClosePopover={postponeProject ? () => {} : delayClosePopover}
                             saveDueDateBeforeSaveTask={wrappedSaveDueDate}
                             multipleTasks={multipleTasks}
                             tasks={taskList}
@@ -263,6 +306,7 @@ function DueDateModal({
                             showAutoPostpone={true}
                             goal={goal}
                             animateGoalPostpone={animateGoalPostpone}
+                            postponeProject={postponeProject ? () => runProjectPostpone(undefined, 'auto') : undefined}
                         />
                     </View>
                 )}

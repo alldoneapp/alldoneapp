@@ -45,8 +45,6 @@ jest.mock('./SyncCalendarModalItem', () => () => null)
 jest.mock('./DateBarOrganizeModalItem', () => () => null)
 jest.mock('../../../../TaskListView/OKRs/OKRModal', () => () => null)
 jest.mock('../../../../TaskListView/AutoPostpone/AutoPostponeTasksModal', () => () => null)
-jest.mock('./PrioritizeTasksModalItem', () => props => <span {...props}>Prioritize tasks</span>)
-jest.mock('../../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal', () => 'GoldModal')
 jest.mock('../../../../../utils/backends/openTasks', () => ({
     DATE_TASK_INDEX: 0,
     TODAY_DATE: '20260724',
@@ -113,8 +111,7 @@ describe('TaskHeaderMoreButton project navigation', () => {
 
         expect(items[0].props.text).toBe('Open Project')
         expect(items[0].props.shortcut).toBe('1')
-        expect(tree.root.findByType('span').props).toMatchObject({ projectId, shortcut: '2' })
-        expect(items.find(node => node.props.text === 'Auto-postpone tasks').props.shortcut).toBe('3')
+        expect(items.find(node => node.props.text === 'Auto-postpone tasks').props.shortcut).toBe('2')
         expect(tree.root.findAllByType('MenuLine')).toHaveLength(1)
 
         items[0].props.onPress()
@@ -135,32 +132,14 @@ describe('TaskHeaderMoreButton project navigation', () => {
         expect(NavigationService.navigate).toHaveBeenCalledWith('ProjectDetailedView', { projectIndex: 7 })
     })
 
-    it('offers prioritization across all projects without an Open Project item', () => {
+    it('keeps the generic All Projects menu unchanged', () => {
         mockState = createState({}, -1)
         const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
         const items = findItems(tree)
 
         expect(items.map(node => node.props.text)).not.toContain('Open Project')
-        expect(tree.root.findByType('span').props).toMatchObject({ projectId: null, shortcut: '1' })
-        expect(items.find(node => node.props.text === 'Auto-postpone tasks').props.shortcut).toBe('2')
+        expect(items.find(node => node.props.text === 'Auto-postpone tasks').props.shortcut).toBe('1')
         expect(tree.root.findAllByType('MenuLine')).toHaveLength(0)
-    })
-
-    it('keeps the All Projects header scope when a project remains selected in the store', () => {
-        mockState = createState()
-        const tree = renderer.create(<TaskHeaderMoreButton projectIdOverride={null} userId="user-1" />)
-        expect(tree.root.findByType('span').props).toMatchObject({ projectId: null, shortcut: '1' })
-        expect(findItems(tree).map(node => node.props.text)).not.toContain('Open Project')
-    })
-
-    it('reuses the gold modal and clears it when closing the menu', () => {
-        mockState = createState()
-        const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
-        renderer.act(() => tree.root.findByType('span').props.onRunOutOfGold())
-        const wrapper = tree.root.find(node => typeof node.props.onCloseModal === 'function')
-        expect(wrapper.props.customModal.type).toBe('GoldModal')
-        renderer.act(() => wrapper.props.onCloseModal())
-        expect(wrapper.props.customModal).toBeNull()
     })
 })
 

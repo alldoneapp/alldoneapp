@@ -35,6 +35,7 @@ export default function AutoPostpone({
     inParentGoal,
     saveDueDateBeforeSaveTask,
     animateGoalPostpone = false,
+    postponeProject,
 }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -44,6 +45,13 @@ export default function AutoPostpone({
     const autoPostpone = async () => {
         if (applying) return
         setApplying(true)
+        if (postponeProject) {
+            try {
+                return await postponeProject()
+            } finally {
+                setApplying(false)
+            }
+        }
         const isGoalAutoPostpone = goal && updateParentGoalReminderDate
 
         if (!isGoalAutoPostpone && bulkTasks) {
@@ -140,11 +148,13 @@ export default function AutoPostpone({
     const singleTaskToPostpone = bulkTasks ? null : tasks && tasks.length === 1 ? tasks[0] : task
 
     // Calculate date based on goal or task
-    const date = goal
-        ? getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
-        : bulkTasks
-          ? null
-          : getDateToMoveTaskInAutoPostpone(singleTaskToPostpone?.timesPostponed, isObservedTabActive)
+    const date = postponeProject
+        ? null
+        : goal
+          ? getDateToMoveGoalInAutoPostpone(goal.timesPostponed)
+          : bulkTasks
+            ? null
+            : getDateToMoveTaskInAutoPostpone(singleTaskToPostpone?.timesPostponed, isObservedTabActive)
 
     return (
         <TouchableOpacity

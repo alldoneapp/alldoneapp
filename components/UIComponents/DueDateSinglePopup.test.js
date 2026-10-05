@@ -44,6 +44,10 @@ jest.mock('../../utils/backends/Tasks/tasksFirestore', () => ({
     setTaskDueDate: jest.fn(),
     setTaskToBacklog: jest.fn(),
 }))
+const mockPostponeProjectTasks = jest.fn()
+jest.mock('../../utils/backends/Tasks/projectPostpone', () => ({
+    postponeProjectTasks: (...args) => mockPostponeProjectTasks(...args),
+}))
 const mockPostponeTaskWithMotion = jest.fn((context, write) => write())
 jest.mock('../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion', () => ({
     postponeTaskWithMotion: (...args) => mockPostponeTaskWithMotion(...args),
@@ -94,6 +98,19 @@ describe('DueDateSinglePopup positioning', () => {
 
         tree.unmount()
     })
+})
+
+it('opens a project picker without a representative task and delegates dates/auto to the cloud', () => {
+    mockState.showSwipeDueDatePopup.data = { projectId: 'p1', isProjectPostpone: true }
+    const tree = renderer.create(<DueDateSinglePopup />)
+    const modal = tree.root.findByType('DueDateModal')
+    modal.props.postponeProject(123, 'date')
+    modal.props.postponeProject(undefined, 'auto')
+    expect(mockPostponeProjectTasks).toHaveBeenCalledWith('p1', 123, 'date')
+    expect(mockPostponeProjectTasks).toHaveBeenCalledWith('p1', undefined, 'auto')
+    expect(modal.props.task.id).toBeUndefined()
+    tree.unmount()
+    mockState.showSwipeDueDatePopup.data = { projectId: 'project-1', task: { id: 'task-1' } }
 })
 
 describe('DueDateSinglePopup task postpone handoff (AT-2541)', () => {
