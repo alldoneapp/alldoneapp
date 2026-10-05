@@ -64,7 +64,7 @@ export default function ProjectPostponeSwipe({ projectId, children }) {
                     style={styles.pending}
                     pointerEvents="none"
                     accessibilityRole="status"
-                    accessibilityLabel={translate('Postpone')}
+                    accessibilityLabel={translate('Saving')}
                 >
                     <ActivityIndicator size="small" />
                 </View>

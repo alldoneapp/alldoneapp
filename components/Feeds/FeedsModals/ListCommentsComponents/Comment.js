@@ -1,5 +1,6 @@
 import React from 'react'
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import moment from 'moment'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -30,7 +31,6 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import { localizedMoment } from '../../../../i18n/localizedMoment'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
@@ -403,7 +403,7 @@ export default function Comment({
                     </Text>
                     <Text style={[localStyles.commentSubHeader, { marginHorizontal: 4 }]}>•</Text>
                     <Text style={localStyles.commentSubHeader} numberOfLines={1}>
-                        {localizedMoment(date).fromNow()}
+                        {moment(date).fromNow()}
                     </Text>
                     {linkedEmail && linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
                 </View>
