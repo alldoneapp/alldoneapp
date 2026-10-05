@@ -12,7 +12,6 @@ import ReloadCalendar from '../../UIComponents/ReloadCalendar'
 import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import SwipeableGeneralTasksHeader from './SwipeableGeneralTasksHeader'
 import { buildChronologicalCalendarRuns } from './calendarSectionGrouping'
-import CalendarSectionMoreButton from '../../UIComponents/FloatModals/PrepareMeetings/CalendarSectionMoreButton'
 import {
     getCalendarConnectedProjectIds,
     getCalendarProviderUrl,
@@ -43,7 +42,6 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     const doneMilestones = useSelector(state => state.doneMilestonesByProjectInTasks[projectId])
     const goalsById = useSelector(state => state.goalsByProjectInTasks[projectId])
     const currentUserId = useSelector(state => state.currentUser.uid)
-    const displayedProjectSections = useSelector(state => state.filteredOpenTasksStore?.[instanceKey])
 
     const goalsPositionId = sortGoalTasksGorups(
         projectId,
@@ -64,9 +62,6 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
     const showGeneralTasksHeader = calendarRuns.some(run => run.goalId !== NOT_PARENT_GOAL_INDEX)
 
     const allCalendarTasks = calendarEvents.flatMap(goalTasksData => goalTasksData[1])
-    const displayedProjectCalendarTasks = displayedProjectSections?.flatMap(day =>
-        (day[CALENDAR_TASK_INDEX] || []).flatMap(([, tasks]) => tasks)
-    )
     const firstCalendarData = allCalendarTasks[0]?.calendarData
     const connectedProjectIds = getCalendarConnectedProjectIds(allCalendarTasks, apisConnected, projectId)
 
@@ -82,10 +77,6 @@ export default function CalendarSection({ projectId, calendarEvents, dateIndex, 
                         <GoogleCalendar />
                         <Text style={localStyles.title}>{getCalendarSectionTitle(firstCalendarData)}</Text>
                     </TouchableOpacity>
-                    <CalendarSectionMoreButton
-                        projectId={projectId}
-                        tasks={displayedProjectCalendarTasks || allCalendarTasks}
-                    />
                     {connectedProjectIds.length > 0 && (
                         <ReloadCalendar projectId={connectedProjectIds} Promise={syncAllCalendars} />
                     )}

@@ -201,6 +201,7 @@ function OpenTasksByProject({
                             showTaskMore={!isAssistant}
                             showRootSectionNavigation={inSelectedProject}
                             showEmailLabels={!isAssistant}
+                            allowProjectPostpone={!isAnonymous && currentUserId === loggedUser.uid && !isAssistant}
                         />
                     )}
                     <ProjectSectionBody style={assistantProfileMode && { paddingHorizontal: 0, paddingBottom: 0 }}>
