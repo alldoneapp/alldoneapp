@@ -1,6 +1,6 @@
 import { useTaskHierarchy } from '../TaskHierarchy'
 import React, { useRef, useState } from 'react'
-import { Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Animated, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
@@ -28,6 +28,7 @@ import {
     isOkrPrivate,
 } from './okrHelper'
 import useOkrRevenueValue from './useOkrRevenueValue'
+import { getOkrTodayOperation } from '../../../redux/okrTodayVisibility'
 
 const SEGMENTS = [0, 1, 2, 3, 4]
 const CELEBRATION_DOTS = [
@@ -56,6 +57,14 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
     const mobile = useSelector(state => state.smallScreenNavigation)
     const loggedUser = useSelector(state => state.loggedUser)
     const loggedUserId = loggedUser.uid
+    const todayKey = getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
+    const todayOperation = useSelector(state =>
+        getOkrTodayOperation(state.okrTodayOperations, loggedUserId, projectId, okr.id)
+    )
+    const savingToday = todayOperation?.status === 'pending'
+    const todayFailed =
+        todayOperation?.status === 'error' &&
+        (todayOperation.targetValue === todayKey || todayOperation.previousValue === todayKey)
     const revenueOkr = isRevenueOkr(okr)
     const privateOkr = isOkrPrivate(okr)
     const revenueValue = useOkrRevenueValue({
@@ -104,17 +113,19 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
 
     const hideInAllProjectsToday = event => {
         event?.stopPropagation?.()
+        if (!loggedUserId || savingToday) return
         setUserOKRHiddenInAllProjectsToday(
             loggedUserId,
             projectId,
             okr.id,
             getOkrAllProjectsTodayKey(undefined, getOkrUserTimezone(loggedUser))
-        )
+        ).catch(() => {}) // The operation error is displayed from Redux, even after navigation.
     }
 
     const showInAllProjectsToday = event => {
         event?.stopPropagation?.()
-        clearUserOKRHiddenInAllProjectsToday(loggedUserId, projectId, okr.id)
+        if (!loggedUserId || savingToday) return
+        clearUserOKRHiddenInAllProjectsToday(loggedUserId, projectId, okr.id).catch(() => {})
     }
 
     const showAllProjectsVisibilityAction = inAllProjects || !hiddenInAllProjectsToday
@@ -145,22 +156,39 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
                             style={[
                                 localStyles.allProjectsDoneButton,
                                 hiddenInAllProjectsToday && localStyles.allProjectsRestoreButton,
+                                savingToday && localStyles.disabled,
                             ]}
                             onPress={hiddenInAllProjectsToday ? showInAllProjectsToday : hideInAllProjectsToday}
-                            disabled={!loggedUserId}
+                            disabled={!loggedUserId || savingToday}
+                            accessibilityState={{ disabled: !loggedUserId || savingToday, busy: savingToday }}
                             accessibilityLabel={translate(
                                 hiddenInAllProjectsToday
                                     ? 'Show OKR in All Projects for today'
                                     : 'Hide OKR in All Projects for today'
                             )}
                         >
-                            <Icon
-                                name={hiddenInAllProjectsToday ? 'rotate-ccw' : 'check'}
-                                size={12}
-                                color={colors.Text03}
-                            />
-                            <Text style={[styles.caption1, localStyles.allProjectsDoneText]}>
-                                {translate(hiddenInAllProjectsToday ? 'Show again in All Projects' : 'Done for today')}
+                            {savingToday ? (
+                                <ActivityIndicator size="small" color={colors.Text03} />
+                            ) : (
+                                <Icon
+                                    name={hiddenInAllProjectsToday ? 'rotate-ccw' : 'check'}
+                                    size={12}
+                                    color={colors.Text03}
+                                />
+                            )}
+                            <Text
+                                style={[styles.caption1, localStyles.allProjectsDoneText]}
+                                accessibilityLiveRegion="polite"
+                            >
+                                {translate(
+                                    savingToday
+                                        ? 'OKR saving today visibility'
+                                        : todayFailed
+                                          ? 'Retry'
+                                          : hiddenInAllProjectsToday
+                                            ? 'Show again in All Projects'
+                                            : 'Done for today'
+                                )}
                             </Text>
                         </TouchableOpacity>
                     )}
@@ -168,6 +196,11 @@ export default function OKRItem({ projectId, okr, canUpdate, inAllProjects, hidd
                 <Text style={[styles.caption1, localStyles.meta]} numberOfLines={mobile ? 2 : 1}>
                     {metaText}
                 </Text>
+                {todayFailed && (
+                    <Text style={[styles.caption1, { color: colors.Red200 }]} accessibilityRole="alert">
+                        {translate('OKR today visibility failed')}
+                    </Text>
+                )}
             </View>
             <View style={[localStyles.progressArea, mobile && localStyles.progressAreaMobile]}>
                 {!revenueOkr && (
