@@ -1,5 +1,6 @@
 import { subscribeWithLoading } from '../../redux/loadingOperation'
 import { persistNewDayAcknowledgement } from './newDayAcknowledgement'
+import { persistOkrTodayVisibility } from './okrTodayVisibility'
 import firebase from 'firebase/compat/app'
 import { cloneDeep } from 'lodash'
 import moment from 'moment'
@@ -1378,18 +1379,26 @@ export async function setUserOKRPrivacyMode(userId, okrPrivacyMode) {
 
 export async function setUserOKRHiddenInAllProjectsToday(userId, projectId, okrId, todayKey) {
     if (!userId || !projectId || !okrId || !todayKey) return
-    updateUserData(userId, { [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]: todayKey }, null)
+    return persistOkrTodayVisibility(userId, projectId, [okrId], todayKey, () =>
+        updateUserData(
+            userId,
+            { [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]: todayKey },
+            null
+        )
+    )
 }
 
 export async function clearUserOKRHiddenInAllProjectsToday(userId, projectId, okrId) {
     if (!userId || !projectId || !okrId) return
-    updateUserData(
-        userId,
-        {
-            [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]:
-                firebase.firestore.FieldValue.delete(),
-        },
-        null
+    return persistOkrTodayVisibility(userId, projectId, [okrId], null, () =>
+        updateUserData(
+            userId,
+            {
+                [`okrsHiddenInAllProjectsTodayByProjectAndOkr.${projectId}.${okrId}`]:
+                    firebase.firestore.FieldValue.delete(),
+            },
+            null
+        )
     )
 }
 
@@ -1400,7 +1409,7 @@ export async function clearUserOKRsHiddenInAllProjectsToday(userId, projectId, o
             firebase.firestore.FieldValue.delete()
         return updates
     }, {})
-    updateUserData(userId, updates, null)
+    return persistOkrTodayVisibility(userId, projectId, okrIds, null, () => updateUserData(userId, updates, null))
 }
 
 export async function setUserEmailLineHiddenToday(userId, projectId, todayKey) {

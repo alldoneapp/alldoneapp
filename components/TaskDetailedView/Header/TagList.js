@@ -1,5 +1,6 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { View } from 'react-native'
+import DetailViewHeaderTags from '../../UIComponents/DetailViewHeaderTags'
 import TaskRecurrence from '../../Tags/TaskRecurrence'
 import TaskEstimation from '../../Tags/TaskEstimation'
 import { OPEN_STEP, RECURRENCE_NEVER, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../TaskListView/Utils/TasksHelper'
@@ -34,103 +35,77 @@ export default function TagList({ projectId, task, assistantId, setAssistantId, 
     const isAssistant = task.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
 
     return (
-        <View style={localStyles.container}>
-            <View style={[localStyles.tagList, (mobile || tablet) && localStyles.tagListCompact]}>
-                <View style={{ marginRight: 12 }}>
-                    <ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} />
-                </View>
-                {task.humanReadableId && (
-                    <View style={{ marginRight: 12 }}>
-                        <TaskIdTag
-                            taskId={task.id}
-                            projectId={projectId}
-                            humanReadableId={task.humanReadableId}
-                            disabled={!accessGranted}
-                            isMobile={isMobile}
-                        />
-                    </View>
-                )}
-                <View style={{ marginRight: 12 }}>
-                    <PrivacyTag
+        <DetailViewHeaderTags
+            projectTag={<ProjectTag project={project} disabled={!accessGranted} isMobile={isMobile} truncate />}
+            privacyTag={
+                <PrivacyTag
+                    projectId={projectId}
+                    object={task}
+                    objectType={FEED_TASK_OBJECT_TYPE}
+                    disabled={!accessGranted || !loggedUserCanUpdateObject || isAssistant}
+                    isMobile={isMobile}
+                />
+            }
+            actions={
+                <>
+                    <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
+                    {accessGranted && (
+                        <>
+                            <DvSearchButton style={{ top: -5 }} />
+                            <DvBotButton
+                                style={{ top: -5 }}
+                                navItem={DV_TAB_TASK_CHAT}
+                                projectId={projectId}
+                                assistantId={assistantId}
+                                setAssistantId={setAssistantId}
+                                objectId={task.id}
+                                showThreadModelBadge={true}
+                                objectType={FEED_TASK_OBJECT_TYPE}
+                                parentObject={task}
+                                updateObjectState={updateObjectState}
+                                resolveProjectAssistant={true}
+                            />
+                        </>
+                    )}
+                    <OpenInNewWindowButton style={{ top: -5 }} />
+                </>
+            }
+        >
+            {task.humanReadableId && (
+                <View>
+                    <TaskIdTag
+                        taskId={task.id}
                         projectId={projectId}
-                        object={task}
-                        objectType={FEED_TASK_OBJECT_TYPE}
-                        disabled={!accessGranted || !loggedUserCanUpdateObject || isAssistant}
+                        humanReadableId={task.humanReadableId}
+                        disabled={!accessGranted}
                         isMobile={isMobile}
                     />
                 </View>
-                {task.recurrence !== RECURRENCE_NEVER ? (
-                    <View style={{ marginRight: 12 }}>
-                        <TaskRecurrence
-                            task={task}
-                            projectId={projectId}
-                            disabled={!accessGranted || !loggedUserCanUpdateObject}
-                            isMobile={isMobile}
-                        />
-                    </View>
-                ) : null}
-                {task.estimations[OPEN_STEP] > 0 && (
-                    <View style={{ marginRight: 12 }}>
-                        <TaskEstimation
-                            projectId={projectId}
-                            task={task}
-                            currentEstimation={task.estimations[OPEN_STEP]}
-                            stepId={OPEN_STEP}
-                            disabled={
-                                !accessGranted || !loggedUserCanUpdateObject || task.userIds.length > 1 || task.inDone
-                            }
-                            isMobile={isMobile}
-                        />
-                    </View>
-                )}
-            </View>
-
-            <View style={localStyles.actions}>
-                <CopyLinkButton style={{ top: -5, marginRight: 8 }} />
-                {accessGranted && (
-                    <>
-                        <DvSearchButton style={{ top: -5 }} />
-                        <DvBotButton
-                            style={{ top: -5 }}
-                            navItem={DV_TAB_TASK_CHAT}
-                            projectId={projectId}
-                            assistantId={assistantId}
-                            setAssistantId={setAssistantId}
-                            objectId={task.id}
-                            showThreadModelBadge={true}
-                            objectType={FEED_TASK_OBJECT_TYPE}
-                            parentObject={task}
-                            updateObjectState={updateObjectState}
-                            resolveProjectAssistant={true}
-                        />
-                    </>
-                )}
-                <OpenInNewWindowButton style={{ top: -5 }} />
-            </View>
-        </View>
+            )}
+            {task.recurrence !== RECURRENCE_NEVER ? (
+                <View>
+                    <TaskRecurrence
+                        task={task}
+                        projectId={projectId}
+                        disabled={!accessGranted || !loggedUserCanUpdateObject}
+                        isMobile={isMobile}
+                    />
+                </View>
+            ) : null}
+            {task.estimations[OPEN_STEP] > 0 && (
+                <View>
+                    <TaskEstimation
+                        projectId={projectId}
+                        task={task}
+                        currentEstimation={task.estimations[OPEN_STEP]}
+                        stepId={OPEN_STEP}
+                        disabled={
+                            !accessGranted || !loggedUserCanUpdateObject || task.userIds.length > 1 || task.inDone
+                        }
+                        isMobile={isMobile}
+                    />
+                </View>
+            )}
+        </DetailViewHeaderTags>
     )
 }
-
-const localStyles = StyleSheet.create({
-    container: {
-        flex: 1,
-        flexDirection: 'row',
-        minWidth: 0,
-        alignItems: 'flex-start',
-    },
-    tagList: {
-        flex: 1,
-        flexGrow: 1,
-        flexShrink: 1,
-        flexDirection: 'row',
-        minWidth: 0,
-    },
-    tagListCompact: {
-        flexWrap: 'wrap',
-    },
-    actions: {
-        flexDirection: 'row',
-        flexShrink: 0,
-        marginLeft: 8,
-    },
-})
