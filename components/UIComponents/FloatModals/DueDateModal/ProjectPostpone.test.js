@@ -42,7 +42,7 @@ it.each([
     ['backlog', Number.MAX_SAFE_INTEGER],
     ['auto', undefined],
     ['calendar', 54321],
-])('closes %s immediately while the project operation is pending', async (choice, date) => {
+])('sends %s through one project operation and closes only after success', async (choice, date) => {
     let resolve
     const postpone = jest.fn(
         () =>
@@ -67,7 +67,7 @@ it.each([
         })
     }
     expect(postpone).toHaveBeenCalledWith(date, choice === 'auto' ? 'auto' : 'date')
-    expect(close).toHaveBeenCalledTimes(1)
+    expect(close).not.toHaveBeenCalled()
     await act(async () => {
         resolve({ updatedTaskCount: 2 })
         await pending
@@ -76,9 +76,8 @@ it.each([
     tree.unmount()
 })
 
-it('reports failure after unmount and ignores repeated choices', async () => {
+it('keeps a failed operation visible with a retryable error and prevents concurrent requests', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-    const errorAlert = jest.spyOn(window, 'alert').mockImplementation(() => {})
     let reject
     const postpone = jest
         .fn()
@@ -99,31 +98,17 @@ it('reports failure after unmount and ignores repeated choices', async () => {
         await tree.root.findByType('Dates').props.saveDueDateBeforeSaveTask(999, false)
     })
     expect(postpone).toHaveBeenCalledTimes(1)
-    expect(close).toHaveBeenCalledTimes(1)
-    tree.unmount()
     await act(async () => {
         reject(Object.assign(new Error('too many'), { code: 'functions/failed-precondition' }))
         await pending
     })
-    expect(errorAlert).toHaveBeenCalledWith('Too many tasks to postpone together (maximum 450)')
-    expect(close).toHaveBeenCalledTimes(1)
-    errorAlert.mockRestore()
-    consoleError.mockRestore()
-})
-
-it('handles a synchronous failure after closing the picker', async () => {
-    const errorAlert = jest.spyOn(window, 'alert').mockImplementation(() => {})
-    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-    const close = jest.fn()
-    const tree = mount(() => {
-        throw new Error('offline')
-    }, close)
+    expect(close).not.toHaveBeenCalled()
+    expect(tree.root.findAllByProps({ accessibilityRole: 'alert' })[0].props.children).toMatch('maximum 450')
     await act(async () => {
         await tree.root.findByType('Dates').props.saveDueDateBeforeSaveTask(12345, false)
     })
+    expect(postpone).toHaveBeenCalledTimes(2)
     expect(close).toHaveBeenCalledTimes(1)
-    expect(errorAlert).toHaveBeenCalledWith('Could not postpone project tasks. Please try again.')
     tree.unmount()
-    errorAlert.mockRestore()
     consoleError.mockRestore()
 })

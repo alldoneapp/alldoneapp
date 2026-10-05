@@ -3,7 +3,6 @@
  */
 
 import React from 'react'
-import { beginProjectPostpone, clearProjectPostpone } from '../../../utils/backends/Tasks/optimisticProjectPostpone'
 import renderer from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -194,36 +193,5 @@ describe('SubTasksView component', () => {
 
             expect(dispatch).not.toHaveBeenCalled()
         })
-    })
-})
-
-describe('project postpone preview for subtasks', () => {
-    it('removes own overdue subtasks immediately, preserves foreign/future subtasks and restores on rollback', () => {
-        useDispatch.mockReturnValue(dispatch)
-        store.getState.mockReturnValue({ activeEditMode: false })
-        const own = { id: 'own', currentReviewerId: userId, inDone: false, dueDate: 1 }
-        const others = [
-            { ...own, id: 'foreign', currentReviewerId: 'u2' },
-            { ...own, id: 'future', dueDate: Date.now() + 86400000 * 2 },
-        ]
-        const tree = renderSubTasks(createState(), { subtaskList: [own, ...others] })
-        renderer.act(() =>
-            beginProjectPostpone({
-                projectId,
-                userId,
-                requestId: 'subtasks',
-                date: Number.MAX_SAFE_INTEGER,
-                mode: 'date',
-                tasks: [own, ...others],
-            })
-        )
-        expect(tree.root.findAllByType('TaskPresentation').map(row => row.props.task.id)).toEqual(['foreign', 'future'])
-        renderer.act(() => clearProjectPostpone(projectId, userId, 'subtasks'))
-        expect(tree.root.findAllByType('TaskPresentation').map(row => row.props.task.id)).toEqual([
-            'own',
-            'foreign',
-            'future',
-        ])
-        renderer.act(() => tree.unmount())
     })
 })

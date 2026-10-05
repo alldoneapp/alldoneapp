@@ -17,8 +17,6 @@ import { useIsUserEditing } from '../../../utils/editingGuard'
 import { holdWhileEditing } from './focusSectionPin'
 import { holdTaskOrder } from './taskPlacementHold'
 import { taskPresentationLayout } from '../TaskItem/TaskPresentation/TaskPresentationLayout'
-import useProjectPostponePreview from '../../../hooks/useProjectPostponePreview'
-import { projectTaskPreview } from '../../../utils/backends/Tasks/optimisticProjectPostpone'
 
 export default function TasksList({
     projectId,
@@ -41,19 +39,6 @@ export default function TasksList({
         state => state.filteredOpenTasksStore?.[instanceKey]?.[dateIndex]?.[DATE_TASK_INDEX]
     )
     const subtaskByTask = subtaskByTaskStore ? subtaskByTaskStore : {}
-    const postponeEntry = useProjectPostponePreview(projectId)
-    const displayedTasks =
-        !postponeEntry || isObservedTask || isToReviewTask || isSuggested
-            ? taskList
-            : taskList.flatMap(task => {
-                  const preview = projectTaskPreview(task, postponeEntry)
-                  // Keep a mixed family mounted: postponing a parent must not hide somebody else's
-                  // or a future subtask. ParentTaskContainer hides just the parent's own row there.
-                  const hasUnchangedChild = (subtaskByTask[task.id] || []).some(
-                      child => !projectTaskPreview(child, postponeEntry).hidden
-                  )
-                  return preview.hidden && !hasUnchangedChild ? [] : [preview.task]
-              })
     // Get the optimistic focus task ID for immediate UI update before Firestore confirms
     const optimisticFocusTaskId = useSelector(state => state.optimisticFocusTaskId)
     const optimisticFocusTaskProjectId = useSelector(state => state.optimisticFocusTaskProjectId)
@@ -89,8 +74,8 @@ export default function TasksList({
     const shouldSortByPriority = priorityTaskListIndexes.includes(taskListIndex)
     const sortedTaskList = holdTaskOrder(
         shouldSortByPriority
-            ? sortTasksByPriority(displayedTasks, isActiveOrganizeMode ? null : effectiveFocusTaskId)
-            : [...displayedTasks],
+            ? sortTasksByPriority(taskList, isActiveOrganizeMode ? null : effectiveFocusTaskId)
+            : [...taskList],
         isUserEditing,
         heldTaskOrderRef
     )
