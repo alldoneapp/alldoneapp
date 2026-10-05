@@ -2,6 +2,7 @@ import React from 'react'
 import { render, act } from '@testing-library/react'
 import * as Y from 'yjs'
 import NotesEditorView, { exportRef } from './NotesEditorView'
+import { installAppResumeListener } from '../../../../utils/appResume'
 
 const mockToolbar = jest.fn(() => null)
 const mockSave = jest.fn(() => Promise.resolve(true))
@@ -121,8 +122,17 @@ const props = {
 }
 let resolveDownload
 let originalBytes
+let stopAppResumeListener
+let visibilityDescriptor
 beforeEach(() => {
     jest.useFakeTimers()
+    visibilityDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    stopAppResumeListener = installAppResumeListener({
+        evaluateConnection: jest.fn(),
+        runIntegrityCheck: jest.fn(),
+        updateServiceWorker: jest.fn(),
+    })
     mockToolbar.mockClear()
     mockSave.mockClear()
     const doc = new Y.Doc()
@@ -141,6 +151,9 @@ beforeEach(() => {
     Range.prototype.getClientRects = () => []
 })
 afterEach(() => {
+    stopAppResumeListener()
+    if (visibilityDescriptor) Object.defineProperty(document, 'visibilityState', visibilityDescriptor)
+    else delete document.visibilityState
     jest.useRealTimers()
 })
 
@@ -200,30 +213,66 @@ it('captures edits during an in-flight save before close and uploads them after 
     expect(saved.getText('quill').toString()).toContain('Last edit Cached Original')
     saved.destroy()
 })
-it('queues the final metadata immediately on page hide during an upload, while keeping the editor alive', async () => {
-    let releaseUpload
-    mockSave
-        .mockImplementationOnce(
-            () =>
-                new Promise(resolve => {
-                    releaseUpload = resolve
-                })
-        )
-        .mockResolvedValue(true)
-    let view
-    await act(async () => {
-        view = render(<NotesEditorView {...props} />)
-    })
-    await act(async () => {
-        resolveDownload(originalBytes)
-    })
-    act(() => exportRef.getEditor().insertText(0, 'Hidden edit ', 'user'))
-    act(() => window.dispatchEvent(new Event('pagehide')))
-    expect(mockSave).toHaveBeenCalledTimes(2)
-    expect(mockSave.mock.calls[1][3]).toContain('Hidden edit')
-    expect(exportRef.getEditor().getText()).toContain('Hidden edit')
-    await act(async () => {
-        releaseUpload(true)
-    })
-    view.unmount()
-})
+it.each(['visibilitychange', 'freeze', 'pagehide', 'beforeunload'])(
+    'queues final metadata immediately on %s during an upload and keeps the editor alive',
+    async signal => {
+        let releaseUpload
+        mockSave
+            .mockImplementationOnce(
+                () =>
+                    new Promise(resolve => {
+                        releaseUpload = resolve
+                    })
+            )
+            .mockResolvedValue(true)
+        let view
+        await act(async () => {
+            view = render(<NotesEditorView {...props} />)
+        })
+        await act(async () => {
+            resolveDownload(originalBytes)
+        })
+        act(() => exportRef.getEditor().insertText(0, 'Hidden edit ', 'user'))
+        const target = ['visibilitychange', 'freeze'].includes(signal) ? document : window
+        if (signal === 'visibilitychange') {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+        }
+        act(() => target.dispatchEvent(new Event(signal)))
+        expect(mockSave).toHaveBeenCalledTimes(2)
+        expect(mockSave.mock.calls[1][3]).toContain('Hidden edit')
+        expect(exportRef.getEditor().getText()).toContain('Hidden edit')
+        const saved = new Y.Doc()
+        Y.applyUpdate(saved, mockSave.mock.calls[1][2])
+        expect(saved.getText('quill').toString()).toContain('Hidden edit Cached Original')
+        saved.destroy()
+        // A single hide can emit all three signals. Clean snapshots must not be reissued.
+        act(() => {
+            document.dispatchEvent(new Event('freeze'))
+            window.dispatchEvent(new Event('pagehide'))
+        })
+        expect(mockSave).toHaveBeenCalledTimes(2)
+        await act(async () => {
+            releaseUpload(true)
+        })
+        // Returning must leave autosave usable for the next edit without another hide.
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+        act(() => {
+            document.dispatchEvent(new Event('visibilitychange'))
+            window.dispatchEvent(new Event('pageshow'))
+            window.dispatchEvent(new Event('focus'))
+            exportRef.getEditor().insertText(0, 'After return ', 'user')
+        })
+        await act(async () => {
+            await jest.advanceTimersByTimeAsync(3000)
+        })
+        expect(mockSave).toHaveBeenCalledTimes(3)
+        expect(mockSave.mock.calls[2][3]).toContain('After return Hidden edit')
+        view.unmount()
+        // The shared owner outlives the editor; an old subscriber must not touch destroyed Quill/Yjs.
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        act(() => document.dispatchEvent(new Event('freeze')))
+        expect(mockSave).toHaveBeenCalledTimes(3)
+        expect(warn).not.toHaveBeenCalled()
+        warn.mockRestore()
+    }
+)
