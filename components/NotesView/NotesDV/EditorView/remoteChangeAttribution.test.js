@@ -1,6 +1,6 @@
 import * as Y from 'yjs'
 
-import { isRemoteEditorChange } from './NotesEditorView'
+import { isRemoteEditorChange } from './noteChangeOrigin'
 
 /**
  * A collaborator's edits must not be recorded as YOUR edits (AT-2340).

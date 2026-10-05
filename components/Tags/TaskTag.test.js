@@ -21,6 +21,7 @@ import { useSelector } from 'react-redux'
 import TaskTag, { MIN_TASK_TAG_LABEL_WIDTH, UNNAMED_TASK_LABEL } from './TaskTag'
 import LoadingTag from './LoadingTag'
 
+const mountedTrees = []
 const mockWatchSubtasks = jest.fn()
 const mockUnwatch = jest.fn()
 let mockBoundingRect = { left: 0 }
@@ -115,6 +116,7 @@ const render = (props = {}) => {
             { createNodeMock: nodeMock }
         )
     })
+    mountedTrees.push(tree)
     return tree
 }
 
@@ -126,6 +128,10 @@ const titleText = tree =>
         .findAllByType(Text)
         .map(node => node.props.children)
         .flat()
+
+afterEach(() => {
+    act(() => mountedTrees.splice(0).forEach(tree => tree.unmount()))
+})
 
 beforeEach(() => {
     jest.clearAllMocks()
@@ -242,6 +248,24 @@ describe('TaskTag never renders itself away (AT-2454)', () => {
         expect(mockWatchSubtasks).toHaveBeenCalledTimes(1)
 
         act(() => tree.unmount())
+        expect(mockUnwatch).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('shared subtask listeners', () => {
+    it('shares repeated task embeds and survives ordinary task updates', () => {
+        const first = render()
+        const second = render()
+        expect(mockWatchSubtasks).toHaveBeenCalledTimes(1)
+        act(() =>
+            first.update(
+                <TaskTag projectId="project-1" taskId="task-1" task={task({ done: true })} isLoading={false} />
+            )
+        )
+        expect(mockWatchSubtasks).toHaveBeenCalledTimes(1)
+        act(() => first.unmount())
+        expect(mockUnwatch).not.toHaveBeenCalled()
+        act(() => second.unmount())
         expect(mockUnwatch).toHaveBeenCalledTimes(1)
     })
 })

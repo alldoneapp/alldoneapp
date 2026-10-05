@@ -82,7 +82,19 @@ export default class TaskTagFormat extends ReactEmbedBlot {
                 <Provider store={store}>
                     <TaskTagWrapper taskId={taskId} editorId={editorId} tagId={id} objectUrl={objectUrl} />
                 </Provider>
-            </TaskTagRenderBoundary>
+            </TaskTagRenderBoundary>,
+            {
+                editorId,
+                kind: 'task',
+                height: 24,
+                width: 480,
+                getLabel: () => {
+                    const state = store.getState()
+                    const task =
+                        state.notesInnerTasks[editorId]?.[taskId] || state.notesInnerTasks[state.activeNoteId]?.[taskId]
+                    return task?.name || task?.extendedName || 'Loading task...'
+                },
+            }
         )
 
         return node

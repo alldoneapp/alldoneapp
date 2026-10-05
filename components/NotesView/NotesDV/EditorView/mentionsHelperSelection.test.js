@@ -1,3 +1,14 @@
+jest.mock('../../../Feeds/CommentsTextInput/textInputHelper', () => ({
+    getElementOffset: () => ({ top: 0, left: 0 }),
+    NOT_USER_MENTIONED: 'not-user',
+    MENTION_MODAL_WIDTH: 300,
+    MENTION_MODAL_RIGHT_MARGIN: 16,
+}))
+jest.mock('../../../../redux/store', () => ({ getState: () => ({ loggedUser: { uid: 'user' } }) }))
+jest.mock('../../../../utils/LinkingHelper', () => ({}))
+jest.mock('../../../Feeds/Utils/HelperFunctions', () => ({}))
+jest.mock('../../../../utils/backends/Contacts/contactsFirestore', () => ({}))
+jest.mock('../../../AdminPanel/Assistants/assistantsHelper', () => ({}))
 import { captureSelectionFromEditor, getSelection, onChangeSelection, resetMentionsData } from './mentionsHelper'
 import { consumeNoteSelectionSnapshot } from './noteSelection'
 

@@ -13,6 +13,7 @@ import { exitsOpenModals, MANAGE_TASK_MODAL_ID, storeModal } from '../../../../M
 import SharedHelper from '../../../../../utils/SharedHelper'
 import { popoverToCenter } from '../../../../../utils/HelperFunctions'
 import Backend from '../../../../../utils/BackendBridge'
+import { readSharedTask } from '../../../../../utils/Notes/sharedNoteSubscriptions'
 import { setTaskDueDate } from '../../../../../utils/backends/Tasks/tasksFirestore'
 
 export const MISSING_TASK_RECOVERY_DELAY = 250
@@ -76,7 +77,7 @@ export default function TaskTagWrapper({
         let cancelled = false
         const recoveryTimeout = setTimeout(async () => {
             try {
-                const task = await loadTask(projectId, taskId)
+                const task = await readSharedTask(loadTask, projectId, taskId)
                 if (cancelled) return
                 if (task) {
                     lastTaskRef.current = { taskId, task }

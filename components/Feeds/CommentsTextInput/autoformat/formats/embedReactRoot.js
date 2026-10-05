@@ -1,4 +1,5 @@
 import ReactDOM from 'react-dom'
+import { deferNoteEmbed, cancelDeferredNoteEmbed } from './noteEmbedVisibility'
 
 /**
  * A React root mounted inside a quill 2 embed needs its OWN element to own (AT-2454).
@@ -83,6 +84,7 @@ const disposedRoots = new WeakSet()
 const unmountMountNode = mountNode => {
     if (!mountNode || disposedRoots.has(mountNode)) return false
     disposedRoots.add(mountNode)
+    cancelDeferredNoteEmbed(mountNode)
     ReactDOM.unmountComponentAtNode(mountNode)
     return true
 }
@@ -91,10 +93,14 @@ const unmountMountNode = mountNode => {
  * Drop-in replacement for `ReactDOM.render(element, blotDomNode)`. Returns the mount node so a
  * caller that renders more than once keeps writing into the same React root.
  */
-export const renderEmbedContent = (node, element) => {
+export const renderEmbedContent = (node, element, deferOptions) => {
     const mountNode = createEmbedReactRoot(node)
     if (!mountNode || disposedRoots.has(mountNode)) return null
-    ReactDOM.render(element, mountNode)
+    const render = () => {
+        if (disposedRoots.has(mountNode)) return
+        ReactDOM.render(element, mountNode)
+    }
+    if (!deferOptions || !deferNoteEmbed(mountNode, render, deferOptions)) render()
     return mountNode
 }
 

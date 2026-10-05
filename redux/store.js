@@ -47,7 +47,6 @@ import { addProjectDataToOpenTasksShowMoreData } from '../utils/backends/Tasks/o
 import { getProjectChatLastNotification } from '../utils/backends/Chats/chatsComments'
 import { getRandomLoadingMessage } from '../utils/FunnyLoadingMessages'
 import { reduceLoadingData, START_LOADING_OPERATION, FINISH_LOADING_OPERATION } from './loadingData'
-import { SET_OKR_TODAY_OPERATION, reduceOkrTodayOperation, reconcileOkrTodayOperations } from './okrTodayVisibility'
 
 const SHOW_MORE_TIME_FIELDS = ['hasTomorrowTasks', 'hasFutureTasks', 'hasSomedayTasks']
 
@@ -76,7 +75,6 @@ export const initialState = {
     loadingStep: 0,
     loadingMessage: getRandomLoadingMessage(),
     loggedUser: {},
-    okrTodayOperations: {},
     currentUser: {},
     loggedUserProjects: [],
     loggedUserProjectsMap: {},
@@ -625,16 +623,8 @@ export const theReducer = (state = initialState, action) => {
                 previousFocusProjectId !== (loggedUser.inFocusTaskProjectId || '')
             const myDayState = focusChanged ? getMyDayStateForLoggedUserFocusChange(state, loggedUser) : null
 
-            return {
-                ...state,
-                loggedUser,
-                currentUser,
-                okrTodayOperations: reconcileOkrTodayOperations(state.okrTodayOperations, loggedUser),
-                ...(myDayState || {}),
-            }
+            return { ...state, loggedUser, currentUser, ...(myDayState || {}) }
         }
-        case SET_OKR_TODAY_OPERATION:
-            return reduceOkrTodayOperation(state, action)
         case 'Store current user': {
             return { ...state, currentUser: action.currentUser }
         }

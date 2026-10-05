@@ -29,6 +29,7 @@ import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
 import { isBrowserOffline } from '../../connectionState'
 import { getServerNow } from '../../serverClock'
+import { queueNoteUpload } from '../../Notes/noteUploadQueue'
 import { clearPendingNoteUpload, registerPendingNoteUpload } from '../../Notes/pendingNoteUploads'
 import { stampCreatorAsFollower } from './noteCreationFollow'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
@@ -408,16 +409,20 @@ export async function setNoteData(
     // put is simply gone — so the note is recorded for the reconnect catch-up
     // sweep, which is what makes an offline edit to a note the user then CLOSES
     // reach the server without waiting for them to open it again (AT-2340).
-    const contentUploaded = Promise.resolve(storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData))
-        .then(() => {
-            clearPendingNoteUpload(noteId)
-            return true
-        })
-        .catch(error => {
-            console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
-            registerPendingNoteUpload(objectId, noteId)
-            return false
-        })
+    const revision = options.pendingRevision ?? registerPendingNoteUpload(objectId, noteId)
+    const contentUploaded = options.deferContentUpload
+        ? Promise.resolve(false)
+        : queueNoteUpload(objectId, noteId, () =>
+              storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)
+          )
+              .then(() => {
+                  clearPendingNoteUpload(noteId, revision)
+                  return true
+              })
+              .catch(error => {
+                  console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
+                  return false
+              })
 
     if (!contentOnly) {
         if (userCanEditNote) {

@@ -19,7 +19,6 @@ import RootSectionNavigation from '../../RootView/RootSectionNavigation'
 import { useContext } from 'react'
 import { HeaderActionsContext, ProjectSectionContext, taskHierarchyStyles } from '../TaskHierarchy'
 import { PROJECT_COLOR_SYSTEM, PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
-import ProjectPostponeSwipe from './ProjectPostponeSwipe'
 
 /**
  * AT-2535 — `ProjectSection` owns the completed-sweep run now that the whole rounded card leaves.
@@ -36,7 +35,6 @@ export default function ProjectHeader({
     showGoalMore,
     showRootSectionNavigation = false,
     showEmailLabels = false,
-    allowProjectPostpone = false,
 }) {
     const dispatch = useDispatch()
     const inProjectSection = useContext(ProjectSectionContext)
@@ -80,43 +78,40 @@ export default function ProjectHeader({
     const headerBackgroundColor = (PROJECT_COLOR_SYSTEM[projectColor] || PROJECT_COLOR_SYSTEM[PROJECT_COLOR_DEFAULT])
         .PROJECT_ITEM_ACTIVE
     const headerTextColor = colors.Text01
-    const line = (
-        <View testID="project-line">
-            <View
-                style={[
-                    localStyles.borderContainer,
-                    taskHierarchyStyles.projectHeader,
-                    inProjectSection && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-                    { backgroundColor: headerBackgroundColor },
-                ]}
-            >
-                <HeaderActionsContext.Provider value={true}>
-                    <View style={[localStyles.container, taskHierarchyStyles.projectHeaderContent]}>
-                        <ProjectAndUserData
-                            projectIndex={projectIndex}
-                            projectId={projectId}
-                            badge={badge}
-                            userInHeader={userInHeader}
-                            showEmailLabels={showEmailLabels}
-                            headerTextColor={headerTextColor}
-                        />
-                        <TagsArea
-                            projectId={projectId}
-                            mobile={mobile || mobileCollapsed}
-                            onClickWorkflowIndicator={onClickWorkflowIndicator}
-                            showWorkflow={showWorkflow}
-                            showTaskMore={showTaskMore}
-                            showGoalMore={showGoalMore}
-                        />
-                        {customRight}
-                    </View>
-                </HeaderActionsContext.Provider>
-            </View>
-        </View>
-    )
     return (
         <>
-            {allowProjectPostpone ? <ProjectPostponeSwipe projectId={projectId}>{line}</ProjectPostponeSwipe> : line}
+            <View testID="project-line">
+                <View
+                    style={[
+                        localStyles.borderContainer,
+                        taskHierarchyStyles.projectHeader,
+                        inProjectSection && { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+                        { backgroundColor: headerBackgroundColor },
+                    ]}
+                >
+                    <HeaderActionsContext.Provider value={true}>
+                        <View style={[localStyles.container, taskHierarchyStyles.projectHeaderContent]}>
+                            <ProjectAndUserData
+                                projectIndex={projectIndex}
+                                projectId={projectId}
+                                badge={badge}
+                                userInHeader={userInHeader}
+                                showEmailLabels={showEmailLabels}
+                                headerTextColor={headerTextColor}
+                            />
+                            <TagsArea
+                                projectId={projectId}
+                                mobile={mobile || mobileCollapsed}
+                                onClickWorkflowIndicator={onClickWorkflowIndicator}
+                                showWorkflow={showWorkflow}
+                                showTaskMore={showTaskMore}
+                                showGoalMore={showGoalMore}
+                            />
+                            {customRight}
+                        </View>
+                    </HeaderActionsContext.Provider>
+                </View>
+            </View>
             {showRootSectionNavigation && <RootSectionNavigation useOuterMargins={false} />}
         </>
     )
