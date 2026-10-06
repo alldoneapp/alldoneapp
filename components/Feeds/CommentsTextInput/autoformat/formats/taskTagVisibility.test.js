@@ -170,6 +170,29 @@ describe('a task embed in a note always renders something visible (AT-2454)', ()
         expect(visibleText(embed)).toContain('Ship the release notes')
     })
 
+    it('leaves both cursor guards editable while protecting the task content (AT-2697)', () => {
+        const { quill, embed } = buildNote()
+        const blot = Quill.find(embed)
+        const original = quill.getContents()
+
+        expect(embed.hasAttribute('contenteditable')).toBe(false)
+        expect(blot.contentNode.getAttribute('contenteditable')).toBe('false')
+        expect(blot.leftGuard.parentNode).toBe(embed)
+        expect(blot.rightGuard.parentNode).toBe(embed)
+        expect(blot.index(blot.leftGuard, 0)).toBe(0)
+        expect(blot.index(blot.rightGuard, 1)).toBe(1)
+        expect(blot.length()).toBe(1)
+
+        // Reconstructed DOM can still carry the old outer attribute.
+        const legacyNode = TaskTagFormat.create(TaskTagFormat.value(embed))
+        legacyNode.setAttribute('contenteditable', 'false')
+        const legacyBlot = new TaskTagFormat(quill.scroll, legacyNode)
+        expect(legacyNode.hasAttribute('contenteditable')).toBe(false)
+        expect(legacyBlot.contentNode.getAttribute('contenteditable')).toBe('false')
+        expect(quill.getContents()).toEqual(original)
+        legacyBlot.detach()
+    })
+
     it('shows a loading row rather than an empty gap while the task has not arrived', () => {
         // The note's aggregate query resolves after the editor renders, so this is the ordinary
         // first frame of every note — and with `editorId !== activeNoteId` it used to render
