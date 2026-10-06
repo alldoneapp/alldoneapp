@@ -2,6 +2,7 @@ import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import HelperFunctions from '../../utils/HelperFunctions'
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
+import { withContactStatus } from './contactStatusUrl'
 
 /**
  * /projects/contacts/all
@@ -121,9 +122,9 @@ class URLsPeople {
             case URL_ALL_PROJECTS_PEOPLE_FOLLOWED:
                 return `projects/contacts/followed`
             case URL_PROJECT_PEOPLE_ALL:
-                return `projects/${params[0]}/user/${params[1]}/contacts/all`
+                return withContactStatus(`projects/${params[0]}/user/${params[1]}/contacts/all`, params[2])
             case URL_PROJECT_PEOPLE_FOLLOWED:
-                return `projects/${params[0]}/user/${params[1]}/contacts/followed`
+                return withContactStatus(`projects/${params[0]}/user/${params[1]}/contacts/followed`, params[2])
             case URL_PEOPLE_DETAILS:
                 return `projects/${params[0]}/contacts/${params[1]}`
             case URL_PEOPLE_DETAILS_FEED:

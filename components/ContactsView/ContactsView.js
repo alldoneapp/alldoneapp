@@ -7,14 +7,9 @@ import { useSelector, useDispatch } from 'react-redux'
 import ContactsHeader from './ContactsHeader'
 import ContactListByProject from './ContactListByProject'
 import { ALL_PROJECTS_INDEX, checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
-import URLsPeople, {
-    URL_ALL_PROJECTS_PEOPLE_ALL,
-    URL_ALL_PROJECTS_PEOPLE_FOLLOWED,
-    URL_PROJECT_PEOPLE_ALL,
-    URL_PROJECT_PEOPLE_FOLLOWED,
-} from '../../URLSystem/People/URLsPeople'
 import { setNavigationRoute } from '../../redux/actions'
-import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
+import useContactStatusUrlFilter from '../ContactStatusFilters/useContactStatusUrlFilter'
+import { FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 import { DV_TAB_ROOT_CONTACTS } from '../../utils/TabNavigationConstants'
 import NothingToShow from '../UIComponents/NothingToShow'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
@@ -133,6 +128,8 @@ export default function ContactsView() {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const projectUsers = useSelector(state => state.projectUsers)
     const projectContacts = useSelector(state => state.projectContacts)
+    const currentUserUid = useSelector(state => state.currentUser?.uid || state.loggedUser.uid)
+    const projectsMap = useSelector(state => state.loggedUserProjectsMap)
     const [followedPeopleByProject, setFollowedPeopleByProject] = useState({})
     const followedWatchers = useRef(new Map())
     const followedBatcher = useRef(null)
@@ -143,6 +140,15 @@ export default function ContactsView() {
         [inAllProjects, loggedUserProjects, loggedUser]
     )
     const selectedProjectId = inAllProjects ? null : loggedUserProjects[selectedProjectIndex]?.id
+    useContactStatusUrlFilter({
+        projectId: selectedProjectId,
+        routeUserId: loggedUser.uid,
+        currentUserUid,
+        contactsActiveTab,
+        contactStatuses:
+            projectsMap?.[selectedProjectId]?.contactStatuses ||
+            loggedUserProjects[selectedProjectIndex]?.contactStatuses,
+    })
     const contactsCacheKey = getContactsViewCacheKey({
         activeTab: contactsActiveTab,
         inAllProjects,
@@ -172,22 +178,6 @@ export default function ContactsView() {
     }, [contactsCacheKey, loggedUser.uid])
 
     const cachedProjects = cachedViewSnapshot?.cacheKey === contactsCacheKey ? cachedViewSnapshot.projects || {} : {}
-
-    const writeBrowserURL = () => {
-        if (inAllProjects) {
-            URLsPeople.push(
-                contactsActiveTab === ALL_TAB ? URL_ALL_PROJECTS_PEOPLE_ALL : URL_ALL_PROJECTS_PEOPLE_FOLLOWED
-            )
-        } else {
-            const project = loggedUserProjects[selectedProjectIndex]
-            URLsPeople.push(
-                contactsActiveTab === ALL_TAB ? URL_PROJECT_PEOPLE_ALL : URL_PROJECT_PEOPLE_FOLLOWED,
-                { projectId: project.id, userId: loggedUser.uid },
-                project.id,
-                loggedUser.uid
-            )
-        }
-    }
 
     const { filteredProjectsUsers, filteredProjectsContacts, amounts } = useMemo(
         () =>
@@ -233,10 +223,6 @@ export default function ContactsView() {
             followedWatchers.current.clear()
         }
     }, [loggedUser.uid])
-
-    useEffect(() => {
-        writeBrowserURL()
-    }, [contactsActiveTab, selectedProjectIndex])
 
     const project = inAllProjects ? ALL_PROJECTS_INDEX : loggedUserProjects[selectedProjectIndex]
 

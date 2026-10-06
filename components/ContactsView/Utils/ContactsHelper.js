@@ -23,6 +23,7 @@ import {
     setContactsInProject,
     navigateToAllProjectsTasks,
     navigateToAllProjectsContacts,
+    setContactStatusFilter,
 } from '../../../redux/actions'
 import URLsPeople, {
     URL_ALL_PROJECTS_PEOPLE_ALL,
@@ -123,7 +124,7 @@ class ContactsHelper {
         URLsPeople.replace(tab === ALL_TAB ? URL_ALL_PROJECTS_PEOPLE_ALL : URL_ALL_PROJECTS_PEOPLE_FOLLOWED)
     }
 
-    static processURLProjectPeople = (navigation, projectId, userId, tab = FOLLOWED_TAB) => {
+    static processURLProjectPeople = (navigation, projectId, userId, tab = FOLLOWED_TAB, contactStatus = null) => {
         const user = TasksHelper.getUserInProject(projectId, userId) || getWorkstreamInProject(projectId, userId)
         const currentUser = user !== null ? user : store.getState().loggedUser
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
@@ -133,6 +134,7 @@ class ContactsHelper {
             storeCurrentUser(currentUser),
             setSelectedSidebarTab(DV_TAB_ROOT_CONTACTS),
             updateContactsActiveTab(tab),
+            setContactStatusFilter(contactStatus),
         ])
 
         if (checkIfSelectedAllProjects(projectIndex)) {
@@ -143,7 +145,8 @@ class ContactsHelper {
                 tab === ALL_TAB ? URL_PROJECT_PEOPLE_ALL : URL_PROJECT_PEOPLE_FOLLOWED,
                 data,
                 projectId,
-                currentUser.uid
+                currentUser.uid,
+                contactStatus
             )
         }
         navigation.navigate('Root')
