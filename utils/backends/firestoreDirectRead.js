@@ -74,7 +74,7 @@ const getDirectReadTarget = documentPath => {
 // (`Service firestore/lite is not available` in production), so use Firestore's authenticated
 // REST document endpoint instead. It has no local cache/listener state and applies the same
 // Firebase Auth security rules through the user's ID token.
-export const readDocumentDirectlyFromServer = async (documentPath, { signal } = {}) => {
+export const readDocumentDirectlyFromServer = async (documentPath, { signal, includeUpdateTime = false } = {}) => {
     const currentUser = firebase.auth().currentUser
     if (!currentUser) throw new Error('Cannot verify a Firestore document without an authenticated user')
 
@@ -118,6 +118,49 @@ export const readDocumentDirectlyFromServer = async (documentPath, { signal } = 
     return {
         exists: true,
         data: decodeFields(result.found.fields || {}),
+        ...(includeUpdateTime ? { updateTime: result.found.updateTime } : {}),
+    }
+}
+
+// A version precondition makes this a compare-and-set. Callers supply REST fields
+// and re-read after contention. Only the supplied fields are changed.
+export const updateDocumentDirectlyFromServer = async (
+    documentPath,
+    fields,
+    updateTime,
+    { signal, assertAccount } = {}
+) => {
+    if (!updateTime) throw new Error('A server document version is required')
+    assertAccount?.()
+    const user = firebase.auth().currentUser
+    if (!user) throw new Error('Cannot update a Firestore document without an authenticated user')
+    const token = await user.getIdToken()
+    assertAccount?.()
+    if (firebase.auth().currentUser?.uid !== user.uid) throw new Error('Firestore account changed')
+    if (signal?.aborted) throw Object.assign(new Error('Write cancelled'), { name: 'AbortError' })
+    const { baseUrl, apiKey, documentName } = getDirectReadTarget(documentPath)
+    const response = await fetch(`${baseUrl}/documents:commit${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            writes: [
+                {
+                    update: { name: documentName, fields },
+                    updateMask: { fieldPaths: Object.keys(fields) },
+                    currentDocument: { updateTime },
+                },
+            ],
+        }),
+        ...(signal ? { signal } : {}),
+    })
+    if (!response.ok) {
+        const details = await response.json().catch(() => null)
+        throw Object.assign(
+            new Error(details?.error?.message || `Direct Firestore write failed with HTTP ${response.status}`),
+            {
+                code: details?.error?.status || `http-${response.status}`,
+            }
+        )
     }
 }
 

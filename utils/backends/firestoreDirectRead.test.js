@@ -15,7 +15,11 @@ jest.mock('firebase/compat/app', () => {
     }
 })
 
-import { readDocumentDirectlyFromServer, readLatestCommentDirectlyFromServer } from './firestoreDirectRead'
+import {
+    readDocumentDirectlyFromServer,
+    readLatestCommentDirectlyFromServer,
+    updateDocumentDirectlyFromServer,
+} from './firestoreDirectRead'
 
 describe('readDocumentDirectlyFromServer', () => {
     const originalFetch = global.fetch
@@ -129,6 +133,72 @@ describe('readDocumentDirectlyFromServer', () => {
         await expect(readDocumentDirectlyFromServer('users/user-1')).rejects.toThrow(
             'Cannot verify a Firestore document without an authenticated user'
         )
+        expect(global.fetch).not.toHaveBeenCalled()
+    })
+
+    it('returns the server version when requested for a conditional update', async () => {
+        global.fetch.mockResolvedValue({
+            ok: true,
+            json: async () => [{ found: { fields: {}, updateTime: 'server-version' } }],
+        })
+        await expect(readDocumentDirectlyFromServer('users/u1', { includeUpdateTime: true })).resolves.toEqual({
+            exists: true,
+            data: {},
+            updateTime: 'server-version',
+        })
+    })
+
+    it('commits only the requested fields with the exact server-version precondition', async () => {
+        global.fetch.mockResolvedValue({ ok: true })
+        const fields = { statisticsModalDate: { integerValue: '200' } }
+        const assertAccount = jest.fn()
+        await updateDocumentDirectlyFromServer('users/u1', fields, 'server-version', { assertAccount })
+        const [url, options] = global.fetch.mock.calls[0]
+        expect(url).toBe(
+            'https://firestore.googleapis.com/v1/projects/test-project/databases/(default)/documents:commit?key=test-api-key'
+        )
+        expect(options.headers.Authorization).toBe('Bearer id-token')
+        expect(JSON.parse(options.body)).toEqual({
+            writes: [
+                {
+                    update: { name: 'projects/test-project/databases/(default)/documents/users/u1', fields },
+                    updateMask: { fieldPaths: ['statisticsModalDate'] },
+                    currentDocument: { updateTime: 'server-version' },
+                },
+            ],
+        })
+        expect(assertAccount).toHaveBeenCalledTimes(2)
+    })
+
+    it('rejects contention so the caller can re-read instead of overwriting a newer value', async () => {
+        global.fetch.mockResolvedValue({
+            ok: false,
+            status: 400,
+            json: async () => ({ error: { status: 'FAILED_PRECONDITION', message: 'Version changed' } }),
+        })
+        await expect(updateDocumentDirectlyFromServer('users/u1', {}, 'server-version')).rejects.toMatchObject({
+            code: 'FAILED_PRECONDITION',
+        })
+    })
+
+    it('does not send a late write after token acquisition crosses an account switch', async () => {
+        mockAuthState.currentUser.uid = 'u1'
+        mockGetIdToken.mockImplementationOnce(async () => {
+            mockAuthState.currentUser = { uid: 'u2' }
+            return 'old-token'
+        })
+        await expect(updateDocumentDirectlyFromServer('users/u1', {}, 'server-version')).rejects.toThrow(
+            'account changed'
+        )
+        expect(global.fetch).not.toHaveBeenCalled()
+    })
+
+    it('does not send a write after its request budget has expired', async () => {
+        const controller = new AbortController()
+        controller.abort()
+        await expect(
+            updateDocumentDirectlyFromServer('users/u1', {}, 'server-version', { signal: controller.signal })
+        ).rejects.toThrow('cancelled')
         expect(global.fetch).not.toHaveBeenCalled()
     })
     it('queries the latest comment with the authenticated, abortable request and decodes it', async () => {

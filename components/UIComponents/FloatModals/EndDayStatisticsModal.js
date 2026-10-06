@@ -26,6 +26,10 @@ import {
 import { setUserStatisticsModalDate } from '../../../utils/backends/Users/usersFirestore'
 import { needToAcknowledgeNewDay, startNewDay as runStartNewDay } from '../../../utils/NewDayModalHelper'
 import { newDayRecoveryStore } from '../../../utils/newDayRecoveryStore'
+import { readNewDayAcknowledgement } from '../../../utils/backends/Users/newDayAcknowledgement'
+import { createNewDayAcknowledgementRetry } from '../../../utils/newDayAcknowledgementRetry'
+import { subscribePageVisible } from '../../../utils/appResume'
+import { isBrowserOffline } from '../../../utils/connectionState'
 import { dayReloadCoordinator, markDailyReload } from '../../../utils/dayReloadCoordinator'
 import { recordNewDayEvent, flushNewDayDiagnostics } from '../../../utils/newDayDiagnostics'
 import {
@@ -47,6 +51,7 @@ import {
     CONNECTION_HEALTH_RECONNECTING,
     CONNECTION_HEALTH_STALE,
     reconnectNow,
+    isManualOfflineMode,
 } from '../../../utils/connectionHealth'
 
 /**
@@ -136,6 +141,8 @@ export default function EndDayStatisticsModal() {
         .sort()
         .join(',')}`
     const isSavingStartNewDay = useRef(false)
+    const acknowledgementRetryRef = useRef(null)
+    const refreshAcknowledgementRef = useRef(null)
     const happinessWatcherKeyRef = useRef(`new_day_happiness_${loggedUserId}`)
 
     const isReconnecting = reconnectStatus === RECONNECT_PROBING || reconnectStatus === RECONNECT_RELOADING
@@ -322,7 +329,9 @@ export default function EndDayStatisticsModal() {
         }).finally(releaseSubmission)
     }
 
-    const persistPendingAcknowledgement = () => {
+    const persistPendingAcknowledgement = () => acknowledgementRetryRef.current?.retry() || Promise.resolve()
+
+    const flushPendingAcknowledgement = () => {
         const entry = newDayRecoveryStore.getAcknowledgement(loggedUserId)
         if (!entry?.pending) return Promise.resolve()
         return newDayRecoveryStore
@@ -350,10 +359,87 @@ export default function EndDayStatisticsModal() {
 
     useEffect(() => {
         if (!loggedUserId || isAnonymous) return
+        let disposed = false
+        let reading
+        const isActive = () => !disposed && store.getState().loggedUser.uid === loggedUserId
+        const canSync = () =>
+            isActive() &&
+            !isBrowserOffline() &&
+            !isManualOfflineMode() &&
+            store.getState().connectionState !== 'offline'
+        const retry = createNewDayAcknowledgementRetry({
+            persist: flushPendingAcknowledgement,
+            isPending: () => !!newDayRecoveryStore.getAcknowledgement(loggedUserId)?.pending,
+            isActive: canSync,
+            onError: error => reportNewDayError(error, 'persistAcknowledgement'),
+        })
+        acknowledgementRetryRef.current = retry
+        const refresh = () => {
+            if (reading || !canSync()) return
+            const current = store.getState().loggedUser
+            if (
+                !needToAcknowledgeNewDay(
+                    newDayRecoveryStore.getAcknowledgedDate(loggedUserId, current.statisticsModalDate)
+                )
+            )
+                return
+            reading = readNewDayAcknowledgement(loggedUserId, () => store.getState().loggedUser.uid)
+                .then(user => {
+                    if (!isActive() || !user) return
+                    const date = Number(user.statisticsModalDate) || 0
+                    newDayRecoveryStore.observeAcknowledgement(loggedUserId, user.previousStatisticsModalDate, date)
+                    const current = store.getState().loggedUser
+                    const acknowledgedDate = newDayRecoveryStore.getAcknowledgedDate(
+                        loggedUserId,
+                        current.statisticsModalDate
+                    )
+                    if (acknowledgedDate <= Number(current.statisticsModalDate || 0)) return
+                    const updated = {
+                        ...current,
+                        statisticsModalDate: acknowledgedDate,
+                        previousStatisticsModalDate:
+                            acknowledgedDate === date
+                                ? user.previousStatisticsModalDate
+                                : current.previousStatisticsModalDate,
+                    }
+                    store.dispatch(storeLoggedUser(updated))
+                    UserDataCache.setCachedUserData(updated)
+                    recordNewDayEvent('confirmation-reconciled', {
+                        userId: loggedUserId,
+                        acknowledgedDate,
+                        previousDate: user.previousStatisticsModalDate,
+                    })
+                })
+                .catch(error => {
+                    if (isActive()) reportNewDayError(error, 'readAcknowledgement')
+                })
+                .finally(() => {
+                    reading = null
+                    if (isActive()) dayReloadCoordinator.retry()
+                })
+        }
+        const sync = () => {
+            void retry.retry().catch(() => {})
+            refresh()
+        }
+        refreshAcknowledgementRef.current = sync
+        sync()
+        const unsubscribe = subscribePageVisible(sync)
+        return () => {
+            disposed = true
+            retry.dispose()
+            unsubscribe()
+            acknowledgementRetryRef.current = null
+            refreshAcknowledgementRef.current = null
+        }
+    }, [loggedUserId, isAnonymous])
+
+    useEffect(() => {
+        if (!loggedUserId || isAnonymous) return
         void flushNewDayDiagnostics(loggedUserId)
-        void persistPendingAcknowledgement().catch(error => reportNewDayError(error, 'persistAcknowledgement'))
+        refreshAcknowledgementRef.current?.()
         dayReloadCoordinator.retry()
-    }, [loggedUserId, isAnonymous, connectionState, connectionHealth])
+    }, [loggedUserId, isAnonymous, connectionState, connectionHealth, showNewDayNotification])
 
     const updateStatistics = (projectId, statistics = {}) => {
         // Replace this project's result, so a retry or late answer never doubles
@@ -581,16 +667,28 @@ export default function EndDayStatisticsModal() {
     // per user account as statisticsModalDate on the user doc, which syncs to
     // every device in real time via watchLoggedUser. Once it advances to today
     // — because the user started the new day here or on another device — there
-    // is nothing left to confirm on this device: clear the per-device
-    // midnight-timer flag (showNewDayNotification) and dismiss any prompt still
-    // open here, so the same user is never asked to confirm the same day twice.
-    // This only ever tears down local state and never writes to Firestore, so
-    // anonymous users, offline use and other users on the same device are safe.
+    // is nothing left to confirm on this device. Its date-scoped watchers can
+    // still belong to yesterday: preserve that device's reload before clearing
+    // its midnight flag. The coordinator combines this with any daily reload
+    // already queued, and retains the normal pending-write and offline guards.
     useEffect(() => {
         if (isAnonymous || isSavingStartNewDay.current) return
         if (needToShowYesterdayStats()) return
 
-        if (showNewDayNotification) store.dispatch(setShowNewDayNotification(false))
+        if (showNewDayNotification) {
+            store.dispatch(setShowNewDayNotification(false))
+            dayReloadCoordinator.request(
+                () => {
+                    markDailyReload()
+                    recordNewDayEvent('reload-requested', {
+                        userId: loggedUserId,
+                        reason: 'new-day-confirmed-elsewhere',
+                    })
+                    void deleteCacheAndRefresh(undefined, 'new-day-confirmed-elsewhere')
+                },
+                () => !isBrowserOffline() && !isManualOfflineMode()
+            )
+        }
         if (dataLoaded || isLoading.current) resetModalState()
     }, [statisticsModalDate, showNewDayNotification, isAnonymous, dataLoaded])
 

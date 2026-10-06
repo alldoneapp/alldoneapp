@@ -113,6 +113,14 @@ export const createNewDayRecoveryStore = (getStorage = defaultStorage) => {
             if (previous?.date >= date) return previous
             return queue({ key, userId, kind: 'ack', previousDate, date })
         },
+        observeAcknowledgement: (userId, previousDate, date) => {
+            if (!(date > 0)) return
+            const key = keyFor(userId, 'ack')
+            const previous = read(key)
+            if (previous?.date > date) return
+            const entry = previous?.date === date ? previous : queue({ key, userId, kind: 'ack', previousDate, date })
+            save({ ...entry, pending: false })
+        },
         getDraft: (userId, projectId, date) => read(keyFor(userId, 'draft', projectId, date)),
         saveDraft: (userId, projectId, date, rating, comment = '') =>
             queue({
