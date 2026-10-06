@@ -228,6 +228,8 @@ class ContactRetrievalService {
             phone: contact.phone || '',
             linkedInUrl: contact.linkedInUrl || '',
             description: contact.description || '',
+            contactStatusId: contact.contactStatusId || null,
+            contactStatusName: project.contactStatuses?.[contact.contactStatusId]?.name || null,
             lastEditedAt: Number(contact.lastEditionDate) || 0,
         }
     }

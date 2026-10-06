@@ -25,7 +25,11 @@ describe('ProjectService', () => {
         const database = createDatabase({
             userData: { projectIds: ['project-1', 'project-2'] },
             projects: {
-                'project-1': { name: 'One', sortIndexByUser: { user: 42 } },
+                'project-1': {
+                    name: 'One',
+                    sortIndexByUser: { user: 42 },
+                    contactStatuses: { lead: { name: 'Lead' } },
+                },
                 'project-2': { name: 'Two' },
             },
         })
@@ -35,5 +39,6 @@ describe('ProjectService', () => {
         const result = await service.getUserProjects('user')
 
         expect(result.map(project => project.sortIndexByUser)).toEqual([{ user: 42 }, {}])
+        expect(result.map(project => project.contactStatuses)).toEqual([{ lead: { name: 'Lead' } }, {}])
     })
 })

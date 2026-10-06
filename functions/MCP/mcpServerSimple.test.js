@@ -186,6 +186,14 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         ])
     })
 
+    test('exposes Kontaktstatus assignment through the shared update_contact tool', async () => {
+        const tools = await listTools()
+        const tool = tools.find(entry => entry.name === 'update_contact')
+        expect(tool.inputSchema.properties.contactStatusId.type).toBe('string')
+        expect(tool.inputSchema.properties.contactStatusName.type).toBe('string')
+        expect(tool.inputSchema.properties.contactStatusId.description).toContain('get_user_projects')
+    })
+
     test('includes the delegated coverage-gap tools and the MCP-only tools', async () => {
         const names = (await listTools()).map(tool => tool.name)
         expect(names).toEqual(

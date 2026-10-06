@@ -622,7 +622,7 @@ const toolSchemas = {
         function: {
             name: 'get_contacts',
             description:
-                'Retrieves contacts from a specific accessible project or, by default, across all accessible active projects. Use this when the user asks to show, list, review, or check contacts without relying on keyword search. The optional date filter applies to contact last edit time.',
+                "Retrieves contacts from a specific accessible project or, by default, across all accessible active projects, including each contact's Kontaktstatus ID and name. Use this when the user asks to show, list, review, or check contacts without relying on keyword search. The optional date filter applies to contact last edit time.",
             parameters: {
                 type: 'object',
                 properties: {
@@ -656,7 +656,8 @@ const toolSchemas = {
         type: 'function',
         function: {
             name: 'get_user_projects',
-            description: "Retrieves the user's accessible projects with filtering options",
+            description:
+                "Retrieves the user's accessible projects with filtering options, including each project's available contactStatuses (Kontaktstatus IDs and names) for update_contact.",
             parameters: {
                 type: 'object',
                 properties: {
@@ -989,7 +990,7 @@ const toolSchemas = {
         function: {
             name: 'update_contact',
             description:
-                'Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact. Can set the email, name, company, role, phone, LinkedIn profile URL, description and profile photo, and can optionally create a missing contact. Only pass the fields you actually established; omitted fields are left untouched.',
+                'Updates an existing contact by contact ID, email, or name within a project. Uses the same contact matching logic as update_note, including fuzzy same-project name matching when exact ID, email, or name matching does not find a contact. Can set the email, name, company, role, phone, LinkedIn profile URL, description, profile photo and Kontaktstatus, and can optionally create a missing contact. New contacts are automatically followed by the requesting user. Only pass the fields you actually established; omitted fields are left untouched.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1054,6 +1055,16 @@ const toolSchemas = {
                         type: 'boolean',
                         description:
                             'Optional: when true, auto-create the contact if no existing contact matches. Defaults to false for update_contact.',
+                    },
+                    contactStatusId: {
+                        type: 'string',
+                        description:
+                            'Optional: assign an existing Kontaktstatus ID from the target project. Use get_user_projects to list available contactStatuses. An empty string clears the status; omission leaves it unchanged.',
+                    },
+                    contactStatusName: {
+                        type: 'string',
+                        description:
+                            'Optional: assign an existing Kontaktstatus by its exact name in the target project (case-insensitive). For example "JTL Connect". Unknown or duplicate names are rejected; use contactStatusId to disambiguate. Works for existing contacts and createIfMissing. An empty string clears the status.',
                     },
                 },
                 required: [],

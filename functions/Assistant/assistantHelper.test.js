@@ -4620,6 +4620,8 @@ describe('assistant get contacts tool', () => {
                     phone: '+491234',
                     linkedInUrl: 'https://linkedin.com/in/alice',
                     description: 'Important customer',
+                    contactStatusId: 'status-1',
+                    contactStatusName: 'Lead',
                     lastEditedAt: 1774970400000,
                 },
             ],
@@ -4680,6 +4682,8 @@ describe('assistant get contacts tool', () => {
                     phone: '+491234',
                     linkedInUrl: 'https://linkedin.com/in/alice',
                     description: 'Important customer',
+                    contactStatusId: 'status-1',
+                    contactStatusName: 'Lead',
                     lastEditedAt: 1774970400000,
                 },
             ],
@@ -8192,5 +8196,110 @@ describe('assistant transcript artifact recovery', () => {
                 assistantRun: expect.objectContaining({ status: 'failed' }),
             })
         )
+    })
+})
+
+describe('assistant and MCP update_contact Kontaktstatus', () => {
+    let resolveTarget
+    let updateFields
+    const project = {
+        name: 'Sales',
+        contactStatuses: { connect: { name: 'JTL Connect' } },
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockDocGet.mockResolvedValue({ exists: true, data: () => project })
+        const targets = require('../shared/contactNoteTargetHelper')
+        jest.spyOn(targets, 'resolveProjectForContactNote').mockResolvedValue({ id: 'sales', name: 'Sales' })
+        resolveTarget = jest.spyOn(targets, 'resolveContactTarget').mockResolvedValue({
+            success: true,
+            contactCreated: true,
+            contact: { uid: 'contact-1', displayName: 'New Person', contactStatusId: null },
+        })
+        updateFields = jest
+            .spyOn(require('../shared/contactUpdateHelper'), 'updateContactFields')
+            .mockImplementation(async ({ contact, updates }) => ({
+                contact: { ...contact, ...updates },
+                updated: true,
+                changes: ['contactStatusId updated'],
+            }))
+    })
+
+    afterEach(() => jest.restoreAllMocks())
+
+    test('project discovery exposes the available status IDs and names', async () => {
+        ProjectService.mockImplementationOnce(() => ({
+            initialize: jest.fn(),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'sales', ...project }]),
+        }))
+        const result = await executeToolNatively('get_user_projects', {}, 'sales', null, 'user-1', null)
+        expect(result.projects[0].contactStatuses).toEqual([{ id: 'connect', name: 'JTL Connect' }])
+    })
+
+    test.each([null, 'assistant-1'])('sets a status on a new contact for assistantId %s', async assistantId => {
+        const result = await executeToolNatively(
+            'update_contact',
+            { contactName: 'New Person', createIfMissing: true, contactStatusName: 'JTL Connect' },
+            'original-project',
+            assistantId,
+            'user-1',
+            null
+        )
+        expect(resolveTarget).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'sales',
+                userId: 'user-1',
+                createIfMissing: true,
+            })
+        )
+        expect(updateFields).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'sales',
+                updates: { contactStatusId: 'connect' },
+            })
+        )
+        expect(result.contact).toMatchObject({ contactStatusId: 'connect', contactStatusName: 'JTL Connect' })
+    })
+
+    test('sets and clears the status on an existing contact without other field updates', async () => {
+        for (const [contactStatusId, expected] of [
+            ['connect', 'connect'],
+            ['', null],
+        ]) {
+            const result = await executeToolNatively(
+                'update_contact',
+                { contactId: 'contact-1', contactStatusId },
+                'sales',
+                null,
+                'user-1',
+                null
+            )
+            expect(result.success).toBe(true)
+            expect(result.contact.contactStatusId).toBe(expected)
+            expect(updateFields).toHaveBeenLastCalledWith(
+                expect.objectContaining({
+                    updates: { contactStatusId: expected },
+                })
+            )
+        }
+    })
+
+    test('invalid target-project status does not create or update a contact', async () => {
+        const result = await executeToolNatively(
+            'update_contact',
+            { contactName: 'New Person', createIfMissing: true, contactStatusId: 'other-project-status' },
+            'original-project',
+            'assistant-1',
+            'user-1',
+            null
+        )
+        expect(result).toMatchObject({
+            success: false,
+            availableContactStatuses: [{ id: 'connect', name: 'JTL Connect' }],
+        })
+        expect(resolveTarget).not.toHaveBeenCalled()
+        expect(updateFields).not.toHaveBeenCalled()
     })
 })
