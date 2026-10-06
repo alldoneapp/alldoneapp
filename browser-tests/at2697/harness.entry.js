@@ -25,10 +25,16 @@ const tag = id => ({
     },
 })
 
-window.fixture = (shape = 'text', deferred = false) => {
+window.fixture = (shape = 'text', deferred = true) => {
     stopDeferred()
     stopDeferred = deferred ? enableDeferredNoteEmbeds('note-1', editor.root) : () => {}
     const ops = {
+        reported: [
+            { insert: 'das' },
+            tag('tag-1'),
+            { insert: 'adada' },
+            { insert: '\n', attributes: { list: 'bullet' } },
+        ],
         text: [{ insert: 'AB' }, tag('tag-1'), { insert: 'CD\n' }],
         alone: [tag('tag-1'), { insert: '\n' }],
         adjacent: [tag('tag-1'), tag('tag-2'), { insert: '\n' }],
@@ -40,6 +46,45 @@ window.fixture = (shape = 'text', deferred = false) => {
     return editor.getContents()
 }
 window.editor = editor
+const rectangle = rect => ({
+    left: rect.left,
+    right: rect.right,
+    top: rect.top,
+    height: rect.height,
+    width: rect.width,
+})
+// Measure the rendered descendants, including date/avatar overflow, independently
+// of Quill's bounds/guards. A self-consistent wrong bounds result must not pass.
+window.taskGeometry = () => {
+    const tag = editor.root.querySelector('.ql-taskTagFormat')
+    const content = tag.children[0]
+    const boxes = [...content.querySelectorAll('*')]
+        .map(node => {
+            const rect = rectangle(node.getBoundingClientRect())
+            // Truncated titles can have larger descendants behind overflow:hidden.
+            for (let parent = node.parentElement; parent && parent !== content; parent = parent.parentElement) {
+                if (['hidden', 'clip'].includes(getComputedStyle(parent).overflowX)) {
+                    rect.right = Math.min(rect.right, parent.getBoundingClientRect().right)
+                }
+            }
+            return rect
+        })
+        .filter(rect => rect.width > 0 && rect.height > 0)
+    const text = tag.nextSibling
+    let next
+    if (text?.nodeType === Node.TEXT_NODE) {
+        const range = document.createRange()
+        range.setStart(text, 0)
+        range.setEnd(text, 1)
+        next = rectangle(range.getBoundingClientRect())
+    }
+    return {
+        tag: rectangle(tag.getBoundingClientRect()),
+        content: rectangle(content.getBoundingClientRect()),
+        paintedRight: Math.max(...boxes.map(rect => rect.right)),
+        next,
+    }
+}
 window.caret = () => {
     const selection = document.getSelection()
     const range = selection.getRangeAt(0)
@@ -62,6 +107,12 @@ window.caret = () => {
         left: rect.left,
         top: rect.top,
         focus: editor.hasFocus(),
+        native: {
+            node: range.startContainer.nodeName,
+            offset: range.startOffset,
+            text: range.startContainer.nodeType === 3 ? range.startContainer.data : null,
+            insideTaskContent: !!parent.closest('.ql-taskTagFormat [contenteditable="false"]'),
+        },
         bounds: guardRect?.height
             ? { left: guardRect.left, top: guardRect.top, height: guardRect.height }
             : { left: container.left + bounds.left, top: container.top + bounds.top, height: bounds.height },

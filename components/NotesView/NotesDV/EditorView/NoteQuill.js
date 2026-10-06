@@ -1,4 +1,5 @@
 import ReactQuill from 'react-quill-new'
+import { installTaskTagSelectionCollapse } from './taskTagSelection'
 
 /**
  * The note is uncontrolled and owned by Yjs. Its change consumer needs the
@@ -22,5 +23,11 @@ export default class NoteQuill extends ReactQuill {
     validateProps(props) {
         super.validateProps(props)
         if ('value' in props) throw new Error('NoteQuill content must be owned by Yjs, not a controlled value')
+    }
+
+    createEditor(element, config) {
+        const editor = super.createEditor(element, config)
+        installTaskTagSelectionCollapse(editor)
+        return editor
     }
 }
