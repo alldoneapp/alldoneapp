@@ -71,6 +71,7 @@ export default function MainSection({
     // row and unmount the open editor with it (AT-2267). See taskPlacementHold.js.
     const taskGroupingRef = useRef(undefined)
     const unresolvedGoalSortRef = useRef(false)
+    const emptyGeneralComposerRef = useRef(false)
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const liveMainTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][MAIN_TASK_INDEX])
     const heldMainTasks = holdTaskGrouping(liveMainTasks, isUserEditing, taskGroupingRef)
@@ -463,7 +464,13 @@ export default function MainSection({
     const generalTaskEntryRunId = onlyDepartingGoalsRemain
         ? Math.max(...sortedMainTasks.map(([sectionId]) => exitRunIdByGoalId[sectionId]))
         : 0
-    const showEmptyGeneralTaskSection = sortedMainTasks.length === 0 || onlyDepartingGoalsRemain
+    const liveEmptyGeneralTaskSection = sortedMainTasks.length === 0 || onlyDepartingGoalsRemain
+    if (!isUserEditing) emptyGeneralComposerRef.current = liveEmptyGeneralTaskSection
+    // The empty-list composer lives outside the keyed task groups. A first task/goal snapshot
+    // must not replace that parent while its editor is open: React would unmount the input and
+    // discard focus. Keep it here until editing ends, including repeat-mode task creation.
+    const holdEmptyGeneralComposer = isUserEditing && emptyGeneralComposerRef.current
+    const showEmptyGeneralTaskSection = liveEmptyGeneralTaskSection || holdEmptyGeneralComposer
 
     // Holds already-mounted sections at their last idle size while the user is
     // typing, so a background task cannot starve one out of the shared budget
@@ -558,6 +565,7 @@ export default function MainSection({
                                 loggedUserCanUpdateObject &&
                                 !isTemplateProject &&
                                 !isAssistant &&
+                                !holdEmptyGeneralComposer &&
                                 (isActiveOrganizeMode ? (
                                     <SortModeActiveInfo containerStyle={{ paddingLeft: 8 }} />
                                 ) : (
