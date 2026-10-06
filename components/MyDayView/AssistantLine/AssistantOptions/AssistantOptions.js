@@ -453,6 +453,7 @@ export default function AssistantOptions({
                     // instead of waiting for hover/focus — on touch there is no hover at all, so
                     // it used to appear only after the field was already tapped (AT-2355).
                     alwaysShowDictation={true}
+                    showAttachmentButton={true}
                     // Push-to-talk (AT-2405): hold the mic, speak, release — the transcript is
                     // inserted and the message is sent. Enter's own guards still apply, since this
                     // is the same send path the keydown listener uses.

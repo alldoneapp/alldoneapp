@@ -132,6 +132,12 @@ describe('dragging a file onto the assistant-project input line (AT-2444)', () =
         document.body.innerHTML = ''
     })
 
+    it('enables the shared attachment menu next to dictation in the conversation project', () => {
+        expect(mockInputProps.showAttachmentButton).toBe(true)
+        expect(mockInputProps.alwaysShowDictation).toBe(true)
+        expect(mockInputProps.projectId).toBe('project-1')
+    })
+
     const dropOn = (selector, files) => {
         const node = container.querySelector(selector)
         expect(node).toBeTruthy()

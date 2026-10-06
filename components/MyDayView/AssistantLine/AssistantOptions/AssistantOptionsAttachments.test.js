@@ -267,6 +267,11 @@ describe('dragging an image onto the assistant line (AT-2444)', () => {
         expect(mockInputProps.projectId).toBe('selected-project')
     })
 
+    it('enables the shared attachment menu next to dictation', () => {
+        expect(mockInputProps.showAttachmentButton).toBe(true)
+        expect(mockInputProps.alwaysShowDictation).toBe(true)
+    })
+
     it('uploads the attachment before creating the topic and sends the rewritten text', async () => {
         updateNewAttachmentsData.mockResolvedValue(uploadedImageMessage)
         await typeMessage(imageMessage)
