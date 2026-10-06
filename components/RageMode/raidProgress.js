@@ -8,9 +8,9 @@ import { BASE_MAX_SHIELD, createRun, MAX_BOMBS, MAX_CANNON_LEVEL, SHIELD_CAP } f
  * devices drop theirs as well).
  *
  * Two copies. The server's (`rageModeProfiles/{uid}.progress`, via `saveRageModeProgress`) is what
- * makes it follow you; the browser's (localStorage, one entry per user) makes the next take-off
- * instant and keeps a save that could not reach the server, marked `pending` until it does. Every
- * record carries `savedAt`, stamped by the SERVER once synced, and `reconcile` picks the newer of
+ * makes it follow you; the browser's (localStorage, one entry per user) keeps a save that could
+ * not reach the server, marked `pending` until it does. The arena waits for the server before
+ * take-off. Every record carries `savedAt`, stamped by the SERVER once synced, and `reconcile` picks the newer of
  * the two at take-off.
  *
  * Both copies can be edited by their owner, so a checkpoint is always read through
@@ -123,7 +123,7 @@ export const sanitizeRecord = raw => {
 export const reconcile = (local, remote) => {
     if (local && local.pending && (!remote || local.savedAt > remote.savedAt)) return { record: local, push: true }
     if (remote) return { record: { ...remote, pending: false }, push: false }
-    return { record: local, push: !!(local && local.pending) }
+    return { record: null, push: false }
 }
 
 export const readRecord = scope => {

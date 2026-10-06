@@ -1588,11 +1588,13 @@ checkpoint (with that game's credits banked) rather than from mission 1. Only "S
 twice, or the confirming button in the hangar and on the game-over card), and a start over is saved
 as an EMPTY checkpoint so other devices drop theirs too. Two copies: the server's
 (`rageModeProfiles/{uid}.progress`, written by `saveRageModeProgress`, returned by
-`getRageModeProfile`) and the browser's (localStorage per uid) for an instant take-off and for saves
-that could not reach the server yet (`pending`). The server stamps `savedAt`, so devices with
-different clocks agree, and `reconcile` picks the newer copy while Anna does her run-up — which
-waits up to `RUNUP_MAX_SECONDS` for the profile, so a mission is never started from a stale copy on
-an ordinary connection. Saves go out ONE at a time, newest last, so two quick hangar purchases can
+`getRageModeProfile`) and the browser's (localStorage per uid) for saves
+that could not reach the server yet (`pending`). Before Anna leaves her avatar, the arena waits
+for `getRageModeProfile`, showing a loading panel. A failed read offers retry or exit; no timer
+starts local gameplay (AT-2700). A successful empty profile starts at mission 1. The server stamps
+`savedAt`, so devices with different clocks agree. `reconcile` adopts the server copy, retaining
+only newer unsynced local saves for delivery; a synced local copy cannot override an empty server
+profile. Saves go out ONE at a time, newest last, so two quick hangar purchases can
 never reach the server in the wrong order. Both copies are owner-editable, so a checkpoint is always
 read through `sanitizeCheckpoint`; the server's copy of those rules is
 `functions/RageMode/rageModeProgress.js`, and `raidProgress.test.js` fails the build if the two

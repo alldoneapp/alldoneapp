@@ -177,7 +177,6 @@ const SUN_DIRECTION = new Vector3(-0.3, 0.34, 1).normalize()
 const TAKEOFF_SECONDS = 1.1
 // The run-up on the page: she runs while the page starts to move, then the jetpack fires.
 const RUNUP_MIN_SECONDS = 2.5
-const RUNUP_MAX_SECONDS = 3.5
 const RUNUP_SCROLL_FROM = 0.05
 const RUNUP_SCROLL_TO = 0.75
 // She lands low on the page and runs up it to where she will fly from.
@@ -1098,8 +1097,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
 
     /* State. */
     // Pick up where the last raid left off (raidProgress.js), unless there is nothing to pick up.
-    // This browser's copy first, so take-off is instant; the server's copy (which may come from
-    // another device) is reconciled with it when the profile arrives, during the run-up.
+    // Keep unsynced saves, but wait for the server's copy before take-off on connected clients.
     let record = readRecord(progressScope)
     let checkpoint = record ? record.checkpoint : null
     const freshRun = () => {
@@ -1148,8 +1146,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         const changed = JSON.stringify(next) !== JSON.stringify(checkpoint)
         record = chosen
         writeRecord(progressScope, chosen)
-        // Before lift-off the raid can still switch to it; mid-mission it applies next time.
-        if (changed && (phase === 'takeoff' || phase === 'runup')) {
+        if (changed && phase === 'loading') {
             checkpoint = next
             run = freshRun()
             ui.setCanStartOver(!!checkpoint)
@@ -1159,7 +1156,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     }
     let startOverArmedUntil = -Infinity
     let best = 0
-    let phase = 'takeoff'
+    let phase = services.loadProfile ? 'loading' : 'takeoff'
     let finished = false
     let time = 0
     let scroll = 0
@@ -1184,8 +1181,6 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     let liftoffAt = -Infinity
     let runupPuffIn = 0
     let lastStride = -1
-    // The raid waits (a little) for the server's copy of your progress before the mission starts.
-    let progressSettled = !services.loadProfile
     let lastGreetingStyle = null
     let bubble = null
     let bankAngle = 0
@@ -1266,6 +1261,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             saveName: name => saveName(name),
             startOver: () => startOver(),
             requestStartOver: () => requestStartOver(),
+            retryProfile: () => loadProfile(),
         },
     })
     ui.setCanStartOver(!!checkpoint)
@@ -1274,7 +1270,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         phase = next
         hud.dataset.phase = next
     }
-    setPhase('takeoff')
+    setPhase(phase)
 
     /* Effects. */
     // Fire cools from white through yellow and orange into a light smoke — never into soot, which
@@ -2729,7 +2725,14 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
 
     /** Forget the saved progress and fly again from mission 1. */
     const startOver = () => {
-        if (phase === 'takeoff' || phase === 'returning' || phase === 'done') return
+        if (
+            phase === 'loading' ||
+            phase === 'profile-error' ||
+            phase === 'takeoff' ||
+            phase === 'returning' ||
+            phase === 'done'
+        )
+            return
         cancelGreeting()
         submitScore()
         storeProgress(null)
@@ -2753,6 +2756,11 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     /* Leaving: everything flies home and the page slides back up under the ground. */
     const beginReturn = () => {
         if (phase === 'returning' || phase === 'done') return
+        // Anna has not left her avatar yet; close without a return flight or score submission.
+        if (phase === 'loading' || phase === 'profile-error') {
+            finish()
+            return
+        }
         cancelGreeting()
         resetRig()
         liftoffAt = -Infinity
@@ -2993,7 +3001,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 vy: 40 + k * 260,
             })
         }
-        if (elapsed >= RUNUP_MIN_SECONDS && (progressSettled || elapsed >= RUNUP_MAX_SECONDS)) liftOff()
+        if (elapsed >= RUNUP_MIN_SECONDS) liftOff()
     }
     const liftOff = () => {
         setPhase('flying')
@@ -3762,6 +3770,11 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         frameId = 0
         const dt = lastTimestamp ? Math.min(0.05, (timestamp - lastTimestamp) / 1000) : 1 / 60
         lastTimestamp = timestamp
+        // No animation clock, page movement, enemies or gameplay until progress is loaded.
+        if (phase === 'loading' || phase === 'profile-error') {
+            frameId = requestAnimationFrame(frame)
+            return
+        }
         if (paused) {
             // The shop is open: everything holds still (buff timers too), the picture stays.
             renderer.render(scene, camera)
@@ -3949,6 +3962,23 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             event.stopImmediatePropagation()
             return
         }
+        if (phase === 'loading' || phase === 'profile-error') {
+            event.stopImmediatePropagation()
+            if (down && event.key === 'Escape') {
+                event.preventDefault()
+                beginReturn()
+            } else if (event.key === 'Tab') {
+                event.preventDefault()
+                if (down) ui.profile.focusNext(event.shiftKey)
+            } else if (target && target.tagName === 'BUTTON' && ui.profile.element.contains(target)) {
+                // Let the loading panel's buttons work with the keyboard.
+                return
+            } else {
+                event.preventDefault()
+                if (down && event.key === 'Enter' && phase === 'profile-error') loadProfile()
+            }
+            return
+        }
         event.preventDefault()
         event.stopImmediatePropagation()
         if (down && event.key === 'Escape') {
@@ -4041,35 +4071,65 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     document.body.append(inputLayer, canvas, ...ui.elements, shopUi.element)
     ui.renderWeapons(RAGE_WEAPONS, owned, equipped)
     buildPageTargets()
-    const helpTimer = setTimeout(() => {
-        ui.help.style.opacity = '0'
-    }, 5000)
+    let helpTimer
+    const showHelp = () => {
+        helpTimer = setTimeout(() => {
+            ui.help.style.opacity = '0'
+        }, 5000)
+    }
     hud.dataset.shots = '0'
     hud.dataset.kills = '0'
     hud.dataset.density = screen.density.toFixed(2)
     hud.dataset.pageTargets = String(pageTargets.length)
     updateTerrain()
 
-    // What the player owns and their best score come from the server; until then: the blaster.
-    if (services.loadProfile) {
+    // Only a successful profile read may release the start animation. The callable supplies its
+    // own timeout; a rejection (including offline) stays here until retry or exit.
+    let loadingProfile = false
+    const loadProfile = () => {
+        if (finished || loadingProfile || (phase !== 'loading' && phase !== 'profile-error')) return
+        loadingProfile = true
+        setPhase('loading')
+        inputLayer.style.cursor = 'default'
+        ui.setProfileStatus('loading')
         Promise.resolve()
             .then(() => services.loadProfile())
             .then(profile => {
-                progressSettled = true
-                if (!profile || finished) return
+                if (finished) return
+                if (
+                    !profile ||
+                    typeof profile !== 'object' ||
+                    !Array.isArray(profile.owned) ||
+                    (profile.progress !== null && !sanitizeRecord(profile.progress))
+                )
+                    throw new Error('Invalid rage profile')
                 adoptServerProgress(profile.progress)
                 owned = new Set([RAGE_DEFAULT_WEAPON, ...(Array.isArray(profile.owned) ? profile.owned : [])])
                 best = Math.max(best, Number(profile.highscore) || 0)
                 if (preferredWeapon && owned.has(preferredWeapon)) equip(preferredWeapon)
                 else ui.renderWeapons(RAGE_WEAPONS, owned, equipped)
                 if (shopUi.isOpen()) shopUi.render()
+                held.clear()
+                resetSteering()
+                inputLayer.style.cursor = touchDevice ? 'default' : 'none'
+                ui.setProfileStatus('ready')
+                setPhase('takeoff')
+                showHelp()
             })
             .catch(() => {
-                // Offline: fly with this browser's copy, and try to deliver a pending save anyway.
-                progressSettled = true
-                syncProgress()
+                if (finished) return
+                setPhase('profile-error')
+                ui.setProfileStatus('error')
             })
-    } else if (preferredWeapon && owned.has(preferredWeapon)) equip(preferredWeapon)
+            .finally(() => {
+                loadingProfile = false
+            })
+    }
+    if (services.loadProfile) loadProfile()
+    else {
+        if (preferredWeapon && owned.has(preferredWeapon)) equip(preferredWeapon)
+        showHelp()
+    }
 
     frameId = requestAnimationFrame(frame)
 

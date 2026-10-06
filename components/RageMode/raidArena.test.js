@@ -103,6 +103,7 @@ describe('rage mode raid arena', () => {
 
     beforeEach(() => {
         jest.useFakeTimers()
+        jest.setSystemTime(new Date('2026-10-06T12:00:00Z'))
         frames = new Map()
         timestamp = 0
         let nextFrame = 0
@@ -400,13 +401,144 @@ describe('rage mode raid arena', () => {
             expect(JSON.parse(localStorage.getItem(PROGRESS_KEY))).toMatchObject({ savedAt: 500, pending: false })
         })
 
-        it('waits in the run-up for the server, but never forever', () => {
-            services.loadProfile = () => new Promise(() => {})
+        it.each([
+            [1200, 800],
+            [390, 844],
+        ])('waits before take-off beyond 4.6 seconds (%s × %s)', async (width, height) => {
+            jest.replaceProperty(window, 'innerWidth', width)
+            jest.replaceProperty(window, 'innerHeight', height)
+            saveLocal({ completed: 1, credits: 20, cannonLevel: 1 }, 100)
+            let resolveProfile
+            services.loadProfile = jest.fn(
+                () =>
+                    new Promise(resolve => {
+                        resolveProfile = resolve
+                    })
+            )
+            services.saveProgress = jest.fn()
             start()
-            for (let i = 0; i < 60 * 3 && hud().dataset.phase !== 'flying'; i++) step()
-            expect(hud().dataset.phase).toBe('runup')
+            await flushPromises()
+            const root = document.getElementById('root')
+            const transform = root.style.transform
+            step(60 * 15)
+            jest.advanceTimersByTime(15000)
+            key(' ', 'Space')
+            key('b', 'KeyB')
+            key('Enter')
+            expect(hud().dataset.phase).toBe('loading')
+            expect(hud().dataset.shots).toBe('0')
+            expect(root.style.transform).toBe(transform)
+            expect(layer('profile').textContent).toContain(strings.profileLoading)
+            expect(layer('profile').style.display).toBe('flex')
+            expect(layer('profile').querySelector('[data-retry-profile]').disabled).toBe(true)
+            expect(services.saveProgress).not.toHaveBeenCalled()
+            expect(services.submitScore).not.toHaveBeenCalled()
+            resolveProfile({
+                owned: [],
+                highscore: 0,
+                progress: { checkpoint: { completed: 5, credits: 90, cannonLevel: 3 }, savedAt: 500 },
+            })
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('takeoff')
+            expect(layer('profile').style.display).toBe('none')
+            step()
+            expect(hud().dataset.phase).toBe('takeoff')
+            expect(layer('help').style.opacity).not.toBe('0')
             fly()
-            expect(hud().dataset.phase).toBe('flying')
+            expect(hud().dataset.mission).toBe('6')
+            expect(Number(hud().dataset.credits)).toBeGreaterThanOrEqual(90)
+            expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint.cannonLevel).toBe(3)
+            expect(services.loadProfile).toHaveBeenCalledTimes(1)
+        })
+
+        it.each([
+            ['no local save', false],
+            ['stale synced local save', true],
+        ])('starts a new user at mission 1 with %s', async (_, stale) => {
+            if (stale) saveLocal({ completed: 5 }, 100)
+            services.loadProfile = () => Promise.resolve({ owned: ['blaster'], highscore: 0, progress: null })
+            start()
+            await flushPromises()
+            fly()
+            expect(hud().dataset.mission).toBe('1')
+            expect(localStorage.getItem(PROGRESS_KEY)).toBeNull()
+        })
+
+        it.each(['reject', 'throw', 'empty', 'missing progress'])(
+            'shows an error for a %s response and retries without stale gameplay',
+            async kind => {
+                saveLocal({ completed: 1, score: 500 }, 100, true)
+                services.saveProgress = jest.fn()
+                let resolveRetry
+                services.loadProfile = jest
+                    .fn()
+                    .mockImplementationOnce(() => {
+                        if (kind === 'throw') throw new Error('offline')
+                        if (kind === 'empty') return Promise.resolve(null)
+                        if (kind === 'missing progress') return Promise.resolve({ owned: [] })
+                        return Promise.reject(new Error('unavailable'))
+                    })
+                    .mockImplementationOnce(
+                        () =>
+                            new Promise(resolve => {
+                                resolveRetry = resolve
+                            })
+                    )
+                start()
+                await flushPromises()
+                step(60 * 10)
+                expect(hud().dataset.phase).toBe('profile-error')
+                expect(layer('profile').textContent).toContain(strings.profileError)
+                expect(hud().dataset.shots).toBe('0')
+                expect(services.saveProgress).not.toHaveBeenCalled()
+                expect(services.submitScore).not.toHaveBeenCalled()
+                const retry = layer('profile').querySelector('[data-retry-profile]')
+                retry.click()
+                retry.click()
+                await flushPromises()
+                expect(services.loadProfile).toHaveBeenCalledTimes(2)
+                expect(hud().dataset.phase).toBe('loading')
+                expect(retry.disabled).toBe(true)
+                step(60 * 10)
+                expect(hud().dataset.phase).toBe('loading')
+                resolveRetry({ owned: [], highscore: 0, progress: { checkpoint: { completed: 5 }, savedAt: 500 } })
+                await flushPromises()
+                fly()
+                expect(hud().dataset.mission).toBe('6')
+            }
+        )
+
+        it('exits while loading and ignores a late profile without writing or reopening', async () => {
+            saveLocal({ completed: 1, score: 500 }, 100, true)
+            const html = document.body.innerHTML
+            let resolveProfile
+            services.loadProfile = () =>
+                new Promise(resolve => {
+                    resolveProfile = resolve
+                })
+            services.saveProgress = jest.fn()
+            start()
+            await flushPromises()
+            key('Escape')
+            expect(isRageArenaActive()).toBe(false)
+            expect(document.body.innerHTML).toBe(html)
+            expect(onExit).toHaveBeenCalledTimes(1)
+            resolveProfile({ owned: [], progress: { checkpoint: { completed: 5 }, savedAt: 500 } })
+            await flushPromises()
+            expect(document.body.innerHTML).toBe(html)
+            expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint.completed).toBe(1)
+            expect(services.saveProgress).not.toHaveBeenCalled()
+            expect(services.submitScore).not.toHaveBeenCalled()
+            expect(frames.size).toBe(0)
+        })
+
+        it('can close a failed load with the panel button', async () => {
+            services.loadProfile = () => Promise.reject(new Error('offline'))
+            start()
+            await flushPromises()
+            layer('profile').querySelector(`button[aria-label="${strings.exit}"]`).click()
+            expect(isRageArenaActive()).toBe(false)
+            expect(onExit).toHaveBeenCalledTimes(1)
         })
 
         it('pushes a save that never reached the server', async () => {
