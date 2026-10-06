@@ -11,6 +11,7 @@ import {
     setQuillTextInputProjectIdsByEditorId,
 } from '../../../redux/actions'
 import CustomScrollView from '../../UIControls/CustomScrollView'
+import AddFeedAttachButton from '../AddFeed/AddFeedAttachButton'
 import WrapperMentionsModal from './WrapperMentionsModal'
 import {
     ALLOWED_FORMATS,
@@ -48,6 +49,7 @@ import {
     buildDictationDelta,
     buildResolvedPeopleMention,
     placeDictationCaret,
+    insertAttachmentInsideEditor,
 } from './textInputHelper'
 import RambleButton from '../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../hooks/useRambleRecorder'
@@ -150,6 +152,7 @@ function CustomTextInput3(
         dictationTargetKind,
         alwaysShowDictation = false,
         onDictationSubmit,
+        showAttachmentButton = false,
     },
     ref
 ) {
@@ -1099,6 +1102,20 @@ function CustomTextInput3(
     const supportsAttachments =
         !!otherFormats && otherFormats.some(format => format === 'attachment' || format === 'customImageFormat')
 
+    const attachmentButtonEnabled = showAttachmentButton && supportsAttachments && !!innerProjectId && !disabledEdition
+
+    useEffect(() => {
+        if (!attachmentButtonEnabled || !editorElement) return
+        const className = dictationEnabled ? 'ql-editorWithAttachmentAndDictation' : 'ql-editorWithAttachment'
+        editorElement.classList.add(className)
+        return () => editorElement.classList.remove(className)
+    }, [attachmentButtonEnabled, dictationEnabled, editorElement])
+
+    const addAttachmentTag = (text, uri) => {
+        if (!quillRef.current || !attachmentButtonEnabled) return
+        insertAttachmentInsideEditor(selectionRef.current.index, quillRef.current, text, uri)
+    }
+
     const getFormats = () => {
         if (!disabledTags && !inMentionsEditionTag) {
             const formats = otherFormats ? [...ALLOWED_FORMATS, ...otherFormats] : [...ALLOWED_FORMATS]
@@ -1484,16 +1501,26 @@ function CustomTextInput3(
             scrollEnabled={scrollEnabled}
             showIndicator={showScrollIndicator}
             fixedChildren={
-                dictationEnabled ? (
+                dictationEnabled || attachmentButtonEnabled ? (
                     <View pointerEvents={'box-none'} style={localDictationWrapperStyle}>
-                        <RambleButton
-                            projectId={innerProjectId}
-                            targetKind={dictationKind}
-                            getCurrentText={() => textRef.current}
-                            onTextReady={insertDictatedText}
-                            onSubmit={submitDictatedText}
-                            visible={dictationButtonVisible}
-                        />
+                        {attachmentButtonEnabled && (
+                            <AddFeedAttachButton
+                                compact
+                                projectId={innerProjectId}
+                                isDisabled={!editorElement}
+                                addAttachmentTag={addAttachmentTag}
+                            />
+                        )}
+                        {dictationEnabled && (
+                            <RambleButton
+                                projectId={innerProjectId}
+                                targetKind={dictationKind}
+                                getCurrentText={() => textRef.current}
+                                onTextReady={insertDictatedText}
+                                onSubmit={submitDictatedText}
+                                visible={dictationButtonVisible}
+                            />
+                        )}
                     </View>
                 ) : null
             }
@@ -1561,6 +1588,9 @@ const localDictationWrapperStyle = {
     right: 8,
     top: 6,
     height: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     justifyContent: 'center',
     zIndex: 10,
 }

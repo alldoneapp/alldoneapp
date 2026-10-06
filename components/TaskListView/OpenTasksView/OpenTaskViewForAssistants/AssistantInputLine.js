@@ -203,6 +203,7 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                     // Pinned on, and push-to-talk wired up, exactly as on the My Day assistant line
                     // (AT-2355 / AT-2405): these are the same composer and should not differ.
                     alwaysShowDictation={true}
+                    showAttachmentButton={true}
                     onDictationSubmit={text => text && handleSendMessage(text)}
                 />
                 <View
