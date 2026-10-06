@@ -16,6 +16,12 @@ export const enableDeferredNoteEmbeds = (editorId, editorRoot, { subscribe, getT
         pending.delete(mount)
         observer.unobserve(mount)
         mount.removeAttribute('data-deferred-embed')
+        // A task's placeholder is only an estimate. Keeping its 480px box
+        // after React mounts lets the title/date/avatar overflow over the next
+        // text node and its caret (AT-2697). Restore the normal React mount
+        // before rendering so Quill's guards follow the entire visible row.
+        // Media still needs its reserved box while its dimensions load.
+        if (entry.kind === 'task') mount.style.cssText = 'display: contents;'
         entry.render()
     }
     const observer = new IntersectionObserver(
@@ -59,13 +65,13 @@ export const enableDeferredNoteEmbeds = (editorId, editorRoot, { subscribe, getT
 export const deferNoteEmbed = (mount, render, { editorId, kind, label, getLabel, width = 320, height = 24 } = {}) => {
     const note = notes.get(editorId)
     if (!note) return false
-    // The same reserved box stays after activation. Sizes are deliberately
-    // bounded; media may contain whitespace until its dimensions are known.
+    // Reserve a bounded box until activation. Tasks then use their real row
+    // size; media keeps its box until its dimensions are known.
     mount.style.cssText = `display:inline-block;vertical-align:middle;max-width:100%;width:${width}px;height:${height}px;`
     mount.setAttribute('data-deferred-embed', kind)
     mount.setAttribute('contenteditable', 'false')
     mount.textContent = getLabel ? getLabel() : label || ''
-    const entry = { render, getLabel }
+    const entry = { render, getLabel, kind }
     note.entries.set(mount, entry)
     pending.set(mount, note)
     note.observer.observe(mount)

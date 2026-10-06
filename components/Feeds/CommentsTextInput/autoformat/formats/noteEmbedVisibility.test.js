@@ -13,21 +13,26 @@ afterEach(() => {
     delete global.IntersectionObserver
 })
 
-it('defers offscreen work, keeps its reserved size after activation and never re-deactivates', () => {
+it('defers offscreen tasks and releases placeholder dimensions before rendering the full row', () => {
     const release = enableDeferredNoteEmbeds('n', document.body)
     const mount = document.createElement('span')
-    const render = jest.fn()
+    const render = jest.fn(() => {
+        expect(mount.style.display).toBe('contents')
+        expect(mount.style.width).toBe('')
+        expect(mount.style.height).toBe('')
+        expect(mount.hasAttribute('data-deferred-embed')).toBe(false)
+    })
     expect(deferNoteEmbed(mount, render, { editorId: 'n', kind: 'task', label: 'Searchable task', width: 480 })).toBe(
         true
     )
     expect(render).not.toHaveBeenCalled()
     expect(mount.textContent).toBe('Searchable task')
-    const size = mount.style.cssText
+    expect(mount.style.width).toBe('480px')
     callback([{ target: mount, isIntersecting: false }])
     expect(render).not.toHaveBeenCalled()
     callback([{ target: mount, isIntersecting: true }])
     expect(render).toHaveBeenCalledTimes(1)
-    expect(mount.style.cssText).toBe(size)
+    expect(mount.style.display).toBe('contents')
     callback([
         { target: mount, isIntersecting: false },
         { target: mount, isIntersecting: true },
@@ -35,6 +40,17 @@ it('defers offscreen work, keeps its reserved size after activation and never re
     expect(render).toHaveBeenCalledTimes(1)
     release()
     expect(observer.disconnect).toHaveBeenCalled()
+})
+it('keeps the reserved media box after activation', () => {
+    const release = enableDeferredNoteEmbeds('n', document.body)
+    const mount = document.createElement('span')
+    const render = jest.fn()
+    deferNoteEmbed(mount, render, { editorId: 'n', kind: 'image', width: 320, height: 200 })
+    const size = mount.style.cssText
+    callback([{ target: mount, isIntersecting: true }])
+    expect(render).toHaveBeenCalledTimes(1)
+    expect(mount.style.cssText).toBe(size)
+    release()
 })
 it('cancels a deleted blot and pending roots when the note closes', () => {
     const release = enableDeferredNoteEmbeds('n', document.body)
