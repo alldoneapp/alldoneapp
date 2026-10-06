@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -18,21 +18,9 @@ export default function ContactStatusFiltersView({ projectContacts }) {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const projectsMap = useSelector(state => state.loggedUserProjectsMap)
     const projectUsers = useSelector(state => state.projectUsers)
-    const currentUserUid = useSelector(state => state.currentUser.uid)
     const [contactStatusFilter, setFilter, clearFilter] = useSelectorContactStatusFilter()
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
-
-    // Clear filter when user or project changes
-    useEffect(() => {
-        return () => {
-            clearFilter()
-        }
-    }, [])
-
-    useEffect(() => {
-        contactStatusFilter && clearFilter()
-    }, [currentUserUid, selectedProjectIndex])
 
     // Don't show in "All Projects" view
     if (inAllProjects) {
