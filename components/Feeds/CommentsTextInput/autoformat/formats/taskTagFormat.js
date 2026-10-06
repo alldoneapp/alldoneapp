@@ -72,7 +72,6 @@ export default class TaskTagFormat extends ReactEmbedBlot {
         node.setAttribute('editorId', editorId)
         node.setAttribute('taskId', taskId)
         node.setAttribute('text', text)
-        node.setAttribute('contenteditable', false)
 
         TaskTagFormat.data = text
 
@@ -113,6 +112,15 @@ export default class TaskTagFormat extends ReactEmbedBlot {
 
     constructor(scroll, domNode) {
         super(scroll, domNode)
+        // Quill protects the task inside contentNode. The outer span also holds
+        // its editable cursor guards: disabling it hides the native caret next
+        // to standalone/adjacent tags (AT-2697). Normalize legacy DOM nodes too.
+        domNode.removeAttribute('contenteditable')
+        // Keep the row in one inline box and leave room for the native caret
+        // outside its background, including between tags and on narrow screens.
+        this.contentNode.style.display = 'inline-block'
+        this.contentNode.style.margin = '0 2px'
+        this.contentNode.style.maxWidth = 'calc(100% - 4px)'
         this.id = domNode.getAttribute('data-id')
         this.data = TaskTagFormat.data
     }
