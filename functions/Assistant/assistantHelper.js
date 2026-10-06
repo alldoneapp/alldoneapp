@@ -937,6 +937,8 @@ function mapAssistantContactForToolResponse(contact) {
         phone: contact?.phone || '',
         linkedInUrl: contact?.linkedInUrl || '',
         description: contact?.description || '',
+        contactStatusId: contact?.contactStatusId || null,
+        contactStatusName: contact?.contactStatusName || null,
         lastEditedAt: Number.isFinite(lastEditedAt) ? lastEditedAt : 0,
     }
 }
@@ -6584,6 +6586,7 @@ async function executeToolNatively(
 
         case 'get_user_projects': {
             const { ProjectService } = require('../shared/ProjectService')
+            const { listContactStatuses } = require('../shared/contactStatusToolHelper')
 
             const userDoc = await admin.firestore().collection('users').doc(creatorId).get()
             if (!userDoc.exists) {
@@ -6611,6 +6614,7 @@ async function executeToolNatively(
                     name: p.name,
                     type: p.type,
                     description: p.description,
+                    contactStatuses: listContactStatuses(p),
                 })),
                 count: projects.length,
             }
@@ -7475,6 +7479,7 @@ async function executeToolNatively(
             const { resolveContactTarget, resolveProjectForContactNote } = require('../shared/contactNoteTargetHelper')
             const { updateContactFields } = require('../shared/contactUpdateHelper')
             const { buildContactUpdatesFromToolArgs } = require('../shared/contactEnrichmentFields')
+            const { hasContactStatusUpdate, resolveContactStatusUpdate } = require('../shared/contactStatusToolHelper')
             const db = admin.firestore()
             const contactId = typeof toolArgs.contactId === 'string' ? toolArgs.contactId.trim() : ''
             const contactName = typeof toolArgs.contactName === 'string' ? toolArgs.contactName.trim() : ''
@@ -7486,9 +7491,16 @@ async function executeToolNatively(
                 return { success: false, message: fieldUpdates.errors.join(' ') }
             }
             const hasFieldUpdates = Object.keys(fieldUpdates.updates).length > 0
-            if (!targetEmail && !hasFieldUpdates && !fieldUpdates.photoUrl && !fieldUpdates.clearPhoto) {
+            const hasStatusUpdate = hasContactStatusUpdate(toolArgs)
+            if (
+                !targetEmail &&
+                !hasFieldUpdates &&
+                !fieldUpdates.photoUrl &&
+                !fieldUpdates.clearPhoto &&
+                !hasStatusUpdate
+            ) {
                 throw new Error(
-                    'update_contact needs at least one field to change (email, displayName, company, role, phone, linkedInUrl, description or photoUrl).'
+                    'update_contact needs at least one field to change (email, displayName, company, role, phone, linkedInUrl, description, photoUrl or Kontaktstatus).'
                 )
             }
 
@@ -7504,6 +7516,12 @@ async function executeToolNatively(
             if (!targetProjectId) {
                 throw new Error('projectId is required when updating a contact.')
             }
+
+            // Validate against the resolved project's statuses before creating a missing
+            // contact. An unknown or ambiguous status must not cause a partial write.
+            const statusProject = hasStatusUpdate ? await db.doc(`projects/${targetProjectId}`).get() : null
+            const statusUpdate = resolveContactStatusUpdate(toolArgs, statusProject?.data() || {})
+            if (!statusUpdate.success) return statusUpdate
 
             const contactResolution = await resolveContactTarget({
                 db,
@@ -7524,7 +7542,7 @@ async function executeToolNatively(
                 }
             }
 
-            const updates = { ...fieldUpdates.updates }
+            const updates = { ...fieldUpdates.updates, ...statusUpdate.updates }
             if (targetEmail) updates.email = targetEmail
 
             const warnings = []
@@ -7589,6 +7607,8 @@ async function executeToolNatively(
                     role: finalContact.role || '',
                     phone: finalContact.phone || '',
                     linkedInUrl: finalContact.linkedInUrl || '',
+                    contactStatusId: finalContact.contactStatusId || null,
+                    ...(hasStatusUpdate ? { contactStatusName: statusUpdate.status?.name || null } : {}),
                     hasPhoto: !!finalContact.photoURL,
                     created: !!contactResolution.contactCreated,
                     updated: !!updateResult.updated,

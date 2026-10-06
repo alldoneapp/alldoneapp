@@ -719,6 +719,8 @@ describe('Contact research tool schemas (profile enrichment)', () => {
             'linkedInUrl',
             'description',
             'photoUrl',
+            'contactStatusId',
+            'contactStatusName',
         ]) {
             expect(properties[field]).toBeDefined()
         }

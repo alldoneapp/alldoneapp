@@ -297,7 +297,22 @@ async function createContactRecord({ db, projectId, userId, contactName = '', co
         contactStatusId: null,
     }
 
-    await db.doc(`projectsContacts/${projectId}/contacts/${contactId}`).set(contact)
+    // The assistant remains the feed actor, but the requesting user must see a new
+    // contact on their default Followed board. Persist the contact and both sides
+    // of that follow together so a successful create cannot leave it hidden.
+    const batch = db.batch()
+    batch.set(db.doc(`projectsContacts/${projectId}/contacts/${contactId}`), contact)
+    batch.set(
+        db.doc(`usersFollowing/${projectId}/entries/${userId}`),
+        { contacts: { [contactId]: true } },
+        { merge: true }
+    )
+    batch.set(
+        db.doc(`followers/${projectId}/contacts/${contactId}`),
+        { usersFollowing: FieldValue.arrayUnion(userId) },
+        { merge: true }
+    )
+    await batch.commit()
     return {
         uid: contactId,
         ...contact,
