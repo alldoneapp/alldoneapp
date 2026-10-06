@@ -3116,6 +3116,8 @@
     "You": "You",
     "Anna is pointing to:": "Anna is pointing to:",
     "Clear highlight": "Clear highlight",
+    "Raid progress loading": "Loading your progress…",
+    "Raid progress error": "Your progress could not be loaded. Check your connection and try again.",
     "Rage mode": "Rage mode",
     "Esc to exit": "Esc to exit",
     "Mute": "Mute",

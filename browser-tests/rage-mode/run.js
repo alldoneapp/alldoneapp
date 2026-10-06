@@ -14,6 +14,7 @@
  *   `--game`   boss → hangar (credits, Gold shop) → mission 2, and a game over → play again.
  *   `--cast`   every new enemy at once, power-ups and their buffs, and the empty-inbox boss.
  *   `--bosses` each of the five boss fights, with a screenshot of each in .build/.
+ *   `--progress` delayed profile, failure/retry and loading UI on desktop and phone (AT-2700).
  *
  * Requirements (not part of CI's Jest jobs):
  *   nvm use 22
@@ -485,6 +486,105 @@ async function bosses(browser, url) {
     }
 }
 
+async function progress(browser, url) {
+    const screenshots = path.join(ROOT, 'browser-tests', 'at2700', 'screenshots')
+    fs.mkdirSync(screenshots, { recursive: true })
+    for (const phone of [false, true]) {
+        const device = phone ? 'phone' : 'desktop'
+        const context = await browser.newContext({
+            viewport: phone ? { width: 390, height: 844 } : { width: 1280, height: 800 },
+            isMobile: phone,
+            hasTouch: phone,
+        })
+        // Software WebGL is slow in the VM. Use the arena's maximum 50ms frame step for flights;
+        // loading is still checked against 5.2 seconds of real wall-clock time.
+        await context.addInitScript(() => {
+            const requestFrame = window.requestAnimationFrame.bind(window)
+            let timestamp = 0
+            window.requestAnimationFrame = callback =>
+                requestFrame(() => {
+                    timestamp += 50
+                    callback(timestamp)
+                })
+        })
+        const page = await context.newPage()
+        const errors = []
+        page.on('pageerror', error => errors.push(error.message))
+        const press = selector => (phone ? page.tap(selector) : page.click(selector))
+        for (const failure of [false, true]) {
+            await page.goto(`${url}?fresh=1&lang=de&god=1&noWaves=1&profileManual=1&profileFailures=${failure ? 1 : 0}`)
+            await page.evaluate(() => {
+                localStorage.setItem(
+                    'alldone.rageMode.progress.harness',
+                    JSON.stringify({ checkpoint: { completed: 1 }, savedAt: 100 })
+                )
+                localStorage.setItem(
+                    'harness.server.progress',
+                    JSON.stringify({ checkpoint: { completed: 5, credits: 90, cannonLevel: 3 }, savedAt: 500 })
+                )
+            })
+            await press('#rage')
+            const initialTransform = await page.locator('#root').evaluate(node => node.style.transform)
+            const panel = page.locator('[data-rage-mode-layer="profile"]')
+            if (failure) {
+                await panel.locator('[data-retry-profile]').waitFor({ state: 'visible' })
+                check(`${device}: failed load stays before take-off`, (await hudData(page)).phase === 'profile-error')
+                await page.screenshot({ path: path.join(screenshots, `${device}-error.png`) })
+                // The desktop path verifies native keyboard activation through the capture handler.
+                if (phone) await press('[data-retry-profile]')
+                else {
+                    await page.keyboard.press('Tab')
+                    await page.keyboard.press('Tab')
+                    check(
+                        'desktop: Tab stays inside the loading panel',
+                        await page.locator('[data-retry-profile]').evaluate(node => node === document.activeElement)
+                    )
+                    await page.keyboard.press('Enter')
+                }
+            }
+            await sleep(5200)
+            const waiting = await page.evaluate(() => ({
+                phase: document.querySelector('[data-rage-mode-layer="hud"]').dataset.phase,
+                shots: document.querySelector('[data-rage-mode-layer="hud"]').dataset.shots,
+                transform: document.getElementById('root').style.transform,
+                attempts: window.__rage.calls.loadProfile,
+                writes: window.__rage.calls.saveProgress.length,
+                scores: window.__rage.calls.submitScore.length,
+            }))
+            check(
+                `${device}: ${failure ? 'retry' : 'slow load'} waits beyond 4.6s`,
+                waiting.phase === 'loading' &&
+                    waiting.shots === '0' &&
+                    waiting.transform === initialTransform &&
+                    waiting.writes === 0 &&
+                    waiting.scores === 0,
+                JSON.stringify(waiting)
+            )
+            check(`${device}: profile request is issued once per attempt`, waiting.attempts === (failure ? 2 : 1))
+            const bounds = await panel.locator('[role="dialog"]').boundingBox()
+            check(
+                `${device}: panel fits viewport`,
+                bounds.x >= 0 &&
+                    bounds.x + bounds.width <= (phone ? 390 : 1280) &&
+                    bounds.y >= 0 &&
+                    bounds.y + bounds.height <= (phone ? 844 : 800)
+            )
+            if (!failure) await page.screenshot({ path: path.join(screenshots, `${device}-loading.png`) })
+            await page.evaluate(() => window.__rage.resolveProfile())
+            check(
+                `${device}: launches server mission 6`,
+                await waitForHud(page, data => data.phase === 'flying' && data.mission === '6')
+            )
+            check(`${device}: hides loading panel`, !(await panel.isVisible()))
+            await page.keyboard.press('Escape')
+            await waitForArenaGone(page)
+            check(`${device}: exit restores page`, (await pageRestored(page)).intact)
+        }
+        check(`${device}: no page errors`, errors.length === 0, errors)
+        await context.close()
+    }
+}
+
 ;(async () => {
     build()
     if (args.has('--serve')) {
@@ -500,7 +600,8 @@ async function bosses(browser, url) {
         args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
     })
     try {
-        if (args.has('--touch')) await touch(browser, url)
+        if (args.has('--progress')) await progress(browser, url)
+        else if (args.has('--touch')) await touch(browser, url)
         else if (args.has('--game')) await game(browser, url)
         else if (args.has('--cast')) await cast(browser, url)
         else if (args.has('--bosses')) await bosses(browser, url)

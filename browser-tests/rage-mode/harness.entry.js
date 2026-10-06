@@ -15,6 +15,7 @@ import { findLaunchPoint, RAGE_LAUNCH_ANCHOR_ID } from '../../components/RageMod
 import { buildRageStrings } from '../../components/RageMode/rageStrings'
 import { RAGE_WEAPONS } from '../../components/RageMode/rageWeapons'
 import en from '../../i18n/translations/en.json'
+import de from '../../i18n/translations/de.json'
 
 const PARAGRAPH =
     'A stick figure is a very simple drawing of a person, in which the head is represented by a circle and the limbs and torso by straight lines. Deadlines, overdue reviews and that one task you have postponed eleven times are represented by this paragraph, which you are now free to take apart letter by letter.'
@@ -125,7 +126,8 @@ document.addEventListener('keydown', () => {
 state.pageHtml = document.body.innerHTML
 
 // The real string table, read from en.json the way the app's TranslationService would.
-const strings = buildRageStrings(key => en[key] || key)
+const locale = new URLSearchParams(window.location.search).get('lang') === 'de' ? de : en
+const strings = buildRageStrings(key => locale[key] || en[key] || key)
 
 // Fake services, steered by the query string: ?gold=1500&tasks=3&best=120&owned=all
 // &bossAt=2&noWaves=1&shield=10&god=1&seed=7&bossHp=40&pickups=coffee,drones&waves=showcase. `state.calls` records what the arena asked for.
@@ -136,8 +138,19 @@ state.profile = {
     highscore: Number(params.get('best') || 120),
 }
 state.calls = { purchase: [], submitScore: [] }
+state.calls.loadProfile = 0
 const services = {
-    loadProfile: () => Promise.resolve({ ...state.profile, progress: serverProgress() }),
+    loadProfile: () => {
+        state.calls.loadProfile += 1
+        if (state.calls.loadProfile <= Number(params.get('profileFailures') || 0))
+            return Promise.reject(new Error('Profile unavailable'))
+        const profile = () => ({ ...state.profile, progress: serverProgress() })
+        if (params.get('profileManual'))
+            return new Promise(resolve => {
+                state.resolveProfile = () => resolve(profile())
+            })
+        return Promise.resolve(profile())
+    },
     saveProgress: checkpoint => {
         state.calls.saveProgress.push(checkpoint)
         const savedAt = Date.now()

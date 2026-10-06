@@ -71,8 +71,8 @@ describe('raid progress', () => {
             expect(reconcile(record(3, 100, true), record(6, 900))).toEqual({ record: record(6, 900), push: false })
         })
 
-        it('keeps a synced local copy when the server has nothing', () => {
-            expect(reconcile(record(2, 100), null)).toEqual({ record: record(2, 100), push: false })
+        it('starts fresh when the server has nothing, discarding a stale synced local copy', () => {
+            expect(reconcile(record(2, 100), null)).toEqual({ record: null, push: false })
         })
     })
 

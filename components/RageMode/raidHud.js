@@ -504,6 +504,7 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     let canStartOver = false
     const hangar = buildHangar({ strings, zIndex: zIndex + 4, actions })
     const gameOver = buildGameOver({ strings, zIndex: zIndex + 4, actions, canStartOver: () => canStartOver })
+    const profile = buildProfilePanel({ strings, zIndex: zIndex + 5, actions })
     const setCanStartOver = value => {
         canStartOver = !!value
         restart.style.display = canStartOver ? 'flex' : 'none'
@@ -511,7 +512,18 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
     }
 
     return {
-        elements: [hud, help, weaponBar, bombButton, buffBar, bossBar, toast, hangar.element, gameOver.element],
+        elements: [
+            hud,
+            help,
+            weaponBar,
+            bombButton,
+            buffBar,
+            bossBar,
+            toast,
+            hangar.element,
+            gameOver.element,
+            profile.element,
+        ],
         hud,
         help,
         weaponBar,
@@ -520,6 +532,14 @@ export const buildRaidHud = ({ strings, zIndex, touch, muted, narrow, actions })
         bossFill,
         hangar,
         gameOver,
+        profile,
+        setProfileStatus(status) {
+            const waiting = status !== 'ready'
+            ;[hud, help, weaponBar, bombButton, buffBar, bossBar, toast].forEach(element => {
+                element.style.visibility = waiting ? 'hidden' : ''
+            })
+            profile.setStatus(status)
+        },
         showToast,
         update,
         setMuted,
@@ -562,6 +582,42 @@ const panel = zIndex => {
     })
     backdrop.appendChild(card)
     return { backdrop, card }
+}
+
+/** Loading progress precedes take-off; an unsuccessful read never offers an offline launch. */
+const buildProfilePanel = ({ strings, zIndex, actions }) => {
+    const { backdrop, card } = panel(zIndex)
+    backdrop.setAttribute(RAGE_LAYER_ATTRIBUTE, 'profile')
+    card.setAttribute('role', 'dialog')
+    card.setAttribute('aria-modal', 'true')
+    card.setAttribute('aria-label', strings.title)
+    const message = pillElement('div', { lineHeight: '1.5' })
+    message.setAttribute('role', 'status')
+    message.setAttribute('aria-live', 'polite')
+    const buttons = pillElement('div', { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '16px' })
+    const retry = wideButton(strings.retry, true, actions.retryProfile)
+    retry.setAttribute('data-retry-profile', 'true')
+    const exit = wideButton(strings.exit, false, actions.exit)
+    buttons.append(retry, exit)
+    card.append(message, buttons)
+    return {
+        element: backdrop,
+        focusNext(reverse) {
+            const available = retry.disabled ? [exit] : [retry, exit]
+            const current = available.indexOf(document.activeElement)
+            available[(current + (reverse ? -1 : 1) + available.length) % available.length].focus()
+        },
+        setStatus(status) {
+            if (status === 'ready' && backdrop.contains(document.activeElement)) document.activeElement.blur()
+            backdrop.dataset.status = status
+            backdrop.style.display = status === 'ready' ? 'none' : 'flex'
+            card.setAttribute('aria-busy', status === 'loading' ? 'true' : 'false')
+            message.textContent = status === 'error' ? strings.profileError : strings.profileLoading
+            retry.style.display = status === 'error' ? 'flex' : 'none'
+            retry.disabled = status !== 'error'
+            if (status !== 'ready') (status === 'error' ? retry : exit).focus()
+        },
+    }
 }
 
 const itemStatus = (strings, item, run) => {
