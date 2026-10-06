@@ -11,6 +11,23 @@ const deferred = () => {
 }
 beforeEach(() => localStorage.clear())
 
+it('remembers a server-confirmed day from another device across stale snapshots and remounts', () => {
+    const store = createNewDayRecoveryStore()
+    store.observeAcknowledgement('u1', day, day + 86400000)
+    store.observeAcknowledgement('u1', day - 86400000, day)
+    expect(createNewDayRecoveryStore().getAcknowledgedDate('u1', day)).toBe(day + 86400000)
+    expect(store.getAcknowledgement('u1').pending).toBe(false)
+})
+
+it('does not clear a newer local confirmation when observing an older server date', () => {
+    const store = createNewDayRecoveryStore()
+    store.acknowledge('u1', day, day + 86400000)
+    store.observeAcknowledgement('u1', day - 86400000, day)
+    expect(store.getAcknowledgement('u1').pending).toBe(true)
+    store.observeAcknowledgement('u1', day, day + 86400000)
+    expect(store.getAcknowledgement('u1').pending).toBe(false)
+})
+
 it('restores an unblurred comment on a fresh page, scoped to its account, project and day', () => {
     const original = createNewDayRecoveryStore()
     original.saveDraft('u1', 'p1', day, 4, 'not blurred yet')

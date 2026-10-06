@@ -40,6 +40,9 @@ import renderer from 'react-test-renderer'
 import moment from 'moment'
 
 jest.mock('lottie-react', () => () => null)
+jest.mock('../../utils/backends/Users/newDayAcknowledgement', () => ({
+    readNewDayAcknowledgement: jest.fn(() => Promise.resolve(null)),
+}))
 jest.mock('../../utils/backends/Users/reportNewDayStatisticsError', () => ({
     reportNewDayStatisticsError: jest.fn(() => Promise.resolve(true)),
 }))

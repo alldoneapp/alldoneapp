@@ -1274,7 +1274,6 @@ export function setUserStatisticsModalDate(
     userId = store.getState().loggedUser.uid
 ) {
     return persistNewDayAcknowledgement(
-        firebase.firestore(),
         userId,
         statisticsModalDate,
         newStatisticsModalDate,
