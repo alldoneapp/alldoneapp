@@ -83,7 +83,11 @@ import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
 import { resolveTaskSortIndex } from '../CalendarTaskSortIndex'
 import { getTaskMergeRequest } from '../MergeStatus'
 import { resolveFirebaseAuthDomain, shouldUseGoogleRedirect } from '../webFirebaseAuth'
-import { getFirebaseAuthEmulatorUrl, shouldUseFirebaseEmulators } from '../firebaseEmulators'
+import {
+    getFirebaseAuthEmulatorUrl,
+    getFirebaseFunctionsEndpoint,
+    shouldUseFirebaseEmulators,
+} from '../firebaseEmulators'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
@@ -466,8 +470,7 @@ export async function initFirebase(onComplete) {
         firebase.auth().useEmulator(getFirebaseAuthEmulatorUrl())
         db.useEmulator('127.0.0.1', 8080)
         require('firebase/compat/functions')
-        functions = firebase.app().functions('europe-west1')
-        functions.useEmulator('127.0.0.1', 5001)
+        functions = firebase.app().functions(getFirebaseFunctionsEndpoint(firebase.app().options.projectId))
     }
     if (!firestoreSettingsApplied) {
         try {
@@ -572,8 +575,7 @@ function loadDeferredFirebaseModules() {
         // Load functions (but don't overwrite if emulator is already set)
         require('firebase/compat/functions')
         if (!functions) {
-            functions = firebase.app().functions('europe-west1')
-            if (useEmulator) functions.useEmulator('127.0.0.1', 5001)
+            functions = firebase.app().functions(getFirebaseFunctionsEndpoint(firebase.app().options.projectId))
             if (__DEV__) console.log('Firebase Functions configured', { useEmulator })
         } else if (__DEV__) {
             console.log('🔧 Functions already configured (emulator), not overwriting')
@@ -8306,14 +8308,8 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
         // Use the same helper function for consistent environment detection
         const useEmulator = shouldUseFirebaseEmulators()
 
-        if (useEmulator) {
-            functions = firebase.app().functions('europe-west1')
-            functions.useEmulator('127.0.0.1', 5001)
-            console.log('🔧 Emergency functions initialization completed with emulator (europe-west1)')
-        } else {
-            functions = firebase.app().functions('europe-west1')
-            console.log('🔧 Emergency functions initialization completed for production (europe-west1)')
-        }
+        functions = firebase.app().functions(getFirebaseFunctionsEndpoint(firebase.app().options.projectId))
+        if (__DEV__) console.log('Emergency functions initialization completed', { useEmulator })
     }
 
     // Create callable function with custom timeout if specified

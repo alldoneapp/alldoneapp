@@ -31,6 +31,18 @@ npm run format-code          # Format with Prettier
 ```
 
 **Required versions**: Node 22 (repo-wide, `.nvmrc`), npm 10, firebase-tools 13.29.3.
+`npm run dev` and `npm run emulators` run `ci/prepare-local-emulators.js` before
+startup. It adds an SDK-version guard to the pinned CLI's local Functions runtime:
+SDK 7 removed `functions.config()`, which CLI 13 otherwise calls before every
+invocation and crashes. The guard skips that legacy config helper for SDK 7+;
+it does not change the Functions SDK or deployment commands. It is reapplied after
+`npm ci`, and fails explicitly if the pinned CLI/runtime changes so the backport
+can be reviewed or removed.
+Local Auth and callable Functions requests use same-origin HTTPS proxies on the
+webpack dev server (`/emulator/auth` and `/emulator/functions`); the latter forwards
+to port 5001 with the project and region path. Hosted/native Functions keep their
+configured regional endpoint.
+
 Since migration Stage 5 the whole repo — installs (lockfile v3, `.npmrc` with
 legacy-peer-deps), Jest, the web-bundler build, and Cloud Functions work — runs on
 Node 22; the Node 14 / npm 6 / Expo/Metro CLI era is over. The retired RN-era scripts,

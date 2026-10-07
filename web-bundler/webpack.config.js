@@ -280,6 +280,12 @@ module.exports = (env, argv) => {
             // Include token/API paths so no Auth request reaches staging.
             proxy: [
                 {
+                    context: ['/emulator/functions'],
+                    target: 'http://127.0.0.1:5001',
+                    pathRewrite: { '^/emulator/functions': '' },
+                    changeOrigin: true,
+                },
+                {
                     context: ['/emulator/auth', '/identitytoolkit.googleapis.com', '/securetoken.googleapis.com'],
                     target: 'http://127.0.0.1:9099',
                     changeOrigin: true,
@@ -288,7 +294,7 @@ module.exports = (env, argv) => {
             historyApiFallback: {
                 rewrites: [
                     {
-                        from: /^\/(emulator\/auth|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com)\//,
+                        from: /^\/(emulator\/(auth|functions)|identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com)\//,
                         to: ctx => ctx.parsedUrl.pathname,
                     },
                 ],
