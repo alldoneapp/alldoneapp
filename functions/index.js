@@ -1712,8 +1712,21 @@ exports.respondToBrowserApprovalSecondGen = onCall(
     }
 )
 
-// Human-controlled, session-only login. Every request carries one gesture at most and is proxied
-// to the IAM-private browser worker. Secret text is intentionally never logged or persisted.
+exports.listActiveVmJobsSecondGen = onCall(
+    { timeoutSeconds: 30, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth || request.auth.token?.firebase?.sign_in_provider === 'anonymous')
+            throw new HttpsError('unauthenticated', 'Sign in to view your VMs.')
+        const { listActiveVmJobs } = require('./Assistant/vmWorkspace')
+        return listActiveVmJobs({
+            db: admin.firestore(),
+            userId: request.auth.uid,
+            selectedRunId: request.data?.selectedRunId,
+        })
+    }
+)
+
+// The browser workspace forwards each human gesture to the IAM-private browser worker.
 exports.annaBrowserWorkspaceSecondGen = onCall(
     { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
     async request => {

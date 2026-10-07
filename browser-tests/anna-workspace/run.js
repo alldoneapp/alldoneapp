@@ -300,6 +300,45 @@ async function checkBrowserLogin(page, width) {
     )
 }
 
+async function checkVmWorkspace(page, width) {
+    await page.goto(`http://127.0.0.1:${server.address().port}/projects/tasks/open?assistant=1&vm=1`)
+    const chat = page.getByLabel('Message Carl Code Mentor')
+    await chat.fill('Keep this unsent message')
+    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
+    await page.getByLabel('Workspace draft').fill('Keep the workspace edit')
+    const vmTab = page.getByRole('button', { name: /^VM: Prepare the launch report/ })
+    await vmTab.click()
+    await page.locator('.anna-vm-terminal pre').waitFor({ state: 'visible' })
+    assert.match(await page.locator('.anna-vm-terminal pre').textContent(), /Reading launch.md/)
+    assert.equal(await page.getByLabel('Workspace draft').isVisible(), false)
+    await page.evaluate(() => window.__annaVmFixture('running', '💻 npm test\nChecking the report output…'))
+    await page.getByText('💻 npm test\nChecking the report output…', { exact: true }).waitFor()
+    assert.equal(await page.locator('.anna-vm-tab').count(), 2)
+    const bounds = await page.locator('.anna-vm-terminal').boundingBox()
+    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1)
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+    await page.screenshot({ path: path.join(BUILD, `vm-live-${width}.png`) })
+    await page.evaluate(() => window.__annaVmFixture('awaiting_user', 'Please review the plan.'))
+    await page.getByText('Request changes', { exact: true }).click()
+    await page.getByPlaceholder('What should change in the plan?').fill('Keep this feedback draft')
+    await page.locator('.anna-workspace-toolbar').getByText('Browser', { exact: true }).click()
+    await vmTab.click()
+    assert.equal(
+        await page.getByPlaceholder('What should change in the plan?').inputValue(),
+        'Keep this feedback draft'
+    )
+    await page.getByText('Execute plan', { exact: true }).click()
+    await page.getByText('💻 npm test\nTests are running…', { exact: true }).waitFor()
+    await page.evaluate(() => window.__annaVmFixture('completed', 'The launch report is ready.'))
+    await page.getByText('The launch report is ready.', { exact: true }).waitFor()
+    assert.equal(await page.locator('.anna-vm-terminal').count(), 0)
+    await page.locator('.anna-workspace-toolbar').getByText('Alldone', { exact: true }).click()
+    assert.equal(await page.getByLabel('Workspace draft').inputValue(), 'Keep the workspace edit')
+    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
+    assert.equal(await chat.inputValue(), 'Keep this unsent message')
+    console.info(`VM workspace passed at ${width}px`)
+}
+
 async function main() {
     const { chromium } = require('playwright')
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -312,6 +351,12 @@ async function main() {
             const page = await browser.newPage({ viewport: { width, height: 900 } })
             const errors = []
             page.on('pageerror', error => errors.push(error.message))
+            await checkVmWorkspace(page, width)
+            if (process.env.VM_ONLY) {
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
             await checkBrowserLogin(page, width)
             if (process.env.LOGIN_ONLY) {
                 assert.deepEqual(errors, [])

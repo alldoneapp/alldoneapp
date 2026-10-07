@@ -38,6 +38,17 @@ let mockConversationProps
 let mockTransactionState
 let mockTakeoverProps
 let mockTakeoverMounts = 0
+let mockVmJobs = []
+jest.mock('./useAnnaVmJobs', () => ({
+    __esModule: true,
+    default: () => ({ jobs: mockVmJobs, error: false, retry: jest.fn() }),
+    vmJobPath: job => `/projects/${job.projectId}/tasks/${job.objectId}/chat`,
+}))
+jest.mock('./AnnaVmWorkspace', () => ({
+    __esModule: true,
+    default: ({ job }) => <div>Live VM {job.title}</div>,
+    vmStatusLabel: value => value,
+}))
 const mockReleaseBrowser = jest.fn()
 const mockRunTransaction = jest.fn()
 jest.mock('./AnnaBrowserWorkspace', () => {
@@ -250,6 +261,7 @@ beforeEach(() => {
     mockTransactionState = {}
     mockTakeoverProps = null
     mockTakeoverMounts = 0
+    mockVmJobs = []
     jest.clearAllMocks()
     mockReleaseBrowser.mockResolvedValue(undefined)
     mockRunTransaction.mockImplementation(fn =>
@@ -267,6 +279,27 @@ it('shows surface selection without manual Alldone control switches', () => {
     expect(toolbar.textContent).not.toContain('Let Carl Code Mentor continue')
     expect(document.querySelector('.anna-stage .anna-workspace-toolbar')).toBeNull()
     expect(document.querySelector('.anna-header').textContent).not.toContain('Looking at:')
+})
+
+it('opens running VMs without remounting the chat or workspace and keeps focus on the selected VM', async () => {
+    mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'initiated' }]
+    render(content(1))
+    const input = screen.getByLabelText('Real workspace editor')
+    input.value = 'Keep my edit'
+    fireEvent.click(screen.getByLabelText('VM: Launch report — initiated'))
+    expect(document.querySelector('.anna-vm-surface').textContent).toContain('Live VM Launch report')
+    expect(document.querySelector('.anna-workspace').getAttribute('aria-hidden')).toBe('true')
+    act(() =>
+        mockSnapshots['users/u1/private/annaBrowser']({
+            exists: true,
+            data: () => ({ runId: 'browser1', updatedAt: Date.now() }),
+        })
+    )
+    expect(screen.getByLabelText('VM: Launch report — initiated').getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByText('Alldone'))
+    expect(screen.getByLabelText('Real workspace editor')).toBe(input)
+    expect(input.value).toBe('Keep my edit')
+    expect(mockUnmounts).toBe(0)
 })
 
 it.each(['desktop', 'mobile'])(

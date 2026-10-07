@@ -8,6 +8,8 @@ import AnnaWorkspaceHighlight from './AnnaWorkspaceHighlight'
 import AnnaWorkspaceReveal from './AnnaWorkspaceReveal'
 import { findWorkspaceObject } from './annaWorkspaceRevealTargets'
 import AnnaBrowserWorkspace from './AnnaBrowserWorkspace'
+import AnnaVmWorkspace, { vmStatusLabel } from './AnnaVmWorkspace'
+import useAnnaVmJobs, { vmJobPath } from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { resolveAnnaLink } from './annaNavigation'
@@ -59,6 +61,18 @@ export default function AnnaShell({ children, routeId }) {
     const assistantDescription = typeof assistant.description === 'string' ? assistant.description.trim() : ''
     const [mobilePane, setMobilePane] = useState('chat')
     const [surface, setSurface] = useState('alldone')
+    const surfaceRef = useRef(surface)
+    surfaceRef.current = surface
+    const selectedVmId = surface.startsWith('vm:') ? surface.slice(3) : null
+    const {
+        jobs: vmJobs,
+        error: vmError,
+        retry: retryVms,
+    } = useAnnaVmJobs(user.uid, {
+        enabled: active,
+        selectedRunId: selectedVmId,
+    })
+    const selectedVm = vmJobs.find(job => job.id === selectedVmId)
     const [control, setControl] = useState(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
@@ -132,7 +146,11 @@ export default function AnnaShell({ children, routeId }) {
                     setBrowser(next)
                     if (next?.runId && browserSeen.current !== next.runId) {
                         browserSeen.current = next.runId
-                        if (!controlRef.current && Date.now() - Number(next.updatedAt || 0) < 120000)
+                        if (
+                            !controlRef.current &&
+                            !surfaceRef.current.startsWith('vm:') &&
+                            Date.now() - Number(next.updatedAt || 0) < 120000
+                        )
                             setSurface('browser')
                     }
                 },
@@ -278,11 +296,19 @@ export default function AnnaShell({ children, routeId }) {
         presentationSeen.current.add(presentation.id)
         const fresh = Date.now() - Number(presentation.createdAt || 0) < 120000
         if (!fresh && conversation?.annaPresentationStatus?.id === presentation.id) return
-        if (!active || controlRef.current || browserControl || browserTakeover) {
+        if (!active || controlRef.current || browserControl || browserTakeover || selectedVmId) {
             setPending(presentation)
             acknowledge(presentation, 'deferred')
         } else present(presentation)
-    }, [conversation?.annaPresentation?.id, active, browserControl, browserTakeover, present, acknowledge])
+    }, [
+        conversation?.annaPresentation?.id,
+        active,
+        browserControl,
+        browserTakeover,
+        selectedVmId,
+        present,
+        acknowledge,
+    ])
 
     useEffect(() => {
         if (!conversation) return
@@ -298,7 +324,9 @@ export default function AnnaShell({ children, routeId }) {
             const context =
                 !active || (surface === 'alldone' && visibleWorkspace)
                     ? page
-                    : { path: '/', title: active && surface === 'browser' ? 'Browser' : 'Anna' }
+                    : selectedVm && visibleWorkspace
+                      ? sanitizeCallPageContext({ path: vmJobPath(selectedVm), title: selectedVm.title })
+                      : { path: '/', title: active && surface === 'browser' ? 'Browser' : 'Anna' }
             setAnnaWorkspaceContext(context)
             const key = JSON.stringify(context)
             if (key === previous) return
@@ -333,7 +361,15 @@ export default function AnnaShell({ children, routeId }) {
             clearInterval(timer)
             setAnnaWorkspaceContext(null)
         }
-    }, [active, visibleWorkspace, surface, conversation?.projectId, conversation?.id])
+    }, [
+        active,
+        visibleWorkspace,
+        surface,
+        selectedVm?.id,
+        selectedVm?.title,
+        conversation?.projectId,
+        conversation?.id,
+    ])
 
     const openWorkspaceChange = useCallback(async (change, isCancelled) => {
         if (
@@ -341,6 +377,7 @@ export default function AnnaShell({ children, routeId }) {
             controlRef.current ||
             heldBrowser.current ||
             takeoverRef.current ||
+            surfaceRef.current.startsWith('vm:') ||
             isCancelled()
         )
             throw new Error('Workspace is unavailable')
@@ -351,7 +388,13 @@ export default function AnnaShell({ children, routeId }) {
         const deadline = Date.now() + 600
         while (!findWorkspaceObject(workspaceContent.current, change) && Date.now() < deadline) {
             await new Promise(resolve => setTimeout(resolve, 75))
-            if (controlRef.current || heldBrowser.current || takeoverRef.current || isCancelled())
+            if (
+                controlRef.current ||
+                heldBrowser.current ||
+                takeoverRef.current ||
+                surfaceRef.current.startsWith('vm:') ||
+                isCancelled()
+            )
                 throw new Error('Workspace is unavailable')
         }
         // Keep the current list when its row exists; details are the fallback for
@@ -408,7 +451,9 @@ export default function AnnaShell({ children, routeId }) {
         ? null
         : surface === 'browser'
           ? { surface, path: currentBrowserPage?.url || '', title: currentBrowserPage?.title || translate('Browser') }
-          : workspacePage && { ...workspacePage, surface }
+          : selectedVm
+            ? { surface: 'vm', path: vmJobPath(selectedVm), title: selectedVm.title }
+            : workspacePage && { ...workspacePage, surface }
 
     const content = (
         <div
@@ -470,6 +515,28 @@ export default function AnnaShell({ children, routeId }) {
                     >
                         {translate('Browser')}
                     </button>
+                    {vmJobs.map(job => (
+                        <button
+                            key={job.id}
+                            className="anna-vm-tab"
+                            aria-pressed={selectedVmId === job.id}
+                            title={`${job.title} — ${vmStatusLabel(job.status)}`}
+                            aria-label={`VM: ${job.title} — ${vmStatusLabel(job.status)}`}
+                            onClick={() => {
+                                requestGeneration.current++
+                                setSurface(`vm:${job.id}`)
+                                setMobilePane('workspace')
+                            }}
+                        >
+                            <span className={`anna-vm-dot anna-vm-dot-${job.status}`} aria-hidden="true" />
+                            <span>VM · {job.title}</span>
+                        </button>
+                    ))}
+                    {vmError && (
+                        <button onClick={retryVms} title={translate('vm_workspace_list_error')}>
+                            {translate('vm_workspace_retry')}
+                        </button>
+                    )}
                 </nav>
                 <button
                     className="anna-zoom-back"
@@ -599,9 +666,9 @@ export default function AnnaShell({ children, routeId }) {
                         </div>
                     )}
                     <div
-                        className={`anna-workspace ${active && surface === 'browser' ? 'anna-surface-hidden' : ''}`}
-                        aria-hidden={active && surface === 'browser'}
-                        inert={active && surface === 'browser' ? '' : undefined}
+                        className={`anna-workspace ${active && surface !== 'alldone' ? 'anna-surface-hidden' : ''}`}
+                        aria-hidden={active && surface !== 'alldone'}
+                        inert={active && surface !== 'alldone' ? '' : undefined}
                     >
                         <div
                             className="anna-workspace-content"
@@ -616,7 +683,13 @@ export default function AnnaShell({ children, routeId }) {
                                     rootRef={workspaceContent}
                                     conversation={conversation}
                                     assistantName={assistantName}
-                                    available={visibleWorkspace && !control && !browserControl && !browserTakeover}
+                                    available={
+                                        visibleWorkspace &&
+                                        !control &&
+                                        !browserControl &&
+                                        !browserTakeover &&
+                                        !selectedVmId
+                                    }
                                     onOpen={openWorkspaceChange}
                                     onComplete={returnWorkspaceHome}
                                     workState={currentWorkState}
@@ -633,6 +706,21 @@ export default function AnnaShell({ children, routeId }) {
                             )}
                         </div>
                     </div>
+                    {vmJobs.map(job => (
+                        <div
+                            key={job.id}
+                            className={`anna-vm-surface ${!active || selectedVmId !== job.id ? 'anna-surface-hidden' : ''}`}
+                            aria-hidden={!active || selectedVmId !== job.id}
+                            inert={!active || selectedVmId !== job.id ? '' : undefined}
+                        >
+                            <AnnaVmWorkspace job={job} active={visibleWorkspace && selectedVmId === job.id} />
+                        </div>
+                    ))}
+                    {selectedVmId && !selectedVm && active && (
+                        <div className="anna-empty" role="status">
+                            {translate('vm_workspace_unavailable')}
+                        </div>
+                    )}
                     {visited && (
                         <div
                             className={`anna-browser-surface ${!active || surface !== 'browser' ? 'anna-surface-hidden' : ''}`}

@@ -429,15 +429,18 @@
     background: white;
 }
 .anna-workspace-toolbar {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     gap: 8px;
     padding: 0;
     margin-left: auto;
 }
 .anna-workspace-toolbar button {
+    flex-shrink: 0;
     border: 0;
     background: transparent;
     color: var(--anna-ink);
@@ -451,6 +454,9 @@
 }
 .anna-workspace-toolbar button[aria-pressed='true'] {
     background: var(--anna-tint);
+}
+.anna-header .anna-workspace-toolbar {
+    max-width: 55%;
 }
 .anna-workspace-content {
     flex: 1;
@@ -802,6 +808,117 @@
     overflow: auto;
     background: var(--anna-surface);
 }
+.anna-workspace-toolbar .anna-vm-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 190px;
+}
+.anna-vm-tab > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.anna-vm-dot {
+    width: 6px;
+    height: 6px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--anna-accent);
+}
+.anna-vm-dot-awaiting_user {
+    background: #b56b10;
+}
+.anna-vm-dot-completed,
+.anna-vm-dot-cancelled,
+.anna-vm-dot-interrupted {
+    background: var(--anna-muted);
+}
+.anna-vm-surface,
+.anna-vm-workspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    font-family: Roboto, Arial, sans-serif;
+    color: var(--anna-ink);
+    background: var(--anna-surface);
+}
+.anna-vm-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px;
+    border-bottom: 1px solid var(--anna-border);
+    background: white;
+}
+.anna-vm-identity {
+    min-width: 0;
+}
+.anna-vm-identity h2 {
+    margin: 6px 0;
+    font-size: 18px;
+    overflow-wrap: anywhere;
+}
+.anna-vm-identity .anna-muted {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.anna-vm-status {
+    color: var(--anna-accent);
+    font-size: 12px;
+    font-weight: 500;
+}
+.anna-vm-task-link {
+    color: var(--anna-accent);
+    flex-shrink: 0;
+    font-size: 12px !important;
+}
+.anna-vm-activity {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 20px;
+    overflow-wrap: anywhere;
+}
+.anna-vm-terminal {
+    background: #20232b;
+    color: #ebedf3;
+    padding: 20px;
+    border-radius: 10px;
+    min-height: 240px;
+}
+.anna-vm-terminal-label {
+    color: #a7adbc;
+    font-size: 11px;
+    margin-bottom: 18px;
+}
+.anna-vm-terminal pre {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0;
+}
+.anna-vm-cursor {
+    color: #aabcf4;
+}
+.anna-vm-actions {
+    display: flex;
+    flex-direction: column;
+    margin-top: 16px;
+}
+@media (max-width: 760px) {
+    .anna-vm-heading {
+        flex-wrap: wrap;
+        padding: 16px;
+    }
+    .anna-vm-activity {
+        padding: 12px;
+    }
+}
 .anna-browser-workspace {
     padding: 16px;
 }
@@ -912,6 +1029,7 @@
         order: 3;
         grid-column: 1 / -1;
         width: 100%;
+        max-width: 100%;
         margin-left: 0;
         flex-wrap: nowrap;
     }

@@ -12,6 +12,7 @@ module.exports = (config, webpack) => ({
             /utils\/backends\/Chats\/commentOutbox$/,
             /utils\/backends\/Assistants\/browserApprovals$/,
             /utils\/backends\/Assistants\/browserTakeover$/,
+            /utils\/backends\/Assistants\/assistantRuns$/,
             /utils\/assistantHelper$/,
             /utils\/appResume$/,
             /utils\/NavigationService$/,
