@@ -277,7 +277,7 @@ const toolSchemas = {
                     limit: {
                         type: 'number',
                         description:
-                            'Optional: maximum number of tasks to return. Default is 100. Requests above 150 are capped, because a larger result does not fit the conversation context and would be truncated to a useless fragment. Do not raise the limit to hunt for one specific task - use the search tool (or humanReadableId) instead.',
+                            'Optional: maximum number of tasks to return. Default is 100; maximum is 150. totalCount reports the matching total independently of this limit. Only treat it as exact when totalCountIsExact is true; label the list as partial when listingComplete is false. Do not raise the limit to hunt for one specific task - use the search tool (or humanReadableId) instead.',
                     },
                 },
                 required: [],

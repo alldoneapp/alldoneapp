@@ -315,6 +315,10 @@ class TaskRetrievalService {
             tasks: cappedTasks,
             subtasksByParent: mergedSubtasksByParent,
             count: cappedTasks.length,
+            totalAvailable:
+                (openResult?.totalAvailable ?? openResult?.tasks?.length ?? 0) +
+                (doneResult?.totalAvailable ?? doneResult?.tasks?.length ?? 0),
+            totalCountIsExact: openResult?.totalCountIsExact === true && doneResult?.totalCountIsExact === true,
             status,
             dateFilter: this.describeMergedAllStatusDateFilter(date),
             summary: focusTask
@@ -350,6 +354,7 @@ class TaskRetrievalService {
             merged[projectId] = {
                 projectName: openProject.projectName || doneProject.projectName || projectId,
                 taskCount: (openProject.taskCount || 0) + (doneProject.taskCount || 0),
+                totalCountIsExact: openProject.totalCountIsExact === true && doneProject.totalCountIsExact === true,
                 success: openProject.success !== false && doneProject.success !== false,
                 error: openProject.error || doneProject.error,
             }
@@ -728,8 +733,6 @@ class TaskRetrievalService {
             // Optional projection controls
             selectMinimalFields = false,
             projectName: providedProjectName = undefined,
-            restrictToCurrentReviewer = false,
-            taskScope = 'visible',
         } = params
 
         try {
@@ -887,25 +890,21 @@ class TaskRetrievalService {
 
             // Calculate total count without per-project limits for accurate stats
             let totalAvailable = projectedTasks.length
+            let totalCountIsExact = false
             try {
                 // Rebuild same query without limit to count
                 const countBase = {
-                    projectId,
-                    userId,
-                    status,
+                    ...params,
                     date: effectiveDateFilter,
-                    includeSubtasks,
-                    parentId,
-                    userPermissions,
-                    restrictToCurrentReviewer,
-                    taskScope,
                     timezoneOffset: normalizedTimezoneOffset,
                 }
                 const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
                 if (typeof countQuery.count === 'function') {
                     const agg = countQuery.count()
                     const aggSnap = await agg.get()
-                    totalAvailable = aggSnap?.data()?.count ?? totalAvailable
+                    const count = aggSnap?.data()?.count
+                    if (!Number.isInteger(count) || count < 0) throw new Error('Invalid task count')
+                    totalAvailable = count
                 } else {
                     const PAGE = 200
                     let lastDoc = null
@@ -921,6 +920,7 @@ class TaskRetrievalService {
                     }
                     totalAvailable = counted
                 }
+                totalCountIsExact = true
             } catch (_) {}
 
             // Build a small summary string using uncapped totals and focus task info
@@ -936,6 +936,8 @@ class TaskRetrievalService {
                 tasks: this.sortTasksForStatus(projectedTasks, status),
                 subtasksByParent,
                 count: projectedTasks.length,
+                totalAvailable,
+                totalCountIsExact,
                 projectId,
                 status,
                 dateFilter: dateFilterDescription,
@@ -1056,6 +1058,8 @@ class TaskRetrievalService {
                 subtasksByParent: {},
                 count: 0,
                 totalAcrossProjects: 0,
+                totalAvailable: 0,
+                totalCountIsExact: true,
                 projectSummary: {},
                 queriedProjects: [],
                 query: {
@@ -1144,6 +1148,7 @@ class TaskRetrievalService {
             let allSubtasksByParent = {}
             let projectSummary = {}
             let totalAcrossProjects = 0
+            let totalCountIsExact = true
 
             for (const result of projectResults) {
                 if (result.success && result.tasks) {
@@ -1161,49 +1166,21 @@ class TaskRetrievalService {
                         allSubtasksByParent = { ...allSubtasksByParent, ...result.subtasksByParent }
                     }
 
-                    // Always recompute uncapped per-project totals using the same filters
-                    let perProjectTotal = 0
-                    try {
-                        const countBase = {
-                            projectId: result.projectId,
-                            userId,
-                            status,
-                            date: effectiveDate,
-                            includeSubtasks,
-                            parentId,
-                            userPermissions,
-                            timezoneOffset: normalizedTimezoneOffset,
-                        }
-                        const countQuery = this.buildTaskQuery(countBase, { skipLimit: true })
-                        if (typeof countQuery.count === 'function') {
-                            const agg = countQuery.count()
-                            const aggSnap = await agg.get()
-                            perProjectTotal = aggSnap?.data()?.count ?? 0
-                        } else {
-                            const PAGE = 200
-                            let lastDoc = null
-                            while (true) {
-                                let pageQuery = countQuery.limit(PAGE)
-                                if (lastDoc) pageQuery = pageQuery.startAfter(lastDoc)
-                                const pageSnap = await pageQuery.get()
-                                if (pageSnap.empty) break
-                                perProjectTotal += pageSnap.size
-                                lastDoc = pageSnap.docs[pageSnap.docs.length - 1]
-                                if (pageSnap.size < PAGE) break
-                            }
-                        }
-                    } catch (_) {
-                        perProjectTotal = result.count || 0
-                    }
+                    // Reuse the count from the identical per-project query. Rebuilding it here
+                    // used to lose taskScope/reviewer filters and count other people's tasks.
+                    const perProjectTotal = result.totalAvailable ?? result.tasks.length
+                    totalCountIsExact = totalCountIsExact && result.totalCountIsExact === true
 
                     projectSummary[result.projectId] = {
                         projectName: result.projectName,
                         taskCount: perProjectTotal,
+                        totalCountIsExact: result.totalCountIsExact === true,
                         success: true,
                     }
 
                     totalAcrossProjects += perProjectTotal
                 } else {
+                    totalCountIsExact = false
                     projectSummary[result.projectId] = {
                         projectName: result.projectName,
                         taskCount: 0,
@@ -1264,6 +1241,8 @@ class TaskRetrievalService {
                 subtasksByParent: allSubtasksByParent,
                 count: allTasks.length,
                 totalAcrossProjects,
+                totalAvailable: totalAcrossProjects,
+                totalCountIsExact,
                 projectSummary,
                 queriedProjects,
                 status,
@@ -1273,7 +1252,7 @@ class TaskRetrievalService {
                 parentId,
                 query: {
                     perProjectLimit,
-                    hasMore: false,
+                    hasMore: totalAcrossProjects > allTasks.length,
                 },
                 focusTask,
                 focusTaskInResults,

@@ -297,3 +297,128 @@ describe('TaskRetrievalService task comments support', () => {
         ])
     })
 })
+
+describe('task totals use the same filters as the returned list', () => {
+    const date = Date.parse('2026-10-08T12:00:00+02:00')
+    const makeTasks = (count, fields = {}) =>
+        Array.from({ length: count }, (_, index) => ({
+            id: `${fields.userId || 'user-1'}-${index}`,
+            name: `Task ${index}`,
+            isPublicFor: [0],
+            userId: 'user-1',
+            currentReviewerId: 'user-1',
+            isSubtask: false,
+            inDone: false,
+            done: false,
+            dueDate: date,
+            sortIndex: count - index,
+            ...fields,
+        }))
+
+    function database(failCount = false) {
+        const rows = {
+            'items/p1/tasks': [...makeTasks(50), ...makeTasks(12, { userId: 'other-user' })],
+            'items/p2/tasks': [
+                ...makeTasks(32),
+                ...makeTasks(5, { currentReviewerId: 'other-reviewer' }),
+                ...makeTasks(3, { dueDate: date + 86400000 }),
+                ...makeTasks(4, { isPublicFor: ['private-user'] }),
+            ],
+        }
+        const makeQuery = (records, filters = [], limit = Infinity) => {
+            const matches = () =>
+                records.filter(record =>
+                    filters.every(([key, operator, value]) => {
+                        if (operator === '==') return record[key] === value
+                        if (operator === '>=') return record[key] >= value
+                        if (operator === '<=') return record[key] <= value
+                        if (operator === 'array-contains-any') return record[key].some(item => value.includes(item))
+                        throw new Error(`Unsupported query operator: ${operator}`)
+                    })
+                )
+            return {
+                where: (key, operator, value) => makeQuery(records, [...filters, [key, operator, value]], limit),
+                orderBy: () => makeQuery(records, filters, limit),
+                limit: value => makeQuery(records, filters, value),
+                get: async () => ({
+                    forEach: callback =>
+                        matches()
+                            .slice(0, limit)
+                            .forEach(record => callback({ id: record.id, data: () => record })),
+                }),
+                count: () => ({
+                    get: async () => {
+                        if (failCount) throw new Error('Count unavailable')
+                        return { data: () => ({ count: matches().length }) }
+                    },
+                }),
+            }
+        }
+        return {
+            collection: path =>
+                path === 'users'
+                    ? { doc: () => ({ get: async () => ({ exists: false }) }) }
+                    : makeQuery(rows[path] || []),
+        }
+    }
+
+    const params = {
+        userId: 'user-1',
+        status: 'open',
+        date: '2026-10-08',
+        taskScope: 'mine',
+        timezoneOffset: 120,
+        limit: 20,
+        perProjectLimit: 20,
+    }
+
+    test('single-project count excludes other owners and preserves the matching total beyond the limit', async () => {
+        const service = new TaskRetrievalService({ database: database() })
+        const result = await service.getTasks({ ...params, projectId: 'p1' })
+        expect(result).toMatchObject({
+            count: 20,
+            totalAvailable: 50,
+            totalCountIsExact: true,
+            query: { hasMore: true },
+        })
+        expect(result.tasks.every(task => task.userId === 'user-1')).toBe(true)
+    })
+
+    test('cross-project totals honor ownership, reviewer, date and visibility filters', async () => {
+        const service = new TaskRetrievalService({ database: database() })
+        const result = await service.getTasksFromMultipleProjects(params, ['p1', 'p2'])
+        expect(result).toMatchObject({
+            count: 40,
+            totalAcrossProjects: 82,
+            totalAvailable: 82,
+            totalCountIsExact: true,
+            query: { hasMore: true },
+        })
+        const shared = await service.getTasksFromMultipleProjects(
+            { ...params, taskScope: 'visible', restrictToCurrentReviewer: false },
+            ['p1', 'p2']
+        )
+        expect(shared.totalAcrossProjects).toBe(99)
+    })
+
+    test('a failed count is a lower bound, not an exact total', async () => {
+        const service = new TaskRetrievalService({ database: database(true) })
+        const result = await service.getTasksFromMultipleProjects(params, ['p1', 'p2'])
+        expect(result).toMatchObject({ count: 40, totalAcrossProjects: 40, totalCountIsExact: false })
+    })
+
+    test('mixed open/done listings preserve both uncapped totals and uncertainty', () => {
+        const service = new TaskRetrievalService()
+        const open = { tasks: [{ id: 'open' }], totalAvailable: 82, totalCountIsExact: true }
+        const done = { tasks: [{ id: 'done', done: true }], totalAvailable: 9, totalCountIsExact: true }
+        expect(service.mergeAllStatusTaskResults(open, done, 'all', '2026-10-08', 1)).toMatchObject({
+            count: 1,
+            totalAvailable: 91,
+            totalCountIsExact: true,
+        })
+        expect(
+            service.mergeAllStatusTaskResults(open, { ...done, totalCountIsExact: false }, 'all', '2026-10-08', 1)
+                .totalCountIsExact
+        ).toBe(false)
+    })
+})
