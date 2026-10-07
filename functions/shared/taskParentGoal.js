@@ -1,6 +1,6 @@
 'use strict'
 
-const { assertProjectAccess, canAccessObject } = require('./privacyAccess')
+const { assertProjectAccess, canAccessObject, getAccessibleProjectIdsFromUserData } = require('./privacyAccess')
 
 function normalizeParentGoalId(value) {
     if (value === undefined || value === null) return value
@@ -18,20 +18,67 @@ function normalizeParentGoalId(value) {
     return normalized
 }
 
-async function resolveTaskParentGoal(database, userId, projectId, parentGoalId) {
+async function resolveTaskParentGoal(database, userId, projectId, parentGoalId, parentGoalProjectId) {
     const goalId = normalizeParentGoalId(parentGoalId)
     if (goalId === undefined) return undefined
-
-    // Admin SDK bypasses Firestore rules: enforce the invoking human's membership,
-    // not the assistant actor's identity. Clearing also requires project access.
-    await assertProjectAccess(database, userId, projectId)
+    const user = await assertProjectAccess(database, userId, projectId)
     if (goalId === null) return null
-
-    const snapshot = await database.doc(`goals/${projectId}/items/${goalId}`).get()
-    if (!snapshot.exists || !canAccessObject(snapshot.data(), userId)) {
-        throw new Error('Parent goal not found or not accessible in the task project')
+    const explicitProject = parentGoalProjectId === undefined ? null : normalizeParentGoalId(parentGoalProjectId)
+    if (parentGoalProjectId !== undefined && !explicitProject)
+        throw new Error('parentGoalProjectId must be a project ID')
+    if (explicitProject && explicitProject !== projectId) await assertProjectAccess(database, userId, explicitProject)
+    const preferredProject = explicitProject || projectId
+    const snapshot = await database.doc(`goals/${preferredProject}/items/${goalId}`).get()
+    if (snapshot.exists) {
+        if (!canAccessObject(snapshot.data(), userId)) throw new Error('Parent goal not found or not accessible')
+        return { ...snapshot.data(), id: goalId, projectId: preferredProject }
     }
-    return { ...snapshot.data(), id: goalId }
+    if (explicitProject) throw new Error('Parent goal not found or not accessible')
+
+    // Search only the caller's projects and confirm actual membership. A copied goal
+    // may have the same ID in several projects; never choose an arbitrary destination.
+    const matches = []
+    for (const id of getAccessibleProjectIdsFromUserData(user)) {
+        if (id === projectId) continue
+        const project = await database.doc(`projects/${id}`).get()
+        if (!project.exists || !project.data()?.userIds?.includes(userId)) continue
+        const goal = await database.doc(`goals/${id}/items/${goalId}`).get()
+        if (goal.exists && canAccessObject(goal.data(), userId))
+            matches.push({ ...goal.data(), id: goalId, projectId: id })
+    }
+    if (matches.length > 1) throw new Error('Parent goal ID is ambiguous; specify parentGoalProjectId')
+    if (!matches.length) throw new Error('Parent goal not found or not accessible')
+    return matches[0]
+}
+
+function buildTaskGoalDetachment(task) {
+    if (!task.parentId && !task.isSubtask) return {}
+    return {
+        parentId: null,
+        isSubtask: false,
+        parentDone: false,
+        inDone: !!task.done,
+        completed: task.done ? task.completed || Date.now() : null,
+    }
+}
+
+async function readTaskGoalParent(transaction, database, projectId, task, userId) {
+    if (!task.parentId) return null
+    const ref = database.doc(`items/${projectId}/tasks/${task.parentId}`)
+    const snapshot = await transaction.get(ref)
+    if (!snapshot.exists) return null
+    if (!canAccessObject(snapshot.data(), userId)) throw new Error('Parent task not accessible for detachment')
+    return { ref, task: snapshot.data() }
+}
+
+function detachTaskGoalParent(transaction, parent, taskId) {
+    if (!parent) return
+    const ids = parent.task.subtaskIds || []
+    const names = parent.task.subtaskNames || []
+    transaction.update(parent.ref, {
+        subtaskIds: ids.filter(id => id !== taskId),
+        subtaskNames: names.filter((_, index) => ids[index] !== taskId),
+    })
 }
 
 function buildTaskParentGoalFields(goal) {
@@ -70,22 +117,44 @@ function buildTaskParentGoalUpdate(task, goal, userId) {
     }
 }
 
-async function prepareTaskParentGoalUpdate(database, userId, projectId, task, parentGoalId, parentId) {
+async function prepareTaskParentGoalUpdate(
+    database,
+    userId,
+    projectId,
+    task,
+    parentGoalId,
+    parentId,
+    parentGoalProjectId
+) {
     if (parentGoalId === undefined) return undefined
     if (parentId !== undefined) {
         throw new Error('Change parentId and parentGoalId in separate calls')
     }
-    if (task.parentId || task.isSubtask) {
-        throw new Error('Subtasks inherit their parent goal. Update the parent task or detach the subtask first')
-    }
-    const goal = await resolveTaskParentGoal(database, userId, projectId, parentGoalId)
+    const goal = await resolveTaskParentGoal(database, userId, projectId, parentGoalId, parentGoalProjectId)
     if (!canAccessObject(task, userId)) throw new Error('User does not have access to this task')
-    return buildTaskParentGoalUpdate(task, goal, userId)
+    return {
+        ...buildTaskParentGoalUpdate(task, goal, userId),
+        ...buildTaskGoalDetachment(task),
+        ...(goal && goal.projectId !== projectId ? { projectId: goal.projectId } : {}),
+    }
 }
 
 // Re-read membership, task visibility and goal privacy in the committing transaction.
 // This also prevents a router's pending suggestion from undoing a deliberate change.
-async function persistTaskParentGoalUpdate(database, { projectId, taskId, userId, parentGoalId, updateData }) {
+async function persistTaskParentGoalUpdate(
+    database,
+    { projectId, taskId, userId, parentGoalId, parentGoalProjectId, updateData }
+) {
+    if (parentGoalProjectId && parentGoalProjectId !== projectId) {
+        return require('./taskParentGoalMove').persistTaskParentGoalMove(database, {
+            projectId,
+            taskId,
+            userId,
+            parentGoalId,
+            parentGoalProjectId,
+            updateData,
+        })
+    }
     const goalId = normalizeParentGoalId(parentGoalId)
     return database.runTransaction(async transaction => {
         const taskRef = database.doc(`items/${projectId}/tasks/${taskId}`)
@@ -106,21 +175,28 @@ async function persistTaskParentGoalUpdate(database, { projectId, taskId, userId
             throw new Error('Parent goal not found or not accessible in the task project')
         }
         const task = taskSnapshot.data()
-        if (task.parentId || task.isSubtask) {
-            throw new Error('Subtasks inherit their parent goal. Update the parent task or detach the subtask first')
-        }
+        const parent = await readTaskGoalParent(transaction, database, projectId, task, userId)
         const goal = goalSnapshot ? { ...goalSnapshot.data(), id: goalId } : null
         const persistedData = { ...updateData }
         delete persistedData.goalSuggestion
         Object.assign(persistedData, buildTaskParentGoalUpdate(task, goal, userId))
         // Never retain a stale visibility projection from the preflight read.
-        Object.assign(persistedData, buildTaskParentGoalFields(goal))
+        Object.assign(
+            persistedData,
+            buildTaskParentGoalFields(goal),
+            buildTaskGoalDetachment({ ...task, ...updateData, parentId: task.parentId, isSubtask: task.isSubtask })
+        )
+        detachTaskGoalParent(transaction, parent, taskId)
         transaction.update(taskRef, persistedData)
         return { updateData: persistedData, updatedTask: { ...task, ...persistedData } }
     })
 }
 
 module.exports = {
+    readTaskGoalParent,
+    detachTaskGoalParent,
+    buildTaskGoalDetachment,
+    buildTaskParentGoalUpdate,
     normalizeParentGoalId,
     resolveTaskParentGoal,
     buildTaskParentGoalFields,

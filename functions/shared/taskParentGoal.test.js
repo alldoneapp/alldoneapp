@@ -72,6 +72,42 @@ describe('assistant parent goal validation', () => {
         )
     })
 
+    test('resolves a goal from another project only after confirming membership', async () => {
+        delete docs['goals/project-1/items/goal-1']
+        docs['users/user-1'].projectIds = ['project-1', 'project-2']
+        docs['projects/project-2'] = { userIds: [userId] }
+        docs['goals/project-2/items/goal-1'] = { isPublicFor: [0], lockKey: 'target-lock' }
+        expect(await resolveTaskParentGoal(database, userId, projectId, 'goal-1')).toMatchObject({
+            projectId: 'project-2',
+            id: 'goal-1',
+            lockKey: 'target-lock',
+        })
+        docs['projects/project-2'].userIds = []
+        await expect(resolveTaskParentGoal(database, userId, projectId, 'goal-1')).rejects.toThrow('not accessible')
+    })
+
+    test('copied IDs require an explicit project when the task project has no match', async () => {
+        delete docs['goals/project-1/items/goal-1']
+        docs['users/user-1'].projectIds = ['project-2', 'project-3']
+        for (const id of ['project-2', 'project-3']) {
+            docs[`projects/${id}`] = { userIds: [userId] }
+            docs[`goals/${id}/items/goal-1`] = { isPublicFor: [0] }
+        }
+        await expect(resolveTaskParentGoal(database, userId, projectId, 'goal-1')).rejects.toThrow('ambiguous')
+        expect(await resolveTaskParentGoal(database, userId, projectId, 'goal-1', 'project-3')).toMatchObject({
+            projectId: 'project-3',
+        })
+    })
+
+    test('explicit goal project is validated and a null goal never requests a move', async () => {
+        await expect(resolveTaskParentGoal(database, userId, projectId, 'goal-1', '../bad')).rejects.toThrow()
+        docs['projects/project-2'] = { userIds: ['other-user'] }
+        await expect(resolveTaskParentGoal(database, userId, projectId, 'goal-1', 'project-2')).rejects.toThrow(
+            'access'
+        )
+        expect(await resolveTaskParentGoal(database, userId, projectId, null, 'project-2')).toBeNull()
+    })
+
     test('requires the human caller, even when an assistant can see the goal', async () => {
         docs['goals/project-1/items/goal-1'].isPublicFor = ['assistant-1']
         await expect(resolveTaskParentGoal(database, userId, projectId, 'goal-1')).rejects.toThrow('not accessible')

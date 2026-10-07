@@ -87,10 +87,15 @@ const toolSchemas = {
                         description:
                             'Only in the Anna workspace: true to track substantial work explicitly delegated to the assistant. Assigns this task to the assistant and keeps its progress in task comments. Leave false for tasks the user will do and for quick questions or small edits.',
                     },
+                    parentGoalProjectId: {
+                        type: 'string',
+                        description:
+                            'Optional project ID containing parentGoalId. Omit to resolve the goal among accessible projects; specify when the goal ID exists in multiple projects.',
+                    },
                     parentGoalId: {
                         type: ['string', 'null'],
                         description:
-                            'Optional parent goal document ID in the task project. Use get_goals or search to find the exact ID; never invent an ID. Null creates a task without a parent goal.',
+                            'Optional parent goal document ID. A goal in another accessible project automatically creates the task there. Use get_goals or search to find the exact ID; never invent an ID. Null creates a task without a parent goal.',
                     },
                     taskOrigin: {
                         type: 'string',
@@ -748,10 +753,15 @@ const toolSchemas = {
                         description:
                             'Set to true only when the user explicitly wants the task completed/done/finished, false to mark as open. Do not use this for focus requests.',
                     },
+                    parentGoalProjectId: {
+                        type: 'string',
+                        description:
+                            'Optional project ID containing parentGoalId. Omit to resolve the goal among accessible projects; specify when the goal ID exists in multiple projects.',
+                    },
                     parentGoalId: {
                         type: ['string', 'null'],
                         description:
-                            'Assign or change the parent goal using its exact document ID from get_goals or search. Null removes the parent goal; omitting this field preserves it. The goal must be accessible to the user and belong to the task project. Subtasks inherit the parent task goal; update the parent task instead. For a goal in another project, move the task first, then assign the goal in a separate call.',
+                            'Assign or change the parent goal using its exact document ID from get_goals or search. Null removes the parent goal; omitting this field preserves it. The goal must be accessible to the user. Assigning a goal detaches a subtask into a standalone task. A goal in another accessible project automatically moves the task and its subtasks there. Use parentGoalProjectId to disambiguate copied goal IDs. Do not combine with parentId or explicit move fields.',
                     },
                     focus: {
                         type: 'boolean',

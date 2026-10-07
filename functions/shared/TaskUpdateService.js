@@ -146,7 +146,8 @@ class TaskUpdateService {
         }
 
         // Step 3: Proceed with auto-selected or single match
-        const { task: currentTask, projectId, projectName } = searchResult.selectedMatch
+        const { task: currentTask } = searchResult.selectedMatch
+        let { projectId, projectName } = searchResult.selectedMatch
 
         console.log('🔄 TaskUpdateService: Task found, proceeding with update', {
             taskId: currentTask.id,
@@ -168,6 +169,9 @@ class TaskUpdateService {
             feedUser,
             options
         )
+
+        projectId = updateResult.project?.id || projectId
+        projectName = updateResult.project?.name || projectName
 
         if (normalizedUpdateFields.comment) {
             try {
@@ -391,11 +395,13 @@ class TaskUpdateService {
                     feedUser,
                     options
                 )
+                const finalProjectId = updateResult.project?.id || taskProjectId
+                const finalProjectName = updateResult.project?.name || taskProjectName
                 let commentResult = null
                 if (updateFields.comment) {
                     try {
                         commentResult = await this.addTaskComment({
-                            projectId: taskProjectId,
+                            projectId: finalProjectId,
                             task: updateResult.task || task,
                             comment: updateFields.comment,
                             feedUser,
@@ -413,8 +419,8 @@ class TaskUpdateService {
                 await this.recordPriorityDecisionIfNeeded({
                     userId,
                     currentTask: task,
-                    projectId: taskProjectId,
-                    projectName: taskProjectName,
+                    projectId: finalProjectId,
+                    projectName: finalProjectName,
                     updateFields,
                     options,
                     commentResult,
@@ -424,8 +430,8 @@ class TaskUpdateService {
                 updated.push({
                     id: task.id,
                     name: task.name,
-                    projectId: taskProjectId,
-                    projectName: taskProjectName,
+                    projectId: finalProjectId,
+                    projectName: finalProjectName,
                     changes: updateResult.changes,
                     commentResult,
                 })
@@ -564,6 +570,7 @@ class TaskUpdateService {
      */
     async performTaskUpdate(currentTask, projectId, projectName, updateFields, userId, feedUser, options = {}) {
         console.log('🔄 TaskUpdateService: Executing task update via TaskService')
+        let committedGoalProjectId = null
 
         try {
             // Reject inaccessible goals before estimation or any other side-effecting update.
@@ -575,7 +582,8 @@ class TaskUpdateService {
                     projectId,
                     currentTask,
                     updateFields.parentGoalId,
-                    updateFields.parentId
+                    updateFields.parentId,
+                    updateFields.parentGoalProjectId
                 )
             }
             // Get user's timezone for date parsing (normalize across possible fields)
@@ -600,7 +608,7 @@ class TaskUpdateService {
             })
 
             // Handle estimation update if provided
-            if (updateFields.estimation !== undefined) {
+            if (updateFields.estimation !== undefined && updateFields.parentGoalId === undefined) {
                 await this.performEstimationUpdate(projectId, currentTask.id, currentTask, updateFields.estimation)
             }
 
@@ -654,11 +662,33 @@ class TaskUpdateService {
                 userId: updateFields.userId || updateFields.targetUserId,
                 parentId: updateFields.parentId,
                 parentGoalId: updateFields.parentGoalId,
+                parentGoalProjectId: updateFields.parentGoalProjectId,
                 feedUser: feedUser,
                 focus: updateFields.focus,
                 focusUserId: userId,
                 initiatorId: userId,
             })
+
+            if (updateFields.parentGoalId !== undefined && result.persisted)
+                committedGoalProjectId = result.projectId || projectId
+
+            // Follow-up effects must address the durable destination after a goal move.
+            const changedProject = result.projectId && result.projectId !== projectId
+            projectId = result.projectId || projectId
+            currentTask = result.updatedTask || currentTask
+            if (changedProject) {
+                const projectDoc = await this.options.database.doc(`projects/${projectId}`).get()
+                if (projectDoc.exists) projectName = projectDoc.data().name || projectName
+            }
+            if (updateFields.estimation !== undefined && updateFields.parentGoalId !== undefined) {
+                try {
+                    await this.performEstimationUpdate(projectId, currentTask.id, currentTask, updateFields.estimation)
+                } catch (error) {
+                    throw new Error(
+                        `Parent goal change committed in project ${projectId}, but estimation update failed: ${error.message}`
+                    )
+                }
+            }
 
             // Add estimation to changes if it was updated
             const changes = result.changes || []
@@ -747,7 +777,9 @@ class TaskUpdateService {
                 error: error.message,
                 stack: error.stack,
             })
-            throw new Error(`Failed to update task: ${error.message}`)
+            throw new Error(
+                `Failed to update task: ${committedGoalProjectId ? `Parent goal change committed in project ${committedGoalProjectId}; a follow-up failed: ` : ''}${error.message}`
+            )
         }
     }
 

@@ -167,6 +167,7 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
             const tool = tools.find(entry => entry.name === name)
             expect(tool.inputSchema.properties.parentGoalId.type).toEqual(['string', 'null'])
             expect(tool.inputSchema.required).not.toContain('parentGoalId')
+            expect(tool.inputSchema.properties.parentGoalProjectId.type).toBe('string')
         }
     })
 
