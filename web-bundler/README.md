@@ -31,10 +31,12 @@ npm run build:analyze  # same + webpack-bundle-analyzer report
 npm run dev            # low-level HTTP dev server on http://localhost:19006 (needs ../.env)
 ```
 
-For normal local app development, run `npm run dev` from the repository root. It starts
-this server with the trusted HTTPS/Firebase Auth proxy at `https://localhost:19006`, which
-is required for Google sign-in in embedded browsers. Use the low-level command above only
-when plain HTTP is explicitly needed.
+For normal local app development, run `npm run dev` from the repository root.
+It starts the full Firebase emulator suite first, then the app at
+`https://localhost:19006`, and keeps both running together. Emulator accounts and
+data are separate from staging. To manage the suite separately, run the root
+`npm run emulators` and `npm run dev:web` commands in separate terminals.
+Use the low-level command above only when plain HTTP is explicitly needed.
 
 ## Module semantics (production parity)
 

@@ -12,6 +12,33 @@ Use the repository-wide toolchain:
 
 Run `nvm use` at the repository root before installing dependencies. The legacy Expo CLI toolchain is retired. The Cloudflare email worker is the one exception: `cloudflare/email-worker/` uses its own `.nvmrc` to pin Node 20 for Wrangler.
 
+## Local development
+
+Run `nvm use`, then `npm run dev`. This starts the full Firebase emulator suite
+before starting the web server and keeps both running together. Open
+**https://localhost:19006**; the Emulator UI is at **http://127.0.0.1:4000**.
+Java 11+ and the root, `functions/`, and `web-bundler/` npm dependencies are required.
+
+Browser localhost automatically uses local Auth, Firestore, Functions, Storage
+(including note content), and Realtime Database. No `?emulator=true` is needed.
+The `alldonestaging` project ID is only the local emulator namespace; localhost
+does not fall back to staging when an emulator is unavailable. Hosted staging,
+production, and native mobile shells retain their configured Firebase backend.
+
+Local accounts and data are separate from staging. Google sign-in uses the Auth
+emulator's test account screen. Emulator data is saved under the gitignored
+`.firebase/local-data` directory on a graceful shutdown and restored on startup.
+Push notifications are unavailable locally. `firebase.local.json` contains the
+local service setup; deployment continues to use `firebase.json`.
+
+The web server proxies Auth's handler, iframe, sign-in, and token-refresh requests
+through the app origin to port 9099. Keep that proxy in place: redirect sign-in
+otherwise loses its result when browser storage is partitioned across origins.
+
+For separate terminals, use `npm run emulators` and `npm run dev:web`. Do not run
+`npm run dev` alongside an already running emulator suite, since it owns its own
+suite on the same ports. Stop the combined command with Ctrl+C to export local data.
+
 ## 2. CI/CD
 
 The project is configured for **GitLab CI/CD** using the `.gitlab-ci.yml` file.

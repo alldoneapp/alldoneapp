@@ -13,10 +13,11 @@ Alldone is a React Native/Firebase productivity platform supporting tasks, goals
 sh setup-worktree.sh         # Links node_modules, functions/, web-bundler/, .env
 
 # Development
-npm run web-webpack          # Dev server on the webpack pipeline (port 19006)
+npm run dev                  # Full emulator suite, then HTTPS dev server on port 19006
 
-# Firebase Functions (local)
-firebase emulators:start --only functions --inspect-functions
+# Optional separate terminals (instead of npm run dev)
+npm run emulators            # Auth, Firestore, Functions, Storage, Database, Pub/Sub
+npm run dev:web              # HTTPS web server connected to the already running suite
 
 # Testing
 npm test                     # Run Jest tests
@@ -828,7 +829,7 @@ degrades to today's behaviour rather than breaking.
   (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
   multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat
   SDK queues later calls behind the enable; every failure degrades to the in-memory
-  cache). Skipped under the emulator, whose IndexedDB is wiped each boot. Consequences to
+  cache). Emulator sessions use an in-memory Firestore cache and retain their separate Auth session. Consequences to
   respect: `watchForceReload` only honors a **server** snapshot (a cached `{reload: true}`
   would reload-loop offline — the guard is `doc.metadata.fromCache`), and
   `bootIntegrityHealer` stands down while `connectionState === 'offline'` (cached-only

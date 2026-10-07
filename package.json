@@ -1,11 +1,15 @@
 {
     "scripts": {
-        "dev": "cd web-bundler && DEV_HTTPS=1 npm run dev",
+        "dev": "firebase emulators:exec --config firebase.local.json --project alldonestaging --only auth,firestore,functions,storage,database,pubsub --import .firebase/local-data --export-on-exit .firebase/local-data --ui \"npm run dev:web\"",
+        "dev:web": "cd web-bundler && DEV_HTTPS=1 npm run dev",
         "web-webpack": "npm run dev",
         "web-webpack-https": "npm run dev",
         "check:runtime": "node ci/check-runtime.js",
         "check:runtime:firestore": "node ci/check-runtime.js --java",
-        "predev": "npm run check:runtime",
+        "predev": "npm run preemulators",
+        "predev:web": "npm run check:runtime",
+        "preemulators": "npm run check:runtime:firestore && node -e \"require('fs').mkdirSync('.firebase/local-data', { recursive: true })\"",
+        "emulators": "firebase emulators:start --config firebase.local.json --project alldonestaging --only auth,firestore,functions,storage,database,pubsub --import .firebase/local-data --export-on-exit .firebase/local-data",
         "svg": "npx @svgr/cli -d assets/svg/LandingPage/experiment assets/svg/LandingPage/experiment",
         "prebuild-web-webpack": "npm run check:runtime",
         "build-web-webpack": "cd web-bundler && npm run build",
