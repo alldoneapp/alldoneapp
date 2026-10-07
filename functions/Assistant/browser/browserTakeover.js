@@ -14,6 +14,7 @@ const { applyRunUsage, beginBrowserStep, completeBrowserStep, runRef, RUN_STATUS
 const { BROWSER_STEP_GOLD, chargeGoldForBrowserStep, hasGoldForBrowserStep } = require('./browserGold')
 const { redactUrl } = require('./browserRedaction')
 const { callBrowserWorker } = require('./browserWorkerClient')
+const { claimBrowserGesture, releaseBrowserGesture } = require('../annaWorkspaceControl')
 
 const TAKEOVER_ACTIONS = new Set(['snapshot', 'click', 'type', 'key', 'scroll'])
 const TAKEOVER_ACTIVE_STATUSES = new Set(['pending', 'in_progress'])
@@ -146,19 +147,27 @@ async function executeBrowserTakeover({
     }
 
     await claimTakeover(db, approval, userId, now)
-    const workerResult = await callBrowserWorker({
-        operation: 'takeover',
-        payload: normalized.payload,
-        config,
-        runId: step.runId,
-        sessionId: step.run.workerSessionId,
-        projectId: approval.projectId,
-        userId,
-        fetchImpl,
-        identityTokenProvider,
-        affinityCookie: step.run.affinityCookie || '',
-        now,
-    })
+    await runRef(db, step.runId).set({ workspaceControl: 'user' }, { merge: true })
+    const gesture = await claimBrowserGesture(db, step.runId, userId, true, now)
+    if (!gesture.ok) throw takeoverError('Wait for the current browser action to finish.', 'browser_busy')
+    let workerResult
+    try {
+        workerResult = await callBrowserWorker({
+            operation: 'takeover',
+            payload: normalized.payload,
+            config,
+            runId: step.runId,
+            sessionId: step.run.workerSessionId,
+            projectId: approval.projectId,
+            userId,
+            fetchImpl,
+            identityTokenProvider,
+            affinityCookie: step.run.affinityCookie || '',
+            now,
+        })
+    } finally {
+        await releaseBrowserGesture(db, step.runId, gesture.token).catch(() => {})
+    }
 
     if (workerResult.affinityCookie) {
         await runRef(db, step.runId).set({ affinityCookie: workerResult.affinityCookie }, { merge: true })
@@ -232,6 +241,8 @@ async function finishBrowserTakeover(db, { approvalId, userId, cancelled = false
         const currentRunRef = runRef(db, approval.runId)
         const runSnapshot = await transaction.get(currentRunRef)
         const run = runSnapshot.exists ? runSnapshot.data() : null
+        if (run?.workspaceGesture?.until > now)
+            throw takeoverError('Wait for the current browser action to finish.', 'browser_busy')
         const pending =
             run?.pendingApprovals && typeof run.pendingApprovals === 'object' ? { ...run.pendingApprovals } : {}
         delete pending[approval.signature]
@@ -247,7 +258,17 @@ async function finishBrowserTakeover(db, { approvalId, userId, cancelled = false
             },
             { merge: true }
         )
-        if (run) transaction.set(currentRunRef, { pendingApprovals: pending, lastActivityAt: now }, { merge: true })
+        if (run)
+            transaction.set(
+                currentRunRef,
+                {
+                    pendingApprovals: pending,
+                    lastActivityAt: now,
+                    workspaceControl: 'assistant',
+                    workspacePaused: false,
+                },
+                { merge: true }
+            )
         return { success: true, status: cancelled ? 'cancelled' : 'completed' }
     })
 }

@@ -5065,6 +5065,7 @@ async function ensureVmJobThread({
     deliverable = '',
     originatingRequestText = '',
     originatingImageUrls = [],
+    trackAssistantWork = false,
     projectId,
     assistantId,
     creatorId,
@@ -5108,7 +5109,16 @@ async function ensureVmJobThread({
         {
             name: buildVmJobTaskName(objective),
             description: '',
-            userId: creatorId,
+            userId: trackAssistantWork ? assistantId : creatorId,
+            ...(trackAssistantWork
+                ? {
+                      assigneeType: 'assistant',
+                      assistantId,
+                      creatorId,
+                      executionMode: 'direct',
+                      taskMetadata: { annaWorkspace: { ownerId: creatorId, assistantId } },
+                  }
+                : {}),
             projectId: targetProjectId,
             isPrivate: false,
             feedUser,
@@ -5285,6 +5295,18 @@ async function executeToolNatively(
     // Keep the requesting user for access/search context, but use the assistant as actor
     // for tool-generated feeds so the feed reflects who performed the tool action.
     const creatorId = requestUserId || assistantId
+
+    if (toolRuntimeContext?.annaConversation || toolArgs?.taskId || toolArgs?.noteId || toolArgs?.goalId) {
+        const { getAnnaControlBlock } = require('./annaWorkspaceControl')
+        const blocked = await getAnnaControlBlock({
+            db: admin.firestore(),
+            userId: requestUserId,
+            toolName,
+            toolArgs,
+            runtime: toolRuntimeContext,
+        })
+        if (blocked) return blocked
+    }
 
     if (toolName === 'highlight_workspace') {
         const { requestAnnaHighlight } = require('./annaHighlight')
@@ -5568,6 +5590,10 @@ async function executeToolNatively(
             try {
                 const gmailTaskData = buildGmailTaskDataFromRuntimeContext(toolRuntimeContext, targetProjectId)
                 const descriptionWithImages = mergeTaskDescriptionWithImages(toolArgs.description, toolArgs.images)
+                const trackAssistantWork =
+                    toolRuntimeContext?.annaConversation === true &&
+                    toolArgs.trackAssistantWork === true &&
+                    !isAssistantSuggestion
                 // Create task using unified service
                 const result = await cachedTaskService.createAndPersistTask(
                     {
@@ -5575,16 +5601,21 @@ async function executeToolNatively(
                         description: descriptionWithImages,
                         dueDate: processedDueDate,
                         recurrence: toolArgs.recurrence,
-                        executionMode: toolArgs.executionMode,
-                        userId: creatorId,
+                        executionMode: trackAssistantWork ? 'direct' : toolArgs.executionMode,
+                        userId: trackAssistantWork ? assistantId : creatorId,
+                        assigneeType: trackAssistantWork ? 'assistant' : 'USER',
                         projectId: targetProjectId,
                         isPrivate: false,
                         feedUser,
                         gmailData: gmailTaskData,
                         creatorId: isAssistantSuggestion ? assistantId : creatorId,
                         suggestedBy: isAssistantSuggestion ? assistantId : null,
-                        assistantId: '',
-                        taskMetadata: isAssistantSuggestion ? { assistantSuggestion: { assistantId } } : null,
+                        assistantId: trackAssistantWork ? assistantId : '',
+                        taskMetadata: isAssistantSuggestion
+                            ? { assistantSuggestion: { assistantId } }
+                            : trackAssistantWork
+                              ? { annaWorkspace: { ownerId: creatorId, assistantId } }
+                              : null,
                     },
                     {
                         userId: creatorId,
@@ -9913,8 +9944,10 @@ async function executeToolNatively(
                 // and therefore its own VM session — while the work can be continued later by
                 // talking to the assistant inside that created task.
                 let effectiveProjectId = projectId
-                let effectiveObjectType = toolRuntimeContext?.objectType || 'tasks'
-                let effectiveObjectId = toolRuntimeContext?.objectId || ''
+                let effectiveObjectType = toolRuntimeContext?.annaConversation
+                    ? 'tasks'
+                    : toolRuntimeContext?.objectType || 'tasks'
+                let effectiveObjectId = toolRuntimeContext?.annaConversation ? '' : toolRuntimeContext?.objectId || ''
 
                 const requestedTargetTaskId =
                     typeof toolArgs.target_task_id === 'string' ? toolArgs.target_task_id.trim() : ''
@@ -10012,6 +10045,7 @@ async function executeToolNatively(
                         deliverable: toolArgs.deliverable,
                         originatingRequestText,
                         originatingImageUrls,
+                        trackAssistantWork: toolRuntimeContext?.annaConversation === true,
                         projectId,
                         assistantId,
                         creatorId,
@@ -10030,7 +10064,7 @@ async function executeToolNatively(
                 // Forward the same thread context the in-chat assistant has (user/project
                 // descriptions, persona, conversation so far, shared files, date/time, language)
                 // so the sandbox agent is grounded instead of starting cold. Best-effort.
-                const threadContext = await buildVmThreadContext({
+                let threadContext = await buildVmThreadContext({
                     projectId: effectiveProjectId,
                     objectType: effectiveObjectType,
                     objectId: effectiveObjectId,
@@ -10044,6 +10078,10 @@ async function executeToolNatively(
                     })
                     return ''
                 })
+
+                if (toolRuntimeContext?.annaConversation && effectiveObjectType === 'tasks') {
+                    threadContext += `\nThis delegated work is tracked by the existing Alldone task ${effectiveObjectId} in project ${effectiveProjectId}. Keep progress, questions and deliverables in that task's comments or linked notes. Mark it complete using the existing task tool only when its requested outcome is achieved; leave it open while blocked, awaiting input, or unfinished. For interactive web browsing use the shared Alldone browser tools through MCP with taskId ${effectiveObjectId} on every call, so the user can see and take control of that session. Do not start an unshared browser inside the VM for this purpose.`
+                }
 
                 // The user's own words for this request. `agent`/`agentModel`/`agentReasoningEffort`/
                 // `approvalPolicy` outrank the saved Settings → Integrations defaults, so startVmJob
@@ -10082,10 +10120,18 @@ async function executeToolNatively(
                     // Origin conversation (set when this job was delegated from another thread,
                     // e.g. a WhatsApp chat with a different assistant) so the worker can post a
                     // completion note back where the user is actually talking.
-                    originProjectId: toolRuntimeContext?.originProjectId || '',
-                    originObjectType: toolRuntimeContext?.originObjectType || '',
-                    originObjectId: toolRuntimeContext?.originObjectId || '',
-                    originAssistantId: toolRuntimeContext?.originAssistantId || '',
+                    originProjectId:
+                        toolRuntimeContext?.originProjectId ||
+                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.projectId || projectId : ''),
+                    originObjectType:
+                        toolRuntimeContext?.originObjectType ||
+                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.objectType : ''),
+                    originObjectId:
+                        toolRuntimeContext?.originObjectId ||
+                        (toolRuntimeContext?.annaConversation ? toolRuntimeContext.objectId : ''),
+                    originAssistantId:
+                        toolRuntimeContext?.originAssistantId ||
+                        (toolRuntimeContext?.annaConversation ? assistantId : ''),
                 })
             } catch (error) {
                 console.error('🖥️ EXECUTE_TASK_IN_VM TOOL: Failed to start VM job', {

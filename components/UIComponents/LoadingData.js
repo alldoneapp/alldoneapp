@@ -5,13 +5,14 @@ import { useSelector } from 'react-redux'
 import Spinner from './Spinner'
 import useModalSizing from '../../hooks/useModalSizing'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH, SIDEBAR_MENU_WIDTH } from '../styles/global'
-import { isAnnaMode } from '../../utils/annaMode'
+import { useAnnaMode } from '../../utils/annaMode'
 import { FLOATING_ACTION_VIEWPORT_GAP, getLoadingDataBottom, LOADING_DATA_CONTAINER_SIZE } from './floatingActionLayout'
 
 export const LOADING_DATA_SPINNER_DELAY_MS = 300
 export const LOADING_DATA_SPINNER_MIN_VISIBLE_MS = 500
 
 export default function LoadingData() {
+    const annaMode = useAnnaMode()
     const spinnerRequested = useSelector(state => state.showLoadingDataSpinner)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -20,7 +21,7 @@ export default function LoadingData() {
     // A collapsed sidebar can expand on hover as an overlay without moving
     // the content. Anonymous users have their desktop sidebar on the right.
     const contentLeft =
-        smallScreenNavigation || isAnonymous || isAnnaMode()
+        smallScreenNavigation || isAnonymous || annaMode
             ? 0
             : sidebarExpanded
               ? SIDEBAR_MENU_WIDTH

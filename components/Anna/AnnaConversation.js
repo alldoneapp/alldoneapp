@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import useGetMessages from '../../hooks/Chats/useGetMessages'
 import MessageItemBody from '../ChatsView/ChatDV/EditorView/MessageItemBody'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
@@ -10,10 +10,23 @@ import { getTimestampInMilliseconds } from '../ChatsView/Utils/ChatHelper'
 import { resolveEffectiveMessageLoading } from '../ChatsView/ChatDV/EditorView/messageLoadingState'
 import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
+import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 
-export default function AnnaConversation({ conversation, assistant, user, call, onExpand, onSendingChange }) {
-    const [limit, setLimit] = useState(40)
-    const messages = useGetMessages(false, false, conversation.projectId, conversation.id, 'topics', limit)
+export default function AnnaConversation({
+    conversation,
+    assistant,
+    user,
+    call,
+    onExpand,
+    onSendingChange,
+    threads = [],
+    resolveConversation,
+    loadEarlier,
+    hasEarlier = false,
+    visible = true,
+    resumeRequest,
+    onResumeHandled,
+}) {
     const [draft, setDraft] = useState('')
     const [sending, setSending] = useState(false)
     const [error, setError] = useState('')
@@ -21,27 +34,53 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
     const [newMessages, setNewMessages] = useState(false)
     const scroll = useRef(null)
     const follow = useRef(true)
+    const scrollAnchor = useRef(null)
     const inFlight = useRef(false)
+    const resumed = useRef(null)
     const mounted = useRef(true)
     const voiceActive = call.status !== 'idle'
-    const last = messages[messages.length - 1]
+    const [loadingEarlier, setLoadingEarlier] = useState(false)
     useEffect(() => {
         mounted.current = true
         return () => {
             mounted.current = false
         }
     }, [])
-    useEffect(() => {
+    const messagesChanged = useCallback(() => {
         const element = scroll.current
         if (!element) return
+        const anchor = scrollAnchor.current
+        if (anchor?.element.isConnected) {
+            element.scrollTop += anchor.element.getBoundingClientRect().top - anchor.top
+            return
+        }
         if (follow.current) element.scrollTop = element.scrollHeight
         else setNewMessages(true)
-    }, [messages.length, last?.commentText])
-    useAnnaMessageReadState(conversation.projectId, conversation.id, scroll, messages)
+    }, [])
+    const preservePosition = () => {
+        follow.current = false
+        const top = scroll.current?.getBoundingClientRect().top || 0
+        const element = [...(scroll.current?.querySelectorAll('[data-anna-message-id]') || [])].find(
+            node => node.getBoundingClientRect().bottom > top
+        )
+        scrollAnchor.current = element ? { element, top: element.getBoundingClientRect().top } : null
+    }
+    const earlier = async () => {
+        if (loadingEarlier) return
+        preservePosition()
+        setLoadingEarlier(true)
+        try {
+            await loadEarlier()
+        } catch (failure) {
+            setError(failure.message)
+        } finally {
+            setLoadingEarlier(false)
+        }
+    }
 
-    const send = async event => {
+    const send = async (event, continuation = null) => {
         event?.preventDefault()
-        if (inFlight.current || voiceActive || (!draft.trim() && !retryMessage)) return
+        if (inFlight.current || voiceActive || (!draft.trim() && !retryMessage && !continuation)) return
         if (!(user.gold > 0)) {
             setError(translate('You need Gold to talk with Anna.'))
             return
@@ -51,17 +90,22 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
         onSendingChange?.(true)
         setError('')
         follow.current = true
+        scrollAnchor.current = null
         let messageId = retryMessage?.id
-        const text = retryMessage?.text || draft.trim()
+        const text = retryMessage?.text || continuation?.text || draft.trim()
+        const keepDraft = retryMessage?.keepDraft || !!continuation
+        let thread = retryMessage?.thread || continuation?.thread || conversation
         try {
+            if (!retryMessage && !continuation?.thread && resolveConversation) thread = await resolveConversation()
+            if (!thread?.id) throw new Error(translate('Your conversation could not be loaded. Please try again.'))
             // Context is saved before the request, so "this note" refers to what is visible.
             await getDb()
-                .doc(`chatObjects/${conversation.projectId}/chats/${conversation.id}`)
+                .doc(`chatObjects/${thread.projectId}/chats/${thread.id}`)
                 .update({ annaPageContext: getAnnaWorkspaceContext() || { path: '/', title: 'Anna' } })
             if (!messageId) {
                 messageId = await createObjectMessage(
-                    conversation.projectId,
-                    conversation.id,
+                    thread.projectId,
+                    thread.id,
                     text,
                     'topics',
                     STAYWARD_COMMENT,
@@ -69,25 +113,25 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
                     null,
                     true,
                     true,
-                    conversation.assistantId
+                    thread.assistantId
                 )
                 if (!messageId) throw new Error('Your message was not saved. Please try again.')
             }
             if (mounted.current) {
-                setDraft('')
-                setRetryMessage({ id: messageId, text })
+                if (!keepDraft) setDraft('')
+                setRetryMessage({ id: messageId, text, thread, keepDraft })
             }
             await runHttpsCallableFunction(
                 'askToBotSecondGen',
                 {
                     userId: user.uid,
-                    projectId: conversation.projectId,
-                    objectId: conversation.id,
+                    projectId: thread.projectId,
+                    objectId: thread.id,
                     objectType: 'topics',
                     messageId,
-                    assistantId: conversation.assistantId,
+                    assistantId: thread.assistantId,
                     userIdsToNotify: [user.uid],
-                    isPublicFor: [user.uid],
+                    isPublicFor: thread.isPublicFor || [0],
                     followerIds: [user.uid],
                     language: window.navigator.language,
                 },
@@ -96,7 +140,7 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
             if (mounted.current) setRetryMessage(null)
         } catch (failure) {
             if (mounted.current) {
-                if (messageId) setRetryMessage({ id: messageId, text })
+                if (messageId || continuation) setRetryMessage({ id: messageId, text, thread, keepDraft })
                 setError(failure.message || translate('Your message could not be sent. Please try again.'))
             }
         } finally {
@@ -105,8 +149,15 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
             if (mounted.current) setSending(false)
         }
     }
+    useEffect(() => {
+        if (!resumeRequest || resumed.current === resumeRequest.id || sending || voiceActive || retryMessage) return
+        resumed.current = resumeRequest.id
+        send(null, resumeRequest)
+        onResumeHandled?.(resumeRequest.id)
+    }, [resumeRequest, sending, voiceActive, retryMessage])
     const latest = () => {
         follow.current = true
+        scrollAnchor.current = null
         if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight
         setNewMessages(false)
     }
@@ -117,81 +168,44 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
                 ref={scroll}
                 role="log"
                 aria-label={translate('Conversation with Anna')}
+                onWheel={() => {
+                    scrollAnchor.current = null
+                }}
+                onTouchStart={() => {
+                    scrollAnchor.current = null
+                }}
                 onScroll={() => {
                     const el = scroll.current
                     follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90
                     if (follow.current) setNewMessages(false)
                 }}
             >
-                {messages.length >= limit && (
-                    <button
-                        className="anna-text-button"
-                        onClick={() => {
-                            follow.current = false
-                            setLimit(value => value + 40)
-                        }}
-                    >
-                        {translate('Earlier messages')}
+                {hasEarlier && (
+                    <button className="anna-text-button" disabled={loadingEarlier} onClick={earlier}>
+                        {translate(loadingEarlier ? 'Loading earlier days…' : 'Earlier days')}
                     </button>
                 )}
-                {!messages.loaded && <p className="anna-muted">{translate('Loading your conversation…')}</p>}
-                {messages.loaded && messages.length === 0 && (
-                    <div className="anna-welcome">
-                        <span className="anna-eyebrow">{translate('A little more space for life')}</span>
-                        <h1>{translate('What’s on your mind?')}</h1>
-                        <p>
-                            {translate(
-                                'Talk with Anna. Your tasks, notes and projects are right here when you need them.'
-                            )}
-                        </p>
-                        <div className="anna-suggestions">
-                            {['Help me plan my day', 'Show me my tasks', 'Find a note'].map(text => (
-                                <button
-                                    key={text}
-                                    onClick={() => {
-                                        setDraft(translate(text))
-                                        onExpand()
-                                    }}
-                                >
-                                    {translate(text)}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-                {messages.map(message => {
-                    const own = message.creatorId === user.uid && !message.fromAssistant
-                    return (
-                        <article
-                            key={message.id}
-                            data-anna-message-id={message.id}
-                            className={`anna-message ${own ? 'anna-message-user' : ''}`}
-                        >
-                            <div className="anna-message-author">
-                                {own ? translate('You') : assistant.displayName || 'Anna'}
-                                <time>
-                                    {new Date(
-                                        getTimestampInMilliseconds(message.created || message.lastChangeDate)
-                                    ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </time>
-                            </div>
-                            <MessageItemBody
-                                messageId={message.id}
-                                projectId={conversation.projectId}
-                                commentText={message.commentText || ''}
-                                chat={conversation}
-                                objectType="topics"
-                                creatorData={own ? user : { ...assistant, isAssistant: true }}
-                                isLoading={resolveEffectiveMessageLoading(
-                                    message,
-                                    getTimestampInMilliseconds(message.lastChangeDate)
-                                )}
-                                assistantRun={message.assistantRun}
-                                containerStyle={{ margin: 0, padding: 0 }}
-                            />
-                        </article>
-                    )
-                })}
+                {(threads.length ? threads : [{ ...conversation, chatId: conversation.id }]).map(thread => (
+                    <AnnaThreadMessages
+                        key={`${thread.projectId}/${thread.chatId || thread.id}`}
+                        thread={thread}
+                        conversation={conversation}
+                        assistant={assistant}
+                        user={user}
+                        scroll={scroll}
+                        current={
+                            thread.projectId === conversation.projectId &&
+                            (thread.chatId || thread.id) === conversation.id
+                        }
+                        onChange={messagesChanged}
+                        onLoadEarlier={preservePosition}
+                        visible={visible}
+                        onSuggest={text => {
+                            setDraft(text)
+                            onExpand()
+                        }}
+                    />
+                ))}
                 {sending && (
                     <p className="anna-muted" role="status">
                         {translate('Anna is working…')}
@@ -243,10 +257,104 @@ export default function AnnaConversation({ conversation, assistant, user, call, 
                     </button>
                 </div>
                 <div className="anna-composer-footer">
-                    <span>{translate('Your private conversation')}</span>
+                    <span>{translate('Conversation in your default project')}</span>
                     <span>{translate('Shift + Enter for a new line')}</span>
                 </div>
             </form>
         </>
+    )
+}
+
+function AnnaThreadMessages({
+    thread,
+    conversation,
+    assistant,
+    user,
+    scroll,
+    current,
+    onChange,
+    onLoadEarlier,
+    onSuggest,
+    visible,
+}) {
+    const [limit, setLimit] = useState(40)
+    const chatId = thread.chatId || thread.id
+    const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit)
+    useAnnaMessageReadState(thread.projectId, chatId, scroll, messages, visible)
+    const last = messages[messages.length - 1]
+    useLayoutEffect(() => {
+        onChange()
+    }, [messages.length, messages.loaded, last?.commentText, onChange])
+    const expandEarlier = () => {
+        onLoadEarlier()
+        setLimit(value => value + 40)
+    }
+    return (
+        <section aria-label={thread.dateKey || translate('Earlier conversation')}>
+            {thread.dateKey && (
+                <div className="anna-date-divider">{thread.dateKey.replace(/^(....)(..)(..)$/, '$1-$2-$3')}</div>
+            )}
+            {messages.length >= limit && (
+                <button className="anna-text-button" onClick={expandEarlier}>
+                    {translate('Earlier messages')}
+                </button>
+            )}
+            {!messages.loaded && <p className="anna-muted">{translate('Loading your conversation…')}</p>}
+            {current && messages.loaded && messages.length === 0 && (
+                <div className="anna-welcome">
+                    <h1>{translate('What’s on your mind?')}</h1>
+                    <p>
+                        {translate('Talk with Anna. Your tasks, notes and projects are right here when you need them.')}
+                    </p>
+                    <div className="anna-suggestions">
+                        {['Help me plan my day', 'Show me my tasks', 'Find a note'].map(text => (
+                            <button key={text} onClick={() => onSuggest(translate(text))}>
+                                {translate(text)}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {messages.map(message => {
+                const own = message.creatorId === user.uid && !message.fromAssistant
+                const knownCreator = own ? user : getUserPresentationData(message.creatorId)
+                const creator =
+                    knownCreator?.isUnknownUser && message.fromAssistant
+                        ? { displayName: translate('Assistant'), isAssistant: true }
+                        : knownCreator
+                return (
+                    <article
+                        key={message.id}
+                        data-anna-message-id={message.id}
+                        data-anna-chat-id={chatId}
+                        data-anna-project-id={thread.projectId}
+                        className={`anna-message ${own ? 'anna-message-user' : ''}`}
+                    >
+                        <div className="anna-message-author">
+                            {own ? translate('You') : creator?.displayName}
+                            <time>
+                                {new Date(
+                                    getTimestampInMilliseconds(message.created || message.lastChangeDate)
+                                ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </time>
+                        </div>
+                        <MessageItemBody
+                            messageId={message.id}
+                            projectId={thread.projectId}
+                            commentText={message.commentText || ''}
+                            chat={{ ...conversation, ...thread, id: chatId }}
+                            objectType="topics"
+                            creatorData={creator}
+                            isLoading={resolveEffectiveMessageLoading(
+                                message,
+                                getTimestampInMilliseconds(message.lastChangeDate)
+                            )}
+                            assistantRun={message.assistantRun}
+                            containerStyle={{ margin: 0, padding: 0 }}
+                        />
+                    </article>
+                )
+            })}
+        </section>
     )
 }

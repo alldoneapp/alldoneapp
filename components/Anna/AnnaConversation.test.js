@@ -18,6 +18,9 @@ jest.mock('../ChatsView/Utils/ChatHelper', () => ({ getTimestampInMilliseconds: 
 jest.mock('../ChatsView/ChatDV/EditorView/messageLoadingState', () => ({ resolveEffectiveMessageLoading: () => false }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: value => value }))
 jest.mock('./useAnnaMessageReadState', () => jest.fn())
+jest.mock('../ContactsView/Utils/ContactsHelper', () => ({
+    getUserPresentationData: id => ({ uid: id, displayName: id }),
+}))
 let root, container
 const render = (overrides = {}) =>
     act(() =>
@@ -53,7 +56,7 @@ afterEach(() => {
     delete global.IS_REACT_ACT_ENVIRONMENT
 })
 
-it('saves the visible context and one private message before invoking the existing assistant', async () => {
+it('saves the visible context and one project conversation message before invoking the existing assistant', async () => {
     render()
     await click('Show me my tasks')
     await submit()
@@ -73,7 +76,7 @@ it('saves the visible context and one private message before invoking the existi
     expect(mockContextUpdate.mock.invocationCallOrder[0]).toBeLessThan(createObjectMessage.mock.invocationCallOrder[0])
     expect(runHttpsCallableFunction).toHaveBeenCalledWith(
         'askToBotSecondGen',
-        expect.objectContaining({ messageId: 'm1', assistantId: 'a1', isPublicFor: ['u1'] }),
+        expect.objectContaining({ messageId: 'm1', assistantId: 'a1', isPublicFor: [0] }),
         { timeout: 3600000 }
     )
 })
@@ -106,4 +109,53 @@ it('prevents concurrent text execution during a voice call', async () => {
     await submit()
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(container.querySelector('textarea').disabled).toBe(true)
+})
+
+it('resolves the new local day before sending while preserving retries on their original thread', async () => {
+    const resolveConversation = jest
+        .fn()
+        .mockResolvedValue({ projectId: 'p2', id: 'AnnaChat20261008u1', assistantId: 'a2', isPublicFor: [0] })
+    runHttpsCallableFunction.mockRejectedValueOnce(new Error('Offline'))
+    render({ resolveConversation })
+    await click('Find a note')
+    await submit()
+    render({ resolveConversation, conversation: { projectId: 'p3', id: 'AnnaChat20261009u1', assistantId: 'a3' } })
+    await click('Retry')
+    expect(resolveConversation).toHaveBeenCalledTimes(1)
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(runHttpsCallableFunction.mock.calls.map(call => call[1].objectId)).toEqual([
+        'AnnaChat20261008u1',
+        'AnnaChat20261008u1',
+    ])
+    expect(runHttpsCallableFunction.mock.calls[1][1].projectId).toBe('p2')
+})
+
+it('resumes a paused request after hand-back without replacing an unsent draft', async () => {
+    render()
+    await click('Find a note')
+    const onResumeHandled = jest.fn()
+    await act(async () =>
+        render({
+            resumeRequest: {
+                id: 'resume1',
+                text: 'I have returned control. Continue.',
+                thread: { projectId: 'p1', id: 'anna_u1', assistantId: 'a1' },
+            },
+            onResumeHandled,
+        })
+    )
+    expect(createObjectMessage).toHaveBeenCalledWith(
+        'p1',
+        'anna_u1',
+        'I have returned control. Continue.',
+        'topics',
+        'stayward',
+        null,
+        null,
+        true,
+        true,
+        'a1'
+    )
+    expect(container.querySelector('textarea').value).toBe('Find a note')
+    expect(onResumeHandled).toHaveBeenCalledWith('resume1')
 })

@@ -55,7 +55,8 @@ export const DEFERRED_QUICK_ACTION_REFRESH_MS = 1000
 const QUICK_ACTION_HORIZONTAL_MARGIN = 16
 
 export default function AssistantOptions({
-    onCollapse,
+    onZoomOut,
+    headerControls = null,
     projectOverride = null,
     assistantIdOverride = null,
     showAllQuickActions = false,
@@ -381,8 +382,6 @@ export default function AssistantOptions({
     const sendLabel = translate('Send')
     const sendButtonTitle = isMobile ? '' : sendLabel
     const sendButtonStyle = isMobile ? localStyles.sendButtonMobile : localStyles.sendButtonDesktop
-    const HeaderContainer = onCollapse ? TouchableOpacity : View
-    const headerContainerProps = onCollapse ? { onPress: onCollapse, activeOpacity: 0.8 } : {}
 
     return (
         // AT-2444 — the whole assistant card is the drop target, not just the field. The composer
@@ -400,11 +399,12 @@ export default function AssistantOptions({
             projectId={conversationProjectId}
             setInputCursorIndex={setInputCursorIndex}
         >
-            <HeaderContainer style={localStyles.headerRow} {...headerContainerProps}>
+            <View style={localStyles.headerRow}>
+                {headerControls}
                 {/* Kept short on purpose (AT-2442): the header is a single centred line
                     (numberOfLines={1}) that also carries the assistant's display name, so a
                     longer greeting ellipsises on narrow phones. */}
-                <View style={localStyles.headerTitle}>
+                <View style={[localStyles.headerTitle, headerControls && localStyles.headerTitleWithControls]}>
                     <Text style={localStyles.headerText} numberOfLines={1}>
                         {`${assistant.displayName}: ${translate('How can I help?')}`}
                     </Text>
@@ -412,12 +412,16 @@ export default function AssistantOptions({
                         Hidden without WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
                     <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
                 </View>
-                {!!onCollapse && (
-                    <View style={localStyles.collapseButton}>
-                        <Icon name={'chevron-up'} size={16} color={colors.Text03} />
-                    </View>
+                {!!onZoomOut && (
+                    <TouchableOpacity
+                        style={localStyles.zoomButton}
+                        onPress={onZoomOut}
+                        accessibilityLabel={translate('Zoom out to assistant')}
+                    >
+                        <Icon name={'maximize-2'} size={16} color={colors.Text03} />
+                    </TouchableOpacity>
                 )}
-            </HeaderContainer>
+            </View>
             <View style={localStyles.firstRow}>
                 {/* Rage mode's Anna takes off from this avatar and lands back on it. */}
                 <View style={localStyles.avatarWrapper} nativeID={RAGE_LAUNCH_ANCHOR_ID}>
@@ -561,13 +565,19 @@ const localStyles = StyleSheet.create({
         color: colors.Text01,
         textAlign: 'center',
     },
+    headerTitleWithControls: {
+        marginLeft: 0,
+    },
     rageButton: {
         marginLeft: 8,
     },
-    collapseButton: {
+    zoomButton: {
         marginLeft: 8,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
+        width: 28,
+        height: 28,
+        flexShrink: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     firstRow: {
         flexDirection: 'row',

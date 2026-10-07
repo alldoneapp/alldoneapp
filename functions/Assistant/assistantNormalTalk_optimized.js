@@ -207,9 +207,12 @@ async function askToOpenAIBotOptimized(
             language,
             maxRunWallClockMs: INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
         }
-        const { loadAnnaContext, annaInstructions } = require('./annaWorkspace')
+        const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('./annaWorkspace')
         const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext)
-        if (annaContext) baseToolRuntimeContext.annaConversation = true
+        if (annaContext) {
+            baseToolRuntimeContext.annaConversation = true
+            annaContext.history = await loadAnnaHistoryContext(admin.firestore(), baseToolRuntimeContext)
+        }
 
         // At 19 uncompacted messages this is a hard safety gate. A failed/stale compaction
         // aborts the run so no message can fall beyond the current 20-message context window

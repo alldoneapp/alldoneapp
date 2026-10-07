@@ -30,6 +30,7 @@ export default function AssistantSwitchControl({
     onSelect,
     grouped = false,
     collapsed = false,
+    inline = false,
 }) {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -64,7 +65,7 @@ export default function AssistantSwitchControl({
 
     const button = (
         <TouchableOpacity
-            style={[localStyles.switchButton, collapsed && localStyles.switchButtonCollapsed]}
+            style={[localStyles.switchButton, (collapsed || inline) && localStyles.switchButtonCollapsed]}
             onPress={onPress}
             testID={ASSISTANT_SWITCH_BUTTON_TEST_ID}
             accessibilityLabel={translate('Switch assistant')}
@@ -106,6 +107,7 @@ const localStyles = StyleSheet.create({
         top: -4,
         width: 28,
         height: 28,
+        flexShrink: 0,
         borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',

@@ -450,10 +450,16 @@ exports.getAnnaConversationSecondGen = onCall(
     async request => {
         if (!request.auth || request.auth.token?.firebase?.sign_in_provider === 'anonymous')
             throw new HttpsError('unauthenticated', 'Sign in to talk with Anna.')
-        const { ensureAnnaConversation } = require('./Assistant/annaWorkspace')
+        const { ensureAnnaConversation, listAnnaConversations } = require('./Assistant/annaWorkspace')
         const { getDefaultAssistantId } = require('./WhatsApp/whatsAppIncomingHandler')
         try {
-            return await ensureAnnaConversation({
+            if (request.data?.before && typeof request.data.before === 'object')
+                return await listAnnaConversations({
+                    db: admin.firestore(),
+                    userId: request.auth.uid,
+                    before: request.data.before,
+                })
+            const reference = await ensureAnnaConversation({
                 db: admin.firestore(),
                 userId: request.auth.uid,
                 resolveAssistantId: async (user, projectId) => {
@@ -467,6 +473,10 @@ exports.getAnnaConversationSecondGen = onCall(
                     return defaults.empty ? getDefaultAssistantId(user, projectId) : defaults.docs[0].id
                 },
             })
+            return {
+                ...reference,
+                ...(await listAnnaConversations({ db: admin.firestore(), userId: request.auth.uid })),
+            }
         } catch (error) {
             if (['unauthenticated', 'not-found', 'failed-precondition', 'permission-denied'].includes(error.code))
                 throw new HttpsError(error.code, error.message)
@@ -1700,6 +1710,34 @@ exports.respondToBrowserApprovalSecondGen = onCall(
 
 // Human-controlled, session-only login. Every request carries one gesture at most and is proxied
 // to the IAM-private browser worker. Secret text is intentionally never logged or persisted.
+exports.annaBrowserWorkspaceSecondGen = onCall(
+    { timeoutSeconds: 60, memory: '256MiB', region: 'europe-west1', cors: true },
+    async request => {
+        if (!request.auth || request.auth.token?.firebase?.sign_in_provider === 'anonymous')
+            throw new HttpsError('unauthenticated', 'Sign in to view the browser.')
+        const { browserWorkspace } = require('./Assistant/browser/browserWorkspace')
+        const { getEnvFunctions } = require('./envFunctionsHelper')
+        try {
+            return await browserWorkspace({
+                db: admin.firestore(),
+                env: getEnvFunctions(),
+                userId: request.auth.uid,
+                runId: request.data?.runId,
+                action: request.data?.action,
+                input: request.data?.input || {},
+            })
+        } catch (error) {
+            throw new HttpsError(
+                ['permission-denied', 'invalid-argument', 'failed-precondition'].includes(error.code)
+                    ? error.code
+                    : 'internal',
+                error.message || 'The browser is unavailable.',
+                error.details
+            )
+        }
+    }
+)
+
 exports.browserTakeoverSecondGen = onCall(
     {
         timeoutSeconds: 60,

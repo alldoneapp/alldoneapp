@@ -3,7 +3,7 @@ import { Platform } from 'react-native'
 import { useSelector } from 'react-redux'
 import useAssistantVoiceCall from './useAssistantVoiceCall'
 import FloatingCallControls from './FloatingAssistantVoiceCall'
-import { isAnnaMode } from '../../utils/annaMode'
+import { useAnnaMode } from '../../utils/annaMode'
 
 const VoiceCallContext = createContext(null)
 export const useVoiceCall = () => useContext(VoiceCallContext)
@@ -11,6 +11,7 @@ export const useVoiceCall = () => useContext(VoiceCallContext)
 // This stays outside AppContent's responsive navigator and route screens. Every
 // launcher uses the same owner; a route unmount cannot release the microphone.
 export function AssistantVoiceCallProvider({ children, userId }) {
+    const annaMode = useAnnaMode()
     const call = useAssistantVoiceCall()
     const owner = useRef(userId)
     useEffect(() => {
@@ -20,7 +21,7 @@ export function AssistantVoiceCallProvider({ children, userId }) {
     return (
         <VoiceCallContext.Provider value={call}>
             {children}
-            {Platform.OS === 'web' && !isAnnaMode() && <FloatingCallControls call={call} />}
+            {Platform.OS === 'web' && !annaMode && <FloatingCallControls call={call} />}
         </VoiceCallContext.Provider>
     )
 }

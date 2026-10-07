@@ -82,6 +82,11 @@ const toolSchemas = {
                         type: 'string',
                         description: 'Optional: description for the task',
                     },
+                    trackAssistantWork: {
+                        type: 'boolean',
+                        description:
+                            'Only in the Anna workspace: true to track substantial work explicitly delegated to the assistant. Assigns this task to the assistant and keeps its progress in task comments. Leave false for tasks the user will do and for quick questions or small edits.',
+                    },
                     taskOrigin: {
                         type: 'string',
                         enum: ['user_request', 'assistant_suggestion'],
@@ -1452,6 +1457,11 @@ const toolSchemas = {
             parameters: {
                 type: 'object',
                 properties: {
+                    taskId: {
+                        type: 'string',
+                        description:
+                            'Optional exact Alldone task ID. Use it on every browser call for delegated task/VM work, or to resume that task’s shared browser from another conversation.',
+                    },
                     url: { type: 'string', description: 'The absolute https URL to open.' },
                     waitUntil: {
                         type: 'string',
@@ -1474,6 +1484,11 @@ const toolSchemas = {
             parameters: {
                 type: 'object',
                 properties: {
+                    taskId: {
+                        type: 'string',
+                        description:
+                            'Optional exact Alldone task ID. Use it on every browser call for delegated task/VM work, or to resume that task’s shared browser from another conversation.',
+                    },
                     scope: {
                         type: 'string',
                         description:
@@ -1494,6 +1509,11 @@ const toolSchemas = {
             parameters: {
                 type: 'object',
                 properties: {
+                    taskId: {
+                        type: 'string',
+                        description:
+                            'Optional exact Alldone task ID. Use it on every browser call for delegated task/VM work, or to resume that task’s shared browser from another conversation.',
+                    },
                     ref: { type: 'string', description: 'The ref of the element, from the latest snapshot.' },
                     selector: {
                         type: 'string',
@@ -1514,6 +1534,11 @@ const toolSchemas = {
             parameters: {
                 type: 'object',
                 properties: {
+                    taskId: {
+                        type: 'string',
+                        description:
+                            'Optional exact Alldone task ID. Use it on every browser call for delegated task/VM work, or to resume that task’s shared browser from another conversation.',
+                    },
                     ref: { type: 'string', description: 'The ref of the field, from the latest snapshot.' },
                     selector: { type: 'string', description: 'Optional fallback CSS selector.' },
                     text: { type: 'string', description: 'The text to type.' },
@@ -1540,6 +1565,11 @@ const toolSchemas = {
             parameters: {
                 type: 'object',
                 properties: {
+                    taskId: {
+                        type: 'string',
+                        description:
+                            'Optional exact Alldone task ID. Use it on every browser call for delegated task/VM work, or to resume that task’s shared browser from another conversation.',
+                    },
                     ms: { type: 'number', description: 'Milliseconds to wait (maximum 15000).' },
                     selector: { type: 'string', description: 'Optional: a CSS selector to wait for.' },
                     state: {
@@ -1562,6 +1592,11 @@ const toolSchemas = {
             parameters: {
                 type: 'object',
                 properties: {
+                    taskId: {
+                        type: 'string',
+                        description:
+                            'Optional exact Alldone task ID. Use it on every browser call for delegated task/VM work, or to resume that task’s shared browser from another conversation.',
+                    },
                     fullPage: {
                         type: 'boolean',
                         description: 'Optional: capture the whole scrollable page instead of the viewport.',

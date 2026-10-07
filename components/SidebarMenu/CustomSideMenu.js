@@ -11,10 +11,10 @@ import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
 import LoggedUserSidebar from './LoggedUserSidebar/LoggedUserSidebar'
 import AnonymousUserSidebar from './AnonymousUserSidebar/AnonymousUserSidebar'
 import Backdrop from './Backdrop'
-import { isAnnaMode } from '../../utils/annaMode'
+import { useAnnaMode } from '../../utils/annaMode'
 
 export default function CustomSideMenu(props) {
-    return isAnnaMode() ? null : <WorkspaceSideMenu {...props} />
+    return useAnnaMode() ? null : <WorkspaceSideMenu {...props} />
 }
 
 function WorkspaceSideMenu({ navigation }) {
