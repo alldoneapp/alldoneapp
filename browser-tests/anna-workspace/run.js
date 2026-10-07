@@ -189,7 +189,19 @@ async function checkWorkspaceReveal(page, width) {
             assert.equal(await page.locator('.anna-stage').getAttribute('aria-hidden'), 'true')
             await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
         } else await input.fill('Keep this unsent draft')
-        await ring.waitFor({ state: 'visible' })
+        await ring.waitFor({ state: 'visible', timeout: 6000 }).catch(async error => {
+            console.error(
+                await workspace.evaluate(node => ({
+                    scrollTop: node.scrollTop,
+                    scrollHeight: node.scrollHeight,
+                    clientHeight: node.clientHeight,
+                    ownsScrollTo: Object.prototype.hasOwnProperty.call(node, 'scrollTo'),
+                    reactNativeScrollView: typeof node.getScrollableNode === 'function',
+                    target: node.querySelector('[data-anna-object-id]')?.getBoundingClientRect().toJSON(),
+                }))
+            )
+            throw error
+        })
     }
     await create()
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.anna-reveal-overlay')).opacity > 0.95)
