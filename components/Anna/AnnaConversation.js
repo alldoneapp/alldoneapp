@@ -10,6 +10,7 @@ import { getTimestampInMilliseconds } from '../ChatsView/Utils/ChatHelper'
 import { resolveEffectiveMessageLoading } from '../ChatsView/ChatDV/EditorView/messageLoadingState'
 import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
+import useAnnaContextNotices from './useAnnaContextNotices'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
 import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
@@ -30,7 +31,9 @@ export default function AnnaConversation({
     resumeRequest,
     onResumeHandled,
     onBeforeSend,
+    pageContext,
 }) {
+    const contextNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [draft, setDraft] = useState('')
     const [sending, setSending] = useState(false)
@@ -218,6 +221,10 @@ export default function AnnaConversation({
                         onChange={messagesChanged}
                         onLoadEarlier={preservePosition}
                         visible={visible}
+                        contextNotices={contextNotices.filter(
+                            notice =>
+                                notice.projectId === thread.projectId && notice.chatId === (thread.chatId || thread.id)
+                        )}
                         onSuggest={text => {
                             setDraft(text)
                             onExpand()
@@ -341,6 +348,7 @@ function AnnaThreadMessages({
     onLoadEarlier,
     onSuggest,
     visible,
+    contextNotices,
 }) {
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [limit, setLimit] = useState(40)
@@ -350,7 +358,14 @@ function AnnaThreadMessages({
     const last = messages[messages.length - 1]
     useLayoutEffect(() => {
         onChange()
-    }, [messages.length, messages.loaded, last?.commentText, onChange])
+    }, [messages.length, messages.loaded, last?.commentText, contextNotices.at(-1)?.id, onChange])
+    const timeline = [
+        ...messages.map(message => ({
+            message,
+            created: getTimestampInMilliseconds(message.created || message.lastChangeDate),
+        })),
+        ...contextNotices.map(notice => ({ notice, created: notice.created })),
+    ].sort((a, b) => a.created - b.created)
     const expandEarlier = () => {
         onLoadEarlier()
         setLimit(value => value + 40)
@@ -384,7 +399,21 @@ function AnnaThreadMessages({
                     </div>
                 </div>
             )}
-            {messages.map(message => {
+            {timeline.map(({ message, notice }) => {
+                if (notice)
+                    return (
+                        <p className="anna-context-notice" key={`context-${notice.id}`}>
+                            <span>
+                                {translate('Looking at:')} {notice.title}
+                            </span>
+                            <time dateTime={new Date(notice.created).toISOString()}>
+                                {new Date(notice.created).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                })}
+                            </time>
+                        </p>
+                    )
                 const own = message.creatorId === user.uid && !message.fromAssistant
                 const knownCreator = own ? user : getUserPresentationData(message.creatorId)
                 const creator =

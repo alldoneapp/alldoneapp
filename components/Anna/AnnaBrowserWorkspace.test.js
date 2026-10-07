@@ -10,7 +10,7 @@ jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
 let root, container, ref
 const onResume = jest.fn()
 const onControlChange = jest.fn()
-const render = () =>
+const render = (overrides = {}) =>
     act(async () =>
         root.render(
             <AnnaBrowserWorkspace
@@ -19,6 +19,7 @@ const render = () =>
                 active
                 onResume={onResume}
                 onControlChange={onControlChange}
+                {...overrides}
             />
         )
     )
@@ -104,4 +105,29 @@ it('does not call the backend when the browser is already following the assistan
     await render()
     await act(async () => ref.current.releaseControl())
     expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+})
+
+it('reports the current browser page and never reuses the previous session title', async () => {
+    const onPageChange = jest.fn()
+    runHttpsCallableFunction.mockResolvedValueOnce({
+        control: 'assistant',
+        ready: true,
+        title: 'Opened page',
+        url: 'https://example.com/opened',
+    })
+    await render({ onPageChange })
+    expect(onPageChange).toHaveBeenLastCalledWith({
+        runId: 'run1',
+        title: 'Opened page',
+        url: 'https://example.com/opened',
+    })
+    onPageChange.mockClear()
+    runHttpsCallableFunction.mockReturnValueOnce(new Promise(() => {}))
+    await render({ onPageChange, browser: { runId: 'run2', title: 'Next session', url: 'https://example.com/next' } })
+    expect(onPageChange.mock.calls.every(([page]) => page.title === 'Next session')).toBe(true)
+    expect(onPageChange).toHaveBeenLastCalledWith({
+        runId: 'run2',
+        title: 'Next session',
+        url: 'https://example.com/next',
+    })
 })
