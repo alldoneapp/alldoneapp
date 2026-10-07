@@ -1,5 +1,6 @@
 // Bounds the in-memory research loop. This does not change the persisted thread.
 const { createHash } = require('crypto')
+const { compactTaskListing } = require('./taskListingContext')
 
 const RESEARCH_TOOLS = new Set([
     'search',
@@ -77,6 +78,10 @@ function compactValue(value, maxStringLength, depth = 0) {
 // and user turns. Older result bodies become explicitly marked excerpts, never invented summaries.
 function compactResearchConversation(conversation, aggressive = false) {
     const toolEntries = conversation.filter(entry => roleOf(entry) === 'tool')
+    const toolNames = new Map()
+    for (const entry of conversation) {
+        for (const call of entry.tool_calls || []) toolNames.set(call.id, call.function?.name)
+    }
     const perResultBudget = Math.max(500, Math.floor(40000 / Math.max(1, toolEntries.length)))
     let toolIndex = 0
     return conversation.map(entry => {
@@ -90,6 +95,9 @@ function compactResearchConversation(conversation, aggressive = false) {
                 result = { excerpt: String(contentOf(entry) || '') }
             }
             if (Buffer.byteLength(JSON.stringify(result), 'utf8') <= budget) return entry
+            if (toolNames.get(entry.tool_call_id) === 'get_tasks' && Array.isArray(result?.tasks)) {
+                return replaceContent(entry, JSON.stringify(compactTaskListing(result, budget)))
+            }
             let compacted = compactValue(result, Math.min(2000, budget / 2))
             if (!compacted || typeof compacted !== 'object' || Array.isArray(compacted)) {
                 compacted = { result: compacted }

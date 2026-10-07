@@ -192,8 +192,7 @@ const CHARACTERS_PER_TOKEN_SONAR = 4 // Approximate number of characters per tok
 const IMAGE_TRIGGER = 'O2TI5plHBf1QfdY'
 const ATTACHMENT_TRIGGER = 'EbDsQTD14ahtSR5'
 const REGEX_IMAGE_TOKEN = /^O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+O2TI5plHBf1QfdY[\S]+/
-// Largest get_tasks listing that still reaches the model intact. Above this, enforceToolResultContextCeiling
-// compacts the tasks array to a handful of items, so a bigger "limit" returns less usable information, not more.
+// Bound retrieval cost. Context compaction separately preserves counts and labels partial listings.
 const GET_TASKS_MAX_CONTEXT_SAFE_LIMIT = 150
 const TALK_TO_ASSISTANT_TOOL_KEY = 'talk_to_assistant'
 const TALK_TO_ASSISTANT_TOOL_PREFIX = 'talk_to_assistant_'
@@ -5958,6 +5957,7 @@ async function executeToolNativelyImpl(
         }
 
         case 'get_tasks': {
+            const { withTaskListingMetadata } = require('./taskListingContext')
             const { TaskRetrievalService } = require('../shared/TaskRetrievalService')
             const { ProjectService } = require('../shared/ProjectService')
 
@@ -6102,9 +6102,11 @@ async function executeToolNativelyImpl(
                     tasksFound: matchedTasks.length,
                 })
 
-                return {
+                return withTaskListingMetadata({
                     tasks: matchedTasks.map(task => mapAssistantTaskForToolResponse(task, creatorId)),
                     count: matchedTasks.length,
+                    totalCount: matchedTasks.length,
+                    totalCountIsExact: failedLookups.length === 0,
                     humanReadableId: humanReadableIdQuery,
                     projectsSearched: lookupProjects.length,
                     ...(failedLookups.length > 0
@@ -6119,7 +6121,7 @@ async function executeToolNativelyImpl(
                               },
                           }
                         : {}),
-                }
+                })
             }
 
             // Initialize TaskRetrievalService with database
@@ -6130,14 +6132,15 @@ async function executeToolNativelyImpl(
             })
             await retrievalService.initialize()
 
-            // Cap the listing at what actually survives the conversation context ceiling. A larger result
-            // is compacted to ~20 array items before the model ever sees it (see enforceToolResultContextCeiling),
-            // which silently turns "here are your 1000 tasks" into an unrepresentative fragment.
+            // Bound the listing independently of the uncapped matching count.
             const taskLimit = Math.min(toolArgs.limit || 100, GET_TASKS_MAX_CONTEXT_SAFE_LIMIT)
             const effectiveDate = recentHours !== null ? null : toolArgs.date || null
             const taskScope = normalizeAssistantTaskScope(toolArgs.scope)
             let tasks = []
             let retrievalIssues = null
+            let totalCount = 0
+            let totalCountIsExact = false
+            let hasMore = false
             if (toolArgs.allProjects) {
                 const projectIds = projectsData.map(p => p.id)
                 const result = await retrievalService.getTasksFromMultipleProjects(
@@ -6159,6 +6162,9 @@ async function executeToolNativelyImpl(
                     }, {})
                 )
                 tasks = result.tasks || []
+                totalCount = result.totalAcrossProjects ?? tasks.length
+                totalCountIsExact = result.totalCountIsExact === true
+                hasMore = result.query?.hasMore === true
 
                 // A per-project query can fail (missing index, permissions, transient error) while the
                 // aggregate still resolves "successfully" with an empty task list. Never let that reach
@@ -6211,10 +6217,16 @@ async function executeToolNativelyImpl(
                     taskScope,
                 })
                 tasks = result.tasks || []
+                totalCount = result.totalAvailable ?? tasks.length
+                totalCountIsExact = result.totalCountIsExact === true
+                hasMore = result.query?.hasMore === true
             }
 
             if (recentHours !== null) {
+                // Filtering a capped all-time listing cannot establish an exact recent total.
+                totalCountIsExact = totalCountIsExact && !hasMore && totalCount === tasks.length
                 tasks = filterTasksByRecentHours(tasks, recentHours)
+                totalCount = tasks.length
             }
 
             tasks = tasks.slice(0, taskLimit)
@@ -6224,6 +6236,8 @@ async function executeToolNativelyImpl(
 
             console.log('📋 GET_TASKS TOOL: Results', {
                 tasksReturned: tasks.length,
+                totalCount,
+                totalCountIsExact,
                 limit: taskLimit,
                 requestedLimit,
                 limitWasCapped,
@@ -6233,9 +6247,12 @@ async function executeToolNativelyImpl(
                 firstProjectError: retrievalIssues ? retrievalIssues.failedProjects[0].error : null,
             })
 
-            return {
+            return withTaskListingMetadata({
                 tasks: tasks.map(task => mapAssistantTaskForToolResponse(task, creatorId)),
                 count: tasks.length,
+                totalCount,
+                totalCountIsExact,
+                hasMore,
                 recentHours: recentHours || null,
                 scope: taskScope,
                 ...(retrievalIssues ? { retrieval: retrievalIssues } : {}),
@@ -6245,8 +6262,8 @@ async function executeToolNativelyImpl(
                               requestedLimit,
                               appliedLimit: taskLimit,
                               note:
-                                  `Only ${taskLimit} tasks were returned because a larger listing does not fit the conversation ` +
-                                  `context and would be truncated before you read it. This is a partial listing - do not conclude ` +
+                                  `The requested limit was capped at ${taskLimit}. Use totalCount for the matching total ` +
+                                  `and listingComplete to check whether all matches are shown. Do not conclude ` +
                                   `anything from a task being absent. To find one specific task use the search tool, or get_tasks ` +
                                   `with humanReadableId for an exact task ID; to narrow a listing use date, status, or project filters.`,
                           },
@@ -6263,7 +6280,7 @@ async function executeToolNativelyImpl(
                     historicalFields: ['tasks[].comments', 'tasks[].commentsData'],
                     emptyResultIsOnlyAuthoritativeWithoutRetrievalIssues: true,
                 },
-            }
+            })
         }
 
         case 'get_chats': {
@@ -12610,6 +12627,10 @@ async function addBaseInstructions(
         messages.push([
             'system',
             'When using get_tasks, the default scope is personal: only tasks owned by the requesting user. Use scope="visible" only when the user explicitly asks for all/shared/team/project tasks. If scope="visible", do not call a task "yours" unless isOwnedByRequestingUser is true; otherwise refer to ownerUserId or say it belongs to another user if the name is unavailable.',
+        ])
+        messages.push([
+            'system',
+            'For task totals use get_tasks.totalCount, never the length of the tasks array or count (the returned page size). Only call the total exact when totalCountIsExact is true. If listingComplete is false, explicitly describe the shown tasks as a partial list. Context compaction may omit task details or rows without changing the true total.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_updates')) {

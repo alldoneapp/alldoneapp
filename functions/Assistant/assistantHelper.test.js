@@ -5148,6 +5148,65 @@ describe('assistant get tasks tool cross-project failures', () => {
         expect(result.limitCapped.note).toMatch(/search tool/)
     })
 
+    test('preserves 82 matching tasks when the model requests only 20', async () => {
+        mockMultiProjectResult({
+            tasks: Array.from({ length: 40 }, (_, index) => ({ id: `task-${index}`, name: `Task ${index}` })),
+            totalAcrossProjects: 82,
+            totalCountIsExact: true,
+            query: { hasMore: true },
+        })
+        const result = await executeToolNatively(
+            'get_tasks',
+            { allProjects: true, date: '2026-10-08', limit: 20 },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+        expect(result.tasks).toHaveLength(20)
+        expect(result).toMatchObject({
+            count: 20,
+            shownCount: 20,
+            totalCount: 82,
+            totalCountIsExact: true,
+            hasMore: true,
+            listingComplete: false,
+        })
+        expect(result.limitCapped).toBeUndefined()
+    })
+
+    test('single-project listings expose the uncapped count too', async () => {
+        TaskRetrievalService.mockImplementation(() => ({
+            initialize: jest.fn(),
+            getTasks: jest.fn().mockResolvedValue({
+                tasks: [{ id: 'task-1', name: 'First task' }],
+                totalAvailable: 31,
+                totalCountIsExact: true,
+                query: { hasMore: true },
+            }),
+        }))
+        const result = await executeToolNatively('get_tasks', { limit: 1 }, 'project-1', 'assistant-1', 'user-1', null)
+        expect(result).toMatchObject({ count: 1, totalCount: 31, totalCountIsExact: true, listingComplete: false })
+    })
+
+    test('post-filtered recent results do not claim an exact count from a capped all-time query', async () => {
+        mockMultiProjectResult({
+            tasks: [{ id: 'recent', name: 'Recent task', done: true, completed: Date.now() }],
+            totalAcrossProjects: 82,
+            totalCountIsExact: true,
+            query: { hasMore: true },
+        })
+        const result = await executeToolNatively(
+            'get_tasks',
+            { allProjects: true, status: 'done', recentHours: 2, limit: 1 },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+        expect(result).toMatchObject({ count: 1, totalCount: 1, totalCountIsExact: false, listingComplete: false })
+    })
+
     test('omits the limit disclosure when the request already fits', async () => {
         mockMultiProjectResult({
             tasks: [{ id: 'task-1', name: 'Buy milk' }],
