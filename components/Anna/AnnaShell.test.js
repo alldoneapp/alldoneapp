@@ -168,6 +168,67 @@ it('opens the saved detail when a changed row is outside the current list filter
     }
 })
 
+it.each(['home', 'browser'])(
+    'finishes a reveal at %s, retaining assistant mode, the chat draft and manual surface selection',
+    async destination => {
+        jest.useFakeTimers()
+        const visibility = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+        const geometry = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+            left: 400,
+            top: 100,
+            right: 1000,
+            bottom: 500,
+            width: 600,
+            height: 400,
+        })
+        const change = {
+            id: 'saved1',
+            projectId: 'p1',
+            objectId: 'task1',
+            type: 'task',
+            change: 'created',
+            path: '/projects/p1/tasks/task1/properties',
+            expiresAt: Date.now() + 120000,
+            triggerMessageId: 'request1',
+        }
+        useAnnaConversation.mockReturnValue({
+            ...state,
+            conversation: { ...conversation, annaWorkspaceChanges: [change] },
+        })
+        try {
+            render(
+                <AnnaShell routeId={1}>
+                    <div data-anna-object-type="task" data-anna-project-id="p1" data-anna-object-id="task1">
+                        Saved task
+                    </div>
+                </AnnaShell>
+            )
+            await act(async () => {
+                mockConversationProps.onSendingChange(true)
+                mockConversationProps.onWorkStateChange({
+                    projectId: 'p1',
+                    chatId: 'anna_u1',
+                    busy: false,
+                    completedRequests: ['request1'],
+                })
+            })
+            screen.getByLabelText('Persistent conversation').value = 'Unsent next message'
+            for (let i = 0; i < 80; i++) await act(async () => jest.advanceTimersByTime(50))
+            expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+            if (destination === 'browser') act(() => screen.getByText('Browser').click())
+            await act(async () => mockConversationProps.onSendingChange(false))
+            if (destination === 'home') expect(URLTrigger.processUrl).toHaveBeenCalledWith({}, '/projects/tasks/open')
+            else expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+            expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
+            expect(screen.getByLabelText('Persistent conversation').value).toBe('Unsent next message')
+        } finally {
+            visibility.mockRestore()
+            geometry.mockRestore()
+            jest.useRealTimers()
+        }
+    }
+)
+
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     setAnnaMode(true)

@@ -96,6 +96,34 @@ it('adds one chat hint per context change without posting a message or starting 
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })
+it('reports persisted run completion to the workspace without waiting for the spinner timeout', () => {
+    const onWorkStateChange = jest.fn()
+    mockMessages = [
+        {
+            id: 'response',
+            fromAssistant: true,
+            isLoading: true,
+            assistantRun: { triggerMessageId: 'request', status: 'running' },
+        },
+    ]
+    render({ onWorkStateChange })
+    expect(onWorkStateChange).toHaveBeenLastCalledWith({
+        projectId: 'p1',
+        chatId: 'anna_u1',
+        busy: true,
+        completedRequests: [],
+    })
+    mockMessages = [
+        { ...mockMessages[0], isLoading: false, assistantRun: { triggerMessageId: 'request', status: 'completed' } },
+    ]
+    render({ onWorkStateChange })
+    expect(onWorkStateChange).toHaveBeenLastCalledWith({
+        projectId: 'p1',
+        chatId: 'anna_u1',
+        busy: false,
+        completedRequests: ['request'],
+    })
+})
 
 it('places context changes between messages chronologically', () => {
     const now = jest.spyOn(Date, 'now').mockReturnValue(1000)

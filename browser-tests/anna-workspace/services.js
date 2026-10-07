@@ -92,9 +92,23 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
     if (name === 'askToBotSecondGen') {
         const message = savedMessages.find(item => item.id === request.messageId)
         if (message?.commentText === 'Create a task for the launch') {
+            const response = {
+                id: `response-${request.messageId}`,
+                projectId: request.projectId,
+                chatId: request.objectId,
+                creatorId: assistant.uid,
+                fromAssistant: true,
+                created: Date.now(),
+                isLoading: true,
+                commentText: 'Creating the task…',
+                assistantRun: { triggerMessageId: request.messageId, status: 'running' },
+            }
+            savedMessages.push(response)
+            messageListeners.forEach(listener => listener())
             const id = `created-${workspaceTasks.length + 1}`
             const cue = {
                 id,
+                triggerMessageId: request.messageId,
                 objectId: id,
                 type: 'task',
                 projectId: 'p1',
@@ -111,6 +125,11 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
                 workspaceTasks.push({ id, title: 'Prepare the launch checklist' })
                 workspaceListeners.forEach(callback => callback())
             }, 250)
+            await delay(5500)
+            response.isLoading = false
+            response.commentText = 'The task is ready.'
+            response.assistantRun.status = 'completed'
+            messageListeners.forEach(listener => listener())
         }
         if (new URLSearchParams(window.location.search).has('slowSending')) {
             await delay(2500)
@@ -139,8 +158,11 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
 export default {
     createNavigationProp: () => ({}),
     processUrl: async (_, path) => {
-        history.pushState(null, '', path)
+        const url = new URL(path, window.location.origin)
+        for (const [key, value] of new URLSearchParams(window.location.search)) url.searchParams.set(key, value)
+        history.pushState(null, '', url)
         document.title = 'Assistant tasks | Alldone'
+        console.info(`Anna fixture navigation: ${path}`)
     },
 }
 

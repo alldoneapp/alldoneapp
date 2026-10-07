@@ -64,6 +64,7 @@ async function recordAnnaWorkspaceChange({ db, runtime, toolName, result, now = 
                 return {
                     ...target,
                     id: randomUUID(),
+                    ...(validId(runtime.messageId) ? { triggerMessageId: runtime.messageId } : {}),
                     title: String(
                         data.name || data.title || data.extendedTitle || data.displayName || data.extendedName || ''
                     ).slice(0, 120),

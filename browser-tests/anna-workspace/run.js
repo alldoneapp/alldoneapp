@@ -203,6 +203,10 @@ async function checkWorkspaceReveal(page, width) {
             throw error
         })
     }
+    const firstHome = page.waitForEvent('console', {
+        predicate: message => message.text() === 'Anna fixture navigation: /projects/tasks/open',
+    })
+    firstHome.catch(() => {})
     await create()
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.anna-reveal-overlay')).opacity > 0.95)
     const target = page.locator('[data-anna-object-id="created-1"]')
@@ -218,17 +222,33 @@ async function checkWorkspaceReveal(page, width) {
     if (width > 760) assert.equal(await input.inputValue(), 'Keep this unsent draft')
     await page.screenshot({ path: path.join(BUILD, `reveal-${width}.png`) })
     await ring.waitFor({ state: 'detached', timeout: 5000 })
+    assert.equal(new URL(page.url()).pathname, '/', 'Do not return home while the request is still running')
+    await page.waitForURL(url => url.pathname === '/projects/tasks/open')
+    await firstHome
+    assert.equal(new URL(page.url()).searchParams.get('assistant'), '1', 'Keep assistant mode on home')
+    if (width > 760) assert.equal(await input.inputValue(), 'Keep this unsent draft')
+    let homeReturns = 0
+    const trackHome = message => {
+        if (message.text() === 'Anna fixture navigation: /projects/tasks/open') homeReturns++
+    }
+    page.on('console', trackHome)
     await create()
     await page.locator('[data-anna-object-id="created-2"]').click()
     await ring.waitFor({ state: 'detached', timeout: 1000 })
+    await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
+    assert.equal(homeReturns, 0, 'Direct interaction cancels the return even if the request later completes')
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await create()
     assert.equal(await ring.evaluate(node => getComputedStyle(node).animationName), 'none')
     await page.screenshot({ path: path.join(BUILD, `reveal-reduced-motion-${width}.png`) })
     await ring.waitFor({ state: 'detached', timeout: 5000 })
+    await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
+    await page.waitForTimeout(250)
+    assert.equal(homeReturns, 1, 'The next uninterrupted request returns home once')
+    page.off('console', trackHome)
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     console.log(
-        `PASS ${width}px: mutation scrolls to exact saved row, soft highlight stays in workspace, input remains usable, direct interaction cancels, reduced motion is respected`
+        `PASS ${width}px: real ScrollView reveal; home only after highlight and completed request; user interaction cancels return; drafts, assistant mode and reduced motion are preserved`
     )
 }
 async function main() {
