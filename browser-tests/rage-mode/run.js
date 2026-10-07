@@ -626,28 +626,60 @@ async function syncTiming(browser, url) {
         const page = await context.newPage()
         const errors = []
         page.on('pageerror', error => errors.push(error.message))
-        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&saveManual=1`)
+        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&credits=5000&saveManual=1`)
         await page.click('#rage')
         check(`${width}px: starts from server before flight`, await waitForHud(page, data => data.phase === 'flying'))
         await page.evaluate(() => {
             window.progressWrites = 0
         })
         await waitForHud(page, data => data.boss === '3')
+        check(
+            `${width}px: active mission has no progress I/O`,
+            await page.evaluate(
+                () =>
+                    window.__rage.calls.saveProgress.length === 0 &&
+                    window.__rage.calls.loadProfile === 1 &&
+                    window.progressWrites === 0
+            )
+        )
         await page.keyboard.press('Space')
         check(`${width}px: reaches hangar`, await waitForHud(page, data => data.phase === 'hangar'))
+        check(
+            `${width}px: mission completion saves immediately`,
+            await page.evaluate(
+                () =>
+                    window.__rage.calls.saveProgress.length === 1 && window.__rage.calls.saveProgress[0].completed === 1
+            )
+        )
         await page.click('[data-hangar-item="bomb"] button')
         await waitForHud(page, data => data.bombs === '2')
+        await page.click('[data-hangar-item="bomb"] button')
+        await waitForHud(page, data => data.bombs === '3')
         const purchased = await hudData(page)
         await page.click('[data-launch]')
+        for (let i = 0; i < 3; i++) {
+            await page.waitForFunction(count => window.__rage.calls.saveProgress.length === count, i + 1)
+            await sleep(100)
+            check(
+                `${width}px: stays grounded for queued save ${i + 1}`,
+                (await hudData(page)).phase === 'saving' &&
+                    (await page.evaluate(count => window.__rage.calls.saveProgress.length === count, i + 1))
+            )
+            await page.evaluate(() => window.__rage.resolveSave())
+        }
         check(
             `${width}px: continues mission 2`,
             await waitForHud(page, data => data.phase === 'flying' && data.mission === '2')
         )
+        await page.evaluate(() => {
+            window.progressWrites = 0
+        })
         await sleep(500)
         const active = await page.evaluate(() => ({ ...window.__rage.calls, progressWrites: window.progressWrites }))
         check(
-            `${width}px: no cloud progress/score/leaderboard or local saves during gameplay`,
-            active.saveProgress.length === 0 &&
+            `${width}px: no further cloud progress/score/leaderboard or local saves during flight`,
+            active.saveProgress.length === 3 &&
+                active.loadProfile === 1 &&
                 active.submitScore.length === 0 &&
                 active.loadLeaderboard === 0 &&
                 active.progressWrites === 0,
@@ -662,20 +694,37 @@ async function syncTiming(browser, url) {
         await waitForArenaGone(page)
         const final = await page.evaluate(() => window.__rage.calls.saveProgress)
         check(
-            `${width}px: one final save retains completed mission and purchases`,
-            final.length === 1 &&
-                final[0].completed === 1 &&
-                final[0].credits === Number(purchased.credits) &&
-                final[0].bombs === Number(purchased.bombs),
+            `${width}px: every purchase saved in order, exit adds no duplicate`,
+            final.length === 3 &&
+                final.every(value => value.completed === 1) &&
+                final.map(value => value.bombs).join(',') === '1,2,3' &&
+                final[2].credits === Number(purchased.credits) &&
+                final[2].bombs === Number(purchased.bombs),
             JSON.stringify({ final, purchased: { credits: purchased.credits, bombs: purchased.bombs } })
         )
-        // Reopen in the SAME JS context while the end save is still in flight.
+        // Reopen in the SAME JS context while a new mission/purchase save queue is in flight.
+        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&saveManual=1`)
+        await page.click('#rage')
+        await waitForHud(page, data => data.phase === 'flying' && data.boss === '3')
+        await page.keyboard.press('Space')
+        await waitForHud(page, data => data.phase === 'hangar')
+        await page.click('[data-hangar-item="bomb"] button')
+        await waitForHud(page, data => data.bombs === '2')
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
         await page.click('#rage')
         await sleep(200)
         check(
-            `${width}px: reopening waits for the old end save before fetching`,
+            `${width}px: reopening waits for the old mission save before fetching`,
             (await hudData(page)).phase === 'loading' &&
                 (await page.evaluate(() => window.__rage.calls.loadProfile)) === 1
+        )
+        await page.evaluate(() => window.__rage.resolveSave())
+        await page.waitForFunction(() => window.__rage.calls.saveProgress.length === 2)
+        check(
+            `${width}px: reopened arena waits for the queued purchase too`,
+            (await hudData(page)).phase === 'loading' &&
+                (await page.evaluate(() => window.__rage.calls.loadProfile === 1))
         )
         await page.evaluate(() => window.__rage.resolveSave())
         check(
@@ -686,8 +735,8 @@ async function syncTiming(browser, url) {
         await waitForArenaGone(page)
         check(`${width}px: teardown restores page`, (await pageRestored(page)).intact)
 
-        // Failed final save remains local; the next preflight can retry it, with no flight in between.
-        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&saveFailures=2`)
+        // Failed boundary save remains local; a reopened preflight offers retry before takeoff.
+        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&saveFailures=3`)
         await page.click('#rage')
         await waitForHud(page, data => data.phase === 'flying' && data.boss === '3')
         await page.keyboard.press('Space')
@@ -709,7 +758,7 @@ async function syncTiming(browser, url) {
             `${width}px: failed/retried save preserves identical final checkpoint`,
             await page.evaluate(() => {
                 const writes = window.__rage.calls.saveProgress
-                return writes.length === 3 && writes.every(value => JSON.stringify(value) === JSON.stringify(writes[0]))
+                return writes.length === 4 && writes.every(value => JSON.stringify(value) === JSON.stringify(writes[0]))
             })
         )
         await page.keyboard.press('Escape')

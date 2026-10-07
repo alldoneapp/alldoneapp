@@ -1581,9 +1581,9 @@ crosshair for the nearest ancestor containing one, so two assistant lines on one
 from each other's avatar, and it falls back to the crosshair itself. The avatar's size is passed too:
 she grows out of it and shrinks back into it.
 
-**Progress follows the user across devices** (`raidProgress.js`). Clearing a mission updates an in-memory
-checkpoint — the mission number plus the run as it leaves the hangar — and every hangar purchase
-updates it in memory; the next raid takes off at the following mission, and a game over replays from the
+**Progress follows the user across devices** (`raidProgress.js`). Clearing a mission saves a
+checkpoint — the mission number plus the run as it leaves the hangar — and every successful hangar
+purchase saves its own checkpoint; the next raid takes off at the following mission, and a game over replays from the
 checkpoint (with that game's credits banked) rather than from mission 1. Only "Start over" clears it (↺ in the status pill pressed
 twice, or the confirming button in the hangar and on the game-over card), and a start over is saved
 as an EMPTY checkpoint so other devices drop theirs too. Two copies: the server's
@@ -1594,15 +1594,18 @@ for `getRageModeProfile`, showing a loading panel. A failed read offers retry or
 starts local gameplay (AT-2700). A successful empty profile starts at mission 1. The server stamps
 `savedAt`, so devices with different clocks agree. `reconcile` adopts the server copy, retaining
 only newer unsynced local saves for delivery; a synced local copy cannot override an empty server
-profile. **Progress/score writes and leaderboard reads happen only at the end of a run** (AT-2700 follow-up):
-`gameOver`, explicit exit/navigation teardown, or confirmed start-over. A hangar between missions is
-still the SAME run; its purchases and completed checkpoints stay in memory, with no localStorage
-writes either. Losing banks only that mission's credits into the latest checkpoint; exiting retains
-the last completed checkpoint/purchases (existing quit policy; uncompleted credits are not banked).
-A final pending record is written locally before async cloud delivery. Game-over offers save retry;
-preflight/replay/reset wait for final saves and score/board requests to settle, with a retry/exit
-panel on progress-save failure. `raidPersistence.js` carries the request barrier across arena
-teardown/reopening for the same uid, so even an old save cannot overlap a new flight. There is no
+profile. **Progress saves at every mission completion and every successful hangar purchase**
+(AT-2700 follow-up), plus `gameOver`, explicit exit/navigation teardown or confirmed start-over.
+Each boundary writes a pending local record and queues an individual cloud save. Rapid purchases
+are delivered sequentially; an older acknowledgement cannot overwrite the newest local checkpoint.
+Failed saves retain the queue for explicit retry. Every next takeoff waits for all outstanding saves,
+with a retry/exit panel on failure; **active flight never saves or reloads progress**. Losing banks
+only that mission's credits into the latest checkpoint; exiting retains the last completed
+checkpoint/purchases (existing quit policy; uncompleted credits are not banked).
+Score writes and leaderboard reads happen only at game end. Game-over offers save retry;
+preflight/replay/reset also wait for outstanding score/board requests to settle.
+`raidPersistence.js` carries the request barrier across arena teardown/reopening for the same uid,
+so queued saves cannot overlap a new flight or its initial authoritative profile read. There is no
 Rage progress realtime listener or polling. Loading/saving screens park requestAnimationFrame until
 ready; no artificial delay. Gold weapon purchases remain explicit shop actions, with play paused. Both copies are owner-editable, so a checkpoint is always
 read through `sanitizeCheckpoint`; the server's copy of those rules is

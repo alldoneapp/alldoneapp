@@ -1110,10 +1110,10 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         return next
     }
     let run = freshRun()
-    // Checkpoints and hangar purchases stay in memory throughout the run. Only the existing
-    // terminal transitions (death, exit, confirmed reset) persist them.
+    // Persist at mission/hangar boundaries. Flight starts only after every queued save settles.
     let progressDirty = false
     let syncing = null
+    const saveQueue = []
     let runEnded = false
     let runStarted = !services.loadProfile
     const storeProgress = next => {
@@ -1121,11 +1121,15 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         progressDirty = true
         ui.setCanStartOver(!!next)
     }
-    const saveProgress = () => storeProgress(checkpointFromRun(run))
+    const saveProgress = () => {
+        storeProgress(checkpointFromRun(run))
+        return persistProgress()
+    }
     const syncProgress = () => {
         if (syncing) return syncing
         if (!record || !record.pending || !services.saveProgress) return Promise.resolve(true)
-        const sending = record
+        if (!saveQueue.length) saveQueue.push(record)
+        const sending = saveQueue[0]
         const request = Promise.resolve()
             .then(() => services.saveProgress(sending.checkpoint))
             .then(result => {
@@ -1137,6 +1141,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                         savedAt: result.savedAt,
                     })
                 if (!synced) return false
+                saveQueue.shift()
                 if (record === sending) {
                     record = synced
                     writeRecord(progressScope, record)
@@ -1148,9 +1153,9 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             progressScope,
             request.then(ok => {
                 syncing = null
-                // Post-game purchases/reset can replace the final record while a save is outstanding.
-                // Everyone waiting for this save must also see the outcome of the latest one.
-                if (ok && record !== sending && record?.pending) return syncProgress()
+                // Send every boundary in order, including purchases made during a slow save.
+                // A failure keeps the queue and the latest local checkpoint for explicit retry.
+                if (ok && saveQueue.length) return syncProgress()
                 return ok
             })
         )
@@ -1164,6 +1169,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 pending: true,
             }
             writeRecord(progressScope, record)
+            saveQueue.push(record)
             progressDirty = false
         }
         return syncProgress()
@@ -1175,7 +1181,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             if (!finished && runEnded) ui.gameOver.setSaveStatus(ok ? 'ready' : 'error')
         })
     }
-    /** Adopt the authoritative profile only before take-off; deliver a pending final save first. */
+    /** Adopt the authoritative profile only before take-off; deliver a pending save first. */
     const adoptServerProgress = progress => {
         const remote = progress ? sanitizeRecord({ ...progress, pending: false }) : null
         const { record: chosen } = reconcile(record, remote)
@@ -2538,7 +2544,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         ui.setBuffs([])
         debrief = completeMission(run)
         saveProgress()
-        // A mission boundary is still the same run: no progress/score writes or board reads.
+        // Save the completed checkpoint now; score/leaderboard requests stay at game end.
         hangarMessage = null
         laserGroup.visible = false
         enemyShots.length = 0
@@ -2597,11 +2603,13 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         }
         closeShop()
         ui.hangar.hide()
-        resetSteering()
-        startNextMission(run)
-        setPhase('flying')
-        scrollRamp = 0.5
-        startMission(run.mission)
+        prepareFlight(() => {
+            resetSteering()
+            startNextMission(run)
+            setPhase('flying')
+            scrollRamp = 0.5
+            startMission(run.mission)
+        })
     }
 
     /* Score, game over, another go. */

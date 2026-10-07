@@ -242,7 +242,7 @@ describe('rage mode raid arena', () => {
         expect(hud().dataset.phase).not.toBe('hangar')
     })
 
-    it('sells hangar items for credits and launches the next mission from the hangar', () => {
+    it('sells hangar items for credits and launches the next mission from the hangar', async () => {
         start({ bossAt: 1, noWaves: true, bossHp: 40 })
         fly()
         step(90)
@@ -254,6 +254,7 @@ describe('rage mode raid arena', () => {
         expect(hud().dataset.bombs).toBe('2')
         expect(Number(hud().dataset.credits)).toBe(before - 80)
         layer('hangar').querySelector('[data-launch]').click()
+        await flushPromises()
         step()
         expect(hud().dataset.phase).toBe('flying')
         expect(hud().dataset.mission).toBe('2')
@@ -284,7 +285,7 @@ describe('rage mode raid arena', () => {
         key(' ', 'Space')
         step(60 * 4)
         expect(hud().dataset.phase).toBe('hangar')
-        expect(localStorage.getItem(PROGRESS_KEY)).toBeNull()
+        expect(readSaved().checkpoint).toMatchObject({ completed: 1 })
         leave()
         expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint).toMatchObject({ completed: 1 })
 
@@ -366,9 +367,10 @@ describe('rage mode raid arena', () => {
         step()
         expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint).toMatchObject({
             completed: 1,
-            credits: atDeath,
+            credits: atDeath - 80,
         })
         layer('hangar').querySelector('[data-launch]').click()
+        await flushPromises()
         await flushPromises()
         step()
         expect(hud().dataset.phase).toBe('flying')
@@ -563,7 +565,7 @@ describe('rage mode raid arena', () => {
             expect(JSON.parse(localStorage.getItem(PROGRESS_KEY))).toMatchObject({ savedAt: 1000, pending: false })
         })
 
-        it('saves a completed mission only on exit and keeps the server timestamp', async () => {
+        it('saves immediately on mission completion and keeps the server timestamp', async () => {
             services.saveProgress = jest.fn(() => Promise.resolve({ ok: true, savedAt: 4242 }))
             start({ bossAt: 1, noWaves: true, bossHp: 40 })
             fly()
@@ -572,10 +574,11 @@ describe('rage mode raid arena', () => {
             step(60 * 4)
             expect(hud().dataset.phase).toBe('hangar')
             await flushPromises()
-            expect(services.saveProgress).not.toHaveBeenCalled()
+            expect(services.saveProgress).toHaveBeenCalledTimes(1)
+            expect(services.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ completed: 1 }))
             leave()
             await flushPromises()
-            expect(services.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ completed: 1 }))
+            expect(services.saveProgress).toHaveBeenCalledTimes(1)
             await flushPromises()
             expect(JSON.parse(localStorage.getItem(PROGRESS_KEY))).toMatchObject({ savedAt: 4242, pending: false })
         })
@@ -626,7 +629,7 @@ describe('rage mode raid arena', () => {
         })
     })
 
-    describe('progress stays in memory until the run ends', () => {
+    describe('progress saves at grounded boundaries', () => {
         const completeFirstMission = () => {
             fly()
             step(90)
@@ -648,47 +651,203 @@ describe('rage mode raid arena', () => {
         it.each([
             [1200, 800],
             [390, 844],
-        ])(
-            'does zero progress/score/board calls or storage writes throughout a run (%s × %s)',
-            async (width, height) => {
-                jest.replaceProperty(window, 'innerWidth', width)
-                jest.replaceProperty(window, 'innerHeight', height)
-                services.loadProfile = jest.fn(() => Promise.resolve({ owned: [], progress: null }))
-                start({ bossAt: 1, noWaves: true, bossHp: 40, startCredits: 5000 })
+        ])('saves every mission/purchase, with no progress I/O during flight (%s × %s)', async (width, height) => {
+            jest.replaceProperty(window, 'innerWidth', width)
+            jest.replaceProperty(window, 'innerHeight', height)
+            services.loadProfile = jest.fn(() => Promise.resolve({ owned: [], progress: null }))
+            start({ bossAt: 1, noWaves: true, bossHp: 40, startCredits: 5000 })
+            await flushPromises()
+            const storageWrite = jest.spyOn(Storage.prototype, 'setItem')
+            fly()
+            await flushPromises()
+            expect(services.saveProgress).not.toHaveBeenCalled()
+            expect(storageWrite.mock.calls.filter(([key]) => key === PROGRESS_KEY)).toHaveLength(0)
+            step(90)
+            key(' ', 'Space')
+            step(60 * 4)
+            expect(hud().dataset.phase).toBe('hangar')
+            layer('hangar').querySelector('[data-hangar-item="cannon"] button').click()
+            layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+            await flushPromises()
+            step()
+            const checkpointCredits = Number(hud().dataset.credits)
+            expect(services.saveProgress).toHaveBeenCalledTimes(3)
+            expect(services.saveProgress.mock.calls.map(([cp]) => cp.cannonLevel)).toEqual([1, 2, 2])
+            expect(services.saveProgress.mock.calls[2][0]).toMatchObject({ completed: 1, credits: checkpointCredits })
+            layer('hangar').querySelector('[data-launch]').click()
+            await flushPromises()
+            step(30)
+            expect(hud().dataset.mission).toBe('2')
+            storageWrite.mockClear()
+            const storageRemove = jest.spyOn(Storage.prototype, 'removeItem')
+            step(30)
+            jest.advanceTimersByTime(60000)
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('flying')
+            expect(services.saveProgress).toHaveBeenCalledTimes(3)
+            expect(services.loadProfile).toHaveBeenCalledTimes(1)
+            expect(services.submitScore).not.toHaveBeenCalled()
+            expect(services.loadLeaderboard).not.toHaveBeenCalled()
+            expect(storageWrite.mock.calls.filter(([key]) => key === PROGRESS_KEY)).toHaveLength(0)
+            expect(storageRemove.mock.calls.filter(([key]) => key === PROGRESS_KEY)).toHaveLength(0)
+            leave()
+            await flushPromises()
+            expect(services.saveProgress).toHaveBeenCalledTimes(3)
+            expect(services.submitScore).toHaveBeenCalledTimes(1)
+            expect(readSaved()).toMatchObject({ savedAt: 4242, pending: false })
+        })
+
+        it('holds the next mission until the mission save and every rapid purchase finish in order', async () => {
+            const resolvers = []
+            const phases = []
+            services.saveProgress.mockImplementation(() => {
+                phases.push(hud()?.dataset.phase)
+                return new Promise(resolve => resolvers.push(resolve))
+            })
+            start({ bossAt: 1, noWaves: true, bossHp: 40, startCredits: 5000 })
+            completeFirstMission()
+            layer('hangar').querySelector('[data-hangar-item="cannon"] button').click()
+            layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+            layer('hangar').querySelector('[data-launch]').click()
+            await flushPromises()
+            for (let i = 0; i < 3; i++) {
+                expect(hud().dataset.phase).toBe('saving')
+                expect(services.saveProgress).toHaveBeenCalledTimes(i + 1)
+                const shots = hud().dataset.shots
+                step(600)
+                expect(hud().dataset.shots).toBe(shots)
+                resolvers[i]({ ok: true, savedAt: 1000 + i })
                 await flushPromises()
-                const storageWrite = jest.spyOn(Storage.prototype, 'setItem')
-                const storageRemove = jest.spyOn(Storage.prototype, 'removeItem')
+            }
+            step()
+            expect(hud().dataset.phase).toBe('flying')
+            expect(hud().dataset.mission).toBe('2')
+            expect(phases).toEqual(['saving', 'saving', 'saving'])
+            expect(services.saveProgress.mock.calls.map(([cp]) => cp.cannonLevel)).toEqual([1, 2, 2])
+            expect(readSaved().pending).toBe(false)
+            step(30)
+            await flushPromises()
+            expect(services.saveProgress).toHaveBeenCalledTimes(3)
+        })
+
+        it('finishes every queued purchase after navigation before a reopened arena loads the server', async () => {
+            const resolvers = []
+            let server = null
+            services.saveProgress.mockImplementation(
+                checkpoint =>
+                    new Promise(resolve => {
+                        resolvers.push(() => {
+                            server = { checkpoint, savedAt: Date.now() }
+                            resolve({ ok: true, savedAt: server.savedAt })
+                        })
+                    })
+            )
+            start({ bossAt: 1, noWaves: true, bossHp: 40, startCredits: 5000 })
+            completeFirstMission()
+            layer('hangar').querySelector('[data-hangar-item="cannon"] button').click()
+            layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+            arena.stop({ immediate: true })
+            await flushPromises()
+            const latest = readSaved().checkpoint
+            expect(readSaved().pending).toBe(true)
+            services.loadProfile = jest.fn(() => Promise.resolve({ owned: [], progress: server }))
+            start()
+            await flushPromises()
+            for (let i = 0; i < 3; i++) {
+                expect(services.saveProgress).toHaveBeenCalledTimes(i + 1)
+                expect(services.loadProfile).not.toHaveBeenCalled()
+                expect(hud().dataset.phase).toBe('loading')
+                expect(readSaved().checkpoint).toEqual(latest)
+                resolvers[i]()
+                await flushPromises()
+            }
+            expect(services.loadProfile).toHaveBeenCalledTimes(1)
+            expect(services.saveProgress.mock.calls.map(([cp]) => cp.cannonLevel)).toEqual([1, 2, 2])
+            expect(readSaved()).toMatchObject({ pending: false, checkpoint: latest })
+            fly()
+            expect(hud().dataset.mission).toBe('2')
+            expect(readSaved().checkpoint.cannonLevel).toBe(2)
+        })
+
+        it('retries a failed queued purchase before sending the following purchase', async () => {
+            services.saveProgress.mockRejectedValueOnce(new Error('offline'))
+            start({ bossAt: 1, noWaves: true, bossHp: 40, startCredits: 5000 })
+            completeFirstMission()
+            layer('hangar').querySelector('[data-hangar-item="cannon"] button').click()
+            layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+            layer('hangar').querySelector('[data-launch]').click()
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('save-error')
+            expect(services.saveProgress).toHaveBeenCalledTimes(1)
+            services.saveProgress
+                .mockResolvedValueOnce({ ok: true, savedAt: 1000 })
+                .mockRejectedValueOnce(new Error('purchase offline'))
+            layer('profile').querySelector('[data-retry-profile]').click()
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('save-error')
+            expect(services.saveProgress).toHaveBeenCalledTimes(3)
+            layer('profile').querySelector('[data-retry-profile]').click()
+            await flushPromises()
+            step()
+            expect(services.saveProgress.mock.calls.map(([cp]) => cp.cannonLevel)).toEqual([1, 1, 2, 2, 2])
+            expect(hud().dataset.phase).toBe('flying')
+            expect(readSaved().pending).toBe(false)
+        })
+
+        it.each(['reject', 'not ok', 'invalid timestamp'])(
+            'keeps a failed hangar purchase on %s and requires retry before the next mission',
+            async kind => {
+                start({ bossAt: 1, noWaves: true, bossHp: 40 })
                 completeFirstMission()
-                layer('hangar').querySelector('[data-hangar-item="cannon"] button').click()
+                await flushPromises()
+                services.saveProgress.mockImplementationOnce(() =>
+                    kind === 'reject'
+                        ? Promise.reject(new Error('offline'))
+                        : Promise.resolve(kind === 'not ok' ? { ok: false } : { ok: true })
+                )
                 layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+                layer('hangar').querySelector('[data-launch]').click()
+                await flushPromises()
+                expect(hud().dataset.phase).toBe('save-error')
+                const purchase = services.saveProgress.mock.calls[1][0]
+                expect(readSaved()).toMatchObject({ pending: true, checkpoint: purchase })
+                step(600)
+                expect(hud().dataset.phase).toBe('save-error')
+                layer('profile').querySelector('[data-retry-profile]').click()
+                layer('profile').querySelector('[data-retry-profile]').click()
                 await flushPromises()
                 step()
-                const checkpointCredits = Number(hud().dataset.credits)
-                layer('hangar').querySelector('[data-launch]').click()
-                step(90)
-                await flushPromises()
+                expect(services.saveProgress).toHaveBeenCalledTimes(3)
+                expect(services.saveProgress.mock.calls[2][0]).toEqual(purchase)
                 expect(hud().dataset.phase).toBe('flying')
                 expect(hud().dataset.mission).toBe('2')
-                expect(services.loadProfile).toHaveBeenCalledTimes(1)
-                expect(services.saveProgress).not.toHaveBeenCalled()
-                expect(services.submitScore).not.toHaveBeenCalled()
-                expect(services.loadLeaderboard).not.toHaveBeenCalled()
-                expect(storageWrite.mock.calls.filter(([key]) => key === PROGRESS_KEY)).toHaveLength(0)
-                expect(storageRemove.mock.calls.filter(([key]) => key === PROGRESS_KEY)).toHaveLength(0)
-                leave()
-                await flushPromises()
-                expect(services.saveProgress).toHaveBeenCalledTimes(1)
-                expect(services.saveProgress).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        completed: 1,
-                        cannonLevel: 2,
-                        credits: checkpointCredits,
-                    })
-                )
-                expect(services.submitScore).toHaveBeenCalledTimes(1)
-                expect(readSaved()).toMatchObject({ savedAt: 4242, pending: false })
+                expect(readSaved().pending).toBe(false)
             }
         )
+
+        it('retains a failed mission checkpoint across exit and retries before reopening takes off', async () => {
+            services.saveProgress.mockRejectedValueOnce(new Error('offline'))
+            start({ bossAt: 1, noWaves: true, bossHp: 40 })
+            completeFirstMission()
+            layer('hangar').querySelector('[data-launch]').click()
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('save-error')
+            const checkpoint = services.saveProgress.mock.calls[0][0]
+            services.saveProgress.mockRejectedValueOnce(new Error('still offline'))
+            key('Escape')
+            await flushPromises()
+            expect(isRageArenaActive()).toBe(false)
+            expect(readSaved()).toMatchObject({ pending: true, checkpoint })
+            services.loadProfile = jest.fn(() => Promise.resolve({ owned: [], progress: null }))
+            start()
+            await flushPromises()
+            fly()
+            expect(hud().dataset.mission).toBe('2')
+            expect(
+                services.saveProgress.mock.calls.every(([cp]) => JSON.stringify(cp) === JSON.stringify(checkpoint))
+            ).toBe(true)
+            expect(readSaved().pending).toBe(false)
+        })
 
         it('banks only the final lost mission credits on top of the latest completed checkpoint', async () => {
             saveLocal({ completed: 1, credits: 200, score: 50, cannonLevel: 2 })
@@ -802,8 +961,8 @@ describe('rage mode raid arena', () => {
             arena.stop({ immediate: true })
             await flushPromises()
             staleFrame(timestamp + 50)
-            expect(services.saveProgress).toHaveBeenCalledTimes(1)
-            expect(services.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ completed: 1, credits }))
+            expect(services.saveProgress).toHaveBeenCalledTimes(2)
+            expect(services.saveProgress).toHaveBeenLastCalledWith(expect.objectContaining({ completed: 1, credits }))
             expect(frames.size).toBe(0)
         })
 
@@ -823,6 +982,7 @@ describe('rage mode raid arena', () => {
             layer('gameover').querySelector('[data-open-hangar]').click()
             layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
             layer('hangar').querySelector('[data-launch]').click()
+            await flushPromises()
             resolveFirst({ ok: true, savedAt: 1000 })
             await flushPromises()
             expect(services.saveProgress).toHaveBeenCalledTimes(2)
@@ -843,17 +1003,19 @@ describe('rage mode raid arena', () => {
             start({ bossAt: 1, noWaves: true, bossHp: 40 })
             completeFirstMission()
             layer('hangar').querySelector('[data-launch]').click()
+            await flushPromises()
             step(180)
             key(' ', 'Space', 'keyup')
             key(' ', 'Space')
             step(240)
             expect(hud().dataset.phase).toBe('hangar')
             expect(hud().dataset.mission).toBe('2')
-            expect(services.saveProgress).not.toHaveBeenCalled()
+            await flushPromises()
+            expect(services.saveProgress).toHaveBeenCalledTimes(2)
+            expect(services.saveProgress).toHaveBeenLastCalledWith(expect.objectContaining({ completed: 2 }))
             leave()
             await flushPromises()
-            expect(services.saveProgress).toHaveBeenCalledTimes(1)
-            expect(services.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ completed: 2 }))
+            expect(services.saveProgress).toHaveBeenCalledTimes(2)
         })
 
         it('does not run animation callbacks or render the GPU while waiting for the server', async () => {
@@ -975,7 +1137,7 @@ describe('rage mode raid arena', () => {
             expect(Number(hud().dataset.boss)).toBeLessThanOrEqual(3)
         })
 
-        it('sends a different boss each mission', () => {
+        it('sends a different boss each mission', async () => {
             start({ bossAt: 1, noWaves: true, bossHp: 40 })
             fly()
             step(90)
@@ -983,6 +1145,7 @@ describe('rage mode raid arena', () => {
             key(' ', 'Space')
             step(60 * 4)
             layer('hangar').querySelector('[data-launch]').click()
+            await flushPromises()
             step(60 * 3)
             expect(hud().dataset.bossKind).toBe('inbox')
         })

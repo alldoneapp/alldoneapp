@@ -1,4 +1,4 @@
-// End-of-game requests can outlive the arena (exit/navigation). A new arena for the same user
+// Boundary/end-of-game requests can outlive the arena (exit/navigation). A new arena for the same user
 // must wait before reading the profile or flying, including when the old canvas is already gone.
 const pending = new Map()
 
