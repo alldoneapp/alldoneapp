@@ -451,13 +451,12 @@ exports.getAnnaConversationSecondGen = onCall(
         if (!request.auth || request.auth.token?.firebase?.sign_in_provider === 'anonymous')
             throw new HttpsError('unauthenticated', 'Sign in to talk with Anna.')
         const { ensureAnnaConversation, listAnnaConversations } = require('./Assistant/annaWorkspace')
-        const { getDefaultAssistantId } = require('./WhatsApp/whatsAppIncomingHandler')
         try {
-            if (request.data?.before && typeof request.data.before === 'object')
+            if (request.data?.historyOnly === true || (request.data?.before && typeof request.data.before === 'object'))
                 return await listAnnaConversations({
                     db: admin.firestore(),
                     userId: request.auth.uid,
-                    before: request.data.before,
+                    before: request.data.before || null,
                 })
             const reference = await ensureAnnaConversation({
                 db: admin.firestore(),
@@ -470,9 +469,14 @@ exports.getAnnaConversationSecondGen = onCall(
                         .where('isDefault', '==', true)
                         .limit(1)
                         .get()
-                    return defaults.empty ? getDefaultAssistantId(user, projectId) : defaults.docs[0].id
+                    if (!defaults.empty) return defaults.docs[0].id
+                    const { getDefaultAssistantId } = require('./WhatsApp/whatsAppIncomingHandler')
+                    return getDefaultAssistantId(user, projectId)
                 },
             })
+            // New clients display today's conversation before fetching history.
+            // Keep the combined response for already-deployed clients.
+            if (request.data?.includeHistory === false) return reference
             return {
                 ...reference,
                 ...(await listAnnaConversations({ db: admin.firestore(), userId: request.auth.uid })),

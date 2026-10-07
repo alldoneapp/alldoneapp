@@ -3,7 +3,8 @@ import { View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import ConnectionStateModal from './ConnectionStateModal'
-import { getSafeAreaInsets } from '../../../utils/safeAreaInsets'
+import { getSafeAreaEdgeOffsets } from '../../../utils/modalSafeArea'
+import useWindowSize from '../../../utils/useWindowSize'
 
 /**
  * Single global mount for the online/offline toast (notes follow-ups). It used
@@ -18,6 +19,7 @@ import { getSafeAreaInsets } from '../../../utils/safeAreaInsets'
  * one also auto-closes after 5s inside ConnectionStateModal).
  */
 export default function ConnectionStateToast() {
+    useWindowSize()
     const connectionState = useSelector(state => state.connectionState)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const [dismissedState, setDismissedState] = useState('')
@@ -33,7 +35,7 @@ export default function ConnectionStateToast() {
     // AT-2339: all four edges, not just the bottom. In landscape on a notched
     // iPhone the cutout takes ~59px off one SIDE, which a left/right of 16
     // renders straight underneath.
-    const { bottom: safeAreaBottom, left: safeAreaLeft, right: safeAreaRight } = getSafeAreaInsets()
+    const { bottom: safeAreaBottom, left: safeAreaLeft, right: safeAreaRight } = getSafeAreaEdgeOffsets()
     const wrapperStyle = mobile
         ? {
               position: 'fixed',

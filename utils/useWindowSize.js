@@ -1,4 +1,8 @@
 import React, { useLayoutEffect, useRef, useState } from 'react'
+import { getWorkspaceViewport, WORKSPACE_VIEWPORT_EVENT } from './workspaceViewport'
+
+// App content and popup sizes follow the Alldone pane in assistant mode.
+// Shell-level layout decisions must use the physical browser/media query.
 
 // Starting at [0, 0] made every consumer render one frame with a bogus size.
 // That is invisible for most of them, but modals cap themselves with
@@ -12,27 +16,34 @@ import React, { useLayoutEffect, useRef, useState } from 'react'
 // unaffected.
 const getInitialWindowSize = () => {
     if (typeof window === 'undefined') return [0, 0]
-    return [window.innerWidth || 0, window.innerHeight || 0]
+    const { width, height } = getWorkspaceViewport()
+    return [width, height]
 }
 
 export default function useWindowSize() {
     const [size, setSize] = useState(getInitialWindowSize)
     const sizeRef = useRef(size)
     useLayoutEffect(() => {
-        const updateSize = () => {
-            const width = window.innerWidth
-            const height = window.innerHeight
+        const updateSize = event => {
+            const { width, height } = getWorkspaceViewport()
             const currentSize = sizeRef.current
-            if (currentSize[0] === width && currentSize[1] === height) return
+            // Position-only changes also move portals and change safe-area
+            // overlap, even when the available width/height stay the same.
+            if (currentSize[0] === width && currentSize[1] === height && event?.type !== WORKSPACE_VIEWPORT_EVENT)
+                return
 
             const nextSize = [width, height]
             sizeRef.current = nextSize
             setSize(nextSize)
         }
         window.addEventListener('resize', updateSize)
+        window.addEventListener(WORKSPACE_VIEWPORT_EVENT, updateSize)
         updateSize()
 
-        return () => window.removeEventListener('resize', updateSize)
+        return () => {
+            window.removeEventListener('resize', updateSize)
+            window.removeEventListener(WORKSPACE_VIEWPORT_EVENT, updateSize)
+        }
     }, [])
 
     return size

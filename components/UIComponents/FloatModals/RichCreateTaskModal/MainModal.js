@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { Dimensions } from 'react-native-web'
 import { useSelector } from 'react-redux'
+import useWindowSize from '../../../../utils/useWindowSize'
 
 import { colors } from '../../../styles/global'
 import TaskEditForm from './TaskEditForm'
@@ -36,19 +36,8 @@ export default function MainModal({
     uploadingDraft,
 }) {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const [screenDimensions, setScreenDimensions] = useState(Dimensions.get('window'))
+    const [, windowHeight] = useWindowSize()
     const [mentions, setMentions] = useState([])
-
-    const setDimensions = e => {
-        setScreenDimensions(e.window)
-    }
-
-    useEffect(() => {
-        Dimensions.addEventListener('change', setDimensions)
-        return () => {
-            Dimensions.removeEventListener('change', setDimensions)
-        }
-    })
 
     const title = modalTitle || translate('Add task')
 
@@ -59,7 +48,7 @@ export default function MainModal({
                     localStyles.container,
                     applyPopoverWidth(),
                     smallScreenNavigation && { minWidth: 315 },
-                    { maxHeight: getSafeAreaModalMaxHeight(screenDimensions.height) },
+                    { maxHeight: getSafeAreaModalMaxHeight(windowHeight) },
                     // AT-2582: last, so the responsive add-task width overrides
                     // both the legacy popover width and small-screen minimum.
                     widthStyle,

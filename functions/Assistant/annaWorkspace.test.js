@@ -24,6 +24,7 @@ function database(overrides = {}) {
         data.set(ref.path, { ...data.get(ref.path), ...value })
     }
     const db = {
+        getAll: jest.fn(async (...refs) => refs.map(ref => snapshot(ref.path))),
         doc: path => ({
             path,
             get: async () => snapshot(path),
@@ -61,6 +62,7 @@ function database(overrides = {}) {
         runTransaction: async action =>
             action({
                 get: async ref => snapshot(ref.path),
+                getAll: async (...refs) => refs.map(ref => snapshot(ref.path)),
                 create: (ref, value) => write('create', ref, value),
                 set: (ref, value) => write('set', ref, value),
                 update: (ref, value) => write('update', ref, value),
@@ -83,7 +85,10 @@ describe('Anna conversation and presentation boundary', () => {
         const resolveAssistantId = jest.fn().mockResolvedValue('existing-assistant')
         const now = Date.parse('2026-10-07T21:59:00Z')
         const first = await ensureAnnaConversation({ db, userId: 'u1', resolveAssistantId, now })
+        const initialWriteCount = writes.length
         expect(await ensureAnnaConversation({ db, userId: 'u1', resolveAssistantId, now: now + 1000 })).toEqual(first)
+        expect(writes).toHaveLength(initialWriteCount)
+        expect(first.conversation).toMatchObject({ id: first.chatId, projectId: 'p1', annaOwnerId: 'u1' })
         expect(first).toMatchObject({
             projectId: 'p1',
             chatId: 'AnnaChat20261007u1',
@@ -241,4 +246,43 @@ it('opens real task comments and assistant-filtered task lists', async () => {
         args: { view: 'tasks', projectId: 'p1', assigneeId: 'a1' },
     })
     expect(list.path).toBe('/projects/p1/user/a1/tasks/open')
+})
+
+it('updates changed assistant settings and repairs a missing registry without rewriting an unchanged pointer', async () => {
+    const { db, data, writes } = database()
+    const now = Date.parse('2026-10-07T12:00:00Z')
+    const args = { db, userId: 'u1', now, resolveAssistantId: async () => 'a1' }
+    const reference = await ensureAnnaConversation(args)
+    data.delete(`users/u1/private/annaConversation/threads/p1__${reference.chatId}`)
+    const beforeRepair = writes.length
+    await ensureAnnaConversation(args)
+    expect(writes.slice(beforeRepair).map(write => write.path)).toEqual([
+        `users/u1/private/annaConversation/threads/p1__${reference.chatId}`,
+    ])
+    const changed = await ensureAnnaConversation({ ...args, resolveAssistantId: async () => 'a2' })
+    expect(changed.assistantId).toBe('a2')
+    expect(changed.conversation.assistantId).toBe('a2')
+    expect(data.get(`chatObjects/p1/chats/${reference.chatId}`).assistantId).toBe('a2')
+})
+
+it('validates all history in one batch, reuses project reads, and still rejects foreign or missing chats', async () => {
+    const { db, data } = database()
+    for (let day = 1; day <= 7; day++) {
+        const chatId = `AnnaChat2026100${day}u1`
+        data.set(`users/u1/private/annaConversation/threads/p1__${chatId}`, { projectId: 'p1', chatId, created: day })
+        data.set(`chatObjects/p1/chats/${chatId}`, { ...ownedChat, assistantId: 'a1' })
+    }
+    data.set('chatObjects/p1/chats/AnnaChat20261003u1', { ...ownedChat, annaOwnerId: 'u2' })
+    data.delete('chatObjects/p1/chats/AnnaChat20261002u1')
+    const result = await listAnnaConversations({ db, userId: 'u1' })
+    expect(result.threads.map(thread => thread.chatId)).toEqual([
+        'AnnaChat20261007u1',
+        'AnnaChat20261006u1',
+        'AnnaChat20261005u1',
+        'AnnaChat20261004u1',
+        'AnnaChat20261001u1',
+    ])
+    expect(db.getAll).toHaveBeenCalledTimes(1)
+    expect(db.getAll.mock.calls[0]).toHaveLength(8)
+    expect(result.nextBefore).toEqual({ created: 1, id: 'p1__AnnaChat20261001u1' })
 })

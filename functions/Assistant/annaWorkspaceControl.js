@@ -42,7 +42,7 @@ async function getAnnaControlBlock({ db, userId, toolName, toolArgs = {}, runtim
             paused: true,
             reason: 'user_controls_workspace',
             message:
-                'The user has taken control of the Alldone work surface. Do not change it or retry. Continue the conversation and wait until the user explicitly hands control back.',
+                'The user is interacting with Alldone. Do not change it or retry during this request. You can continue talking and inspecting. A new user chat request or voice call automatically releases the workspace; do not ask the user to operate a control switch.',
         }
     })
 }

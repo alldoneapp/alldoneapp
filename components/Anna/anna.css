@@ -214,6 +214,18 @@
     margin-bottom: 8px;
     color: var(--anna-muted);
 }
+.anna-message-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.anna-message-status {
+    display: block;
+    margin-top: 8px;
+    color: var(--anna-muted);
+    font-size: 11px;
+}
 .anna-message-author time {
     margin-left: auto;
     font-size: 10px;
@@ -723,11 +735,15 @@
 .anna-zoom-shell .anna-workspace-content > * {
     min-width: 0;
 }
+.anna-zoom-active .anna-workspace-content {
+    /* Inline fixed dialogs belong to Alldone, including its navigation. Body
+       portals keep browser coordinates and use the measured workspace bounds. */
+    transform: translateX(0);
+}
 .anna-zoom-shell .anna-conversation {
     min-width: 0;
 }
-.anna-zoom-back,
-.anna-control {
+.anna-zoom-back {
     margin-left: auto;
 }
 .anna-divider {
@@ -885,7 +901,9 @@
         grid-column: 1 / -1;
         width: 100%;
         margin-left: 0;
+        flex-wrap: nowrap;
     }
+
     .anna-header-assistant {
         gap: 8px;
     }
@@ -928,4 +946,89 @@
 }
 .anna-zoom-back:hover {
     background: var(--anna-tint);
+}
+
+/* A visual receipt for Anna's saved work, clipped to the Alldone pane. */
+.anna-reveal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    pointer-events: none;
+    animation: anna-reveal-lifetime 3.6s ease both;
+}
+.anna-reveal-ring {
+    box-sizing: border-box;
+    position: absolute;
+    border: 2px solid #438eff;
+    border-radius: 12px;
+    background: rgba(55, 130, 255, 0.055);
+    box-shadow: 0 0 0 4px rgba(55, 130, 255, 0.07);
+    animation: anna-reveal-pulse 1.25s ease-in-out 2;
+}
+.anna-reveal-label {
+    box-sizing: border-box;
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 27px;
+    padding: 0 10px 0 6px;
+    border: 1px solid #d7e7ff;
+    border-radius: 999px;
+    color: #175bc5;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 3px 12px #205eaf14;
+    font:
+        500 12px Roboto,
+        Arial,
+        sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.anna-reveal-check {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: #eaf3ff;
+}
+.anna-reveal-label-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@keyframes anna-reveal-lifetime {
+    0% {
+        opacity: 0;
+    }
+    9%,
+    82% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+@keyframes anna-reveal-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 3px #3782ff0c;
+        border-color: #438eff;
+    }
+    48% {
+        box-shadow:
+            0 0 0 7px #3782ff18,
+            0 4px 20px #3782ff0d;
+        border-color: #8ab7ff;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .anna-reveal-overlay,
+    .anna-reveal-ring {
+        animation: none;
+    }
 }

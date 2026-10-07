@@ -18,6 +18,7 @@ export default function NoteTitlePresentation({
 
     return (
         <DvTitleLayout
+            dataSet={{ annaObjectType: 'note', annaObjectId: note.id, annaProjectId: projectId }}
             onPress={openTitleEdition}
             disabled={disabled}
             typeLabel="NOTE"

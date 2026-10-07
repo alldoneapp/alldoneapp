@@ -113,7 +113,14 @@ class TaskTitle extends Component {
         ) : null
 
         return (
-            <View style={[localStyles.titleContainer, { maxHeight: maxHeight }]}>
+            <View
+                style={[localStyles.titleContainer, { maxHeight: maxHeight }]}
+                dataSet={{
+                    annaObjectType: titleType === TITLE_NOTE ? 'note' : 'task',
+                    annaObjectId: object.id,
+                    annaProjectId: projectId,
+                }}
+            >
                 <View style={localStyles.upperContainer} />
                 <View style={[localStyles.bottomContainer, { top: taskTitleInEditMode ? -4 : 0 }]}>
                     <View

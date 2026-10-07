@@ -1820,6 +1820,46 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
+    test('publishes the saved sidebar mutation and preserves success when visual feedback fails', async () => {
+        const publish = jest
+            .spyOn(require('./annaWorkspaceChanges'), 'recordAnnaWorkspaceChange')
+            .mockRejectedValue(new Error('Feedback offline'))
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        mockDocGet.mockResolvedValue({ exists: false })
+        mockTransactionGet.mockResolvedValueOnce({ data: () => null })
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-1',
+            note: { projectId: 'project-1' },
+        })
+        const runtime = {
+            annaConversation: true,
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'AnnaChat20261007user-1',
+            requestUserId: 'user-1',
+        }
+        try {
+            const saved = await executeToolNatively(
+                'create_note',
+                { title: 'Launch' },
+                'project-1',
+                null,
+                'user-1',
+                null,
+                runtime
+            )
+            expect(saved).toMatchObject({ success: true, noteId: 'note-1', projectId: 'project-1' })
+            expect(publish).toHaveBeenCalledWith(
+                expect.objectContaining({ runtime, toolName: 'create_note', result: saved })
+            )
+            expect(mockCreateAndPersistNote).toHaveBeenCalledTimes(1)
+        } finally {
+            publish.mockRestore()
+            warn.mockRestore()
+        }
+    })
+
     test('returns the canonical URL when creating a note', async () => {
         const previousProjectId = process.env.GCLOUD_PROJECT
         process.env.GCLOUD_PROJECT = 'alldonealeph'

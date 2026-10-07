@@ -1,4 +1,6 @@
 {
+    "Created by %{assistantName}": "Created by %{assistantName}",
+    "Updated by %{assistantName}": "Updated by %{assistantName}",
     "Zoom in Alldone": "Zoom in Alldone",
     "Anna views": "Anna views",
     "Anna’s browser viewport": "Anna’s browser viewport",
@@ -3290,6 +3292,7 @@
     "Note content is available locally; sync is pending": "Note content is available locally; sync is pending",
     "Conversation with %{assistantName}": "Conversation with %{assistantName}",
     "Connecting with %{assistantName}…": "Connecting with %{assistantName}…",
+    "Loading conversation…": "Loading conversation…",
     "%{assistantName} would like to show you:": "%{assistantName} would like to show you:",
     "Talk with %{assistantName}": "Talk with %{assistantName}",
     "You need Gold to talk with %{assistantName}.": "You need Gold to talk with %{assistantName}.",

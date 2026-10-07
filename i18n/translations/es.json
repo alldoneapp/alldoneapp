@@ -1,4 +1,6 @@
 {
+    "Created by %{assistantName}": "Creado por %{assistantName}",
+    "Updated by %{assistantName}": "Actualizado por %{assistantName}",
     "Zoom in Alldone": "Acercar Alldone",
     "Anna views": "Vistas de Anna",
     "Anna’s browser viewport": "Vista del navegador de Anna",
@@ -3238,6 +3240,7 @@
     "No project assistant available": "No hay un asistente disponible para el proyecto. Configura uno primero.",
     "Conversation with %{assistantName}": "Conversación con %{assistantName}",
     "Connecting with %{assistantName}…": "Conectando con %{assistantName}…",
+    "Loading conversation…": "Cargando conversación…",
     "%{assistantName} would like to show you:": "%{assistantName} quiere mostrarte:",
     "Talk with %{assistantName}": "Hablar con %{assistantName}",
     "You need Gold to talk with %{assistantName}.": "Necesitas Gold para hablar con %{assistantName}.",

@@ -111,6 +111,63 @@ const content = id => (
     </AnnaShell>
 )
 
+it.each(['edit', 'zoom'])('cancels pending result navigation when the user chooses to %s', async action => {
+    jest.useFakeTimers()
+    const visibility = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    const change = {
+        id: 'saved1',
+        projectId: 'p1',
+        objectId: 'task1',
+        type: 'task',
+        change: 'created',
+        path: '/projects/p1/tasks/task1/properties',
+        expiresAt: Date.now() + 120000,
+    }
+    useAnnaConversation.mockReturnValue({ ...state, conversation: { ...conversation, annaWorkspaceChanges: [change] } })
+    try {
+        render(content(1))
+        await act(async () => {})
+        if (action === 'edit') {
+            act(() =>
+                screen
+                    .getByLabelText('Real workspace editor')
+                    .dispatchEvent(new Event('pointerdown', { bubbles: true }))
+            )
+        } else act(() => setAnnaMode(false))
+        for (let i = 0; i < 12; i++) await act(async () => jest.advanceTimersByTime(75))
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        expect(document.querySelector('.anna-reveal-ring')).toBeNull()
+    } finally {
+        visibility.mockRestore()
+        jest.useRealTimers()
+    }
+})
+
+it('opens the saved detail when a changed row is outside the current list filter', async () => {
+    jest.useFakeTimers()
+    const visibility = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    const change = {
+        id: 'saved1',
+        projectId: 'p1',
+        objectId: 'task1',
+        type: 'task',
+        change: 'updated',
+        path: '/projects/p1/tasks/task1/properties',
+        expiresAt: Date.now() + 120000,
+    }
+    useAnnaConversation.mockReturnValue({ ...state, conversation: { ...conversation, annaWorkspaceChanges: [change] } })
+    try {
+        render(content(1))
+        await act(async () => {})
+        for (let i = 0; i < 10; i++) await act(async () => jest.advanceTimersByTime(75))
+        expect(URLTrigger.processUrl).toHaveBeenCalledWith({}, change.path)
+        expect(document.querySelector('.anna-reveal-ring')).toBeNull()
+    } finally {
+        visibility.mockRestore()
+        jest.useRealTimers()
+    }
+})
+
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     setAnnaMode(true)
@@ -127,12 +184,13 @@ beforeEach(() => {
     useAnnaConversation.mockReturnValue(state)
 })
 
-it('places the surface selector and hand-back control in the top bar', () => {
+it('shows surface selection without manual Alldone control switches', () => {
     render(content(1))
     const toolbar = document.querySelector('.anna-header .anna-workspace-toolbar')
     expect(toolbar.textContent).toContain('Alldone')
     expect(toolbar.textContent).toContain('Browser')
-    expect(toolbar.textContent).toContain('Take control')
+    expect(toolbar.textContent).not.toContain('Take control')
+    expect(toolbar.textContent).not.toContain('Let Carl Code Mentor continue')
     expect(document.querySelector('.anna-stage .anna-workspace-toolbar')).toBeNull()
     expect(document.querySelector('.anna-header').textContent).not.toContain('Looking at:')
 })
@@ -166,7 +224,9 @@ it('passes page changes to the conversation instead of the header', async () => 
 
 it('hands both surfaces back for a new message without queueing a second continuation', async () => {
     render(content(1))
-    await act(async () => fireEvent.click(screen.getByText('Take control')))
+    await act(async () =>
+        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    )
     mockTransactionState = {
         blocked: { projectId: 'p1', objectId: 'anna_u1', objectType: 'topics', assistantId: 'a1', at: 456 },
     }
@@ -179,7 +239,7 @@ it('hands both surfaces back for a new message without queueing a second continu
     )
     expect(mockReleaseBrowser).toHaveBeenCalledTimes(1)
     expect(mockConversationProps.resumeRequest).toBeNull()
-    expect(screen.getByText('Take control').getAttribute('aria-pressed')).toBe('false')
+    expect(screen.getByText('Take control')).toBeUndefined()
 })
 
 it('waits for a pending take-control write before resuming for a message', async () => {
@@ -192,7 +252,7 @@ it('waits for a pending take-control write before resuming for a message', async
         return fn({ get: async () => ({ data: () => mockTransactionState }), set: mockSet })
     })
     render(content(1))
-    fireEvent.click(screen.getByText('Take control'))
+    act(() => screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true })))
     let resume
     act(() => {
         resume = mockConversationProps.onBeforeSend()
@@ -220,14 +280,21 @@ it('clears persisted user control even before its snapshot reaches the UI', asyn
 
 it('keeps user control when hand-back fails and does not resume the browser', async () => {
     render(content(1))
-    await act(async () => fireEvent.click(screen.getByText('Take control')))
+    await act(async () =>
+        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    )
     act(() => mockBrowserProps.onControlChange(true))
     mockRunTransaction.mockRejectedValueOnce(new Error('Offline'))
     await act(async () => {
         await expect(mockConversationProps.onBeforeSend()).rejects.toThrow('Could not change workspace control')
     })
-    expect(screen.getByText('Let Carl Code Mentor continue').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('Let Carl Code Mentor continue')).toBeUndefined()
     expect(mockReleaseBrowser).not.toHaveBeenCalled()
+    await act(async () =>
+        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    )
+    // The failed release retained user ownership, so another edit needs no take.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2)
 })
 
 it('keeps the conversation mounted across workspace navigation with its topic and voice state', async () => {
@@ -261,7 +328,9 @@ it('preserves both editors when zooming out and back without remounting the work
 it('holds assistant navigation after the user takes control, until Open is clicked', async () => {
     const view = render(content(1))
     view.rerender(content(2))
-    await act(async () => fireEvent.click(screen.getByText('Take control')))
+    await act(async () =>
+        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    )
     useAnnaConversation.mockReturnValue({
         ...state,
         conversation: {
@@ -297,7 +366,9 @@ it('switches mobile panes without removing the workspace or chat', async () => {
 
 it('resumes a returned browser while the user still controls Alldone', async () => {
     render(content(1))
-    await act(async () => fireEvent.click(screen.getByText('Take control')))
+    await act(async () =>
+        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    )
     act(() => {
         mockBrowserProps.onControlChange(true)
         mockBrowserProps.onResume(
@@ -311,21 +382,35 @@ it('resumes a returned browser while the user still controls Alldone', async () 
         surface: 'browser',
         text: 'I have returned browser control to you. Please continue my current request.',
     })
-    expect(screen.getByText('Let Carl Code Mentor continue').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('Let Carl Code Mentor continue')).toBeUndefined()
 })
 
-it('resumes returned Alldone work while the user still controls the browser', async () => {
-    render(content(1))
-    await act(async () => fireEvent.click(screen.getByText('Take control')))
-    act(() => mockBrowserProps.onControlChange(true))
-    mockTransactionState = {
-        blocked: { projectId: 'p1', objectId: 'anna_u1', objectType: 'topics', assistantId: 'a1', at: 456 },
+it.each(['pointerdown', 'keydown', 'wheel'])(
+    'automatically protects Alldone on %s and releases it for the next request',
+    async eventName => {
+        render(content(1))
+        await act(async () =>
+            screen.getByLabelText('Real workspace editor').dispatchEvent(new Event(eventName, { bubbles: true }))
+        )
+        expect(mockSet).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ control: 'user' }), {
+            merge: true,
+        })
+        await act(async () => mockConversationProps.onBeforeSend())
+        expect(mockSet).toHaveBeenLastCalledWith(
+            expect.anything(),
+            expect.objectContaining({ control: 'assistant', blocked: null }),
+            { merge: true }
+        )
+        expect(mockConversationProps.resumeRequest).toBeNull()
     }
-    await act(async () => fireEvent.click(screen.getByText('Let Carl Code Mentor continue')))
-    expect(mockConversationProps.resumeRequest).toMatchObject({
-        surface: 'alldone',
-        text: 'I have returned Alldone control to you. Please continue my current request.',
-    })
+)
+
+it('does not pause the assistant for passive viewing or pointer movement', async () => {
+    render(content(1))
+    await act(async () =>
+        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointermove', { bubbles: true }))
+    )
+    expect(mockRunTransaction).not.toHaveBeenCalled()
 })
 
 it('does not create a conversation until the user first opens the assistant view', async () => {

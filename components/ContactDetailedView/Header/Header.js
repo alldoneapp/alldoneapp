@@ -89,7 +89,10 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
     const disabledBtn = contact.displayName === contactName || contactName === ''
 
     return (
-        <View style={[localStyles.container, isFullscreen && !accessGranted && localStyles.sharedChatContainer]}>
+        <View
+            style={[localStyles.container, isFullscreen && !accessGranted && localStyles.sharedChatContainer]}
+            dataSet={{ annaObjectType: 'contact', annaObjectId: contact.uid, annaProjectId: projectId }}
+        >
             <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
                 {isMiddleScreen && accessGranted && (
                     <View style={localStyles.backButtonMobile}>

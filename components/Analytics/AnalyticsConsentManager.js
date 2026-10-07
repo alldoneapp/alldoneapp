@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
+import useWindowSize from '../../utils/useWindowSize'
 
 import styles, { colors, SCREEN_BREAKPOINT } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
@@ -25,11 +26,7 @@ export default function AnalyticsConsentManager() {
     const loggedUser = useSelector(state => state.loggedUser)
     const navigationRoute = useSelector(state => state.route)
     const smallScreen = useSelector(state => state.smallScreen)
-    const [viewportWidth, setViewportWidth] = useState(() =>
-        typeof window !== 'undefined' && typeof window.innerWidth === 'number'
-            ? window.innerWidth
-            : Number.POSITIVE_INFINITY
-    )
+    const [viewportWidth] = useWindowSize()
     const [consent, setConsent] = useState(getAnalyticsConsent())
     const [dialogOpen, setDialogOpen] = useState(consent === ANALYTICS_CONSENT_UNKNOWN)
     // Render nothing until after the client mounts so the prerendered HTML and the
@@ -38,16 +35,6 @@ export default function AnalyticsConsentManager() {
     const [mounted, setMounted] = useState(false)
 
     useEffect(() => setMounted(true), [])
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return undefined
-
-        const updateViewportWidth = () => setViewportWidth(window.innerWidth)
-        window.addEventListener('resize', updateViewportWidth)
-        updateViewportWidth()
-
-        return () => window.removeEventListener('resize', updateViewportWidth)
-    }, [])
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined

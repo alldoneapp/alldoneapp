@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, StyleSheet, View, Dimensions, Keyboard, Text, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, StyleSheet, View, Keyboard, Text, TouchableOpacity } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -124,7 +124,6 @@ export default function RichCommentModal({
     const [editor, setEditor] = useState(null)
     const [waitingForBotAnswer, setWaitingForBotAnswer] = useState(false)
     const [showRunOutGoalModal, setShowRunOutGoalModal] = useState(false)
-    const [windowWidth, setWindowWidth] = useState(Dimensions.get('window').width)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const editorOpsRef = useRef([])
     const commentListRef = useRef()
@@ -318,13 +317,6 @@ export default function RichCommentModal({
         }
     }, [projectId, objectId, objectType])
 
-    useEffect(() => {
-        const subscription = Dimensions.addEventListener('change', ({ window, screen }) => {
-            setWindowWidth(window.width)
-        })
-        return () => subscription?.remove()
-    })
-
     const updateObjectState = updatedObj => {
         if (updatedObj && updatedObj.isAssistantEnabled !== undefined) {
             setIsThreadAssistantEnabled(updatedObj.isAssistantEnabled === true)
@@ -505,7 +497,7 @@ export default function RichCommentModal({
                 <CustomScrollView
                     style={[
                         localStyles.container,
-                        applyPopoverWidthV2(isMiddleScreen, smallScreenNavigation, windowWidth),
+                        applyPopoverWidthV2(isMiddleScreen, smallScreenNavigation, width),
                         { maxHeight: getSafeAreaModalMaxHeight(height, 64) },
                     ]}
                     showsVerticalScrollIndicator={false}
