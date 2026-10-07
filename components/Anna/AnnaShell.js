@@ -129,6 +129,7 @@ export default function AnnaShell({ children, routeId }) {
             )
             setResumeRequest({
                 id: `${context.at}-${surfaceName}`,
+                surface: surfaceName,
                 text:
                     text +
                     (!daily && context.objectType === 'tasks' && !context.objectId?.startsWith('direct__')
@@ -368,7 +369,11 @@ export default function AnnaShell({ children, routeId }) {
                                     resolveConversation={resolveConversation}
                                     loadEarlier={loadEarlier}
                                     hasEarlier={nextBefore != null}
-                                    resumeRequest={control || browserControl ? null : resumeRequest}
+                                    resumeRequest={
+                                        (resumeRequest?.surface === 'browser' ? browserControl : control)
+                                            ? null
+                                            : resumeRequest
+                                    }
                                     onResumeHandled={id =>
                                         setResumeRequest(current => (current?.id === id ? null : current))
                                     }

@@ -31,7 +31,13 @@ import { setAnnaMode } from '../../utils/annaMode'
 
 const mockSet = jest.fn().mockResolvedValue(undefined)
 const mockSnapshots = {}
-jest.mock('./AnnaBrowserWorkspace', () => () => null)
+let mockBrowserProps
+let mockConversationProps
+let mockTransactionState
+jest.mock('./AnnaBrowserWorkspace', () => props => {
+    mockBrowserProps = props
+    return null
+})
 jest.mock('./AnnaWorkspaceHighlight', () => () => null)
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
 const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user' }
@@ -50,7 +56,8 @@ jest.mock('react-redux', () => ({
 jest.mock('./useAnnaConversation', () => ({ __esModule: true, default: jest.fn() }))
 jest.mock('./AnnaConversation', () => ({
     __esModule: true,
-    default: () => {
+    default: props => {
+        mockConversationProps = props
         const React = require('react')
         React.useEffect(
             () => () => {
@@ -76,7 +83,7 @@ jest.mock('../UIComponents/AssistantVoiceCallButton', () => ({
 jest.mock('../UIComponents/VoiceMicrophoneStatus', () => ({ __esModule: true, default: () => null }))
 jest.mock('../../utils/backends/firestore', () => ({
     getDb: () => ({
-        runTransaction: fn => fn({ get: async () => ({ data: () => ({}) }), set: mockSet }),
+        runTransaction: fn => fn({ get: async () => ({ data: () => mockTransactionState }), set: mockSet }),
         doc: path => ({
             update: mockUpdate,
             set: mockSet,
@@ -111,6 +118,9 @@ beforeEach(() => {
     setAnnaMode(true)
     mockAssistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
     mockUnmounts = 0
+    mockBrowserProps = null
+    mockConversationProps = null
+    mockTransactionState = {}
     jest.clearAllMocks()
     useAnnaConversation.mockReturnValue(state)
 })
@@ -179,6 +189,39 @@ it('switches mobile panes without removing the workspace or chat', async () => {
     expect(screen.getByLabelText('Real workspace editor')).toBeTruthy()
     delete window.matchMedia
     await act(async () => {})
+})
+
+it('resumes a returned browser while the user still controls Alldone', async () => {
+    render(content(1))
+    await act(async () => fireEvent.click(screen.getByText('Take control')))
+    act(() => {
+        mockBrowserProps.onControlChange(true)
+        mockBrowserProps.onResume(
+            { projectId: 'p1', objectId: 'anna_u1', objectType: 'topics', assistantId: 'a1', at: 123 },
+            'browser'
+        )
+    })
+    expect(mockConversationProps.resumeRequest).toBeNull()
+    act(() => mockBrowserProps.onControlChange(false))
+    expect(mockConversationProps.resumeRequest).toMatchObject({
+        surface: 'browser',
+        text: 'I have returned browser control to you. Please continue my current request.',
+    })
+    expect(screen.getByText('Let Carl Code Mentor continue').getAttribute('aria-pressed')).toBe('true')
+})
+
+it('resumes returned Alldone work while the user still controls the browser', async () => {
+    render(content(1))
+    await act(async () => fireEvent.click(screen.getByText('Take control')))
+    act(() => mockBrowserProps.onControlChange(true))
+    mockTransactionState = {
+        blocked: { projectId: 'p1', objectId: 'anna_u1', objectType: 'topics', assistantId: 'a1', at: 456 },
+    }
+    await act(async () => fireEvent.click(screen.getByText('Let Carl Code Mentor continue')))
+    expect(mockConversationProps.resumeRequest).toMatchObject({
+        surface: 'alldone',
+        text: 'I have returned Alldone control to you. Please continue my current request.',
+    })
 })
 
 it('does not create a conversation until the user first opens the assistant view', async () => {
