@@ -1,5 +1,4 @@
 import firebase from 'firebase/compat/app'
-import { shouldUseFirebaseEmulators } from '../../firebaseEmulators'
 
 export const STATISTICS_ERROR_REPORT_TIMEOUT_MS = 5000
 export const STATISTICS_ERROR_REPORT_COOLDOWN_MS = 5 * 60 * 1000
@@ -62,7 +61,7 @@ export const reportNewDayStatisticsError = async (error, context) => {
             const token = await user.getIdToken()
             if (signal.aborted || firebase.auth().currentUser?.uid !== user.uid) return false
             const { projectId, apiKey } = firebase.app().options
-            const emulator = shouldUseFirebaseEmulators()
+            const emulator = typeof window !== 'undefined' && window.location?.search.includes('emulator=true')
             const origin = emulator ? 'http://127.0.0.1:8080' : 'https://firestore.googleapis.com'
             const url = `${origin}/v1/projects/${projectId}/databases/(default)/documents/runtimeErrors`
             const response = await fetch(`${url}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`, {

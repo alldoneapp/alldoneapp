@@ -1,6 +1,4 @@
 /**
- * @jest-environment-options {"url":"https://my.alldone.app"}
- *
  * AT-2345 — "Open view in new window" must reach a real browser tab from an installed PWA.
  *
  * The regression these tests pin is invisible in an ordinary browser: `window.open(location,

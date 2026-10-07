@@ -13,6 +13,7 @@ const microsoftEmailLine = require('./microsoftEmailLine')
 const { EmailLineAuthError, isAuthError } = require('./emailLineErrors')
 const { composeReply } = require('./replyComposer')
 const { summarizeEmailAsTaskName } = require('./taskSummarizer')
+const { getEmailIdentity, matchesEmailAccount } = require('../emailThreadIdentity')
 
 const GOLD_SOURCE_DRAFT_REPLY = 'email_draft_reply'
 const GOLD_SOURCE_CREATE_TASK = 'email_create_task'
@@ -216,34 +217,39 @@ async function loadTasksByMessageId(userId, connection, userData, projectId, mes
     )
     if (!candidateProjects.length) return {}
 
-    const connectionEmail = String(connection?.emailAddress || '')
-        .trim()
-        .toLowerCase()
+    const identity = getEmailIdentity(userId, {
+        provider: connection?.provider,
+        gmailEmail: connection?.emailAddress,
+        messageId: messageIds[0],
+    })
+    if (!identity) return {}
     const byMessageId = {}
     try {
         const db = admin.firestore()
         for (const candidateProjectId of candidateProjects) {
             for (const chunk of chunkArray(messageIds)) {
-                const snapshot = await db
-                    .collection(`items/${candidateProjectId}/tasks`)
-                    .where('gmailData.messageId', 'in', chunk)
-                    .get()
-                snapshot.forEach(doc => {
-                    const task = doc.data() || {}
-                    const taskMessageId = task?.gmailData?.messageId
-                    if (!taskMessageId || byMessageId[taskMessageId]) return
-                    // A Gmail message id is unique per account; guard against an unrelated
-                    // task in a shared project by matching the connection's account email.
-                    const taskEmail = String(task?.gmailData?.gmailEmail || '')
-                        .trim()
-                        .toLowerCase()
-                    if (connectionEmail && taskEmail && taskEmail !== connectionEmail) return
-                    byMessageId[taskMessageId] = {
-                        taskId: doc.id,
-                        projectId: candidateProjectId,
-                        taskName: task?.name || '',
-                    }
-                })
+                const snapshots = await Promise.all([
+                    db.collection(`items/${candidateProjectId}/tasks`).where('gmailData.messageId', 'in', chunk).get(),
+                    db
+                        .collection(`items/${candidateProjectId}/tasks`)
+                        .where('gmailData.messageIds', 'array-contains-any', chunk)
+                        .get(),
+                ])
+                snapshots.forEach(snapshot =>
+                    snapshot.forEach(doc => {
+                        const task = doc.data() || {}
+                        if (!matchesEmailAccount(task.gmailData, identity)) return
+                        const linkedIds = new Set([task.gmailData?.messageId, ...(task.gmailData?.messageIds || [])])
+                        chunk.forEach(id => {
+                            if (!linkedIds.has(id) || byMessageId[id]) return
+                            byMessageId[id] = {
+                                taskId: doc.id,
+                                projectId: candidateProjectId,
+                                taskName: task?.name || '',
+                            }
+                        })
+                    })
+                )
             }
         }
         return byMessageId

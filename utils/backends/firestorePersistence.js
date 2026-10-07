@@ -13,9 +13,10 @@
  * cache and must never block or crash boot. IndexedDB availability is handled by
  * the SDK once the configured cache starts.
  *
- * Emulator sessions use an in-memory cache so they never reuse hosted-project
- * data or stale local snapshots after an emulator reset. Auth persistence is
- * isolated separately in initFirebase and survives browser refreshes.
+ * Emulator sessions skip persistence on purpose: initFirebase wipes every
+ * Firestore IndexedDB before init for the emulator (clearAllFirebaseIndexedDB),
+ * so a persistent cache would only ever hold one session's throwaway data while
+ * making emulator runs less deterministic.
  */
 import { getPerformanceDiagnostics } from '../performance/performanceDiagnostics'
 import { markNamedPerformanceTrace, startPerformanceTrace } from '../performance/performanceLogger'

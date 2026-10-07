@@ -48,20 +48,18 @@ describe('ContactsHelper class', () => {
 })
 
 describe('getNewDefaultUser identity-field hardening', () => {
-    it('uses a bundled profile picture when the provider has no identity fields', () => {
+    it('falls back to empty strings when identity fields are undefined', () => {
         const user = getNewDefaultUser({ uid: 'abc', displayName: undefined, email: undefined, photoURL: undefined })
         expect(user.displayName).toBe('')
         expect(user.email).toBe('')
-        expect(user.photoURL).toMatch(/\/images\/generic-user\.svg$/)
-        expect(user.photoURL50).toBe(user.photoURL)
-        expect(user.photoURL300).toBe(user.photoURL)
+        expect(user.photoURL).toBe('')
     })
 
-    it('uses a bundled profile picture when provider fields are null', () => {
+    it('falls back to empty strings when identity fields are null', () => {
         const user = getNewDefaultUser({ uid: 'abc', displayName: null, email: null, photoURL: null })
         expect(user.displayName).toBe('')
         expect(user.email).toBe('')
-        expect(user.photoURL).toMatch(/\/images\/generic-user\.svg$/)
+        expect(user.photoURL).toBe('')
     })
 
     it('never leaves identity fields undefined so Firestore (ignoreUndefinedProperties) cannot drop them', () => {
@@ -86,13 +84,5 @@ describe('getNewDefaultUser identity-field hardening', () => {
         expect(user.displayName).toBe('Karsten Wysk')
         expect(user.email).toBe('karsten@alldone.app')
         expect(user.photoURL).toBe('https://example.com/a.png')
-        expect(user.photoURL50).toBe(user.photoURL)
-        expect(user.photoURL300).toBe(user.photoURL)
-    })
-
-    it('fills empty pictures without replacing supplied thumbnails', () => {
-        const user = getNewDefaultUser({ uid: 'abc', photoURL: '', photoURL50: 'https://example.com/small.png' })
-        expect(user.photoURL).toBe('https://example.com/small.png')
-        expect(user.photoURL50).toBe('https://example.com/small.png')
     })
 })

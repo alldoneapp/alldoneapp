@@ -13,11 +13,10 @@ Alldone is a React Native/Firebase productivity platform supporting tasks, goals
 sh setup-worktree.sh         # Links node_modules, functions/, web-bundler/, .env
 
 # Development
-npm run dev                  # Full emulator suite, then HTTPS dev server on port 19006
+npm run web-webpack          # Dev server on the webpack pipeline (port 19006)
 
-# Optional separate terminals (instead of npm run dev)
-npm run emulators            # Auth, Firestore, Functions, Storage, Database, Pub/Sub
-npm run dev:web              # HTTPS web server connected to the already running suite
+# Firebase Functions (local)
+firebase emulators:start --only functions --inspect-functions
 
 # Testing
 npm test                     # Run Jest tests
@@ -31,18 +30,6 @@ npm run format-code          # Format with Prettier
 ```
 
 **Required versions**: Node 22 (repo-wide, `.nvmrc`), npm 10, firebase-tools 13.29.3.
-`npm run dev` and `npm run emulators` run `ci/prepare-local-emulators.js` before
-startup. It adds an SDK-version guard to the pinned CLI's local Functions runtime:
-SDK 7 removed `functions.config()`, which CLI 13 otherwise calls before every
-invocation and crashes. The guard skips that legacy config helper for SDK 7+;
-it does not change the Functions SDK or deployment commands. It is reapplied after
-`npm ci`, and fails explicitly if the pinned CLI/runtime changes so the backport
-can be reviewed or removed.
-Local Auth and callable Functions requests use same-origin HTTPS proxies on the
-webpack dev server (`/emulator/auth` and `/emulator/functions`); the latter forwards
-to port 5001 with the project and region path. Hosted/native Functions keep their
-configured regional endpoint.
-
 Since migration Stage 5 the whole repo — installs (lockfile v3, `.npmrc` with
 legacy-peer-deps), Jest, the web-bundler build, and Cloud Functions work — runs on
 Node 22; the Node 14 / npm 6 / Expo/Metro CLI era is over. The retired RN-era scripts,
@@ -841,7 +828,7 @@ degrades to today's behaviour rather than breaking.
   (`enableFirestorePersistence` in `utils/backends/firestorePersistence.js` —
   multi-tab `synchronizeTabs`, 100 MB LRU cache, deliberately **not awaited**: the compat
   SDK queues later calls behind the enable; every failure degrades to the in-memory
-  cache). Emulator sessions use an in-memory Firestore cache and retain their separate Auth session. Consequences to
+  cache). Skipped under the emulator, whose IndexedDB is wiped each boot. Consequences to
   respect: `watchForceReload` only honors a **server** snapshot (a cached `{reload: true}`
   would reload-loop offline — the guard is `doc.metadata.fromCache`), and
   `bootIntegrityHealer` stands down while `connectionState === 'offline'` (cached-only
