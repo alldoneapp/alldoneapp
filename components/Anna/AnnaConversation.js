@@ -13,6 +13,8 @@ import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
 import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
+import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
+import { isDictationSupported } from '../../hooks/useRambleRecorder'
 import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
 
 export default function AnnaConversation({
@@ -56,12 +58,38 @@ export default function AnnaConversation({
     const scrollAnchor = useRef(null)
     const composer = useRef(null)
     const draftRef = useRef('')
+    const dictationCaret = useRef(null)
+    const [dictationPhase, setDictationPhase] = useState(RAMBLE_PHASE_IDLE)
+    const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE
     const changeDraft = text => {
         draftRef.current = text
         setDraft(text)
     }
     const resumed = useRef(null)
     const mounted = useRef(true)
+    const insertDictatedText = text => {
+        const input = composer.current
+        const transcript = text?.replace(/\r\n?/g, '\n').trim()
+        if (!mounted.current || !input || !transcript) return
+        // Read the current draft and selection when transcription finishes, so
+        // edits made while recording/processing are preserved.
+        const current = draftRef.current
+        const before = current.slice(0, input.selectionStart)
+        const after = current.slice(input.selectionEnd)
+        const insertion = `${before && !/\s$/.test(before) ? ' ' : ''}${transcript}${
+            after && !/^[\s.,!?;:)\]}]/.test(after) ? ' ' : ''
+        }`
+        dictationCaret.current = before.length + insertion.length
+        changeDraft(before + insertion + after)
+    }
+    useLayoutEffect(() => {
+        const input = composer.current
+        if (!input || dictationCaret.current === null) return
+        const shouldFocus = visible && input.form?.contains(document.activeElement)
+        input.setSelectionRange(dictationCaret.current, dictationCaret.current)
+        dictationCaret.current = null
+        if (shouldFocus) input.focus()
+    }, [draft, visible])
     const [preparingVoice, setPreparingVoice] = useState(false)
     const voiceRequest = useRef(0)
     const voiceActive = preparingVoice || call.status !== 'idle'
@@ -90,6 +118,7 @@ export default function AnnaConversation({
         }
     }, [])
     const toggleVoiceCall = async () => {
+        if (dictationBusy) return
         if (preparingVoice) {
             voiceRequest.current++
             setPreparingVoice(false)
@@ -157,7 +186,7 @@ export default function AnnaConversation({
     const send = (event, continuation = null) => {
         event?.preventDefault()
         const text = continuation?.text || draftRef.current.trim()
-        if (voiceActive || !text) return
+        if (voiceActive || dictationBusy || !text) return
         if (!(user.gold > 0)) {
             setError(translate('You need Gold to talk with %{assistantName}.', { assistantName }))
             return
@@ -182,11 +211,11 @@ export default function AnnaConversation({
         retry(key)
     }
     useEffect(() => {
-        if (!resumeRequest || resumed.current === resumeRequest.id || sending || voiceActive) return
+        if (!resumeRequest || resumed.current === resumeRequest.id || sending || voiceActive || dictationBusy) return
         resumed.current = resumeRequest.id
         send(null, resumeRequest)
         onResumeHandled?.(resumeRequest.id)
-    }, [resumeRequest, sending, voiceActive])
+    }, [resumeRequest, sending, voiceActive, dictationBusy])
     // Keep pending/failed submissions visible even when today's resolved thread
     // differs from the cached conversation or a rollover changes the history.
     const displayedThreads = [...(threads.length ? threads : [{ ...conversation, chatId: conversation.id }])]
@@ -302,6 +331,20 @@ export default function AnnaConversation({
                             }
                         }}
                     />
+                    {!voiceActive && conversation.projectId && isDictationSupported() && (
+                        <RambleButton
+                            projectId={conversation.projectId}
+                            targetKind="generic"
+                            getCurrentText={() => draftRef.current}
+                            onTextReady={insertDictatedText}
+                            onPhaseChange={setDictationPhase}
+                            getOverlayViewport={() => {
+                                const pane = composer.current?.closest('.anna-conversation')
+                                return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
+                            }}
+                            style={{ minWidth: 36, height: 36, borderRadius: 18, flexShrink: 0 }}
+                        />
+                    )}
                     {call.needsAudioPlayback && (
                         <button
                             type="button"
@@ -318,7 +361,7 @@ export default function AnnaConversation({
                         className={`anna-voice-button${voiceActive ? ' anna-voice-active' : ''}`}
                         aria-label={voiceLabel}
                         title={voiceHint}
-                        disabled={voiceActive ? call.status === 'ending' : sending}
+                        disabled={voiceActive ? call.status === 'ending' : sending || dictationBusy}
                         onClick={toggleVoiceCall}
                     >
                         <Icon name={voiceActive ? 'phone-off' : 'phone-call'} size={20} color="currentColor" />
@@ -326,7 +369,7 @@ export default function AnnaConversation({
                     <button
                         type="submit"
                         className="anna-send"
-                        disabled={voiceActive || !draft.trim()}
+                        disabled={voiceActive || dictationBusy || !draft.trim()}
                         aria-label={translate('Send message')}
                     >
                         ↑

@@ -96,6 +96,12 @@ export const getDb = () => ({
     }),
 })
 export const runHttpsCallableFunction = async (name, request = {}) => {
+    if (name === 'processRambleSecondGen') {
+        window.__annaDictationRequest = request
+        return new Promise(resolve => {
+            window.__annaFinishDictation = text => resolve({ text })
+        })
+    }
     if (name === 'annaBrowserWorkspaceSecondGen') return { control: 'assistant', ready: true }
     if (name === 'listActiveVmJobsSecondGen')
         return {
@@ -245,6 +251,8 @@ window.__annaBrowserFixture = async (status, commentId = 'browse1') => {
         })
 }
 export default {
+    getState: () => ({ loggedUser: user }),
+    dispatch: () => {},
     createNavigationProp: () => ({}),
     processUrl: async (_, path) => {
         const url = new URL(path, window.location.origin)

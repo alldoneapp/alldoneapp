@@ -193,8 +193,17 @@ function RecordDot({ tint }) {
  *   getInputLevel?: () => number,
  * }} props
  */
-export default function RambleHoldOverlay({ visible, originX, originY, progress, armed, elapsedLabel, getInputLevel }) {
-    const [, windowHeight] = useWindowSize()
+export default function RambleHoldOverlay({
+    visible,
+    originX,
+    originY,
+    progress,
+    armed,
+    elapsedLabel,
+    getInputLevel,
+    getViewport = getWorkspaceViewport,
+}) {
+    useWindowSize()
 
     // `progress` arrives as an Animated.Value rather than a number on purpose: it is written on
     // every pointermove, and a number prop would re-render this overlay AND its host input sixty
@@ -206,11 +215,11 @@ export default function RambleHoldOverlay({ visible, originX, originY, progress,
         return null
     }
 
-    const viewport = getWorkspaceViewport()
+    const viewport = getViewport() || getWorkspaceViewport()
     const insets = getWorkspaceInsets(getSafeAreaInsets(), viewport)
     const { top: cardTop } = resolveHoldCardPosition({
         originY: originY - viewport.top,
-        windowHeight,
+        windowHeight: viewport.height,
         insetTop: insets.top,
         insetBottom: insets.bottom,
     })
