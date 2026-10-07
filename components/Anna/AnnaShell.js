@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
+import Icon from '../Icon'
+import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import AnnaConversation from './AnnaConversation'
 import AnnaWorkspaceHighlight from './AnnaWorkspaceHighlight'
@@ -8,8 +10,6 @@ import { resolveAnnaLink } from './annaNavigation'
 import { isAnnaWorkspacePath } from '../../functions/Assistant/annaWorkspaceContract'
 import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLookup'
 import { useVoiceCall } from '../UIComponents/AssistantVoiceCallProvider'
-import AssistantVoiceCallButton from '../UIComponents/AssistantVoiceCallButton'
-import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
 import { getDb } from '../../utils/backends/firestore'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { setAnnaMode, useAnnaMode } from '../../utils/annaMode'
@@ -50,6 +50,7 @@ export default function AnnaShell({ children, routeId }) {
     )
     const assistant = resolvedAssistant || {}
     const assistantName = assistant.displayName?.trim() || translate('Assistant')
+    const assistantDescription = typeof assistant.description === 'string' ? assistant.description.trim() : ''
     const [mobilePane, setMobilePane] = useState('chat')
     const [surface, setSurface] = useState('alldone')
     const [control, setControl] = useState(false)
@@ -300,18 +301,53 @@ export default function AnnaShell({ children, routeId }) {
         if (visited) setWorkspaceControl(true)
     }
     const photo = assistant.photoURL || assistant.photoURL300 || assistant.photoURL50
-    const seconds = Math.floor(call.voiceSeconds || 0)
+    const contextLabel = `${translate('Looking at:')} ${
+        surface === 'browser' ? browser?.title || translate('Browser') : pageTitle
+    }`
 
     return (
         <div
             className={`anna-shell anna-zoom-shell ${active ? 'anna-zoom-active' : 'anna-fullscreen'} anna-mobile-${mobilePane}`}
-            style={{ '--anna-chat-width': `${chatWidth}%` }}
+            style={{
+                '--anna-chat-width': `${chatWidth}%`,
+                '--anna-ink': colors.Text01,
+                '--anna-muted': colors.Text02,
+                '--anna-placeholder': colors.Text03,
+                '--anna-accent': colors.Primary200,
+                '--anna-tint': colors.UtilityBlue100,
+                '--anna-hover': colors.UtilityBlue112,
+                '--anna-border': colors.UtilityBlue125,
+                '--anna-focus': colors.UtilityBlue150,
+                '--anna-surface': colors.Grey100,
+            }}
             onClickCapture={interceptLink}
         >
             <header className="anna-header" hidden={!active}>
-                <span className="anna-brand">{assistantName}</span>
-                <button className="anna-zoom-back" onClick={() => setAnnaMode(false)}>
-                    {translate('Alldone fullscreen')}
+                <div className="anna-header-assistant">
+                    <div className="anna-small-avatar">
+                        {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
+                    </div>
+                    <div className="anna-header-details">
+                        <div className="anna-header-identity">
+                            <strong className="anna-brand" title={assistantName}>
+                                {assistantName}
+                            </strong>
+                            {assistantDescription && <span title={assistantDescription}>{assistantDescription}</span>}
+                        </div>
+                        <div className="anna-context" title={contextLabel}>
+                            <span>{contextLabel}</span>
+                        </div>
+                    </div>
+                </div>
+                <button
+                    className="anna-zoom-back"
+                    aria-label={translate('Zoom in Alldone')}
+                    onClick={() => setAnnaMode(false)}
+                >
+                    <span aria-hidden="true">
+                        <Icon name="minimize-2" size={16} color="currentColor" />
+                    </span>
+                    <span>{translate('Zoom in Alldone')}</span>
                 </button>
             </header>
             <nav className="anna-mobile-tabs" hidden={!active} aria-label={translate('Assistant views')}>
@@ -333,21 +369,6 @@ export default function AnnaShell({ children, routeId }) {
                 >
                     {visited && (
                         <>
-                            <div className="anna-conversation-heading">
-                                <div className="anna-small-avatar">
-                                    {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
-                                </div>
-                                <div>
-                                    <strong>{assistantName}</strong>
-                                    <span>{translate('Your personal assistant')}</span>
-                                </div>
-                            </div>
-                            <div className="anna-context">
-                                <span>
-                                    {translate('Looking at:')}{' '}
-                                    {surface === 'browser' ? browser?.title || translate('Browser') : pageTitle}
-                                </span>
-                            </div>
                             {loading && (
                                 <div className="anna-empty" role="status">
                                     {translate('Connecting with %{assistantName}…', { assistantName })}
@@ -382,35 +403,6 @@ export default function AnnaShell({ children, routeId }) {
                                     onSendingChange={setTextBusy}
                                 />
                             )}
-                            <div className="anna-voice-controls">
-                                {conversation && !textBusy && call.status === 'idle' && (
-                                    <AssistantVoiceCallButton
-                                        assistant={{ ...assistant, uid: conversation.assistantId }}
-                                        projectId={conversation.projectId}
-                                        chatId={conversation.id}
-                                        title={translate('Talk with %{assistantName}', { assistantName })}
-                                    />
-                                )}
-                                {call.status !== 'idle' && (
-                                    <>
-                                        <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} />
-                                        <span>
-                                            {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
-                                        </span>
-                                        <button disabled={call.status === 'ending'} onClick={call.endCall}>
-                                            {translate(call.status === 'connecting' ? 'Cancel call' : 'End call')}
-                                        </button>
-                                    </>
-                                )}
-                                {call.needsAudioPlayback && (
-                                    <button onClick={call.playCallAudio}>{translate('Enable call audio')}</button>
-                                )}
-                                {call.error && (
-                                    <p className="anna-error" role="alert">
-                                        {call.error}
-                                    </p>
-                                )}
-                            </div>
                         </>
                     )}
                 </section>

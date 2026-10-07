@@ -1,3 +1,4 @@
+import { withAnnaMode } from '../../utils/annaMode'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
@@ -104,7 +105,7 @@ class URLsGoals {
         URLSystem.setLastNavigationScreen(urlPath, true)
 
         URLsGoals.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', `${originPath}/${urlPath}`)
+        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     /**
@@ -120,7 +121,7 @@ class URLsGoals {
         URLSystem.setLastNavigationScreen(urlPath)
 
         URLsGoals.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', `${originPath}/${urlPath}`)
+        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     static getPath = (urlConstant, ...params) => {

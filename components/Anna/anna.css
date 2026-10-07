@@ -1,8 +1,5 @@
 .anna-shell {
-    --anna-ink: #243c38;
-    --anna-muted: #73827e;
-    --anna-accent: #276b5e;
-    background: #f7f8f5;
+    background: var(--anna-surface);
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -39,25 +36,17 @@
     align-items: center;
     gap: 28px;
     padding: 0 30px;
-    border-bottom: 1px solid #e1e7e2;
+    border-bottom: 1px solid var(--anna-border);
     background: #fff;
 }
 .anna-brand {
-    background: none;
-    border: 0;
     color: var(--anna-ink);
-    font-size: 30px !important;
-    font-weight: 600 !important;
-    letter-spacing: -1.3px;
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-}
-.anna-brand span {
-    font-size: 13px;
-    letter-spacing: 0;
-    font-weight: 400;
-    color: var(--anna-muted);
+    font-size: 19px;
+    font-weight: 600;
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 .anna-header-note {
     color: var(--anna-muted);
@@ -86,22 +75,35 @@
     flex-direction: column;
     min-height: 0;
     min-width: 0;
-    border-right: 1px solid #e1e7e2;
+    border-right: 1px solid var(--anna-border);
     background: #fff;
     position: relative;
 }
-.anna-conversation-heading {
+.anna-header-assistant {
     display: flex;
+    flex: 1;
+    min-width: 0;
     gap: 12px;
     align-items: center;
-    padding: 24px 26px 20px;
-    flex: none;
+}
+.anna-header-details {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 28px;
+}
+.anna-header-identity {
+    min-width: 0;
+    max-width: 360px;
+    flex: 0 1 auto;
 }
 .anna-small-avatar {
     width: 40px;
     height: 40px;
+    flex: none;
     border-radius: 50%;
-    background: #e3eee8;
+    background: var(--anna-tint);
     overflow: hidden;
     display: grid;
     place-items: center;
@@ -111,31 +113,30 @@
     height: 100%;
     object-fit: cover;
 }
-.anna-conversation-heading strong {
-    font-size: 15px;
-    font-weight: 500;
-}
-.anna-conversation-heading > div > span {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 5px;
+.anna-header-identity > span {
+    display: block;
+    max-width: 220px;
+    margin-top: 3px;
     font-size: 12px;
     color: var(--anna-muted);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 .anna-shell i:not(.anna-workspace-content *) {
     display: inline-block;
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #5b9b83;
+    background: var(--anna-accent);
 }
 .anna-context {
     display: flex;
+    flex: 0 1 auto;
+    min-width: 0;
     align-items: center;
-    margin: 0 24px 8px;
     padding: 8px 12px;
-    background: #edf4ef;
+    background: var(--anna-tint);
     border-radius: 8px;
     font-size: 12px;
     gap: 8px;
@@ -144,11 +145,6 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-}
-.anna-context button {
-    margin-left: auto;
-    border: 0;
-    background: none;
 }
 .anna-messages {
     overflow: auto;
@@ -187,8 +183,8 @@
     align-items: flex-start;
 }
 .anna-suggestions button {
-    border: 1px solid #e1e7e2;
-    background: #fafbf9;
+    border: 1px solid var(--anna-border);
+    background: var(--anna-surface);
     border-radius: 9px;
     color: var(--anna-ink);
     padding: 11px 14px;
@@ -202,7 +198,7 @@
 }
 .anna-message-user {
     margin-left: 32px;
-    background: #f0f4ef;
+    background: var(--anna-tint);
     padding: 14px 16px;
 }
 .anna-message-author {
@@ -222,15 +218,15 @@
 .anna-composer {
     flex: none;
     margin: 0 22px;
-    padding-top: 8px;
+    padding: 8px 0 max(8px, env(safe-area-inset-bottom));
 }
 .anna-composer-field {
     display: flex;
     gap: 8px;
     align-items: flex-end;
     padding: 10px 10px 10px 14px;
-    border: 1px solid #d9e2db;
-    background: #fafbf9;
+    border: 1px solid var(--anna-border);
+    background: var(--anna-surface);
     border-radius: 15px;
 }
 .anna-composer textarea {
@@ -245,7 +241,14 @@
     padding: 4px 0;
 }
 .anna-composer textarea::placeholder {
-    color: #84918b;
+    color: var(--anna-placeholder);
+}
+.anna-composer-field:focus-within {
+    border-color: var(--anna-focus);
+    box-shadow: 0 0 0 1px var(--anna-focus);
+}
+.anna-shell .anna-composer textarea:focus-visible {
+    outline: none;
 }
 .anna-send {
     width: 36px;
@@ -257,20 +260,42 @@
     color: white;
     font-size: 23px !important;
 }
+.anna-voice-button {
+    width: 36px;
+    height: 36px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--anna-accent);
+}
+.anna-voice-button:hover {
+    background: var(--anna-hover);
+}
+.anna-voice-active,
+.anna-voice-active:hover {
+    color: #a12f36;
+    background: #fbefef;
+}
 .anna-composer-footer {
     display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
     font-size: 10px;
     color: var(--anna-muted);
     padding: 9px 2px;
+    white-space: nowrap;
+    min-width: 0;
 }
-.anna-voice-controls {
-    padding: 4px 22px 16px;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
+.anna-composer-footer > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.anna-composer-shortcut {
     flex: none;
 }
 .anna-end-call {
@@ -301,7 +326,7 @@
     align-items: center;
     flex-direction: column;
     justify-content: center;
-    background: radial-gradient(ellipse at 50% 40%, #e5eee3 0, #f3f4ed 48%, #f8f8f3 100%);
+    background: radial-gradient(ellipse at 50% 40%, var(--anna-tint) 0, var(--anna-surface) 48%, #fff 100%);
 }
 .anna-presence-kicker {
     display: flex;
@@ -316,8 +341,8 @@
     aspect-ratio: 1;
     border-radius: 50%;
     padding: 9px;
-    border: 1px solid #d7e0d1;
-    box-shadow: 0 15px 70px #465e4314;
+    border: 1px solid var(--anna-border);
+    box-shadow: 0 15px 70px #0c66ff14;
     flex: none;
 }
 .anna-portrait img,
@@ -326,17 +351,17 @@
     height: 100%;
     object-fit: cover;
     border-radius: 50%;
-    background: #dbe7da;
+    background: var(--anna-tint);
     display: grid;
     place-items: center;
     font-size: 70px;
-    color: #608272;
+    color: var(--anna-accent);
 }
 .anna-presence-live .anna-portrait {
-    border-color: #639984;
+    border-color: var(--anna-focus);
     box-shadow:
-        0 0 0 10px #6b9b7715,
-        0 15px 70px #465e4314;
+        0 0 0 10px #0c66ff15,
+        0 15px 70px #0c66ff14;
 }
 .anna-presence-copy {
     text-align: center;
@@ -365,7 +390,7 @@
     gap: 24px;
     justify-content: space-between;
     background: #ffffff90;
-    border: 1px solid #dce4d8;
+    border: 1px solid var(--anna-border);
     border-radius: 10px;
     padding: 13px 16px;
     color: var(--anna-ink);
@@ -385,8 +410,8 @@
     flex-wrap: wrap;
     gap: 8px;
     padding: 12px 14px;
-    border-bottom: 1px solid #e1e7e2;
-    background: #fafbf9;
+    border-bottom: 1px solid var(--anna-border);
+    background: var(--anna-surface);
 }
 .anna-workspace-toolbar button {
     border: 0;
@@ -398,7 +423,7 @@
 }
 .anna-workspace-toolbar button:hover,
 .anna-workspace-toolbar button[aria-pressed='true'] {
-    background: #e6eee4;
+    background: var(--anna-hover);
 }
 .anna-workspace-content {
     flex: 1;
@@ -415,7 +440,7 @@
     gap: 8px;
     flex: none;
     padding: 12px 16px;
-    background: #edf4ef;
+    background: var(--anna-tint);
     font-size: 13px;
 }
 .anna-pending span {
@@ -423,7 +448,7 @@
 }
 .anna-pending button,
 .anna-error button {
-    border: 1px solid #c9dbce;
+    border: 1px solid var(--anna-border);
     background: white;
     border-radius: 6px;
     padding: 6px 10px;
@@ -456,7 +481,7 @@
 }
 .anna-latest {
     align-self: center;
-    border: 1px solid #dce4d8;
+    border: 1px solid var(--anna-border);
     border-radius: 20px;
     padding: 7px 14px;
     color: var(--anna-accent);
@@ -473,9 +498,6 @@
     .anna-header-note {
         display: none;
     }
-    .anna-brand {
-        font-size: 26px !important;
-    }
     .anna-layout {
         display: flex;
         flex-direction: column-reverse;
@@ -487,10 +509,7 @@
     .anna-conversation {
         flex: 1;
         border-right: 0;
-        border-top: 1px solid #e1e7e2;
-    }
-    .anna-conversation-heading {
-        display: none;
+        border-top: 1px solid var(--anna-border);
     }
     .anna-presence {
         flex-direction: row;
@@ -545,11 +564,8 @@
     .anna-composer {
         margin: 0 14px;
     }
-    .anna-composer-footer span:last-child {
+    .anna-composer-shortcut {
         display: none;
-    }
-    .anna-voice-controls {
-        padding: 0 14px max(8px, env(safe-area-inset-bottom));
     }
     .anna-has-workspace .anna-stage {
         flex: 1;
@@ -588,7 +604,7 @@
         height: 78%;
         z-index: 30;
         border-radius: 18px 18px 0 0;
-        box-shadow: 0 -12px 45px #18302630;
+        box-shadow: 0 -12px 45px #04142f30;
         overflow: hidden;
     }
     .anna-chat-expanded.anna-has-workspace .anna-conversation .anna-messages {
@@ -628,9 +644,9 @@
     border-bottom: 2px solid #c79100;
 }
 .anna-highlight-outline {
-    outline: 2px solid #27806a;
+    outline: 2px solid var(--anna-accent, #0c66ff);
     outline-offset: 2px;
-    background: rgba(65, 166, 131, 0.08);
+    background: rgba(12, 102, 255, 0.08);
 }
 .anna-workspace-content {
     position: relative;
@@ -709,18 +725,14 @@
 .anna-control {
     margin-left: auto;
 }
-.anna-zoom-shell .anna-brand {
-    font-size: 19px !important;
-    letter-spacing: 0;
-}
 .anna-divider {
     cursor: col-resize;
     touch-action: none;
-    background: #e1e7e2;
+    background: var(--anna-border);
 }
 .anna-divider:hover,
 .anna-divider:focus-visible {
-    background: #89b2a4;
+    background: var(--anna-focus);
 }
 .anna-mobile-tabs {
     display: none;
@@ -758,7 +770,7 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
-    background: #f7f8f5;
+    background: var(--anna-surface);
 }
 .anna-browser-workspace {
     padding: 16px;
@@ -777,14 +789,14 @@
     flex: none;
 }
 .anna-browser-workspace button {
-    border: 1px solid #d4ded8;
+    border: 1px solid var(--anna-border);
     background: white;
     border-radius: 7px;
     padding: 8px 12px;
 }
 .anna-browser-frame {
     margin: 12px 0;
-    background: #e1e7e2;
+    background: var(--anna-border);
 }
 .anna-browser-frame img {
     display: block;
@@ -800,7 +812,7 @@
     min-width: 0;
     flex: 1;
     padding: 8px;
-    border: 1px solid #d4ded8;
+    border: 1px solid var(--anna-border);
     border-radius: 6px;
     font-size: 16px;
 }
@@ -834,11 +846,11 @@
         border: 0;
         border-radius: 8px;
         padding: 10px;
-        background: #f0f3ef;
+        background: var(--anna-tint);
     }
     .anna-mobile-tabs button[aria-pressed='true'] {
         color: white;
-        background: #276b5e;
+        background: var(--anna-accent);
     }
     .anna-zoom-shell .anna-stage,
     .anna-zoom-shell .anna-conversation {
@@ -857,15 +869,37 @@
         position: relative;
     }
     .anna-zoom-shell .anna-header {
-        height: auto;
-        min-height: 54px;
+        height: 72px;
+        gap: 12px;
+        padding: 0 12px;
+    }
+    .anna-header-assistant {
         gap: 8px;
     }
+    .anna-header-details {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 3px;
+    }
+    .anna-header .anna-small-avatar {
+        width: 32px;
+        height: 32px;
+    }
     .anna-zoom-shell .anna-brand {
-        font-size: 16px !important;
+        font-size: 16px;
+    }
+    .anna-header-identity > span {
+        margin-top: 2px;
+        font-size: 11px;
+    }
+    .anna-header .anna-context {
+        padding: 0;
+        background: transparent;
+        font-size: 11px;
     }
     .anna-zoom-shell .anna-zoom-back {
         font-size: 12px;
+        padding: 9px 10px;
     }
     .anna-browser-heading {
         flex-wrap: wrap;
@@ -873,12 +907,17 @@
 }
 
 .anna-zoom-back {
-    border: 1px solid #d4ded8;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    border: 1px solid var(--anna-border);
     background: white;
     border-radius: 8px;
     padding: 9px 14px;
     color: var(--anna-ink);
 }
 .anna-zoom-back:hover {
-    background: #edf4ef;
+    background: var(--anna-tint);
 }

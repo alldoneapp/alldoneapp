@@ -42,15 +42,17 @@ export default function MainSectionTabsHeader({
     const project = useSelector(state => state.loggedUserProjects[selectedProjectIndex])
     const realProjectIds = useSelector(state => state.loggedUser.realProjectIds)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
+    const workspaceWidth = useSelector(state => state.screenDimensions?.width)
     const getViewportWidth = () =>
         typeof window !== 'undefined' && typeof window.innerWidth === 'number'
             ? window.innerWidth
             : Dimensions.get('window').width
     const [viewportWidth, setViewportWidth] = useState(getViewportWidth())
 
-    const useMobileLayout = viewportWidth < SCREEN_BREAKPOINT_NAV
-    const useCompactMobileTabs = useMobileLayout && viewportWidth < COMPACT_TABS_BREAKPOINT
-    const useCompactDesktopTabs = !useMobileLayout && viewportWidth < 1500
+    const availableWidth = workspaceWidth > 0 ? workspaceWidth : viewportWidth
+    const useMobileLayout = availableWidth < SCREEN_BREAKPOINT_NAV
+    const useCompactMobileTabs = useMobileLayout && availableWidth < COMPACT_TABS_BREAKPOINT
+    const useCompactDesktopTabs = !useMobileLayout && availableWidth < 1500
     const tabs = [
         { text: 'Tasks', value: DV_TAB_ROOT_TASKS },
         { text: 'Goals', value: DV_TAB_ROOT_GOALS },

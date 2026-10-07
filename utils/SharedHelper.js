@@ -56,6 +56,7 @@ import { getChatMeta } from './backends/Chats/chatsFirestore'
 import { SIDEBAR_NAVIGATION_SIMPLE } from './SidebarNavigationModes'
 import URLsBookingTrigger from '../URLSystem/Booking/URLsBookingTrigger'
 import { PLAN_STATUS_FREE } from '../components/Premium/PremiumHelper'
+import { withoutAnnaMode } from './annaMode'
 
 class SharedHelper {
     static createAnonymousResourceUser = userId => ({
@@ -76,12 +77,12 @@ class SharedHelper {
             try {
                 const parsedUrl = new window.URL(rawUrl, window.location.origin)
                 if (parsedUrl.origin === window.location.origin) {
-                    return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
+                    return withoutAnnaMode(`${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`)
                 }
             } catch (_) {}
         }
 
-        return rawUrl
+        return withoutAnnaMode(rawUrl)
     }
 
     // Synchronously decide whether a URL is a shareable resource *detail* link (chat, note, task,

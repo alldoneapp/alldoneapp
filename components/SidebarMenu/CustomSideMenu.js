@@ -11,13 +11,7 @@ import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
 import LoggedUserSidebar from './LoggedUserSidebar/LoggedUserSidebar'
 import AnonymousUserSidebar from './AnonymousUserSidebar/AnonymousUserSidebar'
 import Backdrop from './Backdrop'
-import { useAnnaMode } from '../../utils/annaMode'
-
-export default function CustomSideMenu(props) {
-    return useAnnaMode() ? null : <WorkspaceSideMenu {...props} />
-}
-
-function WorkspaceSideMenu({ navigation }) {
+export default function CustomSideMenu({ navigation }) {
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)

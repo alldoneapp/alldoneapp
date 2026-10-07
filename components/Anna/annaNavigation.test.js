@@ -2,17 +2,20 @@ import { resolveAnnaLink, shouldDeferPresentation } from './annaNavigation'
 import { resolveAnnaMode } from '../../utils/annaMode'
 
 describe('Anna entry and navigation', () => {
-    it('leaves the current production interface unchanged even with a preview query', () => {
+    it('supports an explicit assistant view on each environment while keeping ordinary URLs unchanged', () => {
         expect(resolveAnnaMode({ hostname: 'my.alldone.app', search: '?anna=1' })).toBe(false)
+        expect(resolveAnnaMode({ hostname: 'my.alldone.app', search: '?assistant=1' })).toBe(true)
+        expect(resolveAnnaMode({ hostname: 'my.alldone.app', search: '' })).toBe(false)
+        expect(resolveAnnaMode({ hostname: 'alldonestaging.web.app', search: '?assistant=1' })).toBe(true)
         expect(resolveAnnaMode({ hostname: 'anna.alldone.app', search: '' })).toBe(true)
+        expect(resolveAnnaMode({ hostname: 'anna.alldone.app', search: '?assistant=0' })).toBe(false)
         expect(resolveAnnaMode({ hostname: 'anna.alldone.app.evil.test' })).toBe(false)
     })
-    it('keeps local preview mode through existing app navigation', () => {
-        const data = new Map()
-        const storage = { setItem: (key, value) => data.set(key, value), getItem: key => data.get(key) }
-        expect(resolveAnnaMode({ hostname: 'localhost', search: '?anna=1' }, storage)).toBe(true)
-        expect(resolveAnnaMode({ hostname: 'localhost', search: '' }, storage)).toBe(true)
-        expect(resolveAnnaMode({ hostname: 'localhost', search: '?anna=0' }, storage)).toBe(false)
+    it('accepts legacy local preview links without overriding the URL with stored preferences', () => {
+        expect(resolveAnnaMode({ hostname: 'localhost', search: '?anna=1' })).toBe(true)
+        expect(resolveAnnaMode({ hostname: 'localhost', search: '' })).toBe(false)
+        expect(resolveAnnaMode({ hostname: 'localhost', search: '?anna=0' })).toBe(false)
+        expect(resolveAnnaMode({ hostname: 'localhost', search: '?anna=1&assistant=0' })).toBe(false)
     })
     it('opens canonical alldone object links in the workspace', () => {
         expect(resolveAnnaLink('https://my.alldone.app/projects/p1/notes/n1/editor', 'https://anna.alldone.app')).toBe(

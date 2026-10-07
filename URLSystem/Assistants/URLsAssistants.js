@@ -1,3 +1,4 @@
+import { withAnnaMode } from '../../utils/annaMode'
 import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
 import { getProjectData } from '../../utils/backends/firestore'
 import URLSystem from '../URLSystem'
@@ -59,7 +60,7 @@ class URLsAssistants {
         URLSystem.setLastNavigationScreen(urlPath, true)
 
         URLsAssistants.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', `${originPath}/${urlPath}`)
+        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     /**
@@ -75,7 +76,7 @@ class URLsAssistants {
         URLSystem.setLastNavigationScreen(urlPath)
 
         URLsAssistants.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', `${originPath}/${urlPath}`)
+        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     static getPath = (urlConstant, ...params) => {

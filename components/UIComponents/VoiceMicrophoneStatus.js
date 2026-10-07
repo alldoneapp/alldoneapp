@@ -6,7 +6,7 @@ import styles, { colors } from '../styles/global'
 
 // Keep 10 Hz meter updates inside this small component, not in the app-wide
 // call context (which would rerender every assistant composer while speaking).
-export default function VoiceMicrophoneStatus({ read }) {
+export default function VoiceMicrophoneStatus({ read, compact = false }) {
     const [input, setInput] = useState(() => read?.() || {})
     useEffect(() => {
         const sample = () => setInput(read?.() || {})
@@ -26,22 +26,28 @@ export default function VoiceMicrophoneStatus({ read }) {
             ? 'Microphone preview'
             : 'Microphone level'
     return (
-        <View style={localStyles.container} testID="voice-microphone-status">
+        <View
+            style={[localStyles.container, compact && localStyles.compactContainer]}
+            testID="voice-microphone-status"
+            title={`${label} · ${translate(state)}`}
+        >
             <View style={localStyles.row}>
                 <Icon name={input.muted ? 'mic-off' : 'mic'} size={12} color={colors.Text03} />
-                <Text
-                    testID="voice-microphone-name"
-                    numberOfLines={1}
-                    style={localStyles.label}
-                    accessibilityLabel={translate('Microphone: %{name}', { name: label })}
-                    title={label}
-                >
-                    {label}
-                </Text>
+                {!compact && (
+                    <Text
+                        testID="voice-microphone-name"
+                        numberOfLines={1}
+                        style={localStyles.label}
+                        accessibilityLabel={translate('Microphone: %{name}', { name: label })}
+                        title={label}
+                    >
+                        {label}
+                    </Text>
+                )}
             </View>
             <View
                 testID="voice-microphone-level"
-                style={localStyles.meter}
+                style={[localStyles.meter, compact && localStyles.compactMeter]}
                 accessible
                 accessibilityRole="progressbar"
                 accessibilityLabel={translate(state)}
@@ -52,13 +58,15 @@ export default function VoiceMicrophoneStatus({ read }) {
             >
                 <View style={[localStyles.fill, { width: `${percent}%` }]} />
             </View>
-            {state !== 'Microphone level' && <Text style={localStyles.hint}>{translate(state)}</Text>}
+            {!compact && state !== 'Microphone level' && <Text style={localStyles.hint}>{translate(state)}</Text>}
         </View>
     )
 }
 
 const localStyles = StyleSheet.create({
     container: { marginTop: 2, width: '100%' },
+    compactContainer: { marginTop: 0, width: 64, flexShrink: 0, flexDirection: 'row', alignItems: 'center' },
+    compactMeter: { flex: 1, marginTop: 0, marginLeft: 5 },
     row: { flexDirection: 'row', alignItems: 'center' },
     label: { ...styles.caption1, color: colors.Text03, marginLeft: 4, flexShrink: 1 },
     meter: { height: 4, borderRadius: 2, backgroundColor: '#E7ECEF', overflow: 'hidden', marginTop: 3 },
