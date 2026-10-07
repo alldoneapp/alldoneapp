@@ -1581,9 +1581,9 @@ crosshair for the nearest ancestor containing one, so two assistant lines on one
 from each other's avatar, and it falls back to the crosshair itself. The avatar's size is passed too:
 she grows out of it and shrinks back into it.
 
-**Progress follows the user across devices** (`raidProgress.js`). Clearing a mission saves a
+**Progress follows the user across devices** (`raidProgress.js`). Clearing a mission updates an in-memory
 checkpoint — the mission number plus the run as it leaves the hangar — and every hangar purchase
-updates it; the next raid takes off at the following mission, and a game over replays from the
+updates it in memory; the next raid takes off at the following mission, and a game over replays from the
 checkpoint (with that game's credits banked) rather than from mission 1. Only "Start over" clears it (↺ in the status pill pressed
 twice, or the confirming button in the hangar and on the game-over card), and a start over is saved
 as an EMPTY checkpoint so other devices drop theirs too. Two copies: the server's
@@ -1594,8 +1594,17 @@ for `getRageModeProfile`, showing a loading panel. A failed read offers retry or
 starts local gameplay (AT-2700). A successful empty profile starts at mission 1. The server stamps
 `savedAt`, so devices with different clocks agree. `reconcile` adopts the server copy, retaining
 only newer unsynced local saves for delivery; a synced local copy cannot override an empty server
-profile. Saves go out ONE at a time, newest last, so two quick hangar purchases can
-never reach the server in the wrong order. Both copies are owner-editable, so a checkpoint is always
+profile. **Progress/score writes and leaderboard reads happen only at the end of a run** (AT-2700 follow-up):
+`gameOver`, explicit exit/navigation teardown, or confirmed start-over. A hangar between missions is
+still the SAME run; its purchases and completed checkpoints stay in memory, with no localStorage
+writes either. Losing banks only that mission's credits into the latest checkpoint; exiting retains
+the last completed checkpoint/purchases (existing quit policy; uncompleted credits are not banked).
+A final pending record is written locally before async cloud delivery. Game-over offers save retry;
+preflight/replay/reset wait for final saves and score/board requests to settle, with a retry/exit
+panel on progress-save failure. `raidPersistence.js` carries the request barrier across arena
+teardown/reopening for the same uid, so even an old save cannot overlap a new flight. There is no
+Rage progress realtime listener or polling. Loading/saving screens park requestAnimationFrame until
+ready; no artificial delay. Gold weapon purchases remain explicit shop actions, with play paused. Both copies are owner-editable, so a checkpoint is always
 read through `sanitizeCheckpoint`; the server's copy of those rules is
 `functions/RageMode/rageModeProgress.js`, and `raidProgress.test.js` fails the build if the two
 disagree. Since credits only buy in-run consumables, a forged checkpoint cheats nobody. Missions scroll faster as they go (`missionScrollSpeed`: 96 px/s, +12% per mission, at
@@ -1654,7 +1663,7 @@ is drawn exactly where `waveHits` has it). Text on a disc (a cylinder turned to 
 face, badges, pickup tokens) needs `DISC_TEXTURE_TURN`, or it shows a quarter turn off.
 
 **There is a GLOBAL leaderboard** (`functions/RageMode/rageModeLeaderboard.js`), shown after every
-game over and every completed mission: the top five, the player's own row highlighted (or shown
+game over: the top five, the player's own row highlighted (or shown
 below the five with its rank when it is not among them), and the name they play under, editable in
 place. One document per player in `rageModeLeaderboard/{uid}` — no client rule, so only the callables
 `getRageModeLeaderboard` / `setRageModeName` and `submitRageModeScore` touch it; a new best is written
@@ -1663,8 +1672,7 @@ the board existed). Rank is a `count()` of strictly higher scores plus one, so t
 nothing reads the whole board. The board is visible to every Alldone user across workspaces, so a real
 name is never shown by default: until a player chooses one they are "Pilot ####" (derived from the uid),
 and a chosen name must be 2–20 letters, digits, spaces or `. _ - '` — nothing that can carry a link,
-markup or a mention. A score posted after a mission passes `final: false`, so it can set a best without
-counting as a finished game. Keys typed into the name field are kept from the game and the app
+markup or a mention. Scores are posted only when the run ends. Keys typed into the name field are kept from the game and the app
 (`NAME_INPUT_ATTRIBUTE`): the window capture handler lets them type and stops everything else.
 
 **The raid is fitted to the screen** (`raidScreen.js`): the same waves on a phone would be three times
@@ -1714,7 +1722,7 @@ shield generator 2,500 → 3,500 → 4,500); repairs (60) and bombs (80) stay ch
 That only works because **a lost game keeps what it earned**: `gameOver` banks the attempt's
 `missionCredits` into the checkpoint (`bankCredits` in `raidProgress.js` — before mission 1 is ever
 cleared that is a `completed: 0` checkpoint, which `sanitizeCheckpoint` keeps only while it carries
-credits or upgrades; the server copy applies the same rule), and the game-over card opens the hangar
+credits, upgrades or purchased extra bombs; the server copy applies the same rule), and the game-over card opens the hangar
 (🛠️, or H) to spend them before another go at the same mission. Without banking, a grind this long
 would strand players at the first mission they cannot clear. Difficulty never stops rising but each
 mission adds less (`missionDifficulty`: `1 + 0.3·(n−1)^0.7` — 1.3 at mission 2, 2.4 at 10, 3.5 at 30).

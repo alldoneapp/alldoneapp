@@ -159,6 +159,15 @@ describe('rage mode profile', () => {
             expect(progress).toEqual({ checkpoint: saved.checkpoint, savedAt: saved.savedAt })
         })
 
+        it('saves bombs bought with the last credits of a lost first mission', async () => {
+            const saved = await saveRageModeProgress({
+                userId: 'u1',
+                checkpoint: { completed: 0, credits: 0, bombs: 3 },
+            })
+            expect(saved).toMatchObject({ ok: true, checkpoint: { completed: 0, credits: 0, bombs: 3 } })
+            expect((await getRageModeProfile({ userId: 'u1' })).progress.checkpoint.bombs).toBe(3)
+        })
+
         it('records a start-over as an empty checkpoint, so other devices drop theirs too', async () => {
             await saveRageModeProgress({ userId: 'u1', checkpoint: { completed: 2 } })
             const cleared = await saveRageModeProgress({ userId: 'u1', checkpoint: null })

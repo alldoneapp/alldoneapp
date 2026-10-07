@@ -118,8 +118,10 @@ import {
     reconcile,
     runFromCheckpoint,
     sanitizeRecord,
+    sanitizeCheckpoint,
     writeRecord,
 } from './raidProgress'
+import { trackRagePersistence, waitForRagePersistence } from './raidPersistence'
 import { GREETING_TIMING, greetingPose, pickGreetingStyle } from './rageGreeting'
 import { buildShop } from './rageShop'
 
@@ -1108,51 +1110,81 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         return next
     }
     let run = freshRun()
-    // One save in flight at a time, newest last: two quick hangar purchases must never reach the
-    // server in the wrong order.
-    let syncing = false
-    const syncProgress = () => {
-        if (syncing || !services.saveProgress || !record || !record.pending) return
-        syncing = true
-        const sending = record
-        Promise.resolve()
-            .then(() => services.saveProgress(sending.checkpoint))
-            .then(result => {
-                if (result && result.ok && record === sending) {
-                    record = { checkpoint: sending.checkpoint, savedAt: result.savedAt, pending: false }
-                    writeRecord(progressScope, record)
-                }
-            })
-            .catch(() => {})
-            .finally(() => {
-                syncing = false
-                if (record && record.pending && record !== sending) syncProgress()
-            })
-    }
-    /** Remember `next` (a checkpoint, or null for "start over") here and on the server. */
+    // Checkpoints and hangar purchases stay in memory throughout the run. Only the existing
+    // terminal transitions (death, exit, confirmed reset) persist them.
+    let progressDirty = false
+    let syncing = null
+    let runEnded = false
+    let runStarted = !services.loadProfile
     const storeProgress = next => {
         checkpoint = next
-        record = { checkpoint: next, savedAt: Date.now(), pending: true }
-        writeRecord(progressScope, record)
+        progressDirty = true
         ui.setCanStartOver(!!next)
-        syncProgress()
     }
     const saveProgress = () => storeProgress(checkpointFromRun(run))
-    /** The server's copy arrived: fly with whichever is newer, and push ours up if it is. */
+    const syncProgress = () => {
+        if (syncing) return syncing
+        if (!record || !record.pending || !services.saveProgress) return Promise.resolve(true)
+        const sending = record
+        const request = Promise.resolve()
+            .then(() => services.saveProgress(sending.checkpoint))
+            .then(result => {
+                const synced =
+                    result &&
+                    result.ok &&
+                    sanitizeRecord({
+                        checkpoint: sending.checkpoint,
+                        savedAt: result.savedAt,
+                    })
+                if (!synced) return false
+                if (record === sending) {
+                    record = synced
+                    writeRecord(progressScope, record)
+                }
+                return true
+            })
+            .catch(() => false)
+        syncing = trackRagePersistence(
+            progressScope,
+            request.then(ok => {
+                syncing = null
+                // Post-game purchases/reset can replace the final record while a save is outstanding.
+                // Everyone waiting for this save must also see the outcome of the latest one.
+                if (ok && record !== sending && record?.pending) return syncProgress()
+                return ok
+            })
+        )
+        return syncing
+    }
+    const persistProgress = () => {
+        if (progressDirty) {
+            record = {
+                checkpoint: sanitizeCheckpoint(checkpoint),
+                savedAt: Math.max(Date.now(), (record?.savedAt || 0) + 1),
+                pending: true,
+            }
+            writeRecord(progressScope, record)
+            progressDirty = false
+        }
+        return syncProgress()
+    }
+    const retrySave = () => {
+        if (!runEnded || finished || phase === 'saving') return
+        ui.gameOver.setSaveStatus('saving')
+        persistProgress().then(ok => {
+            if (!finished && runEnded) ui.gameOver.setSaveStatus(ok ? 'ready' : 'error')
+        })
+    }
+    /** Adopt the authoritative profile only before take-off; deliver a pending final save first. */
     const adoptServerProgress = progress => {
         const remote = progress ? sanitizeRecord({ ...progress, pending: false }) : null
-        const { record: chosen, push } = reconcile(record, remote)
-        const next = chosen ? chosen.checkpoint : null
-        const changed = JSON.stringify(next) !== JSON.stringify(checkpoint)
+        const { record: chosen } = reconcile(record, remote)
         record = chosen
+        checkpoint = chosen ? chosen.checkpoint : null
         writeRecord(progressScope, chosen)
-        if (changed && phase === 'loading') {
-            checkpoint = next
-            run = freshRun()
-            ui.setCanStartOver(!!checkpoint)
-            hudDirty = true
-        }
-        if (push) syncProgress()
+        run = freshRun()
+        ui.setCanStartOver(!!checkpoint)
+        hudDirty = true
     }
     let startOverArmedUntil = -Infinity
     let best = 0
@@ -1261,7 +1293,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             saveName: name => saveName(name),
             startOver: () => startOver(),
             requestStartOver: () => requestStartOver(),
-            retryProfile: () => loadProfile(),
+            retryProfile: () => (phase === 'save-error' ? resumeAfterSave() : loadProfile()),
+            retrySave: () => retrySave(),
         },
     })
     ui.setCanStartOver(!!checkpoint)
@@ -2505,10 +2538,11 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         ui.setBuffs([])
         debrief = completeMission(run)
         saveProgress()
-        refreshLeaderboard(postProgressScore())
+        // A mission boundary is still the same run: no progress/score writes or board reads.
         hangarMessage = null
         laserGroup.visible = false
         enemyShots.length = 0
+        ui.hangar.leaderboard.element.style.display = 'none'
         ui.hangar.show({ run, debrief, message: null })
         hudDirty = true
         // The next sector's ground is already visible behind the hangar.
@@ -2544,6 +2578,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         retrying = true
         setPhase('hangar')
         hangarMessage = null
+        ui.hangar.leaderboard.element.style.display = ''
         ui.hangar.show({
             run,
             debrief: lostDebrief || { mission: run.mission + 1, kills: 0, credits: 0, lost: true },
@@ -2557,7 +2592,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             retrying = false
             closeShop()
             ui.hangar.hide()
-            relaunch()
+            prepareFlight(relaunch)
             return
         }
         closeShop()
@@ -2579,20 +2614,23 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         const wasNew = final > best
         best = Math.max(best, final)
         if (final <= 0 || !services.submitScore) return wasNew
-        scorePosted = Promise.resolve()
-            .then(() => services.submitScore(final))
-            .then(result => {
-                if (!result || !result.ok) return
-                best = Math.max(best, result.highscore || 0)
-                if (!finished) ui.gameOver.update({ best, isNew: !!result.isNew })
-            })
-            .catch(() => {})
+        scorePosted = trackRagePersistence(
+            progressScope,
+            Promise.resolve()
+                .then(() => services.submitScore(final))
+                .then(result => {
+                    if (!result || !result.ok) return
+                    best = Math.max(best, result.highscore || 0)
+                    if (!finished) ui.gameOver.update({ best, isNew: !!result.isNew })
+                })
+                .catch(() => {})
+        )
         return wasNew
     }
 
     /*
      * The global leaderboard (functions/RageMode/rageModeLeaderboard.js): read after every game
-     * over and every completed mission, once the score is posted, and shown on both cards.
+     * over, once the final score is posted; a mid-run hangar never contacts the board.
      */
     let board = { status: 'loading' }
     const setBoard = next => {
@@ -2608,42 +2646,84 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             return
         }
         setBoard({ status: 'loading' })
-        Promise.resolve(posted)
-            .catch(() => {})
-            .then(() => services.loadLeaderboard())
-            .then(result => {
-                if (finished) return
-                if (!result || !Array.isArray(result.top)) throw new Error('no leaderboard')
-                setBoard({ status: 'ready', ...result })
-            })
-            .catch(() => {
-                if (!finished) setBoard({ status: 'error' })
-            })
+        return trackRagePersistence(
+            progressScope,
+            Promise.resolve(posted)
+                .catch(() => {})
+                .then(() => services.loadLeaderboard())
+                .then(result => {
+                    if (finished || !runEnded) return
+                    if (!result || !Array.isArray(result.top)) throw new Error('no leaderboard')
+                    setBoard({ status: 'ready', ...result })
+                })
+                .catch(() => {
+                    if (!finished && runEnded) setBoard({ status: 'error' })
+                })
+        )
     }
-    // A mid-run score (after a mission): it can set a new best, but it is not a finished game.
-    const postProgressScore = () =>
-        run.score > 0 && services.submitScore
-            ? Promise.resolve()
-                  .then(() => services.submitScore(run.score, { final: false }))
-                  .catch(() => {})
-            : Promise.resolve()
     const saveName = name => {
-        if (!services.setName) return
-        Promise.resolve()
-            .then(() => services.setName(name))
-            .then(result => {
-                if (finished) return
-                if (!result || !result.ok) {
-                    setBoard({ nameError: true })
-                    return
-                }
-                sound.purchase()
-                setBoard({ name: result.name, nameChosen: true, nameError: false, nameSaved: true })
-                refreshLeaderboard()
-            })
-            .catch(() => {
-                if (!finished) setBoard({ nameError: true })
-            })
+        if (!services.setName || !runEnded) return
+        trackRagePersistence(
+            progressScope,
+            Promise.resolve()
+                .then(() => services.setName(name))
+                .then(result => {
+                    if (finished || !runEnded) return
+                    if (!result || !result.ok) {
+                        setBoard({ nameError: true })
+                        return
+                    }
+                    sound.purchase()
+                    setBoard({ name: result.name, nameChosen: true, nameError: false, nameSaved: true })
+                    refreshLeaderboard()
+                })
+                .catch(() => {
+                    if (!finished && runEnded) setBoard({ nameError: true })
+                })
+        )
+    }
+
+    const endRun = () => {
+        if (!runStarted) return
+        if (!runEnded) {
+            runEnded = true
+            lastRoundNew = submitScore()
+        }
+        ui.gameOver.setSaveStatus('saving')
+        persistProgress().then(ok => {
+            if (!finished && runEnded) ui.gameOver.setSaveStatus(ok ? 'ready' : 'error')
+        })
+    }
+
+    // Saving is asynchronous. Keep the frame loop free and the next run grounded until all
+    // previous progress/score requests have settled; failed final saves offer an explicit retry.
+    let afterSave = null
+    let preparingFlight = false
+    const resumeAfterSave = async () => {
+        if (finished || preparingFlight || !afterSave) return
+        preparingFlight = true
+        setPhase('saving')
+        closeShop()
+        ui.setProfileStatus('saving')
+        const ok = await persistProgress()
+        await waitForRagePersistence(progressScope)
+        preparingFlight = false
+        if (finished) return
+        if (!ok) {
+            setPhase('save-error')
+            ui.setProfileStatus('save-error')
+            return
+        }
+        const launch = afterSave
+        afterSave = null
+        ui.setProfileStatus('ready')
+        lastTimestamp = 0
+        launch()
+        if (!frameId) frameId = requestAnimationFrame(frame)
+    }
+    const prepareFlight = launch => {
+        afterSave = launch
+        resumeAfterSave()
     }
 
     const gameOver = () => {
@@ -2658,12 +2738,12 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         explode(ship.x, ship.y, 2)
         flashScreen(0.5)
         shipNode.visible = false
-        lastRoundNew = submitScore()
-        refreshLeaderboard(scorePosted)
         // A lost game still pays: what it earned is banked into the checkpoint, so the next go —
         // and the hangar on the game-over card — starts with it.
         lostDebrief = { mission: run.mission, kills: run.kills, credits: run.missionCredits, lost: true }
         if (run.missionCredits > 0) storeProgress(bankCredits(checkpoint, run.missionCredits))
+        endRun()
+        refreshLeaderboard(scorePosted)
     }
 
     const clearBattlefield = ({ withExplosions = false } = {}) => {
@@ -2704,7 +2784,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const playAgain = () => {
         if (phase !== 'gameover') return
         ui.gameOver.hide()
-        relaunch()
+        prepareFlight(relaunch)
     }
 
     // Another go from the checkpoint (or from mission 1 when there is none).
@@ -2713,6 +2793,8 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         clearBattlefield()
         run = freshRun()
         scoreSubmitted = false
+        runEnded = false
+        runStarted = true
         ship.x = viewport.width / 2
         ship.y = viewport.height * FLY_Y
         resetSteering()
@@ -2728,19 +2810,23 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         if (
             phase === 'loading' ||
             phase === 'profile-error' ||
+            phase === 'saving' ||
+            phase === 'save-error' ||
             phase === 'takeoff' ||
             phase === 'returning' ||
             phase === 'done'
         )
             return
         cancelGreeting()
-        submitScore()
         storeProgress(null)
+        endRun()
         closeShop()
         ui.hangar.hide()
         ui.gameOver.hide()
-        relaunch()
-        ui.showToast(strings.missionStart.replace('{n}', 1), 2)
+        prepareFlight(() => {
+            relaunch()
+            ui.showToast(strings.missionStart.replace('{n}', 1), 2)
+        })
     }
     // The ↺ in the status pill asks twice: a stray tap must not throw away five missions.
     const requestStartOver = () => {
@@ -2757,14 +2843,14 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     const beginReturn = () => {
         if (phase === 'returning' || phase === 'done') return
         // Anna has not left her avatar yet; close without a return flight or score submission.
-        if (phase === 'loading' || phase === 'profile-error') {
+        if (phase === 'loading' || phase === 'profile-error' || phase === 'saving' || phase === 'save-error') {
             finish()
             return
         }
         cancelGreeting()
         resetRig()
         liftoffAt = -Infinity
-        submitScore()
+        endRun()
         closeShop()
         ui.hangar.hide()
         ui.gameOver.hide()
@@ -3771,10 +3857,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         const dt = lastTimestamp ? Math.min(0.05, (timestamp - lastTimestamp) / 1000) : 1 / 60
         lastTimestamp = timestamp
         // No animation clock, page movement, enemies or gameplay until progress is loaded.
-        if (phase === 'loading' || phase === 'profile-error') {
-            frameId = requestAnimationFrame(frame)
-            return
-        }
+        if (phase === 'loading' || phase === 'profile-error' || phase === 'saving' || phase === 'save-error') return
         if (paused) {
             // The shop is open: everything holds still (buff timers too), the picture stays.
             renderer.render(scene, camera)
@@ -3962,7 +4045,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
             event.stopImmediatePropagation()
             return
         }
-        if (phase === 'loading' || phase === 'profile-error') {
+        if (phase === 'loading' || phase === 'profile-error' || phase === 'saving' || phase === 'save-error') {
             event.stopImmediatePropagation()
             if (down && event.key === 'Escape') {
                 event.preventDefault()
@@ -3975,7 +4058,10 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 return
             } else {
                 event.preventDefault()
-                if (down && event.key === 'Enter' && phase === 'profile-error') loadProfile()
+                if (down && event.key === 'Enter') {
+                    if (phase === 'profile-error') loadProfile()
+                    else if (phase === 'save-error') resumeAfterSave()
+                }
             }
             return
         }
@@ -4093,7 +4179,12 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
         inputLayer.style.cursor = 'default'
         ui.setProfileStatus('loading')
         Promise.resolve()
-            .then(() => services.loadProfile())
+            .then(() => waitForRagePersistence(progressScope))
+            .then(() => {
+                if (finished) return null
+                record = readRecord(progressScope)
+                return services.loadProfile()
+            })
             .then(profile => {
                 if (finished) return
                 if (
@@ -4112,9 +4203,12 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
                 held.clear()
                 resetSteering()
                 inputLayer.style.cursor = touchDevice ? 'default' : 'none'
-                ui.setProfileStatus('ready')
-                setPhase('takeoff')
-                showHelp()
+                prepareFlight(() => {
+                    runStarted = true
+                    inputLayer.style.cursor = touchDevice ? 'default' : 'none'
+                    setPhase('takeoff')
+                    showHelp()
+                })
             })
             .catch(() => {
                 if (finished) return
@@ -4136,6 +4230,7 @@ export function startRageArena({ strings, from, onExit, pageRoot, progressScope,
     /* Teardown. */
     function finish() {
         if (finished) return
+        if (runStarted && phase !== 'returning') endRun()
         finished = true
         setPhase('done')
         if (frameId) cancelAnimationFrame(frameId)

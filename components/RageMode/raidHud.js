@@ -591,7 +591,60 @@ const buildProfilePanel = ({ strings, zIndex, actions }) => {
     card.setAttribute('role', 'dialog')
     card.setAttribute('aria-modal', 'true')
     card.setAttribute('aria-label', strings.title)
-    const message = pillElement('div', { lineHeight: '1.5' })
+    // A static launch badge costs no animation frames or image downloads. Wider outer AND inner
+    // gutters keep the launch briefing comfortable on small phones, including safe areas.
+    backdrop.style.paddingLeft = 'calc(env(safe-area-inset-left, 0px) + clamp(28px, 7vw, 56px))'
+    backdrop.style.paddingRight = 'calc(env(safe-area-inset-right, 0px) + clamp(28px, 7vw, 56px))'
+    card.style.padding = 'clamp(28px, 7vw, 40px) clamp(28px, 7vw, 40px) 28px'
+    card.style.textAlign = 'center'
+    card.style.background = 'linear-gradient(145deg, #152650, #091540 75%)'
+    card.style.border = '1px solid rgba(255,206,143,0.2)'
+    const badge = pillElement('div', {
+        width: '76px',
+        height: '76px',
+        margin: '0 auto 20px',
+        borderRadius: '24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '36px',
+        background: 'rgba(255,174,71,0.12)',
+        border: '1px solid rgba(255,174,71,0.3)',
+        boxShadow: '6px 6px 0 rgba(255,174,71,0.06)',
+    })
+    // Pixel Anna uses the blonde/blue palette of rageModels, and works without emoji fonts.
+    badge.innerHTML = `<svg viewBox="0 0 64 64" width="56" height="56" focusable="false" aria-hidden="true">
+        <path fill="#8C95A8" d="M12 30h10v18H12zm30 0h10v18H42z"/>
+        <path fill="#0C66FF" d="M12 30h4v18h-4zm36 0h4v18h-4z"/>
+        <path fill="#FFAE47" d="M12 50h10v6h-3v6h-4v-6h-3zm30 0h10v6h-3v6h-4v-6h-3z"/>
+        <path fill="#FFE6C7" d="M15 50h4v6h-4zm30 0h4v6h-4z"/>
+        <path fill="#F7DC96" d="M20 6h24v4h4v20h-8V14H24v16h-8V10h4z"/>
+        <path fill="#F7D6BD" d="M24 14h16v16H24zM18 40h6v6h-6zm22 0h6v6h-6z"/>
+        <path fill="#DDB872" d="M16 26h8v6h-8zm24 0h8v6h-8z"/>
+        <path fill="#2E2A33" d="M26 19h3v3h-3zm9 0h3v3h-3z"/>
+        <path fill="#FFFFFF" d="M28 25h8v3h-8z"/>
+        <path fill="#AFD0F4" d="M24 32h16v16H24zM18 32h6v8h-6zm22 0h6v8h-6z"/>
+        <path fill="#C4DBF4" d="M24 32h16v3H24z"/>
+        <path fill="#1D2B4F" d="M24 48h7v8h-7zm9 0h7v8h-7z"/>
+        <path fill="#8DB5E4" d="M31 37h2v2h-2zm0 5h2v2h-2z"/>
+    </svg>`
+    badge.setAttribute('aria-hidden', 'true')
+    const eyebrow = pillElement('div', {
+        color: '#FFCE8F',
+        fontSize: '11px',
+        fontWeight: '700',
+        letterSpacing: '2px',
+        marginBottom: '10px',
+    })
+    eyebrow.textContent = strings.title.toLocaleUpperCase()
+    const heading = pillElement('div', {
+        fontWeight: '800',
+        fontSize: 'clamp(22px, 5.6vw, 28px)',
+        lineHeight: '1.2',
+        marginBottom: '14px',
+    })
+    heading.textContent = strings.launchLoading
+    const message = pillElement('div', { lineHeight: '1.6', color: 'rgba(255,255,255,0.78)' })
     message.setAttribute('role', 'status')
     message.setAttribute('aria-live', 'polite')
     const buttons = pillElement('div', { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '16px' })
@@ -599,7 +652,12 @@ const buildProfilePanel = ({ strings, zIndex, actions }) => {
     retry.setAttribute('data-retry-profile', 'true')
     const exit = wideButton(strings.exit, false, actions.exit)
     buttons.append(retry, exit)
-    card.append(message, buttons)
+    buttons.style.justifyContent = 'center'
+    ;[retry, exit].forEach(button => {
+        button.style.whiteSpace = 'normal'
+        button.style.minHeight = '44px'
+    })
+    card.append(badge, eyebrow, heading, message, buttons)
     return {
         element: backdrop,
         focusNext(reverse) {
@@ -611,11 +669,20 @@ const buildProfilePanel = ({ strings, zIndex, actions }) => {
             if (status === 'ready' && backdrop.contains(document.activeElement)) document.activeElement.blur()
             backdrop.dataset.status = status
             backdrop.style.display = status === 'ready' ? 'none' : 'flex'
-            card.setAttribute('aria-busy', status === 'loading' ? 'true' : 'false')
-            message.textContent = status === 'error' ? strings.profileError : strings.profileLoading
-            retry.style.display = status === 'error' ? 'flex' : 'none'
-            retry.disabled = status !== 'error'
-            if (status !== 'ready') (status === 'error' ? retry : exit).focus()
+            const error = status === 'error' || status === 'save-error'
+            const saving = status === 'saving' || status === 'save-error'
+            card.setAttribute('aria-busy', error ? 'false' : 'true')
+            heading.textContent = saving ? strings.saveHeading : strings.launchLoading
+            message.textContent = saving
+                ? error
+                    ? strings.saveError
+                    : strings.saveLoading
+                : error
+                  ? strings.profileError
+                  : strings.profileLoading
+            retry.style.display = error ? 'flex' : 'none'
+            retry.disabled = !error
+            if (status !== 'ready') (error ? retry : exit).focus()
         },
     }
 }
@@ -926,9 +993,17 @@ const buildGameOver = ({ strings, zIndex, actions, canStartOver }) => {
         button.style.flex = '1 1 auto'
     })
     buttons.append(again, hangar, shop, restart, leave)
+    const saveStatus = pillElement('div', { marginTop: '12px', fontSize: '12px', lineHeight: '1.5' })
+    saveStatus.setAttribute('role', 'status')
+    saveStatus.setAttribute('aria-live', 'polite')
+    const saveMessage = pillElement('div')
+    const retrySave = wideButton(strings.retry, false, actions.retrySave)
+    retrySave.setAttribute('data-retry-save', 'true')
+    retrySave.style.margin = '8px auto 0'
+    saveStatus.append(saveMessage, retrySave)
     const leaderboard = buildLeaderboard({ strings, actions })
     card.style.maxWidth = '380px'
-    card.append(title, scoreLine, missionLine, bestLine, newBest, keptLine, buttons, leaderboard.element)
+    card.append(title, scoreLine, missionLine, bestLine, newBest, keptLine, buttons, saveStatus, leaderboard.element)
     return {
         element: backdrop,
         leaderboard,
@@ -942,6 +1017,12 @@ const buildGameOver = ({ strings, zIndex, actions, canStartOver }) => {
             newBest.style.display = isNew ? 'block' : 'none'
             restart.style.display = canStartOver() ? 'flex' : 'none'
             backdrop.style.display = 'flex'
+        },
+        setSaveStatus(status) {
+            saveStatus.style.display = status === 'ready' ? 'none' : 'block'
+            saveMessage.textContent = status === 'error' ? strings.saveError : strings.saveLoading
+            retrySave.style.display = status === 'error' ? 'flex' : 'none'
+            retrySave.disabled = status !== 'error'
         },
         update({ best, isNew }) {
             bestLine.textContent = `${strings.best}: ${best.toLocaleString()}`

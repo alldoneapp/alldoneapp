@@ -16,6 +16,7 @@ const LIMITS = Object.freeze({
     baseMaxShield: 100,
     shieldCap: 175,
     maxBombs: 5,
+    startBombs: 2,
     maxCannonLevel: 3,
 })
 
@@ -33,14 +34,22 @@ const sanitizeCheckpoint = raw => {
     // Before mission 1 is cleared a checkpoint can still hold credits banked from lost games.
     const credits = wholeNumber(raw.credits, 0, LIMITS.maxNumber, 0)
     const cannonLevel = wholeNumber(raw.cannonLevel, 1, LIMITS.maxCannonLevel, 1)
-    if (completed < 1 && credits <= 0 && cannonLevel <= 1 && maxShield <= LIMITS.baseMaxShield) return null
+    const bombs = wholeNumber(raw.bombs, 0, LIMITS.maxBombs, 0)
+    if (
+        completed < 1 &&
+        credits <= 0 &&
+        cannonLevel <= 1 &&
+        maxShield <= LIMITS.baseMaxShield &&
+        bombs <= LIMITS.startBombs
+    )
+        return null
     return {
         completed,
         score: wholeNumber(raw.score, 0, LIMITS.maxNumber, 0),
         credits,
         maxShield,
         shield: wholeNumber(raw.shield, 1, maxShield, maxShield),
-        bombs: wholeNumber(raw.bombs, 0, LIMITS.maxBombs, 0),
+        bombs,
         cannonLevel,
     }
 }
