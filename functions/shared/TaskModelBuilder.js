@@ -69,7 +69,6 @@ function buildTaskObject({
     isSubtask = false,
     parentGoalId = null,
     parentGoalIsPublicFor = null,
-    skipAutomaticGoalRouting = false,
     recurrence = 'never',
     recurrenceOriginalDueDate = null,
     recurrenceBaseDateOverride = null,
@@ -193,19 +192,6 @@ function buildTaskObject({
         parentDone: false,
         parentGoalId: parentGoalId,
         parentGoalIsPublicFor: resolveParentGoalIsPublicFor(parentGoalId, parentGoalIsPublicFor),
-        // An explicitly unlinked assistant-created task must not immediately be
-        // reattached by the onCreate goal router. Omission keeps legacy routing.
-        ...(skipAutomaticGoalRouting
-            ? {
-                  goalSuggestion: {
-                      status: 'superseded',
-                      source: 'assistant_parent_goal',
-                      projectId,
-                      resolvedAt: now,
-                      resolvedBy: creatorId || userId,
-                  },
-              }
-            : {}),
 
         // Linking and references
         linkedParentNotesIds: [],

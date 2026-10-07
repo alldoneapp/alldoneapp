@@ -686,7 +686,6 @@ class TaskService {
             completed,
             userId,
             parentId,
-            parentGoalId,
             feedUser,
             focus,
             focusUserId,
@@ -708,25 +707,6 @@ class TaskService {
         // Build update object with only provided fields
         const updateData = {}
         const changes = []
-
-        let parentGoalChange = null
-        if (parentGoalId !== undefined) {
-            const { prepareTaskParentGoalUpdate, normalizeParentGoalId } = require('./taskParentGoal')
-            const requestingUserId = initiatorId || context.userId
-            const goalUpdate = await prepareTaskParentGoalUpdate(
-                this.options.database,
-                requestingUserId,
-                projectId,
-                currentTask,
-                parentGoalId,
-                parentId
-            )
-            if (Object.keys(goalUpdate).length > 0) {
-                Object.assign(updateData, goalUpdate)
-                changes.push(parentGoalId === null ? 'parent goal cleared' : 'parent goal')
-                parentGoalChange = { userId: requestingUserId, parentGoalId: normalizeParentGoalId(parentGoalId) }
-            }
-        }
 
         if (name !== undefined) {
             updateData.name = String(name)
@@ -938,7 +918,6 @@ class TaskService {
 
         return {
             updateData,
-            parentGoalChange,
             beforeData: Object.keys(updateData).reduce((result, field) => {
                 result[field] = currentTask[field] === undefined ? null : currentTask[field]
                 return result
@@ -971,16 +950,7 @@ class TaskService {
             throw new Error('Database interface not configured')
         }
 
-        const {
-            updateData,
-            beforeData,
-            updatedTask,
-            feedData,
-            taskId,
-            focusAction,
-            undoInitiatorId,
-            parentGoalChange,
-        } = updateResult
+        const { updateData, beforeData, updatedTask, feedData, taskId, focusAction, undoInitiatorId } = updateResult
         const { projectId, batch: externalBatch, feedUser } = options
 
         const finalProjectId = projectId || updatedTask.projectId
@@ -999,14 +969,10 @@ class TaskService {
         }
 
         try {
-            if (parentGoalChange && externalBatch) {
-                throw new Error('Parent goal changes cannot use an external batch')
-            }
             // Use external batch if provided, or create new one
-            const batch = parentGoalChange
-                ? null
-                : externalBatch ||
-                  (this.options.batchWrapper ? new this.options.batchWrapper(this.options.database) : null)
+            const batch =
+                externalBatch ||
+                (this.options.batchWrapper ? new this.options.batchWrapper(this.options.database) : null)
 
             if (!batch && !externalBatch) {
                 // Direct write if no batch support
@@ -1038,19 +1004,7 @@ class TaskService {
                         }
                     })()
 
-                    if (parentGoalChange) {
-                        const { persistTaskParentGoalUpdate } = require('./taskParentGoal')
-                        const persisted = await persistTaskParentGoalUpdate(this.options.database, {
-                            projectId: finalProjectId,
-                            taskId,
-                            ...parentGoalChange,
-                            updateData: updateDataToApply,
-                        })
-                        Object.assign(updateData, persisted.updateData)
-                        Object.assign(updatedTask, persisted.updatedTask)
-                    } else {
-                        await taskRef.update(updateDataToApply)
-                    }
+                    await taskRef.update(updateDataToApply)
                 }
 
                 // Persist feeds using Cloud Functions feeds pipeline when available
