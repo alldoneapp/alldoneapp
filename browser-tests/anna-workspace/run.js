@@ -339,6 +339,33 @@ async function checkVmWorkspace(page, width) {
     console.info(`VM workspace passed at ${width}px`)
 }
 
+async function checkBrowserReturn(page, width) {
+    await page.goto(`http://127.0.0.1:${server.address().port}/projects/tasks/open?assistant=1`)
+    await page.getByLabel('Message Carl Code Mentor').fill('Unsent chat draft')
+    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
+    await page.getByLabel('Workspace draft').fill('Unsent Alldone edit')
+    const alldone = page.locator('.anna-workspace-toolbar').getByText('Alldone', { exact: true })
+    const browser = page.locator('.anna-workspace-toolbar').getByText('Browser', { exact: true })
+    await page.evaluate(() => window.__annaBrowserFixture('running'))
+    await page.locator('.anna-browser-workspace').waitFor({ state: 'visible' })
+    assert.equal(await browser.getAttribute('aria-pressed'), 'true')
+    await page.evaluate(() => window.__annaBrowserFixture('awaiting_user'))
+    assert.equal(await browser.getAttribute('aria-pressed'), 'true')
+    await page.evaluate(() => window.__annaBrowserFixture('completed'))
+    await page.getByLabel('Workspace draft').waitFor({ state: 'visible' })
+    assert.equal(await alldone.getAttribute('aria-pressed'), 'true')
+    assert.equal(await page.getByLabel('Workspace draft').inputValue(), 'Unsent Alldone edit')
+    // The same browser session may serve a later request; a human gesture then keeps it open.
+    await page.evaluate(() => window.__annaBrowserFixture('running', 'browse2'))
+    await page.locator('.anna-browser-heading strong').click()
+    await page.evaluate(() => window.__annaBrowserFixture('completed', 'browse2'))
+    assert.equal(await browser.getAttribute('aria-pressed'), 'true')
+    await alldone.click()
+    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
+    assert.equal(await page.getByLabel('Message Carl Code Mentor').inputValue(), 'Unsent chat draft')
+    console.info(`PASS ${width}px: browser returns on completion, preserves drafts and respects human interaction`)
+}
+
 async function main() {
     const { chromium } = require('playwright')
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -351,6 +378,13 @@ async function main() {
             const page = await browser.newPage({ viewport: { width, height: 900 } })
             const errors = []
             page.on('pageerror', error => errors.push(error.message))
+            await checkBrowserReturn(page, width)
+            if (process.env.BROWSER_RETURN_ONLY) {
+                await checkBrowserLogin(page, width)
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
             await checkVmWorkspace(page, width)
             if (process.env.VM_ONLY) {
                 assert.deepEqual(errors, [])

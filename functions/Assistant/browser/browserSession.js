@@ -45,6 +45,7 @@ const { BROWSER_STEP_GOLD, chargeGoldForBrowserStep, hasGoldForBrowserStep } = r
 const { describeTypedValue, redactForModel, redactUrl } = require('./browserRedaction')
 const { callBrowserWorker } = require('./browserWorkerClient')
 const { summarizeBudget } = require('./browserLimits')
+const { resolveBrowserActivity } = require('./browserWorkspaceActivity')
 
 const MAX_ELEMENTS_RETURNED = 60
 
@@ -506,6 +507,14 @@ async function executeBrowserTool({
         }
 
         if (requestUserId) {
+            const activity = await resolveBrowserActivity({
+                db,
+                projectId,
+                objectId,
+                objectType,
+                requestUserId,
+                runtime: toolRuntimeContext,
+            }).catch(() => null)
             await db
                 .doc(`users/${requestUserId}/private/annaBrowser`)
                 .set(
@@ -514,6 +523,7 @@ async function executeBrowserTool({
                         projectId,
                         objectId,
                         objectType,
+                        activity,
                         title: String(workerResult.title || '').slice(0, 200),
                         url: redactUrl(workerResult.finalUrl || workerResult.url || pageUrl),
                         updatedAt: Date.now(),

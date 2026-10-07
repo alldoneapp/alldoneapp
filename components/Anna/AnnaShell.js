@@ -8,6 +8,7 @@ import AnnaWorkspaceHighlight from './AnnaWorkspaceHighlight'
 import AnnaWorkspaceReveal from './AnnaWorkspaceReveal'
 import { findWorkspaceObject } from './annaWorkspaceRevealTargets'
 import AnnaBrowserWorkspace from './AnnaBrowserWorkspace'
+import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCompletion'
 import AnnaVmWorkspace, { vmStatusLabel } from './AnnaVmWorkspace'
 import useAnnaVmJobs, { vmJobPath } from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
@@ -24,6 +25,7 @@ import URLTrigger from '../../URLSystem/URLTrigger'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallPageContext'
 import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
+import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
 
 function useMobilePane() {
@@ -76,6 +78,8 @@ export default function AnnaShell({ children, routeId }) {
     const [control, setControl] = useState(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
+    const browserCompleted = useAnnaBrowserCompletion(browser)
+    const followedBrowser = useRef(null)
     const [browserTakeover, setBrowserTakeover] = useState(null)
     const takeoverRef = useRef(null)
     const [resumeRequest, setResumeRequest] = useState(null)
@@ -99,6 +103,28 @@ export default function AnnaShell({ children, routeId }) {
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
     const visibleWorkspace = active && (mobilePane === 'workspace' || !mobile)
+    const returnFromBrowser = useCallback(runId => {
+        const followed = followedBrowser.current
+        if (
+            !followed ||
+            runId !== browserRef.current?.runId ||
+            followed.key !== browserActivityKey(browserRef.current) ||
+            followed.generation !== requestGeneration.current ||
+            surfaceRef.current !== 'browser' ||
+            heldBrowser.current ||
+            takeoverRef.current ||
+            document.hidden
+        )
+            return
+        followedBrowser.current = null
+        setSurface('alldone')
+    }, [])
+    useEffect(() => {
+        if (!active || !browserCompleted) return
+        const finish = () => returnFromBrowser(browser?.runId)
+        finish()
+        return subscribePageVisible(finish)
+    }, [active, browserCompleted, browser?.runId, browserControl, browserTakeover, returnFromBrowser])
 
     const openBrowserTakeover = useCallback((approval, callbacks) => {
         if (takeoverRef.current && takeoverRef.current.approval.approvalId !== approval.approvalId) return
@@ -144,14 +170,17 @@ export default function AnnaShell({ children, routeId }) {
                     if (heldBrowser.current && browserRef.current?.runId !== next?.runId) return
                     browserRef.current = next
                     setBrowser(next)
-                    if (next?.runId && browserSeen.current !== next.runId) {
-                        browserSeen.current = next.runId
+                    const key = browserActivityKey(next)
+                    if (key && browserSeen.current !== key) {
+                        browserSeen.current = key
                         if (
                             !controlRef.current &&
                             !surfaceRef.current.startsWith('vm:') &&
                             Date.now() - Number(next.updatedAt || 0) < 120000
-                        )
+                        ) {
+                            followedBrowser.current = { key, generation: requestGeneration.current }
                             setSurface('browser')
+                        }
                     }
                 },
                 () => {}
@@ -726,6 +755,12 @@ export default function AnnaShell({ children, routeId }) {
                             className={`anna-browser-surface ${!active || surface !== 'browser' ? 'anna-surface-hidden' : ''}`}
                             aria-hidden={!active || surface !== 'browser'}
                             inert={!active || surface !== 'browser' ? '' : undefined}
+                            onPointerDownCapture={() => {
+                                followedBrowser.current = null
+                            }}
+                            onKeyDownCapture={() => {
+                                followedBrowser.current = null
+                            }}
                         >
                             {browserTakeover && (
                                 <div className="anna-browser-takeover">
@@ -747,6 +782,7 @@ export default function AnnaShell({ children, routeId }) {
                                     active={visibleWorkspace && surface === 'browser' && !browserTakeover}
                                     onControlChange={held => {
                                         heldBrowser.current = held
+                                        if (held) followedBrowser.current = null
                                         setBrowserControl(held)
                                         if (!held && nextBrowserRef.current?.runId !== browserRef.current?.runId) {
                                             browserRef.current = nextBrowserRef.current
@@ -754,6 +790,7 @@ export default function AnnaShell({ children, routeId }) {
                                         }
                                     }}
                                     onResume={resumeWork}
+                                    onSessionEnded={returnFromBrowser}
                                 />
                             </div>
                         </div>

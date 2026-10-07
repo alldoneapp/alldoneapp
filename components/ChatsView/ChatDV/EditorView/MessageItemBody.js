@@ -384,7 +384,11 @@ export default function MessageItemBody({
             {isLoadingState ? (
                 <View style={localStyles.loadingContainer}>
                     {showFriendlyAssistantProgress ? (
-                        <AssistantProgress activity={assistantRun?.activity} />
+                        <AssistantProgress
+                            activity={assistantRun?.activity}
+                            activityHistory={assistantRun?.activityHistory}
+                            runId={assistantRun?.runId}
+                        />
                     ) : !containsBlockOrSpecialElements(loadingText) ? (
                         <Text style={[localStyles.loadingText, { marginBottom: 8 }]}>{loadingText}</Text>
                     ) : (

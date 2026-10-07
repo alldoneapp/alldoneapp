@@ -55,6 +55,8 @@ export default function CommentsList({
                                 showAssistantProgress ? (
                                     <AssistantProgress
                                         activity={item.assistantRun?.activity}
+                                        activityHistory={item.assistantRun?.activityHistory}
+                                        runId={item.assistantRun?.runId}
                                         compact={true}
                                         appearance="dark"
                                     />

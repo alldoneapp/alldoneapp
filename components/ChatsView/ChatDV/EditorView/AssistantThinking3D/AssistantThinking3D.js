@@ -23,7 +23,11 @@ export function useAssistantThinking3DEnabled() {
  * Shows `spinnerColor`'s ActivityIndicator until the first frame is drawn, and keeps it if the
  * scene cannot load, so the card never ends up with an empty box where the indicator was.
  */
-export default function AssistantThinking3D({ appearance = 'light', spinnerColor }) {
+export default function AssistantThinking3D({
+    appearance = 'light',
+    spinnerColor,
+    size = ASSISTANT_THINKING_STAGE_SIZE,
+}) {
     const hostRef = useRef(null)
     const [ready, setReady] = useState(false)
 
@@ -58,7 +62,7 @@ export default function AssistantThinking3D({ appearance = 'light', spinnerColor
     }, [appearance])
 
     return (
-        <View style={localStyles.stage} testID="assistant-thinking-3d">
+        <View style={[localStyles.stage, { width: size, height: size }]} testID="assistant-thinking-3d">
             <View ref={hostRef} style={[StyleSheet.absoluteFill, !ready && localStyles.hidden]} />
             {!ready && (
                 <View style={localStyles.spinner} pointerEvents="none">

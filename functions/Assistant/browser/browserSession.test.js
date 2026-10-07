@@ -90,7 +90,7 @@ async function run(overrides = {}) {
         projectId: 'p1',
         assistantId: 'assistant1',
         requestUserId: 'user1',
-        toolRuntimeContext: { objectId: 'task1', objectType: 'tasks' },
+        toolRuntimeContext: { objectId: 'task1', objectType: 'tasks', ...overrides.runtime },
         deps: {
             db,
             bucket,
@@ -109,6 +109,20 @@ function auditSteps(db) {
 }
 
 describe('executeBrowserTool', () => {
+    it('publishes the answer reference and clears it when a reused browser has no tracked caller', async () => {
+        const worker = createWorkerDouble({ navigate: () => pageResult() })
+        const { db, result } = await run({ worker, runtime: { assistantCommentId: 'answer1' } })
+        expect(result.success).toBe(true)
+        const pointer = db.doc('users/user1/private/annaBrowser')
+        expect((await pointer.get()).data().activity).toEqual({
+            projectId: 'p1',
+            objectId: 'task1',
+            objectType: 'tasks',
+            commentId: 'answer1',
+        })
+        await run({ db, worker })
+        expect((await pointer.get()).data().activity).toBeNull()
+    })
     describe('configuration', () => {
         it('refuses everything when no site is allowlisted, and says so', async () => {
             const worker = createWorkerDouble()

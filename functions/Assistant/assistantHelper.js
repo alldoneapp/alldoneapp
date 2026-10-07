@@ -126,6 +126,7 @@ const {
     buildToolActivityDescriptor,
     rememberDelegationDisplayName,
 } = require('./assistantProgressStatus')
+const { advanceAssistantActivity } = require('../shared/assistantActivityHistory')
 const {
     isValidAssistantReasoningEffort,
     normalizeAssistantReasoningEffort,
@@ -10300,7 +10301,10 @@ async function storeChunks(
                       },
                   }
                 : null
-        if (assistantRun) comment.assistantRun = assistantRun
+        if (assistantRun) {
+            Object.assign(assistantRun, advanceAssistantActivity(assistantRun, assistantRun.activity))
+            comment.assistantRun = assistantRun
+        }
         comment.isLoading = true
         comment.isThinking = false
 
@@ -10782,17 +10786,20 @@ async function storeChunks(
                                     : appendStatusBlock(commentText, nextStatusMessage)
                                 toolStatusMessage = nextStatusMessage
                                 if (assistantRun)
-                                    assistantRun.activity = {
-                                        phase: 'tool',
-                                        toolName: multiple ? 'parallel_reads' : toolName,
-                                        startedAt: toolExecutionStartedAt,
-                                        iteration: toolCallIteration,
-                                        actionKey: descriptor.actionKey || null,
-                                        subject: descriptor.subject || null,
-                                        total: batchState.total,
-                                        completed: batchState.completed,
-                                        active: batchState.active.length,
-                                    }
+                                    Object.assign(
+                                        assistantRun,
+                                        advanceAssistantActivity(assistantRun, {
+                                            phase: 'tool',
+                                            toolName: multiple ? 'parallel_reads' : toolName,
+                                            startedAt: toolExecutionStartedAt,
+                                            iteration: toolCallIteration,
+                                            actionKey: descriptor.actionKey || null,
+                                            subject: descriptor.subject || null,
+                                            total: batchState.total,
+                                            completed: batchState.completed,
+                                            active: batchState.active.length,
+                                        })
+                                    )
                                 await safeCommentUpdate({
                                     commentText,
                                     isLoading: true,
@@ -10964,11 +10971,14 @@ async function storeChunks(
                     currentConversation = updatedConversation
 
                     if (assistantRun) {
-                        assistantRun.activity = {
-                            phase: 'composing',
-                            startedAt: Date.now(),
-                            iteration: toolCallIteration,
-                        }
+                        Object.assign(
+                            assistantRun,
+                            advanceAssistantActivity(assistantRun, {
+                                phase: 'composing',
+                                startedAt: Date.now(),
+                                iteration: toolCallIteration,
+                            })
+                        )
                     }
 
                     // Replace the tool status with a friendly composing phase before waiting on

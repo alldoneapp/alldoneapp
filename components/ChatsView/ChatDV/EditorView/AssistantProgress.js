@@ -1,69 +1,26 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import global, { colors } from '../../../styles/global'
 import { TOOL_LABEL_BY_KEY } from '../../../AssistantDetailedView/Customizations/ToolsAccess/toolOptions'
 import { translate } from '../../../../i18n/TranslationService'
 import AssistantThinking3D, { useAssistantThinking3DEnabled } from './AssistantThinking3D/AssistantThinking3D'
 
-export const ASSISTANT_PROGRESS_ROTATION_MS = 2800
+import { useReducedMotion } from '../../../UIComponents/Ghosts/ghostAnimation'
+import { appendAssistantActivity, getAssistantActivityKey } from '../../../../functions/shared/assistantActivityHistory'
 
-const ACTIVITY_SEQUENCES = {
-    preparing: [
-        ['👀', 'assistant_progress_preparing_1'],
-        ['🧠', 'assistant_progress_preparing_2'],
-        ['🧭', 'assistant_progress_preparing_3'],
-        ['✨', 'assistant_progress_preparing_4'],
-    ],
-    thinking: [
-        ['🧠', 'assistant_progress_thinking_1'],
-        ['🧭', 'assistant_progress_thinking_2'],
-        ['🔍', 'assistant_progress_thinking_3'],
-        ['✍️', 'assistant_progress_thinking_4'],
-    ],
-    web: [
-        ['🔎', 'assistant_progress_web_1'],
-        ['📚', 'assistant_progress_web_2'],
-        ['🧭', 'assistant_progress_web_3'],
-        ['🧹', 'assistant_progress_web_4'],
-        ['✨', 'assistant_progress_web_5'],
-    ],
-    workspace: [
-        ['🗂️', 'assistant_progress_workspace_1'],
-        ['🔍', 'assistant_progress_workspace_2'],
-        ['👀', 'assistant_progress_workspace_3'],
-        ['🧩', 'assistant_progress_workspace_4'],
-    ],
-    communication: [
-        ['📬', 'assistant_progress_communication_1'],
-        ['🔍', 'assistant_progress_communication_2'],
-        ['👀', 'assistant_progress_communication_3'],
-        ['🧩', 'assistant_progress_communication_4'],
-    ],
-    change: [
-        ['🛠️', 'assistant_progress_change_1'],
-        ['🔍', 'assistant_progress_change_2'],
-        ['✅', 'assistant_progress_change_3'],
-        ['✨', 'assistant_progress_change_4'],
-    ],
-    specialist: [
-        ['🤝', 'assistant_progress_specialist_1'],
-        ['🧠', 'assistant_progress_specialist_2'],
-        ['👀', 'assistant_progress_specialist_3'],
-        ['✨', 'assistant_progress_specialist_4'],
-    ],
-    tool: [
-        ['🧰', 'assistant_progress_tool_1'],
-        ['⏳', 'assistant_progress_tool_2'],
-        ['🔍', 'assistant_progress_tool_3'],
-        ['🧩', 'assistant_progress_tool_4'],
-    ],
-    composing: [
-        ['🧩', 'assistant_progress_composing_1'],
-        ['✍️', 'assistant_progress_composing_2'],
-        ['🔍', 'assistant_progress_composing_3'],
-        ['✨', 'assistant_progress_composing_4'],
-    ],
+const EMPTY_HISTORY = []
+const PREPARING_ACTIVITY = { phase: 'preparing' }
+const ACTIVITY_LABELS = {
+    preparing: ['👀', 'assistant_progress_preparing_1'],
+    thinking: ['🧠', 'assistant_progress_thinking_1'],
+    web: ['🔎', 'assistant_progress_web_1'],
+    workspace: ['🗂️', 'assistant_progress_workspace_1'],
+    communication: ['📬', 'assistant_progress_communication_1'],
+    change: ['🛠️', 'assistant_progress_change_1'],
+    specialist: ['🤝', 'assistant_progress_specialist_1'],
+    tool: ['🧰', 'assistant_progress_tool_1'],
+    composing: ['🧩', 'assistant_progress_composing_1'],
 }
 
 /**
@@ -184,13 +141,11 @@ export const getAssistantProgressKind = activity => {
     return 'tool'
 }
 
-export const getAssistantProgressSequence = activity => ACTIVITY_SEQUENCES[getAssistantProgressKind(activity)]
-
 /**
  * The specific, human-readable line for a running tool call — "Searching notes for
  * “Pricing”". Returns null when the run carries no safe detail (no whitelist rule for
  * the tool, an unrecognised key, or a subject the server refused to expose), in which
- * case the caller keeps the generic rotating story.
+ * case the caller uses a stable phase or tool label.
  */
 export const getAssistantProgressDetail = activity => {
     if (normalizeToolName(activity?.phase) !== 'tool') return null
@@ -214,49 +169,45 @@ export const getAssistantProgressDetail = activity => {
     return { emoji, text }
 }
 
+const describeActivity = activity => {
+    const detail = getAssistantProgressDetail(activity)
+    if (detail) return detail
+    const [emoji, textKey] = ACTIVITY_LABELS[getAssistantProgressKind(activity)]
+    const toolLabel = activity?.phase === 'tool' && getAssistantProgressToolLabel(activity?.toolName)
+    return { emoji, text: toolLabel || translate(textKey) }
+}
+
 export default function AssistantProgress({
-    activity = { phase: 'preparing' },
+    activity = PREPARING_ACTIVITY,
+    activityHistory = EMPTY_HISTORY,
+    runId,
     compact = false,
     appearance = 'light',
 }) {
-    const sequence = useMemo(() => getAssistantProgressSequence(activity), [activity?.phase, activity?.toolName])
-    const detail = useMemo(
-        () => getAssistantProgressDetail(activity),
-        [activity?.phase, activity?.actionKey, activity?.subject]
-    )
-    const activityKey = `${activity?.phase || 'preparing'}:${activity?.toolName || ''}:${activity?.actionKey || ''}:${
-        activity?.subject || ''
-    }:${activity?.startedAt || ''}`
-    const [stepIndex, setStepIndex] = useState(0)
+    const scrollRef = useRef(null)
+    const reducedMotion = useReducedMotion()
     const darkAppearance = appearance === 'dark'
     const indicatorColor = darkAppearance ? colors.UtilityBlue200 : colors.Primary100
-    // With WebGL the card gets a small 3D scene on its right instead of the inline spinner.
     const show3D = useAssistantThinking3DEnabled()
+    const incoming = appendAssistantActivity(activityHistory, activity || PREPARING_ACTIVITY)
+    const signature = JSON.stringify([runId, incoming])
+    const [observed, setObserved] = useState({ runId, signature, entries: incoming })
 
+    // Persisted history restores missed events after reopening. Older servers still
+    // get a live trail from observed snapshots. Reset before paint when a run changes.
+    let entries = observed.entries
+    if (observed.signature !== signature) {
+        entries = activityHistory?.length
+            ? incoming
+            : appendAssistantActivity(observed.runId === runId ? observed.entries : [], activity || PREPARING_ACTIVITY)
+        setObserved({ runId, signature, entries })
+    }
+    const currentStepText = describeActivity(entries[entries.length - 1]).text
+    const scrollToLatest = () => scrollRef.current?.scrollToEnd({ animated: !reducedMotion })
+    const latestKey = getAssistantActivityKey(entries[entries.length - 1])
     useEffect(() => {
-        setStepIndex(0)
-        const interval = setInterval(() => {
-            setStepIndex(current => Math.min(current + 1, sequence.length - 1))
-        }, ASSISTANT_PROGRESS_ROTATION_MS)
-        return () => clearInterval(interval)
-    }, [activityKey, sequence.length])
-
-    // With a specific detail there is nothing to rotate: the one line that says what is
-    // actually happening stays pinned for the whole tool call, and the footer goes back
-    // to plain reassurance instead of naming the tool.
-    const visibleSteps = detail
-        ? [[detail.emoji, detail.text, true]]
-        : sequence.slice(Math.max(0, stepIndex - 2), stepIndex + 1).map(([emoji, textKey]) => [emoji, textKey, false])
-
-    const footerKey = stepIndex >= 3 ? 'assistant_progress_reassurance_slow' : 'assistant_progress_reassurance'
-    const activeToolLabel =
-        !detail && normalizeToolName(activity?.phase) === 'tool'
-            ? getAssistantProgressToolLabel(activity?.toolName)
-            : ''
-    const footerText = activeToolLabel
-        ? `${translate('assistant_progress_using_tool')}: ${activeToolLabel}`
-        : translate(footerKey)
-    const currentStepText = detail ? detail.text : translate(sequence[stepIndex][1])
+        scrollRef.current?.scrollToEnd({ animated: !reducedMotion })
+    }, [latestKey, reducedMotion])
 
     return (
         <View
@@ -266,56 +217,72 @@ export default function AssistantProgress({
                 darkAppearance && localStyles.darkContainer,
             ]}
             testID="assistant-progress"
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={`${currentStepText}. ${footerText}`}
         >
-            <View style={localStyles.body}>
-                <View style={localStyles.trail} testID="assistant-progress-trail">
-                    {visibleSteps.map(([emoji, textKey, isLiteralText], index) => {
-                        const isCurrent = index === visibleSteps.length - 1
-                        return (
-                            <View key={textKey} style={[localStyles.stepRow, !isCurrent && localStyles.previousStep]}>
-                                <Text style={[localStyles.emoji, darkAppearance && localStyles.darkEmoji]}>
-                                    {isCurrent ? emoji : '•'}
-                                </Text>
-                                <Text
-                                    style={[
-                                        localStyles.stepText,
-                                        darkAppearance && localStyles.darkStepText,
-                                        isCurrent && localStyles.currentStepText,
-                                        isCurrent && darkAppearance && localStyles.darkCurrentStepText,
-                                    ]}
-                                    numberOfLines={1}
-                                    ellipsizeMode="tail"
-                                    testID="assistant-progress-step-text"
-                                >
-                                    {isLiteralText ? textKey : translate(textKey)}
-                                </Text>
-                                {isCurrent && !show3D && (
-                                    <ActivityIndicator
-                                        style={localStyles.indicator}
-                                        size="small"
-                                        color={indicatorColor}
+            <View style={localStyles.header}>
+                <View style={[localStyles.liveDot, darkAppearance && localStyles.darkLiveDot]} />
+                <Text style={[localStyles.heading, darkAppearance && localStyles.darkHeading]}>
+                    {translate('assistant_progress_live_activity')}
+                </Text>
+                <View style={localStyles.stage}>
+                    {show3D ? (
+                        <AssistantThinking3D appearance={appearance} spinnerColor={indicatorColor} size={32} />
+                    ) : (
+                        <ActivityIndicator size="small" color={indicatorColor} />
+                    )}
+                </View>
+            </View>
+            <ScrollView
+                ref={scrollRef}
+                style={localStyles.trail}
+                contentContainerStyle={localStyles.trailContent}
+                showsVerticalScrollIndicator={false}
+                onContentSizeChange={scrollToLatest}
+                onLayout={scrollToLatest}
+                testID="assistant-progress-trail"
+            >
+                {entries.map((entry, index) => {
+                    const isCurrent = index === entries.length - 1
+                    const { emoji, text } = describeActivity(entry)
+                    return (
+                        <View
+                            key={getAssistantActivityKey(entry)}
+                            style={[
+                                localStyles.stepRow,
+                                isCurrent && localStyles.currentStep,
+                                isCurrent && darkAppearance && localStyles.darkCurrentStep,
+                                !isCurrent && localStyles.previousStep,
+                                index < entries.length - 2 && localStyles.olderStep,
+                                isCurrent && !reducedMotion && localStyles.arrivingStep,
+                            ]}
+                            testID={isCurrent ? 'assistant-progress-current' : 'assistant-progress-previous'}
+                        >
+                            <View style={localStyles.marker}>
+                                {!isCurrent && (
+                                    <View
+                                        style={[localStyles.connector, darkAppearance && localStyles.darkConnector]}
                                     />
                                 )}
+                                <Text style={localStyles.emoji}>{emoji}</Text>
                             </View>
-                        )
-                    })}
-                </View>
-                <Text
-                    style={[localStyles.reassurance, darkAppearance && localStyles.darkReassurance]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    testID="assistant-progress-reassurance"
-                >
-                    {footerText}
-                </Text>
-            </View>
-            {show3D && (
-                <View style={localStyles.stage}>
-                    <AssistantThinking3D appearance={appearance} spinnerColor={indicatorColor} />
-                </View>
-            )}
+                            <Text
+                                style={[
+                                    localStyles.stepText,
+                                    darkAppearance && localStyles.darkStepText,
+                                    isCurrent && localStyles.currentStepText,
+                                    isCurrent && darkAppearance && localStyles.darkCurrentStepText,
+                                ]}
+                                numberOfLines={isCurrent ? 2 : 1}
+                                ellipsizeMode="tail"
+                                testID="assistant-progress-step-text"
+                                accessibilityLiveRegion={isCurrent ? 'polite' : 'none'}
+                                accessibilityLabel={isCurrent ? currentStepText : undefined}
+                            >
+                                {text}
+                            </Text>
+                        </View>
+                    )
+                })}
+            </ScrollView>
         </View>
     )
 }
@@ -324,78 +291,88 @@ const localStyles = StyleSheet.create({
     container: {
         alignSelf: 'flex-start',
         width: '100%',
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        backgroundColor: colors.UtilityBlue100,
+        padding: 10,
+        borderRadius: 12,
+        backgroundColor: '#F4F7FF',
         borderWidth: 1,
-        borderColor: colors.UtilityBlue125,
-        flexDirection: 'row',
-        alignItems: 'center',
+        borderColor: '#DFE7FA',
+        overflow: 'hidden',
     },
-    body: {
-        flex: 1,
-        minWidth: 0,
-    },
-    stage: {
-        marginLeft: 8,
-    },
-    compactContainer: {
-        marginTop: 4,
-        paddingVertical: 8,
-    },
+    compactContainer: { marginTop: 4 },
     darkContainer: {
         backgroundColor: colors.Secondary300,
         borderColor: colors.Secondary200,
     },
-    trail: {
-        height: 72,
-        justifyContent: 'flex-end',
-        overflow: 'hidden',
-    },
-    stepRow: {
-        height: 24,
+    header: {
+        height: 28,
         flexDirection: 'row',
         alignItems: 'center',
+        paddingLeft: 9,
+        marginBottom: 4,
     },
-    previousStep: {
-        opacity: 0.58,
+    liveDot: {
+        width: 5,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: colors.Primary100,
+        marginRight: 7,
     },
-    emoji: {
-        width: 24,
-        ...global.body2,
-        color: colors.UtilityGreen300,
-    },
-    darkEmoji: {
-        color: colors.ProjectColor100,
-    },
-    stepText: {
-        flex: 1,
-        ...global.body2,
-        color: colors.Text02,
-    },
-    darkStepText: {
-        color: colors.UtilityBlue150,
-    },
-    currentStepText: {
-        ...global.subtitle2,
-        color: colors.Text01,
-    },
-    darkCurrentStepText: {
-        color: '#FFFFFF',
-    },
-    indicator: {
-        marginLeft: 8,
-        transform: [{ scale: 0.8 }],
-    },
-    reassurance: {
+    darkLiveDot: { backgroundColor: colors.UtilityBlue200 },
+    heading: {
         ...global.caption2,
-        color: colors.Text03,
-        marginTop: 6,
-        marginLeft: 24,
-        height: 20,
+        fontSize: 10,
+        letterSpacing: 1.2,
+        textTransform: 'uppercase',
+        color: '#60739A',
+        flex: 1,
     },
-    darkReassurance: {
-        color: colors.Text04,
+    darkHeading: { color: colors.UtilityBlue150 },
+    stage: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+    trail: { maxHeight: 132, flexGrow: 0 },
+    trailContent: { paddingTop: 2 },
+    stepRow: {
+        minHeight: 28,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        borderLeftWidth: 2,
+        borderLeftColor: 'transparent',
     },
+    currentStep: {
+        minHeight: 44,
+        paddingVertical: 7,
+        marginTop: 3,
+        borderRadius: 7,
+        borderLeftColor: colors.Primary100,
+        backgroundColor: '#FFFFFF',
+    },
+    darkCurrentStep: { backgroundColor: 'rgba(138, 163, 255, 0.12)', borderLeftColor: colors.UtilityBlue200 },
+    previousStep: { opacity: 0.8 },
+    olderStep: { opacity: 0.58 },
+    marker: { width: 26, alignSelf: 'stretch', justifyContent: 'center' },
+    connector: {
+        position: 'absolute',
+        width: 1,
+        backgroundColor: '#D7DFEE',
+        left: 7,
+        top: 22,
+        bottom: -4,
+    },
+    darkConnector: { backgroundColor: colors.Secondary200 },
+    emoji: { fontSize: 13, lineHeight: 20 },
+    stepText: { flex: 1, minWidth: 0, ...global.body2, fontSize: 12, color: colors.Text02 },
+    darkStepText: { color: colors.UtilityBlue150 },
+    currentStepText: { ...global.subtitle2, fontSize: 13, lineHeight: 20, color: colors.Text01 },
+    darkCurrentStepText: { color: '#FFFFFF' },
+    arrivingStep: Platform.select({
+        web: {
+            animationKeyframes: {
+                from: { opacity: 0, transform: 'translateY(6px)' },
+                to: { opacity: 1, transform: 'translateY(0)' },
+            },
+            animationDuration: '240ms',
+            animationTimingFunction: 'ease-out',
+        },
+        default: {},
+    }),
 })

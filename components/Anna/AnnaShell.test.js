@@ -270,6 +270,99 @@ beforeEach(() => {
     useAnnaConversation.mockReturnValue(state)
 })
 
+const startBrowserActivity = (commentId = 'answer1', runId = 'brun_1') => {
+    act(() =>
+        mockSnapshots['users/u1/private/annaBrowser']({
+            exists: true,
+            data: () => ({
+                runId,
+                updatedAt: Date.now(),
+                activity: { projectId: 'p1', objectId: 'anna_u1', objectType: 'topics', commentId },
+            }),
+        })
+    )
+    return status =>
+        act(() =>
+            mockSnapshots[`chatComments/p1/topics/anna_u1/comments/${commentId}`]({
+                exists: true,
+                data: () => ({ assistantRun: { status }, isLoading: status === 'running' }),
+            })
+        )
+}
+
+it('returns to the same Alldone view only when the browsing request finishes, including a reused browser', () => {
+    const visible = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    try {
+        render(content(1))
+        const input = screen.getByLabelText('Real workspace editor')
+        input.value = 'Unsent edit'
+        const update = startBrowserActivity()
+        update('running')
+        expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        update('awaiting_user')
+        expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        update('completed')
+        expect(screen.getByText('Alldone').getAttribute('aria-pressed')).toBe('true')
+        expect(screen.getByLabelText('Real workspace editor')).toBe(input)
+        expect(input.value).toBe('Unsent edit')
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        const second = startBrowserActivity('answer2')
+        expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        second('completed')
+        expect(screen.getByText('Alldone').getAttribute('aria-pressed')).toBe('true')
+    } finally {
+        visible.mockRestore()
+    }
+})
+
+it.each(['manual', 'control', 'gesture', 'vm'])('preserves the user’s %s choice when browsing finishes', choice => {
+    const visible = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    try {
+        mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'initiated' }]
+        render(content(1))
+        const update = startBrowserActivity()
+        update('running')
+        if (choice === 'control') act(() => mockBrowserProps.onControlChange(true))
+        else if (choice === 'gesture')
+            act(() =>
+                document
+                    .querySelector('.anna-browser-surface')
+                    .dispatchEvent(new Event('pointerdown', { bubbles: true }))
+            )
+        else
+            fireEvent.click(
+                choice === 'manual'
+                    ? screen.getByText('Browser')
+                    : screen.getByLabelText('VM: Launch report — initiated')
+            )
+        update('completed')
+        expect(screen.getByText('Alldone').getAttribute('aria-pressed')).toBe('false')
+        if (choice === 'control') {
+            act(() => mockBrowserProps.onSessionEnded('brun_1'))
+            expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        }
+    } finally {
+        visible.mockRestore()
+    }
+})
+
+it('ignores completion from a superseded browser and returns when the current session ends', () => {
+    const visible = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    try {
+        render(content(1))
+        startBrowserActivity()
+        const late = mockSnapshots['chatComments/p1/topics/anna_u1/comments/answer1']
+        startBrowserActivity('answer2', 'brun_2')
+        act(() => late({ data: () => ({ assistantRun: { status: 'completed' } }) }))
+        act(() => mockBrowserProps.onSessionEnded('brun_1'))
+        expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        act(() => mockBrowserProps.onSessionEnded('brun_2'))
+        expect(screen.getByText('Alldone').getAttribute('aria-pressed')).toBe('true')
+    } finally {
+        visible.mockRestore()
+    }
+})
+
 it('shows surface selection without manual Alldone control switches', () => {
     render(content(1))
     const toolbar = document.querySelector('.anna-header .anna-workspace-toolbar')
@@ -323,6 +416,7 @@ it.each(['desktop', 'mobile'])(
                     <Request />
                 </AnnaShell>
             )
+            const finishBrowsing = startBrowserActivity()
             await act(async () => screen.getByText('Start login').click())
             const login = screen.getByLabelText('Private login input')
             expect(login.closest('.anna-browser-surface')).toBeTruthy()
@@ -330,6 +424,8 @@ it.each(['desktop', 'mobile'])(
             expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
             expect(mockBrowserProps.active).toBe(false)
             login.value = 'Unsent private input'
+            finishBrowsing('completed')
+            expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
             // The original request card can unmount; only the shell owns the controller.
             view.rerender(
                 <AnnaShell routeId={2}>

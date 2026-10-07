@@ -3,7 +3,6 @@ import renderer, { act } from 'react-test-renderer'
 import { ActivityIndicator, StyleSheet, Text } from 'react-native'
 
 import AssistantProgress, {
-    ASSISTANT_PROGRESS_ROTATION_MS,
     getAssistantProgressKind,
     getAssistantProgressToolLabel,
     getAssistantProgressDetail,
@@ -58,38 +57,51 @@ describe('AssistantProgress', () => {
         expect(getAssistantProgressToolLabel(toolName)).toBe(expectedLabel)
     })
 
-    test('builds a visible activity trail as the wait continues', () => {
-        // The rotation interval is registered in a passive effect; under React
-        // 18 that effect only flushes inside act, so mount within act or the
-        // timer advance below fires before the interval exists.
+    test('waits for real activity changes without manufacturing a history on a timer', () => {
         let tree
         act(() => {
             tree = renderer.create(<AssistantProgress activity={{ phase: 'preparing', startedAt: 1 }} />)
         })
-
+        act(() => jest.advanceTimersByTime(60000))
         expect(renderedText(tree)).toContain('assistant_progress_preparing_1')
         expect(renderedText(tree)).not.toContain('assistant_progress_preparing_2')
-
-        act(() => {
-            jest.advanceTimersByTime(ASSISTANT_PROGRESS_ROTATION_MS * 2)
-        })
-
-        expect(renderedText(tree)).toContain('assistant_progress_preparing_1')
-        expect(renderedText(tree)).toContain('assistant_progress_preparing_2')
-        expect(renderedText(tree)).toContain('assistant_progress_preparing_3')
+        expect(tree.root.findAllByProps({ testID: 'assistant-progress-step-text' })).toHaveLength(1)
+        expect(renderedText(tree)).not.toContain('assistant_progress_reassurance')
+        act(() => tree.unmount())
     })
 
-    test('reserves a fixed three-row trail and clamps translated text', () => {
-        const tree = renderer.create(<AssistantProgress activity={{ phase: 'preparing', startedAt: 1 }} />)
-        const trail = tree.root.findByProps({ testID: 'assistant-progress-trail' })
-
-        expect(StyleSheet.flatten(trail.props.style)).toEqual(
-            expect.objectContaining({ height: 72, justifyContent: 'flex-end', overflow: 'hidden' })
+    test('retains real phase transitions and replaces history when a new run starts', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<AssistantProgress runId="one" activity={{ phase: 'thinking', startedAt: 1 }} />)
+        })
+        act(() =>
+            tree.update(
+                <AssistantProgress runId="one" activity={{ phase: 'tool', toolName: 'web_search', startedAt: 2 }} />
+            )
         )
-        expect(tree.root.findAllByProps({ testID: 'assistant-progress-step-text' })[0].props.numberOfLines).toBe(1)
-        const reassurance = tree.root.findByProps({ testID: 'assistant-progress-reassurance' })
-        expect(reassurance.props.numberOfLines).toBe(1)
-        expect(StyleSheet.flatten(reassurance.props.style).height).toBe(20)
+        expect(renderedText(tree)).toContain('assistant_progress_thinking_1')
+        expect(renderedText(tree)).toContain('Search the internet')
+        expect(tree.root.findAllByProps({ testID: 'assistant-progress-previous' })).toHaveLength(1)
+        act(() => tree.update(<AssistantProgress runId="two" activity={{ phase: 'preparing', startedAt: 3 }} />))
+        expect(renderedText(tree)).not.toContain('Search the internet')
+        expect(tree.root.findAllByProps({ testID: 'assistant-progress-previous' })).toHaveLength(0)
+        act(() => tree.unmount())
+    })
+
+    test('restores persisted history and catches up on events missed between snapshots', () => {
+        const first = { phase: 'thinking', startedAt: 1 }
+        const tool = { phase: 'tool', toolName: 'web_search', startedAt: 2 }
+        const composing = { phase: 'composing', startedAt: 3 }
+        let tree
+        act(() => {
+            tree = renderer.create(<AssistantProgress activity={tool} activityHistory={[first, tool]} />)
+        })
+        expect(tree.root.findAllByProps({ testID: 'assistant-progress-step-text' })).toHaveLength(2)
+        act(() => tree.update(<AssistantProgress activity={composing} activityHistory={[first, tool, composing]} />))
+        expect(tree.root.findAllByProps({ testID: 'assistant-progress-step-text' })).toHaveLength(3)
+        expect(renderedText(tree)).toContain('assistant_progress_composing_1')
+        act(() => tree.unmount())
     })
 
     test('uses a dark popup surface with high-contrast progress colors', () => {
@@ -108,15 +120,13 @@ describe('AssistantProgress', () => {
         expect(tree.root.findByType(ActivityIndicator).props.color).toBe(colors.UtilityBlue200)
     })
 
-    test('shows the active tool in the fixed-height footer without exposing its raw key', () => {
+    test('shows a friendly tool label without a reassurance footer', () => {
         const tree = renderer.create(
             <AssistantProgress activity={{ phase: 'tool', toolName: 'web_search', startedAt: 1 }} appearance="dark" />
         )
-        const footer = tree.root.findByProps({ testID: 'assistant-progress-reassurance' })
-
-        expect(footer.props.children).toBe('assistant_progress_using_tool: Search the internet')
+        expect(renderedText(tree)).toContain('Search the internet')
         expect(renderedText(tree)).not.toContain('web_search')
-        expect(StyleSheet.flatten(footer.props.style).height).toBe(20)
+        expect(tree.root.findAllByProps({ testID: 'assistant-progress-reassurance' })).toHaveLength(0)
     })
 
     describe('specific activity detail', () => {
@@ -136,37 +146,16 @@ describe('AssistantProgress', () => {
             expect(text).not.toContain('assistant_progress_workspace_1')
         })
 
-        test('drops the tool name from the footer once a specific line is shown', () => {
-            const tree = renderer.create(<AssistantProgress activity={searchingNotes} />)
-            const footer = tree.root.findByProps({ testID: 'assistant-progress-reassurance' })
-
-            expect(footer.props.children).toBe('assistant_progress_reassurance')
-            expect(renderedText(tree)).not.toContain('assistant_progress_using_tool')
-        })
-
         test('keeps the specific line pinned instead of rotating it away', () => {
             let tree
             act(() => {
                 tree = renderer.create(<AssistantProgress activity={searchingNotes} />)
             })
 
-            act(() => jest.advanceTimersByTime(ASSISTANT_PROGRESS_ROTATION_MS * 4))
+            act(() => jest.advanceTimersByTime(60000))
 
             expect(renderedText(tree)).toContain('assistant_activity_search_notes|Pricing')
             expect(tree.root.findAllByProps({ testID: 'assistant-progress-step-text' })).toHaveLength(1)
-        })
-
-        test('still reassures the user that a long call is alive', () => {
-            let tree
-            act(() => {
-                tree = renderer.create(<AssistantProgress activity={searchingNotes} />)
-            })
-
-            act(() => jest.advanceTimersByTime(ASSISTANT_PROGRESS_ROTATION_MS * 4))
-
-            expect(tree.root.findByProps({ testID: 'assistant-progress-reassurance' }).props.children).toBe(
-                'assistant_progress_reassurance_slow'
-            )
         })
 
         test('renders a subject-less action without an empty placeholder', () => {
@@ -211,12 +200,12 @@ describe('AssistantProgress', () => {
         test.each([
             ['an unknown key', { actionKey: 'assistant_activity_not_shipped_yet', subject: 'x' }],
             ['no key at all', { actionKey: null, subject: null }],
-        ])('falls back to the generic story given %s', (_label, overrides) => {
+        ])('falls back to the friendly tool label given %s', (_label, overrides) => {
             const tree = renderer.create(
                 <AssistantProgress activity={{ phase: 'tool', toolName: 'get_notes', startedAt: 1, ...overrides }} />
             )
 
-            expect(renderedText(tree)).toContain('assistant_progress_workspace_1')
+            expect(renderedText(tree)).toContain('Get notes')
         })
 
         test('ignores a detail that arrives on a non-tool phase', () => {
@@ -249,17 +238,5 @@ describe('AssistantProgress', () => {
             expect(emojiKeys.filter(key => !translationKeys.includes(key))).toEqual([])
             expect(translationKeys.filter(key => !emojiKeys.includes(key))).toEqual([])
         })
-    })
-
-    test('resets the story when the backend moves to a real tool phase', () => {
-        const tree = renderer.create(<AssistantProgress activity={{ phase: 'thinking', startedAt: 1 }} />)
-        act(() => jest.advanceTimersByTime(ASSISTANT_PROGRESS_ROTATION_MS * 2))
-
-        act(() => {
-            tree.update(<AssistantProgress activity={{ phase: 'tool', toolName: 'web_search', startedAt: 2 }} />)
-        })
-
-        expect(renderedText(tree)).toContain('assistant_progress_web_1')
-        expect(renderedText(tree)).not.toContain('assistant_progress_web_2')
     })
 })
