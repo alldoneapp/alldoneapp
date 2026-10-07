@@ -31,6 +31,8 @@ jest.mock('firebase-admin', () => ({
                     const entries = mockTaskDocs.get(path) || []
                     const matches = entries.filter(entry => {
                         const value = field.split('.').reduce((acc, key) => (acc == null ? acc : acc[key]), entry.data)
+                        if (op === 'array-contains-any')
+                            return Array.isArray(value) && value.some(id => values.includes(id))
                         return op === 'in' ? Array.isArray(values) && values.includes(value) : value === values
                     })
                     return { forEach: cb => matches.forEach(entry => cb({ id: entry.id, data: () => entry.data })) }
@@ -614,6 +616,44 @@ describe('emailLineService', () => {
         expect(summarizeEmailAsTaskName).not.toHaveBeenCalled()
         expect(deductGold).not.toHaveBeenCalled()
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('getTaskForEmail finds subsequent message IDs stored on the original task', async () => {
+        mockTaskDocs.set('items/p1/tasks', [
+            {
+                id: 'original-task',
+                data: {
+                    name: 'Original task',
+                    gmailData: { gmailEmail: 'me@gmail.com', messageId: 'first', messageIds: ['second'] },
+                },
+            },
+        ])
+        const result = await performEmailLineAction('u', 'p1', {
+            action: 'getTaskForEmail',
+            messageIds: ['second'],
+            userData: googleUserData,
+        })
+        expect(result.taskCreated).toEqual({ taskId: 'original-task', projectId: 'p1', taskName: 'Original task' })
+    })
+
+    test.each([
+        { gmailEmail: 'other@gmail.com' },
+        { gmailEmail: '' },
+        { gmailEmail: 'me@gmail.com', provider: 'microsoft' },
+        { gmailEmail: 'me@gmail.com', accountUserId: 'another-user' },
+    ])('getTaskForEmail excludes message ID collisions with account data %j', async account => {
+        mockTaskDocs.set('items/p1/tasks', [
+            {
+                id: 'unrelated-task',
+                data: { gmailData: { messageId: 'm1', ...account } },
+            },
+        ])
+        const result = await performEmailLineAction('u', 'p1', {
+            action: 'getTaskForEmail',
+            messageIds: ['m1'],
+            userData: googleUserData,
+        })
+        expect(result.taskCreated).toBeNull()
     })
 
     test('createTask without an audit match explains the default-project fallback', async () => {

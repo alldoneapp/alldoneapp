@@ -4,7 +4,7 @@ export function resolveFirebaseAuthDomain({ location, hostingUrl, fallbackAuthDo
     const { host, hostname, protocol } = location
     const isLocalDevHost = hostname === 'localhost' || hostname === '127.0.0.1'
 
-    // Local Auth runs through the dev server's same-origin emulator proxy.
+    // The local HTTPS dev server proxies /__/auth/* to Firebase Hosting.
     if (isLocalDevHost) {
         return protocol === 'https:' ? host : fallbackAuthDomain
     }

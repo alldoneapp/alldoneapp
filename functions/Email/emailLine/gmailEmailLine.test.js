@@ -45,10 +45,35 @@ const {
     markMessagesRead,
     sweepLabel,
     getMessageStates,
+    getMessageContext,
     invalidateResolvedThreadIds,
     NO_LABEL_ID,
 } = require('./gmailEmailLine')
 const { getAuthorizedOAuth2Client } = require('../../GoogleOAuth/googleOAuthHandler')
+
+test('message context preserves the thread, date, and full body for task comments', async () => {
+    const body = 'Email text '.repeat(600)
+    mockMessagesGet.mockResolvedValueOnce({
+        data: {
+            id: 'message-1',
+            threadId: 'thread-1',
+            payload: {
+                mimeType: 'text/plain',
+                headers: [{ name: 'Date', value: 'Wed, 7 Oct 2026 11:00:00 +0000' }],
+                body: { data: Buffer.from(body).toString('base64url') },
+            },
+        },
+    })
+    const context = await getMessageContext('user-1', 'project-1', 'message-1')
+    expect(context).toEqual(
+        expect.objectContaining({
+            threadId: 'thread-1',
+            date: 'Wed, 7 Oct 2026 11:00:00 +0000',
+            bodyText: body,
+            body: body.slice(0, 4000),
+        })
+    )
+})
 
 const UNREAD_BY_ID = {
     INBOX: 4,

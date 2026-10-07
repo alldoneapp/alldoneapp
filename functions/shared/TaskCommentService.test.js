@@ -18,6 +18,84 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
 const { TaskCommentService, normalizeTaskComment } = require('./TaskCommentService')
 
 describe('TaskCommentService', () => {
+    test('email comments are idempotent and atomically extend the current task message IDs', async () => {
+        const docs = new Map([
+            [
+                'items/project-1/tasks/task-1',
+                {
+                    name: 'Original title',
+                    userId: 'user-1',
+                    isPublicFor: [0],
+                    inDone: true,
+                    suggestedBy: 'assistant-1',
+                    gmailData: {
+                        gmailEmail: 'me@example.com',
+                        threadId: 'thread-1',
+                        messageId: 'first',
+                        messageIds: ['another'],
+                        archiveStatus: 'archived',
+                    },
+                },
+            ],
+        ])
+        const database = {
+            doc: path => ({ path }),
+            runTransaction: async callback =>
+                callback({
+                    get: async ref => ({ exists: docs.has(ref.path), data: () => docs.get(ref.path) }),
+                    set: (ref, data, options) =>
+                        docs.set(ref.path, options?.merge ? { ...docs.get(ref.path), ...data } : data),
+                    update: (ref, data) => docs.set(ref.path, { ...docs.get(ref.path), ...data }),
+                }),
+        }
+        const service = new TaskCommentService({ database })
+        service.notifyFollowers = jest.fn().mockResolvedValue()
+        const params = {
+            projectId: 'project-1',
+            taskId: 'task-1',
+            comment: 'New email',
+            commentId: 'email_message-2',
+            actor: { uid: 'assistant-1' },
+            fromAssistant: true,
+            gmailData: {
+                accountUserId: 'user-1',
+                gmailEmail: 'me@example.com',
+                messageId: 'message-2',
+                threadId: 'thread-1',
+            },
+            linkEmail: true,
+        }
+        expect((await service.addComment(params)).existing).toBe(false)
+        expect((await service.addComment(params)).existing).toBe(true)
+        expect(service.notifyFollowers).toHaveBeenCalledTimes(1)
+        expect(docs.get('items/project-1/tasks/task-1')).toEqual(
+            expect.objectContaining({
+                name: 'Original title',
+                inDone: true,
+                suggestedBy: 'assistant-1',
+                gmailData: {
+                    gmailEmail: 'me@example.com',
+                    threadId: 'thread-1',
+                    messageId: 'first',
+                    messageIds: ['another', 'first', 'message-2'],
+                    archiveStatus: null,
+                },
+                commentsData: expect.objectContaining({ amount: 1 }),
+            })
+        )
+        expect(docs.get('chatComments/project-1/tasks/task-1/comments/email_message-2').gmailData).toEqual(
+            params.gmailData
+        )
+        await expect(
+            service.addComment({
+                ...params,
+                commentId: 'different-comment',
+                gmailData: { ...params.gmailData, gmailEmail: 'other@example.com' },
+            })
+        ).rejects.toThrow('does not match')
+        expect(docs.get('items/project-1/tasks/task-1').commentsData.amount).toBe(1)
+    })
+
     test('validates and trims task comments', () => {
         expect(normalizeTaskComment('  Useful context  ')).toBe('Useful context')
         expect(() => normalizeTaskComment(' ')).toThrow('cannot be empty')
