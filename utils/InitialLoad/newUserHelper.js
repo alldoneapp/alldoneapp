@@ -15,11 +15,7 @@ import {
     uploadNewProject,
 } from '../backends/firestore'
 import { addNewUserToAlldoneTemplate, uploadNewUser, updateUserData } from '../backends/Users/usersFirestore'
-import {
-    getAssistantData,
-    copyPreConfigTasksToNewAssistant,
-    getAssistantTemplateSnapshot,
-} from '../backends/Assistants/assistantsFirestore'
+import { getAssistantData, copyPreConfigTasksToNewAssistant } from '../backends/Assistants/assistantsFirestore'
 import { GLOBAL_PROJECT_ID } from '../../components/AdminPanel/Assistants/assistantsHelper'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { getNewDefaultUser } from '../../components/ContactsView/Utils/ContactsHelper'
@@ -43,12 +39,14 @@ import { createChat } from '../backends/Chats/chatsComments'
 import { STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
 import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
 import { BatchWrapper } from '../../functions/BatchWrapper/batchWrapper'
+import { generateInitialAssistant, getWelcomeMessage } from './newUserDefaults'
+import { shouldUseFirebaseEmulators } from '../firebaseEmulators'
 
 const generateInitialWorkstream = (projectId, userId) => {
     return getDefaultMainWorkstream(projectId, userId)
 }
 
-const generateUser = async (firebaseUser, projectId) => {
+const generateUser = async (firebaseUser, projectId, assistantId) => {
     const { initialUrl } = store.getState()
     const { uid: userId, email, displayName, photoURL } = firebaseUser
 
@@ -63,6 +61,7 @@ const generateUser = async (firebaseUser, projectId) => {
         photoURL: photoURL || '',
         singUpUrl: initialUrl,
         defaultProjectId: projectId,
+        assistantId,
         projectIds: [projectId],
         lastEditionDate: Date.now(),
         lastEditorId: userId,
@@ -90,42 +89,11 @@ const generateInitialProject = (userId, assistantId) => {
 
 const getDefaultGlobalAssistantId = () => {
     const hostname = window.location.hostname
-    const isStaging = hostname.includes('staging') || hostname.includes('localhost')
+    const isStaging = hostname.includes('staging') || shouldUseFirebaseEmulators()
 
     // Staging: -OfxnUeFjPmvyqk5gFQE
     // Production: -Ns4cpvpLDeygvV2cjcJ
     return isStaging ? '-OfxnUeFjPmvyqk5gFQE' : '-Ns4cpvpLDeygvV2cjcJ'
-}
-
-const generateInitialAssistant = (globalAssistant, userId) => {
-    if (!globalAssistant) {
-        const { defaultAssistant } = store.getState()
-        if (!defaultAssistant || !defaultAssistant.uid) {
-            console.warn('No default assistant found, skipping assistant creation')
-            return null
-        }
-        globalAssistant = defaultAssistant
-    }
-
-    const assistant = {
-        ...globalAssistant,
-        uid: getId(),
-        noteIdsByProject: {},
-        lastVisitBoard: {},
-        commentsData: null,
-        creatorId: userId,
-        createdDate: Date.now(),
-        isDefault: true,
-        // Track source template assistant for update detection
-        copiedFromTemplateAssistantId: globalAssistant.uid,
-        copiedFromTemplateAssistantDate: Date.now(),
-        templateSyncSnapshot: getAssistantTemplateSnapshot(globalAssistant),
-        templateSyncConflicts: [],
-        templateSyncStatus: 'synced',
-        templateSyncedAt: Date.now(),
-    }
-
-    return assistant
 }
 
 const generateInitialTask = userId => {
@@ -156,8 +124,7 @@ const createWelcomeChatAndMessage = async (project, assistant, userId) => {
     }
 
     const chatId = getId()
-    const message =
-        "Welcome to Alldone! My name is Anna. Think of me as your AI Chief of staff. You can talk to me here or on Whatsapp to capture tasks, ask what's next, capture your ideas and many things more. What can I do for you today?"
+    const message = getWelcomeMessage(assistant)
     const title = 'Welcome'
 
     console.log('[NewUserWelcomeChat] Creating Welcome Chat/Topic...', { chatId, title })
@@ -244,17 +211,17 @@ export const processNewUser = async firebaseUser => {
         globalAssistant = await getAssistantData(GLOBAL_PROJECT_ID, globalAssistantId)
         console.log('Found global assistant for new user:', globalAssistant?.displayName)
     } catch (error) {
-        console.warn('Failed to fetch global assistant:', error)
-        console.error('CRITICAL ERROR: Failed to fetch global assistant', error)
-        alert('CRITICAL ERROR: Failed to fetch global assistant: ' + error.message)
+        console.warn('Could not load the assistant template; using built-in Anna defaults:', error)
     }
 
+    globalAssistant = globalAssistant || store.getState().globalAssistants.find(assistant => assistant.isDefault)
+
     // Generate assistant first to get its ID for the project
-    const assistant = generateInitialAssistant(globalAssistant, userId)
+    const assistant = generateInitialAssistant(globalAssistant, userId, getId())
     const project = generateInitialProject(userId, assistant?.uid)
     const workstream = generateInitialWorkstream(project.id, userId)
     const task = generateInitialTask(userId)
-    const user = await generateUser(firebaseUser, project.id)
+    const user = await generateUser(firebaseUser, project.id, assistant.uid)
 
     const mappedUser = mapUserData(userId, user, true)
 
@@ -302,6 +269,7 @@ export const processNewUser = async firebaseUser => {
     // Create "Work" project
     const workProject = generateInitialProject(userId, assistant?.uid)
     workProject.name = 'Work'
+    workProject.index = 1
     await uploadNewProject(workProject, user, [userId], false, false)
 
     if (assistant && globalAssistant) {

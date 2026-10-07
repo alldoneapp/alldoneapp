@@ -83,6 +83,7 @@ import { TASK_PRIORITY_NONE, normalizeTaskPriority } from '../TaskPriority'
 import { resolveTaskSortIndex } from '../CalendarTaskSortIndex'
 import { getTaskMergeRequest } from '../MergeStatus'
 import { resolveFirebaseAuthDomain, shouldUseGoogleRedirect } from '../webFirebaseAuth'
+import { getFirebaseAuthEmulatorUrl, shouldUseFirebaseEmulators } from '../firebaseEmulators'
 import {
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
@@ -416,7 +417,7 @@ let noteRevisionHistoryCopiesUnsub = () => {}
 
 // Safari 16.1+ partitions the storage used by Firebase's cross-origin redirect helper. Firebase
 // Hosting exposes /__/auth/* on the app's custom domain, so use that same-origin handler on the
-// configured HTTPS deployment. The local HTTPS dev server proxies the same reserved paths.
+// configured HTTPS deployment. Local development uses a same-origin Auth emulator proxy.
 const firebaseAuthDomain = resolveFirebaseAuthDomain({
     location: typeof window === 'undefined' ? null : window.location,
     hostingUrl: HOSTING_URL,
@@ -433,61 +434,6 @@ const firebaseConfig = {
     appId: GOOGLE_FIREBASE_WEB_APP_ID,
 }
 
-// Helper function to determine if we should use Firebase Functions emulator
-function shouldUseEmulator() {
-    const forceEmulator = window.location.search.includes('emulator=true')
-
-    return forceEmulator
-}
-
-// Helper function to delete all Firebase IndexedDB databases
-async function clearAllFirebaseIndexedDB() {
-    if (!window.indexedDB) {
-        console.warn('IndexedDB not available')
-        return
-    }
-
-    try {
-        const databases = await window.indexedDB.databases()
-        const firebaseDBs = databases.filter(
-            db =>
-                db.name &&
-                (db.name.startsWith('firebaseLocalStorage') ||
-                    db.name.startsWith('firebase-heartbeat') ||
-                    db.name.startsWith('firebase-installations') ||
-                    db.name.includes('firestore'))
-        )
-
-        console.log(
-            '🗑️  Found Firebase IndexedDB databases to delete:',
-            firebaseDBs.map(db => db.name)
-        )
-
-        const deletePromises = firebaseDBs.map(db => {
-            return new Promise((resolve, reject) => {
-                const request = window.indexedDB.deleteDatabase(db.name)
-                request.onsuccess = () => {
-                    console.log('✅ Deleted IndexedDB:', db.name)
-                    resolve()
-                }
-                request.onerror = () => {
-                    console.warn('⚠️  Failed to delete IndexedDB:', db.name)
-                    resolve() // Still resolve to not block other deletions
-                }
-                request.onblocked = () => {
-                    console.warn('⚠️  Blocked from deleting IndexedDB:', db.name)
-                    resolve()
-                }
-            })
-        })
-
-        await Promise.all(deletePromises)
-        console.log('✅ Finished clearing Firebase IndexedDB databases')
-    } catch (error) {
-        console.warn('⚠️  Error clearing Firebase IndexedDB:', error.message)
-    }
-}
-
 // Resolves once getRedirectResult() has settled, i.e. once a sign-in that came back from the
 // Google redirect has been applied to firebase.auth(). Anything that would sign the user in as
 // somebody else must wait for this first — see loginWithGoogleWebAnonymously.
@@ -495,20 +441,17 @@ let redirectResultSettled = Promise.resolve(null)
 
 export async function initFirebase(onComplete) {
     // Determine if we should use Firebase emulators BEFORE initializing
-    const useEmulator = shouldUseEmulator()
-
-    // Clear ALL Firebase IndexedDB databases BEFORE initializing Firebase
-    if (useEmulator) {
-        console.log('🧹 Clearing ALL Firebase IndexedDB databases for emulator (BEFORE init)')
-        await clearAllFirebaseIndexedDB()
-    }
+    const useEmulator = shouldUseFirebaseEmulators()
 
     // Load only critical modules first for faster initialization
     require('firebase/compat/auth')
     require('firebase/compat/firestore')
 
     try {
-        firebase.initializeApp(firebaseConfig)
+        // Auth persistence is keyed by API key and app name. Keep emulator
+        // sessions separate from staging without deleting browser databases
+        // (which also destroys redirect state and can block other open tabs).
+        firebase.initializeApp(useEmulator ? { ...firebaseConfig, apiKey: 'local-emulator-only' } : firebaseConfig)
     } catch (error) {
         if (error.code !== 'app/duplicate-app') {
             console.error('Firebase initialization failed:', error)
@@ -517,6 +460,15 @@ export async function initFirebase(onComplete) {
         console.warn('Firebase app already initialized, reusing existing instance')
     }
     db = firebase.firestore()
+    if (useEmulator) {
+        // Configure before Auth or Firestore can make their first request. A
+        // configuration error must abort startup, never fall back to staging.
+        firebase.auth().useEmulator(getFirebaseAuthEmulatorUrl())
+        db.useEmulator('127.0.0.1', 8080)
+        require('firebase/compat/functions')
+        functions = firebase.app().functions('europe-west1')
+        functions.useEmulator('127.0.0.1', 5001)
+    }
     if (!firestoreSettingsApplied) {
         try {
             // firebase 9+ replaces the whole settings object unless merge is set,
@@ -551,7 +503,7 @@ export async function initFirebase(onComplete) {
     }
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    const forceEmulator = window.location.search.includes('emulator=true')
+    const forceEmulator = new URLSearchParams(window.location.search).get('emulator') === 'true'
 
     if (__DEV__) {
         console.log('🔍 Firebase emulator connection check:', {
@@ -563,41 +515,6 @@ export async function initFirebase(onComplete) {
             useEmulator,
             environment: CURRENT_ENVIORNMENT,
         })
-    }
-
-    if (useEmulator) {
-        try {
-            // Connect to Firestore emulator AFTER clearing persistence
-            console.log('🔧 Connecting to Firestore emulator at 127.0.0.1:8080')
-            db.useEmulator('127.0.0.1', 8080)
-            console.log('✅ Connected to Firestore emulator')
-        } catch (error) {
-            console.warn('⚠️  Failed to connect to Firestore emulator:', error.message)
-        }
-        try {
-            // Connect to Functions emulator only
-            require('firebase/compat/functions')
-            // Initialize functions with the correct region for emulator
-            const functionsInstance = firebase.app().functions('europe-west1')
-
-            // Check if already connected to emulator
-            console.log('🔍 Functions instance before emulator setup:', functionsInstance)
-
-            functionsInstance.useEmulator('127.0.0.1', 5001)
-
-            console.log('🔧 Connected to Firebase Functions emulator at 127.0.0.1:5001 (europe-west1)')
-
-            // Set the global functions variable to the emulator instance
-            functions = functionsInstance
-
-            // Test the connection by getting a function reference
-            const testFunction = functionsInstance.httpsCallable('generatePreConfigTaskResultSecondGen')
-            console.log('🧪 Test function reference created:', typeof testFunction)
-        } catch (error) {
-            console.warn('⚠️  Failed to connect to Firebase Functions emulator:', error.message, error)
-        }
-    } else if (__DEV__) {
-        console.log('🌐 Using production Firebase Functions')
     }
 
     // Handle redirect result for mobile sign-in (must be called before onAuthStateChanged)
@@ -651,11 +568,13 @@ export async function initFirebase(onComplete) {
 
 function loadDeferredFirebaseModules() {
     try {
+        const useEmulator = shouldUseFirebaseEmulators()
         // Load functions (but don't overwrite if emulator is already set)
         require('firebase/compat/functions')
         if (!functions) {
             functions = firebase.app().functions('europe-west1')
-            if (__DEV__) console.log('🌐 Using production Firebase Functions (europe-west1)')
+            if (useEmulator) functions.useEmulator('127.0.0.1', 5001)
+            if (__DEV__) console.log('Firebase Functions configured', { useEmulator })
         } else if (__DEV__) {
             console.log('🔧 Functions already configured (emulator), not overwriting')
         }
@@ -663,6 +582,10 @@ function loadDeferredFirebaseModules() {
         // Load storage
         require('firebase/compat/storage')
         notesStorage = firebase.app().storage(`gs://${GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET}`)
+        if (useEmulator) {
+            firebase.storage().useEmulator('127.0.0.1', 9199)
+            notesStorage.useEmulator('127.0.0.1', 9199)
+        }
         // The Storage SDK retries failed network requests internally — by default
         // for up to 2 MINUTES per operation (and 10 minutes per upload). In
         // airplane mode that turned every note-content download into a silent
@@ -674,13 +597,17 @@ function loadDeferredFirebaseModules() {
         notesStorage.setMaxUploadRetryTime(60000)
 
         // Load messaging
-        require('firebase/compat/messaging')
-        if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
-            messaging = firebase.messaging()
+        // FCM has no emulator. Local sessions must not register staging tokens.
+        if (!useEmulator) {
+            require('firebase/compat/messaging')
+            if (firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()) {
+                messaging = firebase.messaging()
+            }
         }
 
         // Load database
         require('firebase/compat/database')
+        if (useEmulator) firebase.database().useEmulator('127.0.0.1', 9000)
 
         if (__DEV__) console.log('Deferred Firebase modules loaded')
     } catch (error) {
@@ -721,6 +648,7 @@ const logFcmTokenError = err => {
 }
 
 export function initFCM(userId) {
+    if (shouldUseFirebaseEmulators()) return
     const uid = userId ? userId : store.getState().loggedUser.uid
     const userRef = db.doc(`/users/${uid}`)
     if (
@@ -759,6 +687,7 @@ export function initFCM(userId) {
 
 // Helper function to request notification permission - must be called from a user gesture
 export async function requestNotificationPermission() {
+    if (shouldUseFirebaseEmulators()) return { success: false, reason: 'Messaging is unavailable in the emulator' }
     if (
         !firebase.messaging ||
         !firebase.messaging.isSupported ||
@@ -8375,7 +8304,7 @@ export async function runHttpsCallableFunction(functionName, data, options = {})
         require('firebase/compat/functions')
 
         // Use the same helper function for consistent environment detection
-        const useEmulator = shouldUseEmulator()
+        const useEmulator = shouldUseFirebaseEmulators()
 
         if (useEmulator) {
             functions = firebase.app().functions('europe-west1')

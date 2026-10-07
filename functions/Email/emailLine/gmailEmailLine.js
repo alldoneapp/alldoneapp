@@ -408,8 +408,6 @@ async function getMessageContextImpl(gmail, userId, projectId, messageId) {
         from: getHeader(headers, 'From'),
         snippet: data.snippet || '',
         body: body.slice(0, 4000),
-        bodyText: body,
-        date: getHeader(headers, 'Date'),
         threadId: data.threadId || '',
     }
 }
