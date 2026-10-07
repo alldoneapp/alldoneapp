@@ -400,10 +400,6 @@
 .anna-workspace-toolbar button[aria-pressed='true'] {
     background: #e6eee4;
 }
-.anna-workspace-toolbar nav {
-    display: flex;
-    margin-left: auto;
-}
 .anna-workspace-content {
     flex: 1;
     display: flex;
@@ -756,13 +752,6 @@
     text-align: center;
     color: var(--anna-muted);
     margin: 16px 0;
-    font-size: 12px;
-}
-.anna-object-views {
-    flex-wrap: wrap;
-    justify-content: space-between;
-}
-.anna-object-views > span {
     font-size: 12px;
 }
 .anna-browser-surface {

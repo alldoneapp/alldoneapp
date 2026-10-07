@@ -4,7 +4,13 @@ import { getDb } from '../../utils/backends/firestore'
 import { translate } from '../../i18n/TranslationService'
 import { createHighlightTargetRegistry, resolveHighlightRects } from './annaHighlightTargets'
 
-export default function AnnaWorkspaceHighlight({ rootRef, active, conversation, routeId }) {
+export default function AnnaWorkspaceHighlight({
+    rootRef,
+    active,
+    conversation,
+    routeId,
+    assistantName = translate('Assistant'),
+}) {
     const [shown, setShown] = useState(null)
     const current = useRef({ snapshot: null, references: new Map() })
     const activeCommand = useRef(null)
@@ -155,7 +161,7 @@ export default function AnnaWorkspaceHighlight({ rootRef, active, conversation, 
                 data-anna-highlight-ui
             >
                 <span>
-                    {translate('Anna is pointing to:')}{' '}
+                    {translate('%{assistantName} is pointing to:', { assistantName })}{' '}
                     {shown.command.label || shown.command.quote || shown.command.text}
                 </span>
                 <button onClick={() => dismiss('dismissed')} aria-label={translate('Clear highlight')}>

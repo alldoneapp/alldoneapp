@@ -6,7 +6,7 @@ import AnnaWorkspaceHighlight from './AnnaWorkspaceHighlight'
 import AnnaBrowserWorkspace from './AnnaBrowserWorkspace'
 import { resolveAnnaLink } from './annaNavigation'
 import { isAnnaWorkspacePath } from '../../functions/Assistant/annaWorkspaceContract'
-import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
+import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLookup'
 import { useVoiceCall } from '../UIComponents/AssistantVoiceCallProvider'
 import AssistantVoiceCallButton from '../UIComponents/AssistantVoiceCallButton'
 import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
@@ -37,13 +37,19 @@ export default function AnnaShell({ children, routeId }) {
     useTranslator()
     const active = useAnnaMode()
     const user = useSelector(state => state.loggedUser)
-    const defaultAssistant = useSelector(state => state.defaultAssistant)
     const call = useVoiceCall()
     const [visited, setVisited] = useState(active)
     const [textBusy, setTextBusy] = useState(false)
     const { conversation, loading, error, retry, threads, resolveConversation, loadEarlier, nextBefore } =
         useAnnaConversation(user.uid, { enabled: active, user, hold: textBusy || call.status !== 'idle' })
-    const assistant = (conversation && getAssistant(conversation.assistantId)) || defaultAssistant || {}
+    const resolvedAssistant = useSelector(state =>
+        conversation?.assistantId
+            ? getAssistantFromState(state, conversation.assistantId) ||
+              (state.defaultAssistant?.uid === conversation.assistantId ? state.defaultAssistant : null)
+            : state.defaultAssistant
+    )
+    const assistant = resolvedAssistant || {}
+    const assistantName = assistant.displayName?.trim() || translate('Assistant')
     const [mobilePane, setMobilePane] = useState('chat')
     const [surface, setSurface] = useState('alldone')
     const [control, setControl] = useState(false)
@@ -292,13 +298,6 @@ export default function AnnaShell({ children, routeId }) {
     const takeControl = () => {
         if (visited) setWorkspaceControl(true)
     }
-    const showList = view =>
-        present({
-            id: `manual-${Date.now()}`,
-            view,
-            manual: true,
-            path: `/projects/${view}/${view === 'notes' ? 'all' : 'open'}`,
-        })
     const photo = assistant.photoURL || assistant.photoURL300 || assistant.photoURL50
     const seconds = Math.floor(call.voiceSeconds || 0)
 
@@ -309,12 +308,12 @@ export default function AnnaShell({ children, routeId }) {
             onClickCapture={interceptLink}
         >
             <header className="anna-header" hidden={!active}>
-                <span className="anna-brand">{assistant.displayName || 'Anna Alldone'}</span>
+                <span className="anna-brand">{assistantName}</span>
                 <button className="anna-zoom-back" onClick={() => setAnnaMode(false)}>
                     {translate('Alldone fullscreen')}
                 </button>
             </header>
-            <nav className="anna-mobile-tabs" hidden={!active} aria-label={translate('Anna views')}>
+            <nav className="anna-mobile-tabs" hidden={!active} aria-label={translate('Assistant views')}>
                 <button aria-pressed={mobilePane === 'chat'} onClick={() => setMobilePane('chat')}>
                     {translate('Chat')}
                     {textBusy ? ' ···' : ''}
@@ -327,16 +326,18 @@ export default function AnnaShell({ children, routeId }) {
             <main className="anna-layout" ref={layout}>
                 <section
                     className="anna-conversation"
-                    aria-label={translate('Conversation with Anna')}
+                    aria-label={translate('Conversation with %{assistantName}', { assistantName })}
                     aria-hidden={!active || (mobile && mobilePane !== 'chat')}
                     inert={!active || (mobile && mobilePane !== 'chat') ? '' : undefined}
                 >
                     {visited && (
                         <>
                             <div className="anna-conversation-heading">
-                                <div className="anna-small-avatar">{photo ? <img src={photo} alt="" /> : 'A'}</div>
+                                <div className="anna-small-avatar">
+                                    {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
+                                </div>
                                 <div>
-                                    <strong>{assistant.displayName || 'Anna Alldone'}</strong>
+                                    <strong>{assistantName}</strong>
                                     <span>{translate('Your personal assistant')}</span>
                                 </div>
                             </div>
@@ -348,7 +349,7 @@ export default function AnnaShell({ children, routeId }) {
                             </div>
                             {loading && (
                                 <div className="anna-empty" role="status">
-                                    {translate('Connecting with Anna…')}
+                                    {translate('Connecting with %{assistantName}…', { assistantName })}
                                 </div>
                             )}
                             {error && (
@@ -382,7 +383,7 @@ export default function AnnaShell({ children, routeId }) {
                                         assistant={{ ...assistant, uid: conversation.assistantId }}
                                         projectId={conversation.projectId}
                                         chatId={conversation.id}
-                                        title={translate('Talk with Anna')}
+                                        title={translate('Talk with %{assistantName}', { assistantName })}
                                     />
                                 )}
                                 {call.status !== 'idle' && (
@@ -456,14 +457,17 @@ export default function AnnaShell({ children, routeId }) {
                                 aria-pressed={control}
                                 onClick={() => setWorkspaceControl(!control)}
                             >
-                                {translate(control ? 'Let Anna continue' : 'Take control')}
+                                {translate(control ? 'Let %{assistantName} continue' : 'Take control', {
+                                    assistantName,
+                                })}
                             </button>
                         )}
                     </div>
                     {active && pending && (
                         <div className="anna-pending" role="status">
                             <span>
-                                {translate('Anna would like to show you:')} {pending.title}
+                                {translate('%{assistantName} would like to show you:', { assistantName })}{' '}
+                                {pending.title}
                             </span>
                             <button onClick={() => present({ ...pending, manual: true })}>{translate('Open')}</button>
                             <button
@@ -487,32 +491,6 @@ export default function AnnaShell({ children, routeId }) {
                         aria-hidden={active && surface === 'browser'}
                         inert={active && surface === 'browser' ? '' : undefined}
                     >
-                        <div className="anna-workspace-toolbar anna-object-views" hidden={!active}>
-                            <span className="anna-muted">
-                                {translate(control ? 'You are in control' : 'Following Anna')}
-                            </span>
-                            <nav aria-label={translate('Workspace views')}>
-                                {conversation && (
-                                    <button
-                                        onClick={() =>
-                                            present({
-                                                id: `manual-${Date.now()}`,
-                                                manual: true,
-                                                view: 'tasks',
-                                                path: `/projects/${conversation.projectId}/user/${conversation.assistantId}/tasks/open`,
-                                            })
-                                        }
-                                    >
-                                        {translate('Assistant tasks')}
-                                    </button>
-                                )}
-                                {['tasks', 'notes', 'goals'].map(view => (
-                                    <button key={view} onClick={() => showList(view)}>
-                                        {translate(view[0].toUpperCase() + view.slice(1))}
-                                    </button>
-                                ))}
-                            </nav>
-                        </div>
                         <div
                             className="anna-workspace-content"
                             ref={workspaceContent}
@@ -522,6 +500,7 @@ export default function AnnaShell({ children, routeId }) {
                             {children}
                             {visited && (
                                 <AnnaWorkspaceHighlight
+                                    assistantName={assistantName}
                                     rootRef={workspaceContent}
                                     active={visibleWorkspace && surface === 'alldone'}
                                     conversation={conversation}
@@ -537,6 +516,7 @@ export default function AnnaShell({ children, routeId }) {
                             inert={!active || surface !== 'browser' ? '' : undefined}
                         >
                             <AnnaBrowserWorkspace
+                                assistantName={assistantName}
                                 browser={browser}
                                 active={visibleWorkspace && surface === 'browser'}
                                 onControlChange={held => {

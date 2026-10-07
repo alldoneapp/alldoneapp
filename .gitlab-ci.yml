@@ -676,6 +676,7 @@ deploy:cloud:functions:staging:
         - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
         - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > service_accounts/serv_account_key_master.json
         - echo "$GOOGLE_FUNCTIONS_ENV_DEV" > env_functions.json
+        - node -e 'JSON.parse(require("fs").readFileSync("env_functions.json", "utf8"))'
         - chmod +x service_accounts/setup_functions.sh
         - npm run setup_functions
     script:
@@ -699,6 +700,11 @@ deploy:cloud:functions:staging:
               # firebase.json carries the functions runtime, region and ignore list,
               # so a change there has to redeploy them too.
               - firebase.json
+        # Manual feature-branch QA uses the current backend on staging, matching
+        # deploy:web-staging-live, without advancing the old develop branch.
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          when: manual
+          allow_failure: true
 
 deploy:cloud:functions:production:
     image: $CI_REGISTRY_IMAGE/build_functions:latest
@@ -737,6 +743,7 @@ deploy:cloud:functions:production:
         - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
         - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > service_accounts/serv_account_key_master.json
         - echo "$GOOGLE_FUNCTIONS_ENV_PROD" > env_functions.json
+        - node -e 'JSON.parse(require("fs").readFileSync("env_functions.json", "utf8"))'
         - chmod +x service_accounts/setup_functions.sh
         - npm run setup_functions
     script:
@@ -801,6 +808,11 @@ deploy:cloud:runner:staging:
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes:
               - functions/**/*
+        # Manual feature-branch QA uses the current backend on staging, matching
+        # deploy:web-staging-live, without advancing the old develop branch.
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          when: manual
+          allow_failure: true
 
 deploy:cloud:runner:production:
     image: google/cloud-sdk:slim

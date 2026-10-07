@@ -35,11 +35,17 @@ jest.mock('./AnnaBrowserWorkspace', () => () => null)
 jest.mock('./AnnaWorkspaceHighlight', () => () => null)
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
 const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user' }
-const mockAssistant = { uid: 'a1', displayName: 'Anna Alldone' }
+let mockAssistant
+const mockDefaultAssistant = { uid: 'anna', displayName: 'Anna Alldone' }
 let mockUnmounts = 0
 jest.mock('react-redux', () => ({
     useDispatch: () => jest.fn(),
-    useSelector: selector => selector({ loggedUser: mockUser, defaultAssistant: mockAssistant }),
+    useSelector: selector =>
+        selector({
+            loggedUser: mockUser,
+            defaultAssistant: mockDefaultAssistant,
+            projectAssistants: { p1: [mockAssistant] },
+        }),
 }))
 jest.mock('./useAnnaConversation', () => ({ __esModule: true, default: jest.fn() }))
 jest.mock('./AnnaConversation', () => ({
@@ -63,7 +69,7 @@ jest.mock('../UIComponents/AssistantVoiceCallButton', () => ({
     __esModule: true,
     default: props => (
         <button data-project={props.projectId} data-chat={props.chatId}>
-            Talk with Anna
+            {props.title}
         </button>
     ),
 }))
@@ -87,7 +93,10 @@ jest.mock('../../URLSystem/URLTrigger', () => ({
     default: { processUrl: jest.fn().mockResolvedValue(undefined) },
 }))
 jest.mock('../../redux/actions', () => ({ showGlobalSearchPopup: () => ({ type: 'SEARCH' }) }))
-jest.mock('../../i18n/TranslationService', () => ({ translate: text => text, useTranslator: () => {} }))
+jest.mock('../../i18n/TranslationService', () => ({
+    translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
+    useTranslator: () => {},
+}))
 
 const conversation = { id: 'anna_u1', projectId: 'p1', assistantId: 'a1' }
 const state = { conversation, loading: false, error: '', retry: jest.fn() }
@@ -100,6 +109,7 @@ const content = id => (
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     setAnnaMode(true)
+    mockAssistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
     mockUnmounts = 0
     jest.clearAllMocks()
     useAnnaConversation.mockReturnValue(state)
@@ -111,7 +121,7 @@ it('keeps the conversation mounted across workspace navigation and uses its topi
     view.rerender(content(2))
     expect(screen.getByLabelText('Persistent conversation').value).toBe('Unsent message')
     expect(mockUnmounts).toBe(0)
-    const voice = screen.getByText('Talk with Anna')
+    const voice = screen.getByText('Talk with Carl Code Mentor')
     expect(voice.getAttribute('data-chat')).toBe('anna_u1')
     expect(voice.getAttribute('data-project')).toBe('p1')
     await act(async () => {})
@@ -179,5 +189,17 @@ it('does not create a conversation until the user first opens the assistant view
     act(() => setAnnaMode(true))
     expect(useAnnaConversation.mock.calls.at(-1)[1].enabled).toBe(true)
     expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
+    await act(async () => {})
+})
+
+it('uses the conversation assistant for labels and reacts when that assistant is renamed', async () => {
+    const view = render(content(1))
+    expect(screen.getByText('Talk with Carl Code Mentor')).toBeTruthy()
+    expect(screen.getByLabelText('Conversation with Carl Code Mentor')).toBeTruthy()
+    expect(testContainer.textContent).not.toContain('Anna')
+
+    mockAssistant = { ...mockAssistant, displayName: 'Mira' }
+    view.rerender(content(1))
+    expect(screen.getByText('Talk with Mira')).toBeTruthy()
     await act(async () => {})
 })

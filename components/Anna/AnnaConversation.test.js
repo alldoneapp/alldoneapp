@@ -16,7 +16,9 @@ jest.mock('../../utils/backends/firestore', () => ({
 jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000 }))
 jest.mock('../ChatsView/Utils/ChatHelper', () => ({ getTimestampInMilliseconds: value => value }))
 jest.mock('../ChatsView/ChatDV/EditorView/messageLoadingState', () => ({ resolveEffectiveMessageLoading: () => false }))
-jest.mock('../../i18n/TranslationService', () => ({ translate: value => value }))
+jest.mock('../../i18n/TranslationService', () => ({
+    translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
+}))
 jest.mock('./useAnnaMessageReadState', () => jest.fn())
 jest.mock('../ContactsView/Utils/ContactsHelper', () => ({
     getUserPresentationData: id => ({ uid: id, displayName: id }),
@@ -60,7 +62,7 @@ it('saves the visible context and one project conversation message before invoki
     render()
     await click('Show me my tasks')
     await submit()
-    expect(mockContextUpdate).toHaveBeenCalledWith({ annaPageContext: { path: '/', title: 'Anna' } })
+    expect(mockContextUpdate).toHaveBeenCalledWith({ annaPageContext: { path: '/', title: 'Existing assistant' } })
     expect(createObjectMessage).toHaveBeenCalledWith(
         'p1',
         'anna_u1',
@@ -79,6 +81,18 @@ it('saves the visible context and one project conversation message before invoki
         expect.objectContaining({ messageId: 'm1', assistantId: 'a1', isPublicFor: [0] }),
         { timeout: 3600000 }
     )
+})
+
+it('uses the selected assistant name in the welcome text, composer and Gold message', async () => {
+    render({ assistant: { displayName: 'Carl Code Mentor' }, user: { uid: 'u1', gold: 0 } })
+    const composer = container.querySelector('textarea')
+    expect(composer.getAttribute('aria-label')).toBe('Message Carl Code Mentor')
+    expect(composer.placeholder).toBe('Talk or type to Carl Code Mentor…')
+    expect(container.querySelector('.anna-welcome').textContent).toContain('Talk with Carl Code Mentor.')
+    await click('Show me my tasks')
+    await submit()
+    expect(container.querySelector('[role="alert"]').textContent).toBe('You need Gold to talk with Carl Code Mentor.')
+    expect(createObjectMessage).not.toHaveBeenCalled()
 })
 
 it('retries a failed assistant request using the saved message without posting a duplicate', async () => {

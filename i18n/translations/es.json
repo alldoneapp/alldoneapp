@@ -3235,5 +3235,20 @@
     "PrepareMeetingPromptContext": "Evento de calendario: %{context}.",
     "PrepareMeetingPromptSource": "Conexión de calendario: %{projectId}",
     "Meeting preparation could not start": "No se pudo iniciar la preparación de reuniones. Inténtalo de nuevo.",
-    "No project assistant available": "No hay un asistente disponible para el proyecto. Configura uno primero."
+    "No project assistant available": "No hay un asistente disponible para el proyecto. Configura uno primero.",
+    "Conversation with %{assistantName}": "Conversación con %{assistantName}",
+    "Connecting with %{assistantName}…": "Conectando con %{assistantName}…",
+    "%{assistantName} would like to show you:": "%{assistantName} quiere mostrarte:",
+    "Talk with %{assistantName}": "Hablar con %{assistantName}",
+    "You need Gold to talk with %{assistantName}.": "Necesitas Gold para hablar con %{assistantName}.",
+    "Talk with %{assistantName}. Your tasks, notes and projects are right here when you need them.": "Habla con %{assistantName}. Tus tareas, notas y proyectos están aquí cuando los necesites.",
+    "%{assistantName} is working…": "%{assistantName} está trabajando…",
+    "Message %{assistantName}": "Mensaje a %{assistantName}",
+    "Talk or type to %{assistantName}…": "Habla o escribe a %{assistantName}…",
+    "%{assistantName} is pointing to:": "%{assistantName} está señalando:",
+    "Following %{assistantName}": "%{assistantName} tiene el control",
+    "Let %{assistantName} continue": "Dejar que %{assistantName} continúe",
+    "Browser viewport for %{assistantName}": "Vista del navegador de %{assistantName}",
+    "The browser used by %{assistantName} will appear here when browsing.": "El navegador de %{assistantName} aparecerá aquí cuando se use.",
+    "Assistant views": "Vistas del asistente"
 }

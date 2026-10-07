@@ -27,6 +27,7 @@ export default function AnnaConversation({
     resumeRequest,
     onResumeHandled,
 }) {
+    const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [draft, setDraft] = useState('')
     const [sending, setSending] = useState(false)
     const [error, setError] = useState('')
@@ -82,7 +83,7 @@ export default function AnnaConversation({
         event?.preventDefault()
         if (inFlight.current || voiceActive || (!draft.trim() && !retryMessage && !continuation)) return
         if (!(user.gold > 0)) {
-            setError(translate('You need Gold to talk with Anna.'))
+            setError(translate('You need Gold to talk with %{assistantName}.', { assistantName }))
             return
         }
         inFlight.current = true
@@ -101,7 +102,7 @@ export default function AnnaConversation({
             // Context is saved before the request, so "this note" refers to what is visible.
             await getDb()
                 .doc(`chatObjects/${thread.projectId}/chats/${thread.id}`)
-                .update({ annaPageContext: getAnnaWorkspaceContext() || { path: '/', title: 'Anna' } })
+                .update({ annaPageContext: getAnnaWorkspaceContext() || { path: '/', title: assistantName } })
             if (!messageId) {
                 messageId = await createObjectMessage(
                     thread.projectId,
@@ -167,7 +168,7 @@ export default function AnnaConversation({
                 className="anna-messages"
                 ref={scroll}
                 role="log"
-                aria-label={translate('Conversation with Anna')}
+                aria-label={translate('Conversation with %{assistantName}', { assistantName })}
                 onWheel={() => {
                     scrollAnchor.current = null
                 }}
@@ -208,7 +209,7 @@ export default function AnnaConversation({
                 ))}
                 {sending && (
                     <p className="anna-muted" role="status">
-                        {translate('Anna is working…')}
+                        {translate('%{assistantName} is working…', { assistantName })}
                     </p>
                 )}
             </div>
@@ -230,9 +231,11 @@ export default function AnnaConversation({
                 )}
                 <div className="anna-composer-field">
                     <textarea
-                        aria-label={translate('Message Anna')}
+                        aria-label={translate('Message %{assistantName}', { assistantName })}
                         placeholder={
-                            voiceActive ? translate('Voice call in progress') : translate('Talk or type to Anna…')
+                            voiceActive
+                                ? translate('Voice call in progress')
+                                : translate('Talk or type to %{assistantName}…', { assistantName })
                         }
                         value={draft}
                         maxLength={CHAT_INPUT_LIMIT_IN_CHARACTERS}
@@ -277,6 +280,7 @@ function AnnaThreadMessages({
     onSuggest,
     visible,
 }) {
+    const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [limit, setLimit] = useState(40)
     const chatId = thread.chatId || thread.id
     const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit)
@@ -304,7 +308,10 @@ function AnnaThreadMessages({
                 <div className="anna-welcome">
                     <h1>{translate('What’s on your mind?')}</h1>
                     <p>
-                        {translate('Talk with Anna. Your tasks, notes and projects are right here when you need them.')}
+                        {translate(
+                            'Talk with %{assistantName}. Your tasks, notes and projects are right here when you need them.',
+                            { assistantName }
+                        )}
                     </p>
                     <div className="anna-suggestions">
                         {['Help me plan my day', 'Show me my tasks', 'Find a note'].map(text => (

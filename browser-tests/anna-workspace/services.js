@@ -1,11 +1,11 @@
 // Synthetic account and transport only; the shell, chat, browser pane, hooks and CSS are real.
 const user = { uid: 'demo', displayName: 'Alex', defaultProjectId: 'p1', gold: 1000 }
-const assistant = { uid: 'a1', displayName: 'Anna Alldone' }
+const assistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
 const chat = { id: 'AnnaChat20261007demo', assistantId: 'a1', projectId: 'p1', isPublicFor: [0] }
 const data = { 'chatObjects/p1/chats/AnnaChat20261007demo': chat }
 const listeners = new Map()
 export const useSelector = selector => selector({ loggedUser: user, defaultAssistant: assistant })
-export const translate = text => text
+export const translate = (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? '')
 export const useTranslator = () => {}
 export const useVoiceCall = () => ({ status: 'idle', voiceSeconds: 0 })
 export const getAssistant = () => assistant
