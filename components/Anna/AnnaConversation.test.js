@@ -125,6 +125,37 @@ it('prevents concurrent text execution during a voice call', async () => {
     expect(container.querySelector('textarea').disabled).toBe(true)
 })
 
+it('starts voice in the current conversation without sending or clearing the draft', async () => {
+    const startCall = jest.fn()
+    render({ call: { status: 'idle', startCall } })
+    await click('Find a note')
+    await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
+    expect(startCall).toHaveBeenCalledWith({
+        assistant: { uid: 'a1', displayName: 'Existing assistant' },
+        projectId: 'p1',
+        chatId: 'anna_u1',
+        skipNavigationOnThreadCreate: true,
+    })
+    expect(container.querySelector('textarea').value).toBe('Find a note')
+    expect(createObjectMessage).not.toHaveBeenCalled()
+})
+
+it('keeps cancel, hangup and audio recovery available inside the composer without submitting a message', async () => {
+    const endCall = jest.fn()
+    const playCallAudio = jest.fn()
+    render({ call: { status: 'connecting', endCall } })
+    await act(async () => container.querySelector('[aria-label="Cancel call"]').click())
+    expect(endCall).toHaveBeenCalledTimes(1)
+    render({ call: { status: 'active', endCall, needsAudioPlayback: true, playCallAudio } })
+    await act(async () => container.querySelector('[aria-label="Enable call audio"]').click())
+    expect(playCallAudio).toHaveBeenCalledTimes(1)
+    await act(async () => container.querySelector('[aria-label="End call"]').click())
+    expect(endCall).toHaveBeenCalledTimes(2)
+    render({ call: { status: 'ending', endCall } })
+    expect(container.querySelector('[aria-label="End call"]').disabled).toBe(true)
+    expect(createObjectMessage).not.toHaveBeenCalled()
+})
+
 it('resolves the new local day before sending while preserving retries on their original thread', async () => {
     const resolveConversation = jest
         .fn()

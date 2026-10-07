@@ -1,3 +1,4 @@
+import { withAnnaMode } from '../../utils/annaMode'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import HelperFunctions from '../../utils/HelperFunctions'
@@ -128,7 +129,7 @@ class URLsTasks {
         URLSystem.setLastNavigationScreen(urlPath, true)
 
         URLsTasks.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', `${originPath}/${urlPath}`)
+        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     /**
@@ -146,7 +147,7 @@ class URLsTasks {
             delete replacementData[REPLACE_NEXT_TASK_DETAIL_PUSH]
             URLSystem.setLastNavigationScreen(urlPath, true)
             URLsTasks.setTitle(urlConstant, false, ...params)
-            history.replaceState(replacementData, '', `${originPath}/${urlPath}`)
+            history.replaceState(replacementData, '', withAnnaMode(`${originPath}/${urlPath}`))
             return
         }
 
@@ -155,7 +156,7 @@ class URLsTasks {
         }
 
         URLsTasks.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', `${originPath}/${urlPath}`)
+        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     static getPath = (urlConstant, ...params) => {

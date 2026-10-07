@@ -1,3 +1,4 @@
+import { withAnnaMode } from '../utils/annaMode'
 // URL definitions
 // ========================
 
@@ -78,7 +79,7 @@ class URLSystem {
         URLSystem.setLastNavigationScreen(urlPath, true)
 
         URLSystem.setTitle(urlConstant, ...params)
-        history.replaceState(data, '', `${originPath}/${urlPath}`)
+        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     /**
@@ -94,7 +95,7 @@ class URLSystem {
         URLSystem.setLastNavigationScreen(urlPath)
 
         URLSystem.setTitle(urlConstant, ...params)
-        history.pushState(data, '', `${originPath}/${urlPath}`)
+        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     static getPath = (urlConstant, ...params) => {

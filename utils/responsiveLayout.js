@@ -27,8 +27,16 @@ const DETAIL_VIEW_ROUTES = new Set([
  * this calculation pure so boot and later layout changes use the exact same
  * breakpoints.
  */
-export const getResponsiveLayoutState = ({ width, sidebarExpanded = false, route = '' }) => {
-    const navigationBreakpoint = sidebarExpanded ? SCREEN_BREAKPOINT_NAV : SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED
+export const getResponsiveLayoutState = ({
+    width,
+    sidebarExpanded = false,
+    route = '',
+    preferCompactNavigation = false,
+}) => {
+    // The split workspace needs the compact navigation before the desktop top
+    // bar runs out of room, even when the user's sidebar preference is collapsed.
+    const navigationBreakpoint =
+        sidebarExpanded || preferCompactNavigation ? SCREEN_BREAKPOINT_NAV : SCREEN_BREAKPOINT_NAV_SIDEBAR_COLLAPSED
     // Preserve AppNavigator's original boundary behavior: navigation switches
     // at <=, while content width starts accounting for the sidebar at the exact
     // breakpoint.

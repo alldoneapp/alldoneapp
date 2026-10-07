@@ -47,10 +47,16 @@ import { installPassiveVirtualizedListWheel } from './utils/passiveVirtualizedLi
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
 import AnnaShell from './components/Anna/AnnaShell'
 import { getResponsiveLayoutState } from './utils/responsiveLayout'
+import { isAnnaMode } from './utils/annaMode'
 
 const getCurrentResponsiveLayout = width => {
     const { loggedUser, route } = store.getState()
-    return getResponsiveLayoutState({ width, sidebarExpanded: loggedUser.sidebarExpanded, route })
+    return getResponsiveLayoutState({
+        width,
+        sidebarExpanded: loggedUser.sidebarExpanded,
+        route,
+        preferCompactNavigation: isAnnaMode(),
+    })
 }
 
 // Seed the responsive Redux flags before AppContent's first render. This is
@@ -66,6 +72,7 @@ export const initializeResponsiveLayout = () => {
         width,
         sidebarExpanded: current.loggedUser.sidebarExpanded,
         route: current.route,
+        preferCompactNavigation: isAnnaMode(),
     })
     const dispatches = []
 

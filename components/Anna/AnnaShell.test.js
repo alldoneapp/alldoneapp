@@ -5,7 +5,8 @@ let testRoot
 let testContainer
 const screen = {
     getByLabelText: label => document.querySelector(`[aria-label="${label}"]`),
-    getByText: text => [...document.querySelectorAll('button, span')].find(node => node.textContent.trim() === text),
+    getByText: text =>
+        [...document.querySelectorAll('button, span, strong')].find(node => node.textContent.trim() === text),
 }
 const fireEvent = {
     change: (element, event) => {
@@ -72,15 +73,6 @@ jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({ getAssistant: ()
 jest.mock('../UIComponents/AssistantVoiceCallProvider', () => ({
     useVoiceCall: () => ({ status: 'idle', voiceSeconds: 0 }),
 }))
-jest.mock('../UIComponents/AssistantVoiceCallButton', () => ({
-    __esModule: true,
-    default: props => (
-        <button data-project={props.projectId} data-chat={props.chatId}>
-            {props.title}
-        </button>
-    ),
-}))
-jest.mock('../UIComponents/VoiceMicrophoneStatus', () => ({ __esModule: true, default: () => null }))
 jest.mock('../../utils/backends/firestore', () => ({
     getDb: () => ({
         runTransaction: fn => fn({ get: async () => ({ data: () => mockTransactionState }), set: mockSet }),
@@ -125,15 +117,14 @@ beforeEach(() => {
     useAnnaConversation.mockReturnValue(state)
 })
 
-it('keeps the conversation mounted across workspace navigation and uses its topic for voice', async () => {
+it('keeps the conversation mounted across workspace navigation with its topic and voice state', async () => {
     const view = render(content(1))
     fireEvent.change(screen.getByLabelText('Persistent conversation'), { target: { value: 'Unsent message' } })
     view.rerender(content(2))
     expect(screen.getByLabelText('Persistent conversation').value).toBe('Unsent message')
     expect(mockUnmounts).toBe(0)
-    const voice = screen.getByText('Talk with Carl Code Mentor')
-    expect(voice.getAttribute('data-chat')).toBe('anna_u1')
-    expect(voice.getAttribute('data-project')).toBe('p1')
+    expect(mockConversationProps.conversation).toMatchObject({ id: 'anna_u1', projectId: 'p1' })
+    expect(mockConversationProps.call.status).toBe('idle')
     await act(async () => {})
 })
 
@@ -143,7 +134,7 @@ it('preserves both editors when zooming out and back without remounting the work
     const chat = screen.getByLabelText('Persistent conversation')
     workspace.value = 'Work in progress'
     chat.value = 'Unsent message'
-    fireEvent.click(screen.getByText('Alldone fullscreen'))
+    fireEvent.click(screen.getByText('Zoom in Alldone'))
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
     act(() => setAnnaMode(true))
     expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
@@ -237,12 +228,14 @@ it('does not create a conversation until the user first opens the assistant view
 
 it('uses the conversation assistant for labels and reacts when that assistant is renamed', async () => {
     const view = render(content(1))
-    expect(screen.getByText('Talk with Carl Code Mentor')).toBeTruthy()
+    expect(screen.getByText('Carl Code Mentor')).toBeTruthy()
+    expect(mockConversationProps.assistant.displayName).toBe('Carl Code Mentor')
     expect(screen.getByLabelText('Conversation with Carl Code Mentor')).toBeTruthy()
     expect(testContainer.textContent).not.toContain('Anna')
 
     mockAssistant = { ...mockAssistant, displayName: 'Mira' }
     view.rerender(content(1))
-    expect(screen.getByText('Talk with Mira')).toBeTruthy()
+    expect(screen.getByText('Mira')).toBeTruthy()
+    expect(mockConversationProps.assistant.displayName).toBe('Mira')
     await act(async () => {})
 })

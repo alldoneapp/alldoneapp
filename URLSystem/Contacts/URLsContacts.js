@@ -1,3 +1,4 @@
+import { withAnnaMode } from '../../utils/annaMode'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import HelperFunctions from '../../utils/HelperFunctions'
@@ -55,7 +56,7 @@ class URLsContacts {
         URLSystem.setLastNavigationScreen(urlPath, true)
 
         URLsContacts.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', `${originPath}/${urlPath}`)
+        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     /**
@@ -71,7 +72,7 @@ class URLsContacts {
         URLSystem.setLastNavigationScreen(urlPath)
 
         URLsContacts.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', `${originPath}/${urlPath}`)
+        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
     }
 
     static getPath = (urlConstant, ...params) => {

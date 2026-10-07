@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import AnnaShell from '../../components/Anna/AnnaShell'
 import { setAnnaMode } from '../../utils/annaMode'
 window.zoomAnna = setAnnaMode
-setAnnaMode(true)
 createRoot(document.getElementById('root')).render(
     <AnnaShell routeId="fixture-note">
         <div style={{ flex: 1, minWidth: 0, padding: '32px', background: 'white', overflow: 'auto' }}>

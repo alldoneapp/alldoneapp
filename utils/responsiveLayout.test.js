@@ -42,6 +42,17 @@ describe('getResponsiveLayoutState', () => {
         expect(state.isMiddleScreen).toBe(true)
     })
 
+    it('keeps all navigation controls available in a narrow split workspace', () => {
+        expect(
+            getResponsiveLayoutState({ width: 680, sidebarExpanded: false, preferCompactNavigation: true })
+                .smallScreenNavigation
+        ).toBe(true)
+        expect(
+            getResponsiveLayoutState({ width: 1000, sidebarExpanded: false, preferCompactNavigation: true })
+                .smallScreenNavigation
+        ).toBe(false)
+    })
+
     it('only enables the detail-view middle-screen flag on detail routes', () => {
         expect(getResponsiveLayoutState({ width: 900, route: 'TaskDetailedView' }).isMiddleScreenNoteDV).toBe(true)
         expect(getResponsiveLayoutState({ width: 900, route: 'ROOT_TASKS' }).isMiddleScreenNoteDV).toBe(false)

@@ -11,6 +11,9 @@ import { resolveEffectiveMessageLoading } from '../ChatsView/ChatDV/EditorView/m
 import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
+import Icon from '../Icon'
+import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
+import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
 
 export default function AnnaConversation({
     conversation,
@@ -40,6 +43,18 @@ export default function AnnaConversation({
     const resumed = useRef(null)
     const mounted = useRef(true)
     const voiceActive = call.status !== 'idle'
+    const seconds = Math.floor(call.voiceSeconds || 0)
+    const voiceLabel = translate(
+        voiceActive ? (call.status === 'connecting' ? 'Cancel call' : 'End call') : 'Talk with %{assistantName}',
+        { assistantName }
+    )
+    const voiceHint = voiceActive
+        ? voiceLabel
+        : `${voiceLabel}. ${translate('Voice costs %{gold} Gold/min plus normal assistant usage', {
+              gold: LIVE_GOLD_PER_MINUTE,
+          })}. ${translate('Voice has a %{seconds}-second minimum; connected time includes silence', {
+              seconds: LIVE_INITIALIZATION_SECONDS,
+          })}`
     const [loadingEarlier, setLoadingEarlier] = useState(false)
     useEffect(() => {
         mounted.current = true
@@ -219,10 +234,10 @@ export default function AnnaConversation({
                 </button>
             )}
             <form className="anna-composer" onSubmit={send}>
-                {error && (
+                {(error || call.error) && (
                     <div className="anna-error" role="alert">
-                        {error}
-                        {retryMessage && (
+                        {error || call.error}
+                        {error && retryMessage && (
                             <button type="button" onClick={send}>
                                 {translate('Retry')}
                             </button>
@@ -250,6 +265,36 @@ export default function AnnaConversation({
                             }
                         }}
                     />
+                    {call.needsAudioPlayback && (
+                        <button
+                            type="button"
+                            className="anna-voice-button"
+                            aria-label={translate('Enable call audio')}
+                            title={translate('Enable call audio')}
+                            onClick={call.playCallAudio}
+                        >
+                            <Icon name="volume-2" size={20} color="currentColor" />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className={`anna-voice-button${voiceActive ? ' anna-voice-active' : ''}`}
+                        aria-label={voiceLabel}
+                        title={voiceHint}
+                        disabled={voiceActive ? call.status === 'ending' : sending || !!retryMessage}
+                        onClick={() =>
+                            voiceActive
+                                ? call.endCall()
+                                : call.startCall({
+                                      assistant: { ...assistant, uid: conversation.assistantId },
+                                      projectId: conversation.projectId,
+                                      chatId: conversation.id,
+                                      skipNavigationOnThreadCreate: true,
+                                  })
+                        }
+                    >
+                        <Icon name={voiceActive ? 'phone-off' : 'phone-call'} size={20} color="currentColor" />
+                    </button>
                     <button
                         type="submit"
                         className="anna-send"
@@ -260,8 +305,23 @@ export default function AnnaConversation({
                     </button>
                 </div>
                 <div className="anna-composer-footer">
-                    <span>{translate('Conversation in your default project')}</span>
-                    <span>{translate('Shift + Enter for a new line')}</span>
+                    {voiceActive ? (
+                        <>
+                            <span role="status">
+                                {translate(call.status === 'connecting' ? 'Connecting' : 'Voice call in progress')}
+                                {' · '}
+                                {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+                            </span>
+                            <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} compact />
+                        </>
+                    ) : (
+                        <>
+                            <span title={translate('Conversation in your default project')}>
+                                {translate('Conversation in your default project')}
+                            </span>
+                            <span className="anna-composer-shortcut">{translate('Shift + Enter for a new line')}</span>
+                        </>
+                    )}
                 </div>
             </form>
         </>

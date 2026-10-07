@@ -56,7 +56,8 @@ export default function XpBar({ size = XP_BAR_DESKTOP }) {
         [XP_BAR_MOBILE]: barProgWidth[XP_BAR_MOBILE],
     }
 
-    const xpPercent = getRelativeLevelXp(level, xp) / getXpNeededToReachLevel(level + 1)
+    const levelProgress = getRelativeLevelXp(level, xp) / getXpNeededToReachLevel(level + 1)
+    const xpPercent = Number.isFinite(levelProgress) ? Math.max(0, Math.min(1, levelProgress)) : 0
     const barPosition = xpPercent * (barProgWidthOffSet[size] - 26)
 
     const bgColor = size === XP_BAR_MOBILE ? theme.bgColorMobile : theme.bgColorDesktop

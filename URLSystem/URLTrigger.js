@@ -16,6 +16,7 @@ import URLsTasks, { URL_ALL_PROJECTS_TASKS_OPEN } from './Tasks/URLsTasks'
 import URLsNotesTrigger from './Notes/URLsNotesTrigger'
 import SharedHelper from '../utils/SharedHelper'
 import URLsChatsTrigger from './Chats/URLsChatsTrigger'
+import { withoutAnnaMode } from '../utils/annaMode'
 
 export const MIN_URLS_IN_HISTORY = 2
 
@@ -43,6 +44,7 @@ class URLTrigger {
     }
 
     static directProcessUrl = (navigation, pathname) => {
+        pathname = withoutAnnaMode(pathname)
         const matchersList = URLTrigger.getRegexList()
         for (let key in matchersList) {
             const matchResult = matchersList[key].match(pathname)

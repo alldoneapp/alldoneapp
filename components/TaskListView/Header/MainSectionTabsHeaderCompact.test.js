@@ -122,4 +122,17 @@ describe('MainSectionTabsHeader compact mobile tabs', () => {
         expect(tree.root.findAllByType(ScrollView)).toHaveLength(1)
         expect(flatten(tree.root.findAllByType(Text)[0].props.style).fontSize).toBe(16)
     })
+
+    it('adapts to the workspace width when it is narrower than the browser window', () => {
+        setViewportWidth(1440)
+        mockState.screenDimensions = { width: 680 }
+        const tree = renderHeader()
+        expect(tree.root.findAllByType(ScrollView)).toHaveLength(1)
+
+        mockState.screenDimensions = { width: 390 }
+        act(() => tree.update(<MainSectionTabsHeader />))
+        expect(tree.root.findAllByType(ScrollView)).toHaveLength(0)
+        expect(flatten(tree.root.findAllByType(Text)[0].props.style).fontSize).toBe(15)
+        act(() => tree.unmount())
+    })
 })
