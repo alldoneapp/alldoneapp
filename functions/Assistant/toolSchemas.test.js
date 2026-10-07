@@ -187,6 +187,17 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.update_user_memory.function.parameters.properties.reason.type).toBe('string')
     })
 
+    test('exposes optional parent goals with explicit clearing for task tools', () => {
+        for (const name of ['create_task', 'update_task']) {
+            const parameters = toolSchemas[name].function.parameters
+            expect(parameters.properties.parentGoalId.type).toEqual(['string', 'null'])
+            expect(parameters.required).not.toContain('parentGoalId')
+        }
+        expect(toolSchemas.update_task.function.parameters.properties.parentGoalId.description).toContain(
+            'omitting this field preserves it'
+        )
+    })
+
     test('defines optional image URLs for create_task', () => {
         expect(toolSchemas.create_task.function.parameters.properties.images).toEqual({
             type: 'array',

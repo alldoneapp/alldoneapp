@@ -3755,6 +3755,143 @@ describe('resolveCreateTaskTargetProject', () => {
     })
 })
 
+describe('assistant parent goal tools', () => {
+    const TaskUpdateService = require('../shared/TaskUpdateService')
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockCreateAndPersistTask.mockReset()
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-goal', name: 'Goal Project' }]),
+        }))
+        mockDocGet.mockImplementation(function () {
+            return Promise.resolve({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-goal',
+                    projectIds: ['project-goal'],
+                    userIds: ['user-1'],
+                    isPublicFor: ['user-1'],
+                    lockKey: 'goal-lock',
+                }),
+            })
+        })
+        mockCreateAndPersistTask.mockResolvedValue({
+            success: true,
+            taskId: 'task-goal',
+            projectId: 'project-goal',
+            task: { id: 'task-goal', name: 'Goal task', userId: 'user-1', commentsData: { amount: 0 } },
+        })
+    })
+    afterEach(() => jest.restoreAllMocks())
+
+    test.each(['goal-1', null])('create_task forwards resolved parent goal fields: %j', async parentGoalId => {
+        await executeToolNatively(
+            'create_task',
+            { name: 'Goal task', projectId: 'project-goal', parentGoalId },
+            'project-context',
+            'assistant-1',
+            'user-1',
+            null
+        )
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'project-goal',
+                parentGoalId,
+                parentGoalIsPublicFor: parentGoalId ? ['user-1'] : null,
+                lockKey: parentGoalId ? 'goal-lock' : '',
+            }),
+            expect.objectContaining({ userId: 'user-1' })
+        )
+        if (parentGoalId === null) {
+            expect(mockCreateAndPersistTask.mock.calls[0][0].skipAutomaticGoalRouting).toBe(true)
+        }
+    })
+
+    test('create_task refuses a private goal before task persistence', async () => {
+        mockDocGet.mockImplementation(function () {
+            const privateGoal = this.path === 'goals/project-goal/items/goal-1'
+            return Promise.resolve({
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-goal',
+                    projectIds: ['project-goal'],
+                    userIds: ['user-1'],
+                    isPublicFor: privateGoal ? ['other-user'] : [0],
+                }),
+            })
+        })
+        await expect(
+            executeToolNatively(
+                'create_task',
+                { name: 'Goal task', projectId: 'project-goal', parentGoalId: 'goal-1' },
+                'project-context',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('Parent goal not found or not accessible')
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test.each(['goal-1', null])(
+        'update_task accepts goal-only mutations and forwards clearing: %j',
+        async parentGoalId => {
+            jest.spyOn(TaskUpdateService.prototype, 'initialize').mockResolvedValue(undefined)
+            const findAndUpdate = jest.spyOn(TaskUpdateService.prototype, 'findAndUpdateTask').mockResolvedValue({
+                success: true,
+                taskId: 'task-1',
+                changes: ['parent goal'],
+            })
+            await executeToolNatively(
+                'update_task',
+                { taskName: 'Goal task', parentGoalId },
+                'project-goal',
+                'assistant-1',
+                'user-1',
+                null
+            )
+            expect(findAndUpdate).toHaveBeenCalledWith(
+                'user-1',
+                expect.anything(),
+                expect.objectContaining({ parentGoalId }),
+                expect.objectContaining({ feedUser: expect.objectContaining({ uid: 'assistant-1' }) })
+            )
+        }
+    )
+
+    test('refuses combined project moves and goal assignment before updating', async () => {
+        jest.spyOn(TaskUpdateService.prototype, 'initialize').mockResolvedValue(undefined)
+        const findAndUpdate = jest.spyOn(TaskUpdateService.prototype, 'findAndUpdateTask')
+        await expect(
+            executeToolNatively(
+                'update_task',
+                { taskName: 'Goal task', parentGoalId: 'goal-1', moveToProjectId: 'project-goal' },
+                'project-context',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('separate call')
+        expect(findAndUpdate).not.toHaveBeenCalled()
+    })
+
+    test.each(['create_task', 'update_task'])('requires human authorization for %s goal edits', async tool => {
+        await expect(
+            executeToolNatively(
+                tool,
+                { name: 'Goal task', parentGoalId: 'goal-1' },
+                'project-goal',
+                'assistant-1',
+                null,
+                null
+            )
+        ).rejects.toThrow('Authenticated user is required')
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+})
+
 describe('assistant create_task project routing comments', () => {
     beforeEach(() => {
         jest.clearAllMocks()

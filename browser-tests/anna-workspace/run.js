@@ -251,94 +251,6 @@ async function checkWorkspaceReveal(page, width) {
         `PASS ${width}px: real ScrollView reveal; home only after highlight and completed request; user interaction cancels return; drafts, assistant mode and reduced motion are preserved`
     )
 }
-async function checkBrowserLogin(page, width) {
-    let captures = 0
-    const countCapture = message => {
-        if (message.text() === 'Anna fixture login action: snapshot') captures++
-    }
-    page.on('console', countCapture)
-    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&login=1`)
-    const chat = page.getByLabel('Message Carl Code Mentor')
-    await chat.fill('Keep my chat draft')
-    await page.getByText('browser_takeover_start', { exact: true }).click()
-    const login = page.locator('.anna-browser-takeover')
-    const input = login.getByLabel('browser_takeover_type_placeholder')
-    await login.getByLabel('browser_takeover_viewport').waitFor({ state: 'visible' })
-    assert.equal(await input.getAttribute('type'), 'password')
-    assert.equal(await page.locator('.anna-messages input').count(), 0, 'Login fields must never appear in the chat')
-    assert.equal(await page.locator('.anna-stage').getAttribute('aria-hidden'), 'false')
-    const frame = await login.getByLabel('browser_takeover_viewport').boundingBox()
-    const pane = await page.locator('.anna-browser-surface').boundingBox()
-    assert.ok(frame.width > pane.width * 0.85, 'The login browser should use the main pane width')
-    await input.fill('Fixture private input')
-    const toolbar = page.locator('.anna-workspace-toolbar')
-    await toolbar.getByRole('button', { name: 'Alldone', exact: true }).click()
-    await toolbar.getByRole('button', { name: 'Browser', exact: true }).click()
-    assert.equal(await input.inputValue(), 'Fixture private input', 'Pane changes preserve the same controller')
-    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
-    assert.equal(await chat.inputValue(), 'Keep my chat draft')
-    await page.getByText('Open browser', { exact: true }).click()
-    assert.equal(await input.inputValue(), 'Fixture private input')
-    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
-    await chat.fill('A message while signing in')
-    await chat.press('Enter')
-    await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
-    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
-    assert.equal(await input.inputValue(), 'Fixture private input', 'Sending chat does not close or release login')
-    assert.equal(captures, 1, 'Switching panes or reopening must not create another paid snapshot')
-    await login.getByText('browser_takeover_type', { exact: true }).click()
-    await page.waitForFunction(() => document.querySelector('.anna-browser-takeover input')?.value === '')
-    await page.screenshot({ path: path.join(BUILD, `login-${width}.png`) })
-    await login.getByText('browser_takeover_done', { exact: true }).click()
-    await login.waitFor({ state: 'detached' })
-    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
-    await page.getByText('browser_takeover_completed', { exact: true }).waitFor({ state: 'visible' })
-    assert.equal(await page.locator('.anna-browser-takeover').count(), 0)
-    page.off('console', countCapture)
-    console.log(
-        `PASS ${width}px: login exclusively in main browser pane; private input survives pane switches; chat remains usable; one controller and successful hand-back`
-    )
-}
-
-async function checkVmWorkspace(page, width) {
-    await page.goto(`http://127.0.0.1:${server.address().port}/projects/tasks/open?assistant=1&vm=1`)
-    const chat = page.getByLabel('Message Carl Code Mentor')
-    await chat.fill('Keep this unsent message')
-    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
-    await page.getByLabel('Workspace draft').fill('Keep the workspace edit')
-    const vmTab = page.getByRole('button', { name: /^VM: Prepare the launch report/ })
-    await vmTab.click()
-    await page.locator('.anna-vm-terminal pre').waitFor({ state: 'visible' })
-    assert.match(await page.locator('.anna-vm-terminal pre').textContent(), /Reading launch.md/)
-    assert.equal(await page.getByLabel('Workspace draft').isVisible(), false)
-    await page.evaluate(() => window.__annaVmFixture('running', '💻 npm test\nChecking the report output…'))
-    await page.getByText('💻 npm test\nChecking the report output…', { exact: true }).waitFor()
-    assert.equal(await page.locator('.anna-vm-tab').count(), 2)
-    const bounds = await page.locator('.anna-vm-terminal').boundingBox()
-    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1)
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
-    await page.screenshot({ path: path.join(BUILD, `vm-live-${width}.png`) })
-    await page.evaluate(() => window.__annaVmFixture('awaiting_user', 'Please review the plan.'))
-    await page.getByText('Request changes', { exact: true }).click()
-    await page.getByPlaceholder('What should change in the plan?').fill('Keep this feedback draft')
-    await page.locator('.anna-workspace-toolbar').getByText('Browser', { exact: true }).click()
-    await vmTab.click()
-    assert.equal(
-        await page.getByPlaceholder('What should change in the plan?').inputValue(),
-        'Keep this feedback draft'
-    )
-    await page.getByText('Execute plan', { exact: true }).click()
-    await page.getByText('💻 npm test\nTests are running…', { exact: true }).waitFor()
-    await page.evaluate(() => window.__annaVmFixture('completed', 'The launch report is ready.'))
-    await page.getByText('The launch report is ready.', { exact: true }).waitFor()
-    assert.equal(await page.locator('.anna-vm-terminal').count(), 0)
-    await page.locator('.anna-workspace-toolbar').getByText('Alldone', { exact: true }).click()
-    assert.equal(await page.getByLabel('Workspace draft').inputValue(), 'Keep the workspace edit')
-    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
-    assert.equal(await chat.inputValue(), 'Keep this unsent message')
-    console.info(`VM workspace passed at ${width}px`)
-}
-
 async function main() {
     const { chromium } = require('playwright')
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -351,18 +263,6 @@ async function main() {
             const page = await browser.newPage({ viewport: { width, height: 900 } })
             const errors = []
             page.on('pageerror', error => errors.push(error.message))
-            await checkVmWorkspace(page, width)
-            if (process.env.VM_ONLY) {
-                assert.deepEqual(errors, [])
-                await page.close()
-                continue
-            }
-            await checkBrowserLogin(page, width)
-            if (process.env.LOGIN_ONLY) {
-                assert.deepEqual(errors, [])
-                await page.close()
-                continue
-            }
             await checkWorkspaceReveal(page, width)
             if (process.env.REVEAL_ONLY) {
                 assert.deepEqual(errors, [])

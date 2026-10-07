@@ -566,6 +566,18 @@ class TaskUpdateService {
         console.log('🔄 TaskUpdateService: Executing task update via TaskService')
 
         try {
+            // Reject inaccessible goals before estimation or any other side-effecting update.
+            if (updateFields.parentGoalId !== undefined) {
+                const { prepareTaskParentGoalUpdate } = require('./taskParentGoal')
+                await prepareTaskParentGoalUpdate(
+                    this.options.database,
+                    userId,
+                    projectId,
+                    currentTask,
+                    updateFields.parentGoalId,
+                    updateFields.parentId
+                )
+            }
             // Get user's timezone for date parsing (normalize across possible fields)
             const userDoc = await this.options.database.collection('users').doc(userId).get()
             const userData = userDoc.data()
@@ -641,6 +653,7 @@ class TaskUpdateService {
                 completed: updateFields.completed,
                 userId: updateFields.userId || updateFields.targetUserId,
                 parentId: updateFields.parentId,
+                parentGoalId: updateFields.parentGoalId,
                 feedUser: feedUser,
                 focus: updateFields.focus,
                 focusUserId: userId,

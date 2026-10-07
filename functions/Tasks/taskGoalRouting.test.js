@@ -176,6 +176,24 @@ const createDb = ({
 }
 
 describe('taskGoalRouting', () => {
+    test('does not auto-assign a goal when the assistant explicitly created an unlinked task', async () => {
+        const { createTaskObject } = require('../shared/TaskModelBuilder')
+        const task = createTaskObject({
+            name: 'Keep this task unlinked',
+            userId: 'user1',
+            projectId: 'project1',
+            taskId: 'task1',
+            skipAutomaticGoalRouting: true,
+        })
+        const db = { doc: jest.fn() }
+        const classify = jest.fn()
+        expect(await routeNewTaskToGoal({ task, projectId: 'project1', db, classify })).toEqual({
+            action: 'skipped',
+        })
+        expect(classify).not.toHaveBeenCalled()
+        expect(db.doc).not.toHaveBeenCalled()
+    })
+
     beforeEach(() => {
         jest.clearAllMocks()
         mockDeductGold.mockResolvedValue({ success: true })

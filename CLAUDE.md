@@ -564,10 +564,6 @@ account has service-scoped `roles/run.invoker`. Browsing still requires the assi
 project website policy: `selected` needs an allowlist, while `all_public` allows public websites.
 The shared assistant workspace watches this same browser through `annaBrowserWorkspaceSecondGen`;
 it refreshes screenshots every five seconds and supports user takeover and explicit hand-back.
-Interactive login is owned by `AnnaShell` through `AnnaBrowserTakeoverContext` and rendered in the
-browser pane. The approval card retains only a reopen shortcut. Keep the login controller mounted
-across chat navigation and pane changes; pause the ordinary viewer and never let a chat send release
-the login session. Outside this shell the approval card still supports inline takeover.
 See `docs/anna-workspace.md` for deployment and verification.
 
 ****Two access modes, and `all_public` skips exactly ONE check.** `selected` (the default) needs an
@@ -3047,8 +3043,6 @@ delivering its result, and folding them in would fill the daily topic with trunc
 This is a repo-wide gotcha, learned the hard way. Gen2 Functions are configured through `setGlobalOptions` to run as the environment's `firebase-adminsdk-*@<project>.iam.gserviceaccount.com` service account, and `functions/firebaseConfig*.js` uses application-default credentials in that managed runtime. Therefore **every firebase-admin call that hits a Google Cloud API authenticates as the firebase-adminsdk service account — NOT the `<projectNumber>-compute@developer.gserviceaccount.com` default runtime SA**. So when a function needs a new GCP IAM permission (Cloud Tasks, Pub/Sub, etc.), grant the role to the **firebase-adminsdk SA**. Granting the compute SA looks right but does nothing. The old CI service-account JSON files may still be prepared for legacy tooling, but Functions no longer depend on baking that long-lived key into Cloud Run revisions. IAM changes also take up to ~7 min to propagate — wait before re-testing.
 
 ### Assistant VM Tool (`execute_task_in_vm`) & Cloud Tasks worker
-
-- **Live VM tabs in the assistant workspace**: `AnnaShell` discovers the signed-in user’s queued/running/awaiting-input VMs through `listActiveVmJobsSecondGen` (`functions/Assistant/vmWorkspace.js`). Discovery reuses the existing `pendingWebhooks` user/kind/status index, checks current project and host-object access, and returns only display metadata plus the existing status-comment reference. The selected pane subscribes to that comment for the runner’s existing three-second recent-activity feed; it is a terminal-style activity view, not a PTY or raw stdout stream. It reuses VM approval/cancellation controls and the final-message renderer. Discovery pauses while the page is hidden or assistant mode is closed; inactive VM panes release listeners but retain approval drafts. Deploy the new callable with the web client; no Firestore rules/index changes or sandbox restarts are needed.
 
 VM agent templates and CLI updates: the runner always uses E2B's managed `claude` / `codex` prebuilt templates. Before every invocation, including resumed sessions, it checks the active CLI against the matching npm `latest` version and prepends `/home/user/.local/bin` to `PATH`. A current, working CLI is reused; missing, stale, or older launchers are replaced under a per-agent process lock. Custom E2B template overrides are intentionally ignored.
 

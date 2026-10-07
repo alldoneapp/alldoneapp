@@ -87,6 +87,11 @@ const toolSchemas = {
                         description:
                             'Only in the Anna workspace: true to track substantial work explicitly delegated to the assistant. Assigns this task to the assistant and keeps its progress in task comments. Leave false for tasks the user will do and for quick questions or small edits.',
                     },
+                    parentGoalId: {
+                        type: ['string', 'null'],
+                        description:
+                            'Optional parent goal document ID in the task project. Use get_goals or search to find the exact ID; never invent an ID. Null creates a task without a parent goal.',
+                    },
                     taskOrigin: {
                         type: 'string',
                         enum: ['user_request', 'assistant_suggestion'],
@@ -742,6 +747,11 @@ const toolSchemas = {
                         type: 'boolean',
                         description:
                             'Set to true only when the user explicitly wants the task completed/done/finished, false to mark as open. Do not use this for focus requests.',
+                    },
+                    parentGoalId: {
+                        type: ['string', 'null'],
+                        description:
+                            'Assign or change the parent goal using its exact document ID from get_goals or search. Null removes the parent goal; omitting this field preserves it. The goal must be accessible to the user and belong to the task project. Subtasks inherit the parent task goal; update the parent task instead. For a goal in another project, move the task first, then assign the goal in a separate call.',
                     },
                     focus: {
                         type: 'boolean',
