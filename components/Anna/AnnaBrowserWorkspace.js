@@ -3,7 +3,13 @@ import { runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { subscribePageVisible } from '../../utils/appResume'
 import { translate } from '../../i18n/TranslationService'
 
-export default function AnnaBrowserWorkspace({ browser, active, onControlChange, onResume }) {
+export default function AnnaBrowserWorkspace({
+    browser,
+    active,
+    onControlChange,
+    onResume,
+    assistantName = translate('Assistant'),
+}) {
     const [frame, setFrame] = useState(null)
     const [error, setError] = useState('')
     const [busy, setBusy] = useState(false)
@@ -94,7 +100,11 @@ export default function AnnaBrowserWorkspace({ browser, active, onControlChange,
         })
     }
     if (!browser?.runId)
-        return <div className="anna-empty">{translate('Anna’s browser will appear here when she browses.')}</div>
+        return (
+            <div className="anna-empty">
+                {translate('The browser used by %{assistantName} will appear here when browsing.', { assistantName })}
+            </div>
+        )
     return (
         <div className="anna-browser-workspace">
             <div className="anna-browser-heading">
@@ -106,7 +116,7 @@ export default function AnnaBrowserWorkspace({ browser, active, onControlChange,
                     disabled={busy || (human && !frame?.ready)}
                     onClick={() => interact(human ? 'release' : 'take')}
                 >
-                    {translate(human ? 'Let Anna continue' : 'Take control')}
+                    {translate(human ? 'Let %{assistantName} continue' : 'Take control', { assistantName })}
                 </button>
             </div>
             <div className="anna-muted" role="status">
@@ -115,7 +125,8 @@ export default function AnnaBrowserWorkspace({ browser, active, onControlChange,
                         ? frame?.ready
                             ? 'You are in control'
                             : 'Waiting for the current action to finish…'
-                        : 'Following Anna'
+                        : 'Following %{assistantName}',
+                    { assistantName }
                 )}
             </div>
             {error && (
@@ -135,7 +146,7 @@ export default function AnnaBrowserWorkspace({ browser, active, onControlChange,
                 {frame?.screenshotDataUrl ? (
                     <img
                         src={frame.screenshotDataUrl}
-                        alt={translate('Anna’s browser viewport')}
+                        alt={translate('Browser viewport for %{assistantName}', { assistantName })}
                         draggable={false}
                         onClick={click}
                     />

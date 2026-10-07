@@ -37,7 +37,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
                     setState(previous => ({
                         ...previous,
                         loading: false,
-                        error: error.message || 'Anna could not connect. Please try again.',
+                        error: error.message || 'Your conversation could not be loaded. Please try again.',
                     }))
                 throw error
             })

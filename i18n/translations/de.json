@@ -2844,5 +2844,20 @@
     "PrepareMeetingPromptSource": "Kalenderverbindung: %{projectId}",
     "Meeting preparation could not start": "Die Meeting-Vorbereitung konnte nicht gestartet werden. Bitte versuche es erneut.",
     "No project assistant available": "Kein Projektassistent verfügbar. Bitte richte zuerst einen Assistenten ein.",
-    "Note content is available locally; sync is pending": "Notiz ist lokal verfügbar; Synchronisierung steht noch aus"
+    "Note content is available locally; sync is pending": "Notiz ist lokal verfügbar; Synchronisierung steht noch aus",
+    "Conversation with %{assistantName}": "Gespräch mit %{assistantName}",
+    "Connecting with %{assistantName}…": "Verbindung mit %{assistantName} wird hergestellt…",
+    "%{assistantName} would like to show you:": "%{assistantName} möchte dir etwas zeigen:",
+    "Talk with %{assistantName}": "Mit %{assistantName} sprechen",
+    "You need Gold to talk with %{assistantName}.": "Du brauchst Gold, um mit %{assistantName} zu sprechen.",
+    "Talk with %{assistantName}. Your tasks, notes and projects are right here when you need them.": "Sprich mit %{assistantName}. Deine Aufgaben, Notizen und Projekte sind direkt hier, wenn du sie brauchst.",
+    "%{assistantName} is working…": "%{assistantName} arbeitet…",
+    "Message %{assistantName}": "Nachricht an %{assistantName}",
+    "Talk or type to %{assistantName}…": "Sprich oder schreibe mit %{assistantName}…",
+    "%{assistantName} is pointing to:": "%{assistantName} zeigt auf:",
+    "Following %{assistantName}": "%{assistantName} hat die Steuerung",
+    "Let %{assistantName} continue": "%{assistantName} fortfahren lassen",
+    "Browser viewport for %{assistantName}": "Browseransicht von %{assistantName}",
+    "The browser used by %{assistantName} will appear here when browsing.": "Der Browser von %{assistantName} erscheint hier, sobald er verwendet wird.",
+    "Assistant views": "Assistentenansichten"
 }

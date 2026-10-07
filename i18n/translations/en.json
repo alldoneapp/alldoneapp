@@ -3287,5 +3287,20 @@
     "PrepareMeetingPromptSource": "Calendar connection: %{projectId}",
     "Meeting preparation could not start": "Meeting preparation could not start. Please try again.",
     "No project assistant available": "No project assistant is available. Please configure an assistant first.",
-    "Note content is available locally; sync is pending": "Note content is available locally; sync is pending"
+    "Note content is available locally; sync is pending": "Note content is available locally; sync is pending",
+    "Conversation with %{assistantName}": "Conversation with %{assistantName}",
+    "Connecting with %{assistantName}…": "Connecting with %{assistantName}…",
+    "%{assistantName} would like to show you:": "%{assistantName} would like to show you:",
+    "Talk with %{assistantName}": "Talk with %{assistantName}",
+    "You need Gold to talk with %{assistantName}.": "You need Gold to talk with %{assistantName}.",
+    "Talk with %{assistantName}. Your tasks, notes and projects are right here when you need them.": "Talk with %{assistantName}. Your tasks, notes and projects are right here when you need them.",
+    "%{assistantName} is working…": "%{assistantName} is working…",
+    "Message %{assistantName}": "Message %{assistantName}",
+    "Talk or type to %{assistantName}…": "Talk or type to %{assistantName}…",
+    "%{assistantName} is pointing to:": "%{assistantName} is pointing to:",
+    "Following %{assistantName}": "Following %{assistantName}",
+    "Let %{assistantName} continue": "Let %{assistantName} continue",
+    "Browser viewport for %{assistantName}": "Browser viewport for %{assistantName}",
+    "The browser used by %{assistantName} will appear here when browsing.": "The browser used by %{assistantName} will appear here when browsing.",
+    "Assistant views": "Assistant views"
 }
