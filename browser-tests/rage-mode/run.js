@@ -487,7 +487,7 @@ async function bosses(browser, url) {
 }
 
 async function progress(browser, url) {
-    const screenshots = path.join(ROOT, 'browser-tests', 'at2700', 'screenshots')
+    const screenshots = path.join(ROOT, 'browser-tests', 'at2700-run-sync', 'screenshots')
     fs.mkdirSync(screenshots, { recursive: true })
     for (const phone of [false, true]) {
         const device = phone ? 'phone' : 'desktop'
@@ -569,6 +569,18 @@ async function progress(browser, url) {
                     bounds.y >= 0 &&
                     bounds.y + bounds.height <= (phone ? 844 : 800)
             )
+            const padding = await panel.locator('[role="dialog"]').evaluate(node => ({
+                left: parseFloat(getComputedStyle(node).paddingLeft),
+                right: parseFloat(getComputedStyle(node).paddingRight),
+            }))
+            check(
+                `${device}: generous inner and outer padding`,
+                padding.left >= 28 &&
+                    padding.right >= 28 &&
+                    bounds.x >= 28 &&
+                    bounds.x + bounds.width <= (phone ? 390 : 1280) - 28,
+                JSON.stringify({ bounds, padding })
+            )
             if (!failure) await page.screenshot({ path: path.join(screenshots, `${device}-loading.png`) })
             await page.evaluate(() => window.__rage.resolveProfile())
             check(
@@ -581,6 +593,161 @@ async function progress(browser, url) {
             check(`${device}: exit restores page`, (await pageRestored(page)).intact)
         }
         check(`${device}: no page errors`, errors.length === 0, errors)
+        await context.close()
+    }
+}
+
+async function syncTiming(browser, url) {
+    const screenshots = path.join(ROOT, 'browser-tests', 'at2700-run-sync', 'screenshots')
+    fs.mkdirSync(screenshots, { recursive: true })
+    const widths = (process.env.RAGE_TEST_WIDTHS || '320,390,1280').split(',').map(Number)
+    for (const width of widths) {
+        const phone = width < 600
+        const context = await browser.newContext({
+            viewport: { width, height: phone ? 844 : 800 },
+            isMobile: phone,
+            hasTouch: phone,
+        })
+        await context.addInitScript(() => {
+            const requestFrame = window.requestAnimationFrame.bind(window)
+            let timestamp = 0
+            window.requestAnimationFrame = callback =>
+                requestFrame(() => {
+                    timestamp += 50
+                    callback(timestamp)
+                })
+            window.progressWrites = 0
+            const setItem = Storage.prototype.setItem
+            Storage.prototype.setItem = function (key, value) {
+                if (key === 'alldone.rageMode.progress.harness') window.progressWrites += 1
+                return setItem.call(this, key, value)
+            }
+        })
+        const page = await context.newPage()
+        const errors = []
+        page.on('pageerror', error => errors.push(error.message))
+        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&saveManual=1`)
+        await page.click('#rage')
+        check(`${width}px: starts from server before flight`, await waitForHud(page, data => data.phase === 'flying'))
+        await page.evaluate(() => {
+            window.progressWrites = 0
+        })
+        await waitForHud(page, data => data.boss === '3')
+        await page.keyboard.press('Space')
+        check(`${width}px: reaches hangar`, await waitForHud(page, data => data.phase === 'hangar'))
+        await page.click('[data-hangar-item="bomb"] button')
+        await waitForHud(page, data => data.bombs === '2')
+        const purchased = await hudData(page)
+        await page.click('[data-launch]')
+        check(
+            `${width}px: continues mission 2`,
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2')
+        )
+        await sleep(500)
+        const active = await page.evaluate(() => ({ ...window.__rage.calls, progressWrites: window.progressWrites }))
+        check(
+            `${width}px: no cloud progress/score/leaderboard or local saves during gameplay`,
+            active.saveProgress.length === 0 &&
+                active.submitScore.length === 0 &&
+                active.loadLeaderboard === 0 &&
+                active.progressWrites === 0,
+            JSON.stringify({
+                saves: active.saveProgress.length,
+                scores: active.submitScore.length,
+                boards: active.loadLeaderboard,
+                local: active.progressWrites,
+            })
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        const final = await page.evaluate(() => window.__rage.calls.saveProgress)
+        check(
+            `${width}px: one final save retains completed mission and purchases`,
+            final.length === 1 &&
+                final[0].completed === 1 &&
+                final[0].credits === Number(purchased.credits) &&
+                final[0].bombs === Number(purchased.bombs),
+            JSON.stringify({ final, purchased: { credits: purchased.credits, bombs: purchased.bombs } })
+        )
+        // Reopen in the SAME JS context while the end save is still in flight.
+        await page.click('#rage')
+        await sleep(200)
+        check(
+            `${width}px: reopening waits for the old end save before fetching`,
+            (await hudData(page)).phase === 'loading' &&
+                (await page.evaluate(() => window.__rage.calls.loadProfile)) === 1
+        )
+        await page.evaluate(() => window.__rage.resolveSave())
+        check(
+            `${width}px: latest server mission loads after old save settles`,
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        check(`${width}px: teardown restores page`, (await pageRestored(page)).intact)
+
+        // Failed final save remains local; the next preflight can retry it, with no flight in between.
+        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&saveFailures=2`)
+        await page.click('#rage')
+        await waitForHud(page, data => data.phase === 'flying' && data.boss === '3')
+        await page.keyboard.press('Space')
+        await waitForHud(page, data => data.phase === 'hangar')
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        await page.click('#rage')
+        check(
+            `${width}px: failed save prevents the next takeoff`,
+            await waitForHud(page, data => data.phase === 'save-error' && data.shots === '0')
+        )
+        await page.screenshot({ path: path.join(screenshots, `${width}-save-error.png`) })
+        await page.click('[data-retry-profile]')
+        check(
+            `${width}px: retry saves and continues mission 2`,
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2')
+        )
+        check(
+            `${width}px: failed/retried save preserves identical final checkpoint`,
+            await page.evaluate(() => {
+                const writes = window.__rage.calls.saveProgress
+                return writes.length === 3 && writes.every(value => JSON.stringify(value) === JSON.stringify(writes[0]))
+            })
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+
+        // Very narrow and short landscape screens: measured gutters, wrapping and reachable actions.
+        if (phone) {
+            for (const viewport of [
+                { width, height: 844 },
+                { width: 568, height: 320 },
+            ]) {
+                await page.setViewportSize(viewport)
+                await page.goto(`${url}?fresh=1&lang=de&profileManual=1`)
+                await page.click('#rage')
+                const panel = page.locator('[data-rage-mode-layer="profile"] [role="dialog"]')
+                const bounds = await panel.boundingBox()
+                const layout = await panel.evaluate(node => ({
+                    padding: parseFloat(getComputedStyle(node).paddingLeft),
+                    overflow: node.scrollWidth > node.clientWidth,
+                }))
+                check(
+                    `${viewport.width}×${viewport.height}: loading gutters and no horizontal overflow`,
+                    bounds.x >= 28 &&
+                        bounds.x + bounds.width <= viewport.width - 28 &&
+                        layout.padding >= 28 &&
+                        !layout.overflow,
+                    JSON.stringify({ bounds, layout })
+                )
+                await page.screenshot({
+                    path: path.join(screenshots, `${viewport.width}-${viewport.height}-loading.png`),
+                })
+                const exit = panel.locator('button').last()
+                await exit.scrollIntoViewIfNeeded()
+                await exit.click()
+                check(`${viewport.width}×${viewport.height}: loading exit is reachable`, (await layerCount(page)) === 0)
+            }
+        }
+        check(`${width}px: no browser errors`, errors.length === 0, errors)
         await context.close()
     }
 }
@@ -600,7 +767,8 @@ async function progress(browser, url) {
         args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
     })
     try {
-        if (args.has('--progress')) await progress(browser, url)
+        if (args.has('--sync')) await syncTiming(browser, url)
+        else if (args.has('--progress')) await progress(browser, url)
         else if (args.has('--touch')) await touch(browser, url)
         else if (args.has('--game')) await game(browser, url)
         else if (args.has('--cast')) await cast(browser, url)

@@ -113,6 +113,13 @@ describe('raid progress', () => {
         expect(sanitizeCheckpoint({ completed: 0, credits: 0 })).toBeNull()
     })
 
+    it('keeps bombs bought with the last banked credits before mission 1 is cleared', () => {
+        const bought = { completed: 0, credits: 0, bombs: 3 }
+        expect(sanitizeCheckpoint(bought)).toMatchObject(bought)
+        expect(runFromCheckpoint(sanitizeCheckpoint(bought))).toMatchObject({ mission: 1, bombs: 3 })
+        expect(sanitizeCheckpoint({ completed: 0, credits: 0, bombs: 2 })).toBeNull()
+    })
+
     it('applies exactly the rules the server applies', () => {
         const samples = [
             { completed: 3, score: 1200, credits: 400, maxShield: 125, shield: 80, bombs: 3, cannonLevel: 2 },
@@ -120,6 +127,8 @@ describe('raid progress', () => {
             { completed: 1e9, credits: 2e9 },
             { completed: 0 },
             { completed: 0, credits: 120 },
+            { completed: 0, credits: 0, bombs: 3 },
+            { completed: 0, credits: 0, bombs: 2 },
             { completed: 0, cannonLevel: 2 },
             null,
             'nope',

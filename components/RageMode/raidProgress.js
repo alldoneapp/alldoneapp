@@ -1,7 +1,7 @@
-import { BASE_MAX_SHIELD, createRun, MAX_BOMBS, MAX_CANNON_LEVEL, SHIELD_CAP } from './raidRun'
+import { BASE_MAX_SHIELD, createRun, MAX_BOMBS, MAX_CANNON_LEVEL, SHIELD_CAP, START_BOMBS } from './raidRun'
 
 /**
- * The raid remembers how far you got, on every device. Clearing a mission saves a checkpoint — the
+ * The raid remembers how far you got, on every device. Clearing a mission updates an in-memory checkpoint — the
  * mission you completed plus the run as it leaves the hangar (shield, bombs, upgrades, credits,
  * score) — and the next raid takes off from there, at the following mission. A game over replays
  * from the checkpoint too. Only "Start over" clears it (saved as an EMPTY checkpoint, so the other
@@ -11,7 +11,8 @@ import { BASE_MAX_SHIELD, createRun, MAX_BOMBS, MAX_CANNON_LEVEL, SHIELD_CAP } f
  * makes it follow you; the browser's (localStorage, one entry per user) keeps a save that could
  * not reach the server, marked `pending` until it does. The arena waits for the server before
  * take-off. Every record carries `savedAt`, stamped by the SERVER once synced, and `reconcile` picks the newer of
- * the two at take-off.
+ * the two before take-off. Only death, exit/navigation or confirmed start-over persists the
+ * final checkpoint; mission boundaries and hangar purchases do not touch storage or the cloud.
  *
  * Both copies can be edited by their owner, so a checkpoint is always read through
  * `sanitizeCheckpoint` — every number clamped to what the game itself could have produced. Credits
@@ -40,7 +41,9 @@ export const sanitizeCheckpoint = raw => {
     // (and what they bought); one that holds nothing is no checkpoint.
     const credits = wholeNumber(raw.credits, 0, MAX_SAVED_NUMBER, 0)
     const cannonLevel = wholeNumber(raw.cannonLevel, 1, MAX_CANNON_LEVEL, 1)
-    if (completed < 1 && credits <= 0 && cannonLevel <= 1 && maxShield <= BASE_MAX_SHIELD) return null
+    const bombs = wholeNumber(raw.bombs, 0, MAX_BOMBS, 0)
+    if (completed < 1 && credits <= 0 && cannonLevel <= 1 && maxShield <= BASE_MAX_SHIELD && bombs <= START_BOMBS)
+        return null
     return {
         completed,
         score: wholeNumber(raw.score, 0, MAX_SAVED_NUMBER, 0),
@@ -48,7 +51,7 @@ export const sanitizeCheckpoint = raw => {
         maxShield,
         // A checkpoint never sends you out on an empty shield.
         shield: wholeNumber(raw.shield, 1, maxShield, maxShield),
-        bombs: wholeNumber(raw.bombs, 0, MAX_BOMBS, 0),
+        bombs,
         cannonLevel,
     }
 }

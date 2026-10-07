@@ -33,8 +33,9 @@ const PROGRESS_KEY = 'alldone.rageMode.progress.user-1'
 const saveLocal = (checkpoint, savedAt = 1, pending = false) =>
     localStorage.setItem(PROGRESS_KEY, JSON.stringify({ checkpoint, savedAt, pending }))
 const flushPromises = async () => {
-    for (let i = 0; i < 20; i++) await Promise.resolve()
+    for (let i = 0; i < 60; i++) await Promise.resolve()
 }
+const readSaved = () => JSON.parse(localStorage.getItem(PROGRESS_KEY))
 const layer = name => document.querySelector(`[data-rage-mode-layer="${name}"]`)
 
 // jsdom has no 2D canvas; every drawing call is accepted and does nothing.
@@ -137,8 +138,9 @@ describe('rage mode raid arena', () => {
         }
     })
 
-    afterEach(() => {
+    afterEach(async () => {
         arena?.stop({ immediate: true })
+        await flushPromises()
         jest.restoreAllMocks()
         jest.useRealTimers()
     })
@@ -258,7 +260,7 @@ describe('rage mode raid arena', () => {
         expect(layer('hangar').style.display).toBe('none')
     })
 
-    it('ends in a game over when the shield runs out, submits the score once and can play again', () => {
+    it('ends in a game over when the shield runs out, submits the score once and can play again', async () => {
         start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40 })
         fly()
         step(90)
@@ -268,6 +270,7 @@ describe('rage mode raid arena', () => {
         step(90)
         expect(layer('gameover').style.display).toBe('flex')
         key('Enter')
+        await flushPromises()
         expect(hud().dataset.phase).toBe('flying')
         expect(hud().dataset.mission).toBe('1')
         leave()
@@ -281,8 +284,9 @@ describe('rage mode raid arena', () => {
         key(' ', 'Space')
         step(60 * 4)
         expect(hud().dataset.phase).toBe('hangar')
-        expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint).toMatchObject({ completed: 1 })
+        expect(localStorage.getItem(PROGRESS_KEY)).toBeNull()
         leave()
+        expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint).toMatchObject({ completed: 1 })
 
         start({ noWaves: true })
         expect(hud().dataset.saved).toBe('true')
@@ -303,7 +307,7 @@ describe('rage mode raid arena', () => {
         expect(hud().dataset.saved).toBe('false')
     })
 
-    it('starts over from mission 1 only when ↺ is pressed twice', () => {
+    it('starts over from mission 1 only when ↺ is pressed twice', async () => {
         saveLocal({ completed: 2, credits: 300 })
         start()
         fly()
@@ -314,6 +318,7 @@ describe('rage mode raid arena', () => {
         expect(hud().dataset.mission).toBe('3')
         expect(layer('toast').textContent).toBe('Press ↺ again to start over from mission 1')
         restart.click()
+        await flushPromises()
         step()
         expect(hud().dataset.mission).toBe('1')
         expect(hud().dataset.credits).toBe('0')
@@ -321,7 +326,7 @@ describe('rage mode raid arena', () => {
         expect(JSON.parse(localStorage.getItem(PROGRESS_KEY))).toMatchObject({ checkpoint: null, pending: true })
     })
 
-    it('replays from the checkpoint after a game over', () => {
+    it('replays from the checkpoint after a game over', async () => {
         saveLocal({ completed: 1, credits: 200 })
         start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40 })
         fly()
@@ -330,13 +335,14 @@ describe('rage mode raid arena', () => {
         step(90)
         expect(layer('gameover').querySelector('[data-start-over]').style.display).toBe('flex')
         key('Enter')
+        await flushPromises()
         step()
         expect(hud().dataset.mission).toBe('2')
         // The checkpoint's credits, plus whatever the lost go earned on the way.
         expect(Number(hud().dataset.credits)).toBeGreaterThanOrEqual(200)
     })
 
-    it('keeps what a lost game earned, and lets it be spent in the hangar before the next go', () => {
+    it('keeps what a lost game earned, and lets it be spent in the hangar before the next go', async () => {
         saveLocal({ completed: 1, credits: 200 })
         start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40, pickups: ['credits'] })
         fly()
@@ -360,16 +366,18 @@ describe('rage mode raid arena', () => {
         step()
         expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint).toMatchObject({
             completed: 1,
-            credits: atDeath - 80,
+            credits: atDeath,
         })
         layer('hangar').querySelector('[data-launch]').click()
+        await flushPromises()
         step()
         expect(hud().dataset.phase).toBe('flying')
         expect(hud().dataset.mission).toBe('2')
         expect(Number(hud().dataset.credits)).toBe(atDeath - 80)
+        expect(JSON.parse(localStorage.getItem(PROGRESS_KEY)).checkpoint.credits).toBe(atDeath - 80)
     })
 
-    it('banks a lost first game even before mission 1 was ever cleared', () => {
+    it('banks a lost first game even before mission 1 was ever cleared', async () => {
         start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, bossHp: 40, pickups: ['credits'] })
         fly()
         step(90)
@@ -378,6 +386,7 @@ describe('rage mode raid arena', () => {
         const atDeath = Number(hud().dataset.credits)
         expect(atDeath).toBeGreaterThanOrEqual(PICKUP_TYPES.credits.amount)
         key('Enter')
+        await flushPromises()
         step()
         expect(hud().dataset.mission).toBe('1')
         expect(Number(hud().dataset.credits)).toBe(atDeath)
@@ -553,7 +562,7 @@ describe('rage mode raid arena', () => {
             expect(JSON.parse(localStorage.getItem(PROGRESS_KEY))).toMatchObject({ savedAt: 1000, pending: false })
         })
 
-        it('saves a completed mission to the server and keeps the server timestamp', async () => {
+        it('saves a completed mission only on exit and keeps the server timestamp', async () => {
             services.saveProgress = jest.fn(() => Promise.resolve({ ok: true, savedAt: 4242 }))
             start({ bossAt: 1, noWaves: true, bossHp: 40 })
             fly()
@@ -561,6 +570,9 @@ describe('rage mode raid arena', () => {
             key(' ', 'Space')
             step(60 * 4)
             expect(hud().dataset.phase).toBe('hangar')
+            await flushPromises()
+            expect(services.saveProgress).not.toHaveBeenCalled()
+            leave()
             await flushPromises()
             expect(services.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ completed: 1 }))
             await flushPromises()
@@ -579,7 +591,7 @@ describe('rage mode raid arena', () => {
             expect(services.saveProgress).toHaveBeenLastCalledWith(null)
         })
 
-        it('keeps saves in order: one in flight, the newest sent last', async () => {
+        it('keeps a final save and a confirmed reset in order, even after the canvas is gone', async () => {
             const resolvers = []
             services.saveProgress = jest.fn(() => new Promise(resolve => resolvers.push(resolve)))
             start({ bossAt: 1, noWaves: true, bossHp: 40, startCredits: 1000 })
@@ -587,17 +599,272 @@ describe('rage mode raid arena', () => {
             step(90)
             key(' ', 'Space')
             step(60 * 4)
-            const hangar = layer('hangar')
-            // The mission's own save is still in flight; both purchases queue behind it.
-            hangar.querySelector('[data-hangar-item="bomb"] button').click()
-            hangar.querySelector('[data-hangar-item="bomb"] button').click()
+            leave()
             await flushPromises()
             expect(services.saveProgress).toHaveBeenCalledTimes(1)
-            resolvers[0]({ ok: true, savedAt: 1 })
+            services.loadProfile = jest.fn(() => Promise.resolve({ owned: [], progress: readSaved() }))
+            start()
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('loading')
+            expect(services.loadProfile).not.toHaveBeenCalled()
+            resolvers[0]({ ok: true, savedAt: 1000 })
+            await flushPromises()
+            fly()
+            expect(hud().dataset.mission).toBe('2')
+            hud().querySelector('[data-start-over]').click()
+            hud().querySelector('[data-start-over]').click()
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('saving')
+            expect(services.saveProgress).toHaveBeenCalledTimes(2)
+            expect(services.saveProgress.mock.calls[1][0]).toBeNull()
+            resolvers[1]({ ok: true, savedAt: 2000 })
+            await flushPromises()
+            step()
+            expect(hud().dataset.phase).toBe('flying')
+            expect(hud().dataset.mission).toBe('1')
+        })
+    })
+
+    describe('progress stays in memory until the run ends', () => {
+        const completeFirstMission = () => {
+            fly()
+            step(90)
+            key(' ', 'Space')
+            step(60 * 4)
+            expect(hud().dataset.phase).toBe('hangar')
+        }
+        const lose = () => {
+            fly()
+            for (let i = 0; i < 60 * 30 && hud().dataset.phase !== 'gameover'; i++) step()
+            expect(hud().dataset.phase).toBe('gameover')
+            step(90)
+        }
+        beforeEach(() => {
+            services.saveProgress = jest.fn(() => Promise.resolve({ ok: true, savedAt: 4242 }))
+            services.loadLeaderboard = jest.fn(() => Promise.resolve({ top: [] }))
+        })
+
+        it.each([
+            [1200, 800],
+            [390, 844],
+        ])(
+            'does zero progress/score/board calls or storage writes throughout a run (%s × %s)',
+            async (width, height) => {
+                jest.replaceProperty(window, 'innerWidth', width)
+                jest.replaceProperty(window, 'innerHeight', height)
+                services.loadProfile = jest.fn(() => Promise.resolve({ owned: [], progress: null }))
+                start({ bossAt: 1, noWaves: true, bossHp: 40, startCredits: 5000 })
+                await flushPromises()
+                const storageWrite = jest.spyOn(Storage.prototype, 'setItem')
+                const storageRemove = jest.spyOn(Storage.prototype, 'removeItem')
+                completeFirstMission()
+                layer('hangar').querySelector('[data-hangar-item="cannon"] button').click()
+                layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+                await flushPromises()
+                step()
+                const checkpointCredits = Number(hud().dataset.credits)
+                layer('hangar').querySelector('[data-launch]').click()
+                step(90)
+                await flushPromises()
+                expect(hud().dataset.phase).toBe('flying')
+                expect(hud().dataset.mission).toBe('2')
+                expect(services.loadProfile).toHaveBeenCalledTimes(1)
+                expect(services.saveProgress).not.toHaveBeenCalled()
+                expect(services.submitScore).not.toHaveBeenCalled()
+                expect(services.loadLeaderboard).not.toHaveBeenCalled()
+                expect(storageWrite.mock.calls.filter(([key]) => key === PROGRESS_KEY)).toHaveLength(0)
+                expect(storageRemove.mock.calls.filter(([key]) => key === PROGRESS_KEY)).toHaveLength(0)
+                leave()
+                await flushPromises()
+                expect(services.saveProgress).toHaveBeenCalledTimes(1)
+                expect(services.saveProgress).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        completed: 1,
+                        cannonLevel: 2,
+                        credits: checkpointCredits,
+                    })
+                )
+                expect(services.submitScore).toHaveBeenCalledTimes(1)
+                expect(readSaved()).toMatchObject({ savedAt: 4242, pending: false })
+            }
+        )
+
+        it('banks only the final lost mission credits on top of the latest completed checkpoint', async () => {
+            saveLocal({ completed: 1, credits: 200, score: 50, cannonLevel: 2 })
+            start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, pickups: ['credits'] })
+            lose()
+            const credits = Number(hud().dataset.credits)
+            await flushPromises()
+            expect(credits).toBeGreaterThan(200)
+            expect(services.saveProgress).toHaveBeenCalledTimes(1)
+            expect(services.saveProgress).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    completed: 1,
+                    cannonLevel: 2,
+                    credits,
+                })
+            )
+            expect(readSaved().pending).toBe(false)
+            leave()
+            await flushPromises()
+            expect(services.saveProgress).toHaveBeenCalledTimes(1)
+        })
+
+        it.each(['reject', 'not ok', 'invalid timestamp'])(
+            'keeps the final save pending on %s and retries the identical checkpoint',
+            async kind => {
+                services.saveProgress.mockImplementationOnce(() =>
+                    kind === 'reject'
+                        ? Promise.reject(new Error('offline'))
+                        : Promise.resolve(kind === 'not ok' ? { ok: false } : { ok: true })
+                )
+                start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, pickups: ['credits'] })
+                lose()
+                await flushPromises()
+                const final = services.saveProgress.mock.calls[0][0]
+                expect(readSaved()).toMatchObject({ pending: true, checkpoint: final })
+                const retry = layer('gameover').querySelector('[data-retry-save]')
+                expect(retry.style.display).toBe('flex')
+                retry.click()
+                retry.click()
+                await flushPromises()
+                expect(services.saveProgress).toHaveBeenCalledTimes(2)
+                expect(services.saveProgress.mock.calls[1][0]).toEqual(final)
+                expect(readSaved().pending).toBe(false)
+                expect(retry.style.display).toBe('none')
+                expect(services.submitScore).toHaveBeenCalledTimes(1)
+            }
+        )
+
+        it('holds replay before flying while a slow final save or leaderboard request is outstanding', async () => {
+            let resolveSave
+            let resolveBoard
+            services.saveProgress.mockImplementationOnce(
+                () =>
+                    new Promise(resolve => {
+                        resolveSave = resolve
+                    })
+            )
+            services.loadLeaderboard.mockImplementationOnce(
+                () =>
+                    new Promise(resolve => {
+                        resolveBoard = resolve
+                    })
+            )
+            start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, pickups: ['credits'] })
+            lose()
+            await flushPromises()
+            key('Enter')
+            step(600)
+            expect(hud().dataset.phase).toBe('saving')
+            const renders = renderer.render.mock.calls.length
+            step(600)
+            expect(renderer.render).toHaveBeenCalledTimes(renders)
+            resolveSave({ ok: true, savedAt: 900 })
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('saving')
+            resolveBoard({ top: [] })
+            await flushPromises()
+            step()
+            expect(hud().dataset.phase).toBe('flying')
+            const calls = services.saveProgress.mock.calls.length
+            step(10)
+            await flushPromises()
+            expect(services.saveProgress).toHaveBeenCalledTimes(calls)
+        })
+
+        it('offers retry before takeoff for an unsynced final save, without reloading the profile', async () => {
+            saveLocal({ completed: 3, credits: 75 }, Date.now(), true)
+            services.loadProfile = jest.fn(() => Promise.resolve({ owned: [], progress: null }))
+            services.saveProgress.mockRejectedValueOnce(new Error('offline'))
+            start()
+            await flushPromises()
+            expect(hud().dataset.phase).toBe('save-error')
+            step(600)
+            expect(hud().dataset.shots).toBe('0')
+            expect(readSaved().pending).toBe(true)
+            layer('profile').querySelector('[data-retry-profile]').click()
+            await flushPromises()
+            fly()
+            expect(hud().dataset.mission).toBe('4')
+            expect(services.loadProfile).toHaveBeenCalledTimes(1)
+            expect(services.saveProgress).toHaveBeenCalledTimes(2)
+        })
+
+        it('persists completed missions and hangar purchases on immediate navigation teardown', async () => {
+            start({ bossAt: 1, noWaves: true, bossHp: 40 })
+            completeFirstMission()
+            layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+            step()
+            const credits = Number(hud().dataset.credits)
+            const staleFrame = [...frames.values()][0]
+            arena.stop({ immediate: true })
+            await flushPromises()
+            staleFrame(timestamp + 50)
+            expect(services.saveProgress).toHaveBeenCalledTimes(1)
+            expect(services.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ completed: 1, credits }))
+            expect(frames.size).toBe(0)
+        })
+
+        it('does not take off when the newest queued post-game save fails', async () => {
+            let resolveFirst
+            services.saveProgress.mockImplementationOnce(
+                () =>
+                    new Promise(resolve => {
+                        resolveFirst = resolve
+                    })
+            )
+            services.saveProgress.mockRejectedValueOnce(new Error('offline'))
+            saveLocal({ completed: 1, credits: 200 })
+            start({ invincible: false, startShield: 1, bossAt: 1, noWaves: true, pickups: ['credits'] })
+            lose()
+            await flushPromises()
+            layer('gameover').querySelector('[data-open-hangar]').click()
+            layer('hangar').querySelector('[data-hangar-item="bomb"] button').click()
+            layer('hangar').querySelector('[data-launch]').click()
+            resolveFirst({ ok: true, savedAt: 1000 })
             await flushPromises()
             expect(services.saveProgress).toHaveBeenCalledTimes(2)
-            // Only the newest state follows, never the stale one in between.
-            expect(services.saveProgress.mock.calls[1][0].bombs).toBe(services.saveProgress.mock.calls[0][0].bombs + 2)
+            expect(hud().dataset.phase).toBe('save-error')
+            expect(readSaved().pending).toBe(true)
+            expect(services.saveProgress.mock.calls[1][0].credits).toBe(
+                services.saveProgress.mock.calls[0][0].credits - 80
+            )
+            layer('profile').querySelector('[data-retry-profile]').click()
+            await flushPromises()
+            step()
+            expect(hud().dataset.phase).toBe('flying')
+            expect(services.saveProgress).toHaveBeenCalledTimes(3)
+            expect(readSaved().pending).toBe(false)
+        })
+
+        it('saves the latest completed checkpoint after multiple missions', async () => {
+            start({ bossAt: 1, noWaves: true, bossHp: 40 })
+            completeFirstMission()
+            layer('hangar').querySelector('[data-launch]').click()
+            step(180)
+            key(' ', 'Space', 'keyup')
+            key(' ', 'Space')
+            step(240)
+            expect(hud().dataset.phase).toBe('hangar')
+            expect(hud().dataset.mission).toBe('2')
+            expect(services.saveProgress).not.toHaveBeenCalled()
+            leave()
+            await flushPromises()
+            expect(services.saveProgress).toHaveBeenCalledTimes(1)
+            expect(services.saveProgress).toHaveBeenCalledWith(expect.objectContaining({ completed: 2 }))
+        })
+
+        it('does not run animation callbacks or render the GPU while waiting for the server', async () => {
+            services.loadProfile = jest.fn(() => new Promise(() => {}))
+            start()
+            await flushPromises()
+            step()
+            expect(frames.size).toBe(0)
+            expect(renderer.render).not.toHaveBeenCalled()
+            jest.advanceTimersByTime(60000)
+            expect(services.loadProfile).toHaveBeenCalledTimes(1)
+            expect(services.saveProgress).not.toHaveBeenCalled()
         })
     })
 
@@ -860,7 +1127,7 @@ describe('rage mode raid arena', () => {
             expect(board().textContent).toContain('Raid leaderboard invalid name')
         })
 
-        it('shows the board in the hangar too, posting the score without counting a finished game', async () => {
+        it('keeps the mid-run hangar free of score writes and leaderboard reads', async () => {
             start({ bossAt: 1, noWaves: true, bossHp: 40 })
             fly()
             step(90)
@@ -868,8 +1135,9 @@ describe('rage mode raid arena', () => {
             step(60 * 4)
             expect(hud().dataset.phase).toBe('hangar')
             await flushPromises()
-            expect(services.submitScore).toHaveBeenCalledWith(expect.any(Number), { final: false })
-            expect(layer('hangar').querySelector('[data-leaderboard] [data-you]')).toBeTruthy()
+            expect(services.submitScore).not.toHaveBeenCalled()
+            expect(services.loadLeaderboard).not.toHaveBeenCalled()
+            expect(layer('hangar').querySelector('[data-leaderboard]').style.display).toBe('none')
         })
 
         it('copes with a board that cannot be loaded', async () => {

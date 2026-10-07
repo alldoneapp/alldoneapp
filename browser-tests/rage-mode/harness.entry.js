@@ -139,6 +139,7 @@ state.profile = {
 }
 state.calls = { purchase: [], submitScore: [] }
 state.calls.loadProfile = 0
+state.calls.loadLeaderboard = 0
 const services = {
     loadProfile: () => {
         state.calls.loadProfile += 1
@@ -153,9 +154,18 @@ const services = {
     },
     saveProgress: checkpoint => {
         state.calls.saveProgress.push(checkpoint)
-        const savedAt = Date.now()
-        localStorage.setItem(SERVER_PROGRESS_KEY, JSON.stringify({ checkpoint, savedAt }))
-        return Promise.resolve({ ok: true, savedAt, checkpoint })
+        if (state.calls.saveProgress.length <= Number(params.get('saveFailures') || 0))
+            return Promise.reject(new Error('Save unavailable'))
+        const save = () => {
+            const savedAt = Date.now()
+            localStorage.setItem(SERVER_PROGRESS_KEY, JSON.stringify({ checkpoint, savedAt }))
+            return { ok: true, savedAt, checkpoint }
+        }
+        if (params.get('saveManual'))
+            return new Promise(resolve => {
+                state.resolveSave = () => resolve(save())
+            })
+        return Promise.resolve(save())
     },
     purchase: id => {
         state.calls.purchase.push(id)
@@ -175,6 +185,7 @@ const services = {
     getGold: () => state.gold,
     // A fake global leaderboard: four other players and you, ranked by best score.
     loadLeaderboard: () => {
+        state.calls.loadLeaderboard += 1
         const name = localStorage.getItem('harness.leaderboard.name') || 'Pilot 4242'
         const others = [
             { name: 'Zoë', score: 48000 },
