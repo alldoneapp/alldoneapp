@@ -35,7 +35,8 @@ jest.mock('firebase-admin', () => ({
                             return Array.isArray(value) && value.some(id => values.includes(id))
                         return op === 'in' ? Array.isArray(values) && values.includes(value) : value === values
                     })
-                    return { forEach: cb => matches.forEach(entry => cb({ id: entry.id, data: () => entry.data })) }
+                    const docs = matches.map(entry => ({ id: entry.id, data: () => entry.data }))
+                    return { docs, forEach: cb => docs.forEach(cb) }
                 },
             }),
         }),
@@ -99,6 +100,8 @@ jest.mock('./taskSummarizer', () => ({
     summarizeEmailAsTaskName: jest.fn(),
     TASK_SUMMARY_MODEL_KEY: 'MODEL_GPT5_4_NANO',
 }))
+
+jest.mock('../emailThreadContinuation', () => ({ continueEmailThread: jest.fn(async () => null) }))
 
 const mockCreateAndPersistTask = jest.fn()
 jest.mock('../../shared/TaskService', () => ({
@@ -176,6 +179,7 @@ const microsoftUserData = {
 describe('emailLineService', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        require('../emailThreadContinuation').continueEmailThread.mockReset().mockResolvedValue(null)
         mockDocs.clear()
         mockAuditDocs.clear()
         mockTaskDocs.clear()
@@ -183,6 +187,134 @@ describe('emailLineService', () => {
         mockAddProjectRoutingReasonComment.mockResolvedValue(null)
         mockGetDefaultAssistantIdForProject.mockResolvedValue('assistant-1')
         mockTaskCommentServiceAddComment.mockResolvedValue({ commentId: 'draft-comment-1' })
+    })
+
+    test.each([
+        ['google', googleUserData, gmailEmailLine],
+        ['microsoft', microsoftUserData, microsoftEmailLine],
+    ])(
+        'createTask continues a %s thread before title generation or task-creation billing',
+        async (provider, userData, providerModule) => {
+            providerModule.getMessageContext.mockResolvedValue({
+                threadId: 'thread',
+                subject: 'Changed scope',
+                body: 'Update',
+            })
+            const continued = {
+                taskId: 'original',
+                projectId: 'original-project',
+                existing: true,
+                updated: true,
+                goldCost: 3,
+            }
+            const { continueEmailThread } = require('../emailThreadContinuation')
+            continueEmailThread.mockResolvedValue(continued)
+            expect(
+                await performEmailLineAction('u', 'p1', { action: 'createTask', messageIds: ['m2'], userData })
+            ).toEqual(continued)
+            expect(continueEmailThread).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    gmailData: expect.objectContaining({
+                        provider,
+                        accountUserId: 'u',
+                        messageId: 'm2',
+                        threadId: 'thread',
+                    }),
+                })
+            )
+            expect(summarizeEmailAsTaskName).not.toHaveBeenCalled()
+            expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+            expect(deductGold).not.toHaveBeenCalled()
+            expect(mockAddProjectRoutingReasonComment).not.toHaveBeenCalled()
+        }
+    )
+
+    test('a task creation race refunds the creation charge and continues the winning task', async () => {
+        gmailEmailLine.getMessageContext.mockResolvedValue({ threadId: 'thread', subject: 'Update' })
+        summarizeEmailAsTaskName.mockResolvedValue({ name: 'New task', totalTokens: 100 })
+        deductGold.mockResolvedValue({ success: true })
+        mockCreateAndPersistTask.mockResolvedValue({
+            success: true,
+            existing: true,
+            taskId: 'winner',
+            projectId: 'original-project',
+        })
+        const continued = {
+            taskId: 'winner',
+            projectId: 'original-project',
+            existing: true,
+            updated: true,
+            goldCost: 3,
+        }
+        require('../emailThreadContinuation')
+            .continueEmailThread.mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(continued)
+        expect(
+            await performEmailLineAction('u', 'p1', {
+                action: 'createTask',
+                messageIds: ['m2'],
+                userData: googleUserData,
+            })
+        ).toEqual(continued)
+        expect(refundGold).toHaveBeenCalledWith(
+            'u',
+            5,
+            expect.objectContaining({ note: 'concurrent email task creation reused a task' })
+        )
+        expect(mockAddProjectRoutingReasonComment).not.toHaveBeenCalled()
+    })
+
+    test('an ambiguous thread falls through to atomic separate-task creation', async () => {
+        require('../emailThreadContinuation').continueEmailThread.mockResolvedValue({ ambiguous: true })
+        gmailEmailLine.getMessageContext.mockResolvedValue({ threadId: 'thread', subject: 'Update' })
+        summarizeEmailAsTaskName.mockResolvedValue({ name: 'Review update', totalTokens: 100 })
+        deductGold.mockResolvedValue({ success: true })
+        mockCreateAndPersistTask.mockResolvedValue({ success: true, taskId: 'separate' })
+        const result = await performEmailLineAction('u', 'p1', {
+            action: 'createTask',
+            messageIds: ['m2'],
+            userData: googleUserData,
+        })
+        expect(result.taskId).toBe('separate')
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({ name: 'Review update' }),
+            expect.anything(),
+            expect.objectContaining({ emailThread: expect.anything() })
+        )
+    })
+
+    test('private tasks and multiple exact message matches cannot be chosen by reconciliation', async () => {
+        mockTaskDocs.set('items/p1/tasks', [
+            {
+                id: 'private',
+                data: { isPublicFor: ['other'], gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' } },
+            },
+        ])
+        expect(
+            (
+                await performEmailLineAction('u', 'p1', {
+                    action: 'getTaskForEmail',
+                    messageIds: ['m1'],
+                    userData: googleUserData,
+                })
+            ).taskCreated
+        ).toBeNull()
+        mockTaskDocs.set(
+            'items/p1/tasks',
+            ['a', 'b'].map(id => ({
+                id,
+                data: { isPublicFor: [0], gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' } },
+            }))
+        )
+        expect(
+            (
+                await performEmailLineAction('u', 'p1', {
+                    action: 'getTaskForEmail',
+                    messageIds: ['m1'],
+                    userData: googleUserData,
+                })
+            ).taskCreated
+        ).toBeNull()
     })
 
     test('returns a disconnected summary when email is not connected', async () => {
@@ -543,7 +675,8 @@ describe('emailLineService', () => {
                     archiveOnComplete: true,
                 }),
             }),
-            expect.objectContaining({ projectId: 'proj_target' })
+            expect.objectContaining({ projectId: 'proj_target' }),
+            expect.objectContaining({ emailThread: expect.objectContaining({ userId: 'u' }) })
         )
         expect(result).toEqual({
             taskId: 't1',
@@ -576,7 +709,11 @@ describe('emailLineService', () => {
         mockTaskDocs.set('items/p1/tasks', [
             {
                 id: 'task-live',
-                data: { name: 'Reply to customer', gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' } },
+                data: {
+                    isPublicFor: [0],
+                    name: 'Reply to customer',
+                    gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' },
+                },
             },
         ])
 
@@ -595,7 +732,11 @@ describe('emailLineService', () => {
         mockTaskDocs.set('items/p1/tasks', [
             {
                 id: 'task-live',
-                data: { name: 'Reply to customer', gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' } },
+                data: {
+                    isPublicFor: [0],
+                    name: 'Reply to customer',
+                    gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' },
+                },
             },
         ])
 
@@ -623,6 +764,7 @@ describe('emailLineService', () => {
             {
                 id: 'original-task',
                 data: {
+                    isPublicFor: [0],
                     name: 'Original task',
                     gmailData: { gmailEmail: 'me@gmail.com', messageId: 'first', messageIds: ['second'] },
                 },
@@ -645,7 +787,7 @@ describe('emailLineService', () => {
         mockTaskDocs.set('items/p1/tasks', [
             {
                 id: 'unrelated-task',
-                data: { gmailData: { messageId: 'm1', ...account } },
+                data: { isPublicFor: [0], gmailData: { messageId: 'm1', ...account } },
             },
         ])
         const result = await performEmailLineAction('u', 'p1', {
@@ -719,7 +861,8 @@ describe('emailLineService', () => {
                     taskProjectId: 'proj_client',
                 }),
             }),
-            expect.objectContaining({ projectId: 'proj_client' })
+            expect.objectContaining({ projectId: 'proj_client' }),
+            expect.objectContaining({ emailThread: expect.objectContaining({ userId: 'u' }) })
         )
         expect(mockAddProjectRoutingReasonComment).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -774,7 +917,8 @@ describe('emailLineService', () => {
                     selectedProjectId: 'proj_target',
                 }),
             }),
-            expect.anything()
+            expect.anything(),
+            expect.objectContaining({ emailThread: expect.objectContaining({ userId: 'u' }) })
         )
         expect(mockAddProjectRoutingReasonComment).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -893,7 +1037,11 @@ describe('emailLineService', () => {
         mockTaskDocs.set('items/p1/tasks', [
             {
                 id: 'task-live',
-                data: { name: 'Reply to the digest', gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' } },
+                data: {
+                    isPublicFor: [0],
+                    name: 'Reply to the digest',
+                    gmailData: { messageId: 'm1', gmailEmail: 'me@gmail.com' },
+                },
             },
         ])
         gmailEmailLine.listMessagesForLabel.mockResolvedValue({
@@ -914,7 +1062,11 @@ describe('emailLineService', () => {
         mockTaskDocs.set('items/p1/tasks', [
             {
                 id: 'task-other',
-                data: { name: 'Other inbox', gmailData: { messageId: 'm1', gmailEmail: 'other@gmail.com' } },
+                data: {
+                    isPublicFor: [0],
+                    name: 'Other inbox',
+                    gmailData: { messageId: 'm1', gmailEmail: 'other@gmail.com' },
+                },
             },
         ])
         gmailEmailLine.listMessagesForLabel.mockResolvedValue({

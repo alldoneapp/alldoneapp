@@ -1116,7 +1116,7 @@ async function addRoutingCommentsToCreatedGmailTasks({
 
     const commentResults = []
     for (const createdTask of createdTaskResults) {
-        if (!createdTask?.projectId || !createdTask?.taskId) continue
+        if (!createdTask?.projectId || !createdTask?.taskId || createdTask.existing) continue
 
         try {
             const commentResult = await addProjectRoutingReasonComment({
@@ -1185,16 +1185,12 @@ async function executePostLabelPrompt({
 }) {
     const configuredPrompt =
         typeof selectedDefinition?.postLabelPrompt === 'string' ? selectedDefinition.postLabelPrompt.trim() : ''
-    const { prompt, topicChatTitle } = resolveDefaultFollowUpTopicPrompt(configuredPrompt, selectedDefinition, userData)
+    let { prompt, topicChatTitle } = resolveDefaultFollowUpTopicPrompt(configuredPrompt, selectedDefinition, userData)
     const promptHash = createPostLabelPromptHash(selectedDefinition?.key || '', configuredPrompt)
     const postLabelPromptDirectionScope =
         typeof selectedDefinition?.postLabelPromptDirectionScope === 'string'
             ? selectedDefinition.postLabelPromptDirectionScope.trim().toLowerCase()
             : ''
-
-    if (!prompt) {
-        return buildPostLabelActionSkipped({ prompt: '', promptHash: '', status: 'skipped' })
-    }
 
     if (
         postLabelPromptDirectionScope &&
@@ -1215,6 +1211,68 @@ async function executePostLabelPrompt({
             error: '',
         }
     }
+
+    let ambiguousThread = false
+    // Reuse precedes classification-based task/topic actions, including informational
+    // mail and labels pointing at another project. Do not expose this selection to AI.
+    try {
+        const { continueEmailThread } = require('../Email/emailThreadContinuation')
+        const continued = await continueEmailThread({
+            database: admin.firestore(),
+            userId,
+            userData,
+            gmailData: {
+                provider: 'google',
+                accountUserId: userId,
+                gmailEmail,
+                connectionId,
+                projectId: connectionProjectId,
+                messageId: normalizedMessage.messageId,
+                threadId: normalizedMessage.threadId,
+                webUrl: buildGmailMessageUrl(gmailEmail, normalizedMessage.messageId),
+                archiveOnComplete: direction !== GMAIL_DIRECTION_SCOPE_OUTGOING,
+                archivedByLabeling,
+            },
+            context: normalizedMessage,
+            actor: async () => {
+                const author = await resolvePostLabelAssistantContext(userId, userData)
+                return {
+                    uid: author.assistantId || userId,
+                    displayName: author.assistant?.displayName || userData.displayName || 'Email',
+                    fromAssistant: !!author.assistantId,
+                }
+            },
+        })
+        if (continued?.ambiguous) {
+            ambiguousThread = true
+            followUpType = 'actionable'
+            prompt =
+                'Several existing tasks match this email thread and the correct task is ambiguous. ' +
+                'Create one separate task suggesting a review of this new email. Do not invent additional work. ' +
+                'Use taskOrigin=assistant_suggestion and explain visibly that the thread matches multiple tasks.'
+        } else if (continued)
+            return {
+                prompt,
+                promptHash,
+                status: 'completed',
+                error: '',
+                continuedTask: continued,
+                createdTaskResults: [],
+                createdChatCommentResults: [],
+                goldSpent: continued.goldCost,
+                estimatedNormalGoldCost: continued.goldCost,
+                executedToolNames: [],
+                executedToolCallsCount: 0,
+                executedAt: Timestamp.now(),
+            }
+    } catch (error) {
+        // A failed continuation must be retried, never fall through to duplicate creation.
+        return {
+            ...buildPostLabelActionSkipped({ prompt, promptHash, status: 'failed', error: error.message }),
+            threadContinuationPending: true,
+        }
+    }
+    if (!prompt) return buildPostLabelActionSkipped({ prompt: '', promptHash: '', status: 'skipped' })
 
     const { assistantProjectId, assistantId, assistant } = await resolvePostLabelAssistantContext(userId, userData)
     if (!assistantProjectId || !assistantId || !assistant) {
@@ -1272,9 +1330,12 @@ async function executePostLabelPrompt({
             targetContactName,
             topicChatTitle,
             followUpType,
-            taskSuggestionComment: buildPostLabelTaskSuggestionComment(normalizedMessage),
+            taskSuggestionComment: ambiguousThread
+                ? 'I suggest reviewing this email separately because its thread matches several existing tasks and the correct task is unclear.'
+                : buildPostLabelTaskSuggestionComment(normalizedMessage),
             archivedByLabeling,
         })
+        gmailContext.emailContext = normalizedMessage
         const toolRuntimeContext = {
             projectId: assistantProjectId,
             assistantId,
@@ -1519,6 +1580,35 @@ async function processSingleMessage({
     const promptVersion = config.updatedAt || Timestamp.now()
     const existingAuditEntry = await loadAuditEntry(userId, projectId, normalizedMessage.messageId)
 
+    if (existingAuditEntry?.threadContinuationPending) {
+        const action = await executePostLabelPrompt({
+            userId,
+            userData,
+            normalizedMessage,
+            gmailEmail,
+            direction,
+            selectedDefinition:
+                config.labelDefinitions.find(label => label.key === existingAuditEntry.selectedLabelKey) || {},
+            connectionId: projectId,
+            connectionProjectId: goldProjectId,
+            selectedProjectId: existingAuditEntry.selectedProjectId,
+            archivedByLabeling: existingAuditEntry.archived,
+        })
+        await writeAuditRecord(userId, projectId, normalizedMessage, {
+            postLabelAction: action,
+            threadContinuationPending: !!action.threadContinuationPending,
+            ...(action.continuedTask ? { taskCreated: action.continuedTask } : {}),
+        })
+        return {
+            labeled: 0,
+            archived: 0,
+            skipped: 0,
+            goldSpent: action.goldSpent || 0,
+            estimatedNormalGoldCost: action.estimatedNormalGoldCost || 0,
+            threadContinuationPending: !!action.threadContinuationPending,
+        }
+    }
+
     // Check the user has at least the minimum balance to run the classifier.
     // No Gold is deducted here — we only want a single ledger entry per email,
     // created after classification based on actual token usage.
@@ -1652,11 +1742,23 @@ async function processSingleMessage({
         insufficientGoldForClassification,
     })
 
-    if (!classifierResult.matched) {
+    const selectedDefinition = eligibleLabelDefinitions.find(label => label.key === classifierResult.labelKey)
+    if (!classifierResult.matched || !selectedDefinition) {
+        const action = await executePostLabelPrompt({
+            userId,
+            userData,
+            normalizedMessage,
+            gmailEmail,
+            direction,
+            selectedDefinition: {},
+            connectionId: projectId,
+            connectionProjectId: goldProjectId,
+            followUpType,
+        })
         await writeAuditRecord(userId, projectId, normalizedMessage, {
             syncRunId,
             direction,
-            selectedLabelKey: null,
+            selectedLabelKey: classifierResult.matched ? classifierResult.labelKey : null,
             selectedGmailLabelName: null,
             autoArchive: false,
             confidence: classifierResult.confidence,
@@ -1665,48 +1767,23 @@ async function processSingleMessage({
             consistencyCheck: classifierResult.consistencyCheck || null,
             applied: false,
             archived: false,
-            skippedReason: 'no_match',
+            skippedReason: classifierResult.matched ? 'missing_label_definition' : 'no_match',
             promptVersion,
-            postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
+            postLabelAction: action,
+            threadContinuationPending: !!action.threadContinuationPending,
+            ...(action.continuedTask ? { taskCreated: action.continuedTask } : {}),
         })
-
         return {
             labeled: 0,
             archived: 0,
             skipped: 1,
-            goldSpent: classificationGoldSpent,
-            estimatedNormalGoldCost,
+            goldSpent: classificationGoldSpent + (action.goldSpent || 0),
+            estimatedNormalGoldCost: estimatedNormalGoldCost + (action.estimatedNormalGoldCost || 0),
             insufficientGold: insufficientGoldForClassification,
+            threadContinuationPending: !!action.threadContinuationPending,
         }
     }
 
-    const selectedDefinition = eligibleLabelDefinitions.find(label => label.key === classifierResult.labelKey)
-    if (!selectedDefinition) {
-        await writeAuditRecord(userId, projectId, normalizedMessage, {
-            syncRunId,
-            direction,
-            selectedLabelKey: classifierResult.labelKey,
-            selectedGmailLabelName: null,
-            autoArchive: false,
-            confidence: classifierResult.confidence,
-            reasoning: classifierResult.reasoning,
-            followUpType,
-            applied: false,
-            archived: false,
-            skippedReason: 'missing_label_definition',
-            promptVersion,
-            postLabelAction: buildPostLabelActionSkipped({ status: 'skipped' }),
-        })
-
-        return {
-            labeled: 0,
-            archived: 0,
-            skipped: 1,
-            goldSpent: classificationGoldSpent,
-            estimatedNormalGoldCost,
-            insufficientGold: insufficientGoldForClassification,
-        }
-    }
     const selectedProjectId =
         typeof selectedDefinition.sourceProjectId === 'string' && selectedDefinition.sourceProjectId.trim()
             ? selectedDefinition.sourceProjectId.trim()
@@ -1806,6 +1883,8 @@ async function processSingleMessage({
         recipientEmails: targetContactEmails.filter(Boolean),
         postLabelAction: primaryPostLabelAction,
         postLabelActions,
+        threadContinuationPending: postLabelActions.some(action => action.threadContinuationPending),
+        ...(primaryPostLabelAction.continuedTask ? { taskCreated: primaryPostLabelAction.continuedTask } : {}),
         // Mapping + work flag for the server-side email-comment read sync (AT-2376). Empty when the
         // follow-up created no chat comment, so the reconciler's query only ever sees real work.
         ...buildEmailCommentAuditPatch(
@@ -1822,6 +1901,7 @@ async function processSingleMessage({
         goldSpent: classificationGoldSpent + followUpGoldSpent,
         estimatedNormalGoldCost: estimatedNormalGoldCost + followUpEstimatedNormalGoldCost,
         insufficientGold: insufficientGoldForClassification,
+        threadContinuationPending: postLabelActions.some(action => action.threadContinuationPending),
     }
 }
 
@@ -1979,7 +2059,14 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             })
         }
 
-        const fetchedMessages = await fetchMessagesByIds(gmail, messageIds)
+        // Failed continuations must survive the history cursor and auto-archive/read
+        // filters. Retry their original emails without another classification charge.
+        const pendingSnapshot = await getMessagesAuditCollectionRef(userId, projectId)
+            .where('threadContinuationPending', '==', true)
+            .limit(20)
+            .get()
+        const pendingIds = new Set(pendingSnapshot.docs.map(doc => doc.id))
+        const fetchedMessages = await fetchMessagesByIds(gmail, [...new Set([...pendingIds, ...messageIds])])
         logSync('Fetched Gmail messages by id', {
             ...logContext,
             syncMode,
@@ -1987,10 +2074,14 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
             fetchedMessageCount: fetchedMessages.length,
         })
 
-        const candidateMessages = filterCandidateMessages(fetchedMessages, effectiveConfig).slice(
-            0,
-            effectiveConfig.maxMessagesPerRun
-        )
+        const candidateMessages = [
+            ...new Map(
+                [
+                    ...fetchedMessages.filter(message => pendingIds.has(message.id)),
+                    ...filterCandidateMessages(fetchedMessages, effectiveConfig),
+                ].map(message => [message.id, message])
+            ).values(),
+        ].slice(0, effectiveConfig.maxMessagesPerRun)
         logSync('Filtered Gmail candidate messages', {
             ...logContext,
             syncMode,
@@ -2011,7 +2102,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
               )
         const messagesToProcess = options.forceBootstrap
             ? candidateMessages
-            : candidateMessages.filter(message => !processedMessageIds.has(message.id))
+            : candidateMessages.filter(message => pendingIds.has(message.id) || !processedMessageIds.has(message.id))
 
         logSync('Prepared Gmail messages for processing', {
             ...logContext,
@@ -2054,6 +2145,7 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
                 skipped += result.skipped
                 goldSpent += result.goldSpent || 0
                 estimatedNormalGoldSpent += result.estimatedNormalGoldCost || 0
+                if (result.threadContinuationPending) syncLastError = 'An email thread continuation is pending retry.'
                 logSync('Finished processing Gmail message', {
                     ...logContext,
                     messageId: rawMessage.id,

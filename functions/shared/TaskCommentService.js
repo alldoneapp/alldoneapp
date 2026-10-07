@@ -6,6 +6,9 @@ const { getId } = require('../Firestore/generalFirestoreCloud')
 const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const { Timestamp } = require('firebase-admin/firestore')
 const { getEmailIdentity, matchesEmailThread } = require('../Email/emailThreadIdentity')
+const { canAccessObject } = require('./privacyAccess')
+const { buildEmailTaskUpdate } = require('../Email/emailTaskContentUpdate')
+const { resolveEmailThreadTask } = require('../Email/emailThreadTaskStore')
 
 const COMMENT_MAX_LENGTH = 5000
 
@@ -39,8 +42,10 @@ class TaskCommentService {
         commentId: suppliedCommentId = null,
         gmailData = null,
         linkEmail = false,
+        emailContinuation = null,
     }) {
         if (!projectId || !taskId) throw new Error('Project ID and task ID are required to add a comment')
+        if (emailContinuation && !gmailData) throw new Error('Email continuation requires email metadata')
 
         const commentText = normalizeTaskComment(comment)
         const actorId = actor?.uid || actor?.id || actor?.creatorId
@@ -54,6 +59,7 @@ class TaskCommentService {
         const now = Date.now()
         let notificationData = null
         let existing = false
+        let updatedTaskName = null
 
         await this.database.runTransaction(async transaction => {
             notificationData = null
@@ -65,6 +71,7 @@ class TaskCommentService {
                 suppliedCommentId ? transaction.get(commentRef) : Promise.resolve(null),
             ])
             if (!taskSnapshot.exists) throw new Error(`Task not found: ${taskId}`)
+            updatedTaskName = taskSnapshot.data()?.name || null
             if (commentSnapshot?.exists) {
                 existing = true
                 return
@@ -76,7 +83,32 @@ class TaskCommentService {
                 if (!identity || !matchesEmailThread(taskData.gmailData, identity)) {
                     throw new Error('Email comment does not match the task account and thread')
                 }
+                if (emailContinuation) {
+                    if (!canAccessObject(taskData, identity.ownerId))
+                        throw new Error('Email task is no longer readable')
+                    const selected = await resolveEmailThreadTask({
+                        database: this.database,
+                        identity,
+                        projectIds: emailContinuation.projectIds,
+                        transaction,
+                    })
+                    if (selected?.taskId !== taskId || selected?.projectId !== projectId) {
+                        throw new Error('Email thread selection changed; retry processing')
+                    }
+                    if (
+                        [taskData.gmailData.messageId, ...(taskData.gmailData.messageIds || [])].includes(
+                            identity.messageId
+                        )
+                    ) {
+                        existing = true
+                        return
+                    }
+                }
             }
+            const contentUpdate = emailContinuation
+                ? buildEmailTaskUpdate(taskData, emailContinuation.plan, gmailData, actorId, now)
+                : {}
+            updatedTaskName = contentUpdate.name || taskData.name || null
             const chatData = chatSnapshot.exists ? chatSnapshot.data() || {} : {}
             const followersData = followersSnapshot.exists ? followersSnapshot.data() || {} : {}
             const existingFollowers = uniqueStrings([
@@ -106,13 +138,25 @@ class TaskCommentService {
             }
 
             transaction.set(commentRef, commentData)
+            if (emailContinuation) {
+                const identity = getEmailIdentity(gmailData.accountUserId, gmailData)
+                transaction.set(
+                    this.database.doc(`users/${identity.ownerId}/emailThreadTasks/message_${identity.messageKey}`),
+                    {
+                        projectId,
+                        taskId,
+                    }
+                )
+            }
             const taskCommentsData =
                 taskData.commentsData && typeof taskData.commentsData === 'object' ? taskData.commentsData : {}
             transaction.update(taskRef, {
+                ...contentUpdate,
                 ...(linkEmail && gmailData?.messageId
                     ? {
                           gmailData: {
                               ...(taskData.gmailData || {}),
+                              ...(contentUpdate.gmailData || {}),
                               messageIds: uniqueStrings([
                                   ...(taskData.gmailData?.messageIds || []),
                                   taskData.gmailData?.messageId,
@@ -134,7 +178,7 @@ class TaskCommentService {
             const nextChatData = {
                 id: taskId,
                 projectId,
-                title: taskData.extendedName || taskData.name || 'Task',
+                title: contentUpdate.extendedName || taskData.extendedName || taskData.name || 'Task',
                 type: 'tasks',
                 creatorId: chatData.creatorId || taskData.creatorId || taskData.userId || actorId,
                 created: chatData.created || taskData.created || now,
@@ -200,6 +244,7 @@ class TaskCommentService {
             notifiedFollowers: silent ? 0 : notificationData?.followers?.length || 0,
             notificationError,
             ...(suppliedCommentId ? { existing } : {}),
+            ...(emailContinuation ? { taskName: updatedTaskName } : {}),
         }
     }
 
