@@ -5,7 +5,8 @@ import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { runHttpsCallableFunction } from '../../utils/backends/firestore'
 
 const mockContextUpdate = jest.fn().mockResolvedValue(undefined)
-jest.mock('../../hooks/Chats/useGetMessages', () => () => Object.assign([], { loaded: true }))
+let mockMessages = []
+jest.mock('../../hooks/Chats/useGetMessages', () => () => Object.assign([...mockMessages], { loaded: true }))
 jest.mock('../ChatsView/ChatDV/EditorView/MessageItemBody', () => () => null)
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({ createObjectMessage: jest.fn() }))
 jest.mock('../Feeds/Utils/HelperFunctions', () => ({ STAYWARD_COMMENT: 'stayward' }))
@@ -46,6 +47,7 @@ const submit = () =>
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     jest.clearAllMocks()
+    mockMessages = []
     createObjectMessage.mockResolvedValue('m1')
     runHttpsCallableFunction.mockResolvedValue({})
     container = document.createElement('div')
@@ -55,7 +57,48 @@ beforeEach(() => {
 afterEach(() => {
     act(() => root.unmount())
     container.remove()
+    jest.restoreAllMocks()
     delete global.IS_REACT_ACT_ENVIRONMENT
+})
+
+it('adds one chat hint per context change without posting a message or starting an assistant run', () => {
+    const tasks = { surface: 'alldone', path: '/tasks', title: 'Alldone.app - Tasks' }
+    render({ pageContext: tasks })
+    render({ pageContext: { ...tasks } })
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(1)
+    expect(container.querySelector('.anna-context-notice').textContent).toContain('Looking at: Tasks')
+    render({ pageContext: { ...tasks, path: '/other-project/tasks' } })
+    render({ pageContext: { surface: 'browser', path: 'https://example.com', title: 'Example' } })
+    render({ pageContext: tasks })
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(4)
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+})
+
+it('places context changes between messages chronologically', () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
+    render({ pageContext: { surface: 'alldone', path: '/tasks', title: 'Tasks' } })
+    mockMessages = [{ id: 'm1', creatorId: 'u1', created: 2000, commentText: 'Open a note' }]
+    now.mockReturnValue(3000)
+    render({ pageContext: { surface: 'alldone', path: '/notes', title: 'Notes' } })
+    const entries = [...container.querySelectorAll('.anna-context-notice, [data-anna-message-id]')]
+    expect(entries.map(node => node.dataset.annaMessageId || node.querySelector('span').textContent)).toEqual([
+        'Looking at: Tasks',
+        'm1',
+        'Looking at: Notes',
+    ])
+})
+
+it('keeps context hints scoped to the account and daily conversation', () => {
+    const pageContext = { surface: 'alldone', path: '/tasks', title: 'Tasks' }
+    render({ pageContext })
+    render({ pageContext: null })
+    render({ pageContext })
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(1)
+    render({ pageContext, conversation: { projectId: 'p1', id: 'tomorrow', assistantId: 'a1' } })
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(1)
+    render({ pageContext: null, user: { uid: 'other', gold: 100 } })
+    expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(0)
 })
 
 it('saves the visible context and one project conversation message before invoking the existing assistant', async () => {

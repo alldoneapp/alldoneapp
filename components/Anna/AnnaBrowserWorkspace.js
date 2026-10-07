@@ -4,7 +4,7 @@ import { subscribePageVisible } from '../../utils/appResume'
 import { translate } from '../../i18n/TranslationService'
 
 const AnnaBrowserWorkspace = forwardRef(function AnnaBrowserWorkspace(
-    { browser, active, onControlChange, onResume, assistantName = translate('Assistant') },
+    { browser, active, onControlChange, onResume, onPageChange, assistantName = translate('Assistant') },
     ref
 ) {
     const [frame, setFrame] = useState(null)
@@ -34,7 +34,7 @@ const AnnaBrowserWorkspace = forwardRef(function AnnaBrowserWorkspace(
                     if (generation.current !== requestGeneration) return
                     stopped.current = false
                     setError('')
-                    setFrame(previous => ({ ...previous, ...result }))
+                    setFrame(previous => ({ ...previous, ...result, runId: browser.runId }))
                     userControl.current = result.control === 'user'
                     callback.current?.(userControl.current)
                     if (action === 'release' && result.resume && resumeWork) resume.current?.(result.resume, 'browser')
@@ -96,6 +96,13 @@ const AnnaBrowserWorkspace = forwardRef(function AnnaBrowserWorkspace(
             inFlight.current = false
         }
     }, [browser?.runId])
+    useEffect(() => {
+        onPageChange?.({
+            runId: browser?.runId,
+            title: (frame?.runId === browser?.runId && frame?.title) || browser?.title,
+            url: (frame?.runId === browser?.runId && frame?.url) || browser?.url,
+        })
+    }, [browser?.runId, browser?.title, browser?.url, frame?.title, frame?.url, onPageChange])
     useEffect(() => {
         if (!active || !browser?.runId) return
         const tick = () => {

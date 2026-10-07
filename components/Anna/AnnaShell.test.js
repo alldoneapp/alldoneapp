@@ -134,6 +134,34 @@ it('places the surface selector and hand-back control in the top bar', () => {
     expect(toolbar.textContent).toContain('Browser')
     expect(toolbar.textContent).toContain('Take control')
     expect(document.querySelector('.anna-stage .anna-workspace-toolbar')).toBeNull()
+    expect(document.querySelector('.anna-header').textContent).not.toContain('Looking at:')
+})
+
+it('passes page changes to the conversation instead of the header', async () => {
+    jest.useFakeTimers()
+    const originalTitle = document.title
+    try {
+        document.title = 'Alldone.app - Tasks'
+        render(content(1))
+        await act(async () => {})
+        expect(mockConversationProps.pageContext).toMatchObject({ surface: 'alldone', title: 'Alldone.app - Tasks' })
+        document.title = 'Alldone.app - Notes'
+        await act(async () => jest.advanceTimersByTime(1000))
+        expect(mockConversationProps.pageContext.title).toBe('Alldone.app - Notes')
+        await act(async () => screen.getByText('Browser').click())
+        await act(async () =>
+            mockBrowserProps.onPageChange({ title: 'Opened website', url: 'https://example.com/page' })
+        )
+        expect(mockConversationProps.pageContext).toMatchObject({
+            surface: 'browser',
+            title: 'Opened website',
+            path: 'https://example.com/page',
+        })
+        expect(document.querySelector('.anna-header').textContent).not.toContain('Opened website')
+    } finally {
+        document.title = originalTitle
+        jest.useRealTimers()
+    }
 })
 
 it('hands both surfaces back for a new message without queueing a second continuation', async () => {

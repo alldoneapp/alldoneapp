@@ -131,21 +131,24 @@
     border-radius: 50%;
     background: var(--anna-accent);
 }
-.anna-context {
+.anna-context-notice {
     display: flex;
-    flex: 0 1 auto;
     min-width: 0;
-    align-items: center;
-    padding: 8px 12px;
-    background: var(--anna-neutral);
-    border-radius: 8px;
+    align-items: baseline;
+    margin: 16px 0;
+    color: var(--anna-muted);
     font-size: 12px;
-    gap: 8px;
+    line-height: 1.5;
+    gap: 12px;
 }
-.anna-context span {
-    overflow: hidden;
+.anna-context-notice span {
+    flex: 1;
+    overflow-wrap: anywhere;
+}
+.anna-context-notice time {
+    flex: none;
+    font-size: 10px;
     white-space: nowrap;
-    text-overflow: ellipsis;
 }
 .anna-messages {
     overflow: auto;
@@ -576,8 +579,7 @@
     .anna-has-workspace .anna-conversation {
         flex: 0 0 auto;
     }
-    .anna-has-workspace .anna-conversation .anna-messages,
-    .anna-has-workspace .anna-context {
+    .anna-has-workspace .anna-conversation .anna-messages {
         display: none;
     }
     .anna-has-workspace .anna-mobile-dock {
@@ -901,11 +903,6 @@
     }
     .anna-header-identity > span {
         margin-top: 2px;
-        font-size: 11px;
-    }
-    .anna-header .anna-context {
-        padding: 0;
-        background: transparent;
         font-size: 11px;
     }
     .anna-zoom-shell .anna-zoom-back {

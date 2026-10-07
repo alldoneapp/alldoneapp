@@ -61,7 +61,8 @@ export default function AnnaShell({ children, routeId }) {
     const controlWrite = useRef(false)
     const browserWorkspace = useRef(null)
     const [pending, setPending] = useState(null)
-    const [pageTitle, setPageTitle] = useState('')
+    const [workspacePage, setWorkspacePage] = useState(null)
+    const [browserPage, setBrowserPage] = useState(null)
     const [navigationError, setNavigationError] = useState('')
     const [chatWidth, setChatWidth] = useState(36)
     const workspaceContent = useRef(null)
@@ -265,12 +266,15 @@ export default function AnnaShell({ children, routeId }) {
             previous = ''
         const tick = async () => {
             if (stopped || publishing || document.hidden) return
+            const page = sanitizeCallPageContext({ path: window.location.pathname, title: document.title })
+            setWorkspacePage(previous =>
+                previous?.path === page?.path && previous?.title === page?.title ? previous : page
+            )
             const context =
                 !active || (surface === 'alldone' && visibleWorkspace)
-                    ? sanitizeCallPageContext({ path: window.location.pathname, title: document.title })
+                    ? page
                     : { path: '/', title: active && surface === 'browser' ? 'Browser' : 'Anna' }
             setAnnaWorkspaceContext(context)
-            setPageTitle(context.title?.replace(/\s*[|–-]\s*Alldone.*$/i, '') || translate('Workspace'))
             const key = JSON.stringify(context)
             if (key === previous) return
             publishing = true
@@ -328,9 +332,12 @@ export default function AnnaShell({ children, routeId }) {
         if (visited) setWorkspaceControl(true)
     }
     const photo = assistant.photoURL || assistant.photoURL300 || assistant.photoURL50
-    const contextLabel = `${translate('Looking at:')} ${
-        surface === 'browser' ? browser?.title || translate('Browser') : pageTitle
-    }`
+    const currentBrowserPage = browserPage?.runId === browser?.runId ? browserPage : browser
+    const chatPageContext = !active
+        ? null
+        : surface === 'browser'
+          ? { surface, path: currentBrowserPage?.url || '', title: currentBrowserPage?.title || translate('Browser') }
+          : workspacePage && { ...workspacePage, surface }
 
     return (
         <div
@@ -361,9 +368,6 @@ export default function AnnaShell({ children, routeId }) {
                                 {assistantName}
                             </strong>
                             {assistantDescription && <span title={assistantDescription}>{assistantDescription}</span>}
-                        </div>
-                        <div className="anna-context" title={contextLabel}>
-                            <span>{contextLabel}</span>
                         </div>
                     </div>
                 </div>
@@ -450,6 +454,7 @@ export default function AnnaShell({ children, routeId }) {
                                     onExpand={() => setMobilePane('chat')}
                                     onSendingChange={setTextBusy}
                                     onBeforeSend={resumeForMessage}
+                                    pageContext={chatPageContext}
                                 />
                             )}
                         </>
@@ -543,6 +548,7 @@ export default function AnnaShell({ children, routeId }) {
                         >
                             <AnnaBrowserWorkspace
                                 ref={browserWorkspace}
+                                onPageChange={setBrowserPage}
                                 assistantName={assistantName}
                                 browser={browser}
                                 active={visibleWorkspace && surface === 'browser'}
