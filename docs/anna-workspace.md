@@ -19,4 +19,12 @@ For delegated VM browsing, the assistant uses the shared Alldone browser tools t
 - Browser layout harness: `node browser-tests/anna-workspace/run.js`. Requires Playwright and Chromium; set `BROWSER_CHANNEL=chrome` to use installed Chrome. Uses real shell/chat components with synthetic transport and an editable workspace fixture, without a production account. Covers 1440, 1024, and 390 pixel widths, editor identity/drafts, mobile visibility, overflow, and runtime errors. Output is ignored under `.build/`.
 - Production bundle: `npm run build-web-webpack`.
 
-Deployment needs the updated Functions (including `annaBrowserWorkspaceSecondGen` and the updated `getAnnaConversationSecondGen`) and web bundle. The existing browser worker must already be configured; this change does not deploy or configure it. No heartbeat or saved-work migration is required.
+## Deployment
+
+Deploy the updated Functions (including `annaBrowserWorkspaceSecondGen` and `getAnnaConversationSecondGen`) before the web bundle. Production uses the master pipeline. For staging QA from a current feature branch, run the manual `deploy:cloud:functions:staging` and `deploy:cloud:runner:staging` jobs, then `deploy:web-staging-live`. The old develop branch does not need to advance. Functions jobs validate the CI environment JSON before deployment.
+
+Both environments have a separate IAM-private `browser-worker` Cloud Run service in europe-west1. Build or update it with `functions/Assistant/browser-worker/deploy.sh`; the ordinary Functions pipeline does not deploy this service. Keep the worker signing secret equal to the corresponding GitLab `GOOGLE_FUNCTIONS_ENV_DEV` or `GOOGLE_FUNCTIONS_ENV_PROD` value and grant only the existing Firebase Admin SDK caller `roles/run.invoker` on the worker. Runtime configuration must be persisted in the CI variable so the next deploy preserves it.
+
+Enable `browser_automation` in the intended assistant's Tools Access and configure that project's allowed websites. Existing project policies and assistant permissions remain authoritative; deploying the infrastructure does not enable every assistant. No heartbeat or saved-work migration is required.
+
+For a live check, ask the default assistant to open a public page using the shared browser. Verify the right pane displays its viewport, take control and interact, then request another page while holding control. The assistant must pause and resume the blocked request after explicit hand-back. Check the ordinary Alldone surface still works after zooming back in.
