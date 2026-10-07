@@ -192,6 +192,7 @@ describe('User memory assistant tool schemas', () => {
             const parameters = toolSchemas[name].function.parameters
             expect(parameters.properties.parentGoalId.type).toEqual(['string', 'null'])
             expect(parameters.required).not.toContain('parentGoalId')
+            expect(parameters.properties.parentGoalProjectId.type).toBe('string')
         }
         expect(toolSchemas.update_task.function.parameters.properties.parentGoalId.description).toContain(
             'omitting this field preserves it'

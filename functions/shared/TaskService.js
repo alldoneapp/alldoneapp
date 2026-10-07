@@ -687,6 +687,7 @@ class TaskService {
             userId,
             parentId,
             parentGoalId,
+            parentGoalProjectId,
             feedUser,
             focus,
             focusUserId,
@@ -719,12 +720,17 @@ class TaskService {
                 projectId,
                 currentTask,
                 parentGoalId,
-                parentId
+                parentId,
+                parentGoalProjectId
             )
             if (Object.keys(goalUpdate).length > 0) {
                 Object.assign(updateData, goalUpdate)
                 changes.push(parentGoalId === null ? 'parent goal cleared' : 'parent goal')
-                parentGoalChange = { userId: requestingUserId, parentGoalId: normalizeParentGoalId(parentGoalId) }
+                parentGoalChange = {
+                    userId: requestingUserId,
+                    parentGoalId: normalizeParentGoalId(parentGoalId),
+                    parentGoalProjectId: goalUpdate.projectId || projectId,
+                }
             }
         }
 
@@ -983,7 +989,7 @@ class TaskService {
         } = updateResult
         const { projectId, batch: externalBatch, feedUser } = options
 
-        const finalProjectId = projectId || updatedTask.projectId
+        let finalProjectId = projectId || updatedTask.projectId
         if (!finalProjectId) {
             throw new Error('Project ID is required for task update persistence')
         }
@@ -1046,6 +1052,7 @@ class TaskService {
                             ...parentGoalChange,
                             updateData: updateDataToApply,
                         })
+                        finalProjectId = persisted.updatedTask.projectId || finalProjectId
                         Object.assign(updateData, persisted.updateData)
                         Object.assign(updatedTask, persisted.updatedTask)
                     } else {

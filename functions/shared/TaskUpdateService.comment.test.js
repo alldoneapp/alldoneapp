@@ -62,6 +62,36 @@ describe('TaskUpdateService comments', () => {
         return service
     }
 
+    test.each([false, true])(
+        'comments after a goal move address the destination, including comment failure: %s',
+        async failed => {
+            const service = createService()
+            service.performTaskUpdate = jest.fn().mockResolvedValue({
+                success: true,
+                taskId: 'task-1',
+                changes: ['parent goal'],
+                project: { id: 'goal-project', name: 'Goal Project' },
+                task: { ...currentTask, projectId: 'goal-project', parentGoalId: 'goal-1' },
+                message: 'Task moved to Goal Project',
+            })
+            if (failed) service.taskCommentService.addComment.mockRejectedValue(new Error('comment unavailable'))
+            const result = await service.findAndUpdateTask(
+                'user-1',
+                { taskId: 'task-1' },
+                { parentGoalId: 'goal-1', comment: 'Goal context' },
+                { feedUser: { uid: 'assistant-1' } }
+            )
+            expect(service.taskCommentService.addComment).toHaveBeenCalledWith(
+                expect.objectContaining({ projectId: 'goal-project' })
+            )
+            expect(result.project.id).toBe('goal-project')
+            if (failed) {
+                expect(result.partialFailure).toBe(true)
+                expect(result.message).toContain('task updated but comment failed')
+            }
+        }
+    )
+
     test('supports a comment-only update without forwarding comment into TaskService', async () => {
         const service = createService()
         const result = await service.findAndUpdateTask(

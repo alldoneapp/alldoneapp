@@ -3809,6 +3809,33 @@ describe('assistant parent goal tools', () => {
         }
     })
 
+    test('create_task chooses the goal project automatically', async () => {
+        mockDocGet.mockImplementation(function () {
+            return Promise.resolve({
+                exists: this.path !== 'goals/project-goal/items/goal-1',
+                data: () => ({
+                    defaultProjectId: 'project-goal',
+                    projectIds: ['project-goal', 'other-project'],
+                    userIds: ['user-1'],
+                    isPublicFor: [0],
+                    lockKey: 'target-lock',
+                }),
+            })
+        })
+        await executeToolNatively(
+            'create_task',
+            { name: 'Goal task', projectId: 'project-goal', parentGoalId: 'goal-1' },
+            'project-goal',
+            'assistant-1',
+            'user-1',
+            null
+        )
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({ projectId: 'other-project', parentGoalId: 'goal-1', lockKey: 'target-lock' }),
+            expect.anything()
+        )
+    })
+
     test('create_task refuses a private goal before task persistence', async () => {
         mockDocGet.mockImplementation(function () {
             const privateGoal = this.path === 'goals/project-goal/items/goal-1'
@@ -3846,7 +3873,7 @@ describe('assistant parent goal tools', () => {
             })
             await executeToolNatively(
                 'update_task',
-                { taskName: 'Goal task', parentGoalId },
+                { taskName: 'Goal task', parentGoalId, parentGoalProjectId: 'target-goal-project' },
                 'project-goal',
                 'assistant-1',
                 'user-1',
@@ -3855,7 +3882,7 @@ describe('assistant parent goal tools', () => {
             expect(findAndUpdate).toHaveBeenCalledWith(
                 'user-1',
                 expect.anything(),
-                expect.objectContaining({ parentGoalId }),
+                expect.objectContaining({ parentGoalId, parentGoalProjectId: 'target-goal-project' }),
                 expect.objectContaining({ feedUser: expect.objectContaining({ uid: 'assistant-1' }) })
             )
         }
@@ -3873,7 +3900,7 @@ describe('assistant parent goal tools', () => {
                 'user-1',
                 null
             )
-        ).rejects.toThrow('separate call')
+        ).rejects.toThrow('omit explicit move fields')
         expect(findAndUpdate).not.toHaveBeenCalled()
     })
 

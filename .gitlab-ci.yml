@@ -363,6 +363,28 @@ test:web:full:
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes: *web-relevant-paths
 
+# Parent-goal changes can detach tasks and transfer them across projects. Keep their
+# permission, hierarchy and partial-failure regressions as a required pre-merge check.
+test:assistant:parent-goal:
+    stage: build_web
+    image: $CI_REGISTRY_IMAGE/build_base:latest
+    before_script:
+        - ln -s /app/node_modules node_modules
+        - cp -R -f replacement_node_modules/* node_modules/
+        - node ci/writeTestEnv.js
+        - npm ci --prefix functions --ignore-scripts --no-audit --no-fund
+    script:
+        - npx jest --config ci/jest.functions.config.js --runInBand --silent --testPathPatterns='functions/(shared/(taskParentGoal|TaskService.parentGoal|TaskUpdateService).*test.js|Assistant/(assistantHelper|toolSchemas).test.js|MCP/mcpServerSimple.test.js)'
+    rules:
+        - changes:
+              - .gitlab-ci.yml
+              - functions/shared/taskParentGoal*.js
+              - functions/shared/TaskService*.js
+              - functions/shared/TaskUpdateService*.js
+              - functions/Assistant/assistantHelper*.js
+              - functions/Assistant/toolSchemas*.js
+              - functions/MCP/mcpServerSimple*.js
+
 # Behavioral authorization gate for Firestore rules. This runs against the
 # official emulator and exercises real get/list/write decisions; compilation
 # alone cannot detect a query that the rules engine cannot prove safe.

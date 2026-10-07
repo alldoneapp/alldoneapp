@@ -5538,11 +5538,21 @@ async function executeToolNativelyImpl(
                 assistantProjectRoutingReason: assistantProvidedProjectReasoning,
                 assistantProjectRoutingConfidence: projectRoutingConfidence,
             })
-            const targetProjectId = createTaskProjectSelection.targetProjectId
+            let targetProjectId = createTaskProjectSelection.targetProjectId
             let targetProjectName = createTaskProjectSelection.targetProjectName
 
             const { resolveTaskParentGoal, buildTaskParentGoalFields } = require('../shared/taskParentGoal')
-            const parentGoal = await resolveTaskParentGoal(db, creatorId, targetProjectId, toolArgs.parentGoalId)
+            const parentGoal = await resolveTaskParentGoal(
+                db,
+                creatorId,
+                targetProjectId,
+                toolArgs.parentGoalId,
+                toolArgs.parentGoalProjectId
+            )
+            if (parentGoal && parentGoal.projectId !== targetProjectId) {
+                targetProjectId = parentGoal.projectId
+                targetProjectName = null
+            }
             const parentGoalFields =
                 parentGoal === undefined
                     ? {}
@@ -6841,7 +6851,7 @@ async function executeToolNativelyImpl(
                 const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
                 if (hasMoveRequest && normalizedToolArgs.parentGoalId !== undefined) {
                     throw new Error(
-                        'Move the task to its target project first, then set parentGoalId in a separate call'
+                        'Use parentGoalId with optional parentGoalProjectId to automatically move to the goal project; omit explicit move fields'
                     )
                 }
                 const mutationFields = [
