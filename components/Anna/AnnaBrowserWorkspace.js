@@ -4,7 +4,15 @@ import { subscribePageVisible } from '../../utils/appResume'
 import { translate } from '../../i18n/TranslationService'
 
 const AnnaBrowserWorkspace = forwardRef(function AnnaBrowserWorkspace(
-    { browser, active, onControlChange, onResume, onPageChange, assistantName = translate('Assistant') },
+    {
+        browser,
+        active,
+        onControlChange,
+        onResume,
+        onPageChange,
+        onSessionEnded,
+        assistantName = translate('Assistant'),
+    },
     ref
 ) {
     const [frame, setFrame] = useState(null)
@@ -19,6 +27,8 @@ const AnnaBrowserWorkspace = forwardRef(function AnnaBrowserWorkspace(
     callback.current = onControlChange
     const resume = useRef(onResume)
     resume.current = onResume
+    const ended = useRef(onSessionEnded)
+    ended.current = onSessionEnded
     const interact = useCallback(
         (action = 'frame', input = {}, { resumeWork = true } = {}) => {
             if (!browser?.runId || inFlight.current) return
@@ -48,6 +58,8 @@ const AnnaBrowserWorkspace = forwardRef(function AnnaBrowserWorkspace(
                             failure.details?.reason === 'browser_session_ended' ||
                             failure.code?.endsWith('permission-denied')
                         ) {
+                            if (failure.details?.reason === 'browser_session_ended' && !userControl.current)
+                                ended.current?.(browser.runId)
                             setFrame(null)
                             userControl.current = false
                             callback.current?.(false)

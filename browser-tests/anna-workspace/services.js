@@ -96,6 +96,7 @@ export const getDb = () => ({
     }),
 })
 export const runHttpsCallableFunction = async (name, request = {}) => {
+    if (name === 'annaBrowserWorkspaceSecondGen') return { control: 'assistant', ready: true }
     if (name === 'listActiveVmJobsSecondGen')
         return {
             jobs: new URLSearchParams(window.location.search).has('vm')
@@ -226,6 +227,23 @@ window.__annaVmFixture = (
         })
 }
 window.__annaVmFixture()
+window.__annaBrowserFixture = async (status, commentId = 'browse1') => {
+    await getDb()
+        .doc(`chatComments/p1/topics/${chat.id}/comments/${commentId}`)
+        .set({
+            assistantRun: { kind: 'chat', status },
+            isLoading: status === 'running',
+        })
+    await getDb()
+        .doc('users/demo/private/annaBrowser')
+        .set({
+            runId: 'brun_fixture',
+            title: 'Browsing an example website',
+            url: 'https://example.test',
+            updatedAt: Date.now(),
+            activity: { projectId: 'p1', objectId: chat.id, objectType: 'topics', commentId },
+        })
+}
 export default {
     createNavigationProp: () => ({}),
     processUrl: async (_, path) => {

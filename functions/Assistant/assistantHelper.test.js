@@ -7978,6 +7978,10 @@ describe('parallel tool execution in both assistant paths', () => {
                                     completed: 2,
                                     active: 3,
                                 }),
+                                activityHistory: [
+                                    expect.objectContaining({ phase: 'thinking' }),
+                                    expect.objectContaining({ phase: 'tool', subject: '2/5' }),
+                                ],
                             }),
                         })
                     )

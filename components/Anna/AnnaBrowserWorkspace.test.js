@@ -107,6 +107,21 @@ it('does not call the backend when the browser is already following the assistan
     expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
 })
 
+it('reports an ended browser session, but keeps transient errors visible for retry', async () => {
+    const onSessionEnded = jest.fn()
+    runHttpsCallableFunction.mockRejectedValueOnce({
+        message: 'Session ended',
+        details: { reason: 'browser_session_ended' },
+    })
+    await render({ onSessionEnded })
+    expect(onSessionEnded).toHaveBeenCalledWith('run1')
+    onSessionEnded.mockClear()
+    runHttpsCallableFunction.mockRejectedValueOnce(new Error('Offline'))
+    await render({ browser: { runId: 'run2' }, onSessionEnded })
+    expect(onSessionEnded).not.toHaveBeenCalled()
+    expect(container.querySelector('[role="alert"]').textContent).toContain('Offline')
+})
+
 it('reports the current browser page and never reuses the previous session title', async () => {
     const onPageChange = jest.fn()
     runHttpsCallableFunction.mockResolvedValueOnce({
