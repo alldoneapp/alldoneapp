@@ -5482,6 +5482,9 @@ async function executeToolNativelyImpl(
 
     switch (toolName) {
         case 'create_task': {
+            if (toolArgs.parentGoalId !== undefined && !requestUserId) {
+                throw new Error('Authenticated user is required to assign a parent goal')
+            }
             const { TaskService } = require('../shared/TaskService')
             const moment = require('moment-timezone')
             const db = admin.firestore()
@@ -5537,6 +5540,16 @@ async function executeToolNativelyImpl(
             })
             const targetProjectId = createTaskProjectSelection.targetProjectId
             let targetProjectName = createTaskProjectSelection.targetProjectName
+
+            const { resolveTaskParentGoal, buildTaskParentGoalFields } = require('../shared/taskParentGoal')
+            const parentGoal = await resolveTaskParentGoal(db, creatorId, targetProjectId, toolArgs.parentGoalId)
+            const parentGoalFields =
+                parentGoal === undefined
+                    ? {}
+                    : {
+                          ...buildTaskParentGoalFields(parentGoal),
+                          skipAutomaticGoalRouting: parentGoal === null,
+                      }
 
             console.log('📝 CREATE_TASK TOOL: Project selection', {
                 toolArgsProjectId: toolArgs.projectId,
@@ -5643,6 +5656,7 @@ async function executeToolNativelyImpl(
                         assigneeType: trackAssistantWork ? 'assistant' : 'USER',
                         projectId: targetProjectId,
                         isPrivate: false,
+                        ...parentGoalFields,
                         feedUser,
                         gmailData: gmailTaskData,
                         creatorId: isAssistantSuggestion ? assistantId : creatorId,
@@ -6767,6 +6781,9 @@ async function executeToolNativelyImpl(
         }
 
         case 'update_task': {
+            if (toolArgs.parentGoalId !== undefined && !requestUserId) {
+                throw new Error('Authenticated user is required to change a parent goal')
+            }
             const updateTaskPatchVersion = '2026-07-03-priority-and-comments-v5'
             console.log('📝 UPDATE_TASK TOOL: Starting task update', {
                 creatorId,
@@ -6804,6 +6821,11 @@ async function executeToolNativelyImpl(
                         ? normalizedToolArgs.moveToProjectName.trim()
                         : ''
                 const hasMoveRequest = !!(moveToProjectId || moveToProjectName)
+                if (hasMoveRequest && normalizedToolArgs.parentGoalId !== undefined) {
+                    throw new Error(
+                        'Move the task to its target project first, then set parentGoalId in a separate call'
+                    )
+                }
                 const mutationFields = [
                     'completed',
                     'focus',
@@ -6818,6 +6840,7 @@ async function executeToolNativelyImpl(
                     'userId',
                     'targetUserId',
                     'parentId',
+                    'parentGoalId',
                 ]
                 const hasTaskMutation = mutationFields.some(field => normalizedToolArgs[field] !== undefined)
                 const hasComment = Object.prototype.hasOwnProperty.call(normalizedToolArgs, 'comment')

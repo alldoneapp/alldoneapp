@@ -8,6 +8,15 @@ const baseParams = {
 }
 
 describe('TaskModelBuilder parent goal privacy', () => {
+    it('only suppresses automatic goal routing when explicitly requested', () => {
+        expect(createTaskObject(baseParams).goalSuggestion).toBeUndefined()
+        expect(createTaskObject({ ...baseParams, skipAutomaticGoalRouting: true }).goalSuggestion).toMatchObject({
+            status: 'superseded',
+            source: 'assistant_parent_goal',
+            projectId: 'project-1',
+            resolvedBy: 'user-1',
+        })
+    })
     // `processTaskChange` (utils/backends/openTasks.js) groups a task under its goal only when
     // `parentGoalIsPublicFor` is an array the reader appears in. A goal id without that array is
     // filed under "no goal" while still pointing at one - the shape every recurrence copy used to
