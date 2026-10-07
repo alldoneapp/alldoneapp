@@ -1,4 +1,4 @@
-# AT-2700: Rage Mode keeps progress in memory until game end
+# AT-2700: Save every mission and hangar purchase before the next flight
 
 MR !641 is merged on `origin/master` as `f7b66c4929ec8911dbe9c49a08d881c4d9f73a97` (also verified through GitLab's MR API). Its diff changes preflight loading, not the renderer's per-frame workload, pixel ratio, shadows, enemy density or controls.
 
@@ -8,11 +8,11 @@ Before this change, completing a mission and every credit purchase in the hangar
 
 The audit covers `RageModeButton`, `rageModeBackend`, all `raidArena` call sites, local storage in `raidProgress`, and the server profile/leaderboard handlers. There are no Rage progress `onSnapshot` subscriptions, storage-event listeners or periodic progress polling. `runHttpsCallableFunction` performs one callable request and does not subscribe. The underlying app retains its unrelated listeners; existing live task-count/Gold getters do not read game checkpoints. Explicit Gold weapon purchases remain available in the paused shop; returned progress is never adopted into a running game.
 
-- Initial preflight still fetches the authoritative server profile. A newer pending final save retains the existing reconciliation policy, but delivery finishes before takeoff. Read and save failures have separate retry/exit states.
-- Completed checkpoints and hangar credit purchases stay in memory, including across missions. No localStorage progress writes, score writes, leaderboard reads or progress cloud saves run during gameplay.
-- Existing terminal lifecycle defines game end: shield death (`gameOver`), explicit exit, immediate navigation teardown, or confirmed start-over. A hangar between missions is part of the same run. A retry hangar after death belongs to the ended game, with its purchases flushed before replay or exit.
+- Initial preflight fetches the authoritative server profile. A newer pending local save retains the existing reconciliation policy, but delivery finishes before takeoff. Read and save failures have separate retry/exit states.
+- **Every mission completion and every successful hangar credit purchase saves locally and to the cloud.** Each checkpoint is queued separately; rapid purchases are sent in order, without overlapping requests or coalescing purchases. An older acknowledgement cannot replace the newest local checkpoint. Invalid/failed acknowledgements retain the queue and latest pending state for explicit retry.
+- **Active flight performs no progress reads, saves or localStorage writes.** Launching the next mission, replaying or resetting waits for the entire save queue. A save failure keeps Anna grounded with retry/exit. Score writes and leaderboard reads occur only at game end.
 - Death banks only the current mission's earned credits into the latest completed checkpoint. Quit/navigation retain completed checkpoints and purchases; unfinished mission credits are not banked, preserving the existing quit policy. Reset persists a null checkpoint so other devices reset too.
-- Final progress is written locally as pending, then sent asynchronously. Failed/invalid acknowledgements retain pending data for explicit retry or next preflight. Saves remain ordered; the newest state follows an outstanding older save. `raidPersistence` keeps end requests visible across arena teardown, and gates the next profile read/flight until they settle. Late responses cannot replace an active run.
+- `raidPersistence` keeps requests visible across arena teardown. Leaving/navigation does not cancel outstanding saves: all queued checkpoints finish before a reopened arena reads its authoritative profile. Failed delivery retains the latest checkpoint locally for the next preflight. Late responses cannot replace an active run.
 - Initial loading and save waiting park the animation callback instead of polling requestAnimationFrame. Gameplay never awaits a network promise in its frame loop.
 - The loading card uses a static pixel Anna badge, existing navy/gold colours, no downloads/animations, and 28px minimum outer **and** inner horizontal padding (safe-area aware; inner padding is 40px on desktop).
 - Client/server sanitizers now retain extra bombs purchased with the last banked credits before clearing mission 1. Previously that valid final state could be rejected as an empty checkpoint and prevent save retry from succeeding.
@@ -48,12 +48,11 @@ RAGE_TEST_WIDTHS=320 node browser-tests/rage-mode/run.js --sync
 
 Chromium renders the real Three.js arena via software WebGL over a stand-in page with fake callable services. The tests advance arena timestamps in 50ms steps; they validate calls/lifecycle/layout, **not real-device FPS**. Widths can be split to bound software-rendering runtime. The initial combined run exposed a harness sampling error (purchase HUD was read before its next render); the harness now waits for the updated bomb count. A later combined run was terminated with exit 143; split runs complete the same checks.
 
-- Web/Rage/translation: **220/220 tests**, 19 suites passed.
+- Corrected boundary-save Web/Rage/translation tests: **227/227 tests**, 19 suites passed, including delayed saves, a failed purchase within a queue, and navigation/reopening with queued saves.
 - Functions profile/leaderboard: **27/27 tests**, 2 suites passed, using mocked Firestore/Gold.
-- Preflight Chromium checks: **33/33**, desktop 1280×800 and phone 390×844; slow response, failure/retry, keyboard trapping, no stale start, wider padding, clean page restoration.
-- Sync Chromium checks: **44/44** across split runs (320px: 16/16; 390px: 16/16; 1280px: 12/12), plus loading layout 568×320. Zero cloud/local progress writes through Mission 1 → hangar purchases → Mission 2; correct final save and failure/retry, including reopening while a previous save is pending.
-- Chromium touch regression: **7/7**, relative touch drag, bomb button, exit/page restoration.
-- Webpack harness compilation and `git diff --check` passed. No full app production build or authenticated Firebase/production-device run is claimed.
+- The corrected `--sync` browser suite covers immediate mission saves, two sequential purchases, delayed saves before Mission 2, zero additional progress I/O in flight, leaving/reopening with a pending save queue, failed saves/retry, page restoration and 28px loading gutters. Final counts and pipeline evidence are recorded in the MR.
+- Previously verified unchanged UI/control behaviour: **33/33** preflight checks and **7/7** touch checks. The previous 44 sync checks described the superseded end-only-save design; they are replaced by the boundary-save checks above.
+- Browser checks use fake services and software WebGL. No authenticated Firebase or real-device FPS result is claimed.
 
 ## Screenshots
 
@@ -66,6 +65,6 @@ Chromium renders the real Three.js arena via software WebGL over a stand-in page
 
 ## Remaining real-device checks
 
-Check phone Safari/PWA and Mac with the same account: authoritative mission/upgrades before takeoff; mission/hangar/next mission smoothness; Game Over, exit and reset cross-device progress; slow/offline final save, retry, then replay/reopen. Profile frame timing and network traffic in the full app on the affected phone, including unrelated app listeners. Validate notched safe areas and keyboard focus in Safari. No real-phone performance improvement is claimed from software Chromium emulation. No merge or deployment is authorized by this MR.
+Check phone Safari/PWA and Mac with the same account: authoritative mission/upgrades before takeoff; mission/hangar/next mission smoothness; Game Over, exit and reset cross-device progress; slow/offline boundary save, retry, then replay/reopen. Profile frame timing and network traffic in the full app on the affected phone, including unrelated app listeners. Validate notched safe areas and keyboard focus in Safari. No real-phone performance improvement is claimed from software Chromium emulation. Merge is explicitly authorized in the task; require passing CI for the corrected MR head before merging.
 
 The sanitizer correction also requires the updated `saveRageModeProgress` callable when this MR is eventually deployed. No environment variables or data migration are needed.

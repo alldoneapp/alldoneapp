@@ -217,6 +217,7 @@ const tuning = {
     ...(params.get('bossAt') ? { bossAt: Number(params.get('bossAt')) } : {}),
     ...(params.get('noWaves') ? { noWaves: true } : {}),
     ...(params.get('shield') ? { startShield: Number(params.get('shield')) } : {}),
+    ...(params.get('credits') ? { startCredits: Number(params.get('credits')) } : {}),
     ...(params.get('god') ? { invincible: true } : {}),
     ...(params.get('bossHp') ? { bossHp: Number(params.get('bossHp')) } : {}),
     ...(params.get('bossKind') ? { bossKind: params.get('bossKind') } : {}),
