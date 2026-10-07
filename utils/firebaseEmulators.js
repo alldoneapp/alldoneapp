@@ -19,3 +19,15 @@ export const shouldUseFirebaseEmulators = (location = typeof window === 'undefin
 // to avoid browser storage partitioning. The dev server proxies all Auth paths.
 export const getFirebaseAuthEmulatorUrl = (location = typeof window === 'undefined' ? null : window.location) =>
     isLocalBrowser(location) ? location.origin : 'http://127.0.0.1:9099'
+
+// Use a custom Functions domain through the dev server: HTTPS browsers must not
+// depend on cross-origin HTTP requests to a different loopback host/port.
+export const getFirebaseFunctionsEndpoint = (
+    projectId,
+    region = 'europe-west1',
+    location = typeof window === 'undefined' ? null : window.location
+) => {
+    if (!shouldUseFirebaseEmulators(location)) return region
+    const origin = isLocalBrowser(location) ? `${location.origin}/emulator/functions` : 'http://127.0.0.1:5001'
+    return `${origin}/${projectId}/${region}`
+}

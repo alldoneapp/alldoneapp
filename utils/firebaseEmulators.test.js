@@ -1,4 +1,8 @@
-import { getFirebaseAuthEmulatorUrl, shouldUseFirebaseEmulators } from './firebaseEmulators'
+import {
+    getFirebaseAuthEmulatorUrl,
+    getFirebaseFunctionsEndpoint,
+    shouldUseFirebaseEmulators,
+} from './firebaseEmulators'
 
 afterEach(() => {
     delete window.Capacitor
@@ -49,4 +53,24 @@ it('retains the direct emulator endpoint for an explicit opt-in outside the loca
     expect(getFirebaseAuthEmulatorUrl(new URL('https://preview.example.com/?emulator=true'))).toBe(
         'http://127.0.0.1:9099'
     )
+})
+
+it.each(['https://localhost:19006', 'http://127.0.0.1:19006', 'https://[::1]:19006'])(
+    'routes callables through the same-origin local proxy: %s',
+    url => {
+        expect(getFirebaseFunctionsEndpoint('local-project', 'europe-west1', new URL(url))).toBe(
+            `${url}/emulator/functions/local-project/europe-west1`
+        )
+    }
+)
+
+it('keeps hosted/native callables regional and explicit remote emulator opt-ins direct', () => {
+    expect(getFirebaseFunctionsEndpoint('project', 'europe-west1', new URL('https://my.alldone.app'))).toBe(
+        'europe-west1'
+    )
+    expect(
+        getFirebaseFunctionsEndpoint('project', 'europe-west1', new URL('https://preview.example.com/?emulator=true'))
+    ).toBe('http://127.0.0.1:5001/project/europe-west1')
+    window.Capacitor = { isNativePlatform: () => true }
+    expect(getFirebaseFunctionsEndpoint('project', 'europe-west1', new URL('https://localhost'))).toBe('europe-west1')
 })
