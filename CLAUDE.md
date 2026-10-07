@@ -1023,6 +1023,34 @@ mode is unchanged — there the guard IS the outside-click dismissal. Pinned by
 and `browser-tests/modalsheet` (real Chromium: touch grace timing, focused-input Escape,
 nested LIFO, scroll lock).
 
+**Assistant workspace viewport**: `AnnaShell` measures its Alldone content with
+`useWorkspaceViewportOwner`. `utils/workspaceViewport.js` publishes browser-relative
+bounds and a deduplicated change event for portals, including the vendored popover.
+`useWindowSize`, `useModalSizing`, the safe-area helpers and positioning helpers use
+this pane while assistant mode is active, and revert to the whole window on zoom-in.
+Keep physical browser sizing (`matchMedia` / `window.innerWidth`) for the assistant
+shell itself. `WorkspaceOverlayLayer` gives global dialogs and notifications a fixed
+containing block matching the pane; inline fixed overlays get that block from the
+workspace's transform. Body portals must keep global coordinates and add the pane's
+origin exactly once. Use `WorkspaceModal` for standalone dialogs instead of a native
+web Modal that creates a browser-wide portal. Never remount popup content when the
+pane changes size: drafts must survive desktop/sheet transitions. Browser coverage:
+`browser-tests/anna-workspace` (global and anchored dialogs, notifications, divider
+resize, mobile and zoom-in). System status-bar paint remains outside this scope.
+
+**Assistant mutation feedback**: `annaWorkspaceChanges.js` publishes short-lived,
+bounded visual cues after successful native task/note/contact mutations in the
+owner's sidebar conversation. Use the final persisted object/project identity
+(especially after project moves), never title matching or model-provided selectors.
+`AnnaWorkspaceReveal` waits for real DOM anchors, scrolls only the Alldone pane,
+and acknowledges only an actually visible frame. It defers during user control or
+the hidden mobile workspace, cancels on interaction, and uses `appResume` for page
+lifecycle signals. Keep feedback failures separate from mutation success so they
+never trigger a repeated write. Rows and detail titles expose `data-anna-object-*`
+and `data-anna-project-id`; new supported object views must use those same anchors.
+Coverage: `annaWorkspaceChanges.test.js`, `AnnaWorkspaceReveal.test.js`,
+`annaWorkspaceRevealTargets.test.js`, and `browser-tests/anna-workspace`.
+
 **Popover Width Control (legacy, unmigrated modals)**: Most modals still use
 `applyPopoverWidth()` from `utils/HelperFunctions.js`, which applies an exact width per
 breakpoint — since Phase 0 that is **full window width minus 32 on mobile**

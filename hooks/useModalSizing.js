@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import useWindowSize from '../utils/useWindowSize'
 import { isKeyboardInsetOpen, measureKeyboardInset } from '../utils/virtualKeyboard'
 import { getSafeAreaInsets } from '../utils/safeAreaInsets'
+import { getWorkspaceInsets, getWorkspaceKeyboardInset, getWorkspacePortalInsets } from '../utils/workspaceViewport'
 import { MODAL_EDGE_GAP, MODAL_SHEET_BREAKPOINT, MODAL_WIDTHS } from '../components/styles/modals'
 
 const getOpenKeyboardInset = () => {
@@ -30,7 +31,8 @@ const getOpenKeyboardInset = () => {
  */
 export default function useModalSizing({ size = 'M' } = {}) {
     const [windowWidth, windowHeight] = useWindowSize()
-    const [keyboardInset, setKeyboardInset] = useState(getOpenKeyboardInset)
+    const [browserKeyboardInset, setKeyboardInset] = useState(getOpenKeyboardInset)
+    const keyboardInset = getWorkspaceKeyboardInset(browserKeyboardInset)
 
     useEffect(() => {
         const viewport = typeof window !== 'undefined' ? window.visualViewport : null
@@ -46,7 +48,7 @@ export default function useModalSizing({ size = 'M' } = {}) {
     }, [])
 
     const isSheet = windowWidth < MODAL_SHEET_BREAKPOINT
-    const safeAreaInsets = getSafeAreaInsets()
+    const safeAreaInsets = getWorkspaceInsets(getSafeAreaInsets())
     // An open software keyboard already covers the bottom safe area; counting
     // both would leave an unnecessary gap above it.
     const bottomInset = keyboardInset > 0 ? keyboardInset : safeAreaInsets.bottom
@@ -55,5 +57,14 @@ export default function useModalSizing({ size = 'M' } = {}) {
     const width = availableWidth > 0 ? Math.min(desiredWidth, availableWidth) : desiredWidth
     const maxHeight = Math.max(windowHeight - safeAreaInsets.top - bottomInset - MODAL_EDGE_GAP * 2, 0)
 
-    return { width, maxHeight, isSheet, windowWidth, windowHeight, keyboardInset, safeAreaInsets }
+    return {
+        width,
+        maxHeight,
+        isSheet,
+        windowWidth,
+        windowHeight,
+        keyboardInset,
+        safeAreaInsets,
+        portalInsets: getWorkspacePortalInsets(),
+    }
 }

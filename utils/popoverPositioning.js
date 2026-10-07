@@ -16,6 +16,7 @@
 import { Dimensions } from 'react-native'
 
 import { getSafeAreaInsets } from './safeAreaInsets'
+import { getWorkspaceViewport, getWorkspaceInsets } from './workspaceViewport'
 
 export const POPOVER_VIEWPORT_PADDING = 8
 
@@ -95,16 +96,17 @@ export const centerPopoverInViewport = ({
 // live window. `horizontalOffset` is how callers compensate for the desktop
 // sidebar so the popover looks centred over the content area.
 export const centerPopoverInWindow = ({ popoverRect } = {}, horizontalOffset = 0) => {
-    const dim = Dimensions.get('window')
+    const dim = getWorkspaceViewport(Dimensions.get('window'))
 
-    return centerPopoverInViewport({
+    const location = centerPopoverInViewport({
         viewportWidth: dim.width,
         viewportHeight: dim.height,
         popoverWidth: popoverRect?.width,
         popoverHeight: popoverRect?.height,
         horizontalOffset,
-        insets: getSafeAreaInsets(),
+        insets: getWorkspaceInsets(getSafeAreaInsets(), dim),
     })
+    return { top: dim.top + location.top, left: dim.left + location.left }
 }
 
 // A handful of popovers are placed by hand at a literal offset meant to sit
@@ -154,15 +156,16 @@ export const offsetPopoverInsideSafeArea = ({
 // the live window. With zero insets and a popover that fits, this returns the
 // caller's literal `{ top, left }` unchanged.
 export const pinPopoverInsideWindow = ({ popoverRect } = {}, { top = 0, left = 0 } = {}) => {
-    const dim = Dimensions.get('window')
+    const dim = getWorkspaceViewport(Dimensions.get('window'))
 
-    return offsetPopoverInsideSafeArea({
+    const location = offsetPopoverInsideSafeArea({
         top,
         left,
         viewportWidth: dim.width,
         viewportHeight: dim.height,
         popoverWidth: popoverRect?.width,
         popoverHeight: popoverRect?.height,
-        insets: getSafeAreaInsets(),
+        insets: getWorkspaceInsets(getSafeAreaInsets(), dim),
     })
+    return { top: dim.top + location.top, left: dim.left + location.left }
 }

@@ -324,7 +324,6 @@ const localStyles = StyleSheet.create({
     container: {
         alignSelf: 'flex-start',
         width: '100%',
-        maxWidth: 440,
         paddingVertical: 10,
         paddingHorizontal: 12,
         borderRadius: 8,

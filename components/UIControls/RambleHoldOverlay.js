@@ -8,6 +8,7 @@ import { translate } from '../../i18n/TranslationService'
 import { useReducedMotion } from '../UIComponents/Ghosts/ghostAnimation'
 import { getSafeAreaInsets } from '../../utils/safeAreaInsets'
 import useWindowSize from '../../utils/useWindowSize'
+import { getWorkspaceViewport, getWorkspaceInsets, getWorkspacePortalInsets } from '../../utils/workspaceViewport'
 import { PUSH_TO_TALK_CANCEL_RADIUS } from './pushToTalk'
 
 /**
@@ -205,24 +206,25 @@ export default function RambleHoldOverlay({ visible, originX, originY, progress,
         return null
     }
 
-    const insets = getSafeAreaInsets()
+    const viewport = getWorkspaceViewport()
+    const insets = getWorkspaceInsets(getSafeAreaInsets(), viewport)
     const { top: cardTop } = resolveHoldCardPosition({
-        originY,
+        originY: originY - viewport.top,
         windowHeight,
         insetTop: insets.top,
         insetBottom: insets.bottom,
     })
 
     const ringBox = {
-        left: originX - RAMBLE_RING_RADIUS,
-        top: originY - RAMBLE_RING_RADIUS,
+        left: originX - viewport.left - RAMBLE_RING_RADIUS,
+        top: originY - viewport.top - RAMBLE_RING_RADIUS,
         width: RAMBLE_RING_RADIUS * 2,
         height: RAMBLE_RING_RADIUS * 2,
         borderRadius: RAMBLE_RING_RADIUS,
     }
 
     return createPortal(
-        <View testID={'ramble-hold-overlay'} style={localStyles.root}>
+        <View testID={'ramble-hold-overlay'} style={[localStyles.root, getWorkspacePortalInsets(viewport)]}>
             <Animated.View style={[localStyles.ringFillSafe, ringBox, { opacity: rampDown }]} />
             <Animated.View style={[localStyles.ringFillArmed, ringBox, { opacity: progress }]} />
             <Animated.View

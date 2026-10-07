@@ -14,6 +14,7 @@ import ProgressiveLoadingScreen from './components/ProgressiveLoadingScreen'
 import Backend from './utils/BackendBridge'
 import NavigationService from './utils/NavigationService'
 import GlobalModalsContainerApp from './components/UIComponents/GlobalModalsContainerApp'
+import WorkspaceOverlayLayer from './components/UIComponents/WorkspaceOverlayLayer'
 import { deleteCacheAndRefresh } from './utils/Observers'
 import SharedHelper from './utils/SharedHelper'
 import { withSheetHistoryLayers } from './utils/sheetHistoryLayers'
@@ -441,7 +442,9 @@ export default function AppContent() {
 
     return (
         <>
-            <AnalyticsConsentManager />
+            <WorkspaceOverlayLayer>
+                <AnalyticsConsentManager />
+            </WorkspaceOverlayLayer>
             {loggedIn === null && !publicPageUrl ? (
                 loadingStep > 0 ? (
                     <ProgressiveLoadingScreen step={loadingStep} totalSteps={5} currentMessage={loadingMessage} />
@@ -452,9 +455,11 @@ export default function AppContent() {
                 <>
                     {loggedIn && processedInitialURL && (
                         <>
-                            <GlobalModalsContainerApp />
-                            <UndoActionBar />
-                            {!annaMode && <EndDayStatisticsModal />}
+                            <WorkspaceOverlayLayer>
+                                <GlobalModalsContainerApp />
+                                <UndoActionBar />
+                                {!annaMode && <EndDayStatisticsModal />}
+                            </WorkspaceOverlayLayer>
                             <Shortcuts />
                             <InitLoadView />
                             {heavyComponentsLoaded && (

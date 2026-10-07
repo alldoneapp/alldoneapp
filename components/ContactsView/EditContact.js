@@ -1,6 +1,7 @@
 import { runWithLoading } from '../../utils/redux/loadingOperation'
 import React, { Component } from 'react'
-import { Image, Keyboard, Modal, StyleSheet, Text, View } from 'react-native'
+import { Image, Keyboard, StyleSheet, Text, View } from 'react-native'
+import WorkspaceModal from '../UIComponents/ModalShell/WorkspaceModal'
 import Button from '../UIControls/Button'
 import Icon from '../Icon'
 import store from '../../redux/store'
@@ -713,12 +714,7 @@ export default class EditContact extends Component {
                     </View>
                 </View>
                 {showCopyContactModal && contactToCopy && (
-                    <Modal
-                        visible={true}
-                        transparent={true}
-                        animationType="fade"
-                        onRequestClose={this.handleCancelCopy}
-                    >
+                    <WorkspaceModal visible={true} onRequestClose={this.handleCancelCopy}>
                         <View style={localStyles.copyModalOverlay}>
                             <View style={localStyles.copyModalContainer}>
                                 <Text style={localStyles.copyModalTitle}>
@@ -748,7 +744,7 @@ export default class EditContact extends Component {
                                 </View>
                             </View>
                         </View>
-                    </Modal>
+                    </WorkspaceModal>
                 )}
             </View>
         )

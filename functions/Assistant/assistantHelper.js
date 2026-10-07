@@ -5286,6 +5286,40 @@ async function executeToolNatively(
     userContext,
     toolRuntimeContext = null
 ) {
+    const result = await executeToolNativelyImpl(
+        toolName,
+        toolArgs,
+        projectId,
+        assistantId,
+        requestUserId,
+        userContext,
+        toolRuntimeContext
+    )
+    if (toolRuntimeContext?.annaConversation) {
+        try {
+            const { recordAnnaWorkspaceChange } = require('./annaWorkspaceChanges')
+            await recordAnnaWorkspaceChange({
+                db: require('firebase-admin').firestore(),
+                runtime: toolRuntimeContext,
+                toolName,
+                result,
+            })
+        } catch (error) {
+            console.warn('[anna workspace] Could not publish change cue', { toolName, code: error?.code })
+        }
+    }
+    return result
+}
+
+async function executeToolNativelyImpl(
+    toolName,
+    toolArgs,
+    projectId,
+    assistantId,
+    requestUserId,
+    userContext,
+    toolRuntimeContext = null
+) {
     console.log(
         '🔧 executeToolNatively:',
         toolRuntimeContext?.sourceChannel === 'whatsapp_call'

@@ -214,7 +214,7 @@ const NotesItem = ({ openEditModal, note, project, ignoreAccessGranted, inCommen
         (loggedUserIsCreator || !ProjectHelper.checkIfLoggedUserIsNormalUserInGuide(project.id))
 
     return (
-        <View>
+        <View dataSet={{ annaObjectType: 'note', annaObjectId: note.id, annaProjectId: project.id }}>
             <View style={localStyles.swipeContainer}>
                 <View style={localStyles.leftSwipeArea}>
                     <Icon name={'circle-details'} size={18} color={colors.UtilityGreen200} />

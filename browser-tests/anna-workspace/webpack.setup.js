@@ -5,9 +5,11 @@ module.exports = (config, webpack) => ({
         ...config.plugins,
         ...[
             /react-redux$/,
+            /ModalsManager\/modalsManager$/,
             /ContactsView\/Utils\/ContactsHelper$/,
             /utils\/backends\/firestore$/,
             /utils\/backends\/Chats\/chatsComments$/,
+            /utils\/backends\/Chats\/commentOutbox$/,
             /utils\/assistantHelper$/,
             /utils\/appResume$/,
             /utils\/NavigationService$/,

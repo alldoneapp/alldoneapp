@@ -28,6 +28,7 @@ function LastEdited({ lastEditionDate, editorName, shortEditorName, useShortName
 
 export default function DvTitleLayout({
     children,
+    dataSet,
     onPress,
     disabled,
     typeLabel,
@@ -44,7 +45,7 @@ export default function DvTitleLayout({
     const maxTitleHeight = maxHeight == null ? null : Math.max(0, maxHeight - 32)
 
     return (
-        <View style={localStyles.container}>
+        <View style={localStyles.container} dataSet={dataSet}>
             <View style={[localStyles.titleFrame, maxTitleHeight != null && { maxHeight: maxTitleHeight }]}>
                 <TouchableOpacity
                     style={localStyles.title}

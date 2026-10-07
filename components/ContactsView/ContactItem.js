@@ -278,7 +278,10 @@ export default class ContactItem extends Component {
         const showSummarizeTag = (this.state.smallScreenNavigation && amountTags > 1) || amountTags > 2
 
         return showContact ? (
-            <View ref={this.containerRef}>
+            <View
+                ref={this.containerRef}
+                dataSet={{ annaObjectType: 'contact', annaObjectId: contact.uid, annaProjectId: projectId }}
+            >
                 <View style={localStyles.swipeContainer}>
                     <View style={localStyles.leftSwipeArea}>
                         <Icon name="circle-details" size={18} color={colors.UtilityGreen200} />

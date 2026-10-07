@@ -3,12 +3,17 @@ import { createRoot } from 'react-dom/client'
 import AnnaConversation from './AnnaConversation'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { runHttpsCallableFunction } from '../../utils/backends/firestore'
+import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
+import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 
 const mockContextUpdate = jest.fn().mockResolvedValue(undefined)
 let mockMessages = []
 jest.mock('../../hooks/Chats/useGetMessages', () => () => Object.assign([...mockMessages], { loaded: true }))
-jest.mock('../ChatsView/ChatDV/EditorView/MessageItemBody', () => () => null)
+jest.mock('../ChatsView/ChatDV/EditorView/MessageItemBody', () => ({ commentText }) => <div>{commentText}</div>)
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({ createObjectMessage: jest.fn() }))
+jest.mock('../../utils/backends/Chats/commentOutbox', () => ({
+    commentOutbox: { retry: jest.fn(), read: jest.fn() },
+}))
 jest.mock('../Feeds/Utils/HelperFunctions', () => ({ STAYWARD_COMMENT: 'stayward' }))
 jest.mock('../../utils/backends/firestore', () => ({
     getDb: () => ({ doc: () => ({ update: mockContextUpdate }) }),
@@ -44,12 +49,29 @@ const submit = () =>
     act(async () =>
         container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     )
+const type = value =>
+    act(() => {
+        const input = container.querySelector('textarea')
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+const deferred = () => {
+    let resolve, reject
+    const promise = new Promise((yes, no) => {
+        resolve = yes
+        reject = no
+    })
+    return { promise, resolve, reject }
+}
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     jest.clearAllMocks()
     mockMessages = []
     createObjectMessage.mockResolvedValue('m1')
     runHttpsCallableFunction.mockResolvedValue({})
+    commentOutbox.retry.mockResolvedValue(undefined)
+    commentOutbox.read.mockReturnValue(null)
+    setAnnaWorkspaceContext(null)
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -151,12 +173,15 @@ it('retries a failed assistant request using the saved message without posting a
     expect(container.querySelector('[role="alert"]')).toBeNull()
 })
 
-it('preserves an unsaved draft when persistence fails', async () => {
+it('keeps failed text in its bubble and leaves the composer ready for another message', async () => {
     createObjectMessage.mockRejectedValueOnce(new Error('Offline'))
     render()
     await click('Find a note')
     await submit()
-    expect(container.querySelector('textarea').value).toBe('Find a note')
+    expect(container.querySelector('textarea').value).toBe('')
+    expect(container.querySelector('textarea').disabled).toBe(false)
+    expect(container.querySelector('.anna-message-user').textContent).toContain('Find a note')
+    expect(container.querySelector('.anna-message-user [role="alert"]').textContent).toContain('Offline')
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })
 
@@ -179,7 +204,7 @@ it('returns control before posting and executing a new message', async () => {
     expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
 })
 
-it('preserves the draft and sends nothing when returning control fails', async () => {
+it('keeps a failed control handback retryable without restoring text over the next draft', async () => {
     const onBeforeSend = jest
         .fn()
         .mockRejectedValueOnce(new Error('Could not return control'))
@@ -187,12 +212,14 @@ it('preserves the draft and sends nothing when returning control fails', async (
     render({ onBeforeSend })
     await click('Find a note')
     await submit()
-    expect(container.querySelector('textarea').value).toBe('Find a note')
+    type('My next draft')
+    expect(container.querySelector('.anna-message-user').textContent).toContain('Find a note')
     expect(container.querySelector('[role="alert"]').textContent).toContain('Could not return control')
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
-    await submit()
+    await click('Retry')
     expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('textarea').value).toBe('My next draft')
 })
 
 it('prevents concurrent text execution during a voice call', async () => {
@@ -281,4 +308,257 @@ it('resumes a paused request after hand-back without replacing an unsent draft',
     )
     expect(container.querySelector('textarea').value).toBe('Find a note')
     expect(onResumeHandled).toHaveBeenCalledWith('resume1')
+})
+
+it('resolves the authoritative thread before starting voice and keeps the draft intact', async () => {
+    let finish
+    const startCall = jest.fn()
+    const resolveConversation = jest.fn(
+        () =>
+            new Promise(resolve => {
+                finish = resolve
+            })
+    )
+    render({ call: { status: 'idle', startCall }, resolveConversation })
+    await click('Find a note')
+    await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
+    expect(startCall).not.toHaveBeenCalled()
+    expect(container.querySelector('[aria-label="Cancel call"]')).not.toBeNull()
+    await act(async () => finish({ projectId: 'p2', id: 'today', assistantId: 'a2' }))
+    expect(startCall).toHaveBeenCalledWith(
+        expect.objectContaining({
+            projectId: 'p2',
+            chatId: 'today',
+            assistant: expect.objectContaining({ uid: 'a2' }),
+        })
+    )
+    expect(container.querySelector('textarea').value).toBe('Find a note')
+    expect(createObjectMessage).not.toHaveBeenCalled()
+})
+
+it('cancels voice while waiting for conversation validation without starting a late call', async () => {
+    let finish
+    const startCall = jest.fn()
+    render({
+        call: { status: 'idle', startCall },
+        resolveConversation: () =>
+            new Promise(resolve => {
+                finish = resolve
+            }),
+    })
+    await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
+    await act(async () => container.querySelector('[aria-label="Cancel call"]').click())
+    await act(async () => finish({ projectId: 'p1', id: 'today', assistantId: 'a1' }))
+    expect(startCall).not.toHaveBeenCalled()
+    expect(container.querySelector('textarea').disabled).toBe(false)
+})
+
+it('keeps the draft and reports a failed voice target lookup', async () => {
+    const startCall = jest.fn()
+    render({
+        call: { status: 'idle', startCall },
+        resolveConversation: async () => {
+            throw new Error('Offline')
+        },
+    })
+    await click('Find a note')
+    await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
+    expect(container.querySelector('[role="alert"]').textContent).toBe('Offline')
+    expect(container.querySelector('textarea').value).toBe('Find a note')
+    expect(startCall).not.toHaveBeenCalled()
+})
+
+it('shows text and frees the focused composer before conversation resolution completes', async () => {
+    const resolution = deferred()
+    const resolveConversation = jest.fn(() => resolution.promise)
+    render({ resolveConversation })
+    type('First message')
+    await submit()
+    const input = container.querySelector('textarea')
+    expect(container.querySelector('.anna-message-user').textContent).toContain('First message')
+    expect(input.value).toBe('')
+    expect(input.disabled).toBe(false)
+    expect(document.activeElement).toBe(input)
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    type('Next draft')
+    await act(async () => resolution.resolve({ projectId: 'p1', id: 'today', assistantId: 'a1' }))
+    expect(input.value).toBe('Next draft')
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(container.querySelectorAll('.anna-message-user')).toHaveLength(1)
+    expect(container.querySelector('.anna-message-user').dataset.annaChatId).toBe('today')
+})
+
+it('sends two messages while the first assistant run is pending and keeps aggregate busy state', async () => {
+    const first = deferred()
+    const second = deferred()
+    const onSendingChange = jest.fn()
+    createObjectMessage.mockResolvedValueOnce('first').mockResolvedValueOnce('second')
+    runHttpsCallableFunction.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+    render({ onSendingChange })
+    type('One')
+    await submit()
+    type('Two')
+    await submit()
+    type('Still writing a third')
+    expect(container.querySelectorAll('.anna-message-user')).toHaveLength(2)
+    expect(runHttpsCallableFunction.mock.calls.map(call => call[1].messageId)).toEqual(['first', 'second'])
+    expect(container.querySelector('textarea').disabled).toBe(false)
+    expect(onSendingChange).toHaveBeenLastCalledWith(true)
+    await act(async () => second.resolve({}))
+    expect(onSendingChange).toHaveBeenLastCalledWith(true)
+    await act(async () => first.resolve({}))
+    expect(onSendingChange).toHaveBeenLastCalledWith(false)
+    expect(container.querySelector('textarea').value).toBe('Still writing a third')
+})
+
+it('does not duplicate the draft on two submit events in the same frame', async () => {
+    render()
+    type('One click')
+    await act(async () => {
+        const form = container.querySelector('form')
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    })
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(container.querySelectorAll('.anna-message-user')).toHaveLength(1)
+})
+
+it('waits for the durable outbox delivery before starting the assistant and retries the same ID', async () => {
+    const delivery = deferred()
+    commentOutbox.retry.mockReturnValueOnce(delivery.promise)
+    render()
+    type('Important message')
+    await submit()
+    type('Do not overwrite this')
+    expect(commentOutbox.retry).toHaveBeenCalledWith('u1', 'm1')
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    await act(async () => delivery.reject(new Error('Network interrupted')))
+    expect(container.querySelector('.anna-message-user [role="alert"]').textContent).toContain('Network interrupted')
+    await click('Retry')
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('textarea').value).toBe('Do not overwrite this')
+})
+
+it('does not treat an offline outbox entry as a delivered message', async () => {
+    commentOutbox.read.mockReturnValue({ id: 'm1', status: 'pending' })
+    render()
+    type('Offline message')
+    await submit()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    expect(container.querySelectorAll('.anna-message-user')).toHaveLength(1)
+    expect(container.querySelector('.anna-message-user [role="alert"]')).not.toBeNull()
+    commentOutbox.read.mockReturnValue(null)
+    await click('Retry')
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+})
+
+it('merges the Firestore echo with the local message while preserving an assistant failure and retry', async () => {
+    const response = deferred()
+    runHttpsCallableFunction.mockReturnValueOnce(response.promise)
+    render()
+    type('One visible copy')
+    await submit()
+    mockMessages = [{ id: 'm1', creatorId: 'u1', created: Date.now(), commentText: 'One visible copy' }]
+    render()
+    expect(container.querySelectorAll('.anna-message-user')).toHaveLength(1)
+    await act(async () => response.reject(new Error('Assistant interrupted')))
+    expect(container.querySelector('.anna-message-user [role="alert"]').textContent).toContain('Assistant interrupted')
+    type('Later draft')
+    await click('Retry')
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(container.querySelectorAll('.anna-message-user')).toHaveLength(1)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.querySelector('textarea').value).toBe('Later draft')
+})
+
+it('uses the context at submission time even when preparation is delayed', async () => {
+    const resolution = deferred()
+    const resolveConversation = () => resolution.promise
+    setAnnaWorkspaceContext({ path: '/notes/original', title: 'Original note' })
+    render({ resolveConversation })
+    type('Summarize this')
+    await submit()
+    setAnnaWorkspaceContext({ path: '/tasks/other', title: 'Other task' })
+    await act(async () => resolution.resolve({ projectId: 'p1', id: 'anna_u1', assistantId: 'a1' }))
+    expect(mockContextUpdate).toHaveBeenCalledWith({
+        annaPageContext: { path: '/notes/original', title: 'Original note' },
+    })
+})
+
+it('hides pending text and stops dispatch after an account change', async () => {
+    const resolution = deferred()
+    const resolveConversation = () => resolution.promise
+    render({ resolveConversation })
+    type('Private message')
+    await submit()
+    render({ resolveConversation, user: { uid: 'another-user', gold: 100 } })
+    expect(container.querySelectorAll('.anna-message-user')).toHaveLength(0)
+    await act(async () => resolution.resolve({ projectId: 'p1', id: 'anna_u1', assistantId: 'a1' }))
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+})
+
+it('keeps the failed bubble visible when conversation resolution returns no target, then resolves again on retry', async () => {
+    const resolveConversation = jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({ projectId: 'p1', id: 'today', assistantId: 'a1' })
+    render({ resolveConversation })
+    type('Keep this message')
+    await submit()
+    expect(container.querySelector('.anna-message-user').textContent).toContain('Keep this message')
+    expect(container.querySelector('.anna-message-user [role="alert"]')).not.toBeNull()
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    await click('Retry')
+    expect(resolveConversation).toHaveBeenCalledTimes(2)
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.anna-message-user').dataset.annaChatId).toBe('today')
+})
+
+it('clears shell busy state on unmount and does not dispatch after delayed preparation', async () => {
+    const resolution = deferred()
+    const onSendingChange = jest.fn()
+    render({ resolveConversation: () => resolution.promise, onSendingChange })
+    type('Pending message')
+    await submit()
+    expect(onSendingChange).toHaveBeenLastCalledWith(true)
+    act(() => root.render(null))
+    expect(onSendingChange).toHaveBeenLastCalledWith(false)
+    await act(async () => resolution.resolve({ projectId: 'p1', id: 'today', assistantId: 'a1' }))
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+})
+
+it('automatically releases the workspace before starting a voice request', async () => {
+    const handback = deferred()
+    const onBeforeSend = jest.fn(() => handback.promise)
+    const startCall = jest.fn()
+    render({ onBeforeSend, call: { status: 'idle', startCall } })
+    type('Preserve my text draft')
+    await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
+    expect(onBeforeSend).toHaveBeenCalledTimes(1)
+    expect(startCall).not.toHaveBeenCalled()
+    await act(async () => handback.resolve())
+    expect(startCall).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('textarea').value).toBe('Preserve my text draft')
+    expect(createObjectMessage).not.toHaveBeenCalled()
+})
+
+it('keeps voice from starting if automatic handback fails or preparation is cancelled', async () => {
+    const handback = deferred()
+    const startCall = jest.fn()
+    const onBeforeSend = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Workspace unavailable'))
+        .mockReturnValueOnce(handback.promise)
+    render({ onBeforeSend, call: { status: 'idle', startCall } })
+    await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
+    expect(startCall).not.toHaveBeenCalled()
+    expect(container.querySelector('[role="alert"]').textContent).toContain('Workspace unavailable')
+    await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
+    await act(async () => container.querySelector('[aria-label="Cancel call"]').click())
+    await act(async () => handback.resolve())
+    expect(startCall).not.toHaveBeenCalled()
 })

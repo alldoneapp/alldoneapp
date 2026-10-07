@@ -3,6 +3,9 @@
 exports[`TaskTitle component TaskTitle snapshot test should render correctly 1`] = `
 <div
   className="css-view-g5y9jx r-flex-13awgt0 r-minHeight-adacv r-overflow-1udh08x"
+  data-anna-object-id="task-1"
+  data-anna-object-type="task"
+  data-anna-project-id="project-1"
   dir={null}
   style={
     {

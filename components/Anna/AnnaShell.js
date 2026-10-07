@@ -5,6 +5,8 @@ import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import AnnaConversation from './AnnaConversation'
 import AnnaWorkspaceHighlight from './AnnaWorkspaceHighlight'
+import AnnaWorkspaceReveal from './AnnaWorkspaceReveal'
+import { findWorkspaceObject } from './annaWorkspaceRevealTargets'
 import AnnaBrowserWorkspace from './AnnaBrowserWorkspace'
 import { resolveAnnaLink } from './annaNavigation'
 import { isAnnaWorkspacePath } from '../../functions/Assistant/annaWorkspaceContract'
@@ -17,6 +19,7 @@ import NavigationService from '../../utils/NavigationService'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallPageContext'
+import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
 import './anna.css'
 
 function useMobilePane() {
@@ -57,7 +60,6 @@ export default function AnnaShell({ children, routeId }) {
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
     const [resumeRequest, setResumeRequest] = useState(null)
-    const [controlBusy, setControlBusy] = useState(false)
     const controlWrite = useRef(false)
     const browserWorkspace = useRef(null)
     const [pending, setPending] = useState(null)
@@ -66,6 +68,7 @@ export default function AnnaShell({ children, routeId }) {
     const [navigationError, setNavigationError] = useState('')
     const [chatWidth, setChatWidth] = useState(36)
     const workspaceContent = useRef(null)
+    useWorkspaceViewportOwner(workspaceContent, active)
     const layout = useRef(null)
     const controlRef = useRef(false)
     const presentationSeen = useRef(new Set())
@@ -146,21 +149,20 @@ export default function AnnaShell({ children, routeId }) {
         [user.uid, call.status]
     )
     const setWorkspaceControl = useCallback(
-        async (held, { resume = true, force = false } = {}) => {
+        async (held, { force = false } = {}) => {
             // A message can arrive while the user's preceding workspace click is
             // still taking control. Finish that write before handing control back.
             while (controlWrite.current) await controlWrite.current
             if (!user.uid) return false
             if (controlRef.current === held && !force) return true
-            setControlBusy(true)
             const previous = controlRef.current
             controlRef.current = held
             setControl(held)
             const write = (async () => {
                 try {
                     const ref = getDb().doc(`users/${user.uid}/private/annaWorkspace`)
-                    const interrupted = await getDb().runTransaction(async tx => {
-                        const state = (await tx.get(ref)).data()
+                    await getDb().runTransaction(async tx => {
+                        await tx.get(ref)
                         tx.set(
                             ref,
                             {
@@ -174,17 +176,13 @@ export default function AnnaShell({ children, routeId }) {
                             },
                             { merge: true }
                         )
-                        return state?.blocked
                     })
-                    if (!held && resume) resumeWork(interrupted)
                     return true
                 } catch (_) {
                     controlRef.current = previous
                     setControl(previous)
                     setNavigationError(translate('Could not change workspace control. Please try again.'))
                     return false
-                } finally {
-                    setControlBusy(false)
                 }
             })()
             controlWrite.current = write
@@ -194,14 +192,14 @@ export default function AnnaShell({ children, routeId }) {
                 if (controlWrite.current === write) controlWrite.current = false
             }
         },
-        [user.uid, resumeWork]
+        [user.uid]
     )
     const resumeForMessage = useCallback(async () => {
         setNavigationError('')
-        // The user's new message is the continuation; do not also enqueue the
-        // synthetic hand-back message used by the manual Continue button.
+        // A new message or voice call returns the workspace automatically.
+        // That request is the continuation; do not post another chat message.
         setResumeRequest(null)
-        if (!(await setWorkspaceControl(false, { resume: false, force: true }))) {
+        if (!(await setWorkspaceControl(false, { force: true }))) {
             throw new Error(translate('Could not change workspace control. Please try again.'))
         }
         if (heldBrowser.current && !browserWorkspace.current) throw new Error(translate('The browser is unavailable.'))
@@ -310,6 +308,23 @@ export default function AnnaShell({ children, routeId }) {
         }
     }, [active, visibleWorkspace, surface, conversation?.projectId, conversation?.id])
 
+    const openWorkspaceChange = useCallback(async (change, isCancelled) => {
+        if (!isAnnaWorkspacePath(change.path) || controlRef.current || heldBrowser.current || isCancelled())
+            throw new Error('Workspace is unavailable')
+        setSurface('alldone')
+        // Give the live list a moment to receive the committed row before
+        // falling back to its detail screen (for filters or virtualized lists).
+        const deadline = Date.now() + 600
+        while (!findWorkspaceObject(workspaceContent.current, change) && Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 75))
+            if (controlRef.current || heldBrowser.current || isCancelled()) throw new Error('Workspace is unavailable')
+        }
+        // Keep the current list when its row exists; details are the fallback for
+        // filtered-out, completed or not-yet-mounted objects.
+        if (!findWorkspaceObject(workspaceContent.current, change))
+            await URLTrigger.processUrl(NavigationService.createNavigationProp(), change.path)
+    }, [])
+
     const interceptLink = event => {
         if (
             !active ||
@@ -378,18 +393,6 @@ export default function AnnaShell({ children, routeId }) {
                     <button aria-pressed={surface === 'browser'} onClick={() => setSurface('browser')}>
                         {translate('Browser')}
                     </button>
-                    {surface === 'alldone' && (
-                        <button
-                            className="anna-control"
-                            disabled={controlBusy}
-                            aria-pressed={control}
-                            onClick={() => setWorkspaceControl(!control)}
-                        >
-                            {translate(control ? 'Let %{assistantName} continue' : 'Take control', {
-                                assistantName,
-                            })}
-                        </button>
-                    )}
                 </nav>
                 <button
                     className="anna-zoom-back"
@@ -423,7 +426,7 @@ export default function AnnaShell({ children, routeId }) {
                         <>
                             {loading && (
                                 <div className="anna-empty" role="status">
-                                    {translate('Connecting with %{assistantName}…', { assistantName })}
+                                    {translate('Loading conversation…')}
                                 </div>
                             )}
                             {error && (
@@ -527,8 +530,18 @@ export default function AnnaShell({ children, routeId }) {
                             ref={workspaceContent}
                             onPointerDownCapture={takeControl}
                             onKeyDownCapture={takeControl}
+                            onWheelCapture={takeControl}
                         >
                             {children}
+                            {visited && (
+                                <AnnaWorkspaceReveal
+                                    rootRef={workspaceContent}
+                                    conversation={conversation}
+                                    assistantName={assistantName}
+                                    available={visibleWorkspace && !control && !browserControl}
+                                    onOpen={openWorkspaceChange}
+                                />
+                            )}
                             {visited && (
                                 <AnnaWorkspaceHighlight
                                     assistantName={assistantName}

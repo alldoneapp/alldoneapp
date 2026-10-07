@@ -1,4 +1,6 @@
 {
+    "Created by %{assistantName}": "Von %{assistantName} erstellt",
+    "Updated by %{assistantName}": "Von %{assistantName} aktualisiert",
     "Zoom in Alldone": "In Alldone zoomen",
     "Anna views": "Anna-Ansichten",
     "Anna’s browser viewport": "Annas Browseransicht",
@@ -2847,6 +2849,7 @@
     "Note content is available locally; sync is pending": "Notiz ist lokal verfügbar; Synchronisierung steht noch aus",
     "Conversation with %{assistantName}": "Gespräch mit %{assistantName}",
     "Connecting with %{assistantName}…": "Verbindung mit %{assistantName} wird hergestellt…",
+    "Loading conversation…": "Unterhaltung wird geladen…",
     "%{assistantName} would like to show you:": "%{assistantName} möchte dir etwas zeigen:",
     "Talk with %{assistantName}": "Mit %{assistantName} sprechen",
     "You need Gold to talk with %{assistantName}.": "Du brauchst Gold, um mit %{assistantName} zu sprechen.",

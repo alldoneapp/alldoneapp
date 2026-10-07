@@ -404,6 +404,7 @@ function TaskPresentation(
                 style={[isLocked && !inParentGoal && localStyles.blurry, completionRowStyle]}
                 onLayout={onCompletionRowLayout}
                 testID="task-completion-row"
+                dataSet={{ annaObjectType: 'task', annaObjectId: task.id, annaProjectId: projectId }}
             >
                 <SwipeAreasContainer
                     leftText={'Properties'}

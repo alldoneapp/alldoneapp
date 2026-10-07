@@ -35,6 +35,7 @@ import { updateQuotaTraffic } from './backends/Premium/premiumFirestore'
 import { compareWorkflowEntries, getWorkflowStepsIdsSorted as getSortedWorkflowStepIds } from './workflowOrder'
 import { FIXED_MODAL_TOP_OFFSET } from './fixedModalPosition'
 import { getSafeAreaInsets } from './safeAreaInsets'
+import { getWorkspaceViewport, getWorkspaceInsets } from './workspaceViewport'
 import { getSafeAreaModalMaxWidth } from './modalSafeArea'
 
 class HelperFunctions {
@@ -232,14 +233,14 @@ export const popoverToSafePosition = (
     { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },
     isMobile = true
 ) => {
-    const dim = Dimensions.get('window')
+    const dim = getWorkspaceViewport(Dimensions.get('window'))
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const basePadding = 16 // Safe padding from screen edges
     // AT-2339: several of these call sites pass `disableReposition`, which
     // skips the patched library's own safe-area nudge, so the edge padding has
     // to absorb the iOS insets itself. Zero insets (desktop / Android) leave
     // every number below exactly as it was.
-    const safeAreaInsets = getSafeAreaInsets()
+    const safeAreaInsets = getWorkspaceInsets(getSafeAreaInsets())
     const paddingTop = basePadding + safeAreaInsets.top
     const paddingBottom = basePadding + safeAreaInsets.bottom
     const paddingLeft = basePadding + safeAreaInsets.left
@@ -262,14 +263,16 @@ export const popoverToSafePosition = (
                 viewportWidth - popoverRect.width - paddingRight
             )
 
-            return { top: centeredTop, left: centeredLeft }
+            return { top: dim.top + centeredTop, left: dim.left + centeredLeft }
         }
 
         const anchorGap = 8
-        const targetTop = targetRect.top
-        const targetBottom = targetRect.bottom ?? targetTop + (targetRect.height ?? 0)
-        const targetLeft = targetRect.left ?? 0
-        const targetRight = targetRect.right ?? targetLeft + (targetRect.width ?? 0)
+        const targetTop = targetRect.top - dim.top
+        const targetBottom =
+            (targetRect.bottom == null ? null : targetRect.bottom - dim.top) ?? targetTop + (targetRect.height ?? 0)
+        const targetLeft = (targetRect.left ?? dim.left) - dim.left
+        const targetRight =
+            (targetRect.right == null ? null : targetRect.right - dim.left) ?? targetLeft + (targetRect.width ?? 0)
 
         // Prefer showing the popover underneath the trigger, but flip when needed.
         let top = targetBottom + anchorGap
@@ -301,7 +304,7 @@ export const popoverToSafePosition = (
             left = clampToRange(desiredLeft, minLeft, maxLeft)
         }
 
-        return { top, left }
+        return { top: dim.top + top, left: dim.left + left }
     }
 
     // For desktop/tablet, use centered positioning with hard viewport clamping.
@@ -312,7 +315,7 @@ export const popoverToSafePosition = (
     top = clampToRange(top, paddingTop, Math.max(paddingTop, viewportHeight - popoverRect.height - paddingBottom))
     left = clampToRange(left, paddingLeft, Math.max(paddingLeft, viewportWidth - popoverRect.width - paddingRight))
 
-    return { top, left }
+    return { top: dim.top + top, left: dim.left + left }
 }
 
 // Kept for explicitness at popoverToTop call sites; the patched
@@ -321,7 +324,7 @@ export const popoverToSafePosition = (
 export const popoverToTopContainerStyle = { position: 'fixed' }
 
 export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedLeft, nudgedTop }, isMobile = true) => {
-    const dim = Dimensions.get('window')
+    const dim = getWorkspaceViewport(Dimensions.get('window'))
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const left = dim.width / 2 - popoverRect.width / 2
     // AT-2339, minimum semantics: this is the comment popup's placement, the
@@ -331,12 +334,12 @@ export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedL
     // offset. The horizontal clamp is new: it keeps the card out of the
     // landscape cutout, which nothing here handled before. This helper is used
     // with `disableReposition`, so the library never nudges it.
-    const safeAreaInsets = getSafeAreaInsets()
+    const safeAreaInsets = getWorkspaceInsets(getSafeAreaInsets())
     const maxLeft = Math.max(safeAreaInsets.left, dim.width - safeAreaInsets.right - popoverRect.width)
 
     return {
-        top: Math.max(FIXED_MODAL_TOP_OFFSET, safeAreaInsets.top),
-        left: clampToRange(left + sidebarDiff, safeAreaInsets.left, maxLeft),
+        top: dim.top + Math.max(FIXED_MODAL_TOP_OFFSET, safeAreaInsets.top),
+        left: dim.left + clampToRange(left + sidebarDiff, safeAreaInsets.left, maxLeft),
     }
 }
 
@@ -477,7 +480,7 @@ export const getPopoverWidth = () => {
     // Mobile popups use the full window width minus the gutter; the fixed
     // POPOVER_MOBILE_WIDTH card survives only as the fallback for the moments
     // the window width is not measurable yet.
-    const { width: windowWidth } = Dimensions.get('window')
+    const { width: windowWidth } = getWorkspaceViewport(Dimensions.get('window'))
     // AT-2339: the landscape cutout on a notched iPhone eats ~59px off ONE
     // side, so "full window width minus the gutter" is wider than the space
     // that actually exists and the card overhangs whichever edge the popover
@@ -488,7 +491,7 @@ export const getPopoverWidth = () => {
 
 export const applyPopoverWidth = (setMin = true, setMax = true) => {
     const desiredWidth = getPopoverWidth()
-    const { width: windowWidth } = Dimensions.get('window')
+    const { width: windowWidth } = getWorkspaceViewport(Dimensions.get('window'))
     const availableWidth = getSafeAreaModalMaxWidth(windowWidth)
     const resolvedWidth = availableWidth > 0 ? Math.min(desiredWidth, availableWidth) : desiredWidth
     const width = resolvedWidth > 0 ? resolvedWidth : desiredWidth
@@ -499,7 +502,7 @@ export const applyPopoverWidth = (setMin = true, setMax = true) => {
 }
 
 const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {
-    const { left: safeLeft, right: safeRight } = getSafeAreaInsets()
+    const { left: safeLeft, right: safeRight } = getWorkspaceInsets(getSafeAreaInsets())
     return smallScreenNavigation
         ? windowWidth - 50 - safeLeft - safeRight
         : isMiddleScreen
@@ -509,6 +512,12 @@ const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) =
 
 export const applyPopoverWidthV2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {
     const width = getPopoverWidthv2(isMiddleScreen, smallScreenNavigation, windowWidth)
+    const viewport = getWorkspaceViewport()
+    if (viewport.active) {
+        const available = getSafeAreaModalMaxWidth(viewport.width)
+        const resolved = Math.min(Math.max(width, POPOVER_MOBILE_WIDTH), available)
+        return { minWidth: resolved, maxWidth: resolved }
+    }
     return { minWidth: width > POPOVER_MOBILE_WIDTH ? width : POPOVER_MOBILE_WIDTH, maxWidth: width }
 }
 
