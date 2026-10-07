@@ -30,12 +30,13 @@
     outline-offset: 3px;
 }
 .anna-header {
-    height: 72px;
+    min-height: 72px;
     flex: none;
     display: flex;
     align-items: center;
-    gap: 28px;
-    padding: 0 30px;
+    gap: 12px;
+    flex-wrap: nowrap;
+    padding: 12px 24px;
     border-bottom: 1px solid var(--anna-border);
     background: #fff;
 }
@@ -91,7 +92,7 @@
     flex: 1;
     min-width: 0;
     align-items: center;
-    gap: 28px;
+    gap: 16px;
 }
 .anna-header-identity {
     min-width: 0;
@@ -409,9 +410,8 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--anna-border);
-    background: var(--anna-surface);
+    padding: 0;
+    margin-left: auto;
 }
 .anna-workspace-toolbar button {
     border: 0;
@@ -420,6 +420,7 @@
     font-size: 12px;
     padding: 8px;
     border-radius: 6px;
+    white-space: nowrap;
 }
 .anna-workspace-toolbar button:hover {
     background: var(--anna-neutral);
@@ -871,9 +872,17 @@
         position: relative;
     }
     .anna-zoom-shell .anna-header {
-        height: 72px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        height: auto;
         gap: 12px;
-        padding: 0 12px;
+        padding: 12px;
+    }
+    .anna-header .anna-workspace-toolbar {
+        order: 3;
+        grid-column: 1 / -1;
+        width: 100%;
+        margin-left: 0;
     }
     .anna-header-assistant {
         gap: 8px;

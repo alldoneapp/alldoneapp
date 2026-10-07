@@ -117,6 +117,41 @@ it('preserves an unsaved draft when persistence fails', async () => {
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })
 
+it('returns control before posting and executing a new message', async () => {
+    let release
+    const onBeforeSend = jest.fn(
+        () =>
+            new Promise(resolve => {
+                release = resolve
+            })
+    )
+    render({ onBeforeSend })
+    await click('Find a note')
+    await submit()
+    expect(onBeforeSend).toHaveBeenCalledTimes(1)
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    await act(async () => release())
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+})
+
+it('preserves the draft and sends nothing when returning control fails', async () => {
+    const onBeforeSend = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Could not return control'))
+        .mockResolvedValue(undefined)
+    render({ onBeforeSend })
+    await click('Find a note')
+    await submit()
+    expect(container.querySelector('textarea').value).toBe('Find a note')
+    expect(container.querySelector('[role="alert"]').textContent).toContain('Could not return control')
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    await submit()
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+})
+
 it('prevents concurrent text execution during a voice call', async () => {
     render({ call: { status: 'active' } })
     await click('Find a note')

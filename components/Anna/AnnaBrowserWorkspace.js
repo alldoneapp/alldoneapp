@@ -1,20 +1,18 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { subscribePageVisible } from '../../utils/appResume'
 import { translate } from '../../i18n/TranslationService'
 
-export default function AnnaBrowserWorkspace({
-    browser,
-    active,
-    onControlChange,
-    onResume,
-    assistantName = translate('Assistant'),
-}) {
+const AnnaBrowserWorkspace = forwardRef(function AnnaBrowserWorkspace(
+    { browser, active, onControlChange, onResume, assistantName = translate('Assistant') },
+    ref
+) {
     const [frame, setFrame] = useState(null)
     const [error, setError] = useState('')
     const [busy, setBusy] = useState(false)
     const [text, setText] = useState('')
     const inFlight = useRef(false)
+    const userControl = useRef(false)
     const generation = useRef(0)
     const stopped = useRef(false)
     const callback = useRef(onControlChange)
@@ -22,44 +20,66 @@ export default function AnnaBrowserWorkspace({
     const resume = useRef(onResume)
     resume.current = onResume
     const interact = useCallback(
-        async (action = 'frame', input = {}) => {
+        (action = 'frame', input = {}, { resumeWork = true } = {}) => {
             if (!browser?.runId || inFlight.current) return
             const requestGeneration = generation.current
-            inFlight.current = true
             setBusy(true)
-            try {
-                const result = await runHttpsCallableFunction(
-                    'annaBrowserWorkspaceSecondGen',
-                    { runId: browser.runId, action, input },
-                    { timeout: 60000 }
-                )
-                if (generation.current !== requestGeneration) return
-                setError('')
-                setFrame(previous => ({ ...previous, ...result }))
-                callback.current?.(result.control === 'user')
-                if (action === 'release' && result.resume) resume.current?.(result.resume, 'browser')
-                if (action === 'type') setText('')
-                return result
-            } catch (failure) {
-                if (generation.current === requestGeneration) {
-                    setError(failure.message || translate('The browser is unavailable.'))
-                    stopped.current = true
-                    if (
-                        failure.details?.reason === 'browser_session_ended' ||
-                        failure.code?.endsWith('permission-denied')
-                    ) {
-                        setFrame(null)
-                        callback.current?.(false)
+            const operation = (async () => {
+                try {
+                    const result = await runHttpsCallableFunction(
+                        'annaBrowserWorkspaceSecondGen',
+                        { runId: browser.runId, action, input },
+                        { timeout: 60000 }
+                    )
+                    if (generation.current !== requestGeneration) return
+                    stopped.current = false
+                    setError('')
+                    setFrame(previous => ({ ...previous, ...result }))
+                    userControl.current = result.control === 'user'
+                    callback.current?.(userControl.current)
+                    if (action === 'release' && result.resume && resumeWork) resume.current?.(result.resume, 'browser')
+                    if (action === 'type') setText('')
+                    return result
+                } catch (failure) {
+                    if (generation.current === requestGeneration) {
+                        setError(failure.message || translate('The browser is unavailable.'))
+                        stopped.current = true
+                        if (
+                            failure.details?.reason === 'browser_session_ended' ||
+                            failure.code?.endsWith('permission-denied')
+                        ) {
+                            setFrame(null)
+                            userControl.current = false
+                            callback.current?.(false)
+                        }
+                    }
+                } finally {
+                    if (generation.current === requestGeneration) {
+                        inFlight.current = false
+                        setBusy(false)
                     }
                 }
-            } finally {
-                if (generation.current === requestGeneration) {
-                    inFlight.current = false
-                    setBusy(false)
-                }
-            }
+            })()
+            inFlight.current = operation
+            return operation
         },
         [browser?.runId]
+    )
+    useImperativeHandle(
+        ref,
+        () => ({
+            async releaseControl() {
+                const currentGeneration = generation.current
+                // A frame poll or the last human gesture may still be in flight.
+                // Serialize the release so sending a chat cannot silently skip it.
+                if (inFlight.current) await inFlight.current
+                if (currentGeneration !== generation.current) throw new Error(translate('The browser is unavailable.'))
+                if (!userControl.current) return
+                const result = await interact('release', {}, { resumeWork: false })
+                if (result?.control !== 'assistant') throw new Error(translate('The browser is unavailable.'))
+            },
+        }),
+        [interact]
     )
     useEffect(() => {
         generation.current++
@@ -69,6 +89,7 @@ export default function AnnaBrowserWorkspace({
         setText('')
         setError('')
         setBusy(false)
+        userControl.current = false
         callback.current?.(false)
         return () => {
             generation.current++
@@ -197,4 +218,6 @@ export default function AnnaBrowserWorkspace({
             )}
         </div>
     )
-}
+})
+
+export default AnnaBrowserWorkspace
