@@ -544,11 +544,14 @@ When adding a new assistant tool, wire every layer, not just the backend schema:
 Playwright half, deployed as its own Cloud Run service). They exist for the questions a plain read
 cannot answer — a client-rendered event page, a date picker, "are there still tickets" — and they are
 one Tools Access key (`browser_automation`, opt-in only) that `getToolSchemas` fans out into six tool
-names. **Not deployed anywhere as of AT-2518**: with no `BROWSER_WORKER_URL` /
-`BROWSER_WORKER_SIGNING_SECRET` / allowlist, every call is refused with a message naming what is
-missing, and the allowlist is default-deny, so an empty one reaches nothing. The feature itself is
-complete — allowlist editor, approval card, Gold billing — and the whole stack has been driven
-against a real Chromium (`browser-tests/at2518`, 34 checks), but never in a real environment.
+names. **Workers are configured in staging and production (2026-10-07)**. Each environment has
+its own IAM-private `browser-worker` Cloud Run service and matching `BROWSER_WORKER_URL` /
+`BROWSER_WORKER_SIGNING_SECRET` in its GitLab Functions environment. The Firebase Admin SDK service
+account has service-scoped `roles/run.invoker`. Browsing still requires the assistant toggle and a
+project website policy: `selected` needs an allowlist, while `all_public` allows public websites.
+The shared assistant workspace watches this same browser through `annaBrowserWorkspaceSecondGen`;
+it refreshes screenshots every five seconds and supports user takeover and explicit hand-back.
+See `docs/anna-workspace.md` for deployment and verification.
 
 ****Two access modes, and `all_public` skips exactly ONE check.** `selected` (the default) needs an
 allowlist match; `all_public` is opt-in per project and does not consult the allowlist at all.
