@@ -136,7 +136,7 @@
     min-width: 0;
     align-items: center;
     padding: 8px 12px;
-    background: var(--anna-tint);
+    background: var(--anna-neutral);
     border-radius: 8px;
     font-size: 12px;
     gap: 8px;
@@ -198,7 +198,7 @@
 }
 .anna-message-user {
     margin-left: 32px;
-    background: var(--anna-tint);
+    background: var(--anna-neutral);
     padding: 14px 16px;
 }
 .anna-message-author {
@@ -421,9 +421,11 @@
     padding: 8px;
     border-radius: 6px;
 }
-.anna-workspace-toolbar button:hover,
+.anna-workspace-toolbar button:hover {
+    background: var(--anna-neutral);
+}
 .anna-workspace-toolbar button[aria-pressed='true'] {
-    background: var(--anna-hover);
+    background: var(--anna-tint);
 }
 .anna-workspace-content {
     flex: 1;
@@ -846,7 +848,7 @@
         border: 0;
         border-radius: 8px;
         padding: 10px;
-        background: var(--anna-tint);
+        background: var(--anna-neutral);
     }
     .anna-mobile-tabs button[aria-pressed='true'] {
         color: white;

@@ -314,9 +314,10 @@ export default function AnnaShell({ children, routeId }) {
                 '--anna-muted': colors.Text02,
                 '--anna-placeholder': colors.Text03,
                 '--anna-accent': colors.Primary200,
+                '--anna-neutral': colors.Grey200,
                 '--anna-tint': colors.UtilityBlue100,
                 '--anna-hover': colors.UtilityBlue112,
-                '--anna-border': colors.UtilityBlue125,
+                '--anna-border': colors.Grey300,
                 '--anna-focus': colors.UtilityBlue150,
                 '--anna-surface': colors.Grey100,
             }}
