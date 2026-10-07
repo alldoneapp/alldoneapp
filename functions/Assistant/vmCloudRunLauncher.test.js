@@ -26,9 +26,20 @@ function response(body, { ok = true, status = 200, statusText = 'OK' } = {}) {
 }
 
 describe('vmCloudRunLauncher', () => {
+    const projectEnvKeys = ['GCLOUD_PROJECT', 'GCP_PROJECT', 'GOOGLE_CLOUD_PROJECT']
+    let originalProjectEnv
     beforeEach(() => {
+        originalProjectEnv = Object.fromEntries(projectEnvKeys.map(key => [key, process.env[key]]))
+        projectEnvKeys.forEach(key => delete process.env[key])
         jest.clearAllMocks()
         global.fetch = jest.fn()
+    })
+
+    afterEach(() => {
+        for (const key of projectEnvKeys) {
+            if (originalProjectEnv[key] === undefined) delete process.env[key]
+            else process.env[key] = originalProjectEnv[key]
+        }
     })
 
     afterAll(() => {

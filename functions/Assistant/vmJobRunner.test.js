@@ -640,8 +640,7 @@ describe('VM agent CLI bootstrap and proxy configuration', () => {
             prefix,
             lockPath: path.join(cliTestDir, 'claude-install.lock'),
         })
-        const wrappedCommand = `bash -lc '${command.replace(/'/g, `'\\''`)}'`
-        return childProcess.execFileSync('bash', ['-lc', wrappedCommand], {
+        return childProcess.execFileSync('bash', ['--noprofile', '--norc', '-c', command], {
             encoding: 'utf8',
             env: {
                 ...process.env,
@@ -1095,10 +1094,15 @@ describe('VM Git checkout setup', () => {
         fs.mkdirSync(seed)
         fs.mkdirSync(home)
 
+        // A hosted VM may keep its checkout metadata outside the worktree. The
+        // fixture owns an independent repository, so discard those host pointers.
+        const fixtureEnv = { ...process.env }
+        delete fixtureEnv.GIT_DIR
+        delete fixtureEnv.GIT_WORK_TREE
         const run = (command, options = {}) =>
             childProcess.execFileSync('bash', ['-c', command], {
                 cwd: options.cwd || root,
-                env: { ...process.env, HOME: home, ...(options.env || {}) },
+                env: { ...fixtureEnv, HOME: home, ...(options.env || {}) },
                 stdio: 'pipe',
             })
 
