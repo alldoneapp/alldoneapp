@@ -4075,7 +4075,8 @@ describe('assistant create_task project routing comments', () => {
             expect.objectContaining({
                 userId: 'user-1',
                 projectId: 'project-jtl',
-            })
+            }),
+            { emailThread: { userId: 'user-1', projectIds: ['project-bechtle', 'project-jtl'] } }
         )
         expect(result.projectId).toBe('project-jtl')
         expect(result.projectName).toBe('JTL Software - Project Juno')

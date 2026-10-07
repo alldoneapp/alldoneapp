@@ -59,7 +59,6 @@ export default function AnnaShell({ children, routeId }) {
     const [resumeRequest, setResumeRequest] = useState(null)
     const [controlBusy, setControlBusy] = useState(false)
     const controlWrite = useRef(false)
-    const browserWorkspace = useRef(null)
     const [pending, setPending] = useState(null)
     const [pageTitle, setPageTitle] = useState('')
     const [navigationError, setNavigationError] = useState('')
@@ -145,67 +144,41 @@ export default function AnnaShell({ children, routeId }) {
         [user.uid, call.status]
     )
     const setWorkspaceControl = useCallback(
-        async (held, { resume = true, force = false } = {}) => {
-            // A message can arrive while the user's preceding workspace click is
-            // still taking control. Finish that write before handing control back.
-            while (controlWrite.current) await controlWrite.current
-            if (!user.uid) return false
-            if (controlRef.current === held && !force) return true
+        async held => {
+            if (!user.uid || controlRef.current === held || controlWrite.current) return
+            controlWrite.current = true
             setControlBusy(true)
             const previous = controlRef.current
             controlRef.current = held
             setControl(held)
-            const write = (async () => {
-                try {
-                    const ref = getDb().doc(`users/${user.uid}/private/annaWorkspace`)
-                    const interrupted = await getDb().runTransaction(async tx => {
-                        const state = (await tx.get(ref)).data()
-                        tx.set(
-                            ref,
-                            {
-                                control: held ? 'user' : 'assistant',
-                                page: sanitizeCallPageContext({
-                                    path: window.location.pathname,
-                                    title: document.title,
-                                }),
-                                ...(!held ? { blocked: null } : {}),
-                                updatedAt: Date.now(),
-                            },
-                            { merge: true }
-                        )
-                        return state?.blocked
-                    })
-                    if (!held && resume) resumeWork(interrupted)
-                    return true
-                } catch (_) {
-                    controlRef.current = previous
-                    setControl(previous)
-                    setNavigationError(translate('Could not change workspace control. Please try again.'))
-                    return false
-                } finally {
-                    setControlBusy(false)
-                }
-            })()
-            controlWrite.current = write
             try {
-                return await write
+                const ref = getDb().doc(`users/${user.uid}/private/annaWorkspace`)
+                const interrupted = await getDb().runTransaction(async tx => {
+                    const state = (await tx.get(ref)).data()
+                    tx.set(
+                        ref,
+                        {
+                            control: held ? 'user' : 'assistant',
+                            page: sanitizeCallPageContext({ path: window.location.pathname, title: document.title }),
+                            ...(!held ? { blocked: null } : {}),
+                            updatedAt: Date.now(),
+                        },
+                        { merge: true }
+                    )
+                    return state?.blocked
+                })
+                if (!held) resumeWork(interrupted)
+            } catch (_) {
+                controlRef.current = previous
+                setControl(previous)
+                setNavigationError(translate('Could not change workspace control. Please try again.'))
             } finally {
-                if (controlWrite.current === write) controlWrite.current = false
+                controlWrite.current = false
+                setControlBusy(false)
             }
         },
         [user.uid, resumeWork]
     )
-    const resumeForMessage = useCallback(async () => {
-        setNavigationError('')
-        // The user's new message is the continuation; do not also enqueue the
-        // synthetic hand-back message used by the manual Continue button.
-        setResumeRequest(null)
-        if (!(await setWorkspaceControl(false, { resume: false, force: true }))) {
-            throw new Error(translate('Could not change workspace control. Please try again.'))
-        }
-        if (heldBrowser.current && !browserWorkspace.current) throw new Error(translate('The browser is unavailable.'))
-        await browserWorkspace.current?.releaseControl()
-    }, [setWorkspaceControl])
     const acknowledge = useCallback(
         (presentation, status) => {
             if (!conversation || (presentation.manual && conversation.annaPresentation?.id !== presentation.id)) return
@@ -367,26 +340,6 @@ export default function AnnaShell({ children, routeId }) {
                         </div>
                     </div>
                 </div>
-                <nav className="anna-workspace-toolbar" aria-label={translate('Workspace')}>
-                    <button aria-pressed={surface === 'alldone'} onClick={() => setSurface('alldone')}>
-                        Alldone
-                    </button>
-                    <button aria-pressed={surface === 'browser'} onClick={() => setSurface('browser')}>
-                        {translate('Browser')}
-                    </button>
-                    {surface === 'alldone' && (
-                        <button
-                            className="anna-control"
-                            disabled={controlBusy}
-                            aria-pressed={control}
-                            onClick={() => setWorkspaceControl(!control)}
-                        >
-                            {translate(control ? 'Let %{assistantName} continue' : 'Take control', {
-                                assistantName,
-                            })}
-                        </button>
-                    )}
-                </nav>
                 <button
                     className="anna-zoom-back"
                     aria-label={translate('Zoom in Alldone')}
@@ -449,7 +402,6 @@ export default function AnnaShell({ children, routeId }) {
                                     visible={active && (!mobile || mobilePane === 'chat')}
                                     onExpand={() => setMobilePane('chat')}
                                     onSendingChange={setTextBusy}
-                                    onBeforeSend={resumeForMessage}
                                 />
                             )}
                         </>
@@ -489,6 +441,26 @@ export default function AnnaShell({ children, routeId }) {
                     aria-hidden={active && mobile && mobilePane !== 'workspace'}
                     inert={active && mobile && mobilePane !== 'workspace' ? '' : undefined}
                 >
+                    <div className="anna-workspace-toolbar" hidden={!active}>
+                        <button aria-pressed={surface === 'alldone'} onClick={() => setSurface('alldone')}>
+                            Alldone
+                        </button>
+                        <button aria-pressed={surface === 'browser'} onClick={() => setSurface('browser')}>
+                            {translate('Browser')}
+                        </button>
+                        {surface === 'alldone' && (
+                            <button
+                                className="anna-control"
+                                disabled={controlBusy}
+                                aria-pressed={control}
+                                onClick={() => setWorkspaceControl(!control)}
+                            >
+                                {translate(control ? 'Let %{assistantName} continue' : 'Take control', {
+                                    assistantName,
+                                })}
+                            </button>
+                        )}
+                    </div>
                     {active && pending && (
                         <div className="anna-pending" role="status">
                             <span>
@@ -542,7 +514,6 @@ export default function AnnaShell({ children, routeId }) {
                             inert={!active || surface !== 'browser' ? '' : undefined}
                         >
                             <AnnaBrowserWorkspace
-                                ref={browserWorkspace}
                                 assistantName={assistantName}
                                 browser={browser}
                                 active={visibleWorkspace && surface === 'browser'}

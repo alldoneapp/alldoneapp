@@ -328,7 +328,7 @@ class TaskService {
                     }
                 })()
 
-                await taskRef.set(taskToPersist)
+                if (!taskResult.emailTaskPersisted) await taskRef.set(taskToPersist)
 
                 // Persist feeds using Cloud Functions feeds pipeline when available
                 if (feedData && this.options.enableFeeds) {
@@ -476,7 +476,9 @@ class TaskService {
                     }
                 })()
 
-                batch.set ? batch.set(taskRef, taskToPersist) : batch.add(() => taskRef.set(taskToPersist))
+                if (!taskResult.emailTaskPersisted) {
+                    batch.set ? batch.set(taskRef, taskToPersist) : batch.add(() => taskRef.set(taskToPersist))
+                }
 
                 // Add feed data to batch if available
                 if (feedData && this.options.enableFeeds) {
@@ -614,7 +616,32 @@ class TaskService {
      * @returns {Promise<Object>} Complete creation result
      */
     async createAndPersistTask(params, context = {}, options = {}) {
-        const taskResult = await this.createTask(params, context)
+        let taskResult = await this.createTask(params, context)
+
+        if (options.emailThread) {
+            const { persistEmailTaskAtomically, selectEmailThreadTask } = require('../Email/emailThreadTaskStore')
+            const task = taskResult.task
+            task.gmailData = {
+                ...task.gmailData,
+                accountUserId: options.emailThread.userId,
+                messageIds: [...new Set([task.gmailData.messageId, ...(task.gmailData.messageIds || [])])],
+                lastEmailReceivedAt: task.gmailData.receivedAt || 0,
+                taskContent: {
+                    name: task.name,
+                    description: task.description || '',
+                    dueDate: task.dueDate,
+                    priority: task.priority,
+                },
+            }
+            taskResult = await persistEmailTaskAtomically({
+                database: this.options.database,
+                taskResult: { ...taskResult, projectId: params.projectId },
+                ...options.emailThread,
+                selectMatch: selectEmailThreadTask,
+            })
+            if (taskResult.existing) return { ...taskResult, success: true }
+            taskResult.emailTaskPersisted = true
+        }
 
         // Ensure projectId is available for persistence
         const persistOptions = {

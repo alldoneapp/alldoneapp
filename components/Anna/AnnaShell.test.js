@@ -35,15 +35,9 @@ const mockSnapshots = {}
 let mockBrowserProps
 let mockConversationProps
 let mockTransactionState
-const mockReleaseBrowser = jest.fn()
-const mockRunTransaction = jest.fn()
-jest.mock('./AnnaBrowserWorkspace', () => {
-    const React = require('react')
-    return React.forwardRef((props, ref) => {
-        mockBrowserProps = props
-        React.useImperativeHandle(ref, () => ({ releaseControl: mockReleaseBrowser }))
-        return null
-    })
+jest.mock('./AnnaBrowserWorkspace', () => props => {
+    mockBrowserProps = props
+    return null
 })
 jest.mock('./AnnaWorkspaceHighlight', () => () => null)
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
@@ -81,7 +75,7 @@ jest.mock('../UIComponents/AssistantVoiceCallProvider', () => ({
 }))
 jest.mock('../../utils/backends/firestore', () => ({
     getDb: () => ({
-        runTransaction: fn => mockRunTransaction(fn),
+        runTransaction: fn => fn({ get: async () => ({ data: () => mockTransactionState }), set: mockSet }),
         doc: path => ({
             update: mockUpdate,
             set: mockSet,
@@ -120,86 +114,7 @@ beforeEach(() => {
     mockConversationProps = null
     mockTransactionState = {}
     jest.clearAllMocks()
-    mockReleaseBrowser.mockResolvedValue(undefined)
-    mockRunTransaction.mockImplementation(fn =>
-        fn({ get: async () => ({ data: () => mockTransactionState }), set: mockSet })
-    )
     useAnnaConversation.mockReturnValue(state)
-})
-
-it('places the surface selector and hand-back control in the top bar', () => {
-    render(content(1))
-    const toolbar = document.querySelector('.anna-header .anna-workspace-toolbar')
-    expect(toolbar.textContent).toContain('Alldone')
-    expect(toolbar.textContent).toContain('Browser')
-    expect(toolbar.textContent).toContain('Take control')
-    expect(document.querySelector('.anna-stage .anna-workspace-toolbar')).toBeNull()
-})
-
-it('hands both surfaces back for a new message without queueing a second continuation', async () => {
-    render(content(1))
-    await act(async () => fireEvent.click(screen.getByText('Take control')))
-    mockTransactionState = {
-        blocked: { projectId: 'p1', objectId: 'anna_u1', objectType: 'topics', assistantId: 'a1', at: 456 },
-    }
-    act(() => mockBrowserProps.onControlChange(true))
-    await act(async () => mockConversationProps.onBeforeSend())
-    expect(mockSet).toHaveBeenLastCalledWith(
-        expect.anything(),
-        expect.objectContaining({ control: 'assistant', blocked: null }),
-        { merge: true }
-    )
-    expect(mockReleaseBrowser).toHaveBeenCalledTimes(1)
-    expect(mockConversationProps.resumeRequest).toBeNull()
-    expect(screen.getByText('Take control').getAttribute('aria-pressed')).toBe('false')
-})
-
-it('waits for a pending take-control write before resuming for a message', async () => {
-    let finishTake
-    const takingControl = new Promise(resolve => {
-        finishTake = resolve
-    })
-    mockRunTransaction.mockImplementationOnce(async fn => {
-        await takingControl
-        return fn({ get: async () => ({ data: () => mockTransactionState }), set: mockSet })
-    })
-    render(content(1))
-    fireEvent.click(screen.getByText('Take control'))
-    let resume
-    act(() => {
-        resume = mockConversationProps.onBeforeSend()
-    })
-    expect(mockRunTransaction).toHaveBeenCalledTimes(1)
-    await act(async () => {
-        finishTake()
-        await resume
-    })
-    expect(mockRunTransaction).toHaveBeenCalledTimes(2)
-    expect(mockSet.mock.calls.map(args => args[1]?.control).filter(Boolean)).toEqual(['user', 'assistant'])
-})
-
-it('clears persisted user control even before its snapshot reaches the UI', async () => {
-    mockTransactionState = { control: 'user', blocked: { objectId: 'paused-task' } }
-    render(content(1))
-    await act(async () => mockConversationProps.onBeforeSend())
-    expect(mockSet).toHaveBeenLastCalledWith(
-        expect.anything(),
-        expect.objectContaining({ control: 'assistant', blocked: null }),
-        { merge: true }
-    )
-    expect(mockConversationProps.resumeRequest).toBeNull()
-})
-
-it('keeps user control when hand-back fails and does not resume the browser', async () => {
-    render(content(1))
-    await act(async () => fireEvent.click(screen.getByText('Take control')))
-    act(() => mockBrowserProps.onControlChange(true))
-    mockRunTransaction.mockRejectedValueOnce(new Error('Offline'))
-    await act(async () => {
-        await expect(mockConversationProps.onBeforeSend()).rejects.toThrow('Could not change workspace control')
-    })
-    expect(screen.getByText('Let Carl Code Mentor continue').getAttribute('aria-pressed')).toBe('true')
-    expect(mockReleaseBrowser).not.toHaveBeenCalled()
 })
 
 it('keeps the conversation mounted across workspace navigation with its topic and voice state', async () => {

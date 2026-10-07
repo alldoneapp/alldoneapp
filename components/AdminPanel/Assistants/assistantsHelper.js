@@ -37,12 +37,13 @@ export const GLOBAL_PROJECT_ID = 'globalProject'
 
 export const DEFAULT_EMAIL_SIGNATURE = '---\nAnna Alldone\nAI Chief of Staff\nhttps://alldone.app/'
 
-export function getNewDefaultAssistant(userId = store.getState().loggedUser.uid) {
+export function getNewDefaultAssistant() {
+    const { loggedUser } = store.getState()
     return {
         displayName: '',
-        lastEditorId: userId,
+        lastEditorId: loggedUser.uid,
         lastEditionDate: Date.now(),
-        creatorId: userId,
+        creatorId: loggedUser.uid,
         createdDate: Date.now(),
         photoURL: '',
         photoURL50: '',

@@ -10,9 +10,18 @@ import Icon from '../../Icon'
 import AssistantSwitchControl from './AssistantSwitchControl'
 import AssistantLineSkeleton from './AssistantLineSkeleton'
 import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
-import { setAnnaMode } from '../../../utils/annaMode'
+import { useAnnaMode, setAnnaMode } from '../../../utils/annaMode'
 
-export default function AssistantLine({
+export default function AssistantLine(props) {
+    const active = useAnnaMode()
+    return (
+        <View style={active ? { display: 'none' } : undefined}>
+            <WorkspaceAssistantLine {...props} />
+        </View>
+    )
+}
+
+function WorkspaceAssistantLine({
     showLastComment = true,
     removeBottomSpace = false,
     useAssistantProjectContext = true,

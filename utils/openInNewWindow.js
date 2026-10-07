@@ -85,10 +85,7 @@ export const buildBrowserBounceUrl = targetUrl => {
     const { projectId, region } = resolveFunctionsTarget()
     if (!projectId || !region) return null
 
-    const { shouldUseFirebaseEmulators } = require('./firebaseEmulators')
-    const origin = shouldUseFirebaseEmulators()
-        ? `http://127.0.0.1:5001/${projectId}/${region}`
-        : `https://${region}-${projectId}.cloudfunctions.net`
+    const origin = `https://${region}-${projectId}.cloudfunctions.net`
     return `${origin}/${BROWSER_TAB_REDIRECT_FUNCTION}?u=${encodeURIComponent(targetUrl)}`
 }
 

@@ -958,6 +958,8 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
 
     return {
         origin: GMAIL_LABEL_FOLLOW_UP_TASK_ORIGIN,
+        provider: 'google',
+        accountUserId: toolRuntimeContext.requestUserId || '',
         gmailEmail: typeof gmailContext.gmailEmail === 'string' ? gmailContext.gmailEmail.trim().toLowerCase() : '',
         connectionId: typeof gmailContext.connectionId === 'string' ? gmailContext.connectionId.trim() : '',
         projectId: connectionProjectId || targetProjectId || '',
@@ -965,6 +967,7 @@ function buildGmailTaskDataFromRuntimeContext(toolRuntimeContext = null, targetP
         selectedProjectId: matchedProjectId,
         messageId,
         threadId: typeof gmailContext.threadId === 'string' ? gmailContext.threadId.trim() : '',
+        receivedAt: Number(gmailContext.emailContext?.internalDate) || Date.parse(gmailContext.emailContext?.date) || 0,
         webUrl: typeof gmailContext.webUrl === 'string' ? gmailContext.webUrl.trim() : '',
         archiveOnComplete: gmailContext.archiveOnComplete !== false,
         archiveStatus: null,
@@ -5620,8 +5623,43 @@ async function executeToolNatively(
                     {
                         userId: creatorId,
                         projectId: targetProjectId,
-                    }
+                    },
+                    ...(gmailTaskData
+                        ? [
+                              {
+                                  emailThread: {
+                                      userId: creatorId,
+                                      projectIds:
+                                          require('../shared/privacyAccess').getAccessibleProjectIdsFromUserData(
+                                              userData
+                                          ),
+                                  },
+                              },
+                          ]
+                        : [])
                 )
+                if (gmailTaskData && result.existing) {
+                    const { continueEmailThread } = require('../Email/emailThreadContinuation')
+                    const continued = await continueEmailThread({
+                        database: db,
+                        userId: creatorId,
+                        userData,
+                        gmailData: gmailTaskData,
+                        context: toolRuntimeContext.gmailContext.emailContext || {},
+                        actor: { uid: assistantId, displayName: feedUser.displayName || 'Assistant' },
+                        fromAssistant: true,
+                    })
+                    if (!continued || continued.ambiguous)
+                        throw new Error('Email thread selection changed; retry processing')
+                    return {
+                        success: true,
+                        ...continued,
+                        task: result.task,
+                        suggested: !!result.task.suggestedBy,
+                        taskOrigin: result.task.suggestedBy ? 'assistant_suggestion' : 'user_request',
+                        message: 'Continued the existing email task',
+                    }
+                }
 
                 // Enforce strict create_task result contract to prevent undefined IDs leaking to user messages
                 const creationSucceeded = result?.success !== false
