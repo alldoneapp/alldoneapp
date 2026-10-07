@@ -1,6 +1,7 @@
 import { findIndex } from 'lodash'
 import momentTz from 'moment-timezone'
 import moment from 'moment'
+import { getDefaultProfilePhotoURL } from '../../../utils/defaultProfilePhotos'
 
 import SearchHelper from '../../../utils/SearchHelper'
 import store from '../../../redux/store'
@@ -732,14 +733,19 @@ export const getNewDefaultUser = (customData = {}) => {
     const dateNow = Date.now()
     // Critical identity fields must never be persisted as undefined/null. Because customData is
     // spread last (below) and Firestore runs with ignoreUndefinedProperties:true, an undefined
-    // displayName/email/photoURL coming from the caller would both overwrite the '' defaults here
+    // displayName/email coming from the caller would overwrite the '' defaults here
     // and then be dropped from the stored users/{uid} doc — surfacing later as the literal
     // "undefined" in the signup notification email. Strip nullish identity fields so the safe
-    // defaults below survive, while preserving any real (incl. empty-string) value the caller set.
+    // defaults below survive. Missing pictures use the bundled avatar at every size.
     const sanitizedCustomData = { ...customData }
     ;['displayName', 'email', 'photoURL'].forEach(field => {
         if (sanitizedCustomData[field] == null) delete sanitizedCustomData[field]
     })
+    const photoURL =
+        sanitizedCustomData.photoURL ||
+        sanitizedCustomData.photoURL300 ||
+        sanitizedCustomData.photoURL50 ||
+        getDefaultProfilePhotoURL()
     return {
         displayName: '',
         email: '',
@@ -825,6 +831,9 @@ export const getNewDefaultUser = (customData = {}) => {
         showAllProjectsByTime: false,
         lastAssistantCommentData: {},
         ...sanitizedCustomData,
+        photoURL,
+        photoURL50: sanitizedCustomData.photoURL50 || photoURL,
+        photoURL300: sanitizedCustomData.photoURL300 || photoURL,
     }
 }
 

@@ -1,3 +1,4 @@
+/** @jest-environment-options {"url":"https://my.alldone.app"} */
 const mockGetIdToken = jest.fn()
 const mockAuthState = { currentUser: null }
 jest.mock('firebase/compat/app', () => ({

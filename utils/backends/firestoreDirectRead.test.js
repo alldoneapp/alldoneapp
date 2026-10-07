@@ -1,3 +1,4 @@
+/** @jest-environment-options {"url":"https://my.alldone.app"} */
 const mockGetIdToken = jest.fn()
 const mockDoc = jest.fn(path => ({ path }))
 const mockAuthState = { currentUser: { getIdToken: mockGetIdToken } }

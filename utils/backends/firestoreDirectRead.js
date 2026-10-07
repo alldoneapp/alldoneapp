@@ -1,7 +1,5 @@
 import firebase from 'firebase/compat/app'
-
-const shouldUseEmulator = () =>
-    typeof window !== 'undefined' && window.location && window.location.search.includes('emulator=true')
+import { shouldUseFirebaseEmulators } from '../firebaseEmulators'
 
 const decodeBytes = base64 => {
     if (firebase.firestore?.Blob?.fromBase64String) {
@@ -57,7 +55,7 @@ const getDirectReadTarget = documentPath => {
         .replace(/^\/+/, '')
         .replace(/\/+$/, '')
     const databaseName = `projects/${projectId}/databases/(default)`
-    const baseUrl = shouldUseEmulator()
+    const baseUrl = shouldUseFirebaseEmulators()
         ? `http://127.0.0.1:8080/v1/${databaseName}`
         : `https://firestore.googleapis.com/v1/${databaseName}`
     return {
