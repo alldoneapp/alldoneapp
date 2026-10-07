@@ -450,6 +450,7 @@ describe('rage mode raid arena', () => {
             await flushPromises()
             expect(hud().dataset.phase).toBe('takeoff')
             expect(layer('profile').style.display).toBe('none')
+            expect(layer('profile').querySelector('[role="dialog"]').getAttribute('aria-busy')).toBe('false')
             step()
             expect(hud().dataset.phase).toBe('takeoff')
             expect(layer('help').style.opacity).not.toBe('0')

@@ -52,6 +52,7 @@ Chromium renders the real Three.js arena via software WebGL over a stand-in page
 - Functions profile/leaderboard: **27/27 tests**, 2 suites passed, using mocked Firestore/Gold.
 - Preflight Chromium checks: **33/33**, desktop 1280×800 and phone 390×844; slow response, failure/retry, keyboard trapping, no stale start, wider padding, clean page restoration.
 - Sync Chromium checks: **44/44** across split runs (320px: 16/16; 390px: 16/16; 1280px: 12/12), plus loading layout 568×320. Zero cloud/local progress writes through Mission 1 → hangar purchases → Mission 2; correct final save and failure/retry, including reopening while a previous save is pending.
+- Chromium touch regression: **7/7**, relative touch drag, bomb button, exit/page restoration.
 - Webpack harness compilation and `git diff --check` passed. No full app production build or authenticated Firebase/production-device run is claimed.
 
 ## Screenshots
