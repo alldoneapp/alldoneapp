@@ -29,12 +29,15 @@ import AnnaShell from './AnnaShell'
 import useAnnaConversation from './useAnnaConversation'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { setAnnaMode } from '../../utils/annaMode'
+import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 
 const mockSet = jest.fn().mockResolvedValue(undefined)
 const mockSnapshots = {}
 let mockBrowserProps
 let mockConversationProps
 let mockTransactionState
+let mockTakeoverProps
+let mockTakeoverMounts = 0
 const mockReleaseBrowser = jest.fn()
 const mockRunTransaction = jest.fn()
 jest.mock('./AnnaBrowserWorkspace', () => {
@@ -46,6 +49,14 @@ jest.mock('./AnnaBrowserWorkspace', () => {
     })
 })
 jest.mock('./AnnaWorkspaceHighlight', () => () => null)
+jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => {
+    mockTakeoverProps = props
+    const React = require('react')
+    React.useEffect(() => {
+        mockTakeoverMounts++
+    }, [])
+    return <input aria-label="Private login input" />
+})
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
 const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user' }
 let mockAssistant
@@ -237,6 +248,8 @@ beforeEach(() => {
     mockBrowserProps = null
     mockConversationProps = null
     mockTransactionState = {}
+    mockTakeoverProps = null
+    mockTakeoverMounts = 0
     jest.clearAllMocks()
     mockReleaseBrowser.mockResolvedValue(undefined)
     mockRunTransaction.mockImplementation(fn =>
@@ -255,6 +268,56 @@ it('shows surface selection without manual Alldone control switches', () => {
     expect(document.querySelector('.anna-stage .anna-workspace-toolbar')).toBeNull()
     expect(document.querySelector('.anna-header').textContent).not.toContain('Looking at:')
 })
+
+it.each(['desktop', 'mobile'])(
+    'keeps interactive login in the browser pane on %s across chat navigation',
+    async device => {
+        const originalMatchMedia = window.matchMedia
+        window.matchMedia = () => ({
+            matches: device === 'mobile',
+            addEventListener: jest.fn(),
+            removeEventListener: jest.fn(),
+        })
+        const onFinished = jest.fn()
+        const approval = { approvalId: 'login1', runId: 'brun_1', category: 'login' }
+        function Request() {
+            const workspace = React.useContext(AnnaBrowserTakeoverContext)
+            return <button onClick={() => workspace.open(approval, { onFinished })}>Start login</button>
+        }
+        try {
+            const view = render(
+                <AnnaShell routeId={1}>
+                    <Request />
+                </AnnaShell>
+            )
+            await act(async () => screen.getByText('Start login').click())
+            const login = screen.getByLabelText('Private login input')
+            expect(login.closest('.anna-browser-surface')).toBeTruthy()
+            expect(login.closest('.anna-conversation')).toBeNull()
+            expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
+            expect(mockBrowserProps.active).toBe(false)
+            login.value = 'Unsent private input'
+            // The original request card can unmount; only the shell owns the controller.
+            view.rerender(
+                <AnnaShell routeId={2}>
+                    <p>Another Alldone page</p>
+                </AnnaShell>
+            )
+            await act(async () => mockConversationProps.onBeforeSend())
+            expect(mockReleaseBrowser).not.toHaveBeenCalled()
+            expect(screen.getByLabelText('Private login input')).toBe(login)
+            expect(login.value).toBe('Unsent private input')
+            expect(mockTakeoverMounts).toBe(1)
+            await act(async () => mockTakeoverProps.onFinished())
+            expect(onFinished).toHaveBeenCalledTimes(1)
+            expect(screen.getByLabelText('Private login input')).toBeNull()
+            expect(mockBrowserProps.active).toBe(true)
+        } finally {
+            if (originalMatchMedia) window.matchMedia = originalMatchMedia
+            else delete window.matchMedia
+        }
+    }
+)
 
 it('passes page changes to the conversation instead of the header', async () => {
     jest.useFakeTimers()

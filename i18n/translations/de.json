@@ -1,4 +1,6 @@
 {
+    "browser_takeover_in_workspace": "Setze die Anmeldung im Browser-Bereich fort.",
+    "Open browser": "Browser öffnen",
     "Go to home": "Zur Startseite",
     "Created by %{assistantName}": "Von %{assistantName} erstellt",
     "Updated by %{assistantName}": "Von %{assistantName} aktualisiert",

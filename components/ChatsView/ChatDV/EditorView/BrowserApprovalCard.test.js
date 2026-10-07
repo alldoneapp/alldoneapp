@@ -1,6 +1,7 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { Text, TouchableOpacity } from 'react-native'
+import AnnaBrowserTakeoverContext from '../../../Anna/AnnaBrowserTakeoverContext'
 
 const mockRespond = jest.fn(() => Promise.resolve({ status: 'approved' }))
 let watchCallback = null
@@ -40,10 +41,14 @@ function approval(overrides = {}) {
     }
 }
 
-function render(props = {}) {
+function render(props = {}, workspace = null) {
     let tree
     act(() => {
-        tree = renderer.create(<BrowserApprovalCard projectId="p1" objectId="task1" commentId="comment1" {...props} />)
+        tree = renderer.create(
+            <AnnaBrowserTakeoverContext.Provider value={workspace}>
+                <BrowserApprovalCard projectId="p1" objectId="task1" commentId="comment1" {...props} />
+            </AnnaBrowserTakeoverContext.Provider>
+        )
     })
     return tree
 }
@@ -120,6 +125,29 @@ describe('BrowserApprovalCard', () => {
             pressLabelled(tree, 'browser_approval_allow_run')
         })
         expect(mockRespond).toHaveBeenCalledWith({ approvalId: 'bapr_1', action: 'approve', scope: 'run' })
+    })
+    it('opens the shell browser for login without mounting a controller or exposing inputs in the message', () => {
+        const open = jest.fn()
+        const login = approval({ category: 'login', runId: 'brun_1' })
+        const tree = publish(render({}, { open }), [login])
+        act(() => pressLabelled(tree, 'browser_takeover_start'))
+        expect(open).toHaveBeenCalledWith(login, {
+            onFinished: expect.any(Function),
+            onCancelled: expect.any(Function),
+        })
+        expect(tree.root.findAllByType('BrowserTakeoverPanel')).toHaveLength(0)
+        act(() => open.mock.calls[0][1].onFinished())
+        expect(textsOf(tree)).toContain('browser_takeover_completed')
+        expect(mockRespond).not.toHaveBeenCalled()
+    })
+    it('shows a reopen shortcut for the active workspace login instead of a second controller or denial', () => {
+        const open = jest.fn()
+        const tree = publish(render({}, { open, approvalId: 'bapr_1' }), [approval({ category: 'login' })])
+        expect(textsOf(tree)).toContain('browser_takeover_in_workspace')
+        expect(textsOf(tree)).not.toContain('browser_approval_deny')
+        expect(tree.root.findAllByType('BrowserTakeoverPanel')).toHaveLength(0)
+        act(() => pressLabelled(tree, 'Open browser'))
+        expect(open).toHaveBeenCalledTimes(1)
     })
 
     it('reports a denial as sticking for the run, not as a one-off', async () => {

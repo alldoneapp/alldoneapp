@@ -167,3 +167,39 @@ export default {
 }
 
 export const getUserPresentationData = id => (id === 'a1' ? { ...assistant, isAssistant: true } : user)
+
+const approvalListeners = new Set()
+export const watchBrowserApprovals = (projectId, objectId, userId, callback) => {
+    approvalListeners.add(callback)
+    callback([
+        {
+            approvalId: 'login1',
+            runId: 'brun_fixture',
+            category: 'login',
+            assistantCommentId: 'm2',
+            message: 'Sign in to continue',
+            hostname: 'example.test',
+        },
+    ])
+    return () => approvalListeners.delete(callback)
+}
+export const respondToBrowserApproval = async () => ({ status: 'denied' })
+export const interactWithBrowserTakeover = async ({ action }) => {
+    console.info(`Anna fixture login action: ${action}`)
+    return {
+        viewport: { width: 1280, height: 900 },
+        screenshotDataUrl:
+            'data:image/svg+xml;charset=utf-8,' +
+            encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="900"><rect width="1280" height="900" fill="#f5f6f8"/><rect x="340" y="170" width="600" height="530" rx="20" fill="white"/><text x="410" y="270" font-family="Arial" font-size="36" fill="#15243b">Sign in to Alldone</text><rect x="410" y="350" width="460" height="70" rx="8" fill="#e8edf5"/><text x="430" y="395" font-family="Arial" font-size="24" fill="#5e6c80">Password</text></svg>'
+            ),
+        title: 'Sign in to Alldone',
+        focused: { inputType: 'password', name: 'Password' },
+        goldCost: 1,
+    }
+}
+export const finishBrowserTakeover = async ({ cancelled }) => {
+    console.info(`Anna fixture login finished: ${cancelled ? 'cancelled' : 'completed'}`)
+    approvalListeners.forEach(callback => callback([]))
+    return { success: true }
+}

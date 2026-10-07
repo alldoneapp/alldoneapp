@@ -10,6 +10,8 @@ module.exports = (config, webpack) => ({
             /utils\/backends\/firestore$/,
             /utils\/backends\/Chats\/chatsComments$/,
             /utils\/backends\/Chats\/commentOutbox$/,
+            /utils\/backends\/Assistants\/browserApprovals$/,
+            /utils\/backends\/Assistants\/browserTakeover$/,
             /utils\/assistantHelper$/,
             /utils\/appResume$/,
             /utils\/NavigationService$/,
