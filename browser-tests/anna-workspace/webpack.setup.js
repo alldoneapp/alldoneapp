@@ -5,9 +5,10 @@ module.exports = (config, webpack) => ({
         ...config.plugins,
         ...[
             /react-redux$/,
+            /redux\/store$/,
             /ModalsManager\/modalsManager$/,
             /ContactsView\/Utils\/ContactsHelper$/,
-            /utils\/backends\/firestore$/,
+            /utils\/backends\/firestore$|^\.\.\/firestore$/,
             /utils\/backends\/Chats\/chatsComments$/,
             /utils\/backends\/Chats\/commentOutbox$/,
             /utils\/backends\/Assistants\/browserApprovals$/,
@@ -25,6 +26,7 @@ module.exports = (config, webpack) => ({
             /ChatsView\/ChatDV\/EditorView\/messageLoadingState$/,
         ].map(pattern => new webpack.NormalModuleReplacementPlugin(pattern, path.join(__dirname, 'services.js'))),
         new webpack.NormalModuleReplacementPlugin(/hooks\/Chats\/useGetMessages$/, path.join(__dirname, 'messages.js')),
+        new webpack.NormalModuleReplacementPlugin(/hooks\/useRambleRecorder$/, path.join(__dirname, 'recorder.js')),
         new webpack.NormalModuleReplacementPlugin(
             /(AnnaWorkspaceHighlight|useAnnaMessageReadState|VoiceMicrophoneStatus|AssistantVoiceCallButton)$/,
             path.join(__dirname, 'empty.js')

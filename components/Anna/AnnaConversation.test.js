@@ -6,6 +6,17 @@ import { runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 
+let mockDictation
+let mockDictationSupported = true
+jest.mock('../../hooks/useRambleRecorder', () => ({ isDictationSupported: () => mockDictationSupported }))
+jest.mock('../UIControls/RambleButton', () => ({
+    __esModule: true,
+    RAMBLE_PHASE_IDLE: 'idle',
+    default: props => {
+        mockDictation = props
+        return <button type="button" aria-label="Dictate" />
+    },
+}))
 const mockContextUpdate = jest.fn().mockResolvedValue(undefined)
 let mockMessages = []
 jest.mock('../../hooks/Chats/useGetMessages', () => () => Object.assign([...mockMessages], { loaded: true }))
@@ -66,6 +77,8 @@ const deferred = () => {
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     jest.clearAllMocks()
+    mockDictation = null
+    mockDictationSupported = true
     mockMessages = []
     createObjectMessage.mockResolvedValue('m1')
     runHttpsCallableFunction.mockResolvedValue({})
@@ -81,6 +94,87 @@ afterEach(() => {
     container.remove()
     jest.restoreAllMocks()
     delete global.IS_REACT_ACT_ENVIRONMENT
+})
+
+it('inserts dictation at the selection and leaves it in the composer for review', async () => {
+    render()
+    type('Please replace this tomorrow.')
+    const input = container.querySelector('textarea')
+    act(() => {
+        input.focus()
+        input.setSelectionRange(7, 19)
+        container.querySelector('[aria-label="Dictate"]').focus()
+        mockDictation.onTextReady('create a task')
+    })
+    expect(mockDictation.projectId).toBe('p1')
+    expect(mockDictation.targetKind).toBe('generic')
+    expect(mockDictation.onSubmit).toBeUndefined()
+    expect(input.value).toBe('Please create a task tomorrow.')
+    expect(input.selectionStart).toBe(20)
+    expect(document.activeElement).toBe(input)
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    await submit()
+    expect(createObjectMessage.mock.calls[0][2]).toBe('Please create a task tomorrow.')
+})
+
+it('preserves text typed while transcription runs and prevents competing calls or partial sends', async () => {
+    const startCall = jest.fn()
+    render({ call: { status: 'idle', startCall } })
+    type('First draft')
+    const pendingResult = mockDictation.onTextReady
+    act(() => mockDictation.onPhaseChange('recording'))
+    const phone = container.querySelector('[aria-label="Talk with Existing assistant"]')
+    expect(phone.disabled).toBe(true)
+    expect(container.querySelector('[aria-label="Send message"]').disabled).toBe(true)
+    act(() => mockDictation.onPhaseChange('processing'))
+    type('Updated draft: ')
+    expect(mockDictation.getCurrentText()).toBe('Updated draft: ')
+    await submit()
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    act(() => {
+        pendingResult('Remember the meeting.')
+        mockDictation.onPhaseChange('idle')
+    })
+    expect(container.querySelector('textarea').value).toBe('Updated draft: Remember the meeting.')
+    expect(phone.disabled).toBe(false)
+    expect(startCall).not.toHaveBeenCalled()
+})
+
+it('keeps dictation available while the assistant is answering another message', async () => {
+    const pending = deferred()
+    runHttpsCallableFunction.mockReturnValueOnce(pending.promise)
+    render()
+    type('First message')
+    await submit()
+    expect(container.querySelector('[aria-label="Dictate"]')).not.toBeNull()
+    act(() => mockDictation.onTextReady('Second message'))
+    expect(container.querySelector('textarea').value).toBe('Second message')
+    await act(async () => pending.resolve({}))
+})
+
+it('keeps workspace focus when a transcript arrives and does not expand a hidden chat', () => {
+    const onExpand = jest.fn()
+    render({ onExpand })
+    const input = container.querySelector('textarea')
+    const pendingResult = mockDictation.onTextReady
+    render({ visible: false, onExpand })
+    act(() => pendingResult('A saved draft'))
+    expect(input.value).toBe('A saved draft')
+    expect(document.activeElement).not.toBe(input)
+    expect(onExpand).not.toHaveBeenCalled()
+})
+
+it('ignores empty dictation and hides the microphone during calls or without browser support', () => {
+    render()
+    type('Keep this draft')
+    act(() => mockDictation.onTextReady('   \n'))
+    expect(container.querySelector('textarea').value).toBe('Keep this draft')
+    render({ call: { status: 'active' } })
+    expect(container.querySelector('[aria-label="Dictate"]')).toBeNull()
+    mockDictationSupported = false
+    render()
+    expect(container.querySelector('[aria-label="Dictate"]')).toBeNull()
+    expect(container.querySelector('textarea').disabled).toBe(false)
 })
 
 it('adds one chat hint per context change without posting a message or starting an assistant run', () => {

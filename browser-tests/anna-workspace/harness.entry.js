@@ -5,6 +5,7 @@ import AnnaShell from '../../components/Anna/AnnaShell'
 import { setAnnaMode } from '../../utils/annaMode'
 import { GlobalOverlayFixture, OverlayLaunchers } from './overlay-fixture'
 import { getWorkspaceTasks, subscribeWorkspaceTasks } from './services'
+import alldoneFont from '../../assets/fonts/alldone.ttf'
 window.zoomAnna = setAnnaMode
 function Fixture() {
     const [dialog, setDialog] = useState(false)
@@ -14,6 +15,7 @@ function Fixture() {
     const revealFixture = new URLSearchParams(window.location.search).has('reveal')
     return (
         <>
+            <style>{`@font-face { font-family: alldone; src: url("${alldoneFont}") format("truetype"); }`}</style>
             <GlobalOverlayFixture dialog={dialog} notifications={notifications} closeDialog={() => setDialog(false)} />
             <AnnaShell routeId="fixture-note">
                 <ScrollView

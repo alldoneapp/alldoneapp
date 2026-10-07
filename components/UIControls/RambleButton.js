@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import Icon from '../Icon'
@@ -271,6 +271,8 @@ export default function RambleButton({
     getCurrentText,
     onTextReady,
     onSubmit,
+    onPhaseChange,
+    getOverlayViewport,
     disabled,
     visible = true,
     style,
@@ -282,6 +284,10 @@ export default function RambleButton({
         onTextReady,
         onSubmit,
     })
+    // Hosts can disable other microphone actions before the recording UI paints.
+    useLayoutEffect(() => {
+        onPhaseChange?.(phase)
+    }, [onPhaseChange, phase])
 
     // The node is held in state, not a ref: this button unmounts whenever it is hidden while idle,
     // so the gesture effect has to re-run against the new node when it comes back. TouchableOpacity
@@ -387,6 +393,7 @@ export default function RambleButton({
                     armed={cancelArmed}
                     elapsedLabel={formatRambleElapsed(elapsedSeconds)}
                     getInputLevel={getInputLevel}
+                    getViewport={getOverlayViewport}
                 />
             ) : null}
             <TouchableOpacity

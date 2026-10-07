@@ -31,7 +31,10 @@ const server = http.createServer((req, res) => {
         res.writeHead(404).end()
         return
     }
-    res.setHeader('Content-Type', file.endsWith('.html') ? 'text/html' : 'application/javascript')
+    res.setHeader(
+        'Content-Type',
+        file.endsWith('.html') ? 'text/html' : file.endsWith('.ttf') ? 'font/ttf' : 'application/javascript'
+    )
     res.end(fs.readFileSync(file))
 })
 async function checkWorkspaceOverlays(page, width) {
@@ -366,6 +369,63 @@ async function checkBrowserReturn(page, width) {
     console.info(`PASS ${width}px: browser returns on completion, preserves drafts and respects human interaction`)
 }
 
+async function checkDictation(page, width) {
+    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1`)
+    const input = page.getByLabel('Message Carl Code Mentor')
+    const mic = page.getByLabel('Dictate', { exact: true })
+    const phone = page.getByRole('button', { name: 'Talk with Carl Code Mentor', exact: true })
+    await input.fill('Please ')
+    await mic.click()
+    await page.getByLabel('Stop dictation', { exact: true }).waitFor({ state: 'visible' })
+    assert.equal(await phone.isDisabled(), true)
+    assert.equal(await input.isEnabled(), true)
+    await page.screenshot({ path: path.join(BUILD, `dictation-recording-${width}.png`) })
+    await page.getByLabel('Stop dictation', { exact: true }).click()
+    await page.waitForFunction(() => !!window.__annaDictationRequest)
+    await input.fill('Please remember: ')
+    assert.equal(await page.getByRole('button', { name: 'Send message', exact: true }).isDisabled(), true)
+    const request = await page.evaluate(() => window.__annaDictationRequest)
+    assert.equal(request.projectId, 'p1')
+    assert.equal(request.targetKind, 'generic')
+    assert.equal(request.currentText, 'Please ')
+    await page.evaluate(() => window.__annaFinishDictation('Call Sam tomorrow.'))
+    await page.waitForFunction(() => document.querySelector('.anna-composer textarea').value.includes('Call Sam'))
+    assert.equal(await input.inputValue(), 'Please remember: Call Sam tomorrow.')
+    assert.equal(await phone.isEnabled(), true)
+    assert.equal(
+        await page.locator('.anna-messages').getByText('Please remember: Call Sam tomorrow.', { exact: true }).count(),
+        0,
+        'Dictation must not auto-send'
+    )
+    const geometry = await page.locator('.anna-composer-field').evaluate(field => ({
+        width: field.clientWidth,
+        scrollWidth: field.scrollWidth,
+        children: [...field.children].map(child => child.getBoundingClientRect().toJSON()),
+    }))
+    assert.ok(geometry.scrollWidth <= geometry.width + 1, JSON.stringify(geometry))
+    for (let index = 1; index < geometry.children.length; index++)
+        assert.ok(geometry.children[index - 1].right <= geometry.children[index].left, 'Composer controls overlap')
+    await page.screenshot({ path: path.join(BUILD, `dictation-ready-${width}.png`) })
+    // Holding uses the same recording gesture and keeps its status card inside the chat pane.
+    const box = await mic.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    const card = page.getByTestId('ramble-hold-card')
+    await card.waitFor({ state: 'visible' })
+    const cardBox = await card.boundingBox()
+    const chatBox = await page.locator('.anna-conversation').boundingBox()
+    assert.ok(cardBox.x >= chatBox.x && cardBox.x + cardBox.width <= chatBox.x + chatBox.width)
+    await page.screenshot({ path: path.join(BUILD, `dictation-hold-${width}.png`) })
+    await page.mouse.move(box.x - 130, box.y - 130)
+    await page.mouse.up()
+    await mic.waitFor({ state: 'visible' })
+    assert.equal(await input.inputValue(), 'Please remember: Call Sam tomorrow.')
+    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('.anna-composer textarea').value === '')
+    await page.getByText('Please remember: Call Sam tomorrow.', { exact: true }).waitFor({ state: 'visible' })
+    console.info(`PASS ${width}px: dictation inserts editable text; call exclusion, cancellation and layout work`)
+}
+
 async function main() {
     const { chromium } = require('playwright')
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -378,6 +438,12 @@ async function main() {
             const page = await browser.newPage({ viewport: { width, height: 900 } })
             const errors = []
             page.on('pageerror', error => errors.push(error.message))
+            await checkDictation(page, width)
+            if (process.env.DICTATION_ONLY) {
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
             await checkBrowserReturn(page, width)
             if (process.env.BROWSER_RETURN_ONLY) {
                 await checkBrowserLogin(page, width)
