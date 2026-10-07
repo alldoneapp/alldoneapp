@@ -29,6 +29,7 @@ export default function AnnaConversation({
     visible = true,
     resumeRequest,
     onResumeHandled,
+    onBeforeSend,
 }) {
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [draft, setDraft] = useState('')
@@ -114,6 +115,7 @@ export default function AnnaConversation({
         try {
             if (!retryMessage && !continuation?.thread && resolveConversation) thread = await resolveConversation()
             if (!thread?.id) throw new Error(translate('Your conversation could not be loaded. Please try again.'))
+            if (!continuation) await onBeforeSend?.()
             // Context is saved before the request, so "this note" refers to what is visible.
             await getDb()
                 .doc(`chatObjects/${thread.projectId}/chats/${thread.id}`)
