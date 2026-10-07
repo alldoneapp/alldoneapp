@@ -1,4 +1,6 @@
 {
+    "browser_takeover_in_workspace": "Continue signing in in the browser workspace.",
+    "Open browser": "Open browser",
     "Go to home": "Go to home",
     "Created by %{assistantName}": "Created by %{assistantName}",
     "Updated by %{assistantName}": "Updated by %{assistantName}",

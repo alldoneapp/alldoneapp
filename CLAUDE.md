@@ -564,6 +564,10 @@ account has service-scoped `roles/run.invoker`. Browsing still requires the assi
 project website policy: `selected` needs an allowlist, while `all_public` allows public websites.
 The shared assistant workspace watches this same browser through `annaBrowserWorkspaceSecondGen`;
 it refreshes screenshots every five seconds and supports user takeover and explicit hand-back.
+Interactive login is owned by `AnnaShell` through `AnnaBrowserTakeoverContext` and rendered in the
+browser pane. The approval card retains only a reopen shortcut. Keep the login controller mounted
+across chat navigation and pane changes; pause the ordinary viewer and never let a chat send release
+the login session. Outside this shell the approval card still supports inline takeover.
 See `docs/anna-workspace.md` for deployment and verification.
 
 ****Two access modes, and `all_public` skips exactly ONE check.** `selected` (the default) needs an

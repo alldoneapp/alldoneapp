@@ -73,7 +73,11 @@ session. `browser_navigate` opens it; everything else needs it open.
 ### Session-only login takeover
 
 A click classified as `login` is not offered to the assistant as an ordinary approval. Its card
-offers **Sign in securely**, which opens `BrowserTakeoverPanel` under the same assistant comment.
+offers **Sign in securely**, which opens `BrowserTakeoverPanel` in the shared browser pane when
+hosted by `AnnaShell` (and opens assistant mode if needed). The comment retains an Open browser
+shortcut. Outside the shared shell, the panel remains inline under the comment.
+The shell owns the controller across chat navigation and pane switches, pauses its regular browser
+viewer, and does not release an active login merely because a new chat message is sent.
 The panel is screenshot-driven: each explicit click, type, key, scroll or refresh goes through the
 authenticated `browserTakeoverSecondGen` callable to the IAM-private worker and returns the updated
 viewport. Each successful cycle is a normal one-Gold browser step with its own audit/idempotency key.

@@ -8,6 +8,8 @@ import AnnaWorkspaceHighlight from './AnnaWorkspaceHighlight'
 import AnnaWorkspaceReveal from './AnnaWorkspaceReveal'
 import { findWorkspaceObject } from './annaWorkspaceRevealTargets'
 import AnnaBrowserWorkspace from './AnnaBrowserWorkspace'
+import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
+import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { resolveAnnaLink } from './annaNavigation'
 import { isAnnaWorkspacePath } from '../../functions/Assistant/annaWorkspaceContract'
 import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLookup'
@@ -60,6 +62,8 @@ export default function AnnaShell({ children, routeId }) {
     const [control, setControl] = useState(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
+    const [browserTakeover, setBrowserTakeover] = useState(null)
+    const takeoverRef = useRef(null)
     const [resumeRequest, setResumeRequest] = useState(null)
     const controlWrite = useRef(false)
     const browserWorkspace = useRef(null)
@@ -81,6 +85,25 @@ export default function AnnaShell({ children, routeId }) {
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
     const visibleWorkspace = active && (mobilePane === 'workspace' || !mobile)
+
+    const openBrowserTakeover = useCallback((approval, callbacks) => {
+        if (takeoverRef.current && takeoverRef.current.approval.approvalId !== approval.approvalId) return
+        requestGeneration.current++
+        setAnnaMode(true)
+        setSurface('browser')
+        setMobilePane('workspace')
+        if (!takeoverRef.current) {
+            takeoverRef.current = { approval, ...callbacks }
+            setBrowserTakeover(takeoverRef.current)
+        }
+    }, [])
+    const closeBrowserTakeover = cancelled => {
+        const current = takeoverRef.current
+        takeoverRef.current = null
+        setBrowserTakeover(null)
+        if (cancelled) current?.onCancelled?.()
+        else current?.onFinished?.()
+    }
 
     useEffect(() => {
         if (active) setVisited(true)
@@ -204,6 +227,8 @@ export default function AnnaShell({ children, routeId }) {
         if (!(await setWorkspaceControl(false, { force: true }))) {
             throw new Error(translate('Could not change workspace control. Please try again.'))
         }
+        // Chat remains usable, but only the login controller may hand back its session.
+        if (takeoverRef.current) return
         if (heldBrowser.current && !browserWorkspace.current) throw new Error(translate('The browser is unavailable.'))
         await browserWorkspace.current?.releaseControl()
     }, [setWorkspaceControl])
@@ -253,11 +278,11 @@ export default function AnnaShell({ children, routeId }) {
         presentationSeen.current.add(presentation.id)
         const fresh = Date.now() - Number(presentation.createdAt || 0) < 120000
         if (!fresh && conversation?.annaPresentationStatus?.id === presentation.id) return
-        if (!active || controlRef.current || browserControl) {
+        if (!active || controlRef.current || browserControl || browserTakeover) {
             setPending(presentation)
             acknowledge(presentation, 'deferred')
         } else present(presentation)
-    }, [conversation?.annaPresentation?.id, active, browserControl, present, acknowledge])
+    }, [conversation?.annaPresentation?.id, active, browserControl, browserTakeover, present, acknowledge])
 
     useEffect(() => {
         if (!conversation) return
@@ -311,7 +336,13 @@ export default function AnnaShell({ children, routeId }) {
     }, [active, visibleWorkspace, surface, conversation?.projectId, conversation?.id])
 
     const openWorkspaceChange = useCallback(async (change, isCancelled) => {
-        if (!isAnnaWorkspacePath(change.path) || controlRef.current || heldBrowser.current || isCancelled())
+        if (
+            !isAnnaWorkspacePath(change.path) ||
+            controlRef.current ||
+            heldBrowser.current ||
+            takeoverRef.current ||
+            isCancelled()
+        )
             throw new Error('Workspace is unavailable')
         revealGeneration.current = requestGeneration.current
         setSurface('alldone')
@@ -320,7 +351,8 @@ export default function AnnaShell({ children, routeId }) {
         const deadline = Date.now() + 600
         while (!findWorkspaceObject(workspaceContent.current, change) && Date.now() < deadline) {
             await new Promise(resolve => setTimeout(resolve, 75))
-            if (controlRef.current || heldBrowser.current || isCancelled()) throw new Error('Workspace is unavailable')
+            if (controlRef.current || heldBrowser.current || takeoverRef.current || isCancelled())
+                throw new Error('Workspace is unavailable')
         }
         // Keep the current list when its row exists; details are the fallback for
         // filtered-out, completed or not-yet-mounted objects.
@@ -332,6 +364,7 @@ export default function AnnaShell({ children, routeId }) {
         if (
             controlRef.current ||
             heldBrowser.current ||
+            takeoverRef.current ||
             document.hidden ||
             revealGeneration.current !== requestGeneration.current
         )
@@ -377,7 +410,7 @@ export default function AnnaShell({ children, routeId }) {
           ? { surface, path: currentBrowserPage?.url || '', title: currentBrowserPage?.title || translate('Browser') }
           : workspacePage && { ...workspacePage, surface }
 
-    return (
+    const content = (
         <div
             className={`anna-shell anna-zoom-shell ${active ? 'anna-zoom-active' : 'anna-fullscreen'} anna-mobile-${mobilePane}`}
             style={{
@@ -583,7 +616,7 @@ export default function AnnaShell({ children, routeId }) {
                                     rootRef={workspaceContent}
                                     conversation={conversation}
                                     assistantName={assistantName}
-                                    available={visibleWorkspace && !control && !browserControl}
+                                    available={visibleWorkspace && !control && !browserControl && !browserTakeover}
                                     onOpen={openWorkspaceChange}
                                     onComplete={returnWorkspaceHome}
                                     workState={currentWorkState}
@@ -606,26 +639,46 @@ export default function AnnaShell({ children, routeId }) {
                             aria-hidden={!active || surface !== 'browser'}
                             inert={!active || surface !== 'browser' ? '' : undefined}
                         >
-                            <AnnaBrowserWorkspace
-                                ref={browserWorkspace}
-                                onPageChange={setBrowserPage}
-                                assistantName={assistantName}
-                                browser={browser}
-                                active={visibleWorkspace && surface === 'browser'}
-                                onControlChange={held => {
-                                    heldBrowser.current = held
-                                    setBrowserControl(held)
-                                    if (!held && nextBrowserRef.current?.runId !== browserRef.current?.runId) {
-                                        browserRef.current = nextBrowserRef.current
-                                        setBrowser(nextBrowserRef.current)
-                                    }
-                                }}
-                                onResume={resumeWork}
-                            />
+                            {browserTakeover && (
+                                <div className="anna-browser-takeover">
+                                    <BrowserTakeoverPanel
+                                        key={browserTakeover.approval.approvalId}
+                                        approval={browserTakeover.approval}
+                                        workspace
+                                        onFinished={() => closeBrowserTakeover(false)}
+                                        onCancelled={() => closeBrowserTakeover(true)}
+                                    />
+                                </div>
+                            )}
+                            <div hidden={!!browserTakeover} inert={browserTakeover ? '' : undefined}>
+                                <AnnaBrowserWorkspace
+                                    ref={browserWorkspace}
+                                    onPageChange={setBrowserPage}
+                                    assistantName={assistantName}
+                                    browser={browser}
+                                    active={visibleWorkspace && surface === 'browser' && !browserTakeover}
+                                    onControlChange={held => {
+                                        heldBrowser.current = held
+                                        setBrowserControl(held)
+                                        if (!held && nextBrowserRef.current?.runId !== browserRef.current?.runId) {
+                                            browserRef.current = nextBrowserRef.current
+                                            setBrowser(nextBrowserRef.current)
+                                        }
+                                    }}
+                                    onResume={resumeWork}
+                                />
+                            </div>
                         </div>
                     )}
                 </section>
             </main>
         </div>
+    )
+    return (
+        <AnnaBrowserTakeoverContext.Provider
+            value={{ open: openBrowserTakeover, approvalId: browserTakeover?.approval.approvalId }}
+        >
+            {content}
+        </AnnaBrowserTakeoverContext.Provider>
     )
 }

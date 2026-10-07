@@ -805,6 +805,9 @@
 .anna-browser-workspace {
     padding: 16px;
 }
+.anna-browser-takeover {
+    padding: 16px;
+}
 .anna-browser-heading {
     display: flex;
     align-items: flex-start;
