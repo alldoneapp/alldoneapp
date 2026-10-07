@@ -15,7 +15,7 @@ const isPageVisible = () => typeof document === 'undefined' || document.visibili
  * order is safe. Fail closed when IntersectionObserver is unavailable: an unread message is more
  * honest than claiming that content the user may never have seen was read.
  */
-export default function useAnnaMessageReadState(projectId, chatId, scrollRef, messages) {
+export default function useAnnaMessageReadState(projectId, chatId, scrollRef, messages, enabled = true) {
     const notification = useSelector(state => state.projectChatNotifications?.[projectId]?.[chatId])
     const unreadIds = useMemo(() => getAnnaUnreadCommentIds(notification), [notification])
     const unreadIdsRef = useRef(new Set())
@@ -26,7 +26,7 @@ export default function useAnnaMessageReadState(projectId, chatId, scrollRef, me
     unreadIdsRef.current = new Set(unreadIds)
 
     const acknowledgeVisibleMessages = useCallback(() => {
-        if (!projectId || !chatId || !isPageVisible()) return
+        if (!enabled || !projectId || !chatId || !isPageVisible()) return
 
         const commentIds = [...visibleIdsRef.current].filter(
             commentId =>
@@ -49,13 +49,13 @@ export default function useAnnaMessageReadState(projectId, chatId, scrollRef, me
                 })
             })
             .finally(() => commentIds.forEach(commentId => pendingIdsRef.current.delete(commentId)))
-    }, [projectId, chatId])
+    }, [projectId, chatId, enabled])
 
     useEffect(() => {
         visibleIdsRef.current.clear()
         pendingIdsRef.current.clear()
         acknowledgedIdsRef.current.clear()
-    }, [projectId, chatId])
+    }, [projectId, chatId, enabled])
 
     useEffect(() => {
         acknowledgeVisibleMessages()
@@ -80,7 +80,13 @@ export default function useAnnaMessageReadState(projectId, chatId, scrollRef, me
             },
             { root, threshold: 0 }
         )
-        root.querySelectorAll('[data-anna-message-id]').forEach(element => observer.observe(element))
+        root.querySelectorAll('[data-anna-message-id]').forEach(element => {
+            if (
+                (!element.dataset.annaChatId || element.dataset.annaChatId === chatId) &&
+                (!element.dataset.annaProjectId || element.dataset.annaProjectId === projectId)
+            )
+                observer.observe(element)
+        })
 
         return () => {
             observer.disconnect()

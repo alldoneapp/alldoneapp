@@ -27,7 +27,12 @@ afterEach(() => {
 import AnnaShell from './AnnaShell'
 import useAnnaConversation from './useAnnaConversation'
 import URLTrigger from '../../URLSystem/URLTrigger'
+import { setAnnaMode } from '../../utils/annaMode'
 
+const mockSet = jest.fn().mockResolvedValue(undefined)
+const mockSnapshots = {}
+jest.mock('./AnnaBrowserWorkspace', () => () => null)
+jest.mock('./AnnaWorkspaceHighlight', () => () => null)
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
 const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user' }
 const mockAssistant = { uid: 'a1', displayName: 'Anna Alldone' }
@@ -63,7 +68,19 @@ jest.mock('../UIComponents/AssistantVoiceCallButton', () => ({
     ),
 }))
 jest.mock('../UIComponents/VoiceMicrophoneStatus', () => ({ __esModule: true, default: () => null }))
-jest.mock('../../utils/backends/firestore', () => ({ getDb: () => ({ doc: () => ({ update: mockUpdate }) }) }))
+jest.mock('../../utils/backends/firestore', () => ({
+    getDb: () => ({
+        runTransaction: fn => fn({ get: async () => ({ data: () => ({}) }), set: mockSet }),
+        doc: path => ({
+            update: mockUpdate,
+            set: mockSet,
+            onSnapshot: callback => {
+                mockSnapshots[path] = callback
+                return () => delete mockSnapshots[path]
+            },
+        }),
+    }),
+}))
 jest.mock('../../utils/NavigationService', () => ({ __esModule: true, default: { createNavigationProp: () => ({}) } }))
 jest.mock('../../URLSystem/URLTrigger', () => ({
     __esModule: true,
@@ -81,6 +98,8 @@ const content = id => (
 )
 
 beforeEach(() => {
+    global.IS_REACT_ACT_ENVIRONMENT = true
+    setAnnaMode(true)
     mockUnmounts = 0
     jest.clearAllMocks()
     useAnnaConversation.mockReturnValue(state)
@@ -98,20 +117,27 @@ it('keeps the conversation mounted across workspace navigation and uses its topi
     await act(async () => {})
 })
 
-it('preserves the mounted workspace while returning to the portrait', async () => {
+it('preserves both editors when zooming out and back without remounting the workspace', async () => {
     const view = render(content(1))
-    view.rerender(content(2))
-    fireEvent.change(screen.getByLabelText('Real workspace editor'), { target: { value: 'Work in progress' } })
-    fireEvent.click(screen.getByText('← Back to Anna'))
-    expect(screen.getByLabelText('Real workspace editor').value).toBe('Work in progress')
-    expect(document.querySelector('.anna-workspace').style.display).toBe('none')
+    const workspace = screen.getByLabelText('Real workspace editor')
+    const chat = screen.getByLabelText('Persistent conversation')
+    workspace.value = 'Work in progress'
+    chat.value = 'Unsent message'
+    fireEvent.click(screen.getByText('Alldone fullscreen'))
+    expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+    act(() => setAnnaMode(true))
+    expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+    expect(workspace.value).toBe('Work in progress')
+    expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+    expect(chat.value).toBe('Unsent message')
+    expect(mockUnmounts).toBe(0)
     await act(async () => {})
 })
 
-it('holds assistant navigation while a workspace is pinned, until Open is clicked', async () => {
+it('holds assistant navigation after the user takes control, until Open is clicked', async () => {
     const view = render(content(1))
     view.rerender(content(2))
-    fireEvent.click(screen.getByText('Keep open'))
+    await act(async () => fireEvent.click(screen.getByText('Take control')))
     useAnnaConversation.mockReturnValue({
         ...state,
         conversation: {
@@ -129,4 +155,29 @@ it('holds assistant navigation while a workspace is pinned, until Open is clicke
             annaPresentationStatus: expect.objectContaining({ id: 'request1', status: 'opened' }),
         })
     )
+})
+
+it('switches mobile panes without removing the workspace or chat', async () => {
+    window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+    render(content(1))
+    const stage = screen.getByLabelText('Alldone workspace')
+    expect(stage.getAttribute('aria-hidden')).toBe('true')
+    const tabs = document.querySelector('.anna-mobile-tabs')
+    fireEvent.click([...tabs.querySelectorAll('button')].find(button => button.textContent === 'Workspace'))
+    expect(stage.getAttribute('aria-hidden')).toBe('false')
+    expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
+    expect(screen.getByLabelText('Real workspace editor')).toBeTruthy()
+    delete window.matchMedia
+    await act(async () => {})
+})
+
+it('does not create a conversation until the user first opens the assistant view', async () => {
+    setAnnaMode(false)
+    render(content(1))
+    expect(useAnnaConversation.mock.calls.at(-1)[1].enabled).toBe(false)
+    expect(screen.getByLabelText('Persistent conversation')).toBeNull()
+    act(() => setAnnaMode(true))
+    expect(useAnnaConversation.mock.calls.at(-1)[1].enabled).toBe(true)
+    expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
+    await act(async () => {})
 })

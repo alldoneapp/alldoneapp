@@ -1,3 +1,18 @@
+import { useSyncExternalStore } from 'react'
+
+// Layout changes never navigate or remount the workspace. The override is scoped to this tab.
+const listeners = new Set()
+let override
+const subscribe = listener => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+}
+export function setAnnaMode(enabled) {
+    override = !!enabled
+    listeners.forEach(listener => listener())
+}
+export const useAnnaMode = () => useSyncExternalStore(subscribe, isAnnaMode, () => false)
+
 // A separate entry point into the same application and authenticated data.
 // The local switch is session-scoped so normal app URLs keep working in previews.
 export function resolveAnnaMode(location, storage) {
@@ -14,6 +29,7 @@ export function resolveAnnaMode(location, storage) {
 }
 
 export const isAnnaMode = () => {
+    if (override !== undefined) return override
     if (typeof window === 'undefined') return false
     let storage
     try {

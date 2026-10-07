@@ -38,7 +38,7 @@ import URLTrigger from './URLSystem/URLTrigger'
 import { unwatch } from './utils/backends/firestore'
 import Shortcuts from './components/UIComponents/ShortcutCheatSheet/Shortcuts'
 import EndDayStatisticsModal from './components/UIComponents/FloatModals/EndDayStatisticsModal'
-import { isAnnaMode } from './utils/annaMode'
+import { useAnnaMode } from './utils/annaMode'
 import MyDayTasksLoaders from './components/MyDayView/MyDayLoaders/MyDayTasksLoaders'
 import { getConnectingMessage } from './utils/FunnyLoadingMessages'
 import AnalyticsConsentManager from './components/Analytics/AnalyticsConsentManager'
@@ -76,6 +76,7 @@ const resolvePublicPageUrl = () => {
 }
 
 export default function AppContent() {
+    const annaMode = useAnnaMode()
     const loggedIn = useSelector(state => state.loggedIn)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     // NOTE: the dismissible-touch DOM capture listener that master's incident
@@ -453,7 +454,7 @@ export default function AppContent() {
                         <>
                             <GlobalModalsContainerApp />
                             <UndoActionBar />
-                            {!isAnnaMode() && <EndDayStatisticsModal />}
+                            {!annaMode && <EndDayStatisticsModal />}
                             <Shortcuts />
                             <InitLoadView />
                             {heavyComponentsLoaded && (

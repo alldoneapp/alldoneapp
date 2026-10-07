@@ -46,7 +46,6 @@ import { installAppResumeListener } from './utils/appResume'
 import { installPassiveVirtualizedListWheel } from './utils/passiveVirtualizedListWheel'
 import ShellInsetPainter from './components/CapacitorShell/ShellInsetPainter'
 import AnnaShell from './components/Anna/AnnaShell'
-import { isAnnaMode } from './utils/annaMode'
 import { getResponsiveLayoutState } from './utils/responsiveLayout'
 
 const getCurrentResponsiveLayout = width => {
@@ -321,7 +320,6 @@ export class AppContainer extends React.Component {
 
         const user = store.getState().loggedUser
         if (
-            isAnnaMode() &&
             user?.uid &&
             !user.isAnonymous &&
             ![
@@ -335,7 +333,10 @@ export class AppContainer extends React.Component {
         ) {
             return (
                 <AnnaShell key={user.uid} routeId={id}>
-                    <ScreenWrapper key={id}>{content}</ScreenWrapper>
+                    <React.Fragment key={id}>
+                        {route.wrapped ? <ScreenWrapper>{content}</ScreenWrapper> : content}
+                        <ShellInsetPainter routeName={routeName} />
+                    </React.Fragment>
                 </AnnaShell>
             )
         }

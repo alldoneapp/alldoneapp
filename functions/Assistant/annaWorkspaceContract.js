@@ -5,13 +5,22 @@ const showWorkspaceSchema = {
     function: {
         name: TOOL_NAME,
         description:
-            "Show a real alldone task, note, goal, project list, or your portrait in the user's Anna workspace. Does not mutate the displayed work. Use verified IDs; projectId is required for individual objects and optional for cross-project lists. A successful result only queues presentation; the user may keep their current view open.",
+            "Show a real alldone task, note, goal, project list, or the conversation in the user's Anna workspace. Does not mutate the displayed work. Use verified IDs; projectId is required for individual objects and optional for cross-project lists. A successful result only queues presentation; the user may keep their current view open.",
         parameters: {
             type: 'object',
             properties: {
                 view: { type: 'string', enum: ['anna', 'tasks', 'notes', 'goals', 'task', 'note', 'goal'] },
                 projectId: { type: 'string', description: 'Exact project ID. Omit for all-project lists.' },
                 objectId: { type: 'string', description: 'Exact ID for a single task, note or goal.' },
+                assigneeId: {
+                    type: 'string',
+                    description: 'For a project task list, filter to this exact user or assistant ID.',
+                },
+                tab: {
+                    type: 'string',
+                    enum: ['properties', 'chat'],
+                    description: 'Task or goal tab. Use chat to show progress and results.',
+                },
             },
             required: ['view'],
             additionalProperties: false,
@@ -25,7 +34,7 @@ function isAnnaWorkspacePath(path) {
         path.length <= 700 &&
         (/^\/projects\/(tasks\/open|notes\/all|goals\/open)$/.test(path) ||
             /^\/projects\/[a-zA-Z0-9_-]+\/user\/[a-zA-Z0-9_-]+\/(tasks\/open|notes\/all|goals\/open)$/.test(path) ||
-            /^\/projects\/[a-zA-Z0-9_-]+\/(tasks\/[a-zA-Z0-9_-]+\/properties|notes\/[a-zA-Z0-9_-]+\/editor|goals\/[a-zA-Z0-9_-]+\/properties)$/.test(
+            /^\/projects\/[a-zA-Z0-9_-]+\/(tasks\/[a-zA-Z0-9_-]+\/(properties|chat)|notes\/[a-zA-Z0-9_-]+\/editor|goals\/[a-zA-Z0-9_-]+\/(properties|chat))$/.test(
                 path
             ))
     )

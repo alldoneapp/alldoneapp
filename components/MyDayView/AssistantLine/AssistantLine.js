@@ -1,20 +1,24 @@
-import React, { useEffect, useState } from 'react'
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native'
+import React from 'react'
+import { StyleSheet, View, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../../styles/global'
 import AssistantOptions from './AssistantOptions/AssistantOptions'
 import { getAssistantLineData } from './AssistantOptions/helper'
 import LastCommentArea from './LastCommentArea'
-import AssistantAvatar from '../../AdminPanel/Assistants/AssistantAvatar'
 import Icon from '../../Icon'
 import AssistantSwitchControl from './AssistantSwitchControl'
 import AssistantLineSkeleton from './AssistantLineSkeleton'
 import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
-import { isAnnaMode } from '../../../utils/annaMode'
+import { useAnnaMode, setAnnaMode } from '../../../utils/annaMode'
 
 export default function AssistantLine(props) {
-    return isAnnaMode() ? null : <WorkspaceAssistantLine {...props} />
+    const active = useAnnaMode()
+    return (
+        <View style={active ? { display: 'none' } : undefined}>
+            <WorkspaceAssistantLine {...props} />
+        </View>
+    )
 }
 
 function WorkspaceAssistantLine({
@@ -29,7 +33,6 @@ function WorkspaceAssistantLine({
     // active is decided by whoever owns the scope (a project board, or the home page), because
     // only they know whether a choice means "talk to someone else here" or "go somewhere else".
     assistantSwitch = null,
-    startCollapsed = false,
     showAllQuickActions = false,
     preferAssistantIdOverride = false,
     scopeLastCommentToAssistant = false,
@@ -42,7 +45,6 @@ function WorkspaceAssistantLine({
     const selectedProjectIndex = useSelector(state => state.selectedProjectIndex)
     const selectedProjectFromStore = useSelector(state => state.loggedUserProjects?.[selectedProjectIndex])
     const projectAccentColor = useProjectSectionAccent()
-    const [isCollapsed, setIsCollapsed] = useState(startCollapsed)
     const selectedProject = projectOverride || selectedProjectFromStore
     const assistantId = assistantIdOverride || defaultAssistant?.uid
 
@@ -52,17 +54,12 @@ function WorkspaceAssistantLine({
         loggedUser?.defaultProjectId,
         preferAssistantIdOverride
     )
-    const selectedAssistant = selectedLineAssistant || defaultAssistant
 
     const hasRequiredData =
         defaultAssistant?.uid &&
         loggedUser?.defaultProjectId &&
         selectedLineAssistant?.uid &&
         selectedLineAssistantProject?.id
-
-    useEffect(() => {
-        setIsCollapsed(startCollapsed)
-    }, [startCollapsed, selectedProject?.id, assistantId])
 
     if (!hasRequiredData) {
         return (
@@ -80,117 +77,40 @@ function WorkspaceAssistantLine({
             style={[
                 localStyles.container,
                 projectAccentColor && { backgroundColor: projectAccentColor },
-                isCollapsed && localStyles.containerCollapsed,
                 removeBottomSpace && localStyles.containerWithoutBottomSpace,
             ]}
             testID="assistant-line"
         >
-            {isCollapsed ? (
-                <CollapsedAssistantRow
-                    assistant={selectedAssistant}
-                    showLastComment={showLastComment}
+            <AssistantOptions
+                headerControls={
+                    <View style={localStyles.headerControls}>
+                        {showEditAssistantButton && <EditAssistantButton onPress={onEditAssistant} />}
+                        {!!assistantSwitch && <AssistantSwitchControl {...assistantSwitch} inline />}
+                    </View>
+                }
+                onZoomOut={() => setAnnaMode(true)}
+                projectOverride={selectedProject}
+                assistantIdOverride={assistantId}
+                showAllQuickActions={showAllQuickActions}
+                preferAssistantIdOverride={preferAssistantIdOverride}
+                deferQuickActions={deferQuickActions}
+            />
+            {showLastComment && (
+                <LastCommentArea
+                    withTopMargin={true}
                     useAssistantProjectContext={useAssistantProjectContext}
                     useGlobalLatestComment={useGlobalLatestComment}
-                    onPress={() => setIsCollapsed(false)}
                     projectOverride={selectedProject}
                     assistantIdOverride={assistantId}
-                    assistantSwitch={assistantSwitch}
                     preferAssistantIdOverride={preferAssistantIdOverride}
-                    scopeLastCommentToAssistant={scopeLastCommentToAssistant}
-                    showEditAssistantButton={showEditAssistantButton}
-                    onEditAssistant={onEditAssistant}
+                    scopeToAssistant={scopeLastCommentToAssistant}
                 />
-            ) : (
-                <View>
-                    {showEditAssistantButton && <EditAssistantButton onPress={onEditAssistant} />}
-                    {!!assistantSwitch && <AssistantSwitchControl {...assistantSwitch} />}
-                    <AssistantOptions
-                        onCollapse={() => setIsCollapsed(true)}
-                        projectOverride={selectedProject}
-                        assistantIdOverride={assistantId}
-                        showAllQuickActions={showAllQuickActions}
-                        preferAssistantIdOverride={preferAssistantIdOverride}
-                        deferQuickActions={deferQuickActions}
-                    />
-                    {showLastComment && (
-                        <LastCommentArea
-                            withTopMargin={true}
-                            useAssistantProjectContext={useAssistantProjectContext}
-                            useGlobalLatestComment={useGlobalLatestComment}
-                            projectOverride={selectedProject}
-                            assistantIdOverride={assistantId}
-                            preferAssistantIdOverride={preferAssistantIdOverride}
-                            scopeToAssistant={scopeLastCommentToAssistant}
-                        />
-                    )}
-                </View>
             )}
         </View>
     )
 }
 
-function CollapsedAssistantRow({
-    assistant,
-    showLastComment,
-    useAssistantProjectContext,
-    useGlobalLatestComment,
-    onPress,
-    projectOverride,
-    assistantIdOverride,
-    assistantSwitch,
-    preferAssistantIdOverride,
-    scopeLastCommentToAssistant,
-    showEditAssistantButton,
-    onEditAssistant,
-}) {
-    const isMobile = useSelector(state => state.smallScreenNavigation)
-
-    return (
-        <TouchableOpacity
-            style={[localStyles.collapsedRow, isMobile && localStyles.collapsedRowMobile]}
-            onPress={onPress}
-        >
-            {showEditAssistantButton && <EditAssistantButton onPress={onEditAssistant} collapsed />}
-            {!!assistantSwitch && <AssistantSwitchControl {...assistantSwitch} collapsed={true} />}
-            <View style={[localStyles.collapsedLeft, isMobile && localStyles.collapsedLeftMobile]}>
-                <AssistantAvatar
-                    photoURL={assistant?.photoURL50 || assistant?.photoURL300 || assistant?.photoURL}
-                    assistantId={assistant?.uid}
-                    size={24}
-                    imageStyle={localStyles.collapsedAvatar}
-                />
-                <Text
-                    numberOfLines={1}
-                    style={[localStyles.collapsedAssistantName, isMobile && localStyles.collapsedAssistantNameMobile]}
-                >
-                    {assistant?.displayName || 'Assistant'}
-                </Text>
-            </View>
-            {showLastComment && (
-                <View style={[localStyles.collapsedTagWrapper, isMobile && localStyles.collapsedTagWrapperMobile]}>
-                    <LastCommentArea
-                        withTopMargin={false}
-                        useAssistantProjectContext={useAssistantProjectContext}
-                        useGlobalLatestComment={useGlobalLatestComment}
-                        compact={true}
-                        projectOverride={projectOverride}
-                        assistantIdOverride={assistantIdOverride}
-                        preferAssistantIdOverride={preferAssistantIdOverride}
-                        scopeToAssistant={scopeLastCommentToAssistant}
-                    />
-                </View>
-            )}
-            <Icon
-                name={'chevron-down'}
-                size={16}
-                color={colors.Text03}
-                style={[localStyles.chevron, isMobile && localStyles.chevronMobile]}
-            />
-        </TouchableOpacity>
-    )
-}
-
-function EditAssistantButton({ onPress, collapsed = false }) {
+function EditAssistantButton({ onPress }) {
     const editAssistant = event => {
         event?.preventDefault?.()
         event?.stopPropagation?.()
@@ -198,11 +118,7 @@ function EditAssistantButton({ onPress, collapsed = false }) {
     }
 
     return (
-        <TouchableOpacity
-            style={[localStyles.editButton, collapsed && localStyles.editButtonCollapsed]}
-            onPress={editAssistant}
-            accessibilityLabel="Edit assistant"
-        >
+        <TouchableOpacity style={localStyles.actionButton} onPress={editAssistant} accessibilityLabel="Edit assistant">
             <Icon name="edit-2" size={16} color={colors.Text03} />
         </TouchableOpacity>
     )
@@ -224,79 +140,19 @@ const localStyles = StyleSheet.create({
     containerWithoutBottomSpace: {
         marginBottom: 0,
     },
-    containerCollapsed: {
-        minHeight: 0,
-        paddingTop: 8,
-        paddingBottom: 8,
+    headerControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 0,
     },
-    editButton: {
-        position: 'absolute',
-        left: 0,
-        top: -4,
+    actionButton: {
         width: 28,
         height: 28,
+        flexShrink: 0,
         borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: colors.Grey300,
-        zIndex: 2,
-    },
-    editButtonCollapsed: {
-        position: 'relative',
-        left: 0,
-        top: 0,
         marginRight: 8,
-    },
-    collapsedRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        width: '100%',
-        minHeight: 32,
-    },
-    collapsedRowMobile: {
-        minHeight: 36,
-        paddingRight: 2,
-    },
-    collapsedLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        minWidth: 0,
-        marginRight: 10,
-        flexShrink: 1,
-    },
-    collapsedLeftMobile: {
-        marginRight: 6,
-    },
-    collapsedAvatar: {
-        borderRadius: 6,
-    },
-    collapsedAssistantName: {
-        marginLeft: 8,
-        fontSize: 14,
-        color: colors.Text02,
-        fontWeight: '600',
-        maxWidth: 180,
-        flexShrink: 1,
-    },
-    collapsedAssistantNameMobile: {
-        marginLeft: 6,
-        maxWidth: 92,
-    },
-    collapsedTagWrapper: {
-        marginLeft: 'auto',
-        marginRight: 8,
-        alignItems: 'flex-end',
-        maxWidth: 320,
-        minWidth: 0,
-    },
-    collapsedTagWrapperMobile: {
-        marginRight: 4,
-        maxWidth: '56%',
-    },
-    chevron: {
-        marginLeft: 0,
-    },
-    chevronMobile: {
-        marginLeft: 2,
     },
 })

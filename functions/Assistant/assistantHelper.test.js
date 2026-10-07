@@ -7166,6 +7166,69 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 
+    test('keeps Anna work on an existing task and leaves the daily conversation as its origin', async () => {
+        await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Prepare the launch', target_task_id: 'task-1', task_type: 'research' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Please prepare the launch' },
+            {
+                annaConversation: true,
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'AnnaChat20261007user-1',
+                assistantId: 'assistant-1',
+            }
+        )
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                objectType: 'tasks',
+                objectId: 'task-1',
+                originObjectId: 'AnnaChat20261007user-1',
+                threadContext: expect.stringContaining('Keep progress, questions and deliverables in that task'),
+            })
+        )
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('creates an assistant-owned task instead of running new Anna work inside the daily chat', async () => {
+        mockFirestoreGetAll.mockImplementation(async (...refs) => refs.map(() => ({ exists: true, data: () => ({}) })))
+        mockCreateAndPersistTask.mockResolvedValueOnce({ success: true, taskId: 'new-host', projectId: 'project-1' })
+        await executeToolNatively(
+            'execute_task_in_vm',
+            { objective: 'Research launch options', task_type: 'research' },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Research the launch options for me' },
+            {
+                annaConversation: true,
+                projectId: 'project-1',
+                objectType: 'topics',
+                objectId: 'AnnaChat20261007user-1',
+                assistantId: 'assistant-1',
+            }
+        )
+        expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+            expect.objectContaining({
+                userId: 'assistant-1',
+                creatorId: 'user-1',
+                assigneeType: 'assistant',
+                executionMode: 'direct',
+            }),
+            expect.anything()
+        )
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                objectType: 'tasks',
+                objectId: 'new-host',
+                originObjectId: 'AnnaChat20261007user-1',
+            })
+        )
+    })
+
     // AT-2224: startVmJob can only tell an agent the user asked for from one the model invented if
     // it is given the user's own words. Model-authored arguments must never be part of that text.
     test('forwards the user-authored request text so per-run overrides can be corroborated', async () => {

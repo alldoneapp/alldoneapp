@@ -63,9 +63,12 @@ async function runLiveAssistant({
         openAiReasoningEffort: assistant.reasoningEffort || null,
         userRequestText: lastUserTurn?.text || '',
     }
-    const { loadAnnaContext, annaInstructions } = require('../Assistant/annaWorkspace')
+    const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('../Assistant/annaWorkspace')
     const annaContext = await loadAnnaContext(db, runtime)
-    if (annaContext) runtime.annaConversation = true
+    if (annaContext) {
+        runtime.annaConversation = true
+        annaContext.history = await loadAnnaHistoryContext(db, runtime)
+    }
     const allowedTools = filterAllowedToolsForRuntimeContext(assistant.allowedTools || [], runtime)
     const toolProgress = createLiveToolProgress({ publish: onProgress })
     const failedReads = new Map()

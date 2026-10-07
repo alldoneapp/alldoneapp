@@ -622,3 +622,31 @@ describe('executeBrowserTool', () => {
         })
     })
 })
+
+describe('task-scoped browser continuity', () => {
+    it('uses the same task session across ambient conversations and refuses inaccessible tasks', async () => {
+        const db = new FirestoreDouble({
+            'projects/p1': { userIds: ['user1'] },
+            'items/p1/tasks/shared-task': { isPublicFor: [0] },
+        })
+        const first = await run({
+            db,
+            toolArgs: { url: 'https://tickets.example/event/42', taskId: 'shared-task' },
+            worker: createWorkerDouble({ navigate: () => pageResult() }),
+        })
+        expect(first.result.success).toBe(true)
+        const runs = db.listCollection('browserRuns')
+        expect(runs[0].objectId).toBe('shared-task')
+        await run({
+            db,
+            toolName: 'browser_inspect',
+            toolArgs: { taskId: 'shared-task' },
+            worker: createWorkerDouble({ inspect: () => pageResult() }),
+        })
+        expect(db.listCollection('browserRuns')).toHaveLength(1)
+        await db.doc('items/p1/tasks/shared-task').set({ isPublicFor: ['someone-else'] })
+        const refused = await run({ db, toolName: 'browser_click', toolArgs: { taskId: 'shared-task', ref: 'e1' } })
+        expect(refused.result).toMatchObject({ success: false, reason: 'task_access_denied' })
+        expect(refused.worker.calls).toHaveLength(0)
+    })
+})

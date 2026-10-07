@@ -16,7 +16,7 @@ const mockSafeAreaInsets = { left: 0, bottom: 5 }
 const mockIsAnnaMode = jest.fn(() => false)
 jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
 jest.mock('../../hooks/useModalSizing', () => () => ({ safeAreaInsets: mockSafeAreaInsets }))
-jest.mock('../../utils/annaMode', () => ({ isAnnaMode: () => mockIsAnnaMode() }))
+jest.mock('../../utils/annaMode', () => ({ useAnnaMode: () => mockIsAnnaMode() }))
 jest.mock('./Spinner', () => 'Spinner')
 
 // MyPlatform.osType only consults window.navigator off the mobile path,

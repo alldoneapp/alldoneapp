@@ -11,9 +11,10 @@ import GlobalModalsContainerRootView from '../UIComponents/GlobalModalsContainer
 import DragModalsContainer from '../UIComponents/FloatModals/DragModalsContainer'
 import GoldAnimationsContainer from './GoldAnimationsContainer'
 import { useTranslator } from '../../i18n/TranslationService'
-import { isAnnaMode } from '../../utils/annaMode'
+import { useAnnaMode } from '../../utils/annaMode'
 
 export default function RootView({ navigation }) {
+    const annaMode = useAnnaMode()
     const dispatch = useDispatch()
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const showWebSideBar = useSelector(state => state.showWebSideBar)
@@ -34,7 +35,7 @@ export default function RootView({ navigation }) {
             <LoadingData />
             {showLeftSideMenu && <CustomSideMenu navigation={navigation} />}
             <View style={localStyles.subContainer}>
-                {!isAnnaMode() && <TopBarContainer containerStyle={localStyles.topBarContainer} />}
+                {!annaMode && <TopBarContainer containerStyle={localStyles.topBarContainer} />}
                 <MainViewsContainer />
                 <DragModalsContainer />
             </View>

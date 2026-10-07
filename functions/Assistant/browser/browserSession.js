@@ -187,8 +187,23 @@ async function executeBrowserTool({
         })
     }
 
-    const objectId = resolveThreadObjectId(toolRuntimeContext, requestUserId)
-    const objectType = toolRuntimeContext?.objectType || 'tasks'
+    let objectId = resolveThreadObjectId(toolRuntimeContext, requestUserId)
+    let objectType = toolRuntimeContext?.objectType || 'tasks'
+    // VM clients have no ambient chat. Bind their browser to the real task so Anna can
+    // inspect/resume that same session from the continuous conversation after hand-back.
+    if (toolArgs.taskId != null) {
+        if (typeof toolArgs.taskId !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(toolArgs.taskId))
+            return failure('Use an exact Alldone task ID for this browser.', { reason: 'invalid_task' })
+        const [project, task] = await Promise.all([
+            db.doc(`projects/${projectId}`).get(),
+            db.doc(`items/${projectId}/tasks/${toolArgs.taskId}`).get(),
+        ])
+        const { canAccessObject } = require('../../shared/privacyAccess')
+        if (!project.data()?.userIds?.includes(requestUserId) || !canAccessObject(task.data(), requestUserId))
+            return failure('This browser task is not accessible.', { reason: 'task_access_denied' })
+        objectId = toolArgs.taskId
+        objectType = 'tasks'
+    }
     const fetchImpl = deps.fetchImpl || globalThis.fetch
     const identityTokenProvider = deps.identityTokenProvider
 
@@ -428,19 +443,38 @@ async function executeBrowserTool({
         }
 
         // ---- ACT -------------------------------------------------------------------------
-        const workerResult = await callBrowserWorker({
-            operation: 'act',
-            payload: buildWorkerPayload(action, toolArgs, decision, limits),
-            config,
-            runId,
-            sessionId,
-            projectId,
-            userId: requestUserId,
-            fetchImpl,
-            identityTokenProvider,
-            affinityCookie,
-            now,
-        })
+        const { claimBrowserGesture, releaseBrowserGesture } = require('../annaWorkspaceControl')
+        const gesture = await claimBrowserGesture(db, runId, requestUserId, false, now)
+        if (!gesture.ok) {
+            await completeBrowserStep(db, {
+                runId,
+                stepId,
+                outcome: { status: 'blocked', reason: gesture.reason },
+                now,
+            })
+            return failure(
+                'The browser is controlled by the user or finishing another gesture. Do not retry while the user is in control; wait for their hand-back.',
+                { reason: gesture.reason, paused: true }
+            )
+        }
+        let workerResult
+        try {
+            workerResult = await callBrowserWorker({
+                operation: 'act',
+                payload: buildWorkerPayload(action, toolArgs, decision, limits),
+                config,
+                runId,
+                sessionId,
+                projectId,
+                userId: requestUserId,
+                fetchImpl,
+                identityTokenProvider,
+                affinityCookie,
+                now,
+            })
+        } finally {
+            await releaseBrowserGesture(db, runId, gesture.token).catch(() => {})
+        }
 
         if (workerResult.affinityCookie) {
             affinityCookie = workerResult.affinityCookie
@@ -469,6 +503,24 @@ async function executeBrowserTool({
             })
             if (workerResult.usage) await applyRunUsage(db, { runId, usage: workerResult.usage, now })
             return failure(workerResult.error, { reason: workerResult.reason || 'worker_error' })
+        }
+
+        if (requestUserId) {
+            await db
+                .doc(`users/${requestUserId}/private/annaBrowser`)
+                .set(
+                    {
+                        runId,
+                        projectId,
+                        objectId,
+                        objectType,
+                        title: String(workerResult.title || '').slice(0, 200),
+                        url: redactUrl(workerResult.finalUrl || workerResult.url || pageUrl),
+                        updatedAt: Date.now(),
+                    },
+                    { merge: true }
+                )
+                .catch(error => console.warn('Could not publish browser workspace pointer', { code: error.code }))
         }
 
         // ---- BILLING ---------------------------------------------------------------------
