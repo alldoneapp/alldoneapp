@@ -32,7 +32,7 @@ function SmallButton({ label, onPress, disabled, danger }) {
  * props, Firestore or the assistant message; it lives in local state only until the callable has
  * accepted it and is then cleared immediately.
  */
-export default function BrowserTakeoverPanel({ approval, onFinished, onCancelled, workspace = false }) {
+export default function BrowserTakeoverPanel({ approval, onFinished, onCancelled }) {
     const [frame, setFrame] = useState(null)
     const [layout, setLayout] = useState({ width: 0, height: 0 })
     const [typedText, setTypedText] = useState('')
@@ -111,24 +111,16 @@ export default function BrowserTakeoverPanel({ approval, onFinished, onCancelled
     const passwordFocused = frame?.focused?.inputType === 'password'
 
     return (
-        <View style={[styles.panel, workspace && styles.workspacePanel]}>
-            <Text style={[styles.title, workspace && styles.workspaceText]}>{translate('browser_takeover_title')}</Text>
-            <Text style={[styles.explanation, workspace && styles.workspaceHint]}>
-                {translate('browser_takeover_explanation')}
-            </Text>
+        <View style={styles.panel}>
+            <Text style={styles.title}>{translate('browser_takeover_title')}</Text>
+            <Text style={styles.explanation}>{translate('browser_takeover_explanation')}</Text>
             <Text style={styles.cost}>{translate('browser_takeover_cost', { gold: goldSpent })}</Text>
 
-            <View style={[styles.viewportShell, workspace && styles.workspaceViewport]}>
+            <View style={styles.viewportShell}>
                 {frame?.screenshotDataUrl ? (
                     <TouchableWithoutFeedback onPress={clickFrame} disabled={busy}>
                         <View
-                            style={[
-                                styles.viewport,
-                                frame.viewport?.width > 0 &&
-                                    frame.viewport?.height > 0 && {
-                                        aspectRatio: frame.viewport.width / frame.viewport.height,
-                                    },
-                            ]}
+                            style={styles.viewport}
                             onLayout={event => setLayout(event.nativeEvent.layout)}
                             accessibilityLabel={translate('browser_takeover_viewport')}
                         >
@@ -159,7 +151,7 @@ export default function BrowserTakeoverPanel({ approval, onFinished, onCancelled
             </View>
 
             {!!frame?.title && <Text style={styles.pageTitle}>{frame.title}</Text>}
-            <Text style={[styles.focus, workspace && styles.workspaceHint]}>
+            <Text style={styles.focus}>
                 {frame?.focused
                     ? translate('browser_takeover_focused', {
                           field: passwordFocused
@@ -171,7 +163,7 @@ export default function BrowserTakeoverPanel({ approval, onFinished, onCancelled
 
             <View style={styles.inputRow}>
                 <TextInput
-                    style={[styles.input, workspace && styles.workspaceText]}
+                    style={styles.input}
                     value={typedText}
                     onChangeText={setTypedText}
                     placeholder={translate('browser_takeover_type_placeholder')}
@@ -181,7 +173,6 @@ export default function BrowserTakeoverPanel({ approval, onFinished, onCancelled
                     autoCorrect={false}
                     autoComplete="off"
                     importantForAutofill="no"
-                    accessibilityLabel={translate('browser_takeover_type_placeholder')}
                     editable={!busy}
                     onSubmitEditing={typeIntoPage}
                 />
@@ -221,10 +212,6 @@ export default function BrowserTakeoverPanel({ approval, onFinished, onCancelled
 }
 
 const styles = StyleSheet.create({
-    workspacePanel: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
-    workspaceViewport: { maxWidth: '100%' },
-    workspaceText: { color: colors.Text01 },
-    workspaceHint: { color: colors.Text02 },
     panel: {
         marginTop: 8,
         paddingTop: 8,

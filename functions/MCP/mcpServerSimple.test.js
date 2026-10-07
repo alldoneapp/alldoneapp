@@ -161,6 +161,15 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         return response.result.tools
     }
 
+    test('exposes the shared parent goal contract for create_task and update_task', async () => {
+        const tools = await listTools()
+        for (const name of ['create_task', 'update_task']) {
+            const tool = tools.find(entry => entry.name === name)
+            expect(tool.inputSchema.properties.parentGoalId.type).toEqual(['string', 'null'])
+            expect(tool.inputSchema.required).not.toContain('parentGoalId')
+        }
+    })
+
     test('derives get_contacts schema from the shared assistant tool schema', async () => {
         const tools = await listTools()
         const tool = tools.find(entry => entry.name === 'get_contacts')

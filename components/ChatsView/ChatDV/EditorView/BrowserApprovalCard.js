@@ -1,11 +1,10 @@
-import React, { useContext, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import BrowserTakeoverPanel from './BrowserTakeoverPanel'
-import AnnaBrowserTakeoverContext from '../../../Anna/AnnaBrowserTakeoverContext'
 
 // Required lazily, exactly like `linkedEmailActions`: a static import of the backend pulls the redux
 // store and the Firebase client into every suite that renders a chat message, which is how a card
@@ -50,7 +49,6 @@ function ActionButton({ label, onPress, disabled, secondary, danger }) {
 
 export default function BrowserApprovalCard({ projectId, objectId, commentId }) {
     const userId = useSelector(state => state.loggedUser.uid)
-    const workspaceTakeover = useContext(AnnaBrowserTakeoverContext)
     const [approvals, setApprovals] = useState([])
     const [submitting, setSubmitting] = useState('')
     const [outcome, setOutcome] = useState('')
@@ -84,15 +82,6 @@ export default function BrowserApprovalCard({ projectId, objectId, commentId }) 
             setSubmitting('')
         }
     }
-    const startTakeover = approval => {
-        setOutcome('')
-        if (workspaceTakeover) {
-            workspaceTakeover.open(approval, {
-                onFinished: () => setOutcome('browser_takeover_completed'),
-                onCancelled: () => setOutcome('browser_approval_denied'),
-            })
-        } else setActiveTakeover(approval)
-    }
 
     return (
         <View style={styles.card}>
@@ -109,12 +98,7 @@ export default function BrowserApprovalCard({ projectId, objectId, commentId }) 
                                 : ''}
                         </Text>
                     )}
-                    {workspaceTakeover?.approvalId === approval.approvalId ? (
-                        <View style={styles.actions}>
-                            <Text style={styles.outcome}>{translate('browser_takeover_in_workspace')}</Text>
-                            <ActionButton label={translate('Open browser')} onPress={() => startTakeover(approval)} />
-                        </View>
-                    ) : activeTakeover?.approvalId === approval.approvalId ? (
+                    {activeTakeover?.approvalId === approval.approvalId ? (
                         <BrowserTakeoverPanel
                             approval={activeTakeover}
                             onFinished={() => {
@@ -131,8 +115,11 @@ export default function BrowserApprovalCard({ projectId, objectId, commentId }) 
                             {approval.category === 'login' ? (
                                 <ActionButton
                                     label={translate('browser_takeover_start')}
-                                    onPress={() => startTakeover(approval)}
-                                    disabled={!!submitting || !!workspaceTakeover?.approvalId}
+                                    onPress={() => {
+                                        setOutcome('')
+                                        setActiveTakeover(approval)
+                                    }}
+                                    disabled={!!submitting}
                                 />
                             ) : (
                                 <ActionButton
