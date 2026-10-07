@@ -671,7 +671,7 @@ const buildProfilePanel = ({ strings, zIndex, actions }) => {
             backdrop.style.display = status === 'ready' ? 'none' : 'flex'
             const error = status === 'error' || status === 'save-error'
             const saving = status === 'saving' || status === 'save-error'
-            card.setAttribute('aria-busy', error ? 'false' : 'true')
+            card.setAttribute('aria-busy', status === 'loading' || status === 'saving' ? 'true' : 'false')
             heading.textContent = saving ? strings.saveHeading : strings.launchLoading
             message.textContent = saving
                 ? error
