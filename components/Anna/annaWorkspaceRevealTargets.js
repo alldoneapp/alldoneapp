@@ -1,5 +1,15 @@
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]+$/.test(value)
 
+// React Native Web replaces ScrollView's DOM node.scrollTo with its { x, y,
+// animated } API. Call the browser implementation directly so DOM coordinates
+// remain correct for both ScrollViews and ordinary elements, including cancel.
+export function scrollWorkspaceContainer(node, top, reducedMotion = false) {
+    const scrollTo = node.ownerDocument?.defaultView?.Element?.prototype.scrollTo
+    if (typeof scrollTo === 'function') {
+        scrollTo.call(node, { top, left: node.scrollLeft, behavior: reducedMotion ? 'instant' : 'smooth' })
+    } else node.scrollTop = top
+}
+
 // These markers are attached by Alldone to real rows and detail titles. A model
 // cannot supply selectors or select a different object with the same name.
 export function findWorkspaceObject(root, change) {
@@ -43,7 +53,7 @@ export function scrollWorkspaceObject(node, root, reducedMotion = false) {
         const top = Math.max(0, Math.min(parent.scrollHeight - parent.clientHeight, target))
         if (Math.abs(top - parent.scrollTop) > 1) {
             offset += top - parent.scrollTop
-            parent.scrollTo({ top, behavior: reducedMotion ? 'instant' : 'smooth' })
+            scrollWorkspaceContainer(parent, top, reducedMotion)
             scrolling.push(parent)
         }
     }

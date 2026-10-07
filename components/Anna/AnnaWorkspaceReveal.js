@@ -3,7 +3,12 @@ import { createPortal } from 'react-dom'
 import { getDb } from '../../utils/backends/firestore'
 import { translate } from '../../i18n/TranslationService'
 import { subscribePageVisible, subscribePageHidden } from '../../utils/appResume'
-import { findWorkspaceObject, scrollWorkspaceObject, workspaceObjectRect } from './annaWorkspaceRevealTargets'
+import {
+    findWorkspaceObject,
+    scrollWorkspaceContainer,
+    scrollWorkspaceObject,
+    workspaceObjectRect,
+} from './annaWorkspaceRevealTargets'
 
 // A short, serialized visual receipt for confirmed assistant mutations. Exact object
 // identities come from the mutation result, never from matching arbitrary page text.
@@ -27,7 +32,7 @@ export default function AnnaWorkspaceReveal({ rootRef, conversation, available, 
         const stopped = () => cancelled || document.hidden
         const interrupted = () => stopped() || interruptCurrent
         const stopScrolling = () => {
-            scrolling.forEach(node => node.scrollTo({ top: node.scrollTop, behavior: 'instant' }))
+            scrolling.forEach(node => scrollWorkspaceContainer(node, node.scrollTop, true))
             scrolling = []
         }
         const acknowledge = (change, status) => {

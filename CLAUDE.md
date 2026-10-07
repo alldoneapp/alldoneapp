@@ -1050,6 +1050,10 @@ never trigger a repeated write. Rows and detail titles expose `data-anna-object-
 and `data-anna-project-id`; new supported object views must use those same anchors.
 Coverage: `annaWorkspaceChanges.test.js`, `AnnaWorkspaceReveal.test.js`,
 `annaWorkspaceRevealTargets.test.js`, and `browser-tests/anna-workspace`.
+React Native Web replaces a ScrollView DOM node's `scrollTo` with its `{ x, y,
+animated }` API. Reveal and cancellation must call the browser prototype with
+`{ top, left, behavior }`; passing DOM options to the replaced method scrolls to
+zero. The browser harness must use a real `ScrollView`, not a plain div stand-in.
 
 **Popover Width Control (legacy, unmigrated modals)**: Most modals still use
 `applyPopoverWidth()` from `utils/HelperFunctions.js`, which applies an exact width per

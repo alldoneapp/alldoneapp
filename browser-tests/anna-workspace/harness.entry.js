@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { View } from 'react-native'
+import { ScrollView, View } from 'react-native'
 import { createRoot } from 'react-dom/client'
 import AnnaShell from '../../components/Anna/AnnaShell'
 import { setAnnaMode } from '../../utils/annaMode'
@@ -16,9 +16,10 @@ function Fixture() {
         <>
             <GlobalOverlayFixture dialog={dialog} notifications={notifications} closeDialog={() => setDialog(false)} />
             <AnnaShell routeId="fixture-note">
-                <div
-                    data-testid="workspace-scroll"
-                    style={{ flex: 1, minWidth: 0, padding: '32px', background: 'white', overflow: 'auto' }}
+                <ScrollView
+                    testID="workspace-scroll"
+                    style={{ flex: 1, minWidth: 0, backgroundColor: 'white' }}
+                    contentContainerStyle={{ padding: 32 }}
                 >
                     <span style={{ color: '#73827e', font: '14px Arial' }}>Launch / Task notes · editable fixture</span>
                     <h1 style={{ font: '28px Arial', color: '#243c38' }}>Prepare the launch</h1>
@@ -69,7 +70,7 @@ function Fixture() {
                             <div style={{ height: 380 }} />
                         </div>
                     )}
-                </div>
+                </ScrollView>
             </AnnaShell>
         </>
     )
