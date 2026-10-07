@@ -22,21 +22,24 @@ jest.mock('../../i18n/TranslationService', () => ({
     translate: (text, values) => text.replace('%{assistantName}', values.assistantName),
 }))
 const bounds = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height })
-let root, mount, workspace, onOpen, hidden
+let root, mount, workspace, onOpen, onComplete, hidden
 const cue = id => ({
     id,
     type: 'task',
     objectId: 't1',
     projectId: 'p1',
     change: 'created',
+    triggerMessageId: id,
     expiresAt: Date.now() + 120000,
 })
-const render = (changes, available = true, status = {}) =>
+const render = (changes, available = true, status = {}, workState = { busy: true, completedRequests: [] }) =>
     act(async () =>
         root.render(
             <AnnaWorkspaceReveal
                 rootRef={{ current: workspace }}
                 onOpen={onOpen}
+                onComplete={onComplete}
+                workState={workState}
                 available={available}
                 assistantName="Carl"
                 conversation={{
@@ -72,6 +75,7 @@ beforeEach(() => {
     document.body.append(mount, workspace)
     root = createRoot(mount)
     onOpen = jest.fn().mockResolvedValue(undefined)
+    onComplete = jest.fn().mockResolvedValue(undefined)
 })
 afterEach(() => {
     act(() => root.unmount())
@@ -129,6 +133,49 @@ it('does not replay acknowledged or expired results after a reload', async () =>
     addRow()
     await render([{ ...cue('old'), expiresAt: Date.now() - 1 }, cue('seen')], true, { seen: { status: 'shown' } })
     expect(onOpen).not.toHaveBeenCalled()
+})
+it('returns home only after the final highlight and successful completion of all displayed requests', async () => {
+    addRow()
+    const changes = [cue('one'), cue('two')]
+    await render(changes, true, {}, { busy: false, completedRequests: ['one', 'two'] })
+    await advance(3850)
+    expect(onComplete).not.toHaveBeenCalled()
+    await advance(3900)
+    expect(onComplete).toHaveBeenCalledTimes(1)
+    await render(changes, true, {}, { busy: false, completedRequests: ['one', 'two'] })
+    expect(onComplete).toHaveBeenCalledTimes(1)
+})
+it('waits after the highlight for the actual request to finish, not another request or a failed send', async () => {
+    addRow()
+    const changes = [cue('one')]
+    await render(changes)
+    await advance(3900)
+    await render(changes, true, {}, { busy: false, completedRequests: ['other'] })
+    expect(onComplete).not.toHaveBeenCalled()
+    await render(changes, true, {}, { busy: true, completedRequests: ['one'] })
+    expect(onComplete).not.toHaveBeenCalled()
+    await render(changes, true, {}, { busy: false, completedRequests: ['one'] })
+    expect(onComplete).toHaveBeenCalledTimes(1)
+})
+it('drops a pending return when the user takes control after a highlight', async () => {
+    addRow()
+    const changes = [cue('one')]
+    await render(changes)
+    await advance(3900)
+    await render(changes, false)
+    await render(changes, true, {}, { busy: false, completedRequests: ['one'] })
+    expect(onComplete).not.toHaveBeenCalled()
+})
+it('keeps legacy cues without a request identity open rather than guessing that their work finished', async () => {
+    addRow()
+    await render(
+        [{ ...cue('old'), triggerMessageId: undefined }],
+        true,
+        {},
+        { busy: false, completedRequests: ['old'] }
+    )
+    await advance(3900)
+    expect(onComplete).not.toHaveBeenCalled()
 })
 it('reports missing targets honestly and continues to the next cue', async () => {
     await render([cue('missing')])

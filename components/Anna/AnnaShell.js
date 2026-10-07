@@ -43,6 +43,7 @@ export default function AnnaShell({ children, routeId }) {
     const call = useVoiceCall()
     const [visited, setVisited] = useState(active)
     const [textBusy, setTextBusy] = useState(false)
+    const [workState, setWorkState] = useState(null)
     const { conversation, loading, error, retry, threads, resolveConversation, loadEarlier, nextBefore } =
         useAnnaConversation(user.uid, { enabled: active, user, hold: textBusy || call.status !== 'idle' })
     const resolvedAssistant = useSelector(state =>
@@ -77,6 +78,7 @@ export default function AnnaShell({ children, routeId }) {
     const browserRef = useRef(null)
     const nextBrowserRef = useRef(null)
     const requestGeneration = useRef(0)
+    const revealGeneration = useRef(0)
     const mobile = useMobilePane()
     const visibleWorkspace = active && (mobilePane === 'workspace' || !mobile)
 
@@ -311,6 +313,7 @@ export default function AnnaShell({ children, routeId }) {
     const openWorkspaceChange = useCallback(async (change, isCancelled) => {
         if (!isAnnaWorkspacePath(change.path) || controlRef.current || heldBrowser.current || isCancelled())
             throw new Error('Workspace is unavailable')
+        revealGeneration.current = requestGeneration.current
         setSurface('alldone')
         // Give the live list a moment to receive the committed row before
         // falling back to its detail screen (for filters or virtualized lists).
@@ -324,6 +327,26 @@ export default function AnnaShell({ children, routeId }) {
         if (!findWorkspaceObject(workspaceContent.current, change))
             await URLTrigger.processUrl(NavigationService.createNavigationProp(), change.path)
     }, [])
+
+    const returnWorkspaceHome = useCallback(async () => {
+        if (
+            controlRef.current ||
+            heldBrowser.current ||
+            document.hidden ||
+            revealGeneration.current !== requestGeneration.current
+        )
+            return
+        await URLTrigger.processUrl(NavigationService.createNavigationProp(), '/projects/tasks/open')
+    }, [])
+    const currentWorkState = {
+        busy:
+            textBusy ||
+            call.status !== 'idle' ||
+            workState?.projectId !== conversation?.projectId ||
+            workState?.chatId !== conversation?.id ||
+            workState?.busy !== false,
+        completedRequests: workState?.completedRequests || [],
+    }
 
     const interceptLink = event => {
         if (
@@ -373,24 +396,45 @@ export default function AnnaShell({ children, routeId }) {
             onClickCapture={interceptLink}
         >
             <header className="anna-header" hidden={!active}>
-                <div className="anna-header-assistant">
-                    <div className="anna-small-avatar">
+                <button
+                    type="button"
+                    className="anna-header-assistant"
+                    title={translate('Go to home')}
+                    aria-label={`${assistantName} – ${translate('Go to home')}`}
+                    onClick={() => {
+                        setWorkspaceControl(true)
+                        present({ id: `home-${Date.now()}`, view: 'link', path: '/projects/tasks/open', manual: true })
+                    }}
+                >
+                    <span className="anna-small-avatar">
                         {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
-                    </div>
-                    <div className="anna-header-details">
-                        <div className="anna-header-identity">
+                    </span>
+                    <span className="anna-header-details">
+                        <span className="anna-header-identity">
                             <strong className="anna-brand" title={assistantName}>
                                 {assistantName}
                             </strong>
                             {assistantDescription && <span title={assistantDescription}>{assistantDescription}</span>}
-                        </div>
-                    </div>
-                </div>
+                        </span>
+                    </span>
+                </button>
                 <nav className="anna-workspace-toolbar" aria-label={translate('Workspace')}>
-                    <button aria-pressed={surface === 'alldone'} onClick={() => setSurface('alldone')}>
+                    <button
+                        aria-pressed={surface === 'alldone'}
+                        onClick={() => {
+                            requestGeneration.current++
+                            setSurface('alldone')
+                        }}
+                    >
                         Alldone
                     </button>
-                    <button aria-pressed={surface === 'browser'} onClick={() => setSurface('browser')}>
+                    <button
+                        aria-pressed={surface === 'browser'}
+                        onClick={() => {
+                            requestGeneration.current++
+                            setSurface('browser')
+                        }}
+                    >
                         {translate('Browser')}
                     </button>
                 </nav>
@@ -456,6 +500,7 @@ export default function AnnaShell({ children, routeId }) {
                                     visible={active && (!mobile || mobilePane === 'chat')}
                                     onExpand={() => setMobilePane('chat')}
                                     onSendingChange={setTextBusy}
+                                    onWorkStateChange={setWorkState}
                                     onBeforeSend={resumeForMessage}
                                     pageContext={chatPageContext}
                                 />
@@ -540,6 +585,8 @@ export default function AnnaShell({ children, routeId }) {
                                     assistantName={assistantName}
                                     available={visibleWorkspace && !control && !browserControl}
                                     onOpen={openWorkspaceChange}
+                                    onComplete={returnWorkspaceHome}
+                                    workState={currentWorkState}
                                 />
                             )}
                             {visited && (

@@ -6,6 +6,7 @@ const runtime = {
     projectId: 'p1',
     objectType: 'topics',
     objectId: 'AnnaChat20261007u1',
+    messageId: 'request1',
 }
 const chatPath = 'chatObjects/p1/chats/AnnaChat20261007u1'
 const result = { success: true, taskId: 't1', projectId: 'p2' }
@@ -72,6 +73,7 @@ it('records the actual cross-project task only after checking the saved object a
             path: '/projects/p2/tasks/t1/properties',
             createdAt: 1000,
             expiresAt: 121000,
+            triggerMessageId: 'request1',
         }),
     ])
 })

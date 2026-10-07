@@ -9,6 +9,7 @@ import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
 import useAnnaContextNotices from './useAnnaContextNotices'
 import useAnnaMessageSends from './useAnnaMessageSends'
+import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
 import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
@@ -21,6 +22,7 @@ export default function AnnaConversation({
     call,
     onExpand,
     onSendingChange,
+    onWorkStateChange,
     threads = [],
     resolveConversation,
     loadEarlier,
@@ -247,6 +249,7 @@ export default function AnnaConversation({
                         )}
                         onRetry={retryMessage}
                         onAcknowledge={acknowledge}
+                        onWorkStateChange={onWorkStateChange}
                         onChange={messagesChanged}
                         onLoadEarlier={preservePosition}
                         visible={visible}
@@ -372,11 +375,16 @@ function AnnaThreadMessages({
     localMessages,
     onRetry,
     onAcknowledge,
+    onWorkStateChange,
 }) {
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [limit, setLimit] = useState(40)
     const chatId = thread.chatId || thread.id
     const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit)
+    const workStateKey = JSON.stringify(getAnnaWorkspaceWorkState(messages))
+    useEffect(() => {
+        if (current) onWorkStateChange?.({ projectId: thread.projectId, chatId, ...JSON.parse(workStateKey) })
+    }, [current, thread.projectId, chatId, workStateKey, onWorkStateChange])
     useAnnaMessageReadState(thread.projectId, chatId, scroll, messages, visible)
     const savedMessageIds = JSON.stringify(messages.map(message => message.id))
     const localMessageIds = JSON.stringify(localMessages.map(message => message.id))

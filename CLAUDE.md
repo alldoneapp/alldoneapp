@@ -1054,6 +1054,12 @@ React Native Web replaces a ScrollView DOM node's `scrollTo` with its `{ x, y,
 animated }` API. Reveal and cancellation must call the browser prototype with
 `{ top, left, behavior }`; passing DOM options to the replaced method scrolls to
 zero. The browser harness must use a real `ScrollView`, not a plain div stand-in.
+After the final reveal, return to Home (`/projects/tasks/open`) only once the
+persisted assistant runs for every cue's `triggerMessageId` are completed and no
+other work is running. An HTTP response or spinner timeout does not prove success.
+User interaction, zoom-in or hiding the workspace cancels the pending return;
+manual navigation/surface selection must not be overwritten. Keep assistant mode
+and the chat draft intact. Legacy cues without a request identity do not auto-return.
 
 **Popover Width Control (legacy, unmigrated modals)**: Most modals still use
 `applyPopoverWidth()` from `utils/HelperFunctions.js`, which applies an exact width per

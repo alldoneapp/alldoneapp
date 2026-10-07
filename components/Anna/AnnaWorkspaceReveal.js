@@ -12,10 +12,20 @@ import {
 
 // A short, serialized visual receipt for confirmed assistant mutations. Exact object
 // identities come from the mutation result, never from matching arbitrary page text.
-export default function AnnaWorkspaceReveal({ rootRef, conversation, available, onOpen, assistantName }) {
+export default function AnnaWorkspaceReveal({
+    rootRef,
+    conversation,
+    available,
+    onOpen,
+    onComplete,
+    workState,
+    assistantName,
+}) {
     const [shown, setShown] = useState(null)
     const latest = useRef(conversation)
     latest.current = conversation
+    const latestWork = useRef(workState)
+    latestWork.current = workState
     const seen = useRef(new Set())
     const wake = useRef(null)
     const docPath = conversation && `chatObjects/${conversation.projectId}/chats/${conversation.id}`
@@ -28,6 +38,7 @@ export default function AnnaWorkspaceReveal({ rootRef, conversation, available, 
         let current = null
         let scrolling = []
         let interruptCurrent = false
+        let displayed = []
         const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
         const stopped = () => cancelled || document.hidden
         const interrupted = () => stopped() || interruptCurrent
@@ -53,7 +64,25 @@ export default function AnnaWorkspaceReveal({ rootRef, conversation, available, 
                             !latest.current?.annaWorkspaceChangeStatus?.[item.id] &&
                             item.expiresAt > Date.now()
                     )
-                    if (!change) break
+                    if (!change) {
+                        const work = latestWork.current
+                        if (
+                            displayed.length &&
+                            !work?.busy &&
+                            displayed.every(
+                                item =>
+                                    item.triggerMessageId && work?.completedRequests?.includes(item.triggerMessageId)
+                            )
+                        ) {
+                            displayed = []
+                            try {
+                                await onComplete?.()
+                            } catch (_) {
+                                // Navigation is best effort; never repeat a saved mutation.
+                            }
+                        }
+                        break
+                    }
                     current = change
                     interruptCurrent = false
                     seen.current.add(change.id)
@@ -110,10 +139,12 @@ export default function AnnaWorkspaceReveal({ rootRef, conversation, available, 
                                 if (!interrupted()) setShown({ change, rect })
                             }
                         }
+                        if (!interrupted()) displayed.push(change)
                     } catch (_) {
                         if (!stopped()) acknowledge(change, 'unavailable')
                     } finally {
                         if (interrupted() && !cancelled) acknowledge(change, 'dismissed')
+                        if (interrupted()) displayed = []
                         if (!cancelled) setShown(null)
                         current = null
                     }
@@ -127,6 +158,7 @@ export default function AnnaWorkspaceReveal({ rootRef, conversation, available, 
         const stopVisible = subscribePageVisible(run)
         const stopHidden = subscribePageHidden(() => {
             interruptCurrent = true
+            displayed = []
             stopScrolling()
             setShown(null)
         })
@@ -140,10 +172,10 @@ export default function AnnaWorkspaceReveal({ rootRef, conversation, available, 
             if (current) acknowledge(current, 'dismissed')
             setShown(null)
         }
-    }, [available, docPath, onOpen])
+    }, [available, docPath, onOpen, onComplete])
     useEffect(() => {
         wake.current?.()
-    }, [queueKey])
+    }, [queueKey, workState])
 
     if (!shown || !available || document.hidden) return null
     const { rect, change } = shown

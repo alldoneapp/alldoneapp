@@ -86,6 +86,15 @@
     min-width: 0;
     gap: 12px;
     align-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--anna-ink);
+    text-align: left;
+}
+.anna-header-assistant:hover .anna-brand {
+    color: var(--anna-accent);
 }
 .anna-header-details {
     display: flex;
