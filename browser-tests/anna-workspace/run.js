@@ -144,17 +144,16 @@ async function checkImmediateSending(page, width) {
     await input.waitFor({ state: 'visible' })
     assert.equal(await page.locator('.anna-header').getByText('Take control', { exact: true }).count(), 0)
     if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
-    const taken = page.waitForEvent('console', {
-        predicate: message => message.text() === 'Anna fixture workspace control: user',
-    })
+    const controlChanges = []
+    const trackControl = message => {
+        if (message.text().startsWith('Anna fixture workspace control:')) controlChanges.push(message.text())
+    }
+    page.on('console', trackControl)
     await page.getByLabel('Workspace draft').click()
-    await page.getByLabel('Workspace draft').fill('Direct editing automatically pauses assistant changes')
-    await taken
+    await page.getByLabel('Workspace draft').fill('Direct editing keeps assistant changes available')
+    await page.getByLabel('Workspace draft').press('ArrowLeft')
+    await page.mouse.wheel(0, 100)
     if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
-    const released = page.waitForEvent('console', {
-        predicate: message => message.text() === 'Anna fixture workspace control: assistant',
-    })
-    released.catch(() => {})
     await input.fill('First quick message')
     await input.press('Enter')
     await page.getByText('First quick message', { exact: true }).waitFor({ timeout: 1000 })
@@ -166,8 +165,10 @@ async function checkImmediateSending(page, width) {
     await page.getByText('Second quick message', { exact: true }).waitFor({ timeout: 1000 })
     assert.equal(await input.evaluate(element => element === document.activeElement), true)
     await input.fill('A later draft that must survive')
+    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
+    await page.getByLabel('Workspace draft').fill('Editing while the assistant is working')
+    if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
     await page.screenshot({ path: path.join(BUILD, `immediate-send-${width}.png`) })
-    await released
     await page.getByText('Connection interrupted', { exact: false }).waitFor({ timeout: 20000 })
     assert.equal(await input.inputValue(), 'A later draft that must survive')
     assert.equal(await page.getByText('First quick message', { exact: true }).count(), 1)
@@ -178,6 +179,8 @@ async function checkImmediateSending(page, width) {
     assert.equal(await page.getByText('First quick message', { exact: true }).count(), 1)
     assert.equal(await page.getByText('Second quick message', { exact: true }).count(), 1)
     await page.screenshot({ path: path.join(BUILD, `sent-messages-${width}.png`) })
+    assert.deepEqual(controlChanges, [], 'Using Alldone must not acquire or release a workspace lock')
+    page.off('console', trackControl)
 }
 async function checkWorkspaceReveal(page, width) {
     await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&reveal=1`)
@@ -254,6 +257,70 @@ async function checkWorkspaceReveal(page, width) {
         `PASS ${width}px: real ScrollView reveal; home only after highlight and completed request; user interaction cancels return; drafts, assistant mode and reduced motion are preserved`
     )
 }
+async function selectWorkspaceSurface(page, surface, vmName) {
+    if (page.viewportSize().width <= 760) {
+        await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
+        await page.locator('.anna-workspace-switcher select').selectOption(surface)
+    } else {
+        await page
+            .locator('.anna-workspace-toolbar')
+            .getByRole('button', {
+                name: vmName || (surface === 'alldone' ? 'Alldone' : 'Browser'),
+                exact: !vmName,
+            })
+            .click()
+    }
+}
+async function assertSelectedSurface(page, surface) {
+    if (page.viewportSize().width <= 760) {
+        assert.equal(await page.locator('.anna-workspace-switcher select').inputValue(), surface)
+    } else {
+        assert.equal(
+            await page
+                .locator('.anna-workspace-toolbar')
+                .getByText(surface === 'alldone' ? 'Alldone' : 'Browser', { exact: true })
+                .getAttribute('aria-pressed'),
+            'true'
+        )
+    }
+}
+async function assertBelowSelector(page, locator) {
+    if (page.viewportSize().width > 760) return
+    const selector = await page.locator('.anna-workspace-switcher').boundingBox()
+    const target = await locator.boundingBox()
+    assert.ok(target.y >= selector.y + selector.height, 'Floating picker must not cover surface controls or titles')
+}
+async function checkSurfaceSelectorLayout(page, width) {
+    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&vm=1`)
+    await page.getByLabel('Message Carl Code Mentor').fill('Keep this mobile draft')
+    const selector = page.locator('.anna-workspace-switcher')
+    if (width > 760) {
+        assert.equal(await selector.count(), 0)
+        assert.equal(await page.locator('.anna-header .anna-workspace-toolbar').isVisible(), true)
+        return
+    }
+    assert.equal(await selector.count(), 0, 'No workspace selector over the chat')
+    assert.equal(await page.locator('.anna-header .anna-workspace-toolbar').count(), 0)
+    assert.ok((await page.locator('.anna-header').boundingBox()).height <= 80, 'Only one header row')
+    await page.screenshot({ path: path.join(BUILD, `compact-chat-${width}.png`) })
+    await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
+    const bounds = await selector.boundingBox()
+    const stage = await page.locator('.anna-stage').boundingBox()
+    assert.ok(
+        Math.abs(bounds.y - stage.y - 8) <= 1 && Math.abs(stage.x + stage.width - bounds.x - bounds.width - 12) <= 1
+    )
+    assert.ok(bounds.height >= 44, 'Touch target remains comfortable')
+    assert.equal(await selector.evaluate(node => getComputedStyle(node).position), 'absolute')
+    assert.equal(await selector.locator('option').count(), 4, 'Alldone, Browser and both VMs')
+    await page.screenshot({ path: path.join(BUILD, `floating-workspace-${width}.png`) })
+    await page.keyboard.press('Tab')
+    assert.equal(await selector.locator('select').evaluate(node => node === document.activeElement), true)
+    await selector.locator('select').selectOption('browser')
+    await assertSelectedSurface(page, 'browser')
+    await page.getByRole('button', { name: 'Zoom in Alldone', exact: true }).click()
+    assert.equal(await selector.count(), 0, 'Fullscreen Alldone has no floating selector')
+    console.info(`PASS ${width}px: one header row; floating native selector, keyboard focus and fullscreen`)
+}
 async function checkBrowserLogin(page, width) {
     let captures = 0
     const countCapture = message => {
@@ -273,10 +340,10 @@ async function checkBrowserLogin(page, width) {
     const frame = await login.getByLabel('browser_takeover_viewport').boundingBox()
     const pane = await page.locator('.anna-browser-surface').boundingBox()
     assert.ok(frame.width > pane.width * 0.85, 'The login browser should use the main pane width')
+    await assertBelowSelector(page, input)
     await input.fill('Fixture private input')
-    const toolbar = page.locator('.anna-workspace-toolbar')
-    await toolbar.getByRole('button', { name: 'Alldone', exact: true }).click()
-    await toolbar.getByRole('button', { name: 'Browser', exact: true }).click()
+    await selectWorkspaceSurface(page, 'alldone')
+    await selectWorkspaceSurface(page, 'browser')
     assert.equal(await input.inputValue(), 'Fixture private input', 'Pane changes preserve the same controller')
     if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
     assert.equal(await chat.inputValue(), 'Keep my chat draft')
@@ -309,14 +376,19 @@ async function checkVmWorkspace(page, width) {
     await chat.fill('Keep this unsent message')
     if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
     await page.getByLabel('Workspace draft').fill('Keep the workspace edit')
-    const vmTab = page.getByRole('button', { name: /^VM: Prepare the launch report/ })
-    await vmTab.click()
+    const selectVm = () => selectWorkspaceSurface(page, 'vm:vm1', /^VM: Prepare the launch report/)
+    await selectVm()
     await page.locator('.anna-vm-terminal pre').waitFor({ state: 'visible' })
+    await assertBelowSelector(page, page.locator('.anna-vm-surface:not(.anna-surface-hidden) h2'))
+    await assertBelowSelector(page, page.locator('.anna-vm-surface:not(.anna-surface-hidden) .anna-vm-task-link'))
     assert.match(await page.locator('.anna-vm-terminal pre').textContent(), /Reading launch.md/)
     assert.equal(await page.getByLabel('Workspace draft').isVisible(), false)
     await page.evaluate(() => window.__annaVmFixture('running', '💻 npm test\nChecking the report output…'))
     await page.getByText('💻 npm test\nChecking the report output…', { exact: true }).waitFor()
-    assert.equal(await page.locator('.anna-vm-tab').count(), 2)
+    assert.equal(
+        await page.locator(width <= 760 ? '.anna-workspace-switcher option[value^="vm:"]' : '.anna-vm-tab').count(),
+        2
+    )
     const bounds = await page.locator('.anna-vm-terminal').boundingBox()
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
@@ -324,8 +396,8 @@ async function checkVmWorkspace(page, width) {
     await page.evaluate(() => window.__annaVmFixture('awaiting_user', 'Please review the plan.'))
     await page.getByText('Request changes', { exact: true }).click()
     await page.getByPlaceholder('What should change in the plan?').fill('Keep this feedback draft')
-    await page.locator('.anna-workspace-toolbar').getByText('Browser', { exact: true }).click()
-    await vmTab.click()
+    await selectWorkspaceSurface(page, 'browser')
+    await selectVm()
     assert.equal(
         await page.getByPlaceholder('What should change in the plan?').inputValue(),
         'Keep this feedback draft'
@@ -335,7 +407,7 @@ async function checkVmWorkspace(page, width) {
     await page.evaluate(() => window.__annaVmFixture('completed', 'The launch report is ready.'))
     await page.getByText('The launch report is ready.', { exact: true }).waitFor()
     assert.equal(await page.locator('.anna-vm-terminal').count(), 0)
-    await page.locator('.anna-workspace-toolbar').getByText('Alldone', { exact: true }).click()
+    await selectWorkspaceSurface(page, 'alldone')
     assert.equal(await page.getByLabel('Workspace draft').inputValue(), 'Keep the workspace edit')
     if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
     assert.equal(await chat.inputValue(), 'Keep this unsent message')
@@ -347,23 +419,23 @@ async function checkBrowserReturn(page, width) {
     await page.getByLabel('Message Carl Code Mentor').fill('Unsent chat draft')
     if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
     await page.getByLabel('Workspace draft').fill('Unsent Alldone edit')
-    const alldone = page.locator('.anna-workspace-toolbar').getByText('Alldone', { exact: true })
-    const browser = page.locator('.anna-workspace-toolbar').getByText('Browser', { exact: true })
     await page.evaluate(() => window.__annaBrowserFixture('running'))
     await page.locator('.anna-browser-workspace').waitFor({ state: 'visible' })
-    assert.equal(await browser.getAttribute('aria-pressed'), 'true')
+    await assertBelowSelector(page, page.locator('.anna-browser-heading button'))
+    if (width <= 760) await page.screenshot({ path: path.join(BUILD, `floating-browser-${width}.png`) })
+    await assertSelectedSurface(page, 'browser')
     await page.evaluate(() => window.__annaBrowserFixture('awaiting_user'))
-    assert.equal(await browser.getAttribute('aria-pressed'), 'true')
+    await assertSelectedSurface(page, 'browser')
     await page.evaluate(() => window.__annaBrowserFixture('completed'))
     await page.getByLabel('Workspace draft').waitFor({ state: 'visible' })
-    assert.equal(await alldone.getAttribute('aria-pressed'), 'true')
+    await assertSelectedSurface(page, 'alldone')
     assert.equal(await page.getByLabel('Workspace draft').inputValue(), 'Unsent Alldone edit')
     // The same browser session may serve a later request; a human gesture then keeps it open.
     await page.evaluate(() => window.__annaBrowserFixture('running', 'browse2'))
     await page.locator('.anna-browser-heading strong').click()
     await page.evaluate(() => window.__annaBrowserFixture('completed', 'browse2'))
-    assert.equal(await browser.getAttribute('aria-pressed'), 'true')
-    await alldone.click()
+    await assertSelectedSurface(page, 'browser')
+    await selectWorkspaceSurface(page, 'alldone')
     if (width <= 760) await page.locator('.anna-mobile-tabs').getByText('Chat', { exact: true }).click()
     assert.equal(await page.getByLabel('Message Carl Code Mentor').inputValue(), 'Unsent chat draft')
     console.info(`PASS ${width}px: browser returns on completion, preserves drafts and respects human interaction`)
@@ -434,10 +506,28 @@ async function main() {
         ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}),
     })
     try {
-        for (const width of [1440, 1024, 390]) {
+        for (const width of process.env.FLOATING_WORKSPACE_ONLY ? [1440, 1024, 390, 320] : [1440, 1024, 390]) {
             const page = await browser.newPage({ viewport: { width, height: 900 } })
             const errors = []
             page.on('pageerror', error => errors.push(error.message))
+            if (process.env.FLOATING_WORKSPACE_ONLY) {
+                await checkSurfaceSelectorLayout(page, width)
+                await checkBrowserReturn(page, width)
+                await checkVmWorkspace(page, width)
+                await checkBrowserLogin(page, width)
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
+            if (process.env.SHARED_WORKSPACE_ONLY) {
+                await checkImmediateSending(page, width)
+                await checkWorkspaceReveal(page, width)
+                await checkBrowserLogin(page, width)
+                assert.deepEqual(errors, [])
+                console.info(`PASS ${width}px: workspace editing keeps assistant work available without locks`)
+                await page.close()
+                continue
+            }
             await checkDictation(page, width)
             if (process.env.DICTATION_ONLY) {
                 assert.deepEqual(errors, [])

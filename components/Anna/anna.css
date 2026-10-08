@@ -716,6 +716,7 @@
 .anna-conversation,
 .anna-header,
 .anna-workspace-toolbar,
+.anna-workspace-switcher,
 .anna-browser-surface,
 .anna-pending {
     font-family: Roboto, Arial, sans-serif;
@@ -749,6 +750,9 @@
 }
 .anna-zoom-shell .anna-workspace-content > * {
     min-width: 0;
+}
+.anna-zoom-active .anna-workspace {
+    padding-inline: clamp(12px, 2vw, 24px);
 }
 .anna-zoom-active .anna-workspace-content {
     /* Inline fixed dialogs belong to Alldone, including its navigation. Body
@@ -1025,13 +1029,51 @@
         gap: 12px;
         padding: 12px;
     }
-    .anna-header .anna-workspace-toolbar {
-        order: 3;
-        grid-column: 1 / -1;
+    .anna-workspace-switcher {
+        position: absolute;
+        top: 8px;
+        right: 12px;
+        z-index: 2;
+        max-width: min(240px, 60%);
+        border: 1px solid var(--anna-border);
+        border-radius: 12px;
+        background: #fff;
+        color: var(--anna-ink);
+        box-shadow: 0 3px 12px rgba(30, 41, 59, 0.12);
+    }
+    .anna-workspace-switcher-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 44px;
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    .anna-workspace-switcher-label > span:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .anna-workspace-switcher select {
+        position: absolute;
+        inset: 0;
         width: 100%;
-        max-width: 100%;
-        margin-left: 0;
-        flex-wrap: nowrap;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        font: inherit;
+        font-size: 16px;
+    }
+    .anna-workspace-switcher:focus-within {
+        outline: 2px solid var(--anna-accent);
+        outline-offset: 2px;
+    }
+    /* These surfaces own their headings; leave their controls below the floating picker. */
+    .anna-vm-heading,
+    .anna-browser-workspace,
+    .anna-browser-takeover,
+    .anna-browser-surface .anna-empty {
+        padding-top: 64px;
     }
 
     .anna-header-assistant {

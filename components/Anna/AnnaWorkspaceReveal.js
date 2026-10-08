@@ -162,12 +162,24 @@ export default function AnnaWorkspaceReveal({
             stopScrolling()
             setShown(null)
         })
+        // Direct editing cancels only this visual receipt and its return-home
+        // navigation. It never takes ownership or blocks the assistant's work.
+        const interruptPresentation = () => {
+            interruptCurrent = true
+            displayed = []
+            stopScrolling()
+            setShown(null)
+        }
+        const root = rootRef.current
+        const interactionEvents = ['pointerdown', 'keydown', 'wheel']
+        interactionEvents.forEach(type => root?.addEventListener(type, interruptPresentation, true))
         run()
         return () => {
             cancelled = true
             wake.current = null
             stopVisible()
             stopHidden()
+            interactionEvents.forEach(type => root?.removeEventListener(type, interruptPresentation, true))
             stopScrolling()
             if (current) acknowledge(current, 'dismissed')
             setShown(null)

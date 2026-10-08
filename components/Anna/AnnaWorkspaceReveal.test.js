@@ -102,7 +102,7 @@ it('waits for the saved object to mount before confirming, then fades out withou
     await advance(3700)
     expect(document.querySelector('.anna-reveal-ring')).toBeNull()
 })
-it('defers navigation during direct user editing or on the hidden mobile workspace and cancels when the user intervenes', async () => {
+it('defers navigation on a hidden or unavailable workspace and cancels when it becomes unavailable', async () => {
     addRow()
     const changes = [cue('one')]
     await render(changes, false)
@@ -157,12 +157,31 @@ it('waits after the highlight for the actual request to finish, not another requ
     await render(changes, true, {}, { busy: false, completedRequests: ['one'] })
     expect(onComplete).toHaveBeenCalledTimes(1)
 })
-it('drops a pending return when the user takes control after a highlight', async () => {
+it.each(['pointerdown', 'keydown', 'wheel'])(
+    'cancels only the current reveal on %s and still shows later changes',
+    async eventName => {
+        addRow()
+        const changes = [cue('one')]
+        await render(changes)
+        expect(document.querySelector('.anna-reveal-ring')).toBeTruthy()
+        act(() => workspace.dispatchEvent(new Event(eventName, { bubbles: true })))
+        expect(document.querySelector('.anna-reveal-ring')).toBeNull()
+        await advance(250)
+        expect(mockUpdate).toHaveBeenCalledWith({
+            'annaWorkspaceChangeStatus.one': expect.objectContaining({ status: 'dismissed' }),
+        })
+        await render([...changes, cue('two')])
+        expect(document.querySelector('.anna-reveal-ring')).toBeTruthy()
+        expect(onOpen).toHaveBeenCalledTimes(2)
+    }
+)
+
+it('drops a pending return when the user edits after a highlight', async () => {
     addRow()
     const changes = [cue('one')]
     await render(changes)
     await advance(3900)
-    await render(changes, false)
+    act(() => workspace.dispatchEvent(new Event('pointerdown', { bubbles: true })))
     await render(changes, true, {}, { busy: false, completedRequests: ['one'] })
     expect(onComplete).not.toHaveBeenCalled()
 })

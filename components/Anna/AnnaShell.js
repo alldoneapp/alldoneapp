@@ -75,7 +75,6 @@ export default function AnnaShell({ children, routeId }) {
         selectedRunId: selectedVmId,
     })
     const selectedVm = vmJobs.find(job => job.id === selectedVmId)
-    const [control, setControl] = useState(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
     const browserCompleted = useAnnaBrowserCompletion(browser)
@@ -83,7 +82,6 @@ export default function AnnaShell({ children, routeId }) {
     const [browserTakeover, setBrowserTakeover] = useState(null)
     const takeoverRef = useRef(null)
     const [resumeRequest, setResumeRequest] = useState(null)
-    const controlWrite = useRef(false)
     const browserWorkspace = useRef(null)
     const [pending, setPending] = useState(null)
     const [workspacePage, setWorkspacePage] = useState(null)
@@ -93,7 +91,6 @@ export default function AnnaShell({ children, routeId }) {
     const workspaceContent = useRef(null)
     useWorkspaceViewportOwner(workspaceContent, active)
     const layout = useRef(null)
-    const controlRef = useRef(false)
     const presentationSeen = useRef(new Set())
     const browserSeen = useRef(null)
     const heldBrowser = useRef(false)
@@ -103,6 +100,18 @@ export default function AnnaShell({ children, routeId }) {
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
     const visibleWorkspace = active && (mobilePane === 'workspace' || !mobile)
+    const selectSurface = nextSurface => {
+        requestGeneration.current++
+        setSurface(nextSurface)
+        setMobilePane('workspace')
+    }
+    const surfaceLabel = selectedVmId
+        ? selectedVm
+            ? `VM · ${selectedVm.title}`
+            : 'VM'
+        : surface === 'browser'
+          ? translate('Browser')
+          : 'Alldone'
     const returnFromBrowser = useCallback(runId => {
         const followed = followedBrowser.current
         if (
@@ -150,17 +159,6 @@ export default function AnnaShell({ children, routeId }) {
     }, [active])
     useEffect(() => {
         if (!visited || !user.uid) return
-        const stopControl = getDb()
-            .doc(`users/${user.uid}/private/annaWorkspace`)
-            .onSnapshot(
-                snapshot => {
-                    if (controlWrite.current) return
-                    const held = snapshot.data()?.control === 'user'
-                    controlRef.current = held
-                    setControl(held)
-                },
-                () => {}
-            )
         const stopBrowser = getDb()
             .doc(`users/${user.uid}/private/annaBrowser`)
             .onSnapshot(
@@ -174,7 +172,6 @@ export default function AnnaShell({ children, routeId }) {
                     if (key && browserSeen.current !== key) {
                         browserSeen.current = key
                         if (
-                            !controlRef.current &&
                             !surfaceRef.current.startsWith('vm:') &&
                             Date.now() - Number(next.updatedAt || 0) < 120000
                         ) {
@@ -186,13 +183,12 @@ export default function AnnaShell({ children, routeId }) {
                 () => {}
             )
         return () => {
-            stopControl()
             stopBrowser()
         }
     }, [visited, user.uid])
 
     const resumeWork = useCallback(
-        (context, surfaceName = 'alldone') => {
+        (context, surfaceName = 'browser') => {
             if (!context) return
             // The ongoing voice conversation can continue using the released surface. Do not
             // enqueue a second text execution after that call has already handled the hand-back.
@@ -200,11 +196,7 @@ export default function AnnaShell({ children, routeId }) {
             const daily =
                 ['topics', 'chats'].includes(context.objectType) &&
                 (context.objectId === `anna_${user.uid}` || context.objectId?.startsWith('AnnaChat'))
-            const text = translate(
-                surfaceName === 'browser'
-                    ? 'I have returned browser control to you. Please continue my current request.'
-                    : 'I have returned Alldone control to you. Please continue my current request.'
-            )
+            const text = translate('I have returned browser control to you. Please continue my current request.')
             setResumeRequest({
                 id: `${context.at}-${surfaceName}`,
                 surface: surfaceName,
@@ -220,65 +212,16 @@ export default function AnnaShell({ children, routeId }) {
         },
         [user.uid, call.status]
     )
-    const setWorkspaceControl = useCallback(
-        async (held, { force = false } = {}) => {
-            // A message can arrive while the user's preceding workspace click is
-            // still taking control. Finish that write before handing control back.
-            while (controlWrite.current) await controlWrite.current
-            if (!user.uid) return false
-            if (controlRef.current === held && !force) return true
-            const previous = controlRef.current
-            controlRef.current = held
-            setControl(held)
-            const write = (async () => {
-                try {
-                    const ref = getDb().doc(`users/${user.uid}/private/annaWorkspace`)
-                    await getDb().runTransaction(async tx => {
-                        await tx.get(ref)
-                        tx.set(
-                            ref,
-                            {
-                                control: held ? 'user' : 'assistant',
-                                page: sanitizeCallPageContext({
-                                    path: window.location.pathname,
-                                    title: document.title,
-                                }),
-                                ...(!held ? { blocked: null } : {}),
-                                updatedAt: Date.now(),
-                            },
-                            { merge: true }
-                        )
-                    })
-                    return true
-                } catch (_) {
-                    controlRef.current = previous
-                    setControl(previous)
-                    setNavigationError(translate('Could not change workspace control. Please try again.'))
-                    return false
-                }
-            })()
-            controlWrite.current = write
-            try {
-                return await write
-            } finally {
-                if (controlWrite.current === write) controlWrite.current = false
-            }
-        },
-        [user.uid]
-    )
     const resumeForMessage = useCallback(async () => {
         setNavigationError('')
-        // A new message or voice call returns the workspace automatically.
+        // A new message or voice call returns the shared browser automatically.
         // That request is the continuation; do not post another chat message.
         setResumeRequest(null)
-        if (!(await setWorkspaceControl(false, { force: true }))) {
-            throw new Error(translate('Could not change workspace control. Please try again.'))
-        }
         // Chat remains usable, but only the login controller may hand back its session.
         if (takeoverRef.current) return
         if (heldBrowser.current && !browserWorkspace.current) throw new Error(translate('The browser is unavailable.'))
         await browserWorkspace.current?.releaseControl()
-    }, [setWorkspaceControl])
+    }, [])
     const acknowledge = useCallback(
         (presentation, status) => {
             if (!conversation || (presentation.manual && conversation.annaPresentation?.id !== presentation.id)) return
@@ -325,7 +268,7 @@ export default function AnnaShell({ children, routeId }) {
         presentationSeen.current.add(presentation.id)
         const fresh = Date.now() - Number(presentation.createdAt || 0) < 120000
         if (!fresh && conversation?.annaPresentationStatus?.id === presentation.id) return
-        if (!active || controlRef.current || browserControl || browserTakeover || selectedVmId) {
+        if (!active || browserControl || browserTakeover || selectedVmId) {
             setPending(presentation)
             acknowledge(presentation, 'deferred')
         } else present(presentation)
@@ -364,18 +307,6 @@ export default function AnnaShell({ children, routeId }) {
                 await getDb()
                     .doc(`chatObjects/${conversation.projectId}/chats/${conversation.id}`)
                     .update({ annaPageContext: context })
-                if (controlRef.current)
-                    await getDb()
-                        .doc(`users/${user.uid}/private/annaWorkspace`)
-                        .set(
-                            {
-                                page: sanitizeCallPageContext({
-                                    path: window.location.pathname,
-                                    title: document.title,
-                                }),
-                            },
-                            { merge: true }
-                        )
                 if (!stopped) previous = key
             } catch (_) {
                 /* Retry fresh context only. */
@@ -403,7 +334,6 @@ export default function AnnaShell({ children, routeId }) {
     const openWorkspaceChange = useCallback(async (change, isCancelled) => {
         if (
             !isAnnaWorkspacePath(change.path) ||
-            controlRef.current ||
             heldBrowser.current ||
             takeoverRef.current ||
             surfaceRef.current.startsWith('vm:') ||
@@ -417,13 +347,7 @@ export default function AnnaShell({ children, routeId }) {
         const deadline = Date.now() + 600
         while (!findWorkspaceObject(workspaceContent.current, change) && Date.now() < deadline) {
             await new Promise(resolve => setTimeout(resolve, 75))
-            if (
-                controlRef.current ||
-                heldBrowser.current ||
-                takeoverRef.current ||
-                surfaceRef.current.startsWith('vm:') ||
-                isCancelled()
-            )
+            if (heldBrowser.current || takeoverRef.current || surfaceRef.current.startsWith('vm:') || isCancelled())
                 throw new Error('Workspace is unavailable')
         }
         // Keep the current list when its row exists; details are the fallback for
@@ -434,7 +358,6 @@ export default function AnnaShell({ children, routeId }) {
 
     const returnWorkspaceHome = useCallback(async () => {
         if (
-            controlRef.current ||
             heldBrowser.current ||
             takeoverRef.current ||
             document.hidden ||
@@ -471,9 +394,6 @@ export default function AnnaShell({ children, routeId }) {
         event.stopPropagation()
         present({ path, id: `link-${Date.now()}`, view: 'link', manual: true })
     }
-    const takeControl = () => {
-        if (visited) setWorkspaceControl(true)
-    }
     const photo = assistant.photoURL || assistant.photoURL300 || assistant.photoURL50
     const currentBrowserPage = browserPage?.runId === browser?.runId ? browserPage : browser
     const chatPageContext = !active
@@ -509,7 +429,6 @@ export default function AnnaShell({ children, routeId }) {
                     title={translate('Go to home')}
                     aria-label={`${assistantName} – ${translate('Go to home')}`}
                     onClick={() => {
-                        setWorkspaceControl(true)
                         present({ id: `home-${Date.now()}`, view: 'link', path: '/projects/tasks/open', manual: true })
                     }}
                 >
@@ -525,48 +444,34 @@ export default function AnnaShell({ children, routeId }) {
                         </span>
                     </span>
                 </button>
-                <nav className="anna-workspace-toolbar" aria-label={translate('Workspace')}>
-                    <button
-                        aria-pressed={surface === 'alldone'}
-                        onClick={() => {
-                            requestGeneration.current++
-                            setSurface('alldone')
-                        }}
-                    >
-                        Alldone
-                    </button>
-                    <button
-                        aria-pressed={surface === 'browser'}
-                        onClick={() => {
-                            requestGeneration.current++
-                            setSurface('browser')
-                        }}
-                    >
-                        {translate('Browser')}
-                    </button>
-                    {vmJobs.map(job => (
-                        <button
-                            key={job.id}
-                            className="anna-vm-tab"
-                            aria-pressed={selectedVmId === job.id}
-                            title={`${job.title} — ${vmStatusLabel(job.status)}`}
-                            aria-label={`VM: ${job.title} — ${vmStatusLabel(job.status)}`}
-                            onClick={() => {
-                                requestGeneration.current++
-                                setSurface(`vm:${job.id}`)
-                                setMobilePane('workspace')
-                            }}
-                        >
-                            <span className={`anna-vm-dot anna-vm-dot-${job.status}`} aria-hidden="true" />
-                            <span>VM · {job.title}</span>
+                {!mobile && (
+                    <nav className="anna-workspace-toolbar" aria-label={translate('Workspace')}>
+                        <button aria-pressed={surface === 'alldone'} onClick={() => selectSurface('alldone')}>
+                            Alldone
                         </button>
-                    ))}
-                    {vmError && (
-                        <button onClick={retryVms} title={translate('vm_workspace_list_error')}>
-                            {translate('vm_workspace_retry')}
+                        <button aria-pressed={surface === 'browser'} onClick={() => selectSurface('browser')}>
+                            {translate('Browser')}
                         </button>
-                    )}
-                </nav>
+                        {vmJobs.map(job => (
+                            <button
+                                key={job.id}
+                                className="anna-vm-tab"
+                                aria-pressed={selectedVmId === job.id}
+                                title={`${job.title} — ${vmStatusLabel(job.status)}`}
+                                aria-label={`VM: ${job.title} — ${vmStatusLabel(job.status)}`}
+                                onClick={() => selectSurface(`vm:${job.id}`)}
+                            >
+                                <span className={`anna-vm-dot anna-vm-dot-${job.status}`} aria-hidden="true" />
+                                <span>VM · {job.title}</span>
+                            </button>
+                        ))}
+                        {vmError && (
+                            <button onClick={retryVms} title={translate('vm_workspace_list_error')}>
+                                {translate('vm_workspace_retry')}
+                            </button>
+                        )}
+                    </nav>
+                )}
                 <button
                     className="anna-zoom-back"
                     aria-label={translate('Zoom in Alldone')}
@@ -618,11 +523,7 @@ export default function AnnaShell({ children, routeId }) {
                                     resolveConversation={resolveConversation}
                                     loadEarlier={loadEarlier}
                                     hasEarlier={nextBefore != null}
-                                    resumeRequest={
-                                        (resumeRequest?.surface === 'browser' ? browserControl : control)
-                                            ? null
-                                            : resumeRequest
-                                    }
+                                    resumeRequest={browserControl ? null : resumeRequest}
                                     onResumeHandled={id =>
                                         setResumeRequest(current => (current?.id === id ? null : current))
                                     }
@@ -671,6 +572,37 @@ export default function AnnaShell({ children, routeId }) {
                     aria-hidden={active && mobile && mobilePane !== 'workspace'}
                     inert={active && mobile && mobilePane !== 'workspace' ? '' : undefined}
                 >
+                    {mobile && visibleWorkspace && (
+                        <div className="anna-workspace-switcher">
+                            <span className="anna-workspace-switcher-label" aria-hidden="true">
+                                <span>{surfaceLabel}</span>
+                                <Icon name="chevron-down" size={16} color="currentColor" />
+                            </span>
+                            <select
+                                aria-label={translate('Workspace')}
+                                title={surfaceLabel}
+                                value={surface}
+                                onChange={event => {
+                                    if (event.target.value === 'retry-vms') retryVms()
+                                    else selectSurface(event.target.value)
+                                }}
+                            >
+                                <option value="alldone">Alldone</option>
+                                <option value="browser">{translate('Browser')}</option>
+                                {vmJobs.map(job => (
+                                    <option key={job.id} value={`vm:${job.id}`}>
+                                        {`VM · ${job.title} — ${vmStatusLabel(job.status)}`}
+                                    </option>
+                                ))}
+                                {selectedVmId && !selectedVm && (
+                                    <option value={surface} disabled>
+                                        VM
+                                    </option>
+                                )}
+                                {vmError && <option value="retry-vms">{translate('vm_workspace_retry')}</option>}
+                            </select>
+                        </div>
+                    )}
                     {active && pending && (
                         <div className="anna-pending" role="status">
                             <span>
@@ -699,26 +631,14 @@ export default function AnnaShell({ children, routeId }) {
                         aria-hidden={active && surface !== 'alldone'}
                         inert={active && surface !== 'alldone' ? '' : undefined}
                     >
-                        <div
-                            className="anna-workspace-content"
-                            ref={workspaceContent}
-                            onPointerDownCapture={takeControl}
-                            onKeyDownCapture={takeControl}
-                            onWheelCapture={takeControl}
-                        >
+                        <div className="anna-workspace-content" ref={workspaceContent}>
                             {children}
                             {visited && (
                                 <AnnaWorkspaceReveal
                                     rootRef={workspaceContent}
                                     conversation={conversation}
                                     assistantName={assistantName}
-                                    available={
-                                        visibleWorkspace &&
-                                        !control &&
-                                        !browserControl &&
-                                        !browserTakeover &&
-                                        !selectedVmId
-                                    }
+                                    available={visibleWorkspace && !browserControl && !browserTakeover && !selectedVmId}
                                     onOpen={openWorkspaceChange}
                                     onComplete={returnWorkspaceHome}
                                     workState={currentWorkState}
