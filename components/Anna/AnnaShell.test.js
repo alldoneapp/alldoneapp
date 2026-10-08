@@ -425,7 +425,9 @@ it.each(['desktop', 'mobile'])(
             expect(mockBrowserProps.active).toBe(false)
             login.value = 'Unsent private input'
             finishBrowsing('completed')
-            expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+            if (device === 'mobile')
+                expect(document.querySelector('.anna-workspace-switcher select').value).toBe('browser')
+            else expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
             // The original request card can unmount; only the shell owns the controller.
             view.rerender(
                 <AnnaShell routeId={2}>
@@ -475,79 +477,39 @@ it('passes page changes to the conversation instead of the header', async () => 
     }
 })
 
-it('hands both surfaces back for a new message without queueing a second continuation', async () => {
+it('releases the browser for a new message without an Alldone control transaction or duplicate continuation', async () => {
     render(content(1))
     await act(async () =>
         screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
     )
-    mockTransactionState = {
-        blocked: { projectId: 'p1', objectId: 'anna_u1', objectType: 'topics', assistantId: 'a1', at: 456 },
-    }
     act(() => mockBrowserProps.onControlChange(true))
     await act(async () => mockConversationProps.onBeforeSend())
-    expect(mockSet).toHaveBeenLastCalledWith(
-        expect.anything(),
-        expect.objectContaining({ control: 'assistant', blocked: null }),
-        { merge: true }
-    )
+    expect(mockRunTransaction).not.toHaveBeenCalled()
+    expect(mockSet).not.toHaveBeenCalled()
     expect(mockReleaseBrowser).toHaveBeenCalledTimes(1)
     expect(mockConversationProps.resumeRequest).toBeNull()
     expect(screen.getByText('Take control')).toBeUndefined()
 })
 
-it('waits for a pending take-control write before resuming for a message', async () => {
-    let finishTake
-    const takingControl = new Promise(resolve => {
-        finishTake = resolve
-    })
-    mockRunTransaction.mockImplementationOnce(async fn => {
-        await takingControl
-        return fn({ get: async () => ({ data: () => mockTransactionState }), set: mockSet })
-    })
-    render(content(1))
-    act(() => screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true })))
-    let resume
-    act(() => {
-        resume = mockConversationProps.onBeforeSend()
-    })
-    expect(mockRunTransaction).toHaveBeenCalledTimes(1)
-    await act(async () => {
-        finishTake()
-        await resume
-    })
-    expect(mockRunTransaction).toHaveBeenCalledTimes(2)
-    expect(mockSet.mock.calls.map(args => args[1]?.control).filter(Boolean)).toEqual(['user', 'assistant'])
-})
-
-it('clears persisted user control even before its snapshot reaches the UI', async () => {
+it('ignores persisted Alldone control and does not need a hand-back write to send', async () => {
     mockTransactionState = { control: 'user', blocked: { objectId: 'paused-task' } }
+    mockRunTransaction.mockRejectedValue(new Error('Workspace state unavailable'))
     render(content(1))
     await act(async () => mockConversationProps.onBeforeSend())
-    expect(mockSet).toHaveBeenLastCalledWith(
-        expect.anything(),
-        expect.objectContaining({ control: 'assistant', blocked: null }),
-        { merge: true }
-    )
-    expect(mockConversationProps.resumeRequest).toBeNull()
+    expect(mockSnapshots['users/u1/private/annaWorkspace']).toBeUndefined()
+    expect(mockRunTransaction).not.toHaveBeenCalled()
+    expect(mockReleaseBrowser).toHaveBeenCalledTimes(1)
 })
 
-it('keeps user control when hand-back fails and does not resume the browser', async () => {
+it('still respects a failed browser hand-back', async () => {
     render(content(1))
-    await act(async () =>
-        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
-    )
     act(() => mockBrowserProps.onControlChange(true))
-    mockRunTransaction.mockRejectedValueOnce(new Error('Offline'))
+    mockReleaseBrowser.mockRejectedValueOnce(new Error('Browser unavailable'))
     await act(async () => {
-        await expect(mockConversationProps.onBeforeSend()).rejects.toThrow('Could not change workspace control')
+        await expect(mockConversationProps.onBeforeSend()).rejects.toThrow('Browser unavailable')
     })
-    expect(screen.getByText('Let Carl Code Mentor continue')).toBeUndefined()
-    expect(mockReleaseBrowser).not.toHaveBeenCalled()
-    await act(async () =>
-        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
-    )
-    // The failed release retained user ownership, so another edit needs no take.
-    expect(mockRunTransaction).toHaveBeenCalledTimes(2)
+    expect(mockReleaseBrowser).toHaveBeenCalledTimes(1)
+    expect(mockRunTransaction).not.toHaveBeenCalled()
 })
 
 it('keeps the conversation mounted across workspace navigation with its topic and voice state', async () => {
@@ -578,12 +540,10 @@ it('preserves both editors when zooming out and back without remounting the work
     await act(async () => {})
 })
 
-it('holds assistant navigation after the user takes control, until Open is clicked', async () => {
+it('holds assistant navigation during browser control until Open is clicked', async () => {
     const view = render(content(1))
     view.rerender(content(2))
-    await act(async () =>
-        screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
-    )
+    act(() => mockBrowserProps.onControlChange(true))
     useAnnaConversation.mockReturnValue({
         ...state,
         conversation: {
@@ -617,7 +577,59 @@ it('switches mobile panes without removing the workspace or chat', async () => {
     await act(async () => {})
 })
 
-it('resumes a returned browser while the user still controls Alldone', async () => {
+it('selects mobile workspace surfaces and follows browser completion without losing drafts', () => {
+    const originalMatchMedia = window.matchMedia
+    const visible = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+    mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'running' }]
+    try {
+        render(content(1))
+        expect(document.querySelector('.anna-header .anna-workspace-toolbar')).toBeNull()
+        expect(document.querySelector('.anna-workspace-switcher')).toBeNull()
+        const editor = screen.getByLabelText('Real workspace editor')
+        editor.value = 'My unsaved workspace edit'
+        const chat = screen.getByLabelText('Persistent conversation')
+        chat.value = 'My unsent chat message'
+        const tabs = document.querySelector('.anna-mobile-tabs')
+        fireEvent.click([...tabs.querySelectorAll('button')].find(button => button.textContent === 'Workspace'))
+        const selector = document.querySelector('.anna-stage select')
+        const choose = value =>
+            act(() => {
+                selector.value = value
+                selector.dispatchEvent(new Event('change', { bubbles: true }))
+            })
+        expect(selector.value).toBe('alldone')
+        expect([...selector.options].map(option => option.textContent)).toEqual([
+            'Alldone',
+            'Browser',
+            'VM · Launch report — running',
+        ])
+        const finishBrowser = startBrowserActivity()
+        expect(selector.value).toBe('browser')
+        finishBrowser('completed')
+        expect(selector.value).toBe('alldone')
+        const finishNext = startBrowserActivity('answer2', 'brun_2')
+        choose('vm:vm1')
+        finishNext('completed')
+        expect(selector.value).toBe('vm:vm1')
+        expect(document.querySelector('.anna-workspace-switcher-label').textContent).toContain('VM · Launch report')
+        expect(document.querySelector('.anna-vm-surface').getAttribute('aria-hidden')).toBe('false')
+        choose('alldone')
+        expect(screen.getByLabelText('Real workspace editor')).toBe(editor)
+        expect(editor.value).toBe('My unsaved workspace edit')
+        fireEvent.click([...tabs.querySelectorAll('button')].find(button => button.textContent === 'Chat'))
+        expect(document.querySelector('.anna-workspace-switcher')).toBeNull()
+        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+        expect(chat.value).toBe('My unsent chat message')
+        expect(mockUnmounts).toBe(0)
+    } finally {
+        visible.mockRestore()
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it('resumes a returned browser while the user is editing Alldone', async () => {
     render(content(1))
     await act(async () =>
         screen.getByLabelText('Real workspace editor').dispatchEvent(new Event('pointerdown', { bubbles: true }))
@@ -639,21 +651,31 @@ it('resumes a returned browser while the user still controls Alldone', async () 
 })
 
 it.each(['pointerdown', 'keydown', 'wheel'])(
-    'automatically protects Alldone on %s and releases it for the next request',
+    'keeps assistant presentations and chat available after workspace %s',
     async eventName => {
-        render(content(1))
-        await act(async () =>
-            screen.getByLabelText('Real workspace editor').dispatchEvent(new Event(eventName, { bubbles: true }))
-        )
-        expect(mockSet).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ control: 'user' }), {
-            merge: true,
+        const view = render(content(1))
+        const input = screen.getByLabelText('Real workspace editor')
+        input.value = 'My unsaved edit'
+        await act(async () => input.dispatchEvent(new Event(eventName, { bubbles: true })))
+        useAnnaConversation.mockReturnValue({
+            ...state,
+            conversation: {
+                ...conversation,
+                annaPresentation: {
+                    id: 'new-task',
+                    view: 'task',
+                    path: '/projects/p1/tasks/t1/properties',
+                    createdAt: Date.now(),
+                },
+            },
         })
+        view.rerender(content(1))
+        await act(async () => {})
+        expect(URLTrigger.processUrl).toHaveBeenCalledWith({}, '/projects/p1/tasks/t1/properties')
         await act(async () => mockConversationProps.onBeforeSend())
-        expect(mockSet).toHaveBeenLastCalledWith(
-            expect.anything(),
-            expect.objectContaining({ control: 'assistant', blocked: null }),
-            { merge: true }
-        )
+        expect(mockSet).not.toHaveBeenCalled()
+        expect(mockRunTransaction).not.toHaveBeenCalled()
+        expect(input.value).toBe('My unsaved edit')
         expect(mockConversationProps.resumeRequest).toBeNull()
     }
 )

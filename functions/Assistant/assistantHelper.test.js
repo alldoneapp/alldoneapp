@@ -1826,7 +1826,6 @@ describe('assistant attachment handoff helpers', () => {
             .mockRejectedValue(new Error('Feedback offline'))
         const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
         mockDocGet.mockResolvedValue({ exists: false })
-        mockTransactionGet.mockResolvedValueOnce({ data: () => null })
         mockCreateAndPersistNote.mockResolvedValue({
             success: true,
             noteId: 'note-1',
@@ -1857,6 +1856,51 @@ describe('assistant attachment handoff helpers', () => {
         } finally {
             publish.mockRestore()
             warn.mockRestore()
+        }
+    })
+
+    test('continues sidebar mutations when an older client has left the Alldone workspace under user control', async () => {
+        const legacyControlPath = 'users/user-1/private/annaWorkspace'
+        const legacyState = {
+            control: 'user',
+            page: { path: '/projects/project-1/notes/note-1/editor' },
+            blocked: { objectId: 'AnnaChat20261007user-1' },
+        }
+        const reads = []
+        mockDocGet.mockImplementation(function () {
+            reads.push(this.path)
+            return Promise.resolve({ exists: this.path === legacyControlPath, data: () => legacyState })
+        })
+        mockCreateAndPersistNote.mockResolvedValue({
+            success: true,
+            noteId: 'note-1',
+            note: { projectId: 'project-1' },
+        })
+        const publish = jest
+            .spyOn(require('./annaWorkspaceChanges'), 'recordAnnaWorkspaceChange')
+            .mockResolvedValue(null)
+        try {
+            const result = await executeToolNatively(
+                'create_note',
+                { title: 'While you work' },
+                'project-1',
+                null,
+                'user-1',
+                null,
+                {
+                    annaConversation: true,
+                    projectId: 'project-1',
+                    objectId: 'AnnaChat20261007user-1',
+                    objectType: 'topics',
+                    requestUserId: 'user-1',
+                }
+            )
+            expect(result).toMatchObject({ success: true, noteId: 'note-1' })
+            expect(mockCreateAndPersistNote).toHaveBeenCalledTimes(1)
+            expect(reads).not.toContain(legacyControlPath)
+            expect(publish).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'create_note', result }))
+        } finally {
+            publish.mockRestore()
         }
     })
 

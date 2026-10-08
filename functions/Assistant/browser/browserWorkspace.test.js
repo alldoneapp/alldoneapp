@@ -2,7 +2,7 @@ const { browserWorkspace } = require('./browserWorkspace')
 const { beginBrowserStep } = require('./browserAudit')
 const { resolveBrowserConfig } = require('./browserConfig')
 const { FirestoreDouble } = require('./__browserFirestoreDouble')
-const { claimBrowserGesture, releaseBrowserGesture, getAnnaControlBlock } = require('../annaWorkspaceControl')
+const { claimBrowserGesture, releaseBrowserGesture } = require('../annaWorkspaceControl')
 
 const now = Date.now()
 const env = {
@@ -85,27 +85,6 @@ it('requires explicit control, charges only performed gestures and keeps typed t
     expect(worker.mock.calls[0][0].payload.text).toBe('human-only-password')
     expect(deductGold).toHaveBeenCalledTimes(1)
     expect(JSON.stringify([...db.documents.values()])).not.toContain('human-only-password')
-})
-
-it('blocks only Alldone mutations while allowing discussion, inspection and other surfaces', async () => {
-    const { db } = await setup()
-    await db
-        .doc('users/u1/private/annaWorkspace')
-        .set({ control: 'user', page: { path: '/projects/p1/tasks/t1/chat' } })
-    const runtime = {
-        annaConversation: true,
-        projectId: 'p1',
-        objectId: 'AnnaChat20261007u1',
-        objectType: 'topics',
-        assistantId: 'a1',
-    }
-    const input = { db, userId: 'u1', runtime }
-    expect(await getAnnaControlBlock({ ...input, toolName: 'update_task' })).toMatchObject({ paused: true })
-    expect((await db.doc('users/u1/private/annaWorkspace').get()).data().blocked.objectId).toBe(runtime.objectId)
-    expect(await getAnnaControlBlock({ ...input, toolName: 'get_tasks' })).toBeNull()
-    expect(await getAnnaControlBlock({ ...input, toolName: 'browser_navigate' })).toBeNull()
-    await db.doc('users/u1/private/annaWorkspace').set({ control: 'assistant' })
-    expect(await getAnnaControlBlock({ ...input, toolName: 'update_task' })).toBeNull()
 })
 
 it('stops showing or operating an expired session', async () => {

@@ -5333,18 +5333,6 @@ async function executeToolNativelyImpl(
     // for tool-generated feeds so the feed reflects who performed the tool action.
     const creatorId = requestUserId || assistantId
 
-    if (toolRuntimeContext?.annaConversation || toolArgs?.taskId || toolArgs?.noteId || toolArgs?.goalId) {
-        const { getAnnaControlBlock } = require('./annaWorkspaceControl')
-        const blocked = await getAnnaControlBlock({
-            db: admin.firestore(),
-            userId: requestUserId,
-            toolName,
-            toolArgs,
-            runtime: toolRuntimeContext,
-        })
-        if (blocked) return blocked
-    }
-
     if (toolName === 'highlight_workspace') {
         const { requestAnnaHighlight } = require('./annaHighlight')
         return requestAnnaHighlight({ db: admin.firestore(), runtime: toolRuntimeContext, args: toolArgs })
