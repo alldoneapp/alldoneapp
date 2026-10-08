@@ -6,6 +6,65 @@ import { runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 
+// Keep the real Anna composer and send lifecycle; model the shared Quill input
+// as a textarea here. Real embed insertion is exercised by the browser harness.
+let mockRichInputProps
+jest.mock('react-quill-new', () => ({ Quill: { import: () => require('quill-delta').default } }))
+jest.mock('../Feeds/CommentsTextInput/textInputHelper', () => ({ TASK_THEME: 'task' }))
+jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
+    const React = require('react')
+    const Delta = require('quill-delta').default
+    return React.forwardRef((props, ref) => {
+        mockRichInputProps = props
+        const node = React.useRef(null)
+        const [text, setText] = React.useState('')
+        const current = React.useRef(props)
+        current.current = props
+        const change = value => {
+            node.current.value = value
+            setText(value)
+            current.current.onChangeText(value)
+        }
+        React.useImperativeHandle(ref, () => ({
+            focus: () => node.current.focus(),
+            clear: () => change(''),
+            clearAndSetContent: change,
+        }))
+        React.useLayoutEffect(() => {
+            props.setEditor({
+                root: node.current,
+                getSelection: () => ({
+                    index: node.current.selectionStart,
+                    length: node.current.selectionEnd - node.current.selectionStart,
+                }),
+                getText: (index, length) => (node.current.value + '\n').slice(index, index + length),
+                getLength: () => node.current.value.length + 1,
+                updateContents: delta =>
+                    change(
+                        new Delta()
+                            .insert(node.current.value)
+                            .compose(delta)
+                            .ops.map(op => op.insert)
+                            .join('')
+                    ),
+                setSelection: index => {
+                    node.current.focus()
+                    node.current.setSelectionRange(index, index)
+                },
+            })
+        }, [])
+        return (
+            <textarea
+                ref={node}
+                value={text}
+                placeholder={props.placeholder}
+                disabled={props.disabledEdition}
+                onChange={event => change(event.target.value)}
+            />
+        )
+    })
+})
+
 let mockDictation
 let mockDictationSupported = true
 jest.mock('../../hooks/useRambleRecorder', () => ({ isDictationSupported: () => mockDictationSupported }))
@@ -94,6 +153,46 @@ afterEach(() => {
     container.remove()
     jest.restoreAllMocks()
     delete global.IS_REACT_ACT_ENVIRONMENT
+})
+
+it.each([
+    'https://alldone.app/projects/p1/tasks/task-1/properties',
+    'https://alldone.app/projects/p1/goals/goal-1/properties',
+    'https://alldone.app/projects/p2/notes/note-1/editor',
+    'https://alldone.app/projects/p1/chats/chat-1/chat',
+    '@KarlM2mVOSjAVPPKweLContact#contact-1',
+    '@CarlM2mVOSjAVPPKweLCode#assistant-2',
+])('preserves the serialized reference through send and retry: %s', async reference => {
+    runHttpsCallableFunction.mockRejectedValueOnce(new Error('Try again'))
+    render()
+    type(`Please review ${reference}`)
+    await submit()
+    expect(createObjectMessage.mock.calls[0][2]).toBe(`Please review ${reference}`)
+    expect(createObjectMessage.mock.calls[0][9]).toBe('a1')
+    expect(runHttpsCallableFunction.mock.calls[0][1].assistantId).toBe('a1')
+    expect(container.querySelector('textarea').value).toBe('')
+    type('My next draft')
+    await click('Retry')
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(runHttpsCallableFunction).toHaveBeenCalledTimes(2)
+    expect(container.querySelector('textarea').value).toBe('My next draft')
+})
+
+it('selects a mention with Enter without submitting and sends only after the picker closes', async () => {
+    render()
+    type('@task')
+    mockRichInputProps.setMentionsModalActive(true)
+    const enter = () =>
+        container
+            .querySelector('textarea')
+            .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    await act(async () => enter())
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    type('https://alldone.app/projects/p1/tasks/task-1/properties')
+    mockRichInputProps.setMentionsModalActive(false)
+    await act(async () => enter())
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('textarea').value).toBe('')
 })
 
 it('inserts dictation at the selection and leaves it in the composer for review', async () => {

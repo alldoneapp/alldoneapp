@@ -17,7 +17,9 @@ import {
 } from '../../ModalsManager/modalsManager'
 import useWindowSize from '../../../utils/useWindowSize'
 import { MENTION_MODAL_MIN_HEIGHT, popoverToCenter } from '../../../utils/HelperFunctions'
-import { getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
+import { computeSafeAreaModalMaxHeightBelow, getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
+import { getSafeAreaInsets } from '../../../utils/safeAreaInsets'
+import { getWorkspaceInsets } from '../../../utils/workspaceViewport'
 import { MODAL_Z_AUTOCOMPLETE } from '../../styles/modals'
 
 // AT-2397. The mention list is portaled to `document.body`, so it is a SIBLING
@@ -43,9 +45,19 @@ export default function WrapperMentionsModal({
     keepFocus,
     inMentionsEditionTag,
     insertNormalMention,
+    getMentionViewport,
 }) {
     const [width, height] = useWindowSize()
-    const maxHeight = getSafeAreaModalMaxHeightBelow(height, contentLocation.top)
+    // Anna's chat is beside the app viewport. Its autocomplete must use the
+    // conversation's bounds rather than being pushed into the Alldone pane.
+    const viewport = getMentionViewport?.()
+    const maxHeight = viewport
+        ? computeSafeAreaModalMaxHeightBelow({
+              windowHeight: viewport.height,
+              topOffset: contentLocation.top - viewport.top,
+              insets: getWorkspaceInsets(getSafeAreaInsets(), viewport),
+          })
+        : getSafeAreaModalMaxHeightBelow(height, contentLocation.top)
     const finalLocation = maxHeight < MENTION_MODAL_MIN_HEIGHT ? null : contentLocation
     const mobile = useSelector(state => state.smallScreenNavigation)
     const dispatch = useDispatch()
@@ -83,6 +95,7 @@ export default function WrapperMentionsModal({
                     inMentionsEditionTag={inMentionsEditionTag}
                     insertNormalMention={insertNormalMention}
                     contentLocation={finalLocation}
+                    viewport={viewport}
                 />
             }
             isOpen={true}
@@ -90,8 +103,18 @@ export default function WrapperMentionsModal({
             padding={4}
             align={'start'}
             containerStyle={MENTIONS_POPOVER_CONTAINER_STYLE}
+            viewport={viewport}
             onClickOutside={onClickOutside}
-            contentLocation={finalLocation ? finalLocation : args => popoverToCenter(args, mobile)}
+            contentLocation={
+                finalLocation
+                    ? finalLocation
+                    : viewport
+                      ? ({ popoverRect }) => ({
+                            top: viewport.top + Math.max(16, (viewport.height - popoverRect.height) / 2),
+                            left: viewport.left + Math.max(16, (viewport.width - popoverRect.width) / 2),
+                        })
+                      : args => popoverToCenter(args, mobile)
+            }
         >
             <View onClick={e => e.stopPropagation()} />
         </Popover>
