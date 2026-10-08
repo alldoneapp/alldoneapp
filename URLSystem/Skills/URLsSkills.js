@@ -1,4 +1,4 @@
-import { withAnnaMode } from '../../utils/annaMode'
+import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { shrinkTagText } from '../../functions/Utils/parseTextUtils'
@@ -49,13 +49,11 @@ class URLsSkills {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsSkills.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        URLsSkills.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
+        writeBrowserHistory('replace', data, urlPath, () => URLsSkills.setTitle(urlConstant, false, ...params))
     }
 
     /**
@@ -65,13 +63,11 @@ class URLsSkills {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsSkills.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        URLsSkills.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
+        writeBrowserHistory('push', data, urlPath, () => URLsSkills.setTitle(urlConstant, false, ...params))
     }
 
     static getPath = (urlConstant, ...params) => {
