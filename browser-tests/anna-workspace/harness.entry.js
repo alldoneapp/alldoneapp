@@ -6,7 +6,38 @@ import { setAnnaMode } from '../../utils/annaMode'
 import { GlobalOverlayFixture, OverlayLaunchers } from './overlay-fixture'
 import { getWorkspaceTasks, subscribeWorkspaceTasks } from './services'
 import alldoneFont from '../../assets/fonts/alldone.ttf'
+import useModalSizing from '../../hooks/useModalSizing'
+import LoadingData from '../../components/UIComponents/LoadingData'
+import {
+    FLOATING_ACTION_SIZE,
+    FLOATING_ACTION_VIEWPORT_GAP,
+    getFloatingActionBottom,
+} from '../../components/UIComponents/floatingActionLayout'
 window.zoomAnna = setAnnaMode
+// Use the task board's shared action geometry without the task-creation transport.
+function FloatingTaskActionFixture() {
+    const { safeAreaInsets } = useModalSizing()
+    return (
+        <button
+            data-testid="floating-task-action"
+            aria-label="Add task layout fixture"
+            style={{
+                position: 'absolute',
+                right: FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.right,
+                bottom: getFloatingActionBottom(safeAreaInsets.bottom),
+                width: FLOATING_ACTION_SIZE,
+                height: FLOATING_ACTION_SIZE,
+                borderRadius: FLOATING_ACTION_SIZE / 2,
+                border: 0,
+                background: '#0066ff',
+                color: 'white',
+                fontSize: 28,
+            }}
+        >
+            +
+        </button>
+    )
+}
 function Fixture() {
     const [dialog, setDialog] = useState(false)
     const [notifications, setNotifications] = useState(false)
@@ -73,6 +104,12 @@ function Fixture() {
                         </div>
                     )}
                 </ScrollView>
+                {new URLSearchParams(window.location.search).has('floating') && (
+                    <>
+                        <FloatingTaskActionFixture />
+                        <LoadingData />
+                    </>
+                )}
             </AnnaShell>
         </>
     )

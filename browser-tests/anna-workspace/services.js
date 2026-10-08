@@ -22,6 +22,7 @@ export const useSelector = selector =>
         defaultAssistant: assistant,
         connectionState: 'offline',
         smallScreenNavigation: (window.__alldoneWorkspaceViewport?.width || window.innerWidth) < 640,
+        showLoadingDataSpinner: new URLSearchParams(window.location.search).has('floating'),
     })
 import translations from '../../i18n/translations/en.json'
 export const translate = (text, values = {}) =>

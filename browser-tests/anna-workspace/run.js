@@ -284,14 +284,19 @@ async function assertSelectedSurface(page, surface) {
         )
     }
 }
-async function assertBelowSelector(page, locator) {
+async function assertClearOfSelector(page, locator) {
     if (page.viewportSize().width > 760) return
     const selector = await page.locator('.anna-workspace-switcher').boundingBox()
     const target = await locator.boundingBox()
-    assert.ok(target.y >= selector.y + selector.height, 'Floating picker must not cover surface controls or titles')
+    const overlaps =
+        target.x < selector.x + selector.width &&
+        target.x + target.width > selector.x &&
+        target.y < selector.y + selector.height &&
+        target.y + target.height > selector.y
+    assert.equal(overlaps, false, 'Floating picker must not cover surface controls or titles')
 }
 async function checkSurfaceSelectorLayout(page, width) {
-    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&vm=1`)
+    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&vm=1&floating=1`)
     await page.getByLabel('Message Carl Code Mentor').fill('Keep this mobile draft')
     const selector = page.locator('.anna-workspace-switcher')
     if (width > 760) {
@@ -306,10 +311,13 @@ async function checkSurfaceSelectorLayout(page, width) {
     await page.locator('.anna-mobile-tabs').getByText('Workspace', { exact: true }).click()
     const bounds = await selector.boundingBox()
     const stage = await page.locator('.anna-stage').boundingBox()
-    assert.ok(
-        Math.abs(bounds.y - stage.y - 8) <= 1 && Math.abs(stage.x + stage.width - bounds.x - bounds.width - 12) <= 1
-    )
-    assert.ok(bounds.height >= 44, 'Touch target remains comfortable')
+    const add = await page.getByTestId('floating-task-action').boundingBox()
+    assert.ok(Math.abs(bounds.height - add.height) <= 1, 'Both controls have the same height')
+    assert.ok(Math.abs(bounds.y - add.y) <= 1, 'Both controls share the same baseline')
+    assert.ok(Math.abs(bounds.x - stage.x - (stage.x + stage.width - add.x - add.width)) <= 1, 'Mirrored edge spacing')
+    assert.ok(bounds.x + bounds.width + 12 <= add.x, 'Leave a gap between the selector and add button')
+    await page.getByTestId('loading-data-spinner').waitFor({ state: 'visible' })
+    await assertClearOfSelector(page, page.getByTestId('loading-data-spinner'))
     assert.equal(await selector.evaluate(node => getComputedStyle(node).position), 'absolute')
     assert.equal(await selector.locator('option').count(), 4, 'Alldone, Browser and both VMs')
     await page.screenshot({ path: path.join(BUILD, `floating-workspace-${width}.png`) })
@@ -319,7 +327,9 @@ async function checkSurfaceSelectorLayout(page, width) {
     await assertSelectedSurface(page, 'browser')
     await page.getByRole('button', { name: 'Zoom in Alldone', exact: true }).click()
     assert.equal(await selector.count(), 0, 'Fullscreen Alldone has no floating selector')
-    console.info(`PASS ${width}px: one header row; floating native selector, keyboard focus and fullscreen`)
+    console.info(
+        `PASS ${width}px: bottom-left selector aligned with add button; no spinner overlap; keyboard focus and fullscreen`
+    )
 }
 async function checkBrowserLogin(page, width) {
     let captures = 0
@@ -340,7 +350,7 @@ async function checkBrowserLogin(page, width) {
     const frame = await login.getByLabel('browser_takeover_viewport').boundingBox()
     const pane = await page.locator('.anna-browser-surface').boundingBox()
     assert.ok(frame.width > pane.width * 0.85, 'The login browser should use the main pane width')
-    await assertBelowSelector(page, input)
+    await assertClearOfSelector(page, input)
     await input.fill('Fixture private input')
     await selectWorkspaceSurface(page, 'alldone')
     await selectWorkspaceSurface(page, 'browser')
@@ -379,8 +389,8 @@ async function checkVmWorkspace(page, width) {
     const selectVm = () => selectWorkspaceSurface(page, 'vm:vm1', /^VM: Prepare the launch report/)
     await selectVm()
     await page.locator('.anna-vm-terminal pre').waitFor({ state: 'visible' })
-    await assertBelowSelector(page, page.locator('.anna-vm-surface:not(.anna-surface-hidden) h2'))
-    await assertBelowSelector(page, page.locator('.anna-vm-surface:not(.anna-surface-hidden) .anna-vm-task-link'))
+    await assertClearOfSelector(page, page.locator('.anna-vm-surface:not(.anna-surface-hidden) h2'))
+    await assertClearOfSelector(page, page.locator('.anna-vm-surface:not(.anna-surface-hidden) .anna-vm-task-link'))
     assert.match(await page.locator('.anna-vm-terminal pre').textContent(), /Reading launch.md/)
     assert.equal(await page.getByLabel('Workspace draft').isVisible(), false)
     await page.evaluate(() => window.__annaVmFixture('running', '💻 npm test\nChecking the report output…'))
@@ -421,7 +431,7 @@ async function checkBrowserReturn(page, width) {
     await page.getByLabel('Workspace draft').fill('Unsent Alldone edit')
     await page.evaluate(() => window.__annaBrowserFixture('running'))
     await page.locator('.anna-browser-workspace').waitFor({ state: 'visible' })
-    await assertBelowSelector(page, page.locator('.anna-browser-heading button'))
+    await assertClearOfSelector(page, page.locator('.anna-browser-heading button'))
     if (width <= 760) await page.screenshot({ path: path.join(BUILD, `floating-browser-${width}.png`) })
     await assertSelectedSurface(page, 'browser')
     await page.evaluate(() => window.__annaBrowserFixture('awaiting_user'))
