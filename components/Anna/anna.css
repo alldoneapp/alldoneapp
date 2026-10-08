@@ -751,8 +751,11 @@
 .anna-zoom-shell .anna-workspace-content > * {
     min-width: 0;
 }
+.anna-zoom-active {
+    --anna-workspace-gutter: clamp(12px, 2vw, 24px);
+}
 .anna-zoom-active .anna-workspace {
-    padding-inline: clamp(12px, 2vw, 24px);
+    padding-inline: var(--anna-workspace-gutter);
 }
 .anna-zoom-active .anna-workspace-content {
     /* Inline fixed dialogs belong to Alldone, including its navigation. Body
@@ -1031,12 +1034,19 @@
     }
     .anna-workspace-switcher {
         position: absolute;
-        top: 8px;
-        right: 12px;
+        bottom: var(--anna-floating-bottom);
+        left: calc(var(--anna-workspace-gutter) + var(--anna-floating-left));
         z-index: 2;
-        max-width: min(240px, 60%);
+        height: var(--anna-floating-size);
+        max-width: min(
+            240px,
+            calc(
+                100% - 2 * var(--anna-workspace-gutter) - var(--anna-floating-left) - var(--anna-floating-right) -
+                    var(--anna-floating-size) - var(--anna-floating-gap)
+            )
+        );
         border: 1px solid var(--anna-border);
-        border-radius: 12px;
+        border-radius: calc(var(--anna-floating-size) / 2);
         background: #fff;
         color: var(--anna-ink);
         box-shadow: 0 3px 12px rgba(30, 41, 59, 0.12);
@@ -1045,8 +1055,8 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        min-height: 44px;
-        padding: 8px 12px;
+        height: 100%;
+        padding: 8px 16px;
         font-size: 13px;
     }
     .anna-workspace-switcher-label > span:first-child {
@@ -1068,12 +1078,14 @@
         outline: 2px solid var(--anna-accent);
         outline-offset: 2px;
     }
-    /* These surfaces own their headings; leave their controls below the floating picker. */
-    .anna-vm-heading,
+    .anna-vm-activity,
     .anna-browser-workspace,
     .anna-browser-takeover,
     .anna-browser-surface .anna-empty {
-        padding-top: 64px;
+        padding-bottom: calc(var(--anna-floating-bottom) + var(--anna-floating-size) + var(--anna-floating-gap));
+    }
+    .anna-zoom-active.anna-mobile-workspace .anna-workspace-content [data-testid='loading-data-spinner'] {
+        bottom: calc(var(--anna-floating-bottom) + var(--anna-floating-size) + var(--anna-floating-gap)) !important;
     }
 
     .anna-header-assistant {

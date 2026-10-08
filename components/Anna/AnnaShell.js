@@ -25,6 +25,13 @@ import URLTrigger from '../../URLSystem/URLTrigger'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallPageContext'
 import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
+import useModalSizing from '../../hooks/useModalSizing'
+import {
+    FLOATING_ACTION_SIZE,
+    FLOATING_ACTION_VIEWPORT_GAP,
+    FLOATING_ACTION_STACK_GAP,
+    getFloatingActionBottom,
+} from '../UIComponents/floatingActionLayout'
 import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
 
@@ -45,6 +52,7 @@ function useMobilePane() {
 export default function AnnaShell({ children, routeId }) {
     useTranslator()
     const active = useAnnaMode()
+    const { safeAreaInsets } = useModalSizing()
     const user = useSelector(state => state.loggedUser)
     const call = useVoiceCall()
     const [visited, setVisited] = useState(active)
@@ -419,6 +427,11 @@ export default function AnnaShell({ children, routeId }) {
                 '--anna-border': colors.Grey300,
                 '--anna-focus': colors.UtilityBlue150,
                 '--anna-surface': colors.Grey100,
+                '--anna-floating-size': `${FLOATING_ACTION_SIZE}px`,
+                '--anna-floating-gap': `${FLOATING_ACTION_STACK_GAP}px`,
+                '--anna-floating-left': `${FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.left}px`,
+                '--anna-floating-right': `${FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.right}px`,
+                '--anna-floating-bottom': `${getFloatingActionBottom(safeAreaInsets.bottom)}px`,
             }}
             onClickCapture={interceptLink}
         >
@@ -576,7 +589,7 @@ export default function AnnaShell({ children, routeId }) {
                         <div className="anna-workspace-switcher">
                             <span className="anna-workspace-switcher-label" aria-hidden="true">
                                 <span>{surfaceLabel}</span>
-                                <Icon name="chevron-down" size={16} color="currentColor" />
+                                <Icon name="chevron-up" size={16} color="currentColor" />
                             </span>
                             <select
                                 aria-label={translate('Workspace')}
