@@ -20,6 +20,45 @@ describe('SharedHelper.onHistoryPop', () => {
 
     afterEach(() => {
         processUrlAsLoggedIn.mockRestore()
+        window.history.replaceState(null, '', '/')
+    })
+
+    it('routes browser Back to the actual URL and trims the close-button stack', () => {
+        seedHistory(['/projects/tasks/open', '/projects/p1/notes/n1/editor', '/projects/p1/notes/n1/properties'])
+        window.history.replaceState(null, '', '/projects/p1/notes/n1/editor?assistant=1')
+
+        SharedHelper.onHistoryPop(new PopStateEvent('popstate'))
+
+        expect(processUrlAsLoggedIn).toHaveBeenCalledWith(
+            expect.anything(),
+            '/projects/p1/notes/n1/editor?assistant=1',
+            true
+        )
+        expect(store.getState().lastVisitedScreen).toEqual(['/projects/tasks/open', '/projects/p1/notes/n1/editor'])
+    })
+
+    it('routes browser Forward to the selected object rather than going Back again', () => {
+        seedHistory(['/projects/tasks/open'])
+        window.history.replaceState(null, '', '/projects/p1/notes/n2/editor')
+
+        SharedHelper.onHistoryPop(new PopStateEvent('popstate'))
+
+        expect(processUrlAsLoggedIn).toHaveBeenCalledWith(expect.anything(), '/projects/p1/notes/n2/editor', true)
+        expect(store.getState().lastVisitedScreen).toEqual(['/projects/tasks/open', '/projects/p1/notes/n2/editor'])
+    })
+
+    it('keeps route filters while excluding layout parameters from the close-button stack', () => {
+        seedHistory(['/projects/p1/user/u1/contacts/all?status=active', '/projects/p1/notes/n1/editor'])
+        window.history.replaceState(null, '', '/projects/p1/user/u1/contacts/all?status=active&assistant=1')
+
+        SharedHelper.onHistoryPop(new PopStateEvent('popstate'))
+
+        expect(processUrlAsLoggedIn).toHaveBeenCalledWith(
+            expect.anything(),
+            '/projects/p1/user/u1/contacts/all?status=active&assistant=1',
+            true
+        )
+        expect(store.getState().lastVisitedScreen).toEqual(['/projects/p1/user/u1/contacts/all?status=active'])
     })
 
     it('navigates to the last entry that does not belong to the current detailed view', () => {

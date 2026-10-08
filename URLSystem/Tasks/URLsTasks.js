@@ -1,4 +1,4 @@
-import { withAnnaMode } from '../../utils/annaMode'
+import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import HelperFunctions from '../../utils/HelperFunctions'
@@ -123,13 +123,11 @@ class URLsTasks {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsTasks.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        URLsTasks.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
+        writeBrowserHistory('replace', data, urlPath, () => URLsTasks.setTitle(urlConstant, false, ...params))
     }
 
     /**
@@ -139,15 +137,15 @@ class URLsTasks {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsTasks.getPath(urlConstant, ...params)
 
         if (history.state?.[REPLACE_NEXT_TASK_DETAIL_PUSH] && window.location.pathname === `/${urlPath}`) {
             const replacementData = { ...(data || {}) }
             delete replacementData[REPLACE_NEXT_TASK_DETAIL_PUSH]
             URLSystem.setLastNavigationScreen(urlPath, true)
-            URLsTasks.setTitle(urlConstant, false, ...params)
-            history.replaceState(replacementData, '', withAnnaMode(`${originPath}/${urlPath}`))
+            writeBrowserHistory('replace', replacementData, urlPath, () =>
+                URLsTasks.setTitle(urlConstant, false, ...params)
+            )
             return
         }
 
@@ -155,8 +153,7 @@ class URLsTasks {
             URLSystem.setLastNavigationScreen(urlPath)
         }
 
-        URLsTasks.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
+        writeBrowserHistory('push', data, urlPath, () => URLsTasks.setTitle(urlConstant, false, ...params))
     }
 
     static getPath = (urlConstant, ...params) => {

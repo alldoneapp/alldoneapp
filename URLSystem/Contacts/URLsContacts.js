@@ -1,4 +1,4 @@
-import { withAnnaMode } from '../../utils/annaMode'
+import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import HelperFunctions from '../../utils/HelperFunctions'
@@ -50,13 +50,11 @@ class URLsContacts {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsContacts.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        URLsContacts.setTitle(urlConstant, false, ...params)
-        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
+        writeBrowserHistory('replace', data, urlPath, () => URLsContacts.setTitle(urlConstant, false, ...params))
     }
 
     /**
@@ -66,13 +64,11 @@ class URLsContacts {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsContacts.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        URLsContacts.setTitle(urlConstant, false, ...params)
-        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
+        writeBrowserHistory('push', data, urlPath, () => URLsContacts.setTitle(urlConstant, false, ...params))
     }
 
     static getPath = (urlConstant, ...params) => {

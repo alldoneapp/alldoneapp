@@ -616,6 +616,19 @@ class SharedHelper {
     }
 
     static onHistoryPop = commonPath => {
+        // Browser Back/Forward already selected an entry. Route that URL, not
+        // the app's close-button stack, and let the view refresh its title.
+        if (commonPath && typeof commonPath !== 'string') {
+            const { pathname, search } = window.location
+            const url = pathname + search
+            const screen = withoutAnnaMode(url)
+            const { lastVisitedScreen } = store.getState()
+            const screens = Array.isArray(lastVisitedScreen) ? [...lastVisitedScreen] : []
+            const index = screens.lastIndexOf(screen)
+            store.dispatch(setLastVisitedScreen(index >= 0 ? screens.slice(0, index + 1) : [...screens, screen]))
+            return SharedHelper.processUrlAsLoggedIn(NavigationService, url, true)
+        }
+
         let { lastVisitedScreen } = store.getState()
         // Pop from a copy, never the array held in the store. The reducer stores whatever
         // reference it is handed, so mutating in place leaves the store identity-equal and the

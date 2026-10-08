@@ -1,4 +1,4 @@
-import { withAnnaMode } from '../../utils/annaMode'
+import { writeBrowserHistory } from '../browserHistory'
 import URLSystem from '../URLSystem'
 
 /**
@@ -92,13 +92,11 @@ class URLsSettings {
      * @param params
      */
     static replace = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsSettings.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath, true)
 
-        URLsSettings.setTitle(urlConstant, ...params)
-        history.replaceState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
+        writeBrowserHistory('replace', data, urlPath, () => URLsSettings.setTitle(urlConstant, ...params))
     }
 
     /**
@@ -108,13 +106,11 @@ class URLsSettings {
      * @param params
      */
     static push = (urlConstant, data = null, ...params) => {
-        const originPath = window.location.origin
         let urlPath = URLsSettings.getPath(urlConstant, ...params)
 
         URLSystem.setLastNavigationScreen(urlPath)
 
-        URLsSettings.setTitle(urlConstant, ...params)
-        history.pushState(data, '', withAnnaMode(`${originPath}/${urlPath}`))
+        writeBrowserHistory('push', data, urlPath, () => URLsSettings.setTitle(urlConstant, ...params))
     }
 
     static getPath = (urlConstant, ...params) => {
