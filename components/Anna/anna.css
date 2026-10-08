@@ -254,25 +254,31 @@
     background: var(--anna-surface);
     border-radius: 15px;
 }
-.anna-composer textarea {
+.anna-rich-composer {
+    flex: 1;
     min-width: 0;
-    resize: none;
-    width: 100%;
+}
+.anna-rich-composer .ql-container,
+.anna-rich-composer .ql-editor {
     background: transparent;
     border: 0;
-    color: var(--anna-ink);
-    font-size: 14px;
-    line-height: 1.5;
-    padding: 4px 0;
+    color: var(--anna-ink) !important;
+    font-size: 14px !important;
+    line-height: 1.5 !important;
 }
-.anna-composer textarea::placeholder {
+.anna-rich-composer .ql-editor {
+    padding: 4px 0 !important;
+}
+.anna-rich-composer .ql-editor.ql-blank::before {
     color: var(--anna-placeholder);
+    left: 0;
+    right: 0;
 }
 .anna-composer-field:focus-within {
     border-color: var(--anna-focus);
     box-shadow: 0 0 0 1px var(--anna-focus);
 }
-.anna-shell .anna-composer textarea:focus-visible {
+.anna-shell .anna-rich-composer .ql-editor:focus-visible {
     outline: none;
 }
 .anna-send {

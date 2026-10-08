@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import useGetMessages from '../../hooks/Chats/useGetMessages'
 import MessageItemBody from '../ChatsView/ChatDV/EditorView/MessageItemBody'
 import { getAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
-import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../utils/assistantHelper'
 import { getTimestampInMilliseconds } from '../ChatsView/Utils/ChatHelper'
 import { resolveEffectiveMessageLoading } from '../ChatsView/ChatDV/EditorView/messageLoadingState'
 import { translate } from '../../i18n/TranslationService'
@@ -16,6 +15,7 @@ import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
 import { isDictationSupported } from '../../hooks/useRambleRecorder'
 import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
+import AnnaChatComposer from './AnnaChatComposer'
 
 export default function AnnaConversation({
     conversation,
@@ -58,7 +58,6 @@ export default function AnnaConversation({
     const scrollAnchor = useRef(null)
     const composer = useRef(null)
     const draftRef = useRef('')
-    const dictationCaret = useRef(null)
     const [dictationPhase, setDictationPhase] = useState(RAMBLE_PHASE_IDLE)
     const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE
     const changeDraft = text => {
@@ -71,25 +70,8 @@ export default function AnnaConversation({
         const input = composer.current
         const transcript = text?.replace(/\r\n?/g, '\n').trim()
         if (!mounted.current || !input || !transcript) return
-        // Read the current draft and selection when transcription finishes, so
-        // edits made while recording/processing are preserved.
-        const current = draftRef.current
-        const before = current.slice(0, input.selectionStart)
-        const after = current.slice(input.selectionEnd)
-        const insertion = `${before && !/\s$/.test(before) ? ' ' : ''}${transcript}${
-            after && !/^[\s.,!?;:)\]}]/.test(after) ? ' ' : ''
-        }`
-        dictationCaret.current = before.length + insertion.length
-        changeDraft(before + insertion + after)
+        input.insertDictation(transcript, visible)
     }
-    useLayoutEffect(() => {
-        const input = composer.current
-        if (!input || dictationCaret.current === null) return
-        const shouldFocus = visible && input.form?.contains(document.activeElement)
-        input.setSelectionRange(dictationCaret.current, dictationCaret.current)
-        dictationCaret.current = null
-        if (shouldFocus) input.focus()
-    }, [draft, visible])
     const [preparingVoice, setPreparingVoice] = useState(false)
     const voiceRequest = useRef(0)
     const voiceActive = preparingVoice || call.status !== 'idle'
@@ -199,6 +181,7 @@ export default function AnnaConversation({
             // Clear synchronously as well as in React, so two submit events in
             // the same frame cannot send the same draft twice.
             changeDraft('')
+            composer.current?.clear()
             composer.current?.focus()
         }
     }
@@ -288,6 +271,7 @@ export default function AnnaConversation({
                         )}
                         onSuggest={text => {
                             changeDraft(text)
+                            composer.current?.setContent(text)
                             onExpand()
                         }}
                     />
@@ -310,26 +294,19 @@ export default function AnnaConversation({
                     </div>
                 )}
                 <div className="anna-composer-field">
-                    <textarea
+                    <AnnaChatComposer
                         ref={composer}
-                        aria-label={translate('Message %{assistantName}', { assistantName })}
+                        projectId={conversation.projectId}
+                        label={translate('Message %{assistantName}', { assistantName })}
                         placeholder={
                             voiceActive
                                 ? translate('Voice call in progress')
                                 : translate('Talk or type to %{assistantName}…', { assistantName })
                         }
-                        value={draft}
-                        maxLength={CHAT_INPUT_LIMIT_IN_CHARACTERS}
-                        rows={2}
                         disabled={voiceActive}
                         onFocus={onExpand}
-                        onChange={event => changeDraft(event.target.value)}
-                        onKeyDown={event => {
-                            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                                event.preventDefault()
-                                send()
-                            }
-                        }}
+                        onChangeText={changeDraft}
+                        onSubmit={() => send()}
                     />
                     {!voiceActive && conversation.projectId && isDictationSupported() && (
                         <RambleButton
@@ -339,7 +316,7 @@ export default function AnnaConversation({
                             onTextReady={insertDictatedText}
                             onPhaseChange={setDictationPhase}
                             getOverlayViewport={() => {
-                                const pane = composer.current?.closest('.anna-conversation')
+                                const pane = composer.current?.getPane()
                                 return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
                             }}
                             style={{ minWidth: 36, height: 36, borderRadius: 18, flexShrink: 0 }}

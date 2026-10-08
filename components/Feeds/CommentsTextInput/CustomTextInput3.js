@@ -153,6 +153,7 @@ function CustomTextInput3(
         alwaysShowDictation = false,
         onDictationSubmit,
         showAttachmentButton = false,
+        getMentionViewport,
     },
     ref
 ) {
@@ -668,6 +669,13 @@ function CustomTextInput3(
             mentionTextRef.current = ''
         }
     }
+
+    useEffect(() => {
+        if (disabledEdition && showMentionPopupRef.current) {
+            closeMentionPopup()
+            setFlag(previous => !previous)
+        }
+    }, [disabledEdition])
 
     const getMentionModalLocation = selectionIndex => {
         const mentionModalParentOffset = getElementOffset(document.body)
@@ -1568,6 +1576,7 @@ function CustomTextInput3(
                     }}
                     inMentionsEditionTag={inMentionsEditionTag}
                     insertNormalMention={insertNormalMention}
+                    getMentionViewport={getMentionViewport}
                 />
             )}
         </CustomScrollView>

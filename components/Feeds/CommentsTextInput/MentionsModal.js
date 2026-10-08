@@ -27,7 +27,9 @@ import {
 } from '../../ModalsManager/modalsManager'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { applyPopoverWidth } from '../../../utils/HelperFunctions'
-import { getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
+import { computeSafeAreaModalMaxHeightBelow, getSafeAreaModalMaxHeightBelow } from '../../../utils/modalSafeArea'
+import { getSafeAreaInsets } from '../../../utils/safeAreaInsets'
+import { getWorkspaceInsets } from '../../../utils/workspaceViewport'
 import Backend from '../../../utils/BackendBridge'
 import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
 import { buildMentionProjectsScope, MENTION_CONTACTS_QUERY_BY, mergeMentionPages } from './MentionsModal/mentionSearch'
@@ -85,6 +87,7 @@ export default function MentionsModal({
     inMentionsEditionTag,
     insertNormalMention,
     contentLocation,
+    viewport,
 }) {
     const [width, height] = useWindowSize()
     const dispatch = useDispatch()
@@ -112,7 +115,13 @@ export default function MentionsModal({
     const getInitValue = items => (items.length === 0 ? -1 : 0)
     const activeItemIndexRef = useRef(getInitValue(itemsRef.current))
     const [activeItemIndex, setActiveItemIndex] = useState(getInitValue(itemsRef.current))
-    const tmpHeight = getSafeAreaModalMaxHeightBelow(height, contentLocation?.top || 0)
+    const tmpHeight = viewport
+        ? computeSafeAreaModalMaxHeightBelow({
+              windowHeight: viewport.height,
+              topOffset: contentLocation ? contentLocation.top - viewport.top : 16,
+              insets: getWorkspaceInsets(getSafeAreaInsets(), viewport),
+          })
+        : getSafeAreaModalMaxHeightBelow(height, contentLocation?.top || 0)
     const maxHeight = tmpHeight < 548 ? tmpHeight : 548
     const loggedUser = useSelector(state => state.loggedUser)
 
@@ -519,7 +528,11 @@ export default function MentionsModal({
     return (
         <View
             onLayout={onLayoutContainer}
-            style={[localStyles.container, applyPopoverWidth(), { maxHeight: maxHeight }]}
+            style={[
+                localStyles.container,
+                viewport ? { width: Math.min(432, Math.max(0, viewport.width - 32)) } : applyPopoverWidth(),
+                { maxHeight: maxHeight },
+            ]}
         >
             {!inMentionsEditionTag && (
                 <Header
