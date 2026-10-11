@@ -183,6 +183,7 @@ export default function AssistantProgress({
     runId,
     compact = false,
     appearance = 'light',
+    children,
 }) {
     const scrollRef = useRef(null)
     const reducedMotion = useReducedMotion()
@@ -283,6 +284,7 @@ export default function AssistantProgress({
                     )
                 })}
             </ScrollView>
+            {children}
         </View>
     )
 }

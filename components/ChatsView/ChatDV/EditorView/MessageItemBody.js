@@ -83,6 +83,17 @@ export default function MessageItemBody({
     const isAwaitingVmInteraction = creatorData?.isAssistant && hasAwaitingVmInteraction(assistantRun)
     const isLoadingState = creatorData?.isAssistant && (isLoading || isAwaitingVmInteraction)
     const showFriendlyAssistantProgress = isLoadingState && !isAwaitingVmInteraction && assistantRun?.kind === 'chat'
+    const stopButton = (
+        <StopAssistantRunButton
+            projectId={projectId}
+            objectType={objectType}
+            objectId={chat?.id}
+            commentId={messageId}
+            assistantRun={assistantRun}
+            isLoading={isLoadingState}
+            variant={showFriendlyAssistantProgress ? 'card' : 'standalone'}
+        />
+    )
     // Strip leading whitespace so a status block appended before any answer text streamed
     // (e.g. a tool that runs immediately) doesn't render with a large blank gap above it.
     const loadingText = typeof commentText === 'string' ? commentText.replace(/^\s+/, '') : commentText
@@ -388,7 +399,9 @@ export default function MessageItemBody({
                             activity={assistantRun?.activity}
                             activityHistory={assistantRun?.activityHistory}
                             runId={assistantRun?.runId}
-                        />
+                        >
+                            {stopButton}
+                        </AssistantProgress>
                     ) : !containsBlockOrSpecialElements(loadingText) ? (
                         <Text style={[localStyles.loadingText, { marginBottom: 8 }]}>{loadingText}</Text>
                     ) : (
@@ -414,14 +427,7 @@ export default function MessageItemBody({
                             <ActivityIndicator size="small" color={colors.PrimaryBlue} />
                         </View>
                     )}
-                    <StopAssistantRunButton
-                        projectId={projectId}
-                        objectType={objectType}
-                        objectId={chat?.id}
-                        commentId={messageId}
-                        assistantRun={assistantRun}
-                        isLoading={isLoadingState}
-                    />
+                    {!showFriendlyAssistantProgress && stopButton}
                 </View>
             ) : (
                 <>
