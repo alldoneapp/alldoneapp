@@ -15,6 +15,8 @@ import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
 import { isDictationSupported } from '../../hooks/useRambleRecorder'
 import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
+import { readCommentDraft, saveCommentDraft } from '../../utils/commentDraftStore'
+import { isBrowserOffline } from '../../utils/connectionState'
 import AnnaChatComposer from './AnnaChatComposer'
 
 export default function AnnaConversation({
@@ -29,6 +31,7 @@ export default function AnnaConversation({
     resolveConversation,
     loadEarlier,
     hasEarlier = false,
+    offline = false,
     visible = true,
     resumeRequest,
     onResumeHandled,
@@ -37,7 +40,14 @@ export default function AnnaConversation({
 }) {
     const contextNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
-    const [draft, setDraft] = useState('')
+    // The draft belongs to the continuous conversation, including across midnight.
+    const draftContext = {
+        userId: user.uid,
+        projectId: user.defaultProjectId || conversation.projectId,
+        objectType: 'anna',
+        objectId: 'conversation',
+    }
+    const [draft, setDraft] = useState(() => readCommentDraft(draftContext)?.comment || '')
     const [error, setError] = useState('')
     const {
         messages: localMessages,
@@ -57,12 +67,13 @@ export default function AnnaConversation({
     const follow = useRef(true)
     const scrollAnchor = useRef(null)
     const composer = useRef(null)
-    const draftRef = useRef('')
+    const draftRef = useRef(draft)
     const [dictationPhase, setDictationPhase] = useState(RAMBLE_PHASE_IDLE)
     const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE
     const changeDraft = text => {
         draftRef.current = text
         setDraft(text)
+        saveCommentDraft(draftContext, { comment: text })
     }
     const resumed = useRef(null)
     const mounted = useRef(true)
@@ -75,6 +86,12 @@ export default function AnnaConversation({
     const [preparingVoice, setPreparingVoice] = useState(false)
     const voiceRequest = useRef(0)
     const voiceActive = preparingVoice || call.status !== 'idle'
+    const placeholder = voiceActive
+        ? translate('Voice call in progress')
+        : translate('Talk or type to %{assistantName}…', { assistantName })
+    const keepLatestVisible = useCallback(() => {
+        if (follow.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight
+    }, [])
     const seconds = Math.floor(call.voiceSeconds || 0)
     const voiceLabel = translate(
         voiceActive
@@ -107,6 +124,7 @@ export default function AnnaConversation({
             return
         }
         if (call.status !== 'idle') return call.endCall()
+        if (offline || isBrowserOffline()) return
         const request = ++voiceRequest.current
         setPreparingVoice(true)
         setError('')
@@ -153,7 +171,7 @@ export default function AnnaConversation({
         scrollAnchor.current = element ? { element, top: element.getBoundingClientRect().top } : null
     }
     const earlier = async () => {
-        if (loadingEarlier) return
+        if (loadingEarlier || offline || isBrowserOffline()) return
         preservePosition()
         setLoadingEarlier(true)
         try {
@@ -168,7 +186,7 @@ export default function AnnaConversation({
     const send = (event, continuation = null) => {
         event?.preventDefault()
         const text = continuation?.text || draftRef.current.trim()
-        if (voiceActive || dictationBusy || !text) return
+        if (voiceActive || dictationBusy || !text || offline || isBrowserOffline()) return
         if (!(user.gold > 0)) {
             setError(translate('You need Gold to talk with %{assistantName}.', { assistantName }))
             return
@@ -186,7 +204,7 @@ export default function AnnaConversation({
         }
     }
     const retryMessage = key => {
-        if (voiceActive) return
+        if (voiceActive || offline || isBrowserOffline()) return
         if (!(user.gold > 0)) {
             setError(translate('You need Gold to talk with %{assistantName}.', { assistantName }))
             return
@@ -194,11 +212,20 @@ export default function AnnaConversation({
         retry(key)
     }
     useEffect(() => {
-        if (!resumeRequest || resumed.current === resumeRequest.id || sending || voiceActive || dictationBusy) return
+        if (
+            !resumeRequest ||
+            resumed.current === resumeRequest.id ||
+            sending ||
+            voiceActive ||
+            dictationBusy ||
+            offline ||
+            isBrowserOffline()
+        )
+            return
         resumed.current = resumeRequest.id
         send(null, resumeRequest)
         onResumeHandled?.(resumeRequest.id)
-    }, [resumeRequest, sending, voiceActive, dictationBusy])
+    }, [resumeRequest, sending, voiceActive, dictationBusy, offline])
     // Keep pending/failed submissions visible even when today's resolved thread
     // differs from the cached conversation or a rollover changes the history.
     const displayedThreads = [...(threads.length ? threads : [{ ...conversation, chatId: conversation.id }])]
@@ -238,7 +265,7 @@ export default function AnnaConversation({
                 }}
             >
                 {hasEarlier && (
-                    <button className="anna-text-button" disabled={loadingEarlier} onClick={earlier}>
+                    <button className="anna-text-button" disabled={loadingEarlier || offline} onClick={earlier}>
                         {translate(loadingEarlier ? 'Loading earlier days…' : 'Earlier days')}
                     </button>
                 )}
@@ -265,6 +292,7 @@ export default function AnnaConversation({
                         onChange={messagesChanged}
                         onLoadEarlier={preservePosition}
                         visible={visible}
+                        offline={offline}
                         contextNotices={contextNotices.filter(
                             notice =>
                                 notice.projectId === thread.projectId && notice.chatId === (thread.chatId || thread.id)
@@ -288,6 +316,13 @@ export default function AnnaConversation({
                 </button>
             )}
             <form className="anna-composer" onSubmit={send}>
+                {offline && (
+                    <p className="anna-muted" role="status">
+                        {translate(
+                            'You are offline. You can read saved messages and write a draft. Reconnect to send.'
+                        )}
+                    </p>
+                )}
                 {(error || call.error) && (
                     <div className="anna-error" role="alert">
                         {error || call.error}
@@ -298,59 +333,63 @@ export default function AnnaConversation({
                         ref={composer}
                         projectId={conversation.projectId}
                         label={translate('Message %{assistantName}', { assistantName })}
-                        placeholder={
-                            voiceActive
-                                ? translate('Voice call in progress')
-                                : translate('Talk or type to %{assistantName}…', { assistantName })
-                        }
+                        placeholder={placeholder}
+                        initialText={draft}
+                        onResize={keepLatestVisible}
                         disabled={voiceActive}
                         onFocus={onExpand}
                         onChangeText={changeDraft}
                         onSubmit={() => send()}
                     />
-                    {!voiceActive && conversation.projectId && isDictationSupported() && (
-                        <RambleButton
-                            projectId={conversation.projectId}
-                            targetKind="generic"
-                            getCurrentText={() => draftRef.current}
-                            onTextReady={insertDictatedText}
-                            onPhaseChange={setDictationPhase}
-                            getOverlayViewport={() => {
-                                const pane = composer.current?.getPane()
-                                return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
-                            }}
-                            style={{ minWidth: 36, height: 36, borderRadius: 18, flexShrink: 0 }}
-                        />
-                    )}
-                    {call.needsAudioPlayback && (
-                        <button
-                            type="button"
-                            className="anna-voice-button"
-                            aria-label={translate('Enable call audio')}
-                            title={translate('Enable call audio')}
-                            onClick={call.playCallAudio}
-                        >
-                            <Icon name="volume-2" size={20} color="currentColor" />
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        className={`anna-voice-button${voiceActive ? ' anna-voice-active' : ''}`}
-                        aria-label={voiceLabel}
-                        title={voiceHint}
-                        disabled={voiceActive ? call.status === 'ending' : sending || dictationBusy}
-                        onClick={toggleVoiceCall}
-                    >
-                        <Icon name={voiceActive ? 'phone-off' : 'phone-call'} size={20} color="currentColor" />
-                    </button>
-                    <button
-                        type="submit"
-                        className="anna-send"
-                        disabled={voiceActive || dictationBusy || !draft.trim()}
-                        aria-label={translate('Send message')}
-                    >
-                        ↑
-                    </button>
+                    <div className="anna-composer-toolbar">
+                        <div className="anna-composer-tools">
+                            {!voiceActive && !offline && conversation.projectId && isDictationSupported() && (
+                                <RambleButton
+                                    projectId={conversation.projectId}
+                                    targetKind="generic"
+                                    getCurrentText={() => draftRef.current}
+                                    onTextReady={insertDictatedText}
+                                    onPhaseChange={setDictationPhase}
+                                    getOverlayViewport={() => {
+                                        const pane = composer.current?.getPane()
+                                        return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
+                                    }}
+                                    style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
+                                />
+                            )}
+                        </div>
+                        <div className="anna-composer-actions">
+                            {call.needsAudioPlayback && (
+                                <button
+                                    type="button"
+                                    className="anna-voice-button"
+                                    aria-label={translate('Enable call audio')}
+                                    title={translate('Enable call audio')}
+                                    onClick={call.playCallAudio}
+                                >
+                                    <Icon name="volume-2" size={20} color="currentColor" />
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                className={`anna-voice-button${voiceActive ? ' anna-voice-active' : ''}`}
+                                aria-label={voiceLabel}
+                                title={voiceHint}
+                                disabled={voiceActive ? call.status === 'ending' : offline || sending || dictationBusy}
+                                onClick={toggleVoiceCall}
+                            >
+                                <Icon name={voiceActive ? 'phone-off' : 'phone-call'} size={20} color="currentColor" />
+                            </button>
+                            <button
+                                type="submit"
+                                className="anna-send"
+                                disabled={offline || voiceActive || dictationBusy || !draft.trim()}
+                                aria-label={translate('Send message')}
+                            >
+                                <Icon name="arrow-up" size={20} color="currentColor" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div className="anna-composer-footer">
                     {voiceActive ? (
@@ -391,6 +430,7 @@ function AnnaThreadMessages({
     onLoadEarlier,
     onSuggest,
     visible,
+    offline,
     contextNotices,
     localMessages,
     onRetry,
@@ -460,7 +500,10 @@ function AnnaThreadMessages({
                 </button>
             )}
             {!messages.loaded && <p className="anna-muted">{translate('Loading your conversation…')}</p>}
-            {current && messages.loaded && displayedMessages.length === 0 && (
+            {offline && messages.loaded && displayedMessages.length === 0 && (
+                <p className="anna-muted">{translate('This conversation is not available offline yet.')}</p>
+            )}
+            {current && !offline && messages.loaded && displayedMessages.length === 0 && (
                 <div className="anna-welcome">
                     <h1>{translate('What’s on your mind?')}</h1>
                     <p>

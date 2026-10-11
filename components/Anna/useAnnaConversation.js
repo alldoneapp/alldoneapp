@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { getDb, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { subscribePageVisible } from '../../utils/appResume'
+import { isBrowserOffline } from '../../utils/connectionState'
+import {
+    clearAnnaConversationCache,
+    readAnnaConversationCache,
+    saveAnnaConversationCache,
+} from './annaConversationCache'
 
 const threadKey = thread => `${thread.projectId}/${thread.chatId || thread.id}`
 const threadReference = (reference, created) => ({
@@ -15,7 +22,7 @@ const mergeThreads = (previous, incoming) => {
     incoming.forEach(thread => threads.set(threadKey(thread), { ...threads.get(threadKey(thread)), ...thread }))
     return [...threads.values()].sort((a, b) => (a.created || 0) - (b.created || 0))
 }
-const initialState = scope => ({
+const initialState = (scope, cached) => ({
     scope,
     loading: true,
     conversation: null,
@@ -23,14 +30,17 @@ const initialState = scope => ({
     threads: [],
     nextBefore: null,
     historyLoaded: false,
+    ...(cached ? { ...cached, loading: false } : {}),
 })
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value)
 
 export default function useAnnaConversation(userId, { enabled = true, user = {}, hold = false } = {}) {
+    const connectionState = useSelector(state => state.connectionState)
+    const offline = connectionState === 'offline' || isBrowserOffline()
     const scope = `${userId || ''}/${user.defaultProjectId || ''}`
     const scopeRef = useRef(scope)
     scopeRef.current = scope
-    const [state, setState] = useState(() => initialState(scope))
+    const [state, setState] = useState(() => initialState(scope, readAnnaConversationCache(userId, user)))
     const [reference, setReference] = useState(null)
     const activeReference = reference?.scope === scope ? reference : null
     const generation = useRef(0)
@@ -73,11 +83,15 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
             .catch(error => {
                 if (current()) {
                     const denied = ['permission-denied', 'unauthenticated'].some(code => error.code?.endsWith(code))
+                    if (denied) clearAnnaConversationCache(userId, user.defaultProjectId)
                     setState(previous => ({
                         ...previous,
                         loading: false,
                         ...(denied ? { conversation: null, threads: [] } : {}),
-                        error: error.message || 'Your conversation could not be loaded. Please try again.',
+                        error:
+                            error.code === 'offline'
+                                ? ''
+                                : error.message || 'Your conversation could not be loaded. Please try again.',
                     }))
                 }
                 throw error
@@ -102,7 +116,16 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
                     if (currentGeneration !== historyGeneration.current || scopeRef.current !== scope) return
                     setState(previous => ({
                         ...previous,
-                        threads: mergeThreads(previous.threads, result.threads || []),
+                        // A refreshed first page replaces cached references, including
+                        // deleted/inaccessible threads. Pagination still appends.
+                        threads: mergeThreads(
+                            before
+                                ? previous.threads
+                                : previous.conversation
+                                  ? [threadReference(previous.conversation, previous.conversation.created)]
+                                  : [],
+                            result.threads || []
+                        ),
                         nextBefore: result.nextBefore,
                         historyLoaded: true,
                     }))
@@ -122,8 +145,9 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
         flight.current = null
         historyFlight.current = null
         nextRollover.current = 0
-        setReference(null)
-        setState(initialState(scope))
+        const cached = readAnnaConversationCache(userId, user)
+        setReference(cached ? { ...threadReference(cached.conversation), scope } : null)
+        setState(initialState(scope, cached))
         return () => {
             generation.current++
             historyGeneration.current++
@@ -131,6 +155,10 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
             historyFlight.current = null
         }
     }, [scope])
+
+    useEffect(() => {
+        if (state.scope === scope && state.conversation) saveAnnaConversationCache(userId, user.defaultProjectId, state)
+    }, [scope, state, userId, user.defaultProjectId])
 
     useEffect(() => {
         generation.current++
@@ -170,7 +198,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
     }, [scope, userId, user.defaultProjectId, user.isAnonymous, activeReference])
 
     useEffect(() => {
-        if (!enabled || !userId) return
+        if (!enabled || !userId || offline) return
         resolveConversation().catch(() => {})
         const refresh = () => {
             if (!holdRef.current && !document.hidden && Date.now() >= nextRollover.current)
@@ -182,7 +210,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
             clearInterval(timer)
             stop()
         }
-    }, [enabled, userId, resolveConversation])
+    }, [enabled, userId, resolveConversation, offline])
 
     useEffect(() => {
         if (!activeReference?.chatId) return
@@ -190,8 +218,11 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
         const stop = getDb()
             .doc(`chatObjects/${activeReference.projectId}/chats/${activeReference.chatId}`)
             .onSnapshot(
+                { includeMetadataChanges: true },
                 snapshot => {
                     if (cancelled || scopeRef.current !== scope) return
+                    // A cache miss is unknown, not proof that the conversation was deleted.
+                    if (!snapshot.exists && snapshot.metadata?.fromCache) return
                     const chat = snapshot.data()
                     if (
                         !snapshot.exists ||
@@ -199,10 +230,12 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
                         chat?.creatorId !== userId ||
                         chat?.type !== 'topics'
                     ) {
+                        clearAnnaConversationCache(userId, user.defaultProjectId)
                         setState(previous => ({
                             ...previous,
                             loading: false,
                             conversation: null,
+                            threads: [],
                             error: 'Your conversation could not be found.',
                         }))
                         return
@@ -222,7 +255,8 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
                     }))
                 },
                 error => {
-                    if (!cancelled && scopeRef.current === scope)
+                    if (!cancelled && scopeRef.current === scope) {
+                        clearAnnaConversationCache(userId, user.defaultProjectId)
                         setState(previous => ({
                             ...previous,
                             loading: false,
@@ -230,6 +264,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
                             threads: [],
                             error: error.message,
                         }))
+                    }
                 }
             )
         return () => {
@@ -239,22 +274,25 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
     }, [scope, userId, activeReference?.projectId, activeReference?.chatId, activeReference?.assistantId])
 
     useEffect(() => {
-        if (!enabled || state.scope !== scope || !state.conversation || state.historyLoaded) return
+        if (!enabled || offline || state.scope !== scope || !state.conversation || state.historyLoaded) return
         let cancelled = false
         loadHistory().catch(error => {
             if (!cancelled && scopeRef.current === scope)
                 setState(previous => ({
                     ...previous,
-                    error: error.message || 'Earlier conversations could not be loaded.',
+                    error:
+                        error.code === 'offline' ? '' : error.message || 'Earlier conversations could not be loaded.',
                 }))
         })
         return () => {
             cancelled = true
         }
-    }, [enabled, scope, state.scope, !!state.conversation, state.historyLoaded, loadHistory])
+    }, [enabled, offline, scope, state.scope, !!state.conversation, state.historyLoaded, loadHistory])
 
     return {
         ...(state.scope === scope ? state : initialState(scope)),
+        offline,
+        loading: !offline && (state.scope === scope ? state.loading : true),
         resolveConversation,
         loadEarlier: () => (state.nextBefore == null ? Promise.resolve() : loadHistory(state.nextBefore)),
         retry: () => Promise.all([resolveConversation(), loadHistory()]).catch(() => {}),

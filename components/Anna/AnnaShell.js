@@ -58,7 +58,7 @@ export default function AnnaShell({ children, routeId }) {
     const [visited, setVisited] = useState(active)
     const [textBusy, setTextBusy] = useState(false)
     const [workState, setWorkState] = useState(null)
-    const { conversation, loading, error, retry, threads, resolveConversation, loadEarlier, nextBefore } =
+    const { conversation, loading, error, retry, threads, resolveConversation, loadEarlier, nextBefore, offline } =
         useAnnaConversation(user.uid, { enabled: active, user, hold: textBusy || call.status !== 'idle' })
     const resolvedAssistant = useSelector(state =>
         conversation?.assistantId
@@ -526,8 +526,14 @@ export default function AnnaShell({ children, routeId }) {
                                     <button onClick={retry}>{translate('Try again')}</button>
                                 </div>
                             )}
+                            {offline && !conversation && (
+                                <div className="anna-empty" role="status">
+                                    {translate('This conversation is not available offline yet.')}
+                                </div>
+                            )}
                             {conversation && (
                                 <AnnaConversation
+                                    key={`${user.uid}/${user.defaultProjectId}`}
                                     conversation={conversation}
                                     assistant={assistant}
                                     user={user}
@@ -536,6 +542,7 @@ export default function AnnaShell({ children, routeId }) {
                                     resolveConversation={resolveConversation}
                                     loadEarlier={loadEarlier}
                                     hasEarlier={nextBefore != null}
+                                    offline={offline}
                                     resumeRequest={browserControl ? null : resumeRequest}
                                     onResumeHandled={id =>
                                         setResumeRequest(current => (current?.id === id ? null : current))

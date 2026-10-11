@@ -5,6 +5,7 @@ import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
+jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 
 // Keep the real Anna composer and send lifecycle; model the shared Quill input
 // as a textarea here. Real embed insertion is exercised by the browser harness.
@@ -17,7 +18,7 @@ jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
     return React.forwardRef((props, ref) => {
         mockRichInputProps = props
         const node = React.useRef(null)
-        const [text, setText] = React.useState('')
+        const [text, setText] = React.useState(props.initialTextExtended || '')
         const current = React.useRef(props)
         current.current = props
         const change = value => {
@@ -136,6 +137,7 @@ const deferred = () => {
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     jest.clearAllMocks()
+    localStorage.clear()
     mockDictation = null
     mockDictationSupported = true
     mockMessages = []
@@ -782,4 +784,41 @@ it('keeps voice from starting if automatic handback fails or preparation is canc
     await act(async () => container.querySelector('[aria-label="Cancel call"]').click())
     await act(async () => handback.resolve())
     expect(startCall).not.toHaveBeenCalled()
+})
+
+it('keeps an offline draft across remounts and sends it only after reconnecting', async () => {
+    const startCall = jest.fn()
+    render({ offline: true, call: { status: 'idle', startCall } })
+    type('Remember this when I reconnect')
+    expect(container.querySelector('[aria-label="Send message"]').disabled).toBe(true)
+    expect(container.querySelector('[aria-label="Talk with Existing assistant"]').disabled).toBe(true)
+    expect(container.querySelector('[aria-label="Dictate"]')).toBeNull()
+    await submit()
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    act(() => root.unmount())
+    root = createRoot(container)
+    render({ offline: true })
+    expect(container.querySelector('textarea').value).toBe('Remember this when I reconnect')
+    render({ offline: false })
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    await submit()
+    expect(createObjectMessage.mock.calls[0][2]).toBe('Remember this when I reconnect')
+    act(() => root.unmount())
+    root = createRoot(container)
+    render()
+    expect(container.querySelector('textarea').value).toBe('')
+})
+
+it('does not restore another account or default project draft', () => {
+    render()
+    type('Private draft')
+    act(() => root.unmount())
+    root = createRoot(container)
+    render({ user: { uid: 'u2', gold: 100 } })
+    expect(container.querySelector('textarea').value).toBe('')
+    act(() => root.unmount())
+    root = createRoot(container)
+    render({ user: { uid: 'u1', gold: 100, defaultProjectId: 'p2' } })
+    expect(container.querySelector('textarea').value).toBe('')
 })

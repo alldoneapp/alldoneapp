@@ -244,35 +244,44 @@
     flex: none;
     margin: 0 22px;
     padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    container: anna-composer / inline-size;
 }
 .anna-composer-field {
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    align-items: flex-end;
-    padding: 10px 10px 10px 14px;
+    padding: 14px 12px 10px;
     border: 1px solid var(--anna-border);
     background: var(--anna-surface);
-    border-radius: 15px;
+    border-radius: 20px;
+    transition:
+        border-color 150ms ease,
+        box-shadow 150ms ease;
 }
 .anna-rich-composer {
-    flex: 1;
     min-width: 0;
+    width: 100%;
 }
 .anna-rich-composer .ql-container,
 .anna-rich-composer .ql-editor {
     background: transparent;
     border: 0;
     color: var(--anna-ink) !important;
-    font-size: 14px !important;
-    line-height: 1.5 !important;
+    font-size: 16px !important;
+    line-height: 24px !important;
 }
 .anna-rich-composer .ql-editor {
-    padding: 4px 0 !important;
+    min-height: 48px;
+    padding: 0 4px !important;
+    overflow-y: visible !important;
+}
+.anna-rich-composer .ql-container > .ql-editor > p {
+    line-height: 24px;
 }
 .anna-rich-composer .ql-editor.ql-blank::before {
     color: var(--anna-placeholder);
-    left: 0;
-    right: 0;
+    left: 4px;
+    right: 4px;
 }
 .anna-composer-field:focus-within {
     border-color: var(--anna-focus);
@@ -281,19 +290,37 @@
 .anna-shell .anna-rich-composer .ql-editor:focus-visible {
     outline: none;
 }
+.anna-composer-toolbar,
+.anna-composer-tools,
+.anna-composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.anna-composer-toolbar {
+    justify-content: space-between;
+}
 .anna-send {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0;
     border: 0;
     border-radius: 50%;
     background: var(--anna-accent);
     color: white;
-    font-size: 23px !important;
+    transition:
+        box-shadow 150ms ease,
+        opacity 150ms ease;
+}
+.anna-send:not(:disabled):hover {
+    box-shadow: 0 2px 8px #0c66ff33;
 }
 .anna-voice-button {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     flex: none;
     display: grid;
     place-items: center;
@@ -301,7 +328,7 @@
     border: 0;
     border-radius: 50%;
     background: transparent;
-    color: var(--anna-accent);
+    color: var(--anna-muted);
 }
 .anna-voice-button:hover {
     background: var(--anna-hover);
@@ -316,9 +343,9 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    font-size: 10px;
+    font-size: 11px;
     color: var(--anna-muted);
-    padding: 9px 2px;
+    padding: 8px 4px 2px;
     white-space: nowrap;
     min-width: 0;
 }
@@ -328,6 +355,11 @@
 }
 .anna-composer-shortcut {
     flex: none;
+}
+@container anna-composer (max-width: 420px) {
+    .anna-composer-shortcut {
+        display: none;
+    }
 }
 .anna-end-call {
     color: #a12f36;

@@ -1167,6 +1167,8 @@
     "Person could not be added": "Person konnte nicht hinzugefügt werden. Bitte versuche es erneut.",
     "Alldone is online": "Alldone ist online",
     "Alldone is offline": "Alldone ist offline",
+    "This conversation is not available offline yet.": "Diese Unterhaltung ist noch nicht offline verfügbar.",
+    "You are offline. You can read saved messages and write a draft. Reconnect to send.": "Du bist offline. Du kannst gespeicherte Nachrichten lesen und einen Entwurf schreiben. Zum Senden brauchst du wieder eine Verbindung.",
     "Alldone is online again, all functionalities are available": "Alldone ist wieder online - alles klappt wieder",
     "This note is not available offline yet": "Diese Notiz ist offline noch nicht verfügbar",
     "It will load automatically when you are back online": "Sie wurde auf diesem Gerät noch nicht geöffnet. Sie wird automatisch geladen, sobald du wieder online bist.",
