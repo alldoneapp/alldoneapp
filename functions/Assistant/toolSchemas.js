@@ -1473,7 +1473,7 @@ const toolSchemas = {
         function: {
             name: 'browser_navigate',
             description:
-                'Opens a URL in a real browser, executes its JavaScript, waits for rendered content and returns the current page text, headings and interactive elements. Use it immediately for SPA or "#/..." URLs, dynamically rendered pages, current availability or times, login, filters or other interaction. Also use it when fetch_url succeeded technically but did not contain the information the user asked for, or when the user explicitly asks to browse or open the actual page. Do not replace a direct browser read with repeated web_search calls. Browsing is subject to the project policy; unsafe, private and blocked hosts are refused. This starts a browsing session in this thread that the other browser_ tools then work on.',
+                'Opens a URL in a real browser, executes its JavaScript, waits for rendered content and returns the current page text, headings and interactive elements. Use it immediately for SPA or "#/..." URLs, dynamically rendered pages, current availability or times, login, filters or other interaction. Also use it when fetch_url succeeded technically but did not contain the information the user asked for, or when the user explicitly asks to browse or open the actual page. Do not replace a direct browser read with repeated web_search calls. Before reading, use browser_click to accept all cookies on cookie/privacy banners and close obstructing promotional overlays, then verify the returned snapshot shows the content. Routine cookie consent needs no separate confirmation. Browsing is subject to the project policy; unsafe, private and blocked hosts are refused. This starts a browsing session in this thread that the other browser_ tools then work on.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1500,7 +1500,7 @@ const toolSchemas = {
         function: {
             name: 'browser_inspect',
             description:
-                'Returns a fresh snapshot of the page that is currently open: title, readable text, headings and the interactive elements with a "ref" for each. The latest browser_navigate result and every browser action result already include a fresh page snapshot and refs; call browser_inspect only when the page may have changed independently or the required element is missing from the latest browser result. A stale ref is refused rather than guessed. Elements flagged needsApproval will pause for the user.',
+                'Returns a fresh snapshot of the page that is currently open: title, readable text, headings and the interactive elements with a "ref" for each. The latest browser_navigate result and every browser action result already include a fresh page snapshot and refs; call browser_inspect only when the page may have changed independently or the required element is missing from the latest browser result. A stale ref is refused rather than guessed. Elements flagged needsApproval may pause for the user; this is a conservative submit-control hint, and routine cookie consent is classified when browser_click is called.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -1525,7 +1525,7 @@ const toolSchemas = {
         function: {
             name: 'browser_click',
             description:
-                'Clicks one element on the page that is currently open, identified by a ref from the latest browser result. Refs returned by browser_navigate, browser_inspect and browser actions are valid until the page changes; call browser_inspect only when the ref is missing or stale. The element is examined before it is clicked: if it turns out to sign in, upload, book, pay, submit, publish, send or delete, the click is NOT performed and the user is asked to approve it first. When that happens, tell the user what you want to do and stop — there is no alternative element or selector that avoids the check.',
+                'Clicks one element on the page that is currently open, identified by a ref from the latest browser result. Refs returned by browser_navigate, browser_inspect and browser actions are valid until the page changes; call browser_inspect only when the ref is missing or stale. Use it to accept all cookies on cookie/privacy banners without a separate confirmation, and to close obstructing overlays before reading the page. A needsApproval snapshot hint on a cookie-consent form does not prevent trying its consent control through this tool; only an actual approval response requires stopping. Check the returned snapshot to verify the banner is gone and content is visible. The element is examined before it is clicked: routine cookie consent is allowed, but if it turns out to sign in, upload, book, pay, submit an unrelated form, publish, send or delete, the click is NOT performed and the user is asked to approve it first. When that happens, tell the user what you want to do and stop — there is no alternative element or selector that avoids the check.',
             parameters: {
                 type: 'object',
                 properties: {

@@ -67,6 +67,15 @@ describe('browser tool registration', () => {
         expect(toolSchemas.browser_click.function.description).toMatch(/only when the ref is missing or stale/i)
     })
 
+    it('directs browsing to clear consent banners and verify the revealed content', () => {
+        for (const name of ['browser_navigate', 'browser_click']) {
+            const description = toolSchemas[name].function.description
+            expect(description).toMatch(/accept all cookies/i)
+            expect(description).toMatch(/verify.*snapshot|snapshot.*verify/i)
+            expect(description).toMatch(/no separate confirmation|without a separate confirmation/i)
+        }
+    })
+
     it('is offered in Tools Access and is opt-in only', () => {
         const source = readRepoFile('components/AssistantDetailedView/Customizations/ToolsAccess/toolOptions.js')
         expect(source).toContain(`{ key: '${BROWSER_TOOL_KEY}'`)
