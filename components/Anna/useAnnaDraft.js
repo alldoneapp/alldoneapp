@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { readCommentDraft, saveCommentDraft } from '../../utils/commentDraftStore'
+import { subscribePageHidden } from '../../utils/appResume'
 
 // AnnaShell remounts the conversation when the account/default project changes.
 export default function useAnnaDraft(context) {
@@ -40,17 +41,12 @@ export default function useAnnaDraft(context) {
     )
 
     useEffect(() => {
-        const onVisibilityChange = () => {
-            if (document.hidden) flush()
-        }
-        window.addEventListener('pagehide', flush)
+        const stop = subscribePageHidden(flush)
         window.addEventListener('beforeunload', flush)
-        document.addEventListener('visibilitychange', onVisibilityChange)
         return () => {
             flush()
-            window.removeEventListener('pagehide', flush)
+            stop()
             window.removeEventListener('beforeunload', flush)
-            document.removeEventListener('visibilitychange', onVisibilityChange)
         }
     }, [flush])
 
