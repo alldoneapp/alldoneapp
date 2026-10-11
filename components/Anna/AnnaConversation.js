@@ -15,9 +15,9 @@ import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
 import { isDictationSupported } from '../../hooks/useRambleRecorder'
 import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
-import { readCommentDraft, saveCommentDraft } from '../../utils/commentDraftStore'
 import { isBrowserOffline } from '../../utils/connectionState'
 import AnnaChatComposer from './AnnaChatComposer'
+import useAnnaDraft from './useAnnaDraft'
 
 export default function AnnaConversation({
     conversation,
@@ -41,13 +41,17 @@ export default function AnnaConversation({
     const contextNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     // The draft belongs to the continuous conversation, including across midnight.
-    const draftContext = {
+    const {
+        initialText,
+        draft: draftRef,
+        hasText,
+        change: changeDraft,
+    } = useAnnaDraft({
         userId: user.uid,
         projectId: user.defaultProjectId || conversation.projectId,
         objectType: 'anna',
         objectId: 'conversation',
-    }
-    const [draft, setDraft] = useState(() => readCommentDraft(draftContext)?.comment || '')
+    })
     const [error, setError] = useState('')
     const {
         messages: localMessages,
@@ -67,14 +71,8 @@ export default function AnnaConversation({
     const follow = useRef(true)
     const scrollAnchor = useRef(null)
     const composer = useRef(null)
-    const draftRef = useRef(draft)
     const [dictationPhase, setDictationPhase] = useState(RAMBLE_PHASE_IDLE)
     const dictationBusy = dictationPhase !== RAMBLE_PHASE_IDLE
-    const changeDraft = text => {
-        draftRef.current = text
-        setDraft(text)
-        saveCommentDraft(draftContext, { comment: text })
-    }
     const resumed = useRef(null)
     const mounted = useRef(true)
     const insertDictatedText = text => {
@@ -334,7 +332,7 @@ export default function AnnaConversation({
                         projectId={conversation.projectId}
                         label={translate('Message %{assistantName}', { assistantName })}
                         placeholder={placeholder}
-                        initialText={draft}
+                        initialText={initialText}
                         onResize={keepLatestVisible}
                         disabled={voiceActive}
                         onFocus={onExpand}
@@ -383,7 +381,7 @@ export default function AnnaConversation({
                             <button
                                 type="submit"
                                 className="anna-send"
-                                disabled={offline || voiceActive || dictationBusy || !draft.trim()}
+                                disabled={offline || voiceActive || dictationBusy || !hasText}
                                 aria-label={translate('Send message')}
                             >
                                 <Icon name="arrow-up" size={20} color="currentColor" />
@@ -391,7 +389,7 @@ export default function AnnaConversation({
                         </div>
                     </div>
                 </div>
-                <div className="anna-composer-footer">
+                <div className={`anna-composer-footer${voiceActive ? '' : ' anna-composer-footer-idle'}`}>
                     {voiceActive ? (
                         <>
                             <span role="status">
@@ -406,12 +404,7 @@ export default function AnnaConversation({
                             <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} compact />
                         </>
                     ) : (
-                        <>
-                            <span title={translate('Conversation in your default project')}>
-                                {translate('Conversation in your default project')}
-                            </span>
-                            <span className="anna-composer-shortcut">{translate('Shift + Enter for a new line')}</span>
-                        </>
+                        <span className="anna-composer-shortcut">{translate('Shift + Enter for a new line')}</span>
                     )}
                 </div>
             </form>
