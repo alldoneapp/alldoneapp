@@ -2,9 +2,10 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import useAnnaDraft from './useAnnaDraft'
 import { readCommentDraft } from '../../utils/commentDraftStore'
+import { installAppResumeListener } from '../../utils/appResume'
 
 const context = { userId: 'draft-user', projectId: 'p1', objectType: 'anna', objectId: 'conversation' }
-let root, container, draft, writes
+let root, container, draft, writes, stopLifecycle
 function Harness() {
     draft = useAnnaDraft(context)
     return null
@@ -15,12 +16,14 @@ beforeEach(() => {
     jest.useFakeTimers()
     localStorage.clear()
     writes = jest.spyOn(Storage.prototype, 'setItem')
+    stopLifecycle = installAppResumeListener()
     container = document.createElement('div')
     root = createRoot(container)
     act(() => root.render(<Harness />))
 })
 afterEach(() => {
     act(() => root.unmount())
+    stopLifecycle()
     jest.restoreAllMocks()
     jest.useRealTimers()
     delete global.IS_REACT_ACT_ENVIRONMENT
@@ -40,10 +43,10 @@ it('keeps the latest text immediately available and saves once after typing paus
     expect(readCommentDraft(context).comment).toBe(draft.draft.current)
 })
 
-it.each(['pagehide', 'beforeunload', 'visibilitychange'])('flushes the latest draft on %s', event => {
+it.each(['pagehide', 'beforeunload', 'visibilitychange', 'freeze'])('flushes the latest draft on %s', event => {
     act(() => draft.change('Preserve before leaving'))
-    if (event === 'visibilitychange') jest.spyOn(document, 'hidden', 'get').mockReturnValue(true)
-    act(() => (event === 'visibilitychange' ? document : window).dispatchEvent(new Event(event)))
+    if (event === 'visibilitychange') jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => (event === 'visibilitychange' || event === 'freeze' ? document : window).dispatchEvent(new Event(event)))
     expect(readCommentDraft(context).comment).toBe('Preserve before leaving')
     act(() => jest.advanceTimersByTime(500))
     expect(writes).toHaveBeenCalledTimes(1)
