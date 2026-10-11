@@ -80,7 +80,11 @@ jest.mock('../UIControls/RambleButton', () => ({
 const mockContextUpdate = jest.fn().mockResolvedValue(undefined)
 let mockMessages = []
 jest.mock('../../hooks/Chats/useGetMessages', () => () => Object.assign([...mockMessages], { loaded: true }))
-jest.mock('../ChatsView/ChatDV/EditorView/MessageItemBody', () => ({ commentText }) => <div>{commentText}</div>)
+const mockMessageRender = jest.fn()
+jest.mock('../ChatsView/ChatDV/EditorView/MessageItemBody', () => props => {
+    mockMessageRender(props.messageId)
+    return <div>{props.commentText}</div>
+})
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({ createObjectMessage: jest.fn() }))
 jest.mock('../../utils/backends/Chats/commentOutbox', () => ({
     commentOutbox: { retry: jest.fn(), read: jest.fn() },
@@ -821,4 +825,25 @@ it('does not restore another account or default project draft', () => {
     root = createRoot(container)
     render({ user: { uid: 'u1', gold: 100, defaultProjectId: 'p2' } })
     expect(container.querySelector('textarea').value).toBe('')
+})
+
+it('keeps typing out of the transcript render and synchronous storage paths', () => {
+    mockMessages = Array.from({ length: 40 }, (_, i) => ({
+        id: `message-${i}`,
+        creatorId: 'a1',
+        commentText: `Previous message ${i}`,
+        created: i + 1,
+    }))
+    render()
+    type('H')
+    mockMessageRender.mockClear()
+    const writes = jest.spyOn(Storage.prototype, 'setItem')
+    for (const text of ['He', 'Hel', 'Hell', 'Hello']) type(text)
+    expect({ transcriptRenders: mockMessageRender.mock.calls.length, storageWrites: writes.mock.calls.length }).toEqual(
+        {
+            transcriptRenders: 0,
+            storageWrites: 0,
+        }
+    )
+    expect(container.querySelector('[aria-label="Send message"]').disabled).toBe(false)
 })

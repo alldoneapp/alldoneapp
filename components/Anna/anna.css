@@ -356,8 +356,11 @@
 .anna-composer-shortcut {
     flex: none;
 }
+.anna-composer-footer-idle {
+    justify-content: flex-end;
+}
 @container anna-composer (max-width: 420px) {
-    .anna-composer-shortcut {
+    .anna-composer-footer-idle {
         display: none;
     }
 }
