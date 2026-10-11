@@ -1302,6 +1302,8 @@
     "Person could not be added": "Person could not be added. Please try again.",
     "Alldone is online": "Alldone is online",
     "Alldone is offline": "Alldone is offline",
+    "This conversation is not available offline yet.": "This conversation is not available offline yet.",
+    "You are offline. You can read saved messages and write a draft. Reconnect to send.": "You are offline. You can read saved messages and write a draft. Reconnect to send.",
     "Alldone is online again, all functionalities are available": "Alldone is online again, all functionalities are available.",
     "This note is not available offline yet": "This note is not available offline yet",
     "It will load automatically when you are back online": "It has not been opened on this device before. It will load automatically when you are back online.",

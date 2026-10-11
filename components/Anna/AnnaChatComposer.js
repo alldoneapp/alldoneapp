@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import ReactQuill from 'react-quill-new'
 import CustomTextInput3 from '../Feeds/CommentsTextInput/CustomTextInput3'
 import { TASK_THEME } from '../Feeds/CommentsTextInput/textInputHelper'
@@ -9,9 +9,11 @@ const Delta = ReactQuill.Quill.import('delta')
 // Reuse the chat editor's picker, embeds and serialization. Anna keeps its own
 // dictation controls and send lifecycle, including concurrent messages/retries.
 const AnnaChatComposer = forwardRef(function AnnaChatComposer(
-    { projectId, placeholder, label, disabled, onChangeText, onFocus, onSubmit },
+    { projectId, placeholder, label, disabled, initialText, onChangeText, onFocus, onSubmit, onResize },
     ref
 ) {
+    const initialDraft = useRef(initialText)
+    const [height, setHeight] = useState(48)
     const input = useRef(null)
     const editor = useRef(null)
     const selection = useRef({ index: 0, length: 0 })
@@ -21,6 +23,13 @@ const AnnaChatComposer = forwardRef(function AnnaChatComposer(
     useEffect(() => {
         editor.current?.root.setAttribute('aria-label', label)
     }, [label])
+
+    useEffect(() => {
+        if (!frame.current || !onResize || typeof ResizeObserver === 'undefined') return
+        const observer = new ResizeObserver(onResize)
+        observer.observe(frame.current)
+        return () => observer.disconnect()
+    }, [onResize])
 
     useImperativeHandle(ref, () => ({
         focus: () => input.current?.focus(),
@@ -76,8 +85,12 @@ const AnnaChatComposer = forwardRef(function AnnaChatComposer(
                 projectId={projectId}
                 placeholder={placeholder}
                 styleTheme={TASK_THEME}
-                fixedHeight={56}
-                maxHeight={160}
+                initialTextExtended={initialDraft.current}
+                focusOnInitialText={false}
+                autoExpand
+                fixedHeight={height}
+                maxHeight="min(240px, 35dvh)"
+                onContentSizeChange={(_, naturalHeight) => setHeight(Math.max(48, naturalHeight))}
                 characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
                 disabledEdition={disabled}
                 keepBreakLines

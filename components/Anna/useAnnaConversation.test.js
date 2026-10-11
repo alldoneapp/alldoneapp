@@ -2,6 +2,10 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import useAnnaConversation from './useAnnaConversation'
 import { runHttpsCallableFunction } from '../../utils/backends/firestore'
+import { readAnnaConversationCache, saveAnnaConversationCache } from './annaConversationCache'
+let mockConnectionState = ''
+jest.mock('react-redux', () => ({ useSelector: selector => selector({ connectionState: mockConnectionState }) }))
+jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 const mockSnapshots = new Map()
 const mockErrors = new Map()
 const mockData = new Map()
@@ -10,7 +14,8 @@ jest.mock('../../utils/backends/firestore', () => ({
     runHttpsCallableFunction: jest.fn(),
     getDb: () => ({
         doc: path => ({
-            onSnapshot: (callback, error) => {
+            onSnapshot: (...args) => {
+                const [callback, error] = typeof args[0] === 'function' ? args : args.slice(1)
                 mockSnapshots.set(path, callback)
                 mockErrors.set(path, error)
                 if (mockPendingSnapshots.has(path))
@@ -57,6 +62,8 @@ beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     jest.useFakeTimers()
     runHttpsCallableFunction.mockReset()
+    localStorage.clear()
+    mockConnectionState = ''
     mockData.clear()
     mockPendingSnapshots.clear()
     container = document.createElement('div')
@@ -269,4 +276,79 @@ it('still accepts pending history when the timezone changes during startup', asy
     )
     expect(result.historyLoaded).toBe(true)
     expect(result.threads.map(thread => thread.chatId)).toEqual(['anna_u1', stored.chatId])
+})
+
+const seedColdStart = () => {
+    saveAnnaConversationCache('u1', 'p1', {
+        conversation: { ...storedChat, projectId: 'p1', id: stored.chatId },
+        threads: [
+            { ...stored, created: 100 },
+            { projectId: 'p1', chatId: 'anna_u1', created: 0 },
+        ].reverse(),
+        nextBefore: { created: 0, id: 'p1__anna_u1' },
+    })
+}
+
+it('restores recent days before any Firestore snapshot or callable responds', async () => {
+    seedColdStart()
+    mockPendingSnapshots.add(`chatObjects/p1/chats/${stored.chatId}`)
+    runHttpsCallableFunction.mockReturnValue(new Promise(() => {}))
+    await render({ enabled: true, user })
+    expect(result.loading).toBe(false)
+    expect(result.conversation.id).toBe(stored.chatId)
+    expect(result.threads.map(thread => thread.chatId)).toEqual(['anna_u1', stored.chatId])
+    expect(result.historyLoaded).toBe(false)
+})
+
+it('opens cached history offline without invoking functions and refreshes on reconnect', async () => {
+    seedColdStart()
+    mockConnectionState = 'offline'
+    mockPendingSnapshots.add(`chatObjects/p1/chats/${stored.chatId}`)
+    await render({ enabled: true, user })
+    expect(result.offline).toBe(true)
+    expect(result.conversation.id).toBe(stored.chatId)
+    expect(result.error).toBe('')
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    runHttpsCallableFunction.mockImplementation((name, payload) =>
+        Promise.resolve(
+            payload.historyOnly
+                ? { threads: [stored], nextBefore: null }
+                : { ...stored, nextRolloverAt: Date.now() + 86400000 }
+        )
+    )
+    mockConnectionState = 'online'
+    await render({ enabled: true, user })
+    expect(result.offline).toBe(false)
+    expect(result.historyLoaded).toBe(true)
+    expect(result.threads.map(thread => thread.chatId)).toEqual([stored.chatId])
+})
+
+it('does not erase a restored conversation on a cache miss but honors a server deletion', async () => {
+    seedColdStart()
+    mockPendingSnapshots.add(`chatObjects/p1/chats/${stored.chatId}`)
+    await render({ enabled: false, user })
+    const next = mockSnapshots.get(`chatObjects/p1/chats/${stored.chatId}`)
+    await act(async () => next({ exists: false, data: () => undefined, metadata: { fromCache: true } }))
+    expect(result.conversation.id).toBe(stored.chatId)
+    expect(readAnnaConversationCache('u1', user)).not.toBeNull()
+    await act(async () => next({ exists: false, data: () => undefined, metadata: { fromCache: false } }))
+    expect(result.conversation).toBeNull()
+    expect(result.threads).toEqual([])
+    expect(readAnnaConversationCache('u1', user)).toBeNull()
+})
+
+it('invalidates the saved index when the chat listener rejects access', async () => {
+    seedColdStart()
+    mockPendingSnapshots.add(`chatObjects/p1/chats/${stored.chatId}`)
+    await render({ enabled: false, user })
+    await act(async () => mockErrors.get(`chatObjects/p1/chats/${stored.chatId}`)(new Error('Permission denied')))
+    expect(readAnnaConversationCache('u1', user)).toBeNull()
+})
+
+it('finishes offline startup when this device has no cached conversation', async () => {
+    mockConnectionState = 'offline'
+    await render({ enabled: true, user })
+    expect(result.loading).toBe(false)
+    expect(result.conversation).toBeNull()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
 })

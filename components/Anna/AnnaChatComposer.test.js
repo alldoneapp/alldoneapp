@@ -72,6 +72,17 @@ it('uses the shared mention editor and preserves assistant mentions as reference
     expect(mockEditor.root.getAttribute('aria-label')).toBe('Message Carl')
 })
 
+it('restores a saved rich draft once without taking focus or replaying it after edits', () => {
+    const draft = 'Ask @CarlMENTION_SPACE_CODECode#assistant-1 about the plan'
+    render({ initialText: draft })
+    expect(mockInputProps.initialTextExtended).toBe(draft)
+    expect(mockInputProps.focusOnInitialText).toBe(false)
+    render({ initialText: 'Changed while typing' })
+    expect(mockInputProps.initialTextExtended).toBe(draft)
+    expect(mockInput.clearAndSetContent).not.toHaveBeenCalled()
+    expect(mockInput.focus).not.toHaveBeenCalled()
+})
+
 it('leaves Enter to the mention picker, then sends when it is closed', () => {
     render()
     mockInputProps.setMentionsModalActive(true)
