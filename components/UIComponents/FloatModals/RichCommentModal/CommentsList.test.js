@@ -1,6 +1,6 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { StyleSheet, Text, TouchableOpacity } from 'react-native'
+import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import CommentsList from './CommentsList'
 import { cancelAssistantRun, respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
@@ -11,7 +11,10 @@ import StopAssistantRunButton from '../../../ChatsView/ChatDV/EditorView/StopAss
 jest.mock('react-redux', () => ({
     useSelector: selector => selector({ loggedUser: { uid: 'user-1' } }),
 }))
-jest.mock('../../../Feeds/FeedsModals/ListCommentsComponents/Comment', () => 'Comment')
+jest.mock('../../../Feeds/FeedsModals/ListCommentsComponents/Comment', () => props => {
+    const React = require('react')
+    return React.createElement('Comment', props, props.contentOverride)
+})
 jest.mock('../../../../utils/backends/Assistants/assistantRuns', () => ({
     respondToVmInteraction: jest.fn(() => Promise.resolve()),
     cancelAssistantRun: jest.fn(() => Promise.resolve()),
@@ -205,6 +208,11 @@ describe('RichCommentModal CommentsList stop control', () => {
 
         const stop = findButton(tree, 'Stop')
         expect(stop).toBeTruthy()
+        const card = tree.root.findByType(AssistantProgress)
+        expect(tree.root.findAllByType(StopAssistantRunButton)).toHaveLength(1)
+        expect(card.findAllByType(StopAssistantRunButton)).toHaveLength(1)
+        expect(card.findByType(ScrollView).findAllByType(StopAssistantRunButton)).toHaveLength(0)
+        expect(card.findByType(StopAssistantRunButton).props.appearance).toBe('dark')
 
         await act(async () => {
             await stop.props.onPress()
@@ -244,11 +252,16 @@ describe('RichCommentModal CommentsList stop control', () => {
         })
     })
 
-    test('leaves a little room under the popup Stop button, without touching the shared component', () => {
-        const tree = renderPopupComments(runningRun(), { isLoading: true })
+    test('retains popup spacing for standalone VM controls and uses the card padding for chat controls', () => {
+        const tree = renderPopupComments(runningRun({ kind: 'vm_job' }), { isLoading: true })
         const stopStyle = StyleSheet.flatten(findButton(tree, 'Stop').props.style)
 
         expect(stopStyle.marginBottom).toBe(8)
+
+        const cardTree = renderPopupComments(runningRun(), { isLoading: true })
+        const cardButtonStyle = StyleSheet.flatten(findButton(cardTree, 'Stop').props.style)
+        expect(cardButtonStyle.marginBottom).toBeUndefined()
+        expect(cardButtonStyle.minHeight).toBe(44)
 
         // The spacing is the popup's own decision: the shared button — rendered the way the
         // full chat view renders it, with no style override — must not carry it.

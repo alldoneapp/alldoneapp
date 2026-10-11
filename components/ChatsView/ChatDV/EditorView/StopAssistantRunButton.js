@@ -52,6 +52,7 @@ export default function StopAssistantRunButton({
     assistantRun,
     isLoading,
     appearance = 'light',
+    variant = 'standalone',
     style,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser?.uid)
@@ -105,13 +106,16 @@ export default function StopAssistantRunButton({
         <TouchableOpacity
             style={[
                 localStyles.stopRunButton,
+                variant === 'card' && localStyles.cardButton,
                 darkAppearance && localStyles.stopRunButtonDark,
                 stopRequested && localStyles.stopRunButtonDisabled,
                 style,
             ]}
             onPress={stopAssistantRun}
             disabled={stopRequested}
-            accessibilityLabel={translate('Stop assistant')}
+            accessibilityRole="button"
+            accessibilityLabel={translate(stopRequested ? 'Stopping assistant' : 'Stop assistant')}
+            aria-busy={stopRequested}
             testID="stop-assistant-run"
         >
             <Icon name="x-thicker" size={10} color={contentColor} />
@@ -137,11 +141,21 @@ const localStyles = StyleSheet.create({
     stopRunButtonDark: {
         borderColor: colors.UtilityRed125,
     },
+    cardButton: {
+        alignSelf: 'flex-end',
+        maxWidth: '100%',
+        minHeight: 44,
+        minWidth: 44,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
     stopRunButtonDisabled: {
         opacity: 0.6,
     },
     stopRunButtonText: {
         ...global.caption2,
         marginLeft: 4,
+        flexShrink: 1,
     },
 })
