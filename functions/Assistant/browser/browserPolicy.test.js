@@ -140,6 +140,73 @@ describe('browser policy', () => {
         })
     })
 
+    describe('cookie consent', () => {
+        const consent = overrides =>
+            observed({
+                name: 'Accept all',
+                consentContextText: 'We use cookies to personalize content. Accept all or manage preferences.',
+                ...overrides,
+            })
+
+        it.each([
+            'Accept all',
+            'Allow all',
+            'Alle akzeptieren',
+            'Aceptar todas',
+            'Save preferences',
+            'Auswahl bestätigen',
+        ])('allows the observed consent control "%s" without an approval', name => {
+            const result = evaluate({ action: 'click', target: consent({ name, isSubmit: true, formMethod: 'post' }) })
+            expect(result.decision).toBe('allow')
+            expect(result.categories).toEqual(['cookie_consent'])
+        })
+
+        it('accepts an explicitly cookie-labelled control without surrounding dialog text', () => {
+            const result = evaluate({
+                action: 'click',
+                target: consent({ name: 'Accept all cookies', consentContextText: '' }),
+            })
+            expect(result.categories).toEqual(['cookie_consent'])
+        })
+
+        it('does not mistake a consent button on a login page for logging in', () => {
+            expect(
+                evaluate({ action: 'click', pageUrl: 'https://tickets.example/login', target: consent() }).decision
+            ).toBe('allow')
+        })
+
+        it.each([
+            { name: 'Accept all', consentContextText: '', isSubmit: true },
+            { name: 'Confirm order', isSubmit: true },
+            { name: 'Accept all and subscribe', isSubmit: true },
+            { name: 'Accept all', formAction: '/checkout', isSubmit: true },
+            { name: 'Accept all', submitLabels: ['Sign in'], isSubmit: true },
+            { name: 'Accept all', formHasDataFields: true, isSubmit: true },
+            { name: 'Save preferences', tagName: 'a', href: '/account/delete' },
+        ])('keeps unrelated or sensitive consent-adjacent actions gated: %j', target => {
+            expect(evaluate({ action: 'click', target: consent(target) }).decision).toBe('requires_approval')
+        })
+
+        it('does not grant consent from model-authored arguments', () => {
+            expect(
+                evaluate({
+                    action: 'click',
+                    args: { consentContextText: 'Cookies', name: 'Accept all' },
+                    target: observed({ name: 'Save preferences', isSubmit: true }),
+                }).decision
+            ).toBe('requires_approval')
+        })
+
+        it('does not relax the page policy or allow typing a form submission', () => {
+            expect(
+                evaluate({ action: 'click', pageUrl: 'https://elsewhere.example/', target: consent() }).decision
+            ).toBe('deny')
+            expect(evaluate({ action: 'type', args: { text: 'yes', submit: true }, target: consent() }).decision).toBe(
+                'requires_approval'
+            )
+        })
+    })
+
     describe('typing', () => {
         it('allows a GET search submit — the carve-out the feature exists for', () => {
             const result = evaluate({

@@ -12500,6 +12500,12 @@ async function addBaseInstructions(
             'WEB READING ROUTING: Use fetch_url for static, server-rendered HTML that only needs a read. Use browser_navigate for JavaScript-rendered pages, SPA or "#/..." fragment routes, current page state, login or interaction, when the user explicitly asks to browse/open the actual page, or whenever fetch_url succeeds technically but does not contain the requested information. A fetch result containing only navigation or an app shell is not evidence that the detail is unavailable. Switch to browser_navigate instead of attempting repeated web_search queries while the original page can be opened. Browser results already include a fresh snapshot and element refs; call browser_inspect only if the page may have changed independently or the needed element/ref is missing or stale.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes(BROWSER_TOOL_KEY)) {
+        messages.push([
+            'system',
+            'BROWSER PAGE ACCESS: Whenever you visit a website, clear cookie and privacy consent banners before reading or interacting with its content. Use browser_click on the visible "Accept all", "Allow all", "Alle akzeptieren" or equivalent consent control; routine cookie consent does not need a separate user confirmation. Prefer accepting all cookies over rejecting them or leaving the banner open. Also dismiss obstructing newsletter, promotion and app-install overlays using their close or "Not now" control; do not subscribe or install anything just to dismiss them. Use the latest browser refs, then check the returned snapshot to confirm the overlay is gone and the requested content is visible. If content loads asynchronously, use browser_wait or browser_inspect before drawing conclusions. Repeat when a banner appears on another page. Do not treat a cookie banner or obscured page as evidence that the content is unavailable. Login, payment, booking and other sensitive actions still follow the browser approval policy; never bypass an approval or an access restriction.',
+        ])
+    }
     if (Array.isArray(allowedTools) && allowedTools.includes('search')) {
         messages.push([
             'system',

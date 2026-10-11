@@ -70,6 +70,20 @@ describe the button — the DOM does.
 A run is scoped to one thread (`browserSessions/{projectId}__{objectId}`), the same shape as a VM
 session. `browser_navigate` opens it; everything else needs it open.
 
+### Cookie banners and obstructing overlays
+
+The shared assistant instructions and browser tool descriptions tell the assistant to accept all
+cookies before reading, close obstructing promotional overlays, and check the resulting snapshot
+for the requested content. These are normal `browser_click` steps with the usual audit and billing.
+The worker reports bounded text from the target's local cookie/consent container or dialog.
+The policy permits observed cookie-consent controls (including preference-save forms) without an
+approval, even when the banner appears on a login page. This exception does not allow a sensitive
+target/form action or a form collecting additional data. Other approval gates remain in place.
+Snapshot `needsApproval` flags remain conservative submit hints; the observed target at click time
+decides whether consent may proceed. `browser-tests/browser-cookie-consent/run.js` exercises real
+DOM observation, consent clicks and revealed content in Chrome, including nested consent controls
+and unrelated forms next to cookie text.
+
 ### Session-only login takeover
 
 A click classified as `login` is not offered to the assistant as an ordinary approval. Its card

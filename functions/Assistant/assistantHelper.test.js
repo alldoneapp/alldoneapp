@@ -2354,7 +2354,20 @@ describe('assistant attachment handoff helpers', () => {
             'browser_inspect',
             'browser_click',
         ])
-        expect(directTools).toEqual(new Set(['fetch_url', 'web_search', 'browser_navigate', 'browser_inspect']))
+        expect(directTools).toEqual(
+            new Set(['fetch_url', 'web_search', 'browser_navigate', 'browser_inspect', 'browser_click'])
+        )
+    })
+
+    test('clears cookie banners even when browsing is enabled without static fetch', async () => {
+        const messages = []
+        await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['browser_automation'])
+        const instructions = messages.map(message => message[1]).join('\n')
+        expect(instructions).toContain('BROWSER PAGE ACCESS')
+        expect(instructions).toContain('Prefer accepting all cookies')
+        expect(instructions).toContain('confirm the overlay is gone')
+        expect(instructions).toContain('do not subscribe or install anything')
+        expect(instructions).toContain('never bypass an approval')
     })
 
     test('does not advertise browser fallback when browser automation is disabled', async () => {
@@ -2363,6 +2376,7 @@ describe('assistant attachment handoff helpers', () => {
         await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['fetch_url'])
 
         expect(messages.map(message => message[1]).join('\n')).not.toContain('WEB READING ROUTING')
+        expect(messages.map(message => message[1]).join('\n')).not.toContain('BROWSER PAGE ACCESS')
     })
 
     test('commits a deferred silent-mode comment when the final reply is not HEARTBEAT_OK', async () => {

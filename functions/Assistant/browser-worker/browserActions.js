@@ -250,6 +250,22 @@ async function describeElement(page, { ref = '', selector = '' }) {
             : []
         const tagName = element.tagName.toLowerCase()
         const inputType = attribute('type').toLowerCase()
+        // Only a local banner/dialog supplies consent context. Body text could mention cookies
+        // in a footer while this button actually submits an unrelated form.
+        let consentContextText = ''
+        let ancestor = element.parentElement
+        for (let depth = 0; ancestor && depth < 8; depth++, ancestor = ancestor.parentElement) {
+            if (['BODY', 'HTML'].includes(ancestor.tagName)) break
+            if (
+                !ancestor.matches(
+                    'dialog, [role=dialog], [role=alertdialog], [aria-modal=true], [id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i]'
+                )
+            )
+                continue
+            const text = [ancestor.getAttribute('aria-label') || '', ancestor.innerText || ''].join(' ').trim()
+            if (text.length <= 4000) consentContextText = text
+            if (ancestor.matches('dialog, [role=dialog], [role=alertdialog], [aria-modal=true]')) break
+        }
 
         return {
             tagName,
@@ -282,6 +298,15 @@ async function describeElement(page, { ref = '', selector = '' }) {
             formFieldNames,
             submitLabels,
             insideForm: !!form,
+            consentContextText,
+            formHasDataFields:
+                !!form &&
+                Array.from(form.querySelectorAll('input, select, textarea')).some(
+                    node =>
+                        !['hidden', 'checkbox', 'radio', 'button', 'submit', 'reset', 'image'].includes(
+                            (node.getAttribute('type') || '').toLowerCase()
+                        )
+                ),
         }
     }, target)
 

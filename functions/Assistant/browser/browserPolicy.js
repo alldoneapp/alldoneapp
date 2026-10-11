@@ -19,10 +19,12 @@
 // 1. Anything a submit could be, it is. A form submission with no recognisable category is still
 //    `submit_publish` and still pauses — read-only by default, since the failure of guessing wrong
 //    in the permissive direction is a booking somebody did not make.
-// 2. A GET search form is the one carve-out (`search_submit`). It changes nothing on the far side,
+// 2. A GET search form is a carve-out (`search_submit`). It changes nothing on the far side,
 //    and without it the feature cannot answer the question it exists for ("are there still tickets
 //    for that date?"), because that answer lives behind a search box. It only applies when NO
 //    sensitive category matched.
+//    Routine cookie consent is another: an observed consent control in a cookie banner may save
+//    preferences without pausing. It never exempts unrelated forms or sensitive actions.
 // 3. Approval is an answer to a specific question, not a mode. A grant is bound to a signature over
 //    (action, category, host, element shape), so approving "click 'Book now' on that host" never
 //    silently also approves "click 'Delete account'".
@@ -311,6 +313,29 @@ function looksLikeSearchSubmit(target = {}) {
     return SEARCH_FIELD_MATCHER.test(normalizeText(fieldNames))
 }
 
+const COOKIE_CONTEXT_MATCHER =
+    /\bcookies?\b|\b(?:tracking|privacy|datenschutz|privacidad)\b.*\b(?:consent|preferences|einstellungen|einwilligung|preferencias|consentimiento)\b/i
+const COOKIE_CONSENT_LABEL_MATCHER =
+    /^(?:accept(?: all)?(?: cookies)?|allow all(?: cookies)?|agree(?: and continue)?|i agree|ok(?:ay)?|got it|save (?:preferences|settings)|confirm (?:choices|selection)|(?:alle )?(?:cookies )?(?:akzeptieren|erlauben)|(?:allen )?zustimmen|zustimmen und weiter|einverstanden|(?:auswahl|einstellungen) (?:speichern|bestatigen)|aceptar(?: tod[oa]s)?(?: las cookies)?|permitir tod[oa]s|de acuerdo|guardar preferencias|confirmar seleccion)[.!]?$/
+
+function looksLikeCookieConsent(target = {}) {
+    if (normalizeText(target.role) !== 'button' && !['button', 'input'].includes(normalizeText(target.tagName))) {
+        return false
+    }
+    if (target.disabled || target.formHasDataFields) return false
+    const labels = [target.name, target.accessibleName, target.ariaLabel, target.buttonValue]
+        .filter(value => typeof value === 'string' && value.trim())
+        .map(normalizeText)
+    if (!labels.some(label => COOKIE_CONSENT_LABEL_MATCHER.test(label))) return false
+    if (!COOKIE_CONTEXT_MATCHER.test(normalizeText([...labels, target.consentContextText || ''].join(' ')))) {
+        return false
+    }
+    // A banner can appear on /login or /checkout. The page path alone must not turn accepting
+    // cookies into a login/payment, but the target's labels, fields and form action still count.
+    const { categories } = classifyObservedTarget(target)
+    return !categories.some(category => category !== 'submit_publish')
+}
+
 function buildApprovalSignature({ action, category, hostname, target = {} }) {
     const shape = [
         normalizeText(action),
@@ -447,6 +472,13 @@ function evaluateBrowserAction({
             }
 
             const typedText = action === 'type' ? String(args.text || '') : ''
+            if (action === 'click' && looksLikeCookieConsent(target)) {
+                return allow({
+                    categories: ['cookie_consent'],
+                    evidence: ['observed cookie consent control without a sensitive action'],
+                    hostname: pageCheck.hostname,
+                })
+            }
             const { categories, evidence } = classifyObservedTarget(target, pageCheck.url)
 
             // A credential may only ever be typed into something that is observably a credential
