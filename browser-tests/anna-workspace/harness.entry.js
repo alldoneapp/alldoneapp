@@ -11,6 +11,8 @@ import LoadingData from '../../components/UIComponents/LoadingData'
 import Quill from 'quill'
 import Autoformat from '../../components/Feeds/CommentsTextInput/autoformat/modules/autoformat'
 import 'quill/dist/quill.snow.css'
+import NoteQuill from '../../components/NotesView/NotesDV/EditorView/NoteQuill'
+import '../../components/NotesView/NotesDV/EditorView/toolbar-styles.css'
 import {
     FLOATING_ACTION_SIZE,
     FLOATING_ACTION_VIEWPORT_GAP,
@@ -42,11 +44,29 @@ function FloatingTaskActionFixture() {
         </button>
     )
 }
+// Real note editor and production toolbar styles; persistence/transport are out
+// of scope here. Keep the DOM mounted while switching the assistant layout.
+const noteModules = { toolbar: '#fixture-note-toolbar' }
+function NoteWidthFixture() {
+    return (
+        <View dataSet={{ noteEditor: true }} style={{ minWidth: 0, minHeight: 280, paddingBottom: 40 }}>
+            <div className="ql-toolbar-container">
+                <div id="fixture-note-toolbar" style={{ width: '100%', boxSizing: 'border-box' }}>
+                    <button className="ql-bold" aria-label="Bold note text" />
+                    <button className="ql-italic" aria-label="Italic note text" />
+                    <button className="ql-list" value="bullet" aria-label="Note bullet list" />
+                </div>
+            </div>
+            <NoteQuill theme="snow" modules={noteModules} placeholder="Type your note..." />
+        </View>
+    )
+}
 function Fixture() {
     const [dialog, setDialog] = useState(false)
     const [notifications, setNotifications] = useState(false)
     const [, refresh] = useState(0)
     useEffect(() => subscribeWorkspaceTasks(() => refresh(value => value + 1)), [])
+    const noteFixture = new URLSearchParams(window.location.search).has('noteWidth')
     const revealFixture = new URLSearchParams(window.location.search).has('reveal')
     const revealListVisible =
         !new URLSearchParams(window.location.search).has('revealList') ||
@@ -59,24 +79,28 @@ function Fixture() {
                 <ScrollView
                     testID="workspace-scroll"
                     style={{ flex: 1, minWidth: 0, backgroundColor: 'white' }}
-                    contentContainerStyle={{ padding: 32 }}
+                    contentContainerStyle={{ padding: noteFixture ? 16 : 32 }}
                 >
                     <span style={{ color: '#73827e', font: '14px Arial' }}>Launch / Task notes · editable fixture</span>
                     <h1 style={{ font: '28px Arial', color: '#243c38' }}>Prepare the launch</h1>
                     <p style={{ font: '16px Arial', lineHeight: 1.6 }}>
                         This fixture represents the same mounted Alldone editor in either layout.
                     </p>
-                    <textarea
-                        aria-label="Workspace draft"
-                        defaultValue="Launch notes: confirm the date with the team."
-                        style={{
-                            width: '100%',
-                            minHeight: 180,
-                            boxSizing: 'border-box',
-                            font: '16px Arial',
-                            padding: 20,
-                        }}
-                    />
+                    {noteFixture ? (
+                        <NoteWidthFixture />
+                    ) : (
+                        <textarea
+                            aria-label="Workspace draft"
+                            defaultValue="Launch notes: confirm the date with the team."
+                            style={{
+                                width: '100%',
+                                minHeight: 180,
+                                boxSizing: 'border-box',
+                                font: '16px Arial',
+                                padding: 20,
+                            }}
+                        />
+                    )}
                     <button onClick={() => setAnnaMode(true)}>Zoom out to assistant</button>
                     <OverlayLaunchers
                         openGlobal={() => setDialog(true)}

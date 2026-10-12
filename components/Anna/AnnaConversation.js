@@ -10,6 +10,7 @@ import {
 import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
 import useAnnaContextNotices from './useAnnaContextNotices'
+import useAnnaActivityNotices from './useAnnaActivityNotices'
 import useAnnaMessageSends from './useAnnaMessageSends'
 import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
@@ -51,12 +52,15 @@ export default function AnnaConversation({
     hasEarlier = false,
     offline = false,
     visible = true,
+    active = true,
     resumeRequest,
     onResumeHandled,
     onBeforeSend,
     pageContext,
 }) {
-    const contextNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
+    const pageNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
+    const activityNotices = useAnnaActivityNotices(user.uid, conversation, threads, active)
+    const contextNotices = [...pageNotices, ...activityNotices].sort((a, b) => a.created - b.created)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [liveActivityThreads, setLiveActivityThreads] = useState(() => new Set())
     const onLiveActivityChange = useCallback((key, visible) => {
@@ -512,6 +516,7 @@ function AnnaThreadMessages({
         savedMessageIds,
         last?.commentText,
         last?.submission?.status,
+        contextNotices.length,
         contextNotices.at(-1)?.id,
         onChange,
     ])
@@ -561,10 +566,25 @@ function AnnaThreadMessages({
             {timeline.map(({ message, notice }) => {
                 if (notice)
                     return (
-                        <p className="anna-context-notice" key={`context-${notice.id}`}>
-                            <span>
-                                {translate('Looking at:')} {notice.title}
-                            </span>
+                        <p
+                            className={`anna-context-notice${notice.kind ? ' anna-activity-notice' : ''}`}
+                            key={`context-${notice.id}`}
+                        >
+                            {notice.kind ? (
+                                <a href={notice.path}>
+                                    <span className="anna-activity-dot" aria-hidden="true" />
+                                    <span>
+                                        {translate(notice.kind === 'feed' ? 'New update' : 'New chat message')}
+                                        {notice.entryText ? `: ${translate(notice.entryText)}` : ''}
+                                        {notice.projectName ? ` · ${notice.projectName}` : ''}
+                                    </span>
+                                    <Icon name="arrow-right" size={14} color="currentColor" />
+                                </a>
+                            ) : (
+                                <span>
+                                    {translate('Looking at:')} {notice.title}
+                                </span>
+                            )}
                             <time dateTime={new Date(notice.created).toISOString()}>
                                 {new Date(notice.created).toLocaleTimeString([], {
                                     hour: '2-digit',

@@ -1,4 +1,7 @@
 {
+    "New update": "New update",
+    "New chat message": "New chat message",
+    "%{count} open tasks today": "%{count} open tasks today",
     "Close chat — Alldone only": "Close chat — Alldone only",
     "Hide workspace — chat only": "Hide workspace — chat only",
     "Show workspace": "Show workspace",

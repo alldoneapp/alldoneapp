@@ -612,6 +612,109 @@ async function checkAssistantLayouts(page, width) {
     )
 }
 
+async function checkActivityNotices(page, width) {
+    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1`)
+    await page.getByLabel('Message Carl Code Mentor').waitFor()
+    assert.equal(await page.getByLabel('20 open tasks today').innerText(), '20')
+    await page.evaluate(() => {
+        const now = Date.now()
+        window.__annaActivity({
+            sidebarNumbers: { p1: { demo: 123 } },
+            followedFeedsData: {
+                p1: [
+                    {
+                        id: 'feed1',
+                        objectId: 'task1',
+                        objectTypes: 'tasks',
+                        lastChangeDate: now,
+                        entryText: 'created task',
+                    },
+                ],
+            },
+            projectChatNotifications: {
+                p1: { chat1: { followedNotifications: [{ commentId: 'message1', date: now }] } },
+            },
+        })
+    })
+    await page.getByText('New chat message · Launch', { exact: true }).waitFor()
+    assert.equal(await page.locator('.anna-activity-notice').count(), 2)
+    const header = await page.locator('.anna-header').boundingBox()
+    const badge = await page.getByLabel('123 open tasks today').boundingBox()
+    const picker = await page.locator('.anna-header-picker').boundingBox()
+    const brand = await page.locator('.anna-brand').boundingBox()
+    assert.ok(badge.x >= brand.x + brand.width - 1, 'Badge follows assistant name')
+    assert.ok(badge.x + badge.width <= picker.x, 'Badge must not overlap workspace picker')
+    assert.ok(picker.x + picker.width <= header.x + header.width, 'Header stays inside chat pane')
+    assert.equal(await page.locator('.anna-conversation').evaluate(node => node.scrollWidth <= node.clientWidth), true)
+    await page.screenshot({ path: path.join(BUILD, `activity-${width}.png`) })
+    await page.getByText('New update: created task · Launch', { exact: true }).click()
+    await page.waitForURL(url => url.pathname === '/projects/p1/user/demo/updates/followed')
+    if (width <= 760) await page.locator('.anna-workspace-switcher select').selectOption('chat')
+    await page.getByText('New chat message · Launch', { exact: true }).click()
+    await page.waitForURL(url => url.pathname === '/projects/p1/user/demo/chats/followed')
+    if (width <= 760) await page.locator('.anna-workspace-switcher select').selectOption('chat')
+    await page.getByLabel('123 open tasks today').click()
+    await page.waitForURL(url => url.pathname === '/projects/tasks/open')
+    console.info(`PASS ${width}px: live activity links, task badge and header geometry`)
+}
+
+async function checkNoteWidth(page, width) {
+    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&noteWidth=1`)
+    await page.getByLabel('Message Carl Code Mentor').waitFor()
+    if (width <= 760) await showWorkspace(page)
+    const editor = page.locator('[data-note-editor] .ql-editor')
+    await editor.waitFor({ state: 'visible' })
+    const editorNode = await editor.elementHandle()
+    const checkGeometry = async () => {
+        const geometry = await page.locator('[data-note-editor]').evaluate(note => {
+            const editor = note.querySelector('.ql-editor')
+            const toolbar = note.querySelector('.ql-toolbar-container')
+            const rect = node => node.getBoundingClientRect().toJSON()
+            const paddings = node => [getComputedStyle(node).paddingLeft, getComputedStyle(node).paddingRight]
+            return {
+                note: rect(note),
+                editor: rect(editor),
+                toolbar: rect(toolbar),
+                editorPadding: paddings(editor),
+                toolbarPadding: paddings(toolbar),
+                containerPadding: paddings(note.querySelector('.ql-container')),
+                placeholderLeft: editor.classList.contains('ql-blank')
+                    ? getComputedStyle(editor, '::before').left
+                    : '0px',
+            }
+        })
+        assert.deepEqual(geometry.editorPadding, ['0px', '0px'])
+        assert.deepEqual(geometry.toolbarPadding, ['0px', '0px'])
+        assert.deepEqual(geometry.containerPadding, ['0px', '0px'])
+        assert.ok(Math.abs(geometry.note.width - geometry.editor.width) <= 2, JSON.stringify(geometry))
+        assert.ok(Math.abs(geometry.note.width - geometry.toolbar.width) <= 2, JSON.stringify(geometry))
+        assert.equal(geometry.placeholderLeft, '0px')
+    }
+    await checkGeometry()
+    await editor.fill(
+        '09.10.2026\nThe note uses the available workspace width. Keep this unsaved draft while resizing.'
+    )
+    if (width > 760) {
+        await page.locator('.anna-divider').focus()
+        await page.keyboard.press('End')
+        await checkGeometry()
+        assert.equal(await editor.evaluate((node, original) => node === original, editorNode), true)
+    }
+    await page.screenshot({ path: path.join(BUILD, `note-width-${width}.png`) })
+    if (width <= 760) await showChat(page)
+    await closeChat(page)
+    assert.equal(await editor.evaluate((node, original) => node === original, editorNode), true)
+    assert.ok((await readInput(editorNode)).includes('Keep this unsaved draft'))
+    assert.equal(await editor.evaluate(node => getComputedStyle(node).paddingLeft), '0px')
+    await page.getByText('Zoom out to assistant', { exact: true }).click()
+    if (width <= 760) await showWorkspace(page)
+    await checkGeometry()
+    assert.ok((await readInput(editorNode)).includes('Keep this unsaved draft'))
+    console.info(
+        `PASS ${width}px: note body, toolbar and placeholder use pane width; toggling preserves the editor and full-width Alldone notes`
+    )
+}
+
 async function main() {
     const { chromium } = require('playwright')
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -620,7 +723,10 @@ async function main() {
         ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}),
     })
     try {
-        for (const width of process.env.FLOATING_WORKSPACE_ONLY || process.env.LAYOUT_ONLY
+        for (const width of process.env.FLOATING_WORKSPACE_ONLY ||
+        process.env.LAYOUT_ONLY ||
+        process.env.ACTIVITY_ONLY ||
+        process.env.NOTE_WIDTH_ONLY
             ? [1440, 1024, 390, 320]
             : [1440, 1024, 390]) {
             const page = await browser.newPage({ viewport: { width, height: 900 } })
@@ -630,6 +736,18 @@ async function main() {
                 errors.push(error.message)
                 console.error(error.stack)
             })
+            if (process.env.NOTE_WIDTH_ONLY) {
+                await checkNoteWidth(page, width)
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
+            if (process.env.ACTIVITY_ONLY) {
+                await checkActivityNotices(page, width)
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
             if (process.env.REVEAL_ONLY) {
                 await checkWorkspaceReveal(page, width)
                 assert.deepEqual(errors, [])

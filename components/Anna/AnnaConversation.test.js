@@ -6,6 +6,8 @@ import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
+let mockActivityState
+jest.mock('react-redux', () => ({ useSelector: selector => selector(mockActivityState) }))
 
 // Keep the real Anna composer and send lifecycle; model the shared Quill input
 // as a textarea here. Real embed insertion is exercised by the browser harness.
@@ -150,6 +152,12 @@ const deferred = () => {
     return { promise, resolve, reject }
 }
 beforeEach(() => {
+    mockActivityState = {
+        loggedUser: { uid: 'u1' },
+        loggedUserProjects: [{ id: 'p1', name: 'Launch' }],
+        followedFeedsData: {},
+        projectChatNotifications: {},
+    }
     global.IS_REACT_ACT_ENVIRONMENT = true
     jest.clearAllMocks()
     let messageSequence = 0
@@ -310,6 +318,33 @@ it('adds one chat hint per context change without posting a message or starting 
     expect(container.querySelectorAll('.anna-context-notice')).toHaveLength(4)
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+})
+
+it('shows linked red activity between messages without posting to the assistant', () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
+    render()
+    mockMessages = [{ id: 'm1', creatorId: 'u1', created: 1500, commentText: 'Working here' }]
+    now.mockReturnValue(2000)
+    mockActivityState.followedFeedsData = {
+        p1: [{ id: 'feed1', objectId: 'task1', objectTypes: 'tasks', lastChangeDate: 1900, entryText: 'created task' }],
+    }
+    mockActivityState.projectChatNotifications = {
+        p1: { otherChat: { followedNotifications: [{ commentId: 'message1', date: 1950 }] } },
+    }
+    render()
+    const links = [...container.querySelectorAll('.anna-activity-notice a')]
+    expect(links.map(link => link.getAttribute('href'))).toEqual([
+        '/projects/p1/user/u1/updates/followed',
+        '/projects/p1/user/u1/chats/followed',
+    ])
+    expect(links[0].textContent).toContain('New update: created task · Launch')
+    expect(links[1].textContent).toContain('New chat message · Launch')
+    expect(container.querySelector('.anna-messages').textContent.indexOf('Working here')).toBeLessThan(
+        container.querySelector('.anna-messages').textContent.indexOf('New update')
+    )
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    now.mockRestore()
 })
 it('reports persisted run completion to the workspace without waiting for the spinner timeout', () => {
     const onWorkStateChange = jest.fn()

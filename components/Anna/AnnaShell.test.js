@@ -71,6 +71,7 @@ jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => 
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
 const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user' }
 let mockAssistant
+let mockSidebarNumbers
 const mockDefaultAssistant = { uid: 'anna', displayName: 'Anna Alldone' }
 let mockUnmounts = 0
 jest.mock('react-redux', () => ({
@@ -80,6 +81,7 @@ jest.mock('react-redux', () => ({
             loggedUser: mockUser,
             defaultAssistant: mockDefaultAssistant,
             projectAssistants: { p1: [mockAssistant] },
+            sidebarNumbers: mockSidebarNumbers,
         }),
 }))
 jest.mock('./useAnnaConversation', () => ({ __esModule: true, default: jest.fn() }))
@@ -401,6 +403,7 @@ it.each(['home', 'browser'])(
 )
 
 beforeEach(() => {
+    mockSidebarNumbers = {}
     global.IS_REACT_ACT_ENVIRONMENT = true
     window.localStorage.clear()
     setAnnaMode(true)
@@ -863,4 +866,29 @@ it('uses the conversation assistant for labels and reacts when that assistant is
     expect(screen.getByText('Mira')).toBeTruthy()
     expect(mockConversationProps.assistant.displayName).toBe('Mira')
     await act(async () => {})
+})
+
+it('shows the same live task total as Home beside the assistant name and hides zero', async () => {
+    mockSidebarNumbers = { p1: { u1: 20 }, p2: { u1: 7, someoneElse: 90 } }
+    const view = render(content(1))
+    expect(screen.getByLabelText('27 open tasks today').textContent).toBe('27')
+    await act(async () => screen.getByLabelText('27 open tasks today').click())
+    expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, '/projects/tasks/open')
+    mockSidebarNumbers = { p1: { u1: 0 } }
+    view.rerender(content(1))
+    expect(document.querySelector('.anna-open-tasks-badge')).toBeNull()
+})
+
+it.each(['updates', 'chats'])('opens linked %s activity from chat-only mode inside Alldone', async feature => {
+    setAnnaLayout('chat')
+    const path = `/projects/p1/user/u1/${feature}/followed`
+    render(
+        <AnnaShell>
+            <a href={path}>Activity</a>
+        </AnnaShell>
+    )
+    await act(async () => testContainer.querySelector('a').click())
+    expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, path)
+    expect(document.querySelector('.anna-chat-only')).toBeNull()
+    expect(document.querySelector('.anna-shell').classList.contains('anna-mobile-workspace')).toBe(true)
 })
