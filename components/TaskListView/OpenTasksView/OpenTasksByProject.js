@@ -53,6 +53,7 @@ function OpenTasksByProject({
     const loggedUser = useSelector(state => state.loggedUser)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const isAssistant = useSelector(state => !!state.currentUser.temperature)
+    const allowProjectPostpone = !isAnonymous && currentUserId === loggedUser.uid && !isAssistant
     const tasksArrowButtonIsExpanded = useSelector(state => state.tasksArrowButtonIsExpanded)
     const okrsInProject = useSelector(state => state.okrsByProjectInTasks[projectId] || [])
     const [pressedShowMoreMainSection, setPressedShowMoreMainSection] = useState(false)
@@ -201,7 +202,7 @@ function OpenTasksByProject({
                             showTaskMore={!isAssistant}
                             showRootSectionNavigation={inSelectedProject}
                             showEmailLabels={!isAssistant}
-                            allowProjectPostpone={!isAnonymous && currentUserId === loggedUser.uid && !isAssistant}
+                            allowProjectPostpone={allowProjectPostpone}
                         />
                     )}
                     <ProjectSectionBody style={assistantProfileMode && { paddingHorizontal: 0, paddingBottom: 0 }}>
@@ -215,7 +216,11 @@ function OpenTasksByProject({
                             <OKRSection projectId={projectId} inAllProjects={!inSelectedProject} />
                         )}
                         {!assistantProfileMode && (
-                            <UpcomingMilestoneRow projectId={projectId} hidden={baseHideProjectData} />
+                            <UpcomingMilestoneRow
+                                projectId={projectId}
+                                hidden={baseHideProjectData}
+                                allowProjectPostpone={allowProjectPostpone}
+                            />
                         )}
                         {showInitialSkeleton && <TaskListSkeleton showDateHeader />}
                         {showSingleTaskSkeleton && <TaskListSkeleton rowCount={1} />}
