@@ -23,12 +23,23 @@ module.exports = (config, webpack) => ({
             /UIComponents\/AssistantVoiceCallProvider$/,
             /Feeds\/Utils\/HelperFunctions$/,
             /ChatsView\/Utils\/ChatHelper$/,
-            /ChatsView\/ChatDV\/EditorView\/messageLoadingState$/,
         ].map(pattern => new webpack.NormalModuleReplacementPlugin(pattern, path.join(__dirname, 'services.js'))),
         new webpack.NormalModuleReplacementPlugin(/hooks\/Chats\/useGetMessages$/, path.join(__dirname, 'messages.js')),
         new webpack.NormalModuleReplacementPlugin(/hooks\/useRambleRecorder$/, path.join(__dirname, 'recorder.js')),
         new webpack.NormalModuleReplacementPlugin(
-            /(AnnaWorkspaceHighlight|useAnnaMessageReadState|VoiceMicrophoneStatus|AssistantVoiceCallButton)$/,
+            /(?:^|[\/])(?:BackendBridge|WrapperMentionsModal|ProjectHelper|TasksHelper|PremiumHelper|LinkingHelper|RecordVideo|ScreenRecording|NotAvailableScreenRecording|\w+Firestore)(\.js)?$/,
+            path.join(__dirname, '../at2718/dependencies.js')
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+            /NotesView\/NotesDV\/EditorView\/mentionsHelper$/,
+            path.join(__dirname, '../at2718/dependencies.js')
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+            /utils\/HelperFunctions$/,
+            path.join(__dirname, '../at2718/dependencies.js')
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+            /(AnnaWorkspaceHighlight|useAnnaMessageReadState|VoiceMicrophoneStatus|AssistantVoiceCallButton|MentionsModal\/GoalProgress)$/,
             path.join(__dirname, 'empty.js')
         ),
         new webpack.NormalModuleReplacementPlugin(
