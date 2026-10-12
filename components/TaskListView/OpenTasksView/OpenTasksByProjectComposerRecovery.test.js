@@ -109,6 +109,7 @@ describe('selected project composer without published task dates (AT-2672)', () 
             if (mode === 'assistant') mockState.currentUser.temperature = 0.7
             await render()
             expect(tree.root.findByType('ProjectHeader').props.allowProjectPostpone).toBe(mode === 'self')
+            expect(tree.root.findByType('UpcomingMilestoneRow').props.allowProjectPostpone).toBe(mode === 'self')
         }
     )
 
