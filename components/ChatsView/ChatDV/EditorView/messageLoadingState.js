@@ -3,6 +3,9 @@ export const ASSISTANT_LOADING_TIMEOUT_MS = 5 * 60 * 1000
 export const isAwaitingVmInteraction = assistantRun =>
     assistantRun?.kind === 'vm_job' && assistantRun?.status === 'awaiting_user'
 
+export const showsAssistantLiveActivity = (isAssistant, isLoading, assistantRun) =>
+    !!isAssistant && !!isLoading && assistantRun?.kind === 'chat'
+
 export const resolveEffectiveMessageLoading = (message, messageTime, now = Date.now()) => {
     if (!message?.isLoading) return false
 

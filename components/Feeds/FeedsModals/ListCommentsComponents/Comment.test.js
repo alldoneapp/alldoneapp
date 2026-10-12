@@ -7,6 +7,8 @@ import { StyleSheet, Text } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import Comment from './Comment'
+import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
+import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
     translate: value => value,
@@ -16,10 +18,12 @@ jest.mock('react-redux', () => ({
     useSelector: selector => selector({ smallScreenNavigation: false }),
 }))
 
-jest.mock('../../../ContactsView/Utils/useGetUserPresentationData', () => () => ({
-    photoURL: 'avatar.png',
-    displayName: 'Ada',
-}))
+jest.mock('../../../ContactsView/Utils/useGetUserPresentationData', () =>
+    jest.fn(() => ({
+        photoURL: 'avatar.png',
+        displayName: 'Ada',
+    }))
+)
 
 jest.mock('../../TextParser/CommentElementsParser', () => 'CommentElementsParser')
 jest.mock('../../../ChatsView/ChatDV/EditorView/quoteParserFunctions', () => ({
@@ -90,6 +94,20 @@ describe('feed Comment', () => {
         linkedEmailGmailData: {},
         canArchiveLinkedEmail: false,
     }
+
+    test.each(['carl.png', undefined])(
+        'uses the actual assistant avatar with a fallback in the popup (%s)',
+        photoURL => {
+            useGetUserPresentationData.mockReturnValueOnce({ displayName: 'Carl', isAssistant: true, photoURL })
+            const tree = renderer.create(
+                <Comment {...defaultProps} comment={{ ...defaultProps.comment, creatorId: 'carl' }} />
+            )
+            const header = tree.root.findByProps({ testID: 'feed-comment-header' })
+            const avatar = header.findByType(AssistantAvatar)
+            expect(avatar.props).toEqual(expect.objectContaining({ assistantId: 'carl', photoURL, size: 24 }))
+            expect(header.findAllByType(Text)[0].props.children).toBe('Carl')
+        }
+    )
 
     test('places a new email badge at the right of the comment header', () => {
         const tree = renderer.create(<Comment {...defaultProps} linkedEmailNew />)

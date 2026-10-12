@@ -59,6 +59,7 @@ jest.mock('./VmInteractionCard', () => 'VmInteractionCard')
 // suite renders without a Provider.
 jest.mock('./BrowserApprovalCard', () => 'BrowserApprovalCard')
 jest.mock('./messageLoadingState', () => ({
+    ...jest.requireActual('./messageLoadingState'),
     isAwaitingVmInteraction: jest.fn(() => false),
 }))
 jest.mock('react-redux', () => ({
