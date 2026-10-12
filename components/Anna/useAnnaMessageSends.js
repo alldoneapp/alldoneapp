@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
-import { getDb, runHttpsCallableFunction } from '../../utils/backends/firestore'
+import { getDb, getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { translate } from '../../i18n/TranslationService'
 
 // Keep each submission separate from the next draft and from other assistant
@@ -73,7 +73,7 @@ export default function useAnnaMessageSends({
                     .doc(`chatObjects/${thread.projectId}/chats/${thread.id}`)
                     .update({ annaPageContext: job.context })
                 if (!isActive()) return null
-                if (!job.id) {
+                if (!job.locallySaved) {
                     job.id = await createObjectMessage(
                         thread.projectId,
                         thread.id,
@@ -84,9 +84,12 @@ export default function useAnnaMessageSends({
                         null,
                         true,
                         true,
-                        thread.assistantId
+                        thread.assistantId,
+                        null,
+                        { id: job.id, created: job.created }
                     )
                     if (!job.id) throw new Error(translate('Your message could not be sent. Please try again.'))
+                    job.locallySaved = true
                     publish()
                 }
                 // createObjectMessage acknowledges local storage, not Firestore.
@@ -136,6 +139,7 @@ export default function useAnnaMessageSends({
     const submit = (text, context, continuation) => {
         const job = {
             key: `local-${++sequence.current}`,
+            id: getId(),
             userId,
             text,
             context,

@@ -2,6 +2,7 @@ import React from 'react'
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import { getTimestampInMilliseconds } from '../ChatsView/Utils/messageTimestamps'
 import { translate } from '../../i18n/TranslationService'
+import MessageSendStatus from '../ChatsView/ChatDV/EditorView/MessageSendStatus'
 
 export default function AnnaMessageAuthor({ message, creator, own }) {
     return (
@@ -22,6 +23,16 @@ export default function AnnaMessageAuthor({ message, creator, own }) {
                     { hour: '2-digit', minute: '2-digit' }
                 )}
             </time>
+            <MessageSendStatus
+                label={message.submission && translate('assistantLineSending')}
+                pendingSend={
+                    message.submission
+                        ? message.submission.status === 'sending'
+                            ? { status: 'pending' }
+                            : null
+                        : message.pendingSend
+                }
+            />
         </div>
     )
 }

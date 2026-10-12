@@ -2,7 +2,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import AnnaConversation from './AnnaConversation'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
-import { runHttpsCallableFunction } from '../../utils/backends/firestore'
+import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
@@ -96,6 +96,7 @@ jest.mock('../../utils/backends/Chats/commentOutbox', () => ({
 }))
 jest.mock('../Feeds/Utils/HelperFunctions', () => ({ STAYWARD_COMMENT: 'stayward' }))
 jest.mock('../../utils/backends/firestore', () => ({
+    getId: jest.fn(() => 'm1'),
     getDb: () => ({ doc: () => ({ update: mockContextUpdate }) }),
     runHttpsCallableFunction: jest.fn(),
 }))
@@ -151,6 +152,8 @@ const deferred = () => {
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     jest.clearAllMocks()
+    let messageSequence = 0
+    getId.mockImplementation(() => `m${++messageSequence}`)
     localStorage.clear()
     mockDictation = null
     mockDictationSupported = true
@@ -378,7 +381,9 @@ it('saves the visible context and one project conversation message before invoki
         null,
         true,
         true,
-        'a1'
+        'a1',
+        null,
+        { id: 'm1', created: expect.any(Number) }
     )
     expect(mockContextUpdate.mock.invocationCallOrder[0]).toBeLessThan(createObjectMessage.mock.invocationCallOrder[0])
     expect(runHttpsCallableFunction).toHaveBeenCalledWith(
@@ -544,7 +549,9 @@ it('resumes a paused request after hand-back without replacing an unsent draft',
         null,
         true,
         true,
-        'a1'
+        'a1',
+        null,
+        { id: 'm1', created: expect.any(Number) }
     )
     expect(container.querySelector('textarea').value).toBe('Find a note')
     expect(onResumeHandled).toHaveBeenCalledWith('resume1')
@@ -633,6 +640,7 @@ it('sends two messages while the first assistant run is pending and keeps aggreg
     const second = deferred()
     const onSendingChange = jest.fn()
     createObjectMessage.mockResolvedValueOnce('first').mockResolvedValueOnce('second')
+    getId.mockReturnValueOnce('first').mockReturnValueOnce('second')
     runHttpsCallableFunction.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
     render({ onSendingChange })
     type('One')
@@ -649,6 +657,39 @@ it('sends two messages while the first assistant run is pending and keeps aggreg
     await act(async () => first.resolve({}))
     expect(onSendingChange).toHaveBeenLastCalledWith(false)
     expect(container.querySelector('textarea').value).toBe('Still writing a third')
+})
+
+it('uses the final body renderer and keeps the message node through pending, persisted and acknowledged states', async () => {
+    const preparation = deferred()
+    const response = deferred()
+    const onBeforeSend = () => preparation.promise
+    runHttpsCallableFunction.mockReturnValueOnce(response.promise)
+    render({ onBeforeSend })
+    type('# Heading\n**Bold** and https://example.com')
+    await submit()
+    const messageNode = container.querySelector('.anna-message-user')
+    const bodyNode = messageNode.children[1]
+    expect(messageNode.dataset.annaMessageId).toBe('m1')
+    expect(mockMessageRender).toHaveBeenCalledWith('m1')
+    expect(container.querySelector('.anna-message-text')).toBeNull()
+    await act(async () => preparation.resolve())
+    expect(createObjectMessage.mock.calls[0][11]).toMatchObject({ id: 'm1', created: expect.any(Number) })
+    expect(container.querySelector('.anna-message-user')).toBe(messageNode)
+    expect(messageNode.children[1]).toBe(bodyNode)
+    mockMessages = [
+        {
+            id: 'm1',
+            creatorId: 'u1',
+            created: createObjectMessage.mock.calls[0][11].created,
+            commentText: '# Heading\n**Bold** and https://example.com',
+        },
+    ]
+    render({ onBeforeSend })
+    expect(container.querySelectorAll('.anna-message-user')).toHaveLength(1)
+    expect(container.querySelector('.anna-message-user')).toBe(messageNode)
+    await act(async () => response.resolve({}))
+    expect(container.querySelector('.anna-message-user')).toBe(messageNode)
+    expect(messageNode.children[1]).toBe(bodyNode)
 })
 
 it('does not duplicate the draft on two submit events in the same frame', async () => {
@@ -964,7 +1005,7 @@ it('keeps the message sending status and errors visible alongside a live card', 
     type('Another message')
     await submit()
     expect(container.textContent).not.toContain('is working…')
-    expect(container.querySelector('.anna-message-status').textContent).toBe('assistantLineSending')
+    expect(container.querySelector('[aria-label="assistantLineSending"]')).not.toBeNull()
     await act(async () => pending.reject(new Error('Message not delivered')))
     expect(container.querySelector('[role="alert"]').textContent).toContain('Message not delivered')
 })

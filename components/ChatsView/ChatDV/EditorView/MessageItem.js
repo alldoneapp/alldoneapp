@@ -61,7 +61,7 @@ export default function MessageItem({
             modalVisibleBefore,
         })
 
-        if (!blockOpen && dismissibleRef.current) {
+        if (!message.pendingSend && !blockOpen && dismissibleRef.current) {
             dispatch(setActiveChatMessageId(message.id))
             if (editOpenTimeoutRef.current) clearTimeout(editOpenTimeoutRef.current)
             editOpenTimeoutRef.current = setTimeout(() => {
@@ -155,7 +155,7 @@ export default function MessageItem({
                         creatorData={creatorData}
                         highlight={highlight}
                         onEditPress={enableEditMode}
-                        editDisabled={!accessGranted}
+                        editDisabled={!accessGranted || !!message.pendingSend}
                         accessGranted={accessGranted}
                         linkedEmailNew={accessGranted && !!linkedEmail && linkedEmailNew}
                     />

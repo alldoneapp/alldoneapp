@@ -30,7 +30,6 @@ import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZ
 import { selectAssistantEnabledFor } from '../../Utils/assistantEnabledScope'
 import { endBotSpinnerWait } from '../../Utils/botSpinnerTrigger'
 import useHomeIndicatorLift from '../../../../hooks/useHomeIndicatorLift'
-import PendingCommentSends from '../../../UIComponents/FloatModals/RichCommentModal/PendingCommentSends'
 import { readCommentDraft, saveCommentDraft, clearCommentDraft } from '../../../../utils/commentDraftStore'
 import { CHAT_COMPOSER_LIFT, getChatComposerLift } from '../chatComposerLayout'
 
@@ -445,7 +444,6 @@ export default function ChatInput({
             projectId={projectId}
             setInputCursorIndex={setInputCursorIndex}
         >
-            {!editing && <PendingCommentSends projectId={projectId} objectId={objectId} objectType={chatType} />}
             {!!sendError && (
                 <Text accessibilityRole="alert" style={{ color: colors.Text02 }}>
                     {sendError}

@@ -11,7 +11,6 @@ export default function WorkspaceOverlayLayer({ children }) {
         <View
             testID="workspace-overlay-layer"
             pointerEvents="box-none"
-            aria-hidden={viewport.hidden || undefined}
             style={
                 viewport.active
                     ? {
@@ -22,7 +21,6 @@ export default function WorkspaceOverlayLayer({ children }) {
                           height: viewport.height,
                           transform: [{ translateX: 0 }],
                           zIndex: 999,
-                          visibility: viewport.hidden ? 'hidden' : 'visible',
                       }
                     : { display: 'contents' }
             }

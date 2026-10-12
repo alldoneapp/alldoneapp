@@ -66,6 +66,34 @@ jest.mock('../../../functions/Utils/parseTextUtils', () => ({
 }))
 
 let docs, commits, rejectCommit, loseAcknowledgement
+
+it('preserves the optimistic ID and creation time supplied by Anna in the outbox and stored comment', async () => {
+    const created = Date.now() - 60000
+    const id = await createObjectMessage(
+        'p',
+        'task',
+        '**Ready immediately**',
+        'tasks',
+        'stayward',
+        null,
+        null,
+        true,
+        false,
+        null,
+        null,
+        { id: 'anna-request', created }
+    )
+    expect(id).toBe('anna-request')
+    expect(commentOutbox.read('u', id)).toMatchObject({ id: 'anna-request', created, status: 'pending' })
+    commentOutbox.configure({ activeUser: () => 'u', canSend: () => true, send: sendQueuedObjectMessage })
+    await commentOutbox.flush()
+    expect(docs.get('chatComments/p/tasks/task/comments/anna-request')).toMatchObject({
+        created,
+        commentText: '**Ready immediately**',
+        creatorId: 'u',
+        fromAssistant: false,
+    })
+})
 beforeEach(() => {
     localStorage.clear()
     jest.clearAllMocks()
