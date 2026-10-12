@@ -299,3 +299,22 @@ describe('moveTaskToDifferentProject assistant orchestration', () => {
         })
     })
 })
+
+test('assistant chat migration failure preserves the source task and conversation', async () => {
+    const { database, state } = createMoveDatabase({
+        'items/project-a/tasks/task-1': { id: 'task-1', name: 'Task', subtaskIds: [] },
+    })
+    await expect(
+        moveTaskToDifferentProject({
+            database,
+            sourceProjectId: 'project-a',
+            targetProjectId: 'project-b',
+            taskId: 'task-1',
+            copyChat: async () => {
+                throw new Error('chat migration failed')
+            },
+            copyInnerFeeds: jest.fn(),
+        })
+    ).rejects.toThrow('chat migration failed')
+    expect(state.has('items/project-a/tasks/task-1')).toBe(true)
+})

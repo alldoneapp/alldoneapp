@@ -33,8 +33,13 @@ function database(overrides = {}) {
         collection: path => {
             let before = null,
                 count = Infinity
+            const filters = []
             const query = {
                 orderBy: () => query,
+                where: (field, op, value) => {
+                    filters.push(data => (op === '>=' ? data[field] >= value : data[field] < value))
+                    return query
+                },
                 startAfter: (created, id) => {
                     before = { created, id }
                     return query
@@ -46,12 +51,15 @@ function database(overrides = {}) {
                 get: async () => ({
                     docs: [...data.entries()]
                         .filter(([key]) => key.startsWith(path + '/') && !key.slice(path.length + 1).includes('/'))
+                        .filter(([, value]) => filters.every(filter => filter(value)))
                         .sort(([ak, a], [bk, b]) => b.created - a.created || bk.localeCompare(ak))
                         .filter(
                             ([key, value]) =>
                                 !before ||
                                 value.created < before.created ||
-                                (value.created === before.created && key.split('/').pop() < before.id)
+                                (value.created === before.created &&
+                                    before.id != null &&
+                                    key.split('/').pop() < before.id)
                         )
                         .slice(0, count)
                         .map(([key]) => snapshot(key)),
@@ -293,4 +301,43 @@ it('loads three recent threads per page, batches access checks, and rejects fore
     const oldest = await listAnnaConversations({ db, userId: 'u1', before: earlier.nextBefore })
     expect(oldest.threads.map(thread => thread.chatId)).toEqual(['AnnaChat20261001u1'])
     expect(oldest.nextBefore).toBeNull()
+})
+
+it('loads only today and yesterday by default, including project changes, then paginates older days', async () => {
+    const { db, data } = database()
+    const now = Date.parse('2026-10-12T10:00:00Z')
+    for (const [projectId, date, created] of [
+        ['p1', '20261012', '2026-10-12T07:00:00Z'],
+        ['p2', '20261012', '2026-10-12T08:00:00Z'],
+        ['p1', '20261011', '2026-10-10T22:00:00Z'],
+        ['p1', '20261009', '2026-10-09T12:00:00Z'],
+    ]) {
+        const chatId = `AnnaChat${date}u1`
+        data.set(`users/u1/private/annaConversation/threads/${projectId}__${chatId}`, {
+            projectId,
+            chatId,
+            dateKey: date,
+            created: Date.parse(created),
+        })
+        data.set(`chatObjects/${projectId}/chats/${chatId}`, { ...ownedChat, assistantId: 'a1' })
+    }
+    const recent = await listAnnaConversations({ db, userId: 'u1', recentOnly: true, now })
+    expect(recent.threads.map(thread => `${thread.projectId}/${thread.dateKey}`)).toEqual([
+        'p2/20261012',
+        'p1/20261012',
+        'p1/20261011',
+    ])
+    expect(recent.nextBefore).toEqual({ created: Date.parse('2026-10-10T22:00:00Z') })
+    const earlier = await listAnnaConversations({ db, userId: 'u1', before: recent.nextBefore, now })
+    expect(earlier.threads.map(thread => thread.dateKey)).toEqual(['20261009'])
+    expect(earlier.nextBefore).toBeNull()
+
+    const afterGap = await listAnnaConversations({
+        db,
+        userId: 'u1',
+        recentOnly: true,
+        now: Date.parse('2026-10-16T10:00:00Z'),
+    })
+    expect(afterGap.threads).toEqual([])
+    expect(afterGap.nextBefore).toEqual({ created: Date.parse('2026-10-14T22:00:00Z') })
 })

@@ -12,6 +12,7 @@ import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCo
 import AnnaVmWorkspace, { vmStatusLabel } from './AnnaVmWorkspace'
 import useAnnaVmJobs, { vmJobPath } from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
+import AnnaChatNavigationContext from './AnnaChatNavigationContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { isAnnaNavigationPath, resolveAnnaLink } from './annaNavigation'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
@@ -155,6 +156,14 @@ export default function AnnaShell({ children, routeId }) {
         focusAfterSwitch.current = 'chat'
         setMobilePane('chat')
     }
+    const openChat = useCallback(() => {
+        requestGeneration.current++
+        // Focus immediately if already visible; otherwise wait for the pane switch.
+        if (layoutMode === 'split' && mobilePane === 'chat') chatPane.current?.focus({ preventScroll: true })
+        else focusAfterSwitch.current = 'chat'
+        setMobilePane('chat')
+        setAnnaMode(true)
+    }, [layoutMode, mobilePane])
     useEffect(() => {
         const target = focusAfterSwitch.current || (previousMode.current === 'alldone' && active ? 'chat' : null)
         previousMode.current = layoutMode
@@ -886,7 +895,7 @@ export default function AnnaShell({ children, routeId }) {
         <AnnaBrowserTakeoverContext.Provider
             value={{ open: openBrowserTakeover, approvalId: browserTakeover?.approval.approvalId }}
         >
-            {content}
+            <AnnaChatNavigationContext.Provider value={openChat}>{content}</AnnaChatNavigationContext.Provider>
         </AnnaBrowserTakeoverContext.Provider>
     )
 }

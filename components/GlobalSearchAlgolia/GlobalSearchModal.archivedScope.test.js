@@ -22,6 +22,7 @@
  *    scope keeps searching only active ones.
  */
 import React from 'react'
+import { Animated } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { Provider } from 'react-redux'
 
@@ -29,6 +30,8 @@ import store from '../../redux/store'
 import { overrideStore, showGlobalSearchPopup } from '../../redux/actions'
 import GlobalSearchModal from './GlobalSearchModal'
 import SearchForm from './Form/SearchForm'
+import Button from '../UIControls/Button'
+import ResultLists from './ResultLists/ResultLists'
 import { ARCHIVED_CHIP_LABEL, ScopeChip, ToggleChip } from './Filter/SearchFilterChips'
 import SelectProjectModalInSearch from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
 import ProjectListModal from '../UIComponents/FloatModals/ProjectListModal/ProjectListModal'
@@ -114,6 +117,8 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
                 loggedUser,
                 loggedUserProjects: ALL_PROJECTS,
                 areArchivedActive: false,
+                searchText: '',
+                smallScreenNavigation: false,
                 ...storeOverrides,
             })
         )
@@ -180,6 +185,8 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
     }
 
     beforeEach(() => {
+        // The shared RN mock predates Spinner's cleanup and omits stop().
+        jest.spyOn(Animated, 'loop').mockImplementation(() => ({ start: jest.fn(), stop: jest.fn() }))
         searchCalls.length = 0
         mockMultiSearchTypesense.mockClear()
         warmTypesenseSearchCredentials.mockClear()
@@ -189,6 +196,145 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
     afterEach(() => {
         jest.restoreAllMocks()
         act(() => component.unmount())
+    })
+
+    const deferProjectRefresh = () => {
+        let resolve
+        let reject
+        getAllUserProjects.mockReturnValueOnce(
+            new Promise((res, rej) => {
+                resolve = res
+                reject = rej
+            })
+        )
+        return {
+            resolve: projects => act(async () => resolve(projects)),
+            reject: error => act(async () => reject(error)),
+        }
+    }
+
+    const searchButton = () => component.root.findByType(SearchForm).findByType(Button)
+
+    it.each([false, true])(
+        'accepts a search immediately while project refresh is pending (mobile: %s)',
+        async mobile => {
+            const refresh = deferProjectRefresh()
+            await mount({ loggedUserProjects: [ACTIVE_PROJECT], searchText: 'roadmap', smallScreenNavigation: mobile })
+
+            expect(searchButton().props.disabled).toBe(false)
+            await act(async () => searchButton().props.onPress())
+            expect(mockMultiSearchTypesense).toHaveBeenCalledTimes(1)
+            expect(searchedProjectIds()).toEqual([ACTIVE_PROJECT.id])
+
+            searchCalls.length = 0
+            await refresh.resolve(ALL_PROJECTS)
+            expect(mockMultiSearchTypesense).toHaveBeenCalledTimes(2)
+            expect(searchedProjectIds()).toEqual([
+                'project-active',
+                'project-active-2',
+                'project-archived',
+                'project-archived-2',
+            ])
+        }
+    )
+
+    it('finishes the submitted query after refresh without searching a later unsubmitted draft', async () => {
+        const refresh = deferProjectRefresh()
+        await mount({ loggedUserProjects: [ACTIVE_PROJECT] })
+        await search('roadmap')
+        await act(async () => component.root.findByType(SearchForm).props.setLocalText('unfinished draft'))
+
+        searchCalls.length = 0
+        await refresh.resolve(ALL_PROJECTS)
+
+        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls.every(call => call.text === 'roadmap')).toBe(true)
+        expect(component.root.findByType(SearchForm).props.localText).toBe('unfinished draft')
+    })
+
+    it('queues the latest click or Enter on a cold open without issuing an unscoped search', async () => {
+        const refresh = deferProjectRefresh()
+        await mount({ loggedUserProjects: [], searchText: 'first query' })
+        expect(searchButton().props.disabled).toBe(false)
+        await act(async () => searchButton().props.onPress())
+        await act(async () => component.root.findByType(SearchForm).props.setLocalText('latest query'))
+        await act(async () => component.root.findByType(SearchForm).props.onSubmitEditing())
+
+        expect(mockMultiSearchTypesense).not.toHaveBeenCalled()
+        expect(Object.values(component.root.findByType(ResultLists).props.processing).every(Boolean)).toBe(true)
+
+        await refresh.resolve(ALL_PROJECTS)
+        expect(mockMultiSearchTypesense).toHaveBeenCalledTimes(1)
+        expect(searchCalls.every(call => call.text === 'latest query')).toBe(true)
+        expect(Object.values(component.root.findByType(ResultLists).props.processing).every(value => !value)).toBe(true)
+    })
+
+    it('finishes a queued search with no results when the loaded scope is genuinely empty', async () => {
+        const refresh = deferProjectRefresh()
+        await mount({ loggedUserProjects: [], searchText: 'roadmap' })
+        await act(async () => searchButton().props.onPress())
+        await refresh.resolve([])
+
+        expect(mockMultiSearchTypesense).not.toHaveBeenCalled()
+        expect(Object.values(component.root.findByType(ResultLists).props.processing).every(value => !value)).toBe(true)
+    })
+
+    it('does not search merely because the project refresh completes with text in the input', async () => {
+        const refresh = deferProjectRefresh()
+        await mount({ loggedUserProjects: [ACTIVE_PROJECT], searchText: 'unsubmitted query' })
+        await refresh.resolve(ALL_PROJECTS)
+
+        expect(mockMultiSearchTypesense).not.toHaveBeenCalled()
+    })
+
+    it('keeps early search usable when the background project refresh fails', async () => {
+        const refresh = deferProjectRefresh()
+        jest.spyOn(console, 'error').mockImplementation(() => {})
+        await mount({ loggedUserProjects: [ACTIVE_PROJECT], searchText: 'roadmap' })
+        await act(async () => searchButton().props.onPress())
+        expect(mockMultiSearchTypesense).toHaveBeenCalledTimes(1)
+
+        await refresh.reject(new Error('Temporary connection failure'))
+        expect(searchedProjectIds()).toEqual([ACTIVE_PROJECT.id])
+        expect(searchButton().props.disabled).toBe(false)
+    })
+
+    it('does not run a queued search after the popup closes', async () => {
+        const refresh = deferProjectRefresh()
+        await mount({ loggedUserProjects: [], searchText: 'roadmap' })
+        await act(async () => searchButton().props.onPress())
+        act(() => component.unmount())
+        await refresh.resolve(ALL_PROJECTS)
+
+        expect(mockMultiSearchTypesense).not.toHaveBeenCalled()
+    })
+
+    it('ignores an older search error once the refreshed scope has started a new request', async () => {
+        const refresh = deferProjectRefresh()
+        let rejectEarlySearch
+        let resolveRefreshedSearch
+        mockMultiSearchTypesense.mockImplementationOnce(
+            () =>
+                new Promise((resolve, reject) => {
+                    rejectEarlySearch = reject
+                })
+        )
+        mockMultiSearchTypesense.mockImplementationOnce(
+            () =>
+                new Promise(resolve => {
+                    resolveRefreshedSearch = resolve
+                })
+        )
+        await mount({ loggedUserProjects: [ACTIVE_PROJECT], searchText: 'roadmap' })
+        await act(async () => searchButton().props.onPress())
+        await refresh.resolve(ALL_PROJECTS)
+        await act(async () => rejectEarlySearch(new Error('Superseded request failed')))
+
+        expect(Object.values(component.root.findByType(ResultLists).props.processing).every(Boolean)).toBe(true)
+        expect(JSON.stringify(component.toJSON())).not.toContain('Search is temporarily unavailable')
+
+        await act(async () => resolveRefreshedSearch(Array.from({ length: 5 }, () => ({ hits: [] }))))
+        expect(Object.values(component.root.findByType(ResultLists).props.processing).every(value => !value)).toBe(true)
     })
 
     it('shows only the Active and Archived groups', async () => {

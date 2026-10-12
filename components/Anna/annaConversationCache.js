@@ -1,7 +1,8 @@
-// Keep only the small index needed to mount the chat immediately. Message bodies
-// stay in Firestore's existing IndexedDB cache; live reads remain authoritative.
+import { getAnnaHistoryWindow, isRecentAnnaThread } from '../../functions/Assistant/annaHistoryWindow'
+
+// Keep the small index needed to mount today's and yesterday's chats immediately.
 const PREFIX = 'alldone.annaConversation.v1:'
-const MAX_THREADS = 3
+const MAX_THREADS = 100
 const keyFor = (userId, projectId) => `${PREFIX}${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value)
 const validThread = (thread, userId) =>
@@ -36,7 +37,9 @@ export const readAnnaConversationCache = (userId, user) => {
         const accessibleThreads = cached.threads.filter(
             thread => validThread(thread, userId) && projects.has(thread.projectId)
         )
-        const threads = accessibleThreads.slice(-MAX_THREADS)
+        const window = getAnnaHistoryWindow(user)
+        const recentThreads = accessibleThreads.filter(thread => isRecentAnnaThread(thread, window))
+        const threads = recentThreads.slice(-MAX_THREADS)
         const oldest = threads[0]
         return {
             conversation,
@@ -44,19 +47,23 @@ export const readAnnaConversationCache = (userId, user) => {
             // An older app may have cached more threads. Start pagination at the
             // retained boundary so trimming that cache never skips history.
             nextBefore:
-                accessibleThreads.length > MAX_THREADS && oldest
+                recentThreads.length > MAX_THREADS && oldest
                     ? { created: oldest.created, id: `${oldest.projectId}__${oldest.chatId}` }
-                    : cached.nextBefore || null,
+                    : accessibleThreads.some(thread => !isRecentAnnaThread(thread, window))
+                      ? { created: window.start }
+                      : cached.nextBefore || null,
         }
     } catch (_) {
         return null
     }
 }
 
-export const saveAnnaConversationCache = (userId, projectId, state) => {
+export const saveAnnaConversationCache = (userId, projectId, state, user = {}) => {
     const chat = state.conversation
     if (!chat || chat.projectId !== projectId || chat.annaOwnerId !== userId || chat.creatorId !== userId) return
-    const threads = state.threads
+    const window = getAnnaHistoryWindow(user)
+    const recentThreads = state.threads.filter(thread => isRecentAnnaThread(thread, window))
+    const threads = recentThreads
         .map(referenceFor)
         .filter(thread => validThread(thread, userId))
         .slice(-MAX_THREADS)
@@ -74,9 +81,11 @@ export const saveAnnaConversationCache = (userId, projectId, state) => {
         },
         threads,
         nextBefore:
-            state.threads.length > MAX_THREADS && oldest
+            recentThreads.length > MAX_THREADS && oldest
                 ? { created: oldest.created, id: `${oldest.projectId}__${oldest.chatId}` }
-                : state.nextBefore,
+                : state.threads.some(thread => !isRecentAnnaThread(thread, window))
+                  ? { created: window.start }
+                  : state.nextBefore,
     }
     try {
         const key = keyFor(userId, projectId)

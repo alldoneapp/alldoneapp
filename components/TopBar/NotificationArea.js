@@ -1,4 +1,5 @@
 import React from 'react'
+import { getFollowedFeedAmount } from '../../utils/notificationBadges'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -20,7 +21,7 @@ export default function NotificationArea() {
     const dispatch = useDispatch()
     const showShortcuts = useSelector(state => state.showShortcuts)
     const themeName = useSelector(state => state.loggedUser.themeName)
-    const followedFeedsAmount = useSelector(state => state.followedFeedsAmount)
+    const followedFeedsAmount = useSelector(getFollowedFeedAmount)
     const allFeedsAmount = useSelector(state => state.allFeedsAmount)
     const userIsAnonymous = useSelector(state => state.loggedUser.isAnonymous)
 

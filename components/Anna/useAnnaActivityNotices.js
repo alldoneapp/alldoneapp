@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { getFollowedFeedAmount, getRedChatNotifications } from '../../utils/notificationBadges'
+import { annaActivityHistory } from './annaActivityHistory'
 
 const EMPTY = {}
 const timestamp = value => {
@@ -9,33 +11,30 @@ const timestamp = value => {
 
 // Read the same followed (red) activity that drives the app badges. A notice is
 // only a local navigation hint: it neither reads the item nor messages Anna.
-export function collectAnnaActivity({ user, projects, feeds, chats, activeChat, threads }) {
+export function collectAnnaActivity({ user, projects, feeds, feedAmount, chats, activeChat }) {
     const events = []
-    const excludedProjects = new Set([...(user.archivedProjectIds || []), ...(user.templateProjectIds || [])])
-    const conversationChats = new Set(threads.map(thread => `${thread.projectId}/${thread.chatId || thread.id}`))
-    projects.forEach(project => {
-        const projectId = project.id
-        if (excludedProjects.has(projectId)) return
-        const base = `/projects/${projectId}/user/${user.uid}`
-        const projectName = project.name || ''
-        const projectFeeds = feeds[projectId] || []
-        projectFeeds.forEach(feed => {
-            if (!feed.id || feed.creatorId === user.uid) return
-            events.push({
-                id: `feed/${projectId}/${feed.objectTypes}/${feed.objectId}/${feed.id}`,
-                kind: 'feed',
-                occurredAt: timestamp(feed.lastChangeDate),
-                path: `${base}/updates/followed`,
-                projectName,
-                entryText: feed.entryText || '',
+    const names = new Map(projects.map(project => [project.id, project.name || '']))
+    // The global feed watcher already applies membership/privacy and followed filtering.
+    // Use its committed badge count too, rather than interpreting leftover payloads as new red activity.
+    if (feedAmount > 0)
+        Object.entries(feeds).forEach(([projectId, projectFeeds]) => {
+            projectFeeds.forEach(feed => {
+                if (!feed.id) return
+                events.push({
+                    id: `feed/${projectId}/${feed.objectTypes}/${feed.objectId}/${feed.id}`,
+                    kind: 'feed',
+                    occurredAt: timestamp(feed.lastChangeDate),
+                    sourceProjectId: projectId,
+                    path: `/projects/${projectId}/user/${user.uid}/updates/followed`,
+                    projectName: names.get(projectId) || '',
+                    entryText: feed.entryText || '',
+                })
             })
         })
-        Object.entries(chats[projectId] || {}).forEach(([chatId, chat]) => {
-            if (
-                conversationChats.has(`${projectId}/${chatId}`) ||
-                (activeChat?.projectId === projectId && activeChat?.chatId === chatId)
-            )
-                return
+    const redChats = getRedChatNotifications(chats, activeChat, user)
+    Object.entries(redChats).forEach(([projectId, projectChats]) => {
+        Object.entries(projectChats).forEach(([chatId, chat]) => {
+            if (!(chat?.totalFollowed > 0)) return
             const notifications = chat.followedNotifications || []
             notifications.forEach(notification => {
                 if (!notification.commentId) return
@@ -43,8 +42,9 @@ export function collectAnnaActivity({ user, projects, feeds, chats, activeChat, 
                     id: `chat/${projectId}/${chatId}/${notification.commentId}`,
                     kind: 'chat',
                     occurredAt: timestamp(notification.date),
-                    path: `${base}/chats/followed`,
-                    projectName,
+                    sourceProjectId: projectId,
+                    path: `/projects/${projectId}/user/${user.uid}/chats/followed`,
+                    projectName: names.get(projectId) || '',
                 })
             })
         })
@@ -52,17 +52,16 @@ export function collectAnnaActivity({ user, projects, feeds, chats, activeChat, 
     return events.sort((a, b) => a.occurredAt - b.occurredAt || a.id.localeCompare(b.id))
 }
 
-export default function useAnnaActivityNotices(userId, conversation, threads, enabled) {
+export default function useAnnaActivityNotices(userId, conversation, enabled) {
     const user = useSelector(state => state.loggedUser)
     const projects = useSelector(state => state.loggedUserProjects)
     const feeds = useSelector(state => state.followedFeedsData || EMPTY)
+    const feedAmount = useSelector(getFollowedFeedAmount)
     const chats = useSelector(state => state.projectChatNotifications || EMPTY)
     const activeChat = useSelector(state => state.activeChatData)
-    const [state, setState] = useState({ userId, notices: [] })
+    const saved = useMemo(() => annaActivityHistory.read(userId), [userId])
+    const [state, setState] = useState({ userId, notices: saved })
     const tracker = useRef(null)
-    const threadKey = JSON.stringify(
-        [...threads, conversation].map(thread => ({ projectId: thread.projectId, id: thread.chatId || thread.id }))
-    )
 
     useEffect(() => {
         if (!enabled || !userId || user?.uid !== userId) {
@@ -73,15 +72,15 @@ export default function useAnnaActivityNotices(userId, conversation, threads, en
             user,
             projects: projects || [],
             feeds,
+            feedAmount,
             chats,
             activeChat,
-            threads: JSON.parse(threadKey),
         })
         if (!tracker.current || tracker.current.userId !== userId) {
             // Baseline existing unread activity. Also ignore old items arriving
             // in a delayed first snapshot, instead of replaying the inbox.
-            tracker.current = { userId, since: Date.now(), seen: new Set(events.map(event => event.id)) }
-            setState(previous => (previous.userId === userId ? previous : { userId, notices: [] }))
+            tracker.current = { userId, since: Date.now(), seen: new Set([...saved, ...events].map(event => event.id)) }
+            setState(previous => (previous.userId === userId ? previous : { userId, notices: saved }))
             return
         }
         const current = tracker.current
@@ -91,21 +90,41 @@ export default function useAnnaActivityNotices(userId, conversation, threads, en
             current.since = Date.now()
             current.seen = new Set(events.map(event => event.id))
         }
-        if (!incoming.length) return
+        if (!incoming.length || !conversation.projectId || !conversation.id) return
         const created = Date.now()
+        const arrivals = incoming.map(event =>
+            annaActivityHistory.append(userId, {
+                ...event,
+                created,
+                projectId: conversation.projectId,
+                chatId: conversation.id,
+            })
+        )
         setState(previous => ({
             userId,
             notices: [
-                ...(previous.userId === userId ? previous.notices : []),
-                ...incoming.map(event => ({
-                    ...event,
-                    created,
-                    projectId: conversation.projectId,
-                    chatId: conversation.id,
-                })),
-            ].slice(-100),
+                ...new Map(
+                    [...(previous.userId === userId ? previous.notices : saved), ...arrivals].map(notice => [
+                        notice.id,
+                        notice,
+                    ])
+                ).values(),
+            ],
         }))
-    }, [userId, user, projects, feeds, chats, activeChat, threadKey, enabled, conversation.projectId, conversation.id])
+    }, [
+        userId,
+        user,
+        projects,
+        feeds,
+        feedAmount,
+        chats,
+        activeChat,
+        saved,
+        enabled,
+        conversation.projectId,
+        conversation.id,
+    ])
 
-    return state.userId === userId ? state.notices : []
+    if (user?.uid !== userId) return []
+    return state.userId === userId ? state.notices : saved
 }

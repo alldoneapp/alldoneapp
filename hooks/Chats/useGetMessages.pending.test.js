@@ -2,9 +2,11 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import useGetMessages from './useGetMessages'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
+import { createAnnaMessageCache } from '../../components/Anna/annaMessageCache'
 
 let mockUserId = 'user'
 let mockNext
+let mockError
 jest.mock('react-redux', () => ({
     useSelector: selector => selector({ loggedUser: { uid: mockUserId } }),
     useDispatch: () => jest.fn(),
@@ -13,11 +15,12 @@ jest.mock('../../redux/actions', () => ({}))
 jest.mock('../../redux/store', () => ({ getState: () => ({ loggedUser: { uid: mockUserId } }) }))
 jest.mock('../../components/AdminPanel/Assistants/assistantsHelper', () => ({}))
 jest.mock('../../utils/redux/loadingOperation', () => ({
-    subscribeWithLoading: (_name, subscribe, next) => subscribe(next, jest.fn()),
+    subscribeWithLoading: (_name, subscribe, next, { onError } = {}) => subscribe(next, onError || jest.fn()),
 }))
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({
-    watchComments: (_project, _type, _object, _key, _limit, next) => {
+    watchComments: (_project, _type, _object, _key, _limit, next, options) => {
         mockNext = next
+        mockError = options.onError
     },
 }))
 jest.mock('../../utils/backends/firestore', () => ({ unwatch: jest.fn() }))
@@ -34,8 +37,8 @@ const entry = (id = 'request', values = {}) => ({
     created: 1000,
     ...values,
 })
-const Harness = ({ projectId = 'project', objectId = 'object', objectType = 'tasks' }) => {
-    messages = useGetMessages(false, false, projectId, objectId, objectType)
+const Harness = ({ projectId = 'project', objectId = 'object', objectType = 'tasks', cache }) => {
+    messages = useGetMessages(false, false, projectId, objectId, objectType, 50, cache)
     return null
 }
 const mount = props =>
@@ -134,4 +137,56 @@ it('maps the users/contact alias and orders multiple queued and saved messages b
     mount({ objectType: 'contacts' })
     act(() => mockNext([{ id: 'old', created: 1000, lastChangeDate: 4000, commentText: 'Edited' }]))
     expect(messages.map(message => message.id)).toEqual(['old', 'first', 'second'])
+})
+
+const annaScope = {
+    userId: 'user',
+    projectId: 'project',
+    objectId: 'AnnaChat20261012user',
+    chatType: 'topics',
+    limit: 50,
+}
+const annaProps = cache => ({ objectType: 'topics', objectId: annaScope.objectId, cache })
+const savedMessages = [{ id: 'saved', creatorId: 'user', created: 1000, commentText: 'Previously loaded answer' }]
+
+it('paints restored Anna messages before any snapshot and keeps them through an empty offline cache result', () => {
+    const previousSession = createAnnaMessageCache()
+    previousSession.write(annaScope, savedMessages)
+    previousSession.flush()
+    const cache = createAnnaMessageCache()
+    mount(annaProps(cache))
+    expect([...messages]).toEqual(savedMessages)
+    expect(messages.loaded).toBe(true)
+    act(() => mockNext([], { fromCache: true, hasPendingWrites: false }))
+    expect([...messages]).toEqual(savedMessages)
+    act(() => mockNext([{ ...savedMessages[0], commentText: 'Updated on server' }], { fromCache: false }))
+    expect(messages[0].commentText).toBe('Updated on server')
+    act(() => mockNext([], { fromCache: false }))
+    expect(messages).toHaveLength(0)
+    cache.flush()
+    expect(createAnnaMessageCache().read(annaScope)).toEqual([])
+})
+
+it('retains Anna messages on transient failures but clears them when access is revoked', () => {
+    const cache = createAnnaMessageCache()
+    cache.write(annaScope, savedMessages)
+    mount(annaProps(cache))
+    act(() => mockError({ code: 'unavailable' }))
+    expect([...messages]).toEqual(savedMessages)
+    act(() => mockError({ code: 'permission-denied' }))
+    expect(messages).toHaveLength(0)
+    expect(cache.read(annaScope)).toBeNull()
+    expect(createAnnaMessageCache().read(annaScope)).toBeNull()
+})
+
+it('never shows the previous account or thread snapshot when switching destinations', () => {
+    const cache = createAnnaMessageCache()
+    cache.write(annaScope, savedMessages)
+    mount(annaProps(cache))
+    expect(messages).toHaveLength(1)
+    act(() => tree.update(<Harness {...annaProps(cache)} objectId="AnnaChat20261011user" />))
+    expect(messages).toHaveLength(0)
+    mockUserId = 'different'
+    act(() => tree.update(<Harness {...annaProps(cache)} />))
+    expect(messages).toHaveLength(0)
 })

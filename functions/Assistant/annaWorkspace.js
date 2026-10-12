@@ -4,6 +4,7 @@ const { buildObjectAccessProjection } = require('../shared/objectAccessProjectio
 const { sanitizeCallPageContext, formatCallPageContext } = require('../WhatsApp/assistantCallPageContext')
 
 const { TOOL_NAME, showWorkspaceSchema } = require('./annaWorkspaceContract')
+const { getAnnaHistoryWindow } = require('./annaHistoryWindow')
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value)
 const fail = (code, message) => {
     const error = new Error(message)
@@ -122,13 +123,23 @@ async function ensureAnnaConversation({ db, userId, resolveAssistantId, now = Da
 }
 
 // This index is owner-readable. Always validate the original project/chat before returning content.
-async function listAnnaConversations({ db, userId, before = null, limit = 3 }) {
+async function listAnnaConversations({ db, userId, before = null, limit = 3, recentOnly = false, now = Date.now() }) {
+    const registry = db.collection(`users/${userId}/private/annaConversation/threads`)
+    const window =
+        recentOnly && !before ? getAnnaHistoryWindow((await db.doc(`users/${userId}`).get()).data(), now) : null
     let query = db
         .collection(`users/${userId}/private/annaConversation/threads`)
         .orderBy('created', 'desc')
         .orderBy('__name__', 'desc')
-    if (before && Number.isFinite(before.created) && validId(before.id))
-        query = query.startAfter(before.created, before.id)
+    if (before && Number.isFinite(before.created)) {
+        if (validId(before.id)) query = query.startAfter(before.created, before.id)
+        else if (before.id == null) query = query.startAfter(before.created)
+    }
+    if (window) {
+        query = query.where('created', '>=', window.start).where('created', '<', window.end)
+        // A project change can create more than one thread in the same day.
+        limit = 100
+    }
     const snapshot = await query.limit(limit).get()
     const references = snapshot.docs
         .map(entry => entry.data())
@@ -161,9 +172,14 @@ async function listAnnaConversations({ db, userId, before = null, limit = 3 }) {
         })
     }
     const last = snapshot.docs[snapshot.docs.length - 1]
+    let nextBefore = snapshot.docs.length === limit ? { created: last.data().created, id: last.id } : null
+    if (window && !nextBefore) {
+        const earlier = await registry.where('created', '<', window.start).limit(1).get()
+        if (earlier.docs.length) nextBefore = { created: window.start }
+    }
     return {
         threads,
-        nextBefore: snapshot.docs.length === limit ? { created: last.data().created, id: last.id } : null,
+        nextBefore,
     }
 }
 

@@ -6,6 +6,11 @@ import AnnaShell from '../../components/Anna/AnnaShell'
 import { setAnnaMode } from '../../utils/annaMode'
 import { GlobalOverlayFixture, OverlayLaunchers } from './overlay-fixture'
 import { getWorkspaceTasks, subscribeWorkspaceTasks } from './services'
+import {
+    getFollowedFeedAmount,
+    getFollowedAndUnfollowedChatNotificationsAmount,
+    resetNotificationsWhenUserHasAnActiveChat,
+} from '../../utils/notificationBadges'
 import alldoneFont from '../../assets/fonts/alldone.ttf'
 import useModalSizing from '../../hooks/useModalSizing'
 import LoadingData from '../../components/UIComponents/LoadingData'
@@ -22,6 +27,71 @@ import {
 } from '../../components/UIComponents/floatingActionLayout'
 window.zoomAnna = setAnnaMode
 Quill.register('modules/autoformat', Autoformat, true)
+function ActivityHistoryFixture() {
+    const feedCount = useSelector(getFollowedFeedAmount)
+    const chats = useSelector(state => state.projectChatNotifications)
+    const chatCount = getFollowedAndUnfollowedChatNotificationsAmount(
+        true,
+        '',
+        resetNotificationsWhenUserHasAnActiveChat(chats, {}),
+        [],
+        []
+    ).totalFollowed
+    const receive = red => {
+        const now = Date.now()
+        window.__annaActivity({
+            followedFeedsAmount: red ? 1 : 0,
+            followedFeedsData: {
+                p1: [
+                    {
+                        id: `feed-${now}`,
+                        objectId: 'task1',
+                        objectTypes: 'tasks',
+                        lastChangeDate: now,
+                        entryText: 'created task',
+                    },
+                ],
+            },
+            projectChatNotifications: {
+                p1: {
+                    totalFollowed: red ? 1 : 0,
+                    totalUnfollowed: red ? 0 : 1,
+                    other: { totalFollowed: 1, followedNotifications: [{ commentId: `message-${now}`, date: now }] },
+                },
+            },
+        })
+    }
+    return (
+        <div
+            style={{
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                zIndex: 10000,
+                background: 'white',
+                padding: 4,
+                font: '12px Arial',
+            }}
+        >
+            <output>
+                Red updates: {feedCount || 0}; red chats: {chatCount || 0}
+            </output>
+            <button onClick={() => receive(false)}>Receive grey activity</button>
+            <button onClick={() => receive(true)}>Receive red activity</button>
+            <button
+                onClick={() =>
+                    window.__annaActivity({
+                        followedFeedsAmount: 0,
+                        followedFeedsData: {},
+                        projectChatNotifications: {},
+                    })
+                }
+            >
+                Read notifications
+            </button>
+        </div>
+    )
+}
 // Use the task board's shared action geometry without the task-creation transport.
 function FloatingTaskActionFixture() {
     const { safeAreaInsets } = useModalSizing()
@@ -72,6 +142,7 @@ function Fixture() {
     return (
         <>
             <style>{`@font-face { font-family: alldone; src: url("${alldoneFont}") format("truetype"); }`}</style>
+            {new URLSearchParams(window.location.search).has('notificationParity') && <ActivityHistoryFixture />}
             <GlobalOverlayFixture dialog={dialog} notifications={notifications} closeDialog={() => setDialog(false)} />
             <AnnaShell routeId="fixture-note">
                 <ScrollView
@@ -108,7 +179,10 @@ function Fixture() {
                     <button onClick={() => setAnnaMode(true)}>Zoom out to assistant</button>
                     <OverlayLaunchers
                         openGlobal={() => setDialog(true)}
-                        toggleNotifications={() => setNotifications(value => !value)}
+                        toggleNotifications={() => {
+                            window.__annaActivity({ connectionState: notifications ? 'online' : 'offline' })
+                            setNotifications(value => !value)
+                        }}
                     />
                     {revealFixture && revealListVisible && (
                         <div style={{ paddingTop: 30, font: '15px Arial', color: '#334155' }}>

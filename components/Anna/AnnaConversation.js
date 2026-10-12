@@ -23,6 +23,8 @@ import { isBrowserOffline } from '../../utils/connectionState'
 import AnnaChatComposer from './AnnaChatComposer'
 import useAnnaDraft from './useAnnaDraft'
 import AnnaMessageAuthor from './AnnaMessageAuthor'
+import { annaMessageCache } from './annaMessageCache'
+import { formatAnnaActivityText } from './annaActivityText'
 
 const MESSAGES_PER_PAGE = 50
 
@@ -46,7 +48,7 @@ export default function AnnaConversation({
     onExpand,
     onSendingChange,
     onWorkStateChange,
-    threads = [],
+    threads,
     resolveConversation,
     loadEarlier,
     hasEarlier = false,
@@ -59,7 +61,7 @@ export default function AnnaConversation({
     pageContext,
 }) {
     const pageNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
-    const activityNotices = useAnnaActivityNotices(user.uid, conversation, threads, active)
+    const activityNotices = useAnnaActivityNotices(user.uid, conversation, active)
     const contextNotices = [...pageNotices, ...activityNotices].sort((a, b) => a.created - b.created)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [liveActivityThreads, setLiveActivityThreads] = useState(() => new Set())
@@ -258,7 +260,7 @@ export default function AnnaConversation({
     }, [resumeRequest, sending, voiceActive, dictationBusy, offline])
     // Keep pending/failed submissions visible even when today's resolved thread
     // differs from the cached conversation or a rollover changes the history.
-    const displayedThreads = [...(threads.length ? threads : [{ ...conversation, chatId: conversation.id }])]
+    const displayedThreads = [...(threads || [{ ...conversation, chatId: conversation.id }])]
     localMessages.forEach(message => {
         const thread = message.thread
         if (
@@ -467,7 +469,7 @@ function AnnaThreadMessages({
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [limit, setLimit] = useState(MESSAGES_PER_PAGE)
     const chatId = thread.chatId || thread.id
-    const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit)
+    const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit, annaMessageCache)
     // Match the body renderer, including its stale-run rule. Sending, errors and
     // VM approval states still carry their own useful status messages.
     const hasLiveActivity = messages.some(message =>
@@ -575,7 +577,7 @@ function AnnaThreadMessages({
                                     <span className="anna-activity-dot" aria-hidden="true" />
                                     <span>
                                         {translate(notice.kind === 'feed' ? 'New update' : 'New chat message')}
-                                        {notice.entryText ? `: ${translate(notice.entryText)}` : ''}
+                                        {notice.entryText ? `: ${formatAnnaActivityText(notice.entryText)}` : ''}
                                         {notice.projectName ? ` · ${notice.projectName}` : ''}
                                     </span>
                                     <Icon name="arrow-right" size={14} color="currentColor" />

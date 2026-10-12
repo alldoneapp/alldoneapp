@@ -4,7 +4,7 @@ import {
     saveAnnaConversationCache,
 } from './annaConversationCache'
 
-const user = { defaultProjectId: 'p1', projectIds: ['p1', 'p2'] }
+const user = { timezone: 'Europe/Berlin', defaultProjectId: 'p1', projectIds: ['p1', 'p2'] }
 const conversation = {
     id: 'AnnaChat20261011u1',
     projectId: 'p1',
@@ -24,15 +24,22 @@ const threads = Array.from({ length: 10 }, (_, index) => ({
     dateKey: `202610${String(index + 2).padStart(2, '0')}`,
 }))
 const save = (overrides = {}) =>
-    saveAnnaConversationCache('u1', 'p1', { conversation, threads, nextBefore: null, ...overrides })
-beforeEach(() => localStorage.clear())
-afterEach(() => jest.restoreAllMocks())
+    saveAnnaConversationCache('u1', 'p1', { conversation, threads, nextBefore: null, ...overrides }, user)
+beforeEach(() => {
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date('2026-10-11T12:00:00Z'))
+    localStorage.clear()
+})
+afterEach(() => {
+    jest.restoreAllMocks()
+    jest.useRealTimers()
+})
 
-it('bounds the saved index and preserves a cursor for history outside that window', () => {
+it('saves only today and yesterday and preserves the earlier-day boundary', () => {
     save()
     const restored = readAnnaConversationCache('u1', user)
-    expect(restored.threads).toEqual(threads.slice(-3))
-    expect(restored.nextBefore).toEqual({ created: 9, id: 'p1__AnnaChat20261009u1' })
+    expect(restored.threads).toEqual(threads.slice(-2))
+    expect(restored.nextBefore).toEqual({ created: Date.parse('2026-10-09T22:00:00Z') })
     expect(restored.conversation.id).toBe(conversation.id)
     expect(restored.conversation.annaPresentation).toBeUndefined()
     expect(restored.conversation.annaPageContext).toBeUndefined()
@@ -51,8 +58,8 @@ it('trims a previous seven-thread cache without skipping the removed history', (
         })
     )
     const restored = readAnnaConversationCache('u1', user)
-    expect(restored.threads).toEqual(threads.slice(-3))
-    expect(restored.nextBefore).toEqual({ created: 9, id: 'p1__AnnaChat20261009u1' })
+    expect(restored.threads).toEqual(threads.slice(-2))
+    expect(restored.nextBefore).toEqual({ created: Date.parse('2026-10-09T22:00:00Z') })
 })
 
 it('isolates accounts and default projects and filters history for lost project access', () => {

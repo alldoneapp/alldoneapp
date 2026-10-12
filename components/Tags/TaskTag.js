@@ -8,7 +8,7 @@ import Icon from '../Icon'
 import styles, { colors, windowTagStyle } from '../styles/global'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import ReactDOM from 'react-dom'
-import useWindowSize from '../../utils/useWindowSize'
+import useWorkspaceViewport from '../../hooks/useWorkspaceViewport'
 import { handleNestedLinks } from '../../utils/LinkingHelper'
 import TasksHelper, {
     OPEN_STEP,
@@ -57,7 +57,7 @@ export default function TaskTag({
 }) {
     const virtualQuillLoaded = useSelector(state => state.virtualQuillLoaded)
     const loggedUser = useSelector(state => state.loggedUser)
-    const [width, height] = useWindowSize()
+    const workspaceViewport = useWorkspaceViewport()
     const mobile = useSelector(state => state.smallScreenNavigation)
     const tablet = useSelector(state => state.isMiddleScreen)
     const [maxWidth, setMaxWidth] = useState(0)
@@ -113,13 +113,15 @@ export default function TaskTag({
     useEffect(() => {
         if (isLoading || virtualQuillLoaded) return
         measureAvailableWidth()
-    }, [isLoading, width, virtualQuillLoaded, mobile, tablet])
+    }, [isLoading, workspaceViewport, virtualQuillLoaded, mobile, tablet])
 
     const measureAvailableWidth = () => {
         const el = containerRef.current ? ReactDOM.findDOMNode(containerRef.current) : null
         if (!el || typeof el.getBoundingClientRect !== 'function') return
         const { left } = el.getBoundingClientRect()
-        const available = width - left - (mobile ? 16 : tablet ? 32 : 72) - 50
+        // Both edges must use browser coordinates. Subtracting this absolute
+        // left from the pane's WIDTH deducted the assistant sidebar twice.
+        const available = workspaceViewport.right - left - (mobile ? 16 : tablet ? 32 : 72) - 50
         // A measurement taken while the row is detached, off-screen, mid-reflow or at the far
         // right of the line answers with a useless (often negative) number. Record it as
         // "unknown" and leave the row unconstrained rather than freezing a width that hides it.

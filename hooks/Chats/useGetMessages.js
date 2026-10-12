@@ -1,5 +1,5 @@
 import { subscribeWithLoading } from '../../utils/redux/loadingOperation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
@@ -43,14 +43,30 @@ const compareMessages = (a, b) => {
     return aCreated - bCreated || (a?.id || '').localeCompare(b?.id || '')
 }
 
-const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatType, toRender = 10000) => {
+const useGetMessages = (
+    checkAssistant,
+    showSpinner,
+    projectId,
+    objectId,
+    chatType,
+    toRender = 10000,
+    messageCache = null
+) => {
     const dispatch = useDispatch()
     const userId = useSelector(state => state.loggedUser?.uid)
+    // Firestore retries ordinary network loss itself. Restart a terminated
+    // listener on reconnect too, while retaining the assistant's cached rows.
+    const connectionState = useSelector(state => (messageCache ? state.connectionState : null))
     const scope = JSON.stringify([userId, projectId, objectId, chatType])
-    const [state, setState] = useState({ messages: [], loaded: false })
+    const cacheScope = { userId, projectId, objectId, chatType, limit: toRender }
+    const cached = useMemo(() => messageCache?.read(cacheScope) ?? null, [scope, messageCache, toRender])
+    const cachedState = { scope, messages: cached || [], loaded: cached !== null }
+    const [state, setState] = useState(cachedState)
+    const currentState = state.scope === scope ? state : cachedState
 
     useEffect(() => {
         let isFirstFetch = true
+        let latestMessages = currentState.messages
         const watcherKey = v4()
         const unsubscribe = subscribeWithLoading(
             'chat_messages',
@@ -59,12 +75,30 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
                 return () => unwatch(watcherKey)
             },
             handleSnapshot,
-            { enabled: showSpinner }
+            {
+                enabled: showSpinner,
+                onError: error => {
+                    if (!messageCache) return
+                    const denied = ['permission-denied', 'unauthenticated'].some(code => error?.code?.endsWith(code))
+                    if (denied) {
+                        messageCache.remove(cacheScope)
+                        setState({ scope, messages: [], loaded: true })
+                    }
+                },
+            }
         )
 
-        function handleSnapshot(snapshotMessages) {
+        function handleSnapshot(snapshotMessages, metadata) {
             // Keep chronological order strictly based on creation time so edits do not reorder comments
-            const sortedMessages = [...snapshotMessages].sort(compareMessages)
+            let sortedMessages = [...snapshotMessages].sort(compareMessages)
+            // A partial/empty cache snapshot is not proof of server deletion.
+            if (messageCache && metadata?.fromCache && !metadata.hasPendingWrites && latestMessages.length) {
+                const merged = new Map(latestMessages.map(message => [message.id, message]))
+                sortedMessages.forEach(message => merged.set(message.id, message))
+                sortedMessages = [...merged.values()].sort(compareMessages).slice(-toRender)
+            }
+            latestMessages = sortedMessages
+            if (messageCache && !metadata?.fromCache) messageCache.write(cacheScope, sortedMessages)
 
             if (checkAssistant && isFirstFetch) {
                 const { notEnabledAssistantWhenLoadComments, loggedUser } = store.getState()
@@ -85,16 +119,16 @@ const useGetMessages = (checkAssistant, showSpinner, projectId, objectId, chatTy
             setState({ scope, messages: sortedMessages, loaded: true })
         }
 
-        return unsubscribe
-    }, [toRender, projectId, chatType, objectId, userId])
+        return () => {
+            unsubscribe()
+            messageCache?.flush()
+        }
+    }, [toRender, projectId, chatType, objectId, userId, messageCache, connectionState])
 
-    const messagesWithLoaded = usePendingChatMessages(
-        state.scope === scope ? state.messages : [],
-        projectId,
-        objectId,
-        chatType
-    ).sort(compareMessages)
-    messagesWithLoaded.loaded = state.scope === scope && state.loaded
+    const messagesWithLoaded = usePendingChatMessages(currentState.messages, projectId, objectId, chatType).sort(
+        compareMessages
+    )
+    messagesWithLoaded.loaded = currentState.loaded
     return messagesWithLoaded
 }
 

@@ -20,15 +20,15 @@ import { useSelector } from 'react-redux'
 
 import TaskTag, { MIN_TASK_TAG_LABEL_WIDTH, UNNAMED_TASK_LABEL } from './TaskTag'
 import LoadingTag from './LoadingTag'
+import { setWorkspaceViewport } from '../../utils/workspaceViewport'
 
 const mountedTrees = []
 const mockWatchSubtasks = jest.fn()
 const mockUnwatch = jest.fn()
 let mockBoundingRect = { left: 0 }
-let mockWindowSize = [1600, 900]
+const originalWindowSize = [window.innerWidth, window.innerHeight]
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
-jest.mock('../../utils/useWindowSize', () => ({ __esModule: true, default: () => mockWindowSize }))
 jest.mock('react-dom', () => ({
     __esModule: true,
     default: { findDOMNode: node => node },
@@ -131,12 +131,16 @@ const titleText = tree =>
 
 afterEach(() => {
     act(() => mountedTrees.splice(0).forEach(tree => tree.unmount()))
+    setWorkspaceViewport(null)
+    window.innerWidth = originalWindowSize[0]
+    window.innerHeight = originalWindowSize[1]
 })
 
 beforeEach(() => {
     jest.clearAllMocks()
     mockBoundingRect = { left: 0 }
-    mockWindowSize = [1600, 900]
+    window.innerWidth = 1600
+    window.innerHeight = 900
     setState()
 })
 
@@ -209,8 +213,9 @@ describe('TaskTag never renders itself away (AT-2454)', () => {
         const initial = flatten(labelButton(tree).props.style).maxWidth
 
         for (let step = 0; step < 10; step++) {
-            mockWindowSize = [1600 - (step + 1) * 10, 900]
             act(() => {
+                window.innerWidth = 1600 - (step + 1) * 10
+                window.dispatchEvent(new Event('resize'))
                 tree.update(
                     <TaskTag
                         editorId="note-1"
@@ -231,6 +236,45 @@ describe('TaskTag never renders itself away (AT-2454)', () => {
         expect(afterResizes).toBeGreaterThanOrEqual(MIN_TASK_TAG_LABEL_WIDTH)
         // 10 narrowing steps of 10px may only cost ~100px, never the extra 50 per step.
         expect(initial - afterResizes).toBeLessThanOrEqual(120)
+    })
+
+    it('uses the same title space when the same-width editor is shifted beside assistant chat', () => {
+        // Translating a 1000px pane must not change its usable width. The tag and
+        // pane right edge both move in browser coordinates; the old calculation
+        // subtracted the assistant's 600px offset a second time.
+        setWorkspaceViewport({ left: 0, top: 0, width: 1000, height: 900 })
+        mockBoundingRect = { left: 100 }
+        const tree = render()
+        const initial = flatten(labelButton(tree).props.style).maxWidth
+
+        act(() => {
+            mockBoundingRect = { left: 700 }
+            setWorkspaceViewport({ left: 600, top: 0, width: 1000, height: 900 })
+        })
+
+        expect(flatten(labelButton(tree).props.style).maxWidth).toBe(initial)
+        // Bound against the pane, even when it does not reach the browser edge.
+        expect(initial).toBeLessThan(1000)
+    })
+
+    it('deducts sidebar width only once and restores the title when the sidebar closes', () => {
+        mockBoundingRect = { left: 100 }
+        const tree = render()
+        const initial = flatten(labelButton(tree).props.style).maxWidth
+
+        for (const sidebarWidth of [520, 660, 440]) {
+            act(() => {
+                mockBoundingRect = { left: sidebarWidth + 100 }
+                setWorkspaceViewport({ left: sidebarWidth, top: 0, width: 1600 - sidebarWidth, height: 900 })
+            })
+            expect(initial - flatten(labelButton(tree).props.style).maxWidth).toBe(sidebarWidth)
+        }
+
+        act(() => {
+            mockBoundingRect = { left: 100 }
+            setWorkspaceViewport(null)
+        })
+        expect(flatten(labelButton(tree).props.style).maxWidth).toBe(initial)
     })
 
     it('always hands react-native-web an onLayout function so the row keeps being observed', () => {

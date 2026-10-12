@@ -1257,30 +1257,10 @@ export async function removeFollowerFromChat(projectId, chatId, userId) {
     }
 }
 
-export const getFollowedAndUnfollowedChatNotificationsAmount = (
-    inAllProjects,
-    selectedProjectId,
-    projectChatNotifications,
-    archivedProjectIds,
-    templateProjectIds
-) => {
-    if (inAllProjects) {
-        let globalTotalFollowed = 0
-        let globalTotalUnfollowed = 0
-        const projectIds = Object.keys(projectChatNotifications)
-        projectIds.forEach(projectId => {
-            const needToCount = !archivedProjectIds.includes(projectId) && !templateProjectIds.includes(projectId)
-            if (needToCount) {
-                const { totalFollowed, totalUnfollowed } = projectChatNotifications[projectId]
-                globalTotalFollowed += totalFollowed
-                globalTotalUnfollowed += totalUnfollowed
-            }
-        })
-        return { totalFollowed: globalTotalFollowed, totalUnfollowed: globalTotalUnfollowed }
-    } else {
-        return projectChatNotifications[selectedProjectId] || { totalFollowed: 0, totalUnfollowed: 0 }
-    }
-}
+export {
+    getFollowedAndUnfollowedChatNotificationsAmount,
+    resetNotificationsWhenUserHasAnActiveChat,
+} from '../../notificationBadges'
 
 export const getNewFollowedAndUnfollowedCommentsAmountInProjectList = (projectChatNotifications, projectIdsList) => {
     let globalTotalFollowed = 0
@@ -1295,31 +1275,6 @@ export const getNewFollowedAndUnfollowedCommentsAmountInProjectList = (projectCh
         }
     })
     return { totalFollowed: globalTotalFollowed, totalUnfollowed: globalTotalUnfollowed }
-}
-
-export const resetNotificationsWhenUserHasAnActiveChat = (projectChatNotifications, activeChatData) => {
-    const { projectId, chatId, chatType } = activeChatData
-
-    if (
-        projectId &&
-        chatId &&
-        chatType &&
-        projectChatNotifications[projectId] &&
-        projectChatNotifications[projectId][chatId]
-    ) {
-        const { totalFollowed, totalUnfollowed } = projectChatNotifications[projectId][chatId]
-        if (totalFollowed || totalUnfollowed) {
-            projectChatNotifications = { ...projectChatNotifications }
-            projectChatNotifications[projectId] = { ...projectChatNotifications[projectId] }
-            projectChatNotifications[projectId].totalFollowed -=
-                projectChatNotifications[projectId][chatId].totalFollowed
-            projectChatNotifications[projectId].totalUnfollowed -=
-                projectChatNotifications[projectId][chatId].totalUnfollowed
-
-            delete projectChatNotifications[projectId][chatId]
-        }
-    }
-    return projectChatNotifications
 }
 
 export { markChatMessagesAsRead, markMessagesAsRead } from './chatReadNotifications'

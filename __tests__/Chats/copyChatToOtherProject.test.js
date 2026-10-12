@@ -52,6 +52,12 @@ function makeFakeAdmin({ docs = {}, collections = {} } = {}) {
         doc: makeDocRef,
         collection: makeCollectionRef,
         batch: makeBatch,
+        runTransaction: async callback =>
+            callback({
+                get: ref => ref.get(),
+                update: (ref, data) => ref.update(data),
+                set: (ref, data) => writes.push({ path: ref.path, data }),
+            }),
     })
 
     return { admin: { firestore }, writes, updates }
@@ -72,6 +78,14 @@ describe('copyChatToOtherProject', () => {
                 [`chatComments/${SRC}/tasks/${TASK}/comments`]: [
                     { id: 'c1', data: { commentText: 'first' } },
                     { id: 'c2', data: { commentText: 'second' } },
+                    {
+                        id: 'finished-run',
+                        data: {
+                            commentText: 'Already complete',
+                            isLoading: false,
+                            assistantRun: { kind: 'chat', runId: 'old-run', status: 'completed' },
+                        },
+                    },
                 ],
             },
         })
@@ -84,6 +98,7 @@ describe('copyChatToOtherProject', () => {
         expect(writtenPaths).toContain(`chatObjects/${TGT}/chats/${TASK}`)
         expect(writtenPaths).toContain(`chatComments/${TGT}/tasks/${TASK}/comments/c1`)
         expect(writtenPaths).toContain(`chatComments/${TGT}/tasks/${TASK}/comments/c2`)
+        expect(writtenPaths).toContain(`chatComments/${TGT}/tasks/${TASK}/comments/finished-run`)
 
         // Original project paths must never be written to.
         expect(writtenPaths.some(p => p.includes(`/${SRC}/`))).toBe(false)
@@ -121,6 +136,7 @@ describe('copyChatToOtherProject', () => {
             docs: {
                 [`chatObjects/${SRC}/chats/${TASK}`]: { id: TASK, type: 'tasks' },
                 [`projects/${SRC}`]: { userIds: ['u1', 'u2'] },
+                [`projects/${TGT}`]: { userIds: ['u1', 'u2'] },
                 [`users/u1`]: {
                     lastAssistantCommentData: {
                         allProjects: { projectId: SRC, objectId: TASK, objectType: 'tasks' },
@@ -147,5 +163,28 @@ describe('copyChatToOtherProject', () => {
         })
 
         expect(updates.find(u => u.path === 'users/u2')).toBeUndefined()
+    })
+})
+
+test('copies the fresh run state and migrates its lock rather than retaining the query snapshot', async () => {
+    const running = { assistantRun: { kind: 'chat', runId: 'run' }, commentText: 'Working', isLoading: true }
+    const { admin, writes, updates } = makeFakeAdmin({
+        docs: {
+            'chatObjects/source/chats/task': { type: 'tasks' },
+            'chatComments/source/tasks/task/comments/reply': { ...running, commentText: 'Done', isLoading: false },
+            'assistantRunLocks/run': { projectId: 'source', objectType: 'tasks', objectId: 'task', commentId: 'reply' },
+        },
+        collections: { 'chatComments/source/tasks/task/comments': [{ id: 'reply', data: running }] },
+    })
+    await copyChatToOtherProject(admin, 'source', 'target', 'tasks', 'task')
+    expect(writes.filter(w => w.path === 'chatComments/target/tasks/task/comments/reply')).toEqual([
+        {
+            path: 'chatComments/target/tasks/task/comments/reply',
+            data: { ...running, commentText: 'Done', isLoading: false },
+        },
+    ])
+    expect(updates).toContainEqual({
+        path: 'assistantRunLocks/run',
+        data: expect.objectContaining({ projectId: 'target' }),
     })
 })

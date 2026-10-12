@@ -358,14 +358,9 @@ async function moveTaskToDifferentProject(params) {
             })
             await copyInnerFeeds(admin, sourceProjectId, targetProjectId, 'tasks', id)
         } else {
-            await copyAssistantChat(admin, sourceProjectId, targetProjectId, 'tasks', id).catch(error =>
-                console.warn('Task move: failed to copy chat to target project', {
-                    taskId: id,
-                    sourceProjectId,
-                    targetProjectId,
-                    error: error.message,
-                })
-            )
+            // A failed chat migration must leave the source intact, otherwise its delete cascade
+            // destroys the only copy of the conversation (including any still-running reply).
+            await copyAssistantChat(admin, sourceProjectId, targetProjectId, 'tasks', id)
             await copyInnerFeeds(admin, sourceProjectId, targetProjectId, 'tasks', id).catch(error =>
                 console.warn('Task move: failed to copy updates feed to target project', {
                     taskId: id,

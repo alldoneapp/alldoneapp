@@ -103,6 +103,26 @@ async function settleTaskGeometry(page) {
     return page.evaluate(() => window.taskGeometry())
 }
 
+async function settleTaskTitleGeometry(page) {
+    // Accessory widths arrive via ResizeObserver after the React embed mounts.
+    // Wait for a stable title budget before comparing different pane positions.
+    await page.evaluate(() => {
+        window.__taskTitleSample = null
+    })
+    await page.waitForFunction(() => {
+        const geometry = window.taskTitleGeometry()
+        if (!geometry || !Number.isFinite(geometry.budget)) return false
+        const signature = JSON.stringify(geometry)
+        const previous = window.__taskTitleSample
+        if (previous?.signature !== signature) {
+            window.__taskTitleSample = { signature, since: performance.now() }
+            return false
+        }
+        return performance.now() - previous.since >= 100
+    })
+    return page.evaluate(() => window.taskTitleGeometry())
+}
+
 async function main() {
     const server = http.createServer((request, response) => {
         const file =
@@ -149,6 +169,58 @@ async function main() {
                         'Fixture fonts must load'
                     )
                     const prefix = `${engine} ${viewport.width}px`
+                    if (viewport.width > 600) {
+                        const original = await page.evaluate(() => window.fixture('alone'))
+                        await settleTaskGeometry(page)
+                        const full = await settleTaskTitleGeometry(page)
+                        for (const left of [420, 500, 360]) {
+                            await page.evaluate(
+                                left => window.setWorkspacePane({ left, width: window.innerWidth - left }),
+                                left
+                            )
+                            await page
+                                .waitForFunction(
+                                    ({ budget, left }) =>
+                                        Math.abs(window.taskTitleGeometry().budget - (budget - left + 16)) < 1,
+                                    { budget: full.budget, left },
+                                    { timeout: 3000 }
+                                )
+                                .catch(async error => {
+                                    throw new Error(
+                                        `${error.message}: ${JSON.stringify({ full, left, actual: await page.evaluate(() => window.taskTitleGeometry()) })}`
+                                    )
+                                })
+                            const split = await page.evaluate(() => window.taskTitleGeometry())
+                            assert(split.width > 300, `${prefix}: task title unnecessarily shortened in split view`)
+                            assert(split.row.paintedRight <= viewport.width, `${prefix}: task exceeds workspace`)
+                            assert.deepEqual(await page.evaluate(() => window.editor.getContents()), original)
+                        }
+                        // Equal pane widths must give equal title widths, even
+                        // when the pane's browser-relative position changes.
+                        await page.evaluate(() => window.setWorkspacePane({ left: 16, width: 780 }))
+                        await page.waitForFunction(() => window.taskTitleGeometry().budget < 700)
+                        const aligned = await settleTaskTitleGeometry(page)
+                        await page.evaluate(() => window.setWorkspacePane({ left: 440, width: 780 }))
+                        await page.waitForFunction(
+                            budget => Math.abs(window.taskTitleGeometry().budget - budget) < 1,
+                            aligned.budget
+                        )
+                        const shifted = await settleTaskTitleGeometry(page)
+                        assert(
+                            Math.abs(shifted.width - aligned.width) < 1,
+                            `${prefix}: moving a pane shortened its title`
+                        )
+                        await page.screenshot({ path: path.join(output, `${engine}-assistant-task-width.png`) })
+                        await page.evaluate(() => window.setWorkspacePane(null))
+                        await page.waitForFunction(
+                            budget => Math.abs(window.taskTitleGeometry().budget - budget) < 1,
+                            full.budget
+                        )
+                        assert.deepEqual(await page.evaluate(() => window.editor.getContents()), original)
+                        console.log(
+                            `PASS ${prefix}: assistant pane open, resize, move and close preserve task title space`
+                        )
+                    }
                     // The production note enables deferral BEFORE creating the blots.
                     // Also retain eager coverage so the two paths cannot diverge again.
                     for (const deferred of [false, true]) {
@@ -214,6 +286,7 @@ async function main() {
                         }
                     }
                     if (process.argv.includes('--visibility-only')) {
+                        assert.deepEqual(errors, [], `${prefix}: no browser errors`)
                         await page.close()
                         continue
                     }
