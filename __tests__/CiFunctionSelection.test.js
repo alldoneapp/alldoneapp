@@ -156,6 +156,137 @@ describe('function dependency selection', () => {
     })
 })
 
+describe('backend runtime branches', () => {
+    const backend = "require('./backend')"
+    const browser = "import('../components/dateFormat')"
+    const guarded = source => ({
+        ...fixture,
+        'functions/shared.js': source,
+        'functions/backend.js': "module.exports = require('../utils/common')",
+        'components/dateFormat.js': "export { value } from '../utils/dateTimeFormats'",
+        'utils/dateTimeFormats.js': "export const value = 'hh:mm a'",
+    })
+    const guard = `typeof require !== 'undefined'`
+    const source = `exports.value = async () => { if (${guard}) return ${backend}; else return ${browser} }`
+
+    it('skips frontend-only changes behind the TaskService/NoteService browser fallback', () => {
+        expect(
+            select(
+                {
+                    'components/dateFormat.js': "export { value } from '../utils/dateTimeFormats' // updated UI",
+                    'utils/dateTimeFormats.js': "export const value = 'HH:mm'",
+                },
+                guarded(source)
+            )
+        ).toMatchObject({ mode: 'none', names: [] })
+    })
+
+    it('still selects every transitive caller of shared code used by the backend branch', () => {
+        expect(select({ 'utils/common.js': 'exports.value = 2' }, guarded(source)).names).toEqual(['alpha', 'beta'])
+    })
+
+    it('keeps a real backend import even when another caller imports that file only in the browser', () => {
+        const base = {
+            ...guarded(source),
+            'functions/index.js': fixture['functions/index.js'].replace(
+                "exports.gamma = () => 'unchanged'",
+                "exports.gamma = () => require('../components/dateFormat').value"
+            ),
+        }
+        expect(select({ 'utils/dateTimeFormats.js': 'export const value = 2' }, base).names).toEqual(['gamma'])
+    })
+
+    it.each([
+        `if (typeof require === 'undefined') return ${browser}; else return ${backend}`,
+        `if ('undefined' == typeof require) return ${browser}; else return ${backend}`,
+        `if (typeof require != 'undefined') return ${backend}; else return ${browser}`,
+        `return typeof require === 'function' ? ${backend} : ${browser}`,
+        `return !(${guard}) ? ${browser} : ${backend}`,
+        `return (${guard}) && ${backend}`,
+        `return !(${guard}) && ${browser}`,
+        `return (${guard}) || ${browser}`,
+        `if (${guard} && process.env.FEATURE) return ${backend}; else if (!(${guard})) return ${browser}`,
+    ])('respects conditional and short-circuit guards: %s', body => {
+        expect(
+            select(
+                { 'utils/dateTimeFormats.js': 'export const value = 2' },
+                guarded(`exports.value = () => { ${body} }`)
+            ).mode
+        ).toBe('none')
+    })
+
+    it('does not mark a dynamic import in an unreachable browser branch as uncertain', () => {
+        const base = guarded(
+            `exports.value = () => { if (${guard}) return ${backend}; else return import(browserPath) }`
+        )
+        expect(select({ 'components/Unrelated.js': 'new UI' }, base).mode).toBe('none')
+        expect(select({ 'utils/common.js': 'exports.value = 2' }, base).names).toEqual(['alpha', 'beta'])
+    })
+
+    it('also excludes entrypoint bindings referenced only in unreachable branches', () => {
+        const base = {
+            ...guarded(source),
+            'functions/index.js': `
+const frontend = require('../components/dateFormat')
+const backend = require('./backend')
+exports.alpha = () => typeof require !== 'undefined' ? backend.value : frontend.value
+exports.beta = () => 'unchanged'
+`,
+        }
+        expect(select({ 'utils/dateTimeFormats.js': 'export const value = 2' }, base).mode).toBe('none')
+        expect(select({ 'utils/common.js': 'exports.value = 2' }, base).names).toEqual(['alpha'])
+    })
+
+    it.each([
+        `exports.value = require => { if (${guard}) return ${backend}; else return ${browser} }`,
+        `const require = customLoader; ${source}`,
+        `require = customLoader; ${source}`,
+        `({ require } = customLoaders); ${source}`,
+        `for (require of customLoaders) {} ${source}`,
+        `eval(runtimeSetup); ${source}`,
+        `exports.value = () => process.env.RUNTIME === 'backend' ? ${backend} : ${browser}`,
+    ])('keeps both branches when the runtime guard is not provable: %s', code => {
+        expect(select({ 'utils/dateTimeFormats.js': 'export const value = 2' }, guarded(code)).names).toEqual([
+            'alpha',
+            'beta',
+        ])
+    })
+
+    it.each([
+        { file: 'functions/shared.mjs', source },
+        { file: 'functions/shared.js', source: source + '\nexport const marker = true' },
+        { file: 'functions/shared.js', source, manifest: { type: 'module' } },
+    ])('does not assume a CommonJS require in ES modules: %s', ({ file, source, manifest }) => {
+        const base = guarded(source)
+        delete base['functions/shared.js']
+        base[file] = source
+        base['functions/index.js'] = `exports.alpha = () => import('./${path.basename(file)}')`
+        if (manifest) base['functions/package.json'] = JSON.stringify(manifest)
+        expect(select({ 'utils/dateTimeFormats.js': 'export const value = 2' }, base).names).toEqual(['alpha'])
+    })
+
+    it('honors an explicit .cjs module inside a package using ES modules', () => {
+        const base = {
+            ...guarded(source),
+            'functions/index.js': "exports.alpha = () => import('./shared.cjs')",
+            'functions/shared.cjs': source,
+            'functions/package.json': '{"type":"module"}',
+        }
+        expect(select({ 'utils/dateTimeFormats.js': 'export const value = 2' }, base).mode).toBe('none')
+        expect(select({ 'utils/common.js': 'exports.value = 2' }, base).names).toEqual(['alpha'])
+    })
+
+    it('tracks package formats for shared backend dependencies without including browser-only packages', () => {
+        const base = {
+            ...guarded(source),
+            'utils/package.json': '{"type":"commonjs"}',
+            'components/package.json': '{"type":"module"}',
+        }
+        expect(select({ 'utils/package.json': '{"type":"module"}' }, base).names).toEqual(['alpha', 'beta'])
+        expect(select({ 'components/package.json': '{"type":"commonjs"}' }, base).mode).toBe('none')
+    })
+})
+
 describe('selection across commits and failed deployments', () => {
     it('catches a superseded backend commit from the deployment marker, ignoring dirty worktree edits', () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'function-history-'))

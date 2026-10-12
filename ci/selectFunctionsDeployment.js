@@ -110,8 +110,119 @@ function resolveImport(tree, file, specifier) {
     return tree.files.has(manifest) ? [manifest, resolved] : [resolved]
 }
 
-function importsFor(nodePath, tree, file) {
-    const imports = new Set()
+function modulePackageFile(tree, file) {
+    let directory = path.posix.dirname(file)
+    for (;;) {
+        const manifest = path.posix.join(directory, 'package.json')
+        if (tree.files.has(manifest)) return manifest
+        if (directory === '.') return null
+        directory = path.posix.dirname(directory)
+    }
+}
+
+// TaskService/NoteService have browser-only fallback imports that otherwise pull
+// the frontend into the backend graph. Only prune provably unreachable branches:
+// never evaluate source with the scanner process's env/globals or execute it.
+function hasCommonJsRequire(tree, file, ast) {
+    if (!/\.(cjs|js)$/.test(file) || ast.program.sourceType !== 'script') return false
+    const manifest = modulePackageFile(tree, file)
+    if (!file.endsWith('.cjs') && manifest && JSON.parse(tree.read(manifest)).type === 'module') return false
+
+    let stable = true
+    const checkWrite = target => {
+        if (target.getBindingIdentifiers().require && !target.scope.getBinding('require')) stable = false
+    }
+    traverse(ast, {
+        AssignmentExpression: p => checkWrite(p.get('left')),
+        UpdateExpression: p => checkWrite(p.get('argument')),
+        ForInStatement: p => checkWrite(p.get('left')),
+        ForOfStatement: p => checkWrite(p.get('left')),
+        WithStatement() {
+            stable = false
+        },
+        CallExpression(p) {
+            if (p.get('callee').isIdentifier({ name: 'eval' }) && !p.scope.getBinding('eval')) stable = false
+        },
+    })
+    return stable
+}
+
+const UNKNOWN_RUNTIME_VALUE = Symbol('unknown runtime value')
+function runtimeValue(p, commonJsRequire) {
+    if (p.isStringLiteral() || p.isBooleanLiteral() || p.isNumericLiteral()) return p.node.value
+    if (p.isNullLiteral()) return null
+    if (p.isUnaryExpression()) {
+        const argument = p.get('argument')
+        if (
+            p.node.operator === 'typeof' &&
+            commonJsRequire &&
+            argument.isIdentifier({ name: 'require' }) &&
+            !argument.scope.getBinding('require')
+        )
+            return 'function'
+        if (p.node.operator === '!') {
+            const value = runtimeValue(argument, commonJsRequire)
+            if (value !== UNKNOWN_RUNTIME_VALUE) return !value
+        }
+    }
+    if (p.isBinaryExpression()) {
+        const left = runtimeValue(p.get('left'), commonJsRequire)
+        const right = runtimeValue(p.get('right'), commonJsRequire)
+        if (left !== UNKNOWN_RUNTIME_VALUE && right !== UNKNOWN_RUNTIME_VALUE) {
+            switch (p.node.operator) {
+                case '===':
+                    return left === right
+                case '!==':
+                    return left !== right
+                case '==':
+                    return left == right
+                case '!=':
+                    return left != right
+            }
+        }
+    }
+    if (p.isLogicalExpression()) {
+        const left = runtimeValue(p.get('left'), commonJsRequire)
+        if (left !== UNKNOWN_RUNTIME_VALUE) {
+            if (p.node.operator === '&&' && !left) return left
+            if (p.node.operator === '||' && left) return left
+            if (p.node.operator === '??' && left != null) return left
+            return runtimeValue(p.get('right'), commonJsRequire)
+        }
+    }
+    return UNKNOWN_RUNTIME_VALUE
+}
+
+function traverseRuntime(nodePath, visitors, commonJsRequire) {
+    nodePath.traverse({
+        ...visitors,
+        enter(p) {
+            const parent = p.parentPath
+            if (
+                (parent.isIfStatement() || parent.isConditionalExpression()) &&
+                (p.key === 'consequent' || p.key === 'alternate')
+            ) {
+                const value = runtimeValue(parent.get('test'), commonJsRequire)
+                if (value !== UNKNOWN_RUNTIME_VALUE && Boolean(value) !== (p.key === 'consequent')) p.skip()
+            } else if (parent.isLogicalExpression() && p.key === 'right') {
+                const value = runtimeValue(parent.get('left'), commonJsRequire)
+                if (
+                    value !== UNKNOWN_RUNTIME_VALUE &&
+                    ((parent.node.operator === '&&' && !value) ||
+                        (parent.node.operator === '||' && value) ||
+                        (parent.node.operator === '??' && value != null))
+                )
+                    p.skip()
+            }
+        },
+    })
+}
+
+function importsFor(nodePath, tree, file, commonJsRequire) {
+    // Package type determines the runtime branches even for shared files outside
+    // functions/. A format change must invalidate those callers too.
+    const manifest = modulePackageFile(tree, file)
+    const imports = new Set(manifest ? [manifest] : [])
     let uncertain = false
     const add = node => {
         const specifier = staticString(node)
@@ -143,13 +254,14 @@ function importsFor(nodePath, tree, file) {
             add(p.node.source)
         },
     }
-    nodePath.traverse(visitors)
+    traverseRuntime(nodePath, visitors, commonJsRequire)
     if (visitors[nodePath.node.type]) visitors[nodePath.node.type](nodePath)
     return { imports, uncertain }
 }
 
 function buildGraph(tree) {
     const ast = parse(tree.read(INDEX))
+    const commonJsRequire = hasCommonJsRequire(tree, INDEX, ast)
     const statements = new Map()
     const exports = new Map()
     const globals = []
@@ -170,16 +282,20 @@ function buildGraph(tree) {
                 const name = isExport ? (left.computed ? staticString(left.property) : left.property.name) : null
                 if (isExport && (!name || !/^[A-Za-z_$][\w$]*$/.test(name))) throw new Error('Dynamic function export')
                 const info = {
-                    ...importsFor(p, tree, INDEX),
+                    ...importsFor(p, tree, INDEX, commonJsRequire),
                     dependencies: new Set(),
                     signature: hash(normalize(statement)),
                 }
-                p.traverse({
-                    ReferencedIdentifier(reference) {
-                        const binding = reference.scope.getBinding(reference.node.name)
-                        if (binding && binding.scope.path.isProgram()) info.dependencies.add(top(binding.path))
+                traverseRuntime(
+                    p,
+                    {
+                        ReferencedIdentifier(reference) {
+                            const binding = reference.scope.getBinding(reference.node.name)
+                            if (binding && binding.scope.path.isProgram()) info.dependencies.add(top(binding.path))
+                        },
                     },
-                })
+                    commonJsRequire
+                )
                 statements.set(statement, info)
                 if (name) {
                     if (exports.has(name)) throw new Error(`Repeated function export: ${name}`)
@@ -254,9 +370,10 @@ function buildGraph(tree) {
         if (!/\.[cm]?[jt]sx?$/.test(file)) return info
         try {
             const moduleAst = parse(tree.read(file), file)
+            const commonJsRequire = hasCommonJsRequire(tree, file, moduleAst)
             traverse(moduleAst, {
                 Program(p) {
-                    Object.assign(info, importsFor(p, tree, file))
+                    Object.assign(info, importsFor(p, tree, file, commonJsRequire))
                     p.stop()
                 },
             })
