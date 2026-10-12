@@ -1,4 +1,4 @@
-// Jest configuration for the web-only CI check (test:web:changed).
+// Jest configuration for both branch and deployment web checks.
 //
 // That job runs in build_base, which carries the root node_modules and nothing
 // else. Cloud Functions keep a separate dependency tree - firebase-admin,

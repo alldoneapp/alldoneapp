@@ -60,6 +60,17 @@ stages:
               - web/**/*
               - web-bundler/**/*
               - ci/Dockerfile_web_bundler
+              - ci/selectTargetedJestFiles.js
+              - ci/runWebTests.js
+              - ci/web-test-smoke.json
+              - ci/jest.web.config.js
+              - ci/jestSetup.js
+              - ci/jestPolyfills.js
+              - ci/deployScope.sh
+              - ci/ensureMergeBase.sh
+              - ci/check-runtime.js
+              - ci/writeTestEnv.js
+              - ci/deploy-scope/web-production.paths
 
 # The images below bake node_modules, and they are rebuilt only on develop and
 # master. A feature branch that changes the dependency tree therefore builds and
@@ -119,6 +130,7 @@ deploy_scope:
         paths:
             - deploy-scope.env
             - functions-deploy-scope.json
+            - web-test-scope.json
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
@@ -259,46 +271,16 @@ test:web:changed:
         # does contain stops at the depth-50 shallow boundary. Fetch that ref and
         # deepen only as far as a merge base needs, so Jest can select tests
         # affected by the complete branch diff.
-        - sh ci/ensureMergeBase.sh "$CI_DEFAULT_BRANCH"
+        - sh ci/ensureMergeBase.sh "$CI_DEFAULT_BRANCH" || echo "Branch comparison unavailable; the test runner will use the full suite."
         # Unlike the web builds, this job never substitutes the BEGIN-ENVS block,
         # and .env is not in the repository. react-native-dotenv resolves those
         # imports during transform, so without placeholders every suite reaching
         # utils/backends/firestore.js fails to parse.
         - node ci/writeTestEnv.js
     script:
-        # Functions have their own dependency tree and tests. Exclude them from
-        # this root/web check when a commit happens to change both surfaces.
-        # The selector keeps them out of the input; ci/jest.web.config.js keeps
-        # them out of what --findRelatedTests selects, which the input filter
-        # cannot do on its own because functions/shared imports utils/backends.
-        # Jest's dependency graph treats shared data such as every translation
-        # JSON as related to most of the application. The selector keeps data
-        # and infrastructure out, while preferring a changed co-located test
-        # over traversing the source file's entire legacy dependency graph.
-        - node --check ci/selectTargetedJestFiles.js
-        - node --check ci/jest.web.config.js
-        # Never pipe the selection straight into xargs. `xargs -r` skips the run
-        # on empty input and a pipeline reports only its last exit status, so a
-        # selector that died looked exactly like a clean run: green job, no Jest.
-        # Materialise the selection instead, let a non-zero selector exit fail
-        # the job, and keep the "legitimately nothing to run" case explicit.
-        # The selector's exit status is checked explicitly rather than through
-        # `set -e`, whose behaviour varies by shell - implicit status handling is
-        # what hid this in the first place.
-        - |
-            if node ci/selectTargetedJestFiles.js "origin/$CI_DEFAULT_BRANCH" > /tmp/targeted-jest-files.z; then
-                if [ -s /tmp/targeted-jest-files.z ]; then
-                    # A shared UI primitive can select hundreds of suites. Suppress legacy
-                    # React console warnings so GitLab's 4 MB trace cap cannot hide the
-                    # assertion summary (the full-suite job uses the same option below).
-                    xargs -0 npm test -- --config ci/jest.web.config.js --runInBand --silent --findRelatedTests --passWithNoTests < /tmp/targeted-jest-files.z
-                else
-                    echo "No Jest input selected, so no suites will run. See the selection summary above for why."
-                fi
-            else
-                echo "ERROR: the targeted Jest selection failed, so this job would test nothing. Failing instead of reporting success." >&2
-                exit 1
-            fi
+        # Use every changed source and its dependent suites. Uncertain selection
+        # runs the full suite; smoke and source-reading guardrails always run.
+        - node ci/runWebTests.js --branch "origin/$CI_DEFAULT_BRANCH"
     rules:
         # Must precede the generic web-relevant rule: first match wins, and a
         # dependency-changing branch has to run against its own image.
@@ -323,18 +305,11 @@ test:web:changed:
                   - ci/selectTargetedJestFiles.js
                   - ci/writeTestEnv.js
 
-# test:web:changed selects suites from the branch-vs-master diff, which is empty
-# by construction on master and develop — so it is excluded there, and until this
-# job existed it was the ONLY job in the pipeline running Jest. Both deploy paths,
-# production and staging, therefore shipped on a successful webpack compile alone.
-# This runs the whole web suite on those two branches and gates their deploys
-# (see the `needs` on deploy:web and deploy:web-dev — without being in `needs` a
-# test job only goes red *beside* a deploy that already shipped).
-# The cost is small next to what it guards: it shares the build_web stage with a
-# ~9-minute production build, so it adds little wall clock.
-# Its rules deliberately mirror build_web_production/build_web_staging, so
-# whenever a deploy is in the pipeline this job is too and `needs` always resolves.
-test:web:full:
+# Production tests compare with the exact commit last deployed. The scope
+# artifact freezes that comparison for this pipeline. Small changes run related
+# suites plus critical smoke/guardrails; broad changes, uncertain graphs and the
+# first deployment after 24 hours run the complete web suite.
+test:web:deployment:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_base:latest
     before_script:
@@ -353,13 +328,13 @@ test:web:full:
         # expected no-op to a successful early exit so GitLab does not label it a failed
         # job; every other non-zero status remains a real failure.
         - sh ci/deployScope.sh require web-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
-        # No selection step here — this is the whole web suite by design.
-        # ci/jest.web.config.js excludes functions/, whose separate dependency
-        # tree this image does not carry.
-        # Several legacy suites print React warnings for every render. Their noise can hit
-        # GitLab's 4 MB trace cap before Jest reports the failing assertion, as pipeline 8605 did.
-        # `--silent` suppresses test console calls, not assertion output or Jest's suite summary.
-        - npm test -- --config ci/jest.web.config.js --runInBand --silent
+        - node ci/runWebTests.js
+        # Advance the periodic full-suite marker only after all tests passed.
+        # Missing write permission leaves it old and conservatively repeats a full run.
+        - |
+            if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] && node -e 'process.exit(JSON.parse(require("fs").readFileSync("web-test-result.json", "utf8")).mode === "full" ? 0 : 1)'; then
+                sh ci/deployScope.sh record web-full-tests
+            fi
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
         - if: '$CI_COMMIT_BRANCH == "develop"'
@@ -604,7 +579,7 @@ deploy:web:
         - 'build_web_production'
         # Blocking on purpose: a test job outside `needs` only turns red next to
         # a deploy that has already shipped.
-        - 'test:web:full'
+        - 'test:web:deployment'
         # Carries deploy-scope.env. An explicit `needs` list replaces the default
         # "artifacts from every earlier stage", so without this the scope check below
         # would find no artifact and fall back to deploying unconditionally.
@@ -646,7 +621,7 @@ deploy:web-dev:
     needs:
         - 'build_web_staging'
         # Blocking on purpose, same as deploy:web.
-        - 'test:web:full'
+        - 'test:web:deployment'
         - job: 'deploy:cloud:functions:staging'
           artifacts: false
           optional: true
@@ -889,8 +864,8 @@ deploy:cloud:runner:production:
 # `--only firestore:rules` publishes one compiled file as one release; it has no
 # desired-state diff and therefore none of the index job's deletion hazard (see the
 # long comment below). It is still an authorization cutover for the whole application,
-# so publication is automatic only after the behavioral rules suite, the complete web
-# suite and the production bundle have all passed. Syntax compilation alone did not catch
+# so publication is automatic only after the behavioral rules suite, the web
+# deployment test gate and production bundle pass. Syntax compilation alone did not catch
 # AT-2450's query/rule incompatibilities. --force is deliberately NOT passed: it buys
 # nothing here and is the exact flag that makes the indexes deploy destructive.
 deploy:firestore:rules:production:
@@ -908,7 +883,7 @@ deploy:firestore:rules:production:
         - 'test:firestore:rules'
         - job: 'build_web_production'
           artifacts: false
-        - job: 'test:web:full'
+        - job: 'test:web:deployment'
           artifacts: false
     script:
         # Same reasoning as deploy:web - the guard fails closed, so make sure its probe

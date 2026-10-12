@@ -36,3 +36,14 @@
 ^web/
 ^web-bundler/
 ^ci/Dockerfile_web_bundler$
+^ci/selectTargetedJestFiles\.js$
+^ci/runWebTests\.js$
+^ci/web-test-smoke\.json$
+^ci/jest\.web\.config\.js$
+^ci/jestSetup\.js$
+^ci/jestPolyfills\.js$
+^ci/deployScope\.sh$
+^ci/ensureMergeBase\.sh$
+^ci/check-runtime\.js$
+^ci/writeTestEnv\.js$
+^ci/deploy-scope/web-production\.paths$

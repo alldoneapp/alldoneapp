@@ -65,6 +65,7 @@ describe('production deploys are scoped by what shipped, not by what this push t
         expect(job('deploy_scope')).toBeDefined()
         expect(allLines(job('deploy_scope'))).toContain('deployScope.sh compute')
         expect(job('deploy_scope').artifacts.paths).toContain('deploy-scope.env')
+        expect(job('deploy_scope').artifacts.paths).toContain('web-test-scope.json')
 
         // A `needs` list replaces the default "artifacts from all earlier stages", so a job
         // with explicit needs must ask for the scope artifact or it silently loses it and
@@ -79,13 +80,34 @@ describe('production deploys are scoped by what shipped, not by what this push t
         // Both feed deploy:web through `needs`, so if they were still scoped by `changes:`
         // they would be absent from exactly the pipeline that has to catch up a skipped
         // web deploy, and `needs` would be unresolvable.
-        for (const name of ['build_web_production', 'test:web:full']) {
+        for (const name of ['build_web_production', 'test:web:deployment']) {
             expect(allLines(job(name))).toContain('deployScope.sh require web-production')
             // A deliberate no-op exits the job successfully; no failure code is allowed,
             // so a real build or test failure still blocks deploy:web.
             expect(allLines(job(name))).toContain('if [ "$status" -eq 76 ]; then exit 0')
             expect(job(name).allow_failure).toBeUndefined()
         }
+    })
+
+    it('keeps affected-suite failures blocking every production web release', () => {
+        expect(job('deploy:web').needs).toContain('test:web:deployment')
+        expect(allLines(job('test:web:deployment'))).toContain('node ci/runWebTests.js')
+        expect(allLines(job('test:web:deployment'))).not.toContain('--passWithNoTests')
+        expect(job('test:web:deployment').allow_failure).toBeUndefined()
+    })
+
+    it('runs branch checks through the same safe selector', () => {
+        expect(allLines(job('test:web:changed'))).toContain('ci/runWebTests.js --branch')
+        expect(allLines(job('test:web:changed'))).not.toContain('xargs')
+    })
+
+    it('records a periodic full validation only after successful execution', () => {
+        const lines = [].concat(job('test:web:deployment').script)
+        expect(lines.findIndex(line => line.includes('record web-full-tests'))).toBeGreaterThan(
+            lines.findIndex(line => line.includes('node ci/runWebTests.js'))
+        )
+        expect(lines.join('\n')).toContain('web-test-result.json')
+        expect(lines.join('\n')).toContain('=== "full"')
     })
 
     it('does not ask users to reload for a bundle that was never deployed', () => {
@@ -127,7 +149,7 @@ describe('the Firestore rules deploy cannot become the destructive indexes deplo
         expect(needs).toEqual(
             expect.arrayContaining([
                 { job: 'build_web_production', artifacts: false },
-                { job: 'test:web:full', artifacts: false },
+                { job: 'test:web:deployment', artifacts: false },
             ])
         )
     })
@@ -290,7 +312,7 @@ describe('deployScope.sh require', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-gate-'))
         const scopeFile = path.join(dir, 'deploy-scope.env')
         fs.writeFileSync(scopeFile, 'DEPLOY_WEB_PRODUCTION=0\n')
-        const gate = job('test:web:full').script.find(line => line.includes('deployScope.sh require'))
+        const gate = job('test:web:deployment').script.find(line => line.includes('deployScope.sh require'))
 
         try {
             const stdout = execFileSync('sh', ['-c', `${gate}\nprintf 'continued\\n'`], {
@@ -320,6 +342,44 @@ describe('deploy marker credentials', () => {
 
     it('retains the explicit project access token as a fallback', () => {
         expect(source).toContain('MARKER_PUSH_TOKEN="$DEPLOY_MARKER_TOKEN"')
+    })
+
+    it.each([true, false])('records an annotated full-suite timestamp only for the current commit: %s', current => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'full-test-record-'))
+        const argsFile = path.join(dir, 'git-args')
+        const fakeGit = path.join(dir, 'git')
+        const head = 'a'.repeat(40)
+        fs.writeFileSync(
+            fakeGit,
+            `#!/bin/sh\nprintf '%s\\n' "$*" >> "$GIT_ARGS_FILE"\ncase "$*" in\n  *ls-remote*) printf '%s\\trefs/heads/master\\n' '${current ? head : 'b'.repeat(40)}' ;;\nesac\n`
+        )
+        fs.chmodSync(fakeGit, 0o755)
+        try {
+            execFileSync('sh', [SCOPE_SCRIPT, 'record', 'web-full-tests'], {
+                encoding: 'utf8',
+                env: {
+                    PATH: `${dir}:${process.env.PATH}`,
+                    GIT_ARGS_FILE: argsFile,
+                    CI_PROJECT_DIR: REPO_ROOT,
+                    CI_SERVER_HOST: 'gitlab.example.com',
+                    CI_PROJECT_PATH: 'group/project',
+                    CI_COMMIT_SHA: head,
+                    CI_DEFAULT_BRANCH: 'master',
+                    CI_JOB_TOKEN: 'job-token-secret',
+                },
+            })
+            const args = fs.readFileSync(argsFile, 'utf8')
+            if (current) {
+                expect(args).toContain('tag --force --annotate deployed/web-full-tests')
+                expect(args).toContain('refs/tags/deployed/web-full-tests:refs/tags/deployed/web-full-tests')
+            } else {
+                expect(args).not.toContain('tag --force')
+                expect(args).not.toContain('push --force')
+            }
+            expect(args).not.toContain('job-token-secret')
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true })
+        }
     })
 
     it('pushes with a same-project job token without putting the token in git arguments', () => {
