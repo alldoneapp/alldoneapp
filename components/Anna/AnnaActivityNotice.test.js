@@ -3,10 +3,12 @@ import { createRoot } from 'react-dom/client'
 import AnnaActivityNotice from './AnnaActivityNotice'
 import { annaActivityHistory } from './annaActivityHistory'
 import { loadAnnaActivityContent } from './annaActivityContent'
+import { publishAnnaActivityContext } from './annaActivityContext'
 import { setLanguage } from '../../i18n/TranslationService'
 
 let mockState, root, container, notice
 jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
+jest.mock('./annaActivityContext', () => ({ publishAnnaActivityContext: jest.fn(async () => {}) }))
 jest.mock('../Icon', () => () => <i />)
 jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn() }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
@@ -20,6 +22,7 @@ const render = () => act(async () => root.render(<AnnaActivityNotice notice={not
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
     localStorage.clear()
+    publishAnnaActivityContext.mockClear()
     mockState = { loggedUser: { uid: 'u1' }, connectionState: 'online', dateFormat: 'DD.MM.YYYY' }
     notice = annaActivityHistory.append('u1', {
         id: 'chat/p1/chat1/message1',
@@ -47,6 +50,13 @@ it('renders a meaningful linked preview and persists it unchanged for later offl
     expect(container.querySelector('.anna-activity-preview').textContent).toBe(details.preview)
     expect(container.querySelector('.anna-activity-meta').textContent).toBe('Anna Alldone · Familie')
     expect(container.querySelector('a').getAttribute('href')).toBe(notice.path)
+    expect(publishAnnaActivityContext).toHaveBeenLastCalledWith(
+        'u1',
+        expect.objectContaining({
+            id: notice.id,
+            content: expect.objectContaining({ label: 'Neue Chatnachricht: Sprintplanung', preview: details.preview }),
+        })
+    )
     expect(annaActivityHistory.read('u1')[0]).toMatchObject({ created: 1000, chatId: 'anna', content: details })
     // The parent still holds the original notice when this row is remounted while offline.
     expect(notice.content).toBeUndefined()
@@ -54,9 +64,11 @@ it('renders a meaningful linked preview and persists it unchanged for later offl
     root = createRoot(container)
     mockState.connectionState = 'offline'
     loadAnnaActivityContent.mockClear()
+    publishAnnaActivityContext.mockClear()
     await render()
     expect(container.textContent).toContain(details.preview)
     expect(loadAnnaActivityContent).not.toHaveBeenCalled()
+    expect(publishAnnaActivityContext).not.toHaveBeenCalled()
 })
 
 it('keeps a useful fallback on failure and enriches on reconnect', async () => {

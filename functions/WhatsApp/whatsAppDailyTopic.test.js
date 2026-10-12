@@ -74,6 +74,28 @@ const {
     storeUserMessageInTopic,
 } = require('./whatsAppDailyTopic')
 
+it('keeps only messages after the summary cutoff through the trigger, including timestamp ties', async () => {
+    mockGet.mockResolvedValue({
+        docs: [
+            ['later', 30, 'not part of this turn'],
+            ['trigger', 20, 'latest request'],
+            ['c', 10, 'keep tie'],
+            ['b', 10, 'already summarized'],
+            ['a', 10, 'older tie'],
+            ['old', 5, 'older'],
+        ].map(([id, created, commentText]) => ({ id, data: () => ({ created, commentText }) })),
+    })
+    const history = await getConversationHistory('p1', 'chat1', 20, 0, 10, {
+        trimHistoryBeforeMessageId: 'b',
+        triggeringMessageId: 'trigger',
+    })
+    expect(history).toHaveLength(2)
+    expect(history[0][1]).toContain('keep tie')
+    expect(history[1][1]).toContain('latest request')
+    expect(JSON.stringify(history)).not.toContain('already summarized')
+    expect(JSON.stringify(history)).not.toContain('not part of this turn')
+})
+
 // The live WhatsApp reply path. Its comment id is random and its writes are best-effort
 // on purpose — the inbound queue's own dedupe is what keeps it single-shot. Pinned here
 // because AT-2387 factored the comment/chat payloads out of it to share them with the

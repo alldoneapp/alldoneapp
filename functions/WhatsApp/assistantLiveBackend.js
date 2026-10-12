@@ -64,7 +64,7 @@ async function runLiveAssistant({
         userRequestText: lastUserTurn?.text || '',
     }
     const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('../Assistant/annaWorkspace')
-    const annaContext = await loadAnnaContext(db, runtime)
+    const annaContext = await loadAnnaContext(db, runtime, { includeActivity: true })
     if (annaContext) {
         runtime.annaConversation = true
         annaContext.history = await loadAnnaHistoryContext(db, runtime)

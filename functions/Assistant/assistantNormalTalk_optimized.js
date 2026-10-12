@@ -11,11 +11,10 @@ const {
     COMPLETION_MAX_TOKENS,
     ENCODE_MESSAGE_GAP,
     getMessageTextForTokenCounting,
-    getAssistantThreadStateDocRef,
 } = require('./assistantHelper')
 const { resolveUserTimezoneOffset } = require('./contextTimestampHelper')
 const { extractImageUrlsFromMessageContent } = require('./createTaskImageHelper')
-const { maybeCompactAssistantThread } = require('./rollingThreadCompaction')
+const { runAutomaticThreadCompaction } = require('./automaticThreadCompaction')
 const { resolveThreadAssistantModel } = require('./threadAssistantModel')
 const { readThreadAssistantModelOverride } = require('./threadAssistantModelStore')
 
@@ -42,68 +41,6 @@ console.log(`✅ [TIMING] Tiktoken encoder initialized: ${Date.now() - encoderIn
 
 function getEncoder() {
     return encoder // Always return pre-initialized encoder
-}
-
-async function generateRollingThreadSummary(prompt, model, toolRuntimeContext) {
-    const stream = await interactWithChatStream(prompt, model, 'TEMPERATURE_LOW', [], {
-        ...toolRuntimeContext,
-        sourceChannel: 'automatic_thread_compaction',
-        promptCacheScope: 'automatic_thread_compaction',
-        disablePromptCaching: true,
-        disableToolSearch: true,
-    })
-    let summary = ''
-    for await (const chunk of stream) {
-        if (chunk?.content) summary += chunk.content
-    }
-    return summary.trim()
-}
-
-async function runAutomaticThreadCompaction({
-    projectId,
-    objectType,
-    objectId,
-    assistantId,
-    triggeringMessageId,
-    model,
-    hardOnly,
-    toolRuntimeContext,
-}) {
-    const db = admin.firestore()
-    const stateRef = getAssistantThreadStateDocRef(db, projectId, objectType, objectId, assistantId)
-    if (!stateRef) return { compacted: false, hard: false, reason: 'invalid_thread' }
-
-    const retryDeadline = Date.now() + 30 * 1000
-    let result
-    do {
-        result = await maybeCompactAssistantThread({
-            db,
-            stateRef,
-            projectId,
-            objectType,
-            objectId,
-            triggeringMessageId,
-            hardOnly,
-            summarize: prompt => generateRollingThreadSummary(prompt, model, toolRuntimeContext),
-        })
-        if (!hardOnly || !['in_progress', 'stale'].includes(result.reason) || Date.now() >= retryDeadline) break
-        await new Promise(resolve => setTimeout(resolve, 1000))
-    } while (Date.now() < retryDeadline)
-
-    console.log('🧹 AUTOMATIC THREAD COMPACTION:', {
-        projectId,
-        objectType,
-        objectId,
-        assistantId,
-        triggeringMessageId,
-        hardOnly,
-        compacted: result.compacted,
-        hard: result.hard,
-        reason: result.reason,
-        compactedMessageCount: result.compactedMessageCount || 0,
-        retainedMessageCount: result.retainedMessageCount || 0,
-    })
-    return result
 }
 
 async function askToOpenAIBotOptimized(
@@ -208,7 +145,7 @@ async function askToOpenAIBotOptimized(
             maxRunWallClockMs: INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
         }
         const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('./annaWorkspace')
-        const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext)
+        const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext, { includeActivity: true })
         if (annaContext) {
             baseToolRuntimeContext.annaConversation = true
             annaContext.history = await loadAnnaHistoryContext(admin.firestore(), baseToolRuntimeContext)
