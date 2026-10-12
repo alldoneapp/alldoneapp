@@ -63,7 +63,9 @@ export const installConnectionStateListener = ({
 
     // A page can be loaded while already offline (the browser boots the app from the
     // service worker precache); pick that up without waiting for an event.
-    if (windowObject.navigator && windowObject.navigator.onLine === false) scheduleUpdate()
+    // Record offline boot immediately. Otherwise a reconnect inside the debounce
+    // window leaves Redux at '' and never wakes views that mounted offline.
+    if (windowObject.navigator && windowObject.navigator.onLine === false) applyBrowserState()
 
     return () => {
         if (debounceTimer !== undefined) clearTimeout(debounceTimer)

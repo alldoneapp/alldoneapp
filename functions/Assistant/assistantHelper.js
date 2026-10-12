@@ -10364,7 +10364,7 @@ async function storeChunks(
         // Stamp the comment coordinates onto the lock so the watchdog can finalize this exact
         // comment if the run's process dies before it can clean up after itself.
         if (assistantRunLockRef) {
-            recordAssistantRunComment(assistantRunLockRef, {
+            await recordAssistantRunComment(assistantRunLockRef, {
                 projectId,
                 objectType,
                 objectId,
@@ -10437,7 +10437,7 @@ async function storeChunks(
             committed = true
         }
 
-        const [currentFollowerIds] = await Promise.all(promises)
+        let [currentFollowerIds] = await Promise.all(promises)
         const step1Duration = Date.now() - step1Start
 
         console.log(`📊 [TIMING] Initial setup: ${step1Duration}ms`, {
@@ -10479,7 +10479,28 @@ async function storeChunks(
 
         // Low-level write that assumes the doc already exists. Callers must have
         // awaited ensureCommitted() before invoking this.
-        const commentRefRawUpdate = data => commentRef.update(data)
+        const { updateAssistantRunComment } = require('./assistantRunLocation')
+        const commentRefRawUpdate = async data => {
+            const location = await updateAssistantRunComment(
+                admin.firestore(),
+                assistantRunLockRef,
+                { projectId, objectType, objectId, commentId },
+                data
+            )
+            if (location.projectId !== projectId) {
+                projectId = location.projectId
+                runtimeContextForTools.projectId = projectId
+                if (streamOutput) streamOutput.projectId = projectId
+                chatLink = getLinkedParentChatUrl(projectId, objectType, objectId)
+                const { project, chat } = await getCommonData(projectId, objectType, objectId)
+                projectname = project.name
+                objectName = chat.title
+                // Refresh recipients against the destination, rather than notifying source-only members.
+                const targetMembers = new Set(project.userIds || [])
+                userIdsToNotify = userIdsToNotify.filter(id => targetMembers.has(id))
+                currentFollowerIds = currentFollowerIds.filter(id => targetMembers.has(id))
+            }
+        }
 
         // Firestore updates can resolve out of order. A timer-triggered batch write may still be
         // in flight when the stream finishes and flushes its final few tokens; if the older write

@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom'
+import { setWorkspaceViewport } from '../../utils/workspaceViewport'
 import TaskTagFormat from '../../components/Feeds/CommentsTextInput/autoformat/formats/taskTagFormat'
 import NoteQuill from '../../components/NotesView/NotesDV/EditorView/NoteQuill'
 import { enableDeferredNoteEmbeds } from '../../components/Feeds/CommentsTextInput/autoformat/formats/noteEmbedVisibility'
@@ -120,3 +121,33 @@ window.caret = () => {
 }
 window.fixture()
 window.__ready = true
+
+// Exercise the real pane viewport events without remounting the Quill editor.
+window.setWorkspacePane = rect => {
+    const root = document.getElementById('root')
+    if (rect) {
+        Object.assign(root.style, {
+            position: 'absolute',
+            top: '16px',
+            left: `${rect.left}px`,
+            width: `${rect.width}px`,
+        })
+        setWorkspaceViewport({ ...rect, top: 16, height: window.innerHeight - 32 })
+    } else {
+        root.removeAttribute('style')
+        setWorkspaceViewport(null)
+    }
+}
+window.taskTitleGeometry = () => {
+    const label = [...editor.root.querySelectorAll('.ql-taskTagFormat [dir="auto"]')].find(element =>
+        element.textContent.startsWith('Get Karla an estimate')
+    )
+    if (!label) return null
+    const labelRect = label.getBoundingClientRect()
+    const buttonRect = label.parentElement.getBoundingClientRect()
+    return {
+        width: Math.max(0, Math.min(labelRect.right, buttonRect.right) - labelRect.left),
+        budget: parseFloat(getComputedStyle(label.parentElement).maxWidth),
+        row: window.taskGeometry(),
+    }
+}

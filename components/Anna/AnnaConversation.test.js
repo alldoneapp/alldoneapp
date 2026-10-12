@@ -325,11 +325,15 @@ it('shows linked red activity between messages without posting to the assistant'
     render()
     mockMessages = [{ id: 'm1', creatorId: 'u1', created: 1500, commentText: 'Working here' }]
     now.mockReturnValue(2000)
+    mockActivityState.followedFeedsAmount = 1
     mockActivityState.followedFeedsData = {
         p1: [{ id: 'feed1', objectId: 'task1', objectTypes: 'tasks', lastChangeDate: 1900, entryText: 'created task' }],
     }
     mockActivityState.projectChatNotifications = {
-        p1: { otherChat: { followedNotifications: [{ commentId: 'message1', date: 1950 }] } },
+        p1: {
+            totalFollowed: 1,
+            otherChat: { totalFollowed: 1, followedNotifications: [{ commentId: 'message1', date: 1950 }] },
+        },
     }
     render()
     const links = [...container.querySelectorAll('.anna-activity-notice a')]

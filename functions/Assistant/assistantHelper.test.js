@@ -1230,6 +1230,8 @@ describe('Responses API compatibility helpers', () => {
     })
 
     test('replaces the loading placeholder with a clear failure after two empty responses', async () => {
+        mockDocGet.mockResolvedValue({ exists: false })
+        mockTransactionUpdate.mockClear()
         mockDocSet.mockClear()
         mockDocUpdate.mockClear()
         mockResponsesCreate.mockResolvedValue([
@@ -1298,7 +1300,8 @@ describe('Responses API compatibility helpers', () => {
             )
         ).rejects.toMatchObject({ code: 'EMPTY_OPENAI_RESPONSE' })
 
-        expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ path: expect.stringContaining('chatComments/') }),
             expect.objectContaining({
                 commentText: '⚠️ No response was generated after retrying. Please try again.',
                 isLoading: false,
@@ -2472,7 +2475,8 @@ describe('assistant attachment handoff helpers', () => {
 
         expect(result).toContain('The answer starts here')
         expect(result).toContain("⚠️ The response was cut off because it hit the model's length limit.")
-        expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ path: expect.stringContaining('chatComments/') }),
             expect.objectContaining({
                 commentText: expect.stringContaining(
                     "⚠️ The response was cut off because it hit the model's length limit."
@@ -8488,6 +8492,7 @@ describe('assistant transcript artifact recovery', () => {
     beforeEach(() => {
         mockDocGet.mockResolvedValue({ exists: true, data: () => ({}) })
         mockDocSet.mockClear()
+        mockTransactionUpdate.mockClear()
         mockDocUpdate.mockReset().mockResolvedValue(undefined)
         mockTiktokenEncode.mockReset().mockImplementation((text, allowed, disallowed) => {
             if (text.includes('<|fim_suffix|>') && disallowed === undefined)
@@ -8567,19 +8572,25 @@ describe('assistant transcript artifact recovery', () => {
                       { content: replay.slice(7) },
                   ]
         expect(await run(stream)).toBe(clean)
-        const writes = [...mockDocSet.mock.calls, ...mockDocUpdate.mock.calls]
+        const writes = [
+            ...mockDocSet.mock.calls,
+            ...mockDocUpdate.mock.calls,
+            ...mockTransactionUpdate.mock.calls.map(([, data]) => [data]),
+        ]
             .map(([data]) => data?.commentText)
             .filter(Boolean)
         expect(writes.some(text => text.includes('[Replayed tool definitions'))).toBe(false)
         expect(writes).toContain(clean)
-        expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ path: expect.stringContaining('chatComments/') }),
             expect.objectContaining({ assistantRun: expect.objectContaining({ status: 'completed' }) })
         )
     })
 
     test('an artifact-only reply becomes a failed run with a readable error', async () => {
         await expect(run([{ content: replay }])).rejects.toMatchObject({ code: 'INVALID_ASSISTANT_RESPONSE' })
-        expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect(mockTransactionUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({ path: expect.stringContaining('chatComments/') }),
             expect.objectContaining({
                 commentText: 'The assistant returned an invalid transcript instead of an answer. Please try again.',
                 assistantRun: expect.objectContaining({ status: 'failed' }),
@@ -8690,5 +8701,109 @@ describe('assistant and MCP update_contact Kontaktstatus', () => {
         })
         expect(resolveTarget).not.toHaveBeenCalled()
         expect(updateFields).not.toHaveBeenCalled()
+    })
+})
+
+describe('streaming reply follows its task to a new project', () => {
+    test('updates the destination comment, preview, notifications, and subsequent tool context', async () => {
+        jest.clearAllMocks()
+        const { storeChunks } = require('./assistantHelper')
+        const { moveAssistantRunComment } = require('./assistantRunLocation')
+        const db = require('firebase-admin').firestore()
+        const state = new Map()
+        let moved = false
+        let replyId
+        const snapshot = path => ({ exists: state.has(path), data: () => state.get(path) })
+        state.set('projects/target', { name: 'Familie', userIds: ['user-1'] })
+        state.set('chatObjects/target/chats/task', { title: 'Task', usersFollowing: ['user-1'] })
+        mockDocGet.mockImplementation(async function () {
+            return snapshot(this.path)
+        })
+        mockDocSet.mockImplementation(async function (data) {
+            state.set(this.path, { ...(state.get(this.path) || {}), ...data })
+            if (this.path.startsWith('chatComments/source/')) replyId = this.path.split('/').pop()
+        })
+        mockDocUpdate.mockImplementation(async function (data) {
+            if (moved && this.path.includes('/source/')) throw Error('NOT_FOUND: source deleted')
+            state.set(this.path, { ...(state.get(this.path) || {}), ...data })
+        })
+        mockTransactionGet.mockImplementation(async ref => snapshot(ref.path))
+        mockTransactionUpdate.mockImplementation((ref, data) => {
+            if (!state.has(ref.path)) throw Error(`NOT_FOUND: ${ref.path}`)
+            state.set(ref.path, { ...state.get(ref.path), ...data })
+        })
+        mockTransactionSet.mockImplementation((ref, data) => state.set(ref.path, data))
+        const runtime = { projectId: 'source', objectType: 'tasks', objectId: 'task', requestUserId: 'user-1' }
+        const output = {}
+        async function* stream() {
+            yield { content: 'Moving the task. ' }
+            await moveAssistantRunComment(db, {
+                sourceProjectId: 'source',
+                targetProjectId: 'target',
+                objectType: 'tasks',
+                objectId: 'task',
+                commentId: replyId,
+                runId: 'moving-run',
+            })
+            state.delete(`chatComments/source/tasks/task/comments/${replyId}`)
+            moved = true
+            yield { content: 'Moved to Familie.' }
+        }
+        try {
+            const result = await storeChunks(
+                'source',
+                'tasks',
+                'task',
+                ['user-1'],
+                stream(),
+                null,
+                'anna',
+                [],
+                ['user-1'],
+                'Task',
+                'Anna',
+                'Privat',
+                '',
+                'user-1',
+                null,
+                [],
+                null,
+                null,
+                [],
+                runtime,
+                output,
+                null,
+                { kind: 'chat', runId: 'moving-run' }
+            )
+            expect(result).toContain('Moved to Familie.')
+            expect(state.get(`chatComments/target/tasks/task/comments/${replyId}`)).toMatchObject({
+                commentText: result,
+                isLoading: false,
+                assistantRun: { status: 'completed' },
+            })
+            expect(state.get('chatObjects/target/chats/task')['commentsData.lastComment']).toContain(
+                'Moved to Familie.'
+            )
+            expect(runtime.projectId).toBe('target')
+            expect(output.projectId).toBe('target')
+            expect(mockBatchUpdate).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.objectContaining({
+                    'lastAssistantCommentDataByAssistant.anna.allProjects': expect.objectContaining({
+                        projectId: 'target',
+                        objectId: 'task',
+                    }),
+                })
+            )
+            const push = mockBatchSet.mock.calls.find(([ref]) => ref.path?.startsWith('pushNotifications/'))
+            expect(push[1]).toMatchObject({ projectId: 'target', link: expect.stringContaining('/projects/target/') })
+        } finally {
+            mockDocSet.mockReset().mockResolvedValue(undefined)
+            mockDocUpdate.mockReset().mockResolvedValue(undefined)
+            mockDocGet.mockReset()
+            mockTransactionGet.mockReset().mockImplementation(ref => ref.get())
+            mockTransactionSet.mockReset()
+            mockTransactionUpdate.mockReset()
+        }
     })
 })

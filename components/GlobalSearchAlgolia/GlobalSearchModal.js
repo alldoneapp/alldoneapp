@@ -64,6 +64,46 @@ import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 // when it is merely empty.
 const realIdSet = (realIds, maskedIds) => (Array.isArray(realIds) ? realIds : maskedIds || [])
 
+// Use the same unmasked buckets for the immediate local scope and its server
+// refresh. Sidebar mode must never remove archived projects from Search.
+const getProjectScope = (projectsList = []) => {
+    const { loggedUser, loggedUserProjects, selectedProjectIndex } = store.getState()
+    const realGuideProjectIds = realIdSet(loggedUser.realGuideProjectIds, loggedUser.guideProjectIds)
+    const realTemplateProjectIds = realIdSet(loggedUser.realTemplateProjectIds, loggedUser.templateProjectIds)
+    const realArchivedProjectIds = realIdSet(loggedUser.realArchivedProjectIds, loggedUser.archivedProjectIds)
+    const realProjectIds = realIdSet(loggedUser.realProjectIds, loggedUser.projectIds)
+    const archived = ProjectHelper.getArchivedProjectsInList(projectsList, realArchivedProjectIds)
+    const guides = ProjectHelper.getGuideProjectsInList(projectsList, realGuideProjectIds)
+    const templates = ProjectHelper.getTemplateProjectsInList(projectsList, realTemplateProjectIds)
+    const activeProjects = ProjectHelper.getActiveProjectsInList(
+        projectsList,
+        realProjectIds,
+        realArchivedProjectIds,
+        realTemplateProjectIds,
+        realGuideProjectIds
+    )
+    let projects = [
+        ...ProjectHelper.sortProjects(activeProjects, loggedUser.uid),
+        ...ProjectHelper.sortProjects(guides, loggedUser.uid),
+        ...ProjectHelper.sortProjects(templates, loggedUser.uid),
+        ...ProjectHelper.sortProjects(archived, loggedUser.uid),
+    ]
+    if (checkIfSelectedProject(selectedProjectIndex)) {
+        const selectedId = loggedUserProjects[selectedProjectIndex]?.id
+        const selectedProject = projects.find(project => project.id === selectedId)
+        if (selectedProject) projects = [selectedProject, ...projects.filter(project => project.id !== selectedId)]
+    }
+    return {
+        projects,
+        projectBuckets: {
+            activeIds: activeProjects.map(project => project.id),
+            guideIds: guides.map(project => project.id),
+            templateIds: templates.map(project => project.id),
+            archivedIds: archived.map(project => project.id),
+        },
+    }
+}
+
 export default function GlobalSearchModal() {
     const dispatch = useDispatch()
 
@@ -71,7 +111,15 @@ export default function GlobalSearchModal() {
         state => realIdSet(state.loggedUser.realArchivedProjectIds, state.loggedUser.archivedProjectIds).length
     )
     const searchText = useSelector(state => state.searchText)
-    const [projects, setProjects] = useState([])
+    // The app already has projects available. A fresh server read must not gate
+    // the first click; it fills in archived/other projects in the background.
+    const [projectScope, setProjectScope] = useState(() => ({
+        ...getProjectScope(store.getState().loggedUserProjects),
+        refreshing: true,
+    }))
+    const { projects, projectBuckets } = projectScope
+    const lastSubmittedQueryRef = useRef('')
+    const lastSearchedScopeRef = useRef(projectScope)
     const [showShortcuts, setShowShortcuts] = useState(false)
     const [activeTab, setActiveTab] = useState(getInitialTab)
     const [localText, setLocalText] = useState(searchText)
@@ -111,14 +159,6 @@ export default function GlobalSearchModal() {
     // header comment in SearchFilterChips.js for why it no longer overlaps with
     // the picker's "All archived" scope).
     const [includeArchived, setIncludeArchived] = useState(true)
-    // Which bucket each project belongs to, from updateTemporaryProjectsAndUsers — the
-    // per-user categorization (archived is per-user!) that scope filtering needs.
-    const [projectBuckets, setProjectBuckets] = useState({
-        activeIds: [],
-        guideIds: [],
-        templateIds: [],
-        archivedIds: [],
-    })
     // AT-2593 — task-only status filter. Component state makes it reset to off
     // whenever the popup opens, while keeping the choice through tab switches
     // for as long as this popup instance remains mounted.
@@ -155,88 +195,29 @@ export default function GlobalSearchModal() {
         }
     }
 
-    const updateTemporaryProjectsAndUsers = async () => {
-        return runWithLoading(
+    useEffect(() => {
+        let disposed = false
+        const { loggedUser } = store.getState()
+        warmTypesenseSearchCredentials()
+        runWithLoading(
             'search_project_scope',
             async () => {
-                const { loggedUser, loggedUserProjects, selectedProjectIndex } = store.getState()
-                const realGuideProjectIds = realIdSet(loggedUser.realGuideProjectIds, loggedUser.guideProjectIds)
-                const realTemplateProjectIds = realIdSet(
-                    loggedUser.realTemplateProjectIds,
-                    loggedUser.templateProjectIds
-                )
-                const realArchivedProjectIds = realIdSet(
-                    loggedUser.realArchivedProjectIds,
-                    loggedUser.archivedProjectIds
-                )
-                const realProjectIds = realIdSet(loggedUser.realProjectIds, loggedUser.projectIds)
-
                 let projectsList
                 try {
                     projectsList = await getAllUserProjects(loggedUser.uid)
                 } catch (error) {
-                    // Opening search must never become an unhandled rejection. The already-loaded redux
-                    // projects keep active-project search usable while a transient/rules failure is being
-                    // recovered; the authoritative query normally adds archived/template/guide projects.
                     console.error('[GlobalSearch] Could not refresh the project scope, using loaded projects', error)
-                    projectsList = loggedUserProjects
+                    projectsList = store.getState().loggedUserProjects
                 }
-
-                // AT-2390: bucket against the REAL id sets, never the masked ones on
-                // `loggedUser`. `updateInactiveProjectsData` (redux/store.js) empties
-                // `archivedProjectIds` whenever `areArchivedActive` is false — which is
-                // the default — so `getArchivedProjects2` returned [] for almost every
-                // user. That is why the picker's Archived tab was empty: archived
-                // projects never entered `projects` at all, and the tab filters that
-                // same list by `realArchivedProjectIds`. The masked guide/template sets
-                // are trimmed the same way for template owners, so they are read from
-                // the real sets too rather than leaving the same bug in place one tab
-                // over. Search scope is an explicit choice here; it must not silently
-                // inherit the sidebar's "archived mode" switch.
-                const archived = ProjectHelper.getArchivedProjectsInList(projectsList, realArchivedProjectIds)
-                const guides = ProjectHelper.getGuideProjectsInList(projectsList, realGuideProjectIds)
-                const templates = ProjectHelper.getTemplateProjectsInList(projectsList, realTemplateProjectIds)
-                const activeProjects = ProjectHelper.getActiveProjectsInList(
-                    projectsList,
-                    realProjectIds,
-                    realArchivedProjectIds,
-                    realTemplateProjectIds,
-                    realGuideProjectIds
-                )
-
-                setProjectBuckets({
-                    activeIds: activeProjects.map(project => project.id),
-                    guideIds: guides.map(project => project.id),
-                    templateIds: templates.map(project => project.id),
-                    archivedIds: archived.map(project => project.id),
-                })
-
-                let sortedProjects = [
-                    ...ProjectHelper.sortProjects(activeProjects, loggedUser.uid),
-                    ...ProjectHelper.sortProjects(guides, loggedUser.uid),
-                    ...ProjectHelper.sortProjects(templates, loggedUser.uid),
-                    ...ProjectHelper.sortProjects(archived, loggedUser.uid),
-                ]
-
-                if (checkIfSelectedProject(selectedProjectIndex)) {
-                    const selectedProject = sortedProjects.find(
-                        project => project.id === loggedUserProjects[selectedProjectIndex].id
-                    )
-                    sortedProjects = [
-                        selectedProject,
-                        ...sortedProjects.filter(project => project.id !== loggedUserProjects[selectedProjectIndex].id),
-                    ]
-                }
-
-                setProjects(sortedProjects)
+                if (disposed || store.getState().loggedUser.uid !== loggedUser.uid) return
+                setProjectScope({ ...getProjectScope(projectsList), refreshing: false })
             },
             { timeoutMs: INITIAL_LOAD_TIMEOUT_MS }
         )
-    }
-
-    useEffect(() => {
-        warmTypesenseSearchCredentials()
-        updateTemporaryProjectsAndUsers()
+        return () => {
+            disposed = true
+            searchInstanceIdRef.current = null
+        }
     }, [])
 
     useEffect(() => {
@@ -328,37 +309,35 @@ export default function GlobalSearchModal() {
     const onKeyDown = event => {
         const { key } = event
         if (key === 'Enter') {
-            if (projects.length > 0) {
-                if (localText.trim() && (searchInputRef.current.isFocused() || activeItemData.activeIndex === -1)) {
-                    onSearch()
-                } else if (activeItemData.activeIndex !== -1) {
-                    const { resultsByProject, objectType, detailedViewType } = selectActiveTabData()
-                    const object = resultsByProject[activeItemData.projectId][activeItemData.activeIndex]
-                    const objectId = objectType === 'contacts' ? object.uid : object.id
+            if (localText.trim() && (searchInputRef.current.isFocused() || activeItemData.activeIndex === -1)) {
+                onSearch()
+            } else if (projects.length > 0 && activeItemData.activeIndex !== -1) {
+                const { resultsByProject, objectType, detailedViewType } = selectActiveTabData()
+                const object = resultsByProject[activeItemData.projectId][activeItemData.activeIndex]
+                const objectId = objectType === 'contacts' ? object.uid : object.id
 
-                    const { inactive, projectType } = ProjectHelper.checkIfProjectIdBelongsToInactiveProject(
-                        activeItemData.projectId
-                    )
-                    if (inactive) {
-                        const { parentObject } = object
-                        const url =
-                            objectType === 'notes' && parentObject
-                                ? `/projects/${activeItemData.projectId}/${convertNoteObjectType(parentObject.type)}/${
-                                      parentObject.id
-                                  }/note`
-                                : getDvMainTabLink(activeItemData.projectId, objectId, objectType)
+                const { inactive, projectType } = ProjectHelper.checkIfProjectIdBelongsToInactiveProject(
+                    activeItemData.projectId
+                )
+                if (inactive) {
+                    const { parentObject } = object
+                    const url =
+                        objectType === 'notes' && parentObject
+                            ? `/projects/${activeItemData.projectId}/${convertNoteObjectType(parentObject.type)}/${
+                                  parentObject.id
+                              }/note`
+                            : getDvMainTabLink(activeItemData.projectId, objectId, objectType)
 
-                        ProjectHelper.navigateToInactiveProject(projectType, url)
-                    } else {
-                        goToObjectDetailView(activeItemData.projectId, objectId, objectType, detailedViewType)
-                    }
+                    ProjectHelper.navigateToInactiveProject(projectType, url)
+                } else {
+                    goToObjectDetailView(activeItemData.projectId, objectId, objectType, detailedViewType)
                 }
-                setTimeout(() => {
-                    if (searchInputRef && searchInputRef.current) {
-                        searchInputRef.current.focus()
-                    }
-                })
             }
+            setTimeout(() => {
+                if (searchInputRef && searchInputRef.current) {
+                    searchInputRef.current.focus()
+                }
+            })
             event.preventDefault()
             event.stopPropagation()
         } else if (key === 'ArrowDown') {
@@ -563,7 +542,7 @@ export default function GlobalSearchModal() {
     // is already entirely archived. Template/guide projects are never part of a
     // group scope — picking one explicitly is the only way to search them.
     const getProjectsInSearchScope = () => {
-        if (inSelectedProject) return [selectedProject]
+        if (inSelectedProject) return projects.filter(project => project.id === selectedProject.id)
         if (isAllArchivedScope) {
             return projects.filter(project => projectBuckets.archivedIds.includes(project.id))
         }
@@ -651,7 +630,7 @@ export default function GlobalSearchModal() {
 
     // All five tabs in ONE multi_search round-trip. An empty filter_by means "skip this
     // tab", never "search unscoped".
-    const onSearchInTypesense = async searchInstanceId => {
+    const onSearchInTypesense = async (searchInstanceId, query) => {
         const { loggedUser } = store.getState()
 
         const tabsConfig = [
@@ -719,7 +698,7 @@ export default function GlobalSearchModal() {
             const results = await multiSearchTypesense(
                 searchableTabs.map(({ indexPrefix, filterBy }) => ({
                     collection: indexPrefix,
-                    query: localText,
+                    query,
                     filterBy,
                     // Lead each tab with the objects whose NAME matches, ahead of the ones
                     // that merely mention the query somewhere in their body (AT-2527).
@@ -738,6 +717,7 @@ export default function GlobalSearchModal() {
                 )
             })
         } catch (error) {
+            if (searchInstanceId !== searchInstanceIdRef.current) return
             console.log('Typesense search failed:', error.message)
             // Offline fast-fail from multiSearchTypesense (Stage 7): say so
             // instead of silently showing zero results.
@@ -771,8 +751,10 @@ export default function GlobalSearchModal() {
         }
     }
 
-    const onSearch = async () => {
-        if (localText.trim() !== '') {
+    const runSearch = query => {
+        if (query.trim() !== '') {
+            lastSubmittedQueryRef.current = query
+            lastSearchedScopeRef.current = projectScope
             searchInstanceIdRef.current = v4()
             const searchInstanceId = searchInstanceIdRef.current
             setProcessing({
@@ -784,9 +766,24 @@ export default function GlobalSearchModal() {
             })
             setActiveItemData({ projectId: '', activeIndex: -1 })
 
-            onSearchInTypesense(searchInstanceId)
+            setSearchOfflineNotice(false)
+            setSearchErrorNotice(false)
+            // A cold open can still accept the click. Keep the loading state
+            // until the scope arrives instead of searching without a scope.
+            if (projects.length === 0 && projectScope.refreshing) return
+            onSearchInTypesense(searchInstanceId, query)
         }
     }
+
+    const onSearch = () => runSearch(localText)
+
+    useEffect(() => {
+        if (lastSearchedScopeRef.current === projectScope || !lastSubmittedQueryRef.current) return
+        // Complete an early search against the refreshed scope (including
+        // archived projects). Preserve the submitted query if the user has
+        // since edited the input without pressing Search again.
+        runSearch(lastSubmittedQueryRef.current)
+    }, [projectScope])
 
     // Toggling "only objects I created" re-runs the current search immediately,
     // so the user sees the narrowed list without retyping. Skipped on mount:
@@ -933,7 +930,7 @@ export default function GlobalSearchModal() {
                 showShortcuts={showShortcuts}
                 placeholder="Search term..."
                 buttonIcon="search"
-                disabledButton={projects.length === 0}
+                disabledButton={false}
                 onSubmitEditing={onSearch}
             />
 

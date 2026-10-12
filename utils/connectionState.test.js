@@ -130,8 +130,12 @@ describe('installConnectionStateListener', () => {
             getConnectionState: fakeStore.getConnectionState,
         })
 
-        jest.advanceTimersByTime(DEBOUNCE_MS)
         expect(fakeStore.getConnectionState()).toBe('offline')
+        // Reconnect before the ordinary event debounce has elapsed.
+        windowObject.navigator.onLine = true
+        windowObject.emit('online')
+        jest.advanceTimersByTime(DEBOUNCE_MS)
+        expect(fakeStore.dispatched.map(action => action.connectionState)).toEqual(['offline', 'online'])
     })
 
     it('stops listening and cancels the pending debounce on uninstall', () => {

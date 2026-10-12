@@ -454,6 +454,7 @@ exports.getAnnaConversationSecondGen = onCall(
                     db: admin.firestore(),
                     userId: request.auth.uid,
                     before: request.data.before || null,
+                    recentOnly: request.data.recentOnly === true,
                 })
             const reference = await ensureAnnaConversation({
                 db: admin.firestore(),

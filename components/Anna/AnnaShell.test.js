@@ -30,6 +30,10 @@ import useAnnaConversation from './useAnnaConversation'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { setAnnaMode, setAnnaLayout } from '../../utils/annaMode'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
+import DefaultAssistantButton from '../SidebarMenu/DefaultAssistantButton'
+jest.mock('../SidebarMenu/Themes', () => ({
+    Themes: { modern: { CustomSideMenu: { AllProjects: {} } } },
+}))
 
 const mockSet = jest.fn().mockResolvedValue(undefined)
 const mockSnapshots = {}
@@ -70,18 +74,21 @@ jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => 
 })
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
 const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user' }
+const mockDispatch = jest.fn()
+let mockMobileNavigation = false
 let mockAssistant
 let mockSidebarNumbers
 const mockDefaultAssistant = { uid: 'anna', displayName: 'Anna Alldone' }
 let mockUnmounts = 0
 jest.mock('react-redux', () => ({
-    useDispatch: () => jest.fn(),
+    useDispatch: () => mockDispatch,
     useSelector: selector =>
         selector({
             loggedUser: mockUser,
             defaultAssistant: mockDefaultAssistant,
             projectAssistants: { p1: [mockAssistant] },
             sidebarNumbers: mockSidebarNumbers,
+            smallScreenNavigation: mockMobileNavigation,
         }),
 }))
 jest.mock('./useAnnaConversation', () => ({ __esModule: true, default: jest.fn() }))
@@ -121,7 +128,10 @@ jest.mock('../../URLSystem/URLTrigger', () => ({
     __esModule: true,
     default: { processUrl: jest.fn().mockResolvedValue(undefined) },
 }))
-jest.mock('../../redux/actions', () => ({ showGlobalSearchPopup: () => ({ type: 'SEARCH' }) }))
+jest.mock('../../redux/actions', () => ({
+    showGlobalSearchPopup: () => ({ type: 'SEARCH' }),
+    hideWebSideBar: () => ({ type: 'HIDE_SIDEBAR' }),
+}))
 jest.mock('../../i18n/TranslationService', () => ({
     translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
     useTranslator: () => {},
@@ -129,8 +139,9 @@ jest.mock('../../i18n/TranslationService', () => ({
 
 const conversation = { id: 'anna_u1', projectId: 'p1', assistantId: 'a1' }
 const state = { conversation, loading: false, error: '', retry: jest.fn() }
-const content = id => (
+const content = (id, withSidebar = false) => (
     <AnnaShell routeId={id}>
+        {withSidebar && <DefaultAssistantButton />}
         <input aria-label="Real workspace editor" defaultValue="Unsaved note" />
     </AnnaShell>
 )
@@ -403,6 +414,7 @@ it.each(['home', 'browser'])(
 )
 
 beforeEach(() => {
+    mockMobileNavigation = false
     mockSidebarNumbers = {}
     global.IS_REACT_ACT_ENVIRONMENT = true
     window.localStorage.clear()
@@ -710,6 +722,49 @@ it('holds assistant navigation during browser control until Open is clicked', as
             annaPresentationStatus: expect.objectContaining({ id: 'request1', status: 'opened' }),
         })
     )
+})
+
+it.each([
+    ['mobile', 'alldone'],
+    ['mobile', 'workspace'],
+    ['desktop', 'alldone'],
+    ['desktop', 'workspace'],
+    ['desktop', 'chat'],
+])('opens the chat from the default assistant sidebar button on %s from %s', (device, start) => {
+    const originalMatchMedia = window.matchMedia
+    mockMobileNavigation = device === 'mobile'
+    window.matchMedia = () => ({
+        matches: mockMobileNavigation,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    try {
+        render(content(1, true))
+        const workspace = screen.getByLabelText('Real workspace editor')
+        const chat = screen.getByLabelText('Persistent conversation')
+        workspace.value = 'Keep my note draft'
+        chat.value = 'Keep my chat draft'
+        if (start === 'alldone') fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+        else if (start === 'workspace') chooseSurface('alldone')
+
+        fireEvent.click(screen.getByLabelText('Anna Alldone'))
+        expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
+        expect(screen.getByLabelText('Conversation with Carl Code Mentor').getAttribute('aria-hidden')).toBe('false')
+        expect(document.activeElement).toBe(screen.getByLabelText('Conversation with Carl Code Mentor'))
+        expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe(
+            device === 'mobile' ? 'true' : 'false'
+        )
+        expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+        expect(workspace.value).toBe('Keep my note draft')
+        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+        expect(chat.value).toBe('Keep my chat draft')
+        expect(mockUnmounts).toBe(0)
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        if (device === 'mobile') expect(mockDispatch).toHaveBeenCalledWith({ type: 'HIDE_SIDEBAR' })
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
 })
 
 it('uses the mobile selector and close control without removing the workspace or chat', async () => {

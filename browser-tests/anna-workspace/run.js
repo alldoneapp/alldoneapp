@@ -246,6 +246,7 @@ async function checkWorkspaceReveal(page, width) {
         '/projects/p1/user/a1/tasks/open',
         'Do not return home while the request is still running'
     )
+    await page.evaluate(() => window.__annaCompleteRequest())
     await page.waitForURL(url => url.pathname === '/projects/tasks/open')
     await firstHome
     assert.equal(new URL(page.url()).searchParams.get('assistant'), '1', 'Keep assistant mode on home')
@@ -258,6 +259,7 @@ async function checkWorkspaceReveal(page, width) {
     await create()
     await page.locator('[data-anna-object-id="created-2"]').click()
     await ring.waitFor({ state: 'detached', timeout: 1000 })
+    await page.evaluate(() => window.__annaCompleteRequest())
     await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
     assert.equal(homeReturns, 0, 'Direct interaction cancels the return even if the request later completes')
     await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -265,6 +267,7 @@ async function checkWorkspaceReveal(page, width) {
     assert.equal(await ring.evaluate(node => getComputedStyle(node).animationName), 'none')
     await page.screenshot({ path: path.join(BUILD, `reveal-reduced-motion-${width}.png`) })
     await ring.waitFor({ state: 'detached', timeout: 5000 })
+    await page.evaluate(() => window.__annaCompleteRequest())
     await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
     await page.waitForTimeout(250)
     assert.equal(homeReturns, 1, 'The next uninterrupted request returns home once')
@@ -524,7 +527,11 @@ async function checkDictation(page, width) {
     }))
     assert.ok(geometry.scrollWidth <= geometry.width + 1, JSON.stringify(geometry))
     for (let index = 1; index < geometry.children.length; index++)
-        assert.ok(geometry.children[index - 1].right <= geometry.children[index].left, 'Composer controls overlap')
+        assert.ok(
+            geometry.children[index - 1].right <= geometry.children[index].left ||
+                geometry.children[index - 1].bottom <= geometry.children[index].top,
+            'Composer controls overlap'
+        )
     await page.screenshot({ path: path.join(BUILD, `dictation-ready-${width}.png`) })
     // Holding uses the same recording gesture and keeps its status card inside the chat pane.
     const box = await mic.boundingBox()
@@ -620,6 +627,7 @@ async function checkActivityNotices(page, width) {
         const now = Date.now()
         window.__annaActivity({
             sidebarNumbers: { p1: { demo: 123 } },
+            followedFeedsAmount: 1,
             followedFeedsData: {
                 p1: [
                     {
@@ -632,7 +640,10 @@ async function checkActivityNotices(page, width) {
                 ],
             },
             projectChatNotifications: {
-                p1: { chat1: { followedNotifications: [{ commentId: 'message1', date: now }] } },
+                p1: {
+                    totalFollowed: 1,
+                    chat1: { totalFollowed: 1, followedNotifications: [{ commentId: 'message1', date: now }] },
+                },
             },
         })
     })

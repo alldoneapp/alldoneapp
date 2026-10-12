@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useContext } from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -9,7 +9,8 @@ import { Themes } from './Themes'
 import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
 import useOnHover from '../../hooks/UseOnHover'
 import { hideWebSideBar } from '../../redux/actions'
-import { setAnnaMode, useAnnaMode } from '../../utils/annaMode'
+import { useAnnaMode } from '../../utils/annaMode'
+import AnnaChatNavigationContext from '../Anna/AnnaChatNavigationContext'
 import { translate } from '../../i18n/TranslationService'
 
 export default function DefaultAssistantButton() {
@@ -19,6 +20,7 @@ export default function DefaultAssistantButton() {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const { expanded } = useCollapsibleSidebar()
     const active = useAnnaMode()
+    const showChat = useContext(AnnaChatNavigationContext)
     const { hover, onHover, offHover } = useOnHover(active, active)
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.AllProjects')
 
@@ -28,7 +30,7 @@ export default function DefaultAssistantButton() {
     const photo = assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL
     const openChat = () => {
         if (smallScreenNavigation) dispatch(hideWebSideBar())
-        setAnnaMode(true)
+        showChat()
     }
 
     return (

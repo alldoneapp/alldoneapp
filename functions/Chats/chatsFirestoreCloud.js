@@ -16,44 +16,31 @@ const deleteChat = async (admin, projectId, chatId) => {
 // preserves original comment authors while omitting server-owned access projections so the destination
 // trigger can rebuild them against the target project's membership.
 const moveAssistantLastCommentPointer = async (admin, sourceProjectId, targetProjectId, chatId) => {
-    try {
-        const projectDoc = await admin.firestore().doc(`projects/${sourceProjectId}`).get()
-        const userIds = projectDoc.exists ? projectDoc.data().userIds || [] : []
-        if (userIds.length === 0) return
-
-        const userDocs = await Promise.all(userIds.map(uid => admin.firestore().doc(`users/${uid}`).get()))
-        const updates = []
-        userDocs.forEach(userDoc => {
-            if (!userDoc.exists) return
-            const lastAssistantCommentData = userDoc.data().lastAssistantCommentData || {}
-            const allProjectsPointer = lastAssistantCommentData[ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY]
-            // Repoint the global "last assistant comment" jump target at the new project so it survives the
-            // source delete cascade (which would otherwise drop it). The per-project pointer is cleaned up by
-            // that cascade already, so it does not need handling here.
-            if (
-                allProjectsPointer &&
-                allProjectsPointer.projectId === sourceProjectId &&
-                allProjectsPointer.objectId === chatId
-            ) {
-                updates.push(
-                    userDoc.ref.update({
-                        [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                            ...allProjectsPointer,
-                            projectId: targetProjectId,
-                        },
-                    })
+    const { movedAssistantPointerUpdates } = require('./movedAssistantPointers')
+    const db = admin.firestore()
+    const [source, target] = await Promise.all([
+        db.doc(`projects/${sourceProjectId}`).get(),
+        db.doc(`projects/${targetProjectId}`).get(),
+    ])
+    const targetMembers = new Set(target.data()?.userIds || [])
+    const userIds = (source.data()?.userIds || []).filter(id => targetMembers.has(id))
+    await Promise.all(
+        userIds.map(userId =>
+            db.runTransaction(async transaction => {
+                const ref = db.doc(`users/${userId}`)
+                const user = await transaction.get(ref)
+                if (!user.exists) return
+                const updates = movedAssistantPointerUpdates(
+                    user.data(),
+                    sourceProjectId,
+                    targetProjectId,
+                    chatId,
+                    FieldValue.delete()
                 )
-            }
-        })
-        await Promise.all(updates)
-    } catch (e) {
-        console.warn('moveAssistantLastCommentPointer failed', {
-            sourceProjectId,
-            targetProjectId,
-            chatId,
-            error: e.message,
-        })
-    }
+                if (Object.keys(updates).length) transaction.update(ref, updates)
+            })
+        )
+    )
 }
 
 const copyChatToOtherProject = async (admin, sourceProjectId, targetProjectId, objectType, chatId, options = {}) => {
@@ -74,13 +61,34 @@ const copyChatToOtherProject = async (admin, sourceProjectId, targetProjectId, o
         withoutAccessProjection(options.chatData || chatDoc.data()),
         { merge: true }
     )
+    const runComments = []
     commentsSnapshot.forEach(commentDoc => {
+        const comment = commentDoc.data()
+        const run = comment.assistantRun
+        if (
+            run?.kind === 'chat' &&
+            run.runId &&
+            (comment.isLoading || comment.isThinking || ['running', 'cancel_requested'].includes(run.status))
+        ) {
+            runComments.push({ commentId: commentDoc.id, runId: run.runId })
+            return
+        }
         batch.set(
             firestore.doc(`chatComments/${targetProjectId}/${objectType}/${chatId}/comments/${commentDoc.id}`),
             commentDoc.data()
         )
     })
     await batch.commit()
+    const { moveAssistantRunComment } = require('../Assistant/assistantRunLocation')
+    for (const run of runComments) {
+        await moveAssistantRunComment(firestore, {
+            sourceProjectId,
+            targetProjectId,
+            objectType,
+            objectId: chatId,
+            ...run,
+        })
+    }
 
     await moveAssistantLastCommentPointer(admin, sourceProjectId, targetProjectId, chatId)
 

@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux'
 import { getDb, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { subscribePageVisible } from '../../utils/appResume'
 import { isBrowserOffline } from '../../utils/connectionState'
+import { getAnnaHistoryWindow, isRecentAnnaThread } from '../../functions/Assistant/annaHistoryWindow'
 import {
     clearAnnaConversationCache,
     readAnnaConversationCache,
@@ -22,7 +23,7 @@ const mergeThreads = (previous, incoming) => {
     incoming.forEach(thread => threads.set(threadKey(thread), { ...threads.get(threadKey(thread)), ...thread }))
     return [...threads.values()].sort((a, b) => (a.created || 0) - (b.created || 0))
 }
-const initialState = (scope, cached) => ({
+const initialState = (scope, cached, historyDay) => ({
     scope,
     loading: true,
     conversation: null,
@@ -30,17 +31,25 @@ const initialState = (scope, cached) => ({
     threads: [],
     nextBefore: null,
     historyLoaded: false,
+    historyDay,
+    includeEarlier: false,
     ...(cached ? { ...cached, loading: false } : {}),
 })
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value)
+const accessDenied = error => ['permission-denied', 'unauthenticated'].some(code => error?.code?.endsWith(code))
 
 export default function useAnnaConversation(userId, { enabled = true, user = {}, hold = false } = {}) {
     const connectionState = useSelector(state => state.connectionState)
     const offline = connectionState === 'offline' || isBrowserOffline()
+    const offlineRef = useRef(offline)
+    offlineRef.current = offline
     const scope = `${userId || ''}/${user.defaultProjectId || ''}`
     const scopeRef = useRef(scope)
     scopeRef.current = scope
-    const [state, setState] = useState(() => initialState(scope, readAnnaConversationCache(userId, user)))
+    const historyWindow = getAnnaHistoryWindow(user)
+    const [state, setState] = useState(() =>
+        initialState(scope, readAnnaConversationCache(userId, user), historyWindow.today)
+    )
     const [reference, setReference] = useState(null)
     const activeReference = reference?.scope === scope ? reference : null
     const generation = useRef(0)
@@ -53,6 +62,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
 
     const resolveConversation = useCallback(async () => {
         if (!userId) return null
+        if (offlineRef.current || isBrowserOffline()) throw Object.assign(new Error('Offline'), { code: 'offline' })
         if (flight.current) return flight.current
         const currentGeneration = generation.current
         const current = () => currentGeneration === generation.current && scopeRef.current === scope
@@ -82,7 +92,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
             })
             .catch(error => {
                 if (current()) {
-                    const denied = ['permission-denied', 'unauthenticated'].some(code => error.code?.endsWith(code))
+                    const denied = accessDenied(error)
                     if (denied) clearAnnaConversationCache(userId, user.defaultProjectId)
                     setState(previous => ({
                         ...previous,
@@ -105,11 +115,12 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
 
     const loadHistory = useCallback(
         async before => {
-            if (!userId) return
+            if (!userId || offlineRef.current || isBrowserOffline()) return
             if (historyFlight.current) return historyFlight.current
             const currentGeneration = historyGeneration.current
             const request = runHttpsCallableFunction('getAnnaConversationSecondGen', {
                 historyOnly: true,
+                recentOnly: !before,
                 ...(before ? { before } : {}),
             })
                 .then(result => {
@@ -128,6 +139,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
                         ),
                         nextBefore: result.nextBefore,
                         historyLoaded: true,
+                        includeEarlier: !!before,
                     }))
                 })
                 .finally(() => {
@@ -147,7 +159,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
         nextRollover.current = 0
         const cached = readAnnaConversationCache(userId, user)
         setReference(cached ? { ...threadReference(cached.conversation), scope } : null)
-        setState(initialState(scope, cached))
+        setState(initialState(scope, cached, historyWindow.today))
         return () => {
             generation.current++
             historyGeneration.current++
@@ -157,12 +169,14 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
     }, [scope])
 
     useEffect(() => {
-        if (state.scope === scope && state.conversation) saveAnnaConversationCache(userId, user.defaultProjectId, state)
+        if (state.scope === scope && state.conversation)
+            saveAnnaConversationCache(userId, user.defaultProjectId, state, user)
     }, [scope, state, userId, user.defaultProjectId])
 
     useEffect(() => {
         generation.current++
         flight.current = null
+        nextRollover.current = 0
     }, [resolveConversation])
 
     // Prefetch only the existing owner-readable pointer and chat, using the
@@ -198,12 +212,25 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
     }, [scope, userId, user.defaultProjectId, user.isAnonymous, activeReference])
 
     useEffect(() => {
-        if (!enabled || !userId || offline) return
-        resolveConversation().catch(() => {})
+        if (!enabled || !userId) return
         const refresh = () => {
-            if (!holdRef.current && !document.hidden && Date.now() >= nextRollover.current)
+            const day = getAnnaHistoryWindow(user).today
+            setState(previous =>
+                previous.historyDay === day
+                    ? previous
+                    : {
+                          ...previous,
+                          historyDay: day,
+                          historyLoaded: false,
+                          includeEarlier: false,
+                      }
+            )
+            if (!offline && !holdRef.current && !document.hidden && Date.now() >= nextRollover.current)
                 resolveConversation().catch(() => {})
         }
+        // Reopening the pane in the same day should not re-run the server setup.
+        // Explicit sends still resolve their authoritative destination separately.
+        if (!offline && Date.now() >= nextRollover.current) resolveConversation().catch(() => {})
         const timer = setInterval(refresh, 30000)
         const stop = subscribePageVisible(refresh)
         return () => {
@@ -256,12 +283,12 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
                 },
                 error => {
                     if (!cancelled && scopeRef.current === scope) {
-                        clearAnnaConversationCache(userId, user.defaultProjectId)
+                        const denied = accessDenied(error)
+                        if (denied) clearAnnaConversationCache(userId, user.defaultProjectId)
                         setState(previous => ({
                             ...previous,
                             loading: false,
-                            conversation: null,
-                            threads: [],
+                            ...(denied ? { conversation: null, threads: [] } : {}),
                             error: error.message,
                         }))
                     }
@@ -271,7 +298,7 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
             cancelled = true
             stop()
         }
-    }, [scope, userId, activeReference?.projectId, activeReference?.chatId, activeReference?.assistantId])
+    }, [scope, userId, activeReference?.projectId, activeReference?.chatId, activeReference?.assistantId, offline])
 
     useEffect(() => {
         if (!enabled || offline || state.scope !== scope || !state.conversation || state.historyLoaded) return
@@ -291,6 +318,12 @@ export default function useAnnaConversation(userId, { enabled = true, user = {},
 
     return {
         ...(state.scope === scope ? state : initialState(scope)),
+        threads:
+            state.scope !== scope
+                ? []
+                : state.includeEarlier
+                  ? state.threads
+                  : state.threads.filter(thread => isRecentAnnaThread(thread, historyWindow)),
         offline,
         loading: !offline && (state.scope === scope ? state.loading : true),
         resolveConversation,

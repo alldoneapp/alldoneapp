@@ -4,21 +4,23 @@ import { useSyncExternalStore } from 'react'
 import { getResponsiveLayoutState } from '../../utils/responsiveLayout'
 import { getWorkspaceViewport, WORKSPACE_VIEWPORT_EVENT } from '../../utils/workspaceViewport'
 import { DV_TAB_NOTE_EDITOR } from '../../utils/TabNavigationConstants'
+import { getAnnaHistoryWindow } from '../../functions/Assistant/annaHistoryWindow'
 export const useDispatch = () => () => {}
 const user = { uid: 'demo', displayName: 'Alex', defaultProjectId: 'p1', gold: 1000 }
 const assistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
+const dateKey = getAnnaHistoryWindow(user).today
 const chat = {
-    id: 'AnnaChat20261007demo',
+    id: `AnnaChat${dateKey}demo`,
     assistantId: 'a1',
     projectId: 'p1',
     isPublicFor: [0],
     annaOwnerId: 'demo',
     creatorId: 'demo',
     type: 'topics',
-    created: 1,
+    created: Date.now(),
 }
 const data = {
-    'chatObjects/p1/chats/AnnaChat20261007demo': chat,
+    [`chatObjects/p1/chats/${chat.id}`]: chat,
     'users/demo/private/annaConversation': { projectId: 'p1', chatId: chat.id, assistantId: 'a1' },
 }
 const listeners = new Map()
@@ -50,7 +52,7 @@ const getState = () => {
         loggedUser: user,
         loggedUserProjects: [{ id: 'p1', name: 'Launch' }],
         defaultAssistant: assistant,
-        connectionState: new URLSearchParams(window.location.search).has('reveal') ? 'online' : 'offline',
+        connectionState: new URLSearchParams(window.location.search).has('floating') ? 'offline' : 'online',
         smallScreenNavigation: (window.__alldoneWorkspaceViewport?.width || window.innerWidth) < 640,
         ...(new URLSearchParams(window.location.search).has('noteWidth')
             ? getResponsiveLayoutState({
@@ -72,12 +74,11 @@ export const useSelector = selector => {
     )
     return selector(getState())
 }
-import translations from '../../i18n/translations/en.json'
-export const translate = (text, values = {}) =>
-    (text.startsWith('vm_workspace_') ? translations[text] || text : text).replace(
-        /%{(\w+)}/g,
-        (_, key) => values[key] ?? ''
-    )
+// The explicit extension bypasses this harness's TranslationService replacement.
+// Exercise real locale lookups instead of hiding missing keys with a key echo.
+import { translate as translateReal, setLanguage } from '../../i18n/TranslationService.js'
+setLanguage(new URLSearchParams(window.location.search).get('language') || 'en')
+export const translate = translateReal
 export const useTranslator = () => {}
 export const respondToVmInteraction = request => runHttpsCallableFunction('respondToVmInteractionSecondGen', request)
 export const cancelAssistantRun = request => runHttpsCallableFunction('cancelAssistantRunSecondGen', request)
@@ -208,7 +209,11 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
                 workspaceTasks.push({ id, title: 'Prepare the launch checklist' })
                 workspaceListeners.forEach(callback => callback())
             }, 250)
-            await delay(5500)
+            // Let the browser test verify the running state before completing;
+            // screenshots and slow CI must not race a fixed completion timeout.
+            await new Promise(resolve => {
+                window.__annaCompleteRequest = resolve
+            })
             response.isLoading = false
             response.commentText = 'The task is ready.'
             response.assistantRun.status = 'completed'
@@ -226,7 +231,7 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
     if (name !== 'getAnnaConversationSecondGen') return {}
     if (new URLSearchParams(window.location.search).has('slowConversation'))
         await new Promise(resolve => setTimeout(resolve, 6000))
-    const history = { threads: [{ ...chat, chatId: chat.id, dateKey: '20261007' }], nextBefore: null }
+    const history = { threads: [{ ...chat, chatId: chat.id, dateKey }], nextBefore: null }
     if (request.historyOnly) return history
     console.info('Anna fixture conversation validated')
     return {

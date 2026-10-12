@@ -6,7 +6,7 @@ let mockState, root, container, notices, now
 jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState) }))
 const conversation = { projectId: 'p1', id: 'anna' }
 function Probe({ userId = 'u1', enabled = true, current = conversation }) {
-    notices = useAnnaActivityNotices(userId, current, [conversation], enabled)
+    notices = useAnnaActivityNotices(userId, current, enabled)
     return null
 }
 const render = props => act(() => root.render(<Probe {...props} />))
@@ -19,15 +19,18 @@ const feed = (id, lastChangeDate = 2000, extra = {}) => ({
     ...extra,
 })
 const addFeeds = feeds => {
+    mockState.followedFeedsAmount = feeds.length ? 1 : 0
     mockState.followedFeedsData = { p1: feeds }
     render()
 }
 beforeEach(() => {
+    localStorage.clear()
     global.IS_REACT_ACT_ENVIRONMENT = true
     now = jest.spyOn(Date, 'now').mockReturnValue(1000)
     mockState = {
         loggedUser: { uid: 'u1', archivedProjectIds: ['archived'], templateProjectIds: ['template'] },
         loggedUserProjects: ['p1', 'archived', 'template'].map(id => ({ id, name: id })),
+        followedFeedsAmount: 0,
         followedFeedsData: {},
         projectChatNotifications: {},
     }
@@ -57,7 +60,11 @@ it('detects each new message even when the unread total stays the same', () => {
     render()
     const setChat = commentId => {
         mockState.projectChatNotifications = {
-            p1: { task1: { totalFollowed: 1, followedNotifications: [{ commentId, date: 2000 }] } },
+            p1: {
+                totalFollowed: 1,
+                totalUnfollowed: 0,
+                task1: { totalFollowed: 1, followedNotifications: [{ commentId, date: 2000 }] },
+            },
         }
         render()
     }
@@ -66,29 +73,63 @@ it('detects each new message even when the unread total stays the same', () => {
     expect(notices.map(notice => notice.id)).toEqual(['chat/p1/task1/message1', 'chat/p1/task1/message2'])
 })
 
-it('ignores own feed entries, grey activity, hidden projects and chats already shown in Anna or active', () => {
+it('uses the same red chat eligibility as the badge, including active chat and hidden projects', () => {
     render()
-    mockState.followedFeedsData = {
-        p1: [feed('own', 2000, { creatorId: 'u1' })],
-        archived: [feed('archive')],
-        template: [feed('template')],
-        removed: [feed('removed')],
-    }
-    const chat = { followedNotifications: [{ commentId: 'message', date: 2000 }] }
-    mockState.activeChatData = { projectId: 'p1', chatId: 'active' }
+    const chat = { totalFollowed: 1, totalUnfollowed: 0, followedNotifications: [{ commentId: 'message', date: 2000 }] }
+    mockState.activeChatData = { projectId: 'p1', chatId: 'active', chatType: 'tasks' }
     mockState.projectChatNotifications = {
-        p1: { anna: chat, active: chat, grey: { unfollowedNotifications: [{ commentId: 'grey', date: 2000 }] } },
-        archived: { one: chat },
-        template: { one: chat },
-        removed: { one: chat },
+        p1: {
+            totalFollowed: 1,
+            totalUnfollowed: 1,
+            active: chat,
+            grey: { totalFollowed: 0, unfollowedNotifications: [{ commentId: 'grey', date: 2000 }] },
+        },
+        archived: { totalFollowed: 1, one: chat },
+        template: { totalFollowed: 1, one: chat },
     }
     render()
     expect(notices).toEqual([])
 })
 
+it('does not turn stale payloads into notices while the corresponding red count is zero', () => {
+    render()
+    mockState.followedFeedsData = { p1: [feed('stale')] }
+    mockState.projectChatNotifications = {
+        p1: {
+            totalFollowed: 0,
+            totalUnfollowed: 1,
+            task1: { totalFollowed: 1, followedNotifications: [{ commentId: 'stale', date: 2000 }] },
+        },
+    }
+    render()
+    expect(notices).toEqual([])
+    mockState.followedFeedsAmount = 1
+    mockState.projectChatNotifications.p1.totalFollowed = 1
+    mockState.projectChatNotifications = { ...mockState.projectChatNotifications }
+    render()
+    expect(notices).toHaveLength(2)
+    mockState.followedFeedsAmount = 0
+    mockState.projectChatNotifications = {}
+    render()
+    expect(notices).toHaveLength(2)
+})
+
+it('includes red-counted notifications without applying a second, different thread or creator filter', () => {
+    render()
+    mockState.projectChatNotifications = {
+        p1: {
+            totalFollowed: 1,
+            anna: { totalFollowed: 1, followedNotifications: [{ commentId: 'reply', date: 2000 }] },
+        },
+    }
+    addFeeds([feed('own-but-counted', 2000, { creatorId: 'u1' })])
+    expect(notices).toHaveLength(2)
+})
+
 it('does not replay updates received in Alldone-only mode', () => {
     render()
     render({ enabled: false })
+    mockState.followedFeedsAmount = 1
     mockState.followedFeedsData = { p1: [feed('while-closed')] }
     render({ enabled: false })
     render()
@@ -97,7 +138,7 @@ it('does not replay updates received in Alldone-only mode', () => {
     expect(notices.map(notice => notice.id)).toEqual(['feed/p1/tasks/task1/after-reopening'])
 })
 
-it('clears notices when changing accounts, including when returning to the original account', () => {
+it('isolates history by account and restores it when returning to the original account', () => {
     render()
     addFeeds([feed('new')])
     expect(notices).toHaveLength(1)
@@ -108,7 +149,7 @@ it('clears notices when changing accounts, including when returning to the origi
     render({ userId: 'u2' })
     mockState.loggedUser = { uid: 'u1' }
     render()
-    expect(notices).toEqual([])
+    expect(notices.map(notice => notice.id)).toEqual(['feed/p1/tasks/task1/new'])
 })
 
 it('retains earlier notices but associates new arrivals with the new conversation at rollover', () => {
@@ -121,9 +162,25 @@ it('retains earlier notices but associates new arrivals with the new conversatio
     expect(notices.map(notice => notice.chatId)).toEqual(['anna', 'tomorrow'])
 })
 
-it('bounds the local activity history', () => {
+it('keeps earlier notices beyond the previous 100-entry limit', () => {
     render()
     addFeeds(Array.from({ length: 130 }, (_, i) => feed(`feed${i}`, 2000 + i)))
-    expect(notices).toHaveLength(100)
-    expect(notices[0].id).toBe('feed/p1/tasks/task1/feed30')
+    expect(notices).toHaveLength(130)
+    expect(notices[0].id).toBe('feed/p1/tasks/task1/feed0')
+})
+
+it('keeps notices after marking read, closing/reopening, and remounting with an empty inbox', () => {
+    render()
+    now.mockReturnValue(2500)
+    addFeeds([feed('saved')])
+    const original = notices[0]
+    addFeeds([])
+    render({ enabled: false })
+    expect(notices).toEqual([original])
+    act(() => root.unmount())
+    root = createRoot(container)
+    render()
+    expect(notices).toEqual([original])
+    addFeeds([feed('saved', 3000)])
+    expect(notices).toEqual([original])
 })

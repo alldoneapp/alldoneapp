@@ -1,4 +1,5 @@
 import React from 'react'
+import { getFollowedFeedAmount } from '../../../utils/notificationBadges'
 import { useDispatch, useSelector } from 'react-redux'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 
@@ -24,7 +25,7 @@ import ChatsButton from '../ChatsButton'
 export default function MobileNotificationArea({ expandSecondaryBar }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
-    const followedFeedsAmount = useSelector(state => state.followedFeedsAmount)
+    const followedFeedsAmount = useSelector(getFollowedFeedAmount)
     const allFeedsAmount = useSelector(state => state.allFeedsAmount)
 
     const theme = getTheme(Themes, themeName, 'TopBarMobile.MobileNotificationArea')
