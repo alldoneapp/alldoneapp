@@ -28,7 +28,7 @@ afterEach(() => {
 import AnnaShell from './AnnaShell'
 import useAnnaConversation from './useAnnaConversation'
 import URLTrigger from '../../URLSystem/URLTrigger'
-import { setAnnaMode } from '../../utils/annaMode'
+import { setAnnaMode, setAnnaLayout } from '../../utils/annaMode'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 
 const mockSet = jest.fn().mockResolvedValue(undefined)
@@ -132,6 +132,107 @@ const content = id => (
         <input aria-label="Real workspace editor" defaultValue="Unsaved note" />
     </AnnaShell>
 )
+
+const selectedSurface = () => document.querySelector('.anna-header-picker select').value
+const choose = (selector, value) =>
+    act(() => {
+        selector.value = value
+        selector.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+const chooseSurface = value => {
+    choose(document.querySelector('.anna-header-picker select'), value.startsWith('vm:') ? 'vms' : value)
+    if (value.startsWith('vm:')) choose(document.querySelector('.anna-vm-selector select'), value.slice(3))
+}
+const showChat = () => choose(document.querySelector('.anna-workspace-switcher select'), 'chat')
+const showWorkspace = () => fireEvent.click(screen.getByLabelText('Show workspace'))
+
+it('preserves editors and the selected surface while hiding the workspace, including background browser activity', () => {
+    render(content(1))
+    const workspace = screen.getByLabelText('Real workspace editor')
+    const chat = screen.getByLabelText('Persistent conversation')
+    chat.value = 'Keep my message'
+    workspace.value = 'Keep my note'
+    chooseSurface('browser')
+    fireEvent.click(screen.getByLabelText('Hide workspace — chat only'))
+    expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+    expect(screen.getByLabelText('Alldone workspace').hasAttribute('inert')).toBe(true)
+    expect(mockBrowserProps.active).toBe(false)
+    startBrowserActivity('background', 'brun_new')
+    expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+    showWorkspace()
+    expect(selectedSurface()).toBe('browser')
+    expect(mockBrowserProps.active).toBe(true)
+    expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+    expect(workspace.value).toBe('Keep my note')
+    expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+    expect(chat.value).toBe('Keep my message')
+    expect(mockUnmounts).toBe(0)
+})
+
+it('does not select a background browser while the user has hidden the Alldone workspace', () => {
+    render(content(1))
+    fireEvent.click(screen.getByLabelText('Hide workspace — chat only'))
+    startBrowserActivity()
+    showWorkspace()
+    expect(selectedSurface()).toBe('alldone')
+})
+
+it.each(['browser', 'vm:vm1'])('returns to the same Alldone page when closing chat from %s', surface => {
+    mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'running' }]
+    render(content(1))
+    const workspace = screen.getByLabelText('Real workspace editor')
+    chooseSurface(surface)
+    fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+    expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+    expect(document.querySelector('.anna-workspace').getAttribute('aria-hidden')).toBe('false')
+    act(() => setAnnaMode(true))
+    expect(selectedSurface()).toBe('alldone')
+    expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+    expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+})
+
+it('defers assistant presentation in chat-only mode until the user opens it', async () => {
+    const view = render(content(1))
+    fireEvent.click(screen.getByLabelText('Hide workspace — chat only'))
+    useAnnaConversation.mockReturnValue({
+        ...state,
+        conversation: {
+            ...conversation,
+            annaPresentation: {
+                id: 'hidden-presentation',
+                view: 'notes',
+                path: '/projects/notes/all',
+                title: 'Notes',
+                createdAt: Date.now(),
+            },
+        },
+    })
+    view.rerender(content(1))
+    expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+    expect(document.querySelector('.anna-conversation .anna-pending')).toBeTruthy()
+    await act(async () => screen.getByText('Open').click())
+    expect(URLTrigger.processUrl).toHaveBeenCalledWith({}, '/projects/notes/all')
+    expect(document.querySelector('.anna-chat-only')).toBeNull()
+})
+
+it('shows an empty VM workspace and keeps its session picker separate from the chat header', () => {
+    render(content(1))
+    chooseSurface('vms')
+    expect(document.querySelector('.anna-vms').textContent).toContain('No VM sessions yet')
+    expect(document.querySelector('.anna-header-picker select').options).toHaveLength(3)
+})
+
+it('saves keyboard resizing independently of pane visibility', () => {
+    render(content(1))
+    const divider = document.querySelector('.anna-divider')
+    const initial = Number(divider.getAttribute('aria-valuenow'))
+    act(() => divider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })))
+    expect(Number(divider.getAttribute('aria-valuenow'))).toBe(initial + 20)
+    expect(window.localStorage.getItem('anna-chat-width:u1')).toBe(String(initial + 20))
+    fireEvent.click(screen.getByLabelText('Hide workspace — chat only'))
+    showWorkspace()
+    expect(Number(divider.getAttribute('aria-valuenow'))).toBe(initial + 20)
+})
 
 it.each(['edit', 'zoom'])('cancels pending result navigation when the user chooses to %s', async action => {
     jest.useFakeTimers()
@@ -237,7 +338,7 @@ it.each(['home', 'browser'])(
             screen.getByLabelText('Persistent conversation').value = 'Unsent next message'
             for (let i = 0; i < 80; i++) await act(async () => jest.advanceTimersByTime(50))
             expect(URLTrigger.processUrl).not.toHaveBeenCalled()
-            if (destination === 'browser') act(() => screen.getByText('Browser').click())
+            if (destination === 'browser') chooseSurface('browser')
             await act(async () => mockConversationProps.onSendingChange(false))
             if (destination === 'home') expect(URLTrigger.processUrl).toHaveBeenCalledWith({}, '/projects/tasks/open')
             else expect(URLTrigger.processUrl).not.toHaveBeenCalled()
@@ -253,6 +354,7 @@ it.each(['home', 'browser'])(
 
 beforeEach(() => {
     global.IS_REACT_ACT_ENVIRONMENT = true
+    window.localStorage.clear()
     setAnnaMode(true)
     mockAssistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
     mockUnmounts = 0
@@ -298,18 +400,18 @@ it('returns to the same Alldone view only when the browsing request finishes, in
         input.value = 'Unsent edit'
         const update = startBrowserActivity()
         update('running')
-        expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        expect(String(selectedSurface() === 'browser')).toBe('true')
         update('awaiting_user')
-        expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        expect(String(selectedSurface() === 'browser')).toBe('true')
         update('completed')
-        expect(screen.getByText('Alldone').getAttribute('aria-pressed')).toBe('true')
+        expect(String(selectedSurface() === 'alldone')).toBe('true')
         expect(screen.getByLabelText('Real workspace editor')).toBe(input)
         expect(input.value).toBe('Unsent edit')
         expect(URLTrigger.processUrl).not.toHaveBeenCalled()
         const second = startBrowserActivity('answer2')
-        expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        expect(String(selectedSurface() === 'browser')).toBe('true')
         second('completed')
-        expect(screen.getByText('Alldone').getAttribute('aria-pressed')).toBe('true')
+        expect(String(selectedSurface() === 'alldone')).toBe('true')
     } finally {
         visible.mockRestore()
     }
@@ -329,17 +431,12 @@ it.each(['manual', 'control', 'gesture', 'vm'])('preserves the user’s %s choic
                     .querySelector('.anna-browser-surface')
                     .dispatchEvent(new Event('pointerdown', { bubbles: true }))
             )
-        else
-            fireEvent.click(
-                choice === 'manual'
-                    ? screen.getByText('Browser')
-                    : screen.getByLabelText('VM: Launch report — initiated')
-            )
+        else chooseSurface(choice === 'manual' ? 'browser' : 'vm:vm1')
         update('completed')
-        expect(screen.getByText('Alldone').getAttribute('aria-pressed')).toBe('false')
+        expect(String(selectedSurface() === 'alldone')).toBe('false')
         if (choice === 'control') {
             act(() => mockBrowserProps.onSessionEnded('brun_1'))
-            expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+            expect(String(selectedSurface() === 'browser')).toBe('true')
         }
     } finally {
         visible.mockRestore()
@@ -355,9 +452,9 @@ it('ignores completion from a superseded browser and returns when the current se
         startBrowserActivity('answer2', 'brun_2')
         act(() => late({ data: () => ({ assistantRun: { status: 'completed' } }) }))
         act(() => mockBrowserProps.onSessionEnded('brun_1'))
-        expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+        expect(String(selectedSurface() === 'browser')).toBe('true')
         act(() => mockBrowserProps.onSessionEnded('brun_2'))
-        expect(screen.getByText('Alldone').getAttribute('aria-pressed')).toBe('true')
+        expect(String(selectedSurface() === 'alldone')).toBe('true')
     } finally {
         visible.mockRestore()
     }
@@ -365,12 +462,13 @@ it('ignores completion from a superseded browser and returns when the current se
 
 it('shows surface selection without manual Alldone control switches', () => {
     render(content(1))
-    const toolbar = document.querySelector('.anna-header .anna-workspace-toolbar')
+    const toolbar = document.querySelector('.anna-header-picker')
     expect(toolbar.textContent).toContain('Alldone')
     expect(toolbar.textContent).toContain('Browser')
     expect(toolbar.textContent).not.toContain('Take control')
     expect(toolbar.textContent).not.toContain('Let Carl Code Mentor continue')
-    expect(document.querySelector('.anna-stage .anna-workspace-toolbar')).toBeNull()
+    expect(document.querySelector('.anna-shell > .anna-header')).toBeNull()
+    expect(document.querySelector('.anna-conversation > .anna-header')).toBeTruthy()
     expect(document.querySelector('.anna-header').textContent).not.toContain('Looking at:')
 })
 
@@ -379,7 +477,7 @@ it('opens running VMs without remounting the chat or workspace and keeps focus o
     render(content(1))
     const input = screen.getByLabelText('Real workspace editor')
     input.value = 'Keep my edit'
-    fireEvent.click(screen.getByLabelText('VM: Launch report — initiated'))
+    chooseSurface('vm:vm1')
     expect(document.querySelector('.anna-vm-surface').textContent).toContain('Live VM Launch report')
     expect(document.querySelector('.anna-workspace').getAttribute('aria-hidden')).toBe('true')
     act(() =>
@@ -388,8 +486,8 @@ it('opens running VMs without remounting the chat or workspace and keeps focus o
             data: () => ({ runId: 'browser1', updatedAt: Date.now() }),
         })
     )
-    expect(screen.getByLabelText('VM: Launch report — initiated').getAttribute('aria-pressed')).toBe('true')
-    fireEvent.click(screen.getByText('Alldone'))
+    expect(String(selectedSurface() === 'vms')).toBe('true')
+    chooseSurface('alldone')
     expect(screen.getByLabelText('Real workspace editor')).toBe(input)
     expect(input.value).toBe('Keep my edit')
     expect(mockUnmounts).toBe(0)
@@ -427,7 +525,7 @@ it.each(['desktop', 'mobile'])(
             finishBrowsing('completed')
             if (device === 'mobile')
                 expect(document.querySelector('.anna-workspace-switcher select').value).toBe('browser')
-            else expect(screen.getByText('Browser').getAttribute('aria-pressed')).toBe('true')
+            else expect(String(selectedSurface() === 'browser')).toBe('true')
             // The original request card can unmount; only the shell owns the controller.
             view.rerender(
                 <AnnaShell routeId={2}>
@@ -461,7 +559,7 @@ it('passes page changes to the conversation instead of the header', async () => 
         document.title = 'Alldone.app - Notes'
         await act(async () => jest.advanceTimersByTime(1000))
         expect(mockConversationProps.pageContext.title).toBe('Alldone.app - Notes')
-        await act(async () => screen.getByText('Browser').click())
+        chooseSurface('browser')
         await act(async () =>
             mockBrowserProps.onPageChange({ title: 'Opened website', url: 'https://example.com/page' })
         )
@@ -529,7 +627,7 @@ it('preserves both editors when zooming out and back without remounting the work
     const chat = screen.getByLabelText('Persistent conversation')
     workspace.value = 'Work in progress'
     chat.value = 'Unsent message'
-    fireEvent.click(screen.getByText('Zoom in Alldone'))
+    fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
     act(() => setAnnaMode(true))
     expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
@@ -568,8 +666,7 @@ it('switches mobile panes without removing the workspace or chat', async () => {
     render(content(1))
     const stage = screen.getByLabelText('Alldone workspace')
     expect(stage.getAttribute('aria-hidden')).toBe('true')
-    const tabs = document.querySelector('.anna-mobile-tabs')
-    fireEvent.click([...tabs.querySelectorAll('button')].find(button => button.textContent === 'Workspace'))
+    showWorkspace()
     expect(stage.getAttribute('aria-hidden')).toBe('false')
     expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
     expect(screen.getByLabelText('Real workspace editor')).toBeTruthy()
@@ -584,14 +681,13 @@ it('selects mobile workspace surfaces and follows browser completion without los
     mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'running' }]
     try {
         render(content(1))
-        expect(document.querySelector('.anna-header .anna-workspace-toolbar')).toBeNull()
+        expect(document.querySelector('.anna-header-picker')).toBeTruthy()
         expect(document.querySelector('.anna-workspace-switcher')).toBeNull()
         const editor = screen.getByLabelText('Real workspace editor')
         editor.value = 'My unsaved workspace edit'
         const chat = screen.getByLabelText('Persistent conversation')
         chat.value = 'My unsent chat message'
-        const tabs = document.querySelector('.anna-mobile-tabs')
-        fireEvent.click([...tabs.querySelectorAll('button')].find(button => button.textContent === 'Workspace'))
+        showWorkspace()
         const selector = document.querySelector('.anna-stage select')
         const choose = value =>
             act(() => {
@@ -600,8 +696,10 @@ it('selects mobile workspace surfaces and follows browser completion without los
             })
         expect(selector.value).toBe('alldone')
         expect([...selector.options].map(option => option.textContent)).toEqual([
+            'Back to chat',
             'Alldone',
             'Browser',
+            'VMs',
             'VM · Launch report — running',
         ])
         const finishBrowser = startBrowserActivity()
@@ -617,7 +715,7 @@ it('selects mobile workspace surfaces and follows browser completion without los
         choose('alldone')
         expect(screen.getByLabelText('Real workspace editor')).toBe(editor)
         expect(editor.value).toBe('My unsaved workspace edit')
-        fireEvent.click([...tabs.querySelectorAll('button')].find(button => button.textContent === 'Chat'))
+        showChat()
         expect(document.querySelector('.anna-workspace-switcher')).toBeNull()
         expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
         expect(chat.value).toBe('My unsent chat message')

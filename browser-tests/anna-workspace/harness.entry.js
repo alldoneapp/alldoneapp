@@ -8,12 +8,16 @@ import { getWorkspaceTasks, subscribeWorkspaceTasks } from './services'
 import alldoneFont from '../../assets/fonts/alldone.ttf'
 import useModalSizing from '../../hooks/useModalSizing'
 import LoadingData from '../../components/UIComponents/LoadingData'
+import Quill from 'quill'
+import Autoformat from '../../components/Feeds/CommentsTextInput/autoformat/modules/autoformat'
+import 'quill/dist/quill.snow.css'
 import {
     FLOATING_ACTION_SIZE,
     FLOATING_ACTION_VIEWPORT_GAP,
     getFloatingActionBottom,
 } from '../../components/UIComponents/floatingActionLayout'
 window.zoomAnna = setAnnaMode
+Quill.register('modules/autoformat', Autoformat, true)
 // Use the task board's shared action geometry without the task-creation transport.
 function FloatingTaskActionFixture() {
     const { safeAreaInsets } = useModalSizing()
