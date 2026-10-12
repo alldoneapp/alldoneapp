@@ -345,7 +345,17 @@ const searchRecordings = string => {
     return !string.search('video-record') || !string.search('screen-record')
 }
 
-export const updateNewAttachmentsData = async (projectId, text) => {
+export const hasPendingDescriptionAttachments = text =>
+    text.split(/\s+/).some(word => {
+        if (REGEX_ATTACHMENT.test(word)) return getAttachmentData(word).isNew === NEW_ATTACHMENT
+        if (REGEX_IMAGE.test(word)) return getImageData(word).isNew === NEW_ATTACHMENT
+        if (REGEX_VIDEO.test(word)) return getVideoData(word).isNew === NEW_ATTACHMENT
+        return false
+    })
+
+// Autosave must reject failed uploads instead of persisting session-local blob URLs.
+// Other submit flows retain their existing best-effort behaviour.
+export const updateNewAttachmentsData = async (projectId, text, { strict = false, uploadedTokens } = {}) => {
     return runWithLoading('upload_comment_attachments', async () => {
         const words = text.split(' ')
 
@@ -354,6 +364,10 @@ export const updateNewAttachmentsData = async (projectId, text) => {
 
         for (let i = 0; i < words.length; i++) {
             const word = words[i]
+            if (uploadedTokens?.has(word)) {
+                words[i] = uploadedTokens.get(word)
+                continue
+            }
             if (REGEX_ATTACHMENT.test(word)) {
                 const { attachmentText, uri, isNew } = getAttachmentData(word)
                 if (isNew === NEW_ATTACHMENT) {
@@ -365,6 +379,7 @@ export const updateNewAttachmentsData = async (projectId, text) => {
                         words[i] =
                             `${ATTACHMENT_TRIGGER}${attachmentUri}${ATTACHMENT_TRIGGER}${attachmentText}${ATTACHMENT_TRIGGER}${false}`
                     } catch (error) {
+                        if (strict) throw error
                         // Leave the word untouched: the comment still posts.
                     }
                 }
@@ -383,7 +398,9 @@ export const updateNewAttachmentsData = async (projectId, text) => {
                         const file = await HelperFunctions.convertURItoBlob(uri, imageText)
                         imageUri = await Backend.storeAttachment(projectId, file, false)
                         uploaded = true
-                    } catch (error) {}
+                    } catch (error) {
+                        if (strict) throw error
+                    }
 
                     // Only mark it as stored when it really was. Stamping OLD_ATTACHMENT on
                     // a failed upload persisted the local `blob:` uri as if it were a
@@ -407,10 +424,12 @@ export const updateNewAttachmentsData = async (projectId, text) => {
                               : await Backend.storeAttachment(projectId, file, false)
                         words[i] = `${VIDEO_TRIGGER}${videoUri}${VIDEO_TRIGGER}${videoText}${VIDEO_TRIGGER}${false}`
                     } catch (error) {
+                        if (strict) throw error
                         // Leave the word untouched: the comment still posts.
                     }
                 }
             }
+            if (word !== words[i]) uploadedTokens?.set(word, words[i])
         }
 
         return words.join(' ')

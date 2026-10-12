@@ -3418,5 +3418,7 @@
     "Let %{assistantName} continue": "Let %{assistantName} continue",
     "Browser viewport for %{assistantName}": "Browser viewport for %{assistantName}",
     "The browser used by %{assistantName} will appear here when browsing.": "The browser used by %{assistantName} will appear here when browsing.",
-    "Assistant views": "Assistant views"
+    "Assistant views": "Assistant views",
+    "Description saved": "Saved",
+    "Description autosave failed": "Could not save. Your draft is kept in this session. Please try again."
 }
