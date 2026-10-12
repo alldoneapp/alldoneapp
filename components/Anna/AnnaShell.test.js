@@ -28,6 +28,7 @@ afterEach(() => {
 import AnnaShell from './AnnaShell'
 import useAnnaConversation from './useAnnaConversation'
 import URLTrigger from '../../URLSystem/URLTrigger'
+import NavigationService from '../../utils/NavigationService'
 import { setAnnaMode, setAnnaLayout } from '../../utils/annaMode'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import DefaultAssistantButton from '../SidebarMenu/DefaultAssistantButton'
@@ -123,7 +124,10 @@ jest.mock('../../utils/backends/firestore', () => ({
         }),
     }),
 }))
-jest.mock('../../utils/NavigationService', () => ({ __esModule: true, default: { createNavigationProp: () => ({}) } }))
+jest.mock('../../utils/NavigationService', () => ({
+    __esModule: true,
+    default: { createNavigationProp: () => ({}), navigate: jest.fn() },
+}))
 jest.mock('../../URLSystem/URLTrigger', () => ({
     __esModule: true,
     default: { processUrl: jest.fn().mockResolvedValue(undefined) },
@@ -131,6 +135,10 @@ jest.mock('../../URLSystem/URLTrigger', () => ({
 jest.mock('../../redux/actions', () => ({
     showGlobalSearchPopup: () => ({ type: 'SEARCH' }),
     hideWebSideBar: () => ({ type: 'HIDE_SIDEBAR' }),
+    hideFloatPopup: () => ({ type: 'HIDE_FLOAT_POPUP' }),
+    hideGlobalSearchPopup: () => ({ type: 'HIDE_SEARCH' }),
+    setGlobalSearchResults: results => ({ type: 'SEARCH_RESULTS', results }),
+    navigateToAllProjectsTasks: options => ({ type: 'ALL_PROJECTS_TASKS', options }),
 }))
 jest.mock('../../i18n/TranslationService', () => ({
     translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
@@ -727,10 +735,15 @@ it('holds assistant navigation during browser control until Open is clicked', as
 it.each([
     ['mobile', 'alldone'],
     ['mobile', 'workspace'],
+    ['mobile', 'chat'],
+    ['mobile', 'chat-only'],
     ['desktop', 'alldone'],
     ['desktop', 'workspace'],
     ['desktop', 'chat'],
-])('opens the chat from the default assistant sidebar button on %s from %s', (device, start) => {
+    ['desktop', 'chat-only'],
+    ['desktop', 'browser'],
+    ['desktop', 'vm:vm1'],
+])('toggles the chat and opens Home from the default assistant sidebar button on %s from %s', (device, start) => {
     const originalMatchMedia = window.matchMedia
     mockMobileNavigation = device === 'mobile'
     window.matchMedia = () => ({
@@ -739,23 +752,38 @@ it.each([
         removeEventListener: jest.fn(),
     })
     try {
+        mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'running' }]
         render(content(1, true))
-        const workspace = screen.getByLabelText('Real workspace editor')
         const chat = screen.getByLabelText('Persistent conversation')
-        workspace.value = 'Keep my note draft'
         chat.value = 'Keep my chat draft'
         if (start === 'alldone') fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
         else if (start === 'workspace') chooseSurface('alldone')
+        else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
+        else if (start === 'browser' || start.startsWith('vm:')) chooseSurface(start)
 
-        fireEvent.click(screen.getByLabelText('Anna Alldone'))
-        expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
-        expect(screen.getByLabelText('Conversation with Carl Code Mentor').getAttribute('aria-hidden')).toBe('false')
-        expect(document.activeElement).toBe(screen.getByLabelText('Conversation with Carl Code Mentor'))
-        expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe(
-            device === 'mobile' ? 'true' : 'false'
-        )
-        expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
-        expect(workspace.value).toBe('Keep my note draft')
+        for (const opens of [start === 'alldone', start !== 'alldone']) {
+            fireEvent.click(screen.getByLabelText('Anna Alldone'))
+            expect(screen.getByLabelText('Anna Alldone').getAttribute('aria-expanded')).toBe(String(opens))
+            expect(screen.getByLabelText('Conversation with Carl Code Mentor').getAttribute('aria-hidden')).toBe(
+                String(!opens)
+            )
+            expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe(
+                String(opens && device === 'mobile')
+            )
+            if (opens) {
+                expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
+                expect(document.activeElement).toBe(screen.getByLabelText('Conversation with Carl Code Mentor'))
+                if (device === 'desktop') expect(selectedSurface()).toBe('alldone')
+            } else expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+            expect(mockDispatch).toHaveBeenLastCalledWith([
+                { type: 'HIDE_FLOAT_POPUP' },
+                { type: 'HIDE_SEARCH' },
+                { type: 'SEARCH_RESULTS', results: null },
+                { type: 'ALL_PROJECTS_TASKS', options: { taskViewToggleSection: 'Open', taskViewToggleIndex: 0 } },
+            ])
+            expect(NavigationService.navigate).toHaveBeenLastCalledWith('Root')
+        }
+        expect(NavigationService.navigate).toHaveBeenCalledTimes(2)
         expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
         expect(chat.value).toBe('Keep my chat draft')
         expect(mockUnmounts).toBe(0)
