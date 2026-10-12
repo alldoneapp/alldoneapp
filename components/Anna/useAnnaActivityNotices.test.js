@@ -24,6 +24,7 @@ const addFeeds = feeds => {
     render()
 }
 beforeEach(() => {
+    jest.useFakeTimers({ now: 1000 })
     localStorage.clear()
     global.IS_REACT_ACT_ENVIRONMENT = true
     now = jest.spyOn(Date, 'now').mockReturnValue(1000)
@@ -40,6 +41,98 @@ beforeEach(() => {
 afterEach(() => {
     act(() => root.unmount())
     now.mockRestore()
+    jest.useRealTimers()
+})
+
+it('does not retain a chat notification cleared by automatic read handling before the badge settles', () => {
+    render()
+    mockState.projectChatNotifications = {
+        p1: {
+            totalFollowed: 1,
+            anna: { totalFollowed: 1, followedNotifications: [{ commentId: 'visible-reply', date: 2000 }] },
+        },
+    }
+    render()
+    // An already-visible assistant reply is immediately acknowledged by useAnnaMessageReadState.
+    mockState.projectChatNotifications = {}
+    render()
+    act(() => jest.advanceTimersByTime(1000))
+    expect(notices).toEqual([])
+    expect(localStorage.length).toBe(0)
+})
+
+it('rechecks the exact message, not just whether some other chat keeps the badge red', () => {
+    render()
+    const chat = id => ({ totalFollowed: 1, followedNotifications: [{ commentId: id, date: 2000 }] })
+    mockState.projectChatNotifications = {
+        p1: { totalFollowed: 2, anna: chat('visible-reply'), other: chat('unread-reply') },
+    }
+    render()
+    mockState.projectChatNotifications = { p1: { totalFollowed: 1, other: chat('unread-reply') } }
+    render()
+    act(() => jest.advanceTimersByTime(1000))
+    expect(notices.map(notice => notice.id)).toEqual(['chat/p1/other/unread-reply'])
+    // Once a genuine arrival was shown, reading it must still preserve its history.
+    mockState.projectChatNotifications = {}
+    render()
+    expect(notices.map(notice => notice.id)).toEqual(['chat/p1/other/unread-reply'])
+})
+
+it.each(['open chat', 'archived project', 'disabled', 'account switch', 'unmount'])(
+    'cancels an unconfirmed notice after %s',
+    change => {
+        render()
+        mockState.projectChatNotifications = {
+            p1: {
+                totalFollowed: 1,
+                totalUnfollowed: 0,
+                other: {
+                    totalFollowed: 1,
+                    totalUnfollowed: 0,
+                    followedNotifications: [{ commentId: 'new', date: 2000 }],
+                },
+            },
+        }
+        render()
+        if (change === 'open chat') {
+            mockState.activeChatData = { projectId: 'p1', chatId: 'other', chatType: 'tasks' }
+            render()
+        } else if (change === 'archived project') {
+            mockState.loggedUser = { ...mockState.loggedUser, archivedProjectIds: ['p1'] }
+            render()
+        } else if (change === 'disabled') render({ enabled: false })
+        else if (change === 'account switch') render({ userId: 'u2' })
+        else {
+            act(() => root.unmount())
+            root = createRoot(container)
+        }
+        act(() => jest.advanceTimersByTime(1000))
+        expect(notices).toEqual([])
+        expect(localStorage.length).toBe(0)
+    }
+)
+
+it('does not postpone an earlier unread message when newer messages arrive', () => {
+    render()
+    const update = ids => {
+        mockState.projectChatNotifications = {
+            p1: {
+                totalFollowed: ids.length,
+                other: {
+                    totalFollowed: ids.length,
+                    followedNotifications: ids.map(commentId => ({ commentId, date: 2000 })),
+                },
+            },
+        }
+        render()
+    }
+    update(['first'])
+    act(() => jest.advanceTimersByTime(200))
+    update(['first', 'second'])
+    act(() => jest.advanceTimersByTime(100))
+    expect(notices.map(notice => notice.id)).toEqual(['chat/p1/other/first'])
+    act(() => jest.advanceTimersByTime(200))
+    expect(notices.map(notice => notice.id)).toEqual(['chat/p1/other/first', 'chat/p1/other/second'])
 })
 
 it('baselines existing unread items and delayed historical snapshots, then records new arrivals once', () => {
@@ -67,6 +160,7 @@ it('detects each new message even when the unread total stays the same', () => {
             },
         }
         render()
+        act(() => jest.advanceTimersByTime(300))
     }
     setChat('message1')
     setChat('message2')
@@ -107,6 +201,7 @@ it('does not turn stale payloads into notices while the corresponding red count 
     mockState.projectChatNotifications.p1.totalFollowed = 1
     mockState.projectChatNotifications = { ...mockState.projectChatNotifications }
     render()
+    act(() => jest.advanceTimersByTime(300))
     expect(notices).toHaveLength(2)
     mockState.followedFeedsAmount = 0
     mockState.projectChatNotifications = {}
@@ -123,6 +218,7 @@ it('includes red-counted notifications without applying a second, different thre
         },
     }
     addFeeds([feed('own-but-counted', 2000, { creatorId: 'u1' })])
+    act(() => jest.advanceTimersByTime(300))
     expect(notices).toHaveLength(2)
 })
 
