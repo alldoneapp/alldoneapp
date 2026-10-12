@@ -35,6 +35,7 @@ import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
+import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 
 const INLINE_COMMENT_ELEMENT_TYPES = new Set([TEXT_ELEMENT, HASH_ELEMENT, URL_ELEMENT, MENTION_ELEMENT, EMAIL_ELEMENT])
 
@@ -231,7 +232,7 @@ export default function Comment({
 
     const { commentText, lastChangeDate, creatorId } = comment
 
-    const { photoURL, displayName } = useGetUserPresentationData(creatorId)
+    const { photoURL, displayName, isAssistant } = useGetUserPresentationData(creatorId)
 
     const textsFiltered = divideQuotedText(commentText, 'quote')
 
@@ -397,7 +398,16 @@ export default function Comment({
         <View style={[localStyles.container, containerStyle]}>
             <View style={localStyles.commentBody}>
                 <View style={localStyles.commentHeader} testID="feed-comment-header">
-                    <Image style={localStyles.avatar} source={{ uri: photoURL }} />
+                    {isAssistant ? (
+                        <AssistantAvatar
+                            photoURL={photoURL?.uri || photoURL}
+                            assistantId={creatorId}
+                            size={24}
+                            containerStyle={{ marginRight: 8, flexShrink: 0 }}
+                        />
+                    ) : (
+                        <Image style={localStyles.avatar} source={{ uri: photoURL }} />
+                    )}
                     <Text style={[localStyles.name, { maxWidth: smallScreenNavigation ? 130 : 250 }]} numberOfLines={1}>
                         {displayName}
                     </Text>
@@ -499,6 +509,7 @@ const localStyles = StyleSheet.create({
     name: {
         ...styles.subtitle1,
         color: colors.Text04,
+        flexShrink: 1,
     },
     commentBody: {
         flex: 1,

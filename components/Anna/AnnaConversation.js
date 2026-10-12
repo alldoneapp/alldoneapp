@@ -3,7 +3,10 @@ import useGetMessages from '../../hooks/Chats/useGetMessages'
 import MessageItemBody from '../ChatsView/ChatDV/EditorView/MessageItemBody'
 import { getAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { getTimestampInMilliseconds } from '../ChatsView/Utils/ChatHelper'
-import { resolveEffectiveMessageLoading } from '../ChatsView/ChatDV/EditorView/messageLoadingState'
+import {
+    resolveEffectiveMessageLoading,
+    showsAssistantLiveActivity,
+} from '../ChatsView/ChatDV/EditorView/messageLoadingState'
 import { translate } from '../../i18n/TranslationService'
 import useAnnaMessageReadState from './useAnnaMessageReadState'
 import useAnnaContextNotices from './useAnnaContextNotices'
@@ -18,6 +21,19 @@ import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functio
 import { isBrowserOffline } from '../../utils/connectionState'
 import AnnaChatComposer from './AnnaChatComposer'
 import useAnnaDraft from './useAnnaDraft'
+import AnnaMessageAuthor from './AnnaMessageAuthor'
+
+const getMessageCreator = (message, user, assistant) => {
+    if (message.creatorId === user.uid && !message.fromAssistant) return user
+    const creator = getUserPresentationData(message.creatorId)
+    if (!creator?.isUnknownUser || !message.fromAssistant) return creator
+    const selectedCreator = assistant?.uid && message.creatorId === assistant.uid ? assistant : null
+    return {
+        displayName: selectedCreator?.displayName || translate('Assistant'),
+        photoURL: selectedCreator?.photoURL50,
+        isAssistant: true,
+    }
+}
 
 export default function AnnaConversation({
     conversation,
@@ -40,6 +56,16 @@ export default function AnnaConversation({
 }) {
     const contextNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
+    const [liveActivityThreads, setLiveActivityThreads] = useState(() => new Set())
+    const onLiveActivityChange = useCallback((key, visible) => {
+        setLiveActivityThreads(previous => {
+            if (previous.has(key) === visible) return previous
+            const next = new Set(previous)
+            if (visible) next.add(key)
+            else next.delete(key)
+            return next
+        })
+    }, [])
     // The draft belongs to the continuous conversation, including across midnight.
     const {
         initialText,
@@ -287,6 +313,7 @@ export default function AnnaConversation({
                         onRetry={retryMessage}
                         onAcknowledge={acknowledge}
                         onWorkStateChange={onWorkStateChange}
+                        onLiveActivityChange={onLiveActivityChange}
                         onChange={messagesChanged}
                         onLoadEarlier={preservePosition}
                         visible={visible}
@@ -302,7 +329,7 @@ export default function AnnaConversation({
                         }}
                     />
                 ))}
-                {sending && (
+                {sending && liveActivityThreads.size === 0 && (
                     <p className="anna-muted" role="status">
                         {translate('%{assistantName} is working…', { assistantName })}
                     </p>
@@ -429,11 +456,26 @@ function AnnaThreadMessages({
     onRetry,
     onAcknowledge,
     onWorkStateChange,
+    onLiveActivityChange,
 }) {
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [limit, setLimit] = useState(40)
     const chatId = thread.chatId || thread.id
     const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit)
+    // Match the body renderer, including its stale-run rule. Sending, errors and
+    // VM approval states still carry their own useful status messages.
+    const hasLiveActivity = messages.some(message =>
+        showsAssistantLiveActivity(
+            getMessageCreator(message, user, assistant)?.isAssistant,
+            resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate)),
+            message.assistantRun
+        )
+    )
+    useLayoutEffect(() => {
+        const key = `${thread.projectId}/${chatId}`
+        onLiveActivityChange(key, hasLiveActivity)
+        return () => onLiveActivityChange(key, false)
+    }, [thread.projectId, chatId, hasLiveActivity, onLiveActivityChange])
     const workStateKey = JSON.stringify(getAnnaWorkspaceWorkState(messages))
     useEffect(() => {
         if (current) onWorkStateChange?.({ projectId: thread.projectId, chatId, ...JSON.parse(workStateKey) })
@@ -530,11 +572,7 @@ function AnnaThreadMessages({
                         </p>
                     )
                 const own = message.creatorId === user.uid && !message.fromAssistant
-                const knownCreator = own ? user : getUserPresentationData(message.creatorId)
-                const creator =
-                    knownCreator?.isUnknownUser && message.fromAssistant
-                        ? { displayName: translate('Assistant'), isAssistant: true }
-                        : knownCreator
+                const creator = getMessageCreator(message, user, assistant)
                 return (
                     <article
                         key={message.id}
@@ -543,14 +581,7 @@ function AnnaThreadMessages({
                         data-anna-project-id={thread.projectId}
                         className={`anna-message ${own ? 'anna-message-user' : ''}`}
                     >
-                        <div className="anna-message-author">
-                            {own ? translate('You') : creator?.displayName}
-                            <time>
-                                {new Date(
-                                    getTimestampInMilliseconds(message.created || message.lastChangeDate)
-                                ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </time>
-                        </div>
+                        <AnnaMessageAuthor message={message} creator={creator} own={own} />
                         {message.local ? (
                             <div className="anna-message-text">{message.commentText}</div>
                         ) : (

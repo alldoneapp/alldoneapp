@@ -54,7 +54,10 @@ async function main() {
             const page = await browser.newPage({ viewport: { width, height: 800 }, reducedMotion: 'reduce' })
             page.setDefaultTimeout(10000)
             const errors = []
-            page.on('pageerror', error => errors.push(error.message))
+            page.on('pageerror', error => {
+                errors.push(error.message)
+                console.error(`Browser error: ${error.message}`)
+            })
             await page.goto(`http://127.0.0.1:${server.address().port}`)
             await page.getByTestId('surface-light').getByRole('button', { name: 'Assistent stoppen' }).waitFor()
             await page.evaluate(() => document.fonts.ready)
@@ -69,6 +72,44 @@ async function main() {
                 assert(target.x >= bounds.x && target.x + target.width <= bounds.x + bounds.width, 'button fits card')
                 assert(target.y + target.height < bounds.y + bounds.height, 'button stays inside card')
                 assert.equal(await card.getByTestId('assistant-progress-trail').getByRole('button').count(), 0)
+                for (const id of ['anna', 'carl', 'unknown']) {
+                    const author = surface.getByTestId(`author-${appearance}-${id}`)
+                    const header =
+                        appearance === 'light'
+                            ? author.locator('.anna-message-author')
+                            : author.getByTestId('feed-comment-header')
+                    const result = await header.evaluate(node => {
+                        const avatar = node.firstElementChild
+                        const name = node.children[1]
+                        const image = avatar.querySelector('img') || avatar.querySelector('svg')
+                        return {
+                            name: name.textContent,
+                            avatar: avatar.getBoundingClientRect().toJSON(),
+                            label: name.getBoundingClientRect().toJSON(),
+                            image: image?.getAttribute('src'),
+                            fallback: !!avatar.querySelector('svg'),
+                        }
+                    })
+                    assert.equal(
+                        result.name,
+                        id === 'anna'
+                            ? 'Anna Alldone'
+                            : id === 'carl'
+                              ? 'Carl Code Mentor mit einem sehr langen Assistentennamen'
+                              : 'Assistant'
+                    )
+                    assert(result.avatar.right <= result.label.x, 'avatar precedes name')
+                    assert(
+                        Math.abs(
+                            result.avatar.y + result.avatar.height / 2 - result.label.y - result.label.height / 2
+                        ) <= 1,
+                        'avatar and name aligned'
+                    )
+                    assert.equal(result.avatar.width, appearance === 'light' ? 20 : 24)
+                    if (id === 'unknown') assert(result.fallback, 'missing photo uses generic SVG')
+                    else assert(result.image?.startsWith('data:image/svg+xml'), 'uses actual assistant photo data')
+                    assert(result.label.right <= width, 'long names fit viewport')
+                }
             }
             assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no overflow')
             await page.screenshot({ path: path.join(output, `loading-${width}.png`) })
@@ -102,7 +143,7 @@ async function main() {
             ])
             assert.deepEqual(errors, [])
             console.log(
-                `PASS ${width}px: light/dark card containment, touch target, keyboard stop and shared pending state`
+                `PASS ${width}px: assistant avatars, fallback, long names, light/dark containment, keyboard stop and shared pending state`
             )
             await page.close()
         }

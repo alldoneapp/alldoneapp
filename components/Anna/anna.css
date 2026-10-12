@@ -216,12 +216,24 @@
 }
 .anna-message-author {
     display: flex;
-    gap: 12px;
+    gap: 6px;
     align-items: center;
     font-size: 12px;
     font-weight: 500;
     margin-bottom: 8px;
     color: var(--anna-muted);
+}
+.anna-message-avatar {
+    display: flex;
+    flex: none;
+    width: 20px;
+    height: 20px;
+}
+.anna-message-author-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .anna-message-text {
     white-space: pre-wrap;
@@ -237,6 +249,7 @@
 }
 .anna-message-author time {
     margin-left: auto;
+    flex-shrink: 0;
     font-size: 10px;
     font-weight: 400;
 }

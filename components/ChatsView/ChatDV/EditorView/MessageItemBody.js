@@ -30,7 +30,7 @@ import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import { markAlldoneChatsReadForLinkedEmails } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import VmInteractionCard from './VmInteractionCard'
 import BrowserApprovalCard from './BrowserApprovalCard'
-import { isAwaitingVmInteraction as hasAwaitingVmInteraction } from './messageLoadingState'
+import { isAwaitingVmInteraction as hasAwaitingVmInteraction, showsAssistantLiveActivity } from './messageLoadingState'
 import AssistantProgress from './AssistantProgress'
 import StopAssistantRunButton from './StopAssistantRunButton'
 
@@ -82,7 +82,7 @@ export default function MessageItemBody({
     // even if legacy/stale message-loading logic has already cleared isLoading.
     const isAwaitingVmInteraction = creatorData?.isAssistant && hasAwaitingVmInteraction(assistantRun)
     const isLoadingState = creatorData?.isAssistant && (isLoading || isAwaitingVmInteraction)
-    const showFriendlyAssistantProgress = isLoadingState && !isAwaitingVmInteraction && assistantRun?.kind === 'chat'
+    const showFriendlyAssistantProgress = showsAssistantLiveActivity(creatorData?.isAssistant, isLoading, assistantRun)
     const stopButton = (
         <StopAssistantRunButton
             projectId={projectId}
