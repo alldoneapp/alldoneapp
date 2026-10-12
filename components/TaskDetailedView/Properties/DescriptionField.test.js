@@ -10,6 +10,7 @@ import DescriptionField from './DescriptionField'
 import Backend from '../../../utils/BackendBridge'
 import { hasPendingDescriptionAttachments, updateNewAttachmentsData } from '../../Feeds/Utils/HelperFunctions'
 import { setTaskDescription } from '../../../utils/backends/Tasks/tasksFirestore'
+import { installAppResumeListener } from '../../../utils/appResume'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(),
@@ -201,6 +202,33 @@ describe('detail description autosave', () => {
         expect(setTaskDescription).toHaveBeenCalledTimes(2)
         expect(tree.root.findAllByType('Button')).toHaveLength(0)
     })
+
+    it.each(['visibilitychange', 'pagehide', 'freeze'])(
+        'flushes pending edits through the shared page lifecycle on %s before the debounce',
+        async signal => {
+            const stopLifecycle = installAppResumeListener()
+            const visibilityDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+            try {
+                updateNewAttachmentsData.mockImplementation(async (_project, text) => text)
+                const tree = mount({ object: { id: `lifecycle-${signal}`, description: 'Existing description' } })
+                act(() => tree.root.findByType('CustomTextInput3').props.onChangeText('pending before hiding'))
+                expect(setTaskDescription).not.toHaveBeenCalled()
+                Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+                await act(async () => {
+                    const target = signal === 'pagehide' ? window : document
+                    target.dispatchEvent(new Event(signal))
+                })
+                expect(setTaskDescription).toHaveBeenCalledTimes(1)
+                expect(setTaskDescription.mock.calls[0][2]).toBe('pending before hiding')
+                await act(async () => jest.advanceTimersByTime(1000))
+                expect(setTaskDescription).toHaveBeenCalledTimes(1)
+            } finally {
+                stopLifecycle()
+                if (visibilityDescriptor) Object.defineProperty(document, 'visibilityState', visibilityDescriptor)
+                else delete document.visibilityState
+            }
+        }
+    )
 
     it('never writes when read-only', async () => {
         const tree = mount({ disabled: true })

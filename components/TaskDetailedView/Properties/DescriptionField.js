@@ -20,6 +20,7 @@ import { updateAssistantDescription } from '../../../utils/backends/Assistants/a
 import { setTaskDescription } from '../../../utils/backends/Tasks/tasksFirestore'
 import AttachmentDropZone from '../../Feeds/CommentsTextInput/AttachmentDropZone'
 import { getDescriptionDraft } from './descriptionAutosave'
+import { subscribePageHidden } from '../../../utils/appResume'
 
 export default function DescriptionField(props) {
     const userId = useSelector(state => state.loggedUser?.uid)
@@ -98,18 +99,13 @@ function DescriptionEditor({ projectId, object, disabled, objectType, isCalendar
     }, [])
 
     useEffect(() => {
-        const onVisibilityChange = () => {
-            if (document.visibilityState === 'hidden') draft.flush()
-        }
-        document.addEventListener('visibilitychange', onVisibilityChange)
-        window.addEventListener('pagehide', draft.flush)
+        const unsubscribePageHidden = subscribePageHidden(draft.flush)
         const onOnline = () => {
             if (draft.pending) draft.flush()
         }
         window.addEventListener('online', onOnline)
         return () => {
-            document.removeEventListener('visibilitychange', onVisibilityChange)
-            window.removeEventListener('pagehide', draft.flush)
+            unsubscribePageHidden()
             window.removeEventListener('online', onOnline)
         }
     }, [draft])
