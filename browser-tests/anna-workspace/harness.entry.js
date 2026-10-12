@@ -1,9 +1,8 @@
-import React, { useContext, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { ScrollView, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import { createRoot } from 'react-dom/client'
 import AnnaShell from '../../components/Anna/AnnaShell'
-import AnnaWorkspaceNavigationContext from '../../components/Anna/AnnaWorkspaceNavigationContext'
 import { restoreAnnaLayout, setAnnaMode } from '../../utils/annaMode'
 import { GlobalOverlayFixture, OverlayLaunchers } from './overlay-fixture'
 import { getWorkspaceTasks, subscribeWorkspaceTasks } from './services'
@@ -151,16 +150,6 @@ function NoteWidthFixture() {
         </View>
     )
 }
-// Exercise the same navigation used by the sidebar independently of the mobile
-// dropdown, whose Alldone option now exits assistant mode.
-function WorkspaceNavigationFixture() {
-    const showWorkspace = useContext(AnnaWorkspaceNavigationContext)
-    useEffect(() => {
-        window.__annaShowWorkspace = showWorkspace
-        return () => delete window.__annaShowWorkspace
-    }, [showWorkspace])
-    return null
-}
 function Fixture() {
     const [dialog, setDialog] = useState(false)
     const [notifications, setNotifications] = useState(false)
@@ -177,7 +166,6 @@ function Fixture() {
             {new URLSearchParams(window.location.search).has('notificationParity') && <ActivityHistoryFixture />}
             <GlobalOverlayFixture dialog={dialog} notifications={notifications} closeDialog={() => setDialog(false)} />
             <AnnaShell routeId="fixture-note">
-                <WorkspaceNavigationFixture />
                 <ScrollView
                     testID="workspace-scroll"
                     style={{ flex: 1, minWidth: 0, backgroundColor: 'white' }}

@@ -3366,5 +3366,7 @@
     "Let %{assistantName} continue": "Dejar que %{assistantName} continúe",
     "Browser viewport for %{assistantName}": "Vista del navegador de %{assistantName}",
     "The browser used by %{assistantName} will appear here when browsing.": "El navegador de %{assistantName} aparecerá aquí cuando se use.",
-    "Assistant views": "Vistas del asistente"
+    "Assistant views": "Vistas del asistente",
+    "Description saved": "Guardado",
+    "Description autosave failed": "No se pudo guardar. Tu borrador se conserva en esta sesión. Inténtalo de nuevo."
 }

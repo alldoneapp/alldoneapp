@@ -2975,5 +2975,7 @@
     "Let %{assistantName} continue": "%{assistantName} fortfahren lassen",
     "Browser viewport for %{assistantName}": "Browseransicht von %{assistantName}",
     "The browser used by %{assistantName} will appear here when browsing.": "Der Browser von %{assistantName} erscheint hier, sobald er verwendet wird.",
-    "Assistant views": "Assistentenansichten"
+    "Assistant views": "Assistentenansichten",
+    "Description saved": "Gespeichert",
+    "Description autosave failed": "Speichern fehlgeschlagen. Dein Entwurf bleibt in dieser Sitzung erhalten. Bitte erneut versuchen."
 }
