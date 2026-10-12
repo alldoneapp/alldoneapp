@@ -3264,16 +3264,17 @@ browser before trusting a bigger change.
   minutes and **28% landing within 10 minutes of another**, so this is the ordinary case: 45
   days of history contain ~34 functions-side and ~30 web-side occurrences. Each target now
   keeps a marker — a git tag `deployed/<target>` moved **only after a successful deploy** — and
-  its scope is `git diff <marker> <HEAD>` against `ci/deploy-scope/<target>.paths`. That is
+  its scope uses `git diff <marker> <HEAD>` against `ci/deploy-scope/<target>.paths`
+  (Functions use the dependency graph described below). That is
   inherently catch-up: whatever a skipped pipeline left behind is still missing from the
   marker, so the next pipeline ships it alongside its own change, and a target whose paths
   have not moved is still skipped, so the steady-state deploy count is unchanged. `compute`
-  runs once per pipeline (`deploy_scope`) and publishes `deploy-scope.env`, so a build, its
+  runs once per pipeline (`deploy_scope`) and publishes `deploy-scope.env`, so a web build, its
   tests and its deploy can never disagree about whether they are shipping — which is why
   `build_web_production` and `test:web:full` are no longer `changes:`-scoped on master either
   (they feed `deploy:web` through `needs`, so being absent from the catch-up pipeline would
-  make `needs` unresolvable). Exit `76` means "already up to date", declared alongside `75` in
-  `allow_failure.exit_codes`. **Every uncertain path resolves to deploying**, never to
+  make `needs` unresolvable). Exit `76` means "already up to date" and the CI wrapper exits successfully;
+  only superseded exit `75` is an allowed warning. **Every uncertain path resolves to deploying**, never to
   skipping: a redundant deploy is visible and cheap, a silently skipped one ships nothing.
   Note a job with an explicit `needs` list loses the default "artifacts from all earlier
   stages", so it must name `deploy_scope` or it silently falls back to deploying always.
@@ -3285,6 +3286,29 @@ browser before trusting a bigger change.
   Tag pushes cannot trigger pipelines here — the `workflow` rules only admit pipelines that
   have `$CI_COMMIT_BRANCH`. Pinned by `__tests__/CiDeployScope.test.js`, which also fails the
   build if `ci/deploy-scope/web-production.paths` drifts from the `*web-relevant-paths` anchor.
+- **Functions deploy only affected exports.** `ci/selectFunctionsDeployment.js` parses
+  committed `functions/index.js`, follows entrypoint helpers and transitive local imports,
+  and compares both trees against `deployed/functions-production` (or `functions-staging`).
+  Shared modules select every importing export, including imports outside `functions/`.
+  Unreferenced tests/docs and unrelated frontend changes do not select backend functions.
+  `functions-deploy-scope.json` records names and reasons; partial selections deploy in
+  batches of at most ten via `ci/runFunctionsDeployment.js`. The isolated, pinned parser
+  dependencies live in `ci/function-scope-tools/`.
+  Selection refreshes inside the serialized Functions job, since an earlier deployment
+  can finish after the pipeline's initial scope calculation. Before Firebase starts,
+  `functions-begin` must successfully record `deployed/<target>-attempt`. If that attempt
+  differs from the last verified deployment, the next run reconciles all functions,
+  including a revert after a partially completed deployment. Success advances the normal
+  marker only after per-selected-function completion and the full live export inventory
+  are verified. Thus a failed batch never advances the successful marker.
+  Missing baselines/artifacts, removed exports, package/runtime/configuration changes,
+  unmapped runtime assets and `FUNCTIONS_DEPLOY_ALL=1` use full deployment. Unresolved
+  dynamic imports conservatively include their callers on possible source changes;
+  unsupported export syntax fails analysis instead of silently omitting a function.
+  CI stamps `functions/ci-deployment.json` into the uploaded package so runtime-only
+  changes cannot be skipped by Firebase's source hash. This file and the scope manifest
+  are generated and ignored by git. Environment changes outside git require
+  `FUNCTIONS_DEPLOY_ALL=1`; repository analysis cannot detect changed CI secret values.
 - **`resource_group` process mode is an API-only setting and defaults to `unordered`.** With
   the guard and the markers in place the default is safe (an out-of-order job skips and the
   next pipeline catches up), but `newest_first` gets the current commit live sooner and wastes

@@ -3,12 +3,9 @@
 // engines.node in package.json. firebase-tools skips a function whose source
 // hash is unchanged, and the runtime is not part of that hash, so moving the
 // runtime alone deploys nothing - it needs a source change to land.
-// CI gotcha: deploy:cloud:functions:production only runs when the pushed
-// commits diff under functions/** (or firebase.json). If that pipeline fails
-// before deploy, a follow-up fix that touches only root files goes green
-// WITHOUT redeploying functions - the next functions/** push carries both.
-// This also applies when the deploy jobs were created but skipped because an
-// earlier stage failed: the fix push needs its own functions/** diff.
+// CI selects exports and transitive local dependencies against the last verified
+// deployment. Partial failures force reconciliation; runtime-only changes receive
+// a generated source stamp. See ci/selectFunctionsDeployment.js and deployScope.sh.
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { setGlobalOptions } = require('firebase-functions/v2')
 const { onSchedule } = require('firebase-functions/v2/scheduler')

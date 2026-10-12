@@ -1,4 +1,6 @@
-# Paths whose change requires a Cloud Functions production deploy.
+# Broad Functions boundary retained for reference and guard coverage. Actual selection
+# is computed by ci/selectFunctionsDeployment.js, including transitive imports outside
+# functions/. This list alone must not be used to gate Functions deployments.
 #
 # firebase.json carries the functions runtime, region and ignore list, so a change there
 # has to redeploy them too.

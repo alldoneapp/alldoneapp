@@ -100,19 +100,37 @@ exports.runManualTaskProjectMove = onTaskDispatched({}, worker)
     it.each(['production', 'staging'])('preserves a failed Firebase exit through log capture in %s', environment => {
         const config = yaml.load(fs.readFileSync(path.resolve(__dirname, '../.gitlab-ci.yml'), 'utf8'))
         const job = config[`deploy:cloud:functions:${environment}`]
-        const deploy = job.script.find(line => line.includes('firebase deploy'))
+        const deploy = job.script.find(line => line.includes('runFunctionsDeployment.js'))
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'firebase-deploy-'))
         try {
+            fs.mkdirSync(path.join(dir, 'ci'))
+            fs.mkdirSync(path.join(dir, 'functions'))
+            fs.writeFileSync(path.join(dir, 'functions/index.js'), source)
+            for (const file of [
+                'runFunctionsDeployment.js',
+                'functionsDeploymentPlan.js',
+                'assertFirebaseFunctionsDeployed.js',
+            ])
+                fs.copyFileSync(path.resolve(__dirname, '../ci', file), path.join(dir, 'ci', file))
             fs.writeFileSync(path.join(dir, 'firebase'), '#!/bin/sh\necho "failed deploy"\nexit 17\n', { mode: 0o755 })
             // The Alpine web-test image has BusyBox sh, not bash. Both that
             // shell and macOS sh support the deployment block's pipefail.
             const run = spawnSync('/bin/sh', ['-c', deploy], {
                 encoding: 'utf8',
-                env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, CI_PROJECT_DIR: dir },
+                env: {
+                    ...process.env,
+                    PATH: `${dir}:${process.env.PATH}`,
+                    CI_PROJECT_DIR: dir,
+                    CI_COMMIT_SHA: 'fixture-head',
+                },
             })
             expect(run.error).toBeUndefined()
             expect(run.status).toBe(17)
             expect(fs.readFileSync(path.join(dir, 'functions-deploy.log'), 'utf8')).toContain('failed deploy')
+            const attempt = job.script.findIndex(line => line.includes('deployScope.sh functions-begin'))
+            expect(attempt).toBeGreaterThan(job.script.findIndex(line => line.includes('assertNewestCommit.sh')))
+            expect(attempt).toBeLessThan(job.script.indexOf(deploy))
+            expect(job.before_script.some(line => line.includes(`functions-plan functions-${environment}`))).toBe(true)
             const verification = job.script.findIndex(line => line.includes('assertFirebaseFunctionsDeployed.js'))
             expect(verification).toBeGreaterThan(job.script.indexOf(deploy))
             expect(job.script[verification]).toContain('$CI_PROJECT_DIR/functions-deploy.log')

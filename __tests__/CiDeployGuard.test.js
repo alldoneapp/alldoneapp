@@ -12,7 +12,7 @@ const CI_CONFIG = yaml.load(fs.readFileSync(path.join(REPO_ROOT, '.gitlab-ci.yml
 const SUPERSEDED_EXIT_CODE = 75
 
 // A job "deploys" if it runs one of these. Read-only checks and endpoint pings do not count.
-const DEPLOY_COMMAND = /firebase deploy|deploy\.sh/
+const DEPLOY_COMMAND = /firebase deploy|deploy\.sh|runFunctionsDeployment\.js/
 const RUNS_ON_DEFAULT_BRANCH = /==\s*\$CI_DEFAULT_BRANCH/
 
 /**

@@ -2,6 +2,7 @@
 'use strict'
 
 const fs = require('fs')
+const { readPlan } = require('./functionsDeploymentPlan')
 
 function exportedFunctionNames(source) {
     return [...source.matchAll(/^exports\.([A-Za-z_$][\w$]*)\s*=/gm)].map(match => match[1])
@@ -23,10 +24,10 @@ function findMissingFunctions(source, functionsList) {
     return exportedFunctionNames(source).filter(name => !deployed.has(name))
 }
 
-function assertCompletedDeployment(source, log) {
+function assertCompletedDeployment(source, log, selectedNames = exportedFunctionNames(source)) {
     // firebase-tools 13.29.3 can exit zero with work still missing after quota
     // retries. An existing function is not evidence that this deploy updated it.
-    // Require a terminal result for every export, including hash-verified no-ops.
+    // Require a terminal result for every selected export, including hash-verified no-ops.
     const plainLog = log.replace(/\x1b\[[0-9;]*m/g, '')
     const completed = new Set(
         [
@@ -35,7 +36,7 @@ function assertCompletedDeployment(source, log) {
             ),
         ].map(match => match[1])
     )
-    const missing = exportedFunctionNames(source).filter(name => !completed.has(name))
+    const missing = selectedNames.filter(name => !completed.has(name))
     if (missing.length) {
         throw new Error(`No completed deployment result for: ${missing.join(', ')}`)
     }
@@ -53,11 +54,18 @@ async function readStdin() {
 async function main() {
     const sourcePath = process.argv[2]
     const logPath = process.argv[3]
+    const planPath = process.argv[4]
     if (!sourcePath || !logPath)
-        throw new Error('Usage: assertFirebaseFunctionsDeployed.js <functions/index.js> <deploy.log>')
+        throw new Error(
+            'Usage: assertFirebaseFunctionsDeployed.js <functions/index.js> <deploy.log> [functions-deploy-scope.json]'
+        )
 
     const source = fs.readFileSync(sourcePath, 'utf8')
-    assertCompletedDeployment(source, fs.readFileSync(logPath, 'utf8'))
+    const selectedNames = planPath
+        ? readPlan(planPath, exportedFunctionNames(source), process.env.CI_COMMIT_SHA).names
+        : exportedFunctionNames(source)
+    if (!selectedNames.length) throw new Error('Cannot verify an empty Functions deployment')
+    assertCompletedDeployment(source, fs.readFileSync(logPath, 'utf8'), selectedNames)
     const functionsList = JSON.parse(await readStdin())
     const missing = findMissingFunctions(source, functionsList)
     if (missing.length > 0) {
@@ -65,7 +73,7 @@ async function main() {
     }
 
     process.stdout.write(
-        `Verified completed deployment and presence of ${exportedFunctionNames(source).length} Firebase Functions.\n`
+        `Verified completed deployment of ${selectedNames.length} selected Functions and presence of all ${exportedFunctionNames(source).length} exports.\n`
     )
 }
 
