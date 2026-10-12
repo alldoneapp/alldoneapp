@@ -658,6 +658,13 @@ export const getUnknownUserData = () => {
     }
 }
 
+export const getAssistantPresentationData = assistant => ({
+    photoURL: assistant.photoURL50 || getUnknownUserData().photoURL,
+    displayName: assistant.displayName,
+    shortName: HelperFunctions.getFirstName(assistant.displayName),
+    isAssistant: true,
+})
+
 export const getUserPresentationData = userId => {
     if (userId) {
         const user = TasksHelper.getUser(userId)
@@ -671,12 +678,7 @@ export const getUserPresentationData = userId => {
         }
         const assistant = getAssistant(userId)
         if (assistant) {
-            return {
-                photoURL: assistant.photoURL50 || getUnknownUserData().photoURL,
-                displayName: assistant.displayName,
-                shortName: HelperFunctions.getFirstName(assistant.displayName),
-                isAssistant: true,
-            }
+            return getAssistantPresentationData(assistant)
         }
     }
     return getUnknownUserData()

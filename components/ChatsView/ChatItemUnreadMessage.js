@@ -42,7 +42,7 @@ export default function ChatItemUnreadMessage({
     onPress,
     compact = false,
 }) {
-    const creatorData = useGetUserPresentationData(message.creatorId)
+    const creatorData = useGetUserPresentationData(message.creatorId, { fromAssistant: message.fromAssistant })
 
     // Same staleness rule as the thread, so a preview never shows a spinner the thread has
     // already given up on.
