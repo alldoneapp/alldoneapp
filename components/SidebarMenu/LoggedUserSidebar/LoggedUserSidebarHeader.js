@@ -13,6 +13,7 @@ import {
 } from '../../../redux/actions'
 import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
+import DefaultAssistantButton from '../DefaultAssistantButton'
 
 export default function LoggedUserSidebarHeader({ navigation, expanded, scrollView }) {
     const dispatch = useDispatch()
@@ -44,10 +45,16 @@ export default function LoggedUserSidebarHeader({ navigation, expanded, scrollVi
 
     return (
         <View style={[styles.container, !expanded && styles.containerCollapsed]}>
-            <TouchableOpacity style={styles.brand} onPress={onPressLogo}>
+            <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Alldone.app"
+                style={styles.brand}
+                onPress={onPressLogo}
+            >
                 <Icon size={24} name={'logo'} color={theme.logoColor} />
                 {expanded && <Icon style={styles.logoText} size={24} name={'logo-name'} color={theme.logoNameColor} />}
             </TouchableOpacity>
+            {expanded && <DefaultAssistantButton />}
         </View>
     )
 }

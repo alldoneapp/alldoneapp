@@ -58,7 +58,6 @@ export default function AnnaActivityNotice({ notice, onChange }) {
     return (
         <p className="anna-context-notice anna-activity-notice">
             <a href={notice.path}>
-                <span className="anna-activity-dot" aria-hidden="true" />
                 <span className="anna-activity-content">
                     <span className="anna-activity-title">{getAnnaActivityLabel({ ...notice, content })}</span>
                     {content?.preview ? <span className="anna-activity-preview">{content.preview}</span> : null}

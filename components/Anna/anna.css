@@ -198,13 +198,6 @@
 .anna-activity-notice a > :last-child {
     flex-shrink: 0;
 }
-.anna-activity-notice .anna-activity-dot {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--anna-unread);
-}
 .anna-messages {
     overflow: auto;
     flex: 1;
@@ -360,6 +353,13 @@
 }
 .anna-composer-toolbar {
     justify-content: space-between;
+}
+.anna-composer-attachment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
 }
 .anna-send {
     width: 40px;

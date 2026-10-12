@@ -3,7 +3,7 @@ import { ScrollView, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import { createRoot } from 'react-dom/client'
 import AnnaShell from '../../components/Anna/AnnaShell'
-import { setAnnaMode } from '../../utils/annaMode'
+import { restoreAnnaLayout, setAnnaMode } from '../../utils/annaMode'
 import { GlobalOverlayFixture, OverlayLaunchers } from './overlay-fixture'
 import { getWorkspaceTasks, subscribeWorkspaceTasks } from './services'
 import {
@@ -26,6 +26,27 @@ import {
     getFloatingActionBottom,
 } from '../../components/UIComponents/floatingActionLayout'
 window.zoomAnna = setAnnaMode
+restoreAnnaLayout()
+// Keep real Quill insertion/serialization while isolating each visual embed
+// from the production object's subscriptions and download transport.
+const Embed = Quill.import('blots/embed')
+for (const name of ['hashtag', 'mention', 'url', 'email', 'attachment', 'customImageFormat', 'videoFormat']) {
+    class FixtureEmbed extends Embed {
+        static create(value) {
+            const node = super.create()
+            node.dataset.value = JSON.stringify(value)
+            node.textContent = value.text || value.url || value.email || ''
+            return node
+        }
+        static value(node) {
+            return JSON.parse(node.dataset.value)
+        }
+    }
+    FixtureEmbed.blotName = name
+    FixtureEmbed.tagName = 'span'
+    FixtureEmbed.className = `fixture-${name}`
+    Quill.register(FixtureEmbed, true)
+}
 Quill.register('modules/autoformat', Autoformat, true)
 function ActivityHistoryFixture() {
     const feedCount = useSelector(getFollowedFeedAmount)

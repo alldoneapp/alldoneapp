@@ -1,10 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
-import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
+import { STAYWARD_COMMENT, updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
+import { NEW_ATTACHMENT } from '../Feeds/CommentsTextInput/textInputHelper'
+import {
+    REGEX_ATTACHMENT,
+    REGEX_IMAGE,
+    REGEX_VIDEO,
+    getAttachmentData,
+    getImageData,
+    getVideoData,
+} from '../../functions/Utils/parseTextUtils'
 import { getDb, getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { translate } from '../../i18n/TranslationService'
 import { flushAnnaActivityContext } from './annaActivityContext'
+
+const hasNewAttachments = text =>
+    text.split(' ').some(word => {
+        if (REGEX_ATTACHMENT.test(word)) return getAttachmentData(word).isNew === NEW_ATTACHMENT
+        if (REGEX_IMAGE.test(word)) return getImageData(word).isNew === NEW_ATTACHMENT
+        if (REGEX_VIDEO.test(word)) return getVideoData(word).isNew === NEW_ATTACHMENT
+        return false
+    })
 
 // Keep each submission separate from the next draft and from other assistant
 // runs. Its permanent outbox ID is also the backend's idempotency key on retry.
@@ -69,6 +86,14 @@ export default function useAnnaMessageSends({
                 publish()
                 if (!job.continuation) await onBeforeSend?.()
                 if (!isActive()) return null
+                if (!job.locallySaved && hasNewAttachments(job.text)) {
+                    // Keep successful uploads on the job so retry only uploads the
+                    // remaining files, in the authoritative conversation's project.
+                    job.text = await updateNewAttachmentsData(thread.projectId, job.text)
+                    if (!isActive()) return null
+                    publish()
+                    if (hasNewAttachments(job.text)) throw new Error(translate('Task attachment upload failed'))
+                }
                 // Capture context at submission time, before the user opens another page.
                 await getDb()
                     .doc(`chatObjects/${thread.projectId}/chats/${thread.id}`)

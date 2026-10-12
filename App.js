@@ -21,7 +21,9 @@ import { installStorePerformanceObserver } from './utils/performance/storePerfor
 import { startAppBootConnectionWait } from './utils/performance/userWaitConnection'
 import { installGlobalFirestoreFatalRecovery } from './utils/firestoreFatalRecovery'
 import { initializeResponsiveLayout } from './AppNavigator'
+import { restoreAnnaLayout } from './utils/annaMode'
 
+restoreAnnaLayout()
 // React Native Web reports the real viewport synchronously. Apply it before
 // mounting AppContent so a phone never paints the cached task board with the
 // Redux store's desktop layout defaults.

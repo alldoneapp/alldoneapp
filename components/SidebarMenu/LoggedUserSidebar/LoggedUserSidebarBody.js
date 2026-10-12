@@ -15,7 +15,6 @@ import ArchivedProjects from '../ArchivedProjects'
 import TemplateProjects from '../TemplateProjects'
 import SettingsItem from '../SettingsItem'
 import AdminItem from '../AdminItem'
-import DefaultAssistantButton from '../DefaultAssistantButton'
 
 export default function LoggedUserSidebarBody({ navigation, expanded, scrollView }) {
     const administratorUserId = useSelector(state => state.administratorUser.uid)
@@ -38,7 +37,6 @@ export default function LoggedUserSidebarBody({ navigation, expanded, scrollView
             showsVerticalScrollIndicator={false}
             indicatorStyle={[theme.scroll, !expanded && { opacity: 0 }]}
         >
-            <DefaultAssistantButton />
             <AllProjects navigation={navigation} />
             <ActiveProjectsList navigation={navigation} />
             <AddProject scrollToBottom={scrollToBottom} />

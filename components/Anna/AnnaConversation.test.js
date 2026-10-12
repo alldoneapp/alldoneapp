@@ -6,6 +6,8 @@ import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
+import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
+import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
 jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn().mockResolvedValue(null) }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 let mockActivityState
@@ -15,7 +17,11 @@ jest.mock('react-redux', () => ({ useSelector: selector => selector(mockActivity
 // as a textarea here. Real embed insertion is exercised by the browser harness.
 let mockRichInputProps
 jest.mock('react-quill-new', () => ({ Quill: { import: () => require('quill-delta').default } }))
-jest.mock('../Feeds/CommentsTextInput/textInputHelper', () => ({ TASK_THEME: 'task' }))
+jest.mock('../Feeds/CommentsTextInput/textInputHelper', () => ({
+    TASK_THEME: 'task',
+    NEW_ATTACHMENT: '1',
+    insertAttachmentInsideEditor: jest.fn(),
+}))
 jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
     const React = require('react')
     const Delta = require('quill-delta').default
@@ -71,6 +77,11 @@ jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
 })
 
 let mockDictation
+let mockAttachments
+jest.mock('../Feeds/AddFeed/AddFeedAttachButton', () => props => {
+    mockAttachments = props
+    return <button type="button" aria-label="Select kind of file to add" disabled={props.isDisabled} />
+})
 let mockDictationSupported = true
 jest.mock('../../hooks/useRambleRecorder', () => ({ isDictationSupported: () => mockDictationSupported }))
 jest.mock('../UIControls/RambleButton', () => ({
@@ -99,7 +110,10 @@ jest.mock('../../utils/backends/Chats/chatsComments', () => ({ createObjectMessa
 jest.mock('../../utils/backends/Chats/commentOutbox', () => ({
     commentOutbox: { retry: jest.fn(), read: jest.fn() },
 }))
-jest.mock('../Feeds/Utils/HelperFunctions', () => ({ STAYWARD_COMMENT: 'stayward' }))
+jest.mock('../Feeds/Utils/HelperFunctions', () => ({
+    STAYWARD_COMMENT: 'stayward',
+    updateNewAttachmentsData: jest.fn(),
+}))
 jest.mock('../../utils/backends/firestore', () => ({
     getId: jest.fn(() => 'm1'),
     getDb: () => ({ doc: () => ({ update: mockContextUpdate, set: mockContextSet }) }),
@@ -167,11 +181,13 @@ beforeEach(() => {
     getId.mockImplementation(() => `m${++messageSequence}`)
     localStorage.clear()
     mockDictation = null
+    mockAttachments = null
     mockDictationSupported = true
     mockMessages = []
     Object.keys(mockThreadMessages).forEach(key => delete mockThreadMessages[key])
     Object.keys(mockCreators).forEach(key => delete mockCreators[key])
     createObjectMessage.mockResolvedValue('m1')
+    updateNewAttachmentsData.mockImplementation(async (_projectId, text) => text)
     runHttpsCallableFunction.mockResolvedValue({})
     commentOutbox.retry.mockResolvedValue(undefined)
     commentOutbox.read.mockReturnValue(null)
@@ -179,6 +195,102 @@ beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
+})
+
+it('places the shared attachment picker next to the microphone and inserts the selected file', () => {
+    render()
+    const tools = container.querySelector('.anna-composer-tools')
+    expect(tools.querySelector('[aria-label="Dictate"]')).not.toBeNull()
+    expect(tools.querySelector('[aria-label="Select kind of file to add"]')).not.toBeNull()
+    expect(mockAttachments.compact).toBe(true)
+    expect(mockAttachments.projectId).toBe('p1')
+    mockAttachments.addAttachmentTag('plan.pdf', 'blob:plan')
+    expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(0, expect.any(Object), 'plan.pdf', 'blob:plan')
+})
+
+it.each([{ offline: true }, { call: { status: 'active' } }, { conversation: { id: 'anna_u1', assistantId: 'a1' } }])(
+    'disables attachments when unavailable: %j',
+    props => {
+        render(props)
+        expect(container.querySelector('[aria-label="Select kind of file to add"]').disabled).toBe(true)
+    }
+)
+
+it('disables the attachment picker during dictation', () => {
+    render()
+    act(() => mockDictation.onPhaseChange('recording'))
+    expect(mockAttachments.isDisabled).toBe(true)
+    mockAttachments.addAttachmentTag('plan.pdf', 'blob:plan')
+    expect(insertAttachmentInsideEditor).not.toHaveBeenCalled()
+})
+
+const fileToken = (uri, name = 'plan.pdf', isNew = '1') =>
+    `EbDsQTD14ahtSR5${uri}EbDsQTD14ahtSR5${name}EbDsQTD14ahtSR5${isNew}`
+
+it('uploads files to the resolved conversation before saving or dispatching and keeps the next draft intact', async () => {
+    const upload = deferred()
+    const localText = `Review ${fileToken('blob:plan')}`
+    const uploadedText = `Review ${fileToken('https://storage.example/plan.pdf', 'plan.pdf', 'false')}`
+    updateNewAttachmentsData.mockReturnValueOnce(upload.promise)
+    render({ resolveConversation: async () => ({ projectId: 'p2', id: 'today', assistantId: 'a2' }) })
+    type(localText)
+    await submit()
+    expect(updateNewAttachmentsData).toHaveBeenCalledWith('p2', localText)
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    type('My next draft')
+    await act(async () => upload.resolve(uploadedText))
+    expect(createObjectMessage.mock.calls[0].slice(0, 3)).toEqual(['p2', 'today', uploadedText])
+    expect(runHttpsCallableFunction.mock.calls[0][1].projectId).toBe('p2')
+    expect(container.querySelector('textarea').value).toBe('My next draft')
+})
+
+it('retries an assistant request without uploading or saving its files again', async () => {
+    const uploadedText = fileToken('https://storage.example/plan.pdf', 'plan.pdf', 'false')
+    updateNewAttachmentsData.mockResolvedValueOnce(uploadedText)
+    runHttpsCallableFunction.mockRejectedValueOnce(new Error('Try again'))
+    render()
+    type(fileToken('blob:plan'))
+    await submit()
+    await click('Retry')
+    expect(updateNewAttachmentsData).toHaveBeenCalledTimes(1)
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(createObjectMessage.mock.calls[0][2]).toBe(uploadedText)
+    expect(runHttpsCallableFunction).toHaveBeenCalledTimes(2)
+    expect(runHttpsCallableFunction.mock.calls[1][1].messageId).toBe('m1')
+})
+
+it('keeps a partial upload retryable and never posts a local blob reference', async () => {
+    const firstUploaded = fileToken('https://storage.example/one.pdf', 'one.pdf', 'false')
+    const secondLocal = fileToken('blob:two', 'two.pdf')
+    const partialText = `${firstUploaded} ${secondLocal}`
+    const completeText = `${firstUploaded} ${fileToken('https://storage.example/two.pdf', 'two.pdf', 'false')}`
+    updateNewAttachmentsData.mockResolvedValueOnce(partialText).mockResolvedValueOnce(completeText)
+    render()
+    type(`${fileToken('blob:one', 'one.pdf')} ${secondLocal}`)
+    await submit()
+    expect(container.textContent).toContain('Task attachment upload failed')
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(commentOutbox.retry).not.toHaveBeenCalled()
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    type('My next draft')
+    await click('Retry')
+    expect(updateNewAttachmentsData).toHaveBeenLastCalledWith('p1', partialText)
+    expect(createObjectMessage.mock.calls[0][2]).toBe(completeText)
+    expect(createObjectMessage.mock.calls[0][11].id).toBe('m1')
+    expect(container.querySelector('textarea').value).toBe('My next draft')
+})
+
+it.each([
+    'O2TI5plHBf1QfdYblob:photoO2TI5plHBf1QfdYblob:previewO2TI5plHBf1QfdYphoto.pngO2TI5plHBf1QfdY1',
+    'ptPQsef7OeB5eWdblob:videoptPQsef7OeB5eWdvideo.webmptPQsef7OeB5eWd1',
+])('also blocks failed image and video uploads: %s', async text => {
+    render()
+    type(text)
+    await submit()
+    expect(updateNewAttachmentsData).toHaveBeenCalledWith('p1', text)
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('Task attachment upload failed')
 })
 afterEach(() => {
     act(() => root.unmount())

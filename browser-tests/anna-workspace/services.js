@@ -95,6 +95,20 @@ export const getAssistant = () => assistant
 export const subscribePageVisible = () => () => {}
 export const subscribePageHidden = () => () => {}
 export const STAYWARD_COMMENT = 'stayward'
+export const VIDEO_TRIGGER = 'ptPQsef7OeB5eWd'
+// Model successful storage without uploading fixture files to a real project.
+export const updateNewAttachmentsData = async (_projectId, text) =>
+    text
+        .split(' ')
+        .map(word => {
+            const trigger = word.match(/^(EbDsQTD14ahtSR5|O2TI5plHBf1QfdY|ptPQsef7OeB5eWd)/)?.[0]
+            if (!trigger) return word
+            const parts = word.split(trigger)
+            if (parts.at(-1) !== '1') return word
+            const uri = `https://fixture.invalid/${encodeURIComponent(parts.at(-2))}`
+            return [...parts.slice(0, -1).map(part => (part.startsWith('blob:') ? uri : part)), '0'].join(trigger)
+        })
+        .join(' ')
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 export const getTimestampInMilliseconds = value => value
 let messageSequence = 0
