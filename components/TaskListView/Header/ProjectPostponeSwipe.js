@@ -35,8 +35,11 @@ export default function ProjectPostponeSwipe({ projectId, children }) {
     }
 
     return (
-        <View
-            style={styles.container}
+        // RNW View does not forward onClickCapture. Use a DOM capture boundary
+        // so the release's trailing click cannot reach a child's onPress and
+        // unmount this row before its deferred date picker opens.
+        <div
+            style={{ position: 'relative' }}
             onClickCapture={event => {
                 if (blocked.current) {
                     event.preventDefault()
@@ -69,12 +72,11 @@ export default function ProjectPostponeSwipe({ projectId, children }) {
                     <ActivityIndicator size="small" />
                 </View>
             )}
-        </View>
+        </div>
     )
 }
 
 const styles = StyleSheet.create({
-    container: { position: 'relative' },
     action: { width: 150 },
     pending: { position: 'absolute', right: 8, top: 8 },
 })
