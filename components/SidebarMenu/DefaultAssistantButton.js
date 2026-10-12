@@ -1,7 +1,7 @@
 import React, { useContext } from 'react'
 import { StyleSheet, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import Svg, { Path, Rect } from 'react-native-svg'
+import AssistantChatToggleIcon from '../UIComponents/AssistantChatToggleIcon'
 
 import { colors } from '../styles/global'
 import { getTheme } from '../../Themes/Themes'
@@ -54,17 +54,7 @@ export default function DefaultAssistantButton() {
             onPress={toggleChat}
         >
             <span style={localStyles.icon} title={status} aria-hidden="true">
-                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                    {!active && <Rect x={3} y={3} width={6} height={18} fill={statusColor} fillOpacity={0.25} />}
-                    <Rect x={3} y={3} width={18} height={18} rx={2} stroke={statusColor} strokeWidth={2} />
-                    <Path
-                        d={active ? 'm8 8 4 4-4 4' : 'M9 3v18'}
-                        stroke={statusColor}
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    />
-                </Svg>
+                <AssistantChatToggleIcon expanded={active} color={statusColor} />
             </span>
         </TouchableOpacity>
     )
