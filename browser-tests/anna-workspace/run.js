@@ -2,6 +2,7 @@ const path = require('path')
 const fs = require('fs')
 const http = require('http')
 const assert = require('assert/strict')
+const translations = require('../../i18n/translations/en.json')
 const { execFileSync } = require('child_process')
 const ROOT = path.resolve(__dirname, '../..')
 const BUILD = path.join(__dirname, '.build')
@@ -302,82 +303,98 @@ async function showWorkspace(page) {
             const label = select.selectedOptions[0].textContent
             return [...select.options].find(option => option.value && option.textContent.startsWith(label)).value
         })
-        await picker.selectOption(surface)
+        if (surface === 'alldone') await page.evaluate(() => window.__annaShowWorkspace())
+        else await picker.selectOption(surface)
     } else await page.getByRole('button', { name: 'Show workspace', exact: true }).click()
 }
 async function showChat(page) {
-    if (await page.locator('.anna-workspace-switcher select').isVisible())
-        await page.locator('.anna-workspace-switcher select').selectOption('chat')
+    if (await page.locator('.anna-fullscreen').count()) await page.evaluate(() => window.zoomAnna(true))
+    else if (page.viewportSize().width <= 760 && (await page.locator('.anna-mobile-workspace').count()))
+        await page.locator('.anna-header-picker select').selectOption('chat')
 }
 async function closeChat(page) {
     await showChat(page)
     await page.getByRole('button', { name: 'Close chat — Alldone only', exact: true }).click()
 }
 async function selectWorkspaceSurface(page, surface) {
-    if (page.viewportSize().width <= 760) {
-        await showWorkspace(page)
-        await page.locator('.anna-workspace-switcher select').selectOption(surface)
-    } else {
-        await page.locator('.anna-header-picker select').selectOption(surface.startsWith('vm:') ? 'vms' : surface)
-        if (surface.startsWith('vm:'))
-            await page.getByLabel('VM session', { exact: true }).selectOption(surface.slice(3))
-    }
+    if (await page.locator('.anna-fullscreen').count()) await page.evaluate(() => window.zoomAnna(true))
+    await page.locator('.anna-header-picker select').selectOption(surface.startsWith('vm:') ? 'vms' : surface)
+    if (surface.startsWith('vm:')) await page.getByLabel('VM session', { exact: true }).selectOption(surface.slice(3))
 }
 async function assertSelectedSurface(page, surface) {
-    assert.equal(
-        await page
-            .locator(
-                page.viewportSize().width <= 760 ? '.anna-workspace-switcher select' : '.anna-header-picker select'
-            )
-            .inputValue(),
-        surface
-    )
+    assert.equal(await page.locator('.anna-header-picker select').inputValue(), surface)
 }
 async function assertClearOfSelector(page, locator) {
     if (page.viewportSize().width > 760) return
-    const selector = await page.locator('.anna-workspace-switcher').boundingBox()
+    const selector = await page.locator('.anna-header-picker').boundingBox()
     const target = await locator.boundingBox()
     const overlaps =
         target.x < selector.x + selector.width &&
         target.x + target.width > selector.x &&
         target.y < selector.y + selector.height &&
         target.y + target.height > selector.y
-    assert.equal(overlaps, false, 'Floating picker must not cover surface controls or titles')
+    assert.equal(overlaps, false, 'Top picker must not cover surface controls or titles')
 }
 async function checkSurfaceSelectorLayout(page, width) {
-    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&vm=1&floating=1`)
-    await page.getByLabel('Message Carl Code Mentor').fill('Keep this mobile draft')
-    const selector = page.locator('.anna-workspace-switcher')
+    await page.goto(`http://127.0.0.1:${server.address().port}/projects/tasks/open?assistant=1&vm=1&floating=1`)
+    const chat = page.getByLabel('Message Carl Code Mentor')
+    await chat.fill('Keep this mobile draft')
+    const picker = page.locator('.anna-header-picker select')
+    assert.equal(await page.locator('.anna-workspace-switcher').count(), 0)
+    assert.equal(await page.locator('.anna-header').count(), 1)
+    assert.equal(await picker.isVisible(), true)
     if (width > 760) {
-        assert.equal(await selector.count(), 0)
-        assert.equal(await page.locator('.anna-header-picker').isVisible(), true)
+        await selectWorkspaceSurface(page, 'browser')
+        await selectWorkspaceSurface(page, 'alldone')
+        assert.equal(await page.locator('.anna-zoom-active').count(), 1, 'Desktop retains split mode')
         return
     }
-    assert.equal(await selector.count(), 0, 'No workspace selector over the chat')
-    assert.equal(await page.locator('.anna-header-picker').count(), 1)
-    assert.ok((await page.locator('.anna-header').boundingBox()).height <= 80, 'Only one header row')
+    const header = page.locator('.anna-header')
+    const originalUrl = new URL(page.url())
+    assert.ok((await header.boundingBox()).height <= 80, 'Only one header row')
     await page.screenshot({ path: path.join(BUILD, `compact-chat-${width}.png`) })
-    await showWorkspace(page)
-    const bounds = await selector.boundingBox()
-    const stage = await page.locator('.anna-stage').boundingBox()
-    const add = await page.getByTestId('floating-task-action').boundingBox()
-    assert.ok(Math.abs(bounds.height - add.height) <= 1, 'Both controls have the same height')
-    assert.ok(Math.abs(bounds.y - add.y) <= 1, 'Both controls share the same baseline')
-    assert.ok(Math.abs(bounds.x - stage.x - (stage.x + stage.width - add.x - add.width)) <= 1, 'Mirrored edge spacing')
-    assert.ok(bounds.x + bounds.width + 12 <= add.x, 'Leave a gap between the selector and add button')
-    await page.getByTestId('loading-data-spinner').waitFor({ state: 'visible' })
-    await assertClearOfSelector(page, page.getByTestId('loading-data-spinner'))
-    assert.equal(await selector.evaluate(node => getComputedStyle(node).position), 'absolute')
-    assert.equal(await selector.locator('option').count(), 6, 'Chat, Alldone, Browser, VMs and both sessions')
-    await page.screenshot({ path: path.join(BUILD, `floating-workspace-${width}.png`) })
-    await selector.locator('select').focus()
-    assert.equal(await selector.locator('select').evaluate(node => node === document.activeElement), true)
-    await selector.locator('select').selectOption('browser')
-    await assertSelectedSurface(page, 'browser')
-    await closeChat(page)
-    assert.equal(await selector.count(), 0, 'Fullscreen Alldone has no floating selector')
+    for (const surface of ['browser', 'vm:vm1', 'vm:vm2', 'vms']) {
+        await selectWorkspaceSurface(page, surface)
+        assert.equal(await header.count(), 1)
+        assert.equal(await header.isVisible(), true)
+        assert.equal(await page.locator('.anna-workspace-switcher').count(), 0)
+        const bounds = await header.boundingBox()
+        const stage = await page.locator('.anna-stage').boundingBox()
+        assert.equal(bounds.y, 0, 'Header stays at the top of the viewport')
+        assert.ok(bounds.y + bounds.height <= stage.y + 1, 'Header occupies its own row above the surface')
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+        await picker.focus()
+        assert.equal(await picker.evaluate(node => node === document.activeElement), true)
+        await page.screenshot({ path: path.join(BUILD, `top-${surface.replace(':', '-')}-${width}.png`) })
+        await picker.selectOption('chat')
+        assert.equal(await readInput(chat), 'Keep this mobile draft')
+        assert.equal(await chat.isVisible(), true)
+    }
+    await page.evaluate(() => window.__annaShowWorkspace())
+    const editor = await page.getByLabel('Workspace draft').elementHandle()
+    await page.getByLabel('Workspace draft').fill('Keep this app edit')
+    for (const surface of ['browser', 'vm:vm1']) {
+        await selectWorkspaceSurface(page, surface)
+        await picker.selectOption('alldone')
+        assert.equal(await page.locator('.anna-fullscreen').count(), 1)
+        assert.equal(await header.count(), 0, 'Normal Alldone has no assistant header')
+        const returnedUrl = new URL(page.url())
+        assert.equal(returnedUrl.pathname, originalUrl.pathname)
+        assert.equal(returnedUrl.searchParams.has('assistant'), false)
+        assert.equal(returnedUrl.searchParams.get('vm'), '1')
+        assert.equal(await readInput(editor), 'Keep this app edit')
+        await showChat(page)
+        assert.equal(await readInput(chat), 'Keep this mobile draft')
+    }
+    await page.reload()
+    await chat.waitFor({ state: 'visible' })
+    await selectWorkspaceSurface(page, 'browser')
+    await picker.selectOption('alldone')
+    await page.reload()
+    assert.equal(await page.locator('.anna-fullscreen').count(), 1, 'Alldone return survives reload')
+    await page.screenshot({ path: path.join(BUILD, `alldone-return-${width}.png`) })
     console.info(
-        `PASS ${width}px: bottom-left selector aligned with add button; no spinner overlap; keyboard focus and fullscreen`
+        `PASS ${width}px: persistent top row; browser/VM/chat switching; Alldone return and reload; drafts; no floating selector or overflow`
     )
 }
 async function checkBrowserLogin(page, width) {
@@ -389,14 +406,14 @@ async function checkBrowserLogin(page, width) {
     await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&login=1`)
     const chat = page.getByLabel('Message Carl Code Mentor')
     await chat.fill('Keep my chat draft')
-    await page.getByText('browser_takeover_start', { exact: true }).click()
+    await page.getByText(translations.browser_takeover_start, { exact: true }).click()
     const login = page.locator('.anna-browser-takeover')
-    const input = login.getByLabel('browser_takeover_type_placeholder')
-    await login.getByLabel('browser_takeover_viewport').waitFor({ state: 'visible' })
+    const input = login.getByLabel(translations.browser_takeover_type_placeholder)
+    await login.getByLabel(translations.browser_takeover_viewport).waitFor({ state: 'visible' })
     assert.equal(await input.getAttribute('type'), 'password')
     assert.equal(await page.locator('.anna-messages input').count(), 0, 'Login fields must never appear in the chat')
     assert.equal(await page.locator('.anna-stage').getAttribute('aria-hidden'), 'false')
-    const frame = await login.getByLabel('browser_takeover_viewport').boundingBox()
+    const frame = await login.getByLabel(translations.browser_takeover_viewport).boundingBox()
     const pane = await page.locator('.anna-browser-surface').boundingBox()
     assert.ok(frame.width > pane.width * 0.85, 'The login browser should use the main pane width')
     await assertClearOfSelector(page, input)
@@ -415,13 +432,13 @@ async function checkBrowserLogin(page, width) {
     if (width <= 760) await showWorkspace(page)
     assert.equal(await readInput(input), 'Fixture private input', 'Sending chat does not close or release login')
     assert.equal(captures, 1, 'Switching panes or reopening must not create another paid snapshot')
-    await login.getByText('browser_takeover_type', { exact: true }).click()
+    await login.getByText(translations.browser_takeover_type, { exact: true }).click()
     await page.waitForFunction(() => document.querySelector('.anna-browser-takeover input')?.value === '')
     await page.screenshot({ path: path.join(BUILD, `login-${width}.png`) })
-    await login.getByText('browser_takeover_done', { exact: true }).click()
+    await login.getByText(translations.browser_takeover_done, { exact: true }).click()
     await login.waitFor({ state: 'detached' })
     if (width <= 760) await showChat(page)
-    await page.getByText('browser_takeover_completed', { exact: true }).waitFor({ state: 'visible' })
+    await page.getByText(translations.browser_takeover_completed, { exact: true }).waitFor({ state: 'visible' })
     assert.equal(await page.locator('.anna-browser-takeover').count(), 0)
     page.off('console', countCapture)
     console.log(
@@ -444,12 +461,7 @@ async function checkVmWorkspace(page, width) {
     assert.equal(await page.getByLabel('Workspace draft').isVisible(), false)
     await page.evaluate(() => window.__annaVmFixture('running', '💻 npm test\nChecking the report output…'))
     await page.getByText('💻 npm test\nChecking the report output…', { exact: true }).waitFor()
-    assert.equal(
-        await page
-            .locator(width <= 760 ? '.anna-workspace-switcher option[value^="vm:"]' : '.anna-vm-selector option')
-            .count(),
-        2
-    )
+    assert.equal(await page.locator('.anna-vm-selector option').count(), 2)
     const bounds = await page.locator('.anna-vm-terminal').boundingBox()
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
@@ -483,7 +495,7 @@ async function checkBrowserReturn(page, width) {
     await page.evaluate(() => window.__annaBrowserFixture('running'))
     await page.locator('.anna-browser-workspace').waitFor({ state: 'visible' })
     await assertClearOfSelector(page, page.locator('.anna-browser-heading button'))
-    if (width <= 760) await page.screenshot({ path: path.join(BUILD, `floating-browser-${width}.png`) })
+    if (width <= 760) await page.screenshot({ path: path.join(BUILD, `top-browser-return-${width}.png`) })
     await assertSelectedSurface(page, 'browser')
     await page.evaluate(() => window.__annaBrowserFixture('awaiting_user'))
     await assertSelectedSurface(page, 'browser')
@@ -679,10 +691,10 @@ async function checkActivityNotices(page, width) {
     await page.screenshot({ path: path.join(BUILD, `activity-${width}.png`) })
     await page.getByText('created task: Discuss the visit with Daniela', { exact: true }).click()
     await page.waitForURL(url => url.pathname === '/projects/p1/user/demo/updates/followed')
-    if (width <= 760) await page.locator('.anna-workspace-switcher select').selectOption('chat')
+    if (width <= 760) await showChat(page)
     await page.getByText('New chat message: Sprint planning', { exact: true }).click()
     await page.waitForURL(url => url.pathname === '/projects/p1/user/demo/chats/followed')
-    if (width <= 760) await page.locator('.anna-workspace-switcher select').selectOption('chat')
+    if (width <= 760) await showChat(page)
     await page.getByLabel('123 open tasks today').click()
     await page.waitForURL(url => url.pathname === '/projects/tasks/open')
     console.info(`PASS ${width}px: substantive activity/chat previews, feature links, task badge and header geometry`)
@@ -777,7 +789,8 @@ async function main() {
         ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}),
     })
     try {
-        for (const width of process.env.FLOATING_WORKSPACE_ONLY ||
+        for (const width of process.env.MOBILE_NAVIGATION_ONLY ||
+        process.env.FLOATING_WORKSPACE_ONLY ||
         process.env.LAYOUT_ONLY ||
         process.env.ACTIVITY_ONLY ||
         process.env.SENDING_ONLY ||
@@ -830,7 +843,7 @@ async function main() {
                 await page.close()
                 continue
             }
-            if (process.env.FLOATING_WORKSPACE_ONLY) {
+            if (process.env.MOBILE_NAVIGATION_ONLY || process.env.FLOATING_WORKSPACE_ONLY) {
                 await checkSurfaceSelectorLayout(page, width)
                 await checkBrowserReturn(page, width)
                 await checkVmWorkspace(page, width)

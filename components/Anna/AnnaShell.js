@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import Icon from '../Icon'
-import AssistantChatToggleIcon from '../UIComponents/AssistantChatToggleIcon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import AnnaConversation from './AnnaConversation'
@@ -31,13 +30,6 @@ import URLTrigger from '../../URLSystem/URLTrigger'
 import { translate, useTranslator } from '../../i18n/TranslationService'
 import { sanitizeCallPageContext } from '../../functions/WhatsApp/assistantCallPageContext'
 import { useWorkspaceViewportOwner } from '../../hooks/useWorkspaceViewport'
-import useModalSizing from '../../hooks/useModalSizing'
-import {
-    FLOATING_ACTION_SIZE,
-    FLOATING_ACTION_VIEWPORT_GAP,
-    FLOATING_ACTION_STACK_GAP,
-    getFloatingActionBottom,
-} from '../UIComponents/floatingActionLayout'
 import { subscribePageVisible } from '../../utils/appResume'
 import './anna.css'
 
@@ -62,7 +54,6 @@ export default function AnnaShell({ children, routeId }) {
     const chatOnly = layoutMode === 'chat'
     const autoFollow = useRef(false)
     autoFollow.current = active && !chatOnly
-    const { safeAreaInsets } = useModalSizing()
     const user = useSelector(state => state.loggedUser)
     const openTasksAmount = useSelector(state =>
         getAllProjectsOpenTasksAmount(
@@ -133,6 +124,10 @@ export default function AnnaShell({ children, routeId }) {
     const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !mobile)
     useWorkspaceViewportOwner(workspaceContent, active, visibleWorkspace && surface === 'alldone')
     const selectSurface = nextSurface => {
+        if (mobile && nextSurface === 'alldone') {
+            closeChat()
+            return
+        }
         requestGeneration.current++
         if (mobile) focusAfterSwitch.current = 'workspace'
         const vm = vmJobs.find(job => job.id === lastVmId.current) || vmJobs[0]
@@ -544,6 +539,92 @@ export default function AnnaShell({ children, routeId }) {
         </div>
     )
 
+    const header = (
+        <header className="anna-header">
+            <button
+                type="button"
+                className="anna-pane-toggle"
+                aria-label={translate('Close chat — Alldone only')}
+                title={translate('Close chat — Alldone only')}
+                onClick={closeChat}
+            >
+                <Icon name="x" size={18} color="currentColor" />
+            </button>
+            <button
+                type="button"
+                className="anna-header-assistant"
+                title={`${assistantName} – ${translate('Go to home')}`}
+                aria-label={`${assistantName} – ${translate('Go to home')}`}
+                onClick={() =>
+                    present({
+                        id: `home-${Date.now()}`,
+                        view: 'link',
+                        path: '/projects/tasks/open',
+                        manual: true,
+                    })
+                }
+            >
+                <span className="anna-small-avatar">
+                    {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
+                </span>
+                <strong className="anna-brand">{assistantName}</strong>
+                {openTasksAmount > 0 && (
+                    <span
+                        className="anna-open-tasks-badge"
+                        aria-label={translate('%{count} open tasks today', { count: openTasksAmount })}
+                        title={translate('%{count} open tasks today', { count: openTasksAmount })}
+                    >
+                        <AmountTag
+                            feedAmount={openTasksAmount}
+                            isFollowedButton={false}
+                            showFullAmount={true}
+                            style={{ backgroundColor: colors.Primary100 }}
+                        />
+                    </span>
+                )}
+            </button>
+            <label className="anna-header-picker">
+                <select
+                    aria-label={translate('Workspace')}
+                    value={mobile && !visibleWorkspace ? '' : vmSurface ? 'vms' : surface}
+                    onChange={event => {
+                        if (event.target.value === 'chat') backToChat()
+                        else selectSurface(event.target.value)
+                    }}
+                >
+                    {mobile && !visibleWorkspace && (
+                        // A mobile selection opens that pane, including when reopening the same surface.
+                        <option value="" disabled hidden>
+                            {vmSurface ? translate('VMs') : surfaceLabel}
+                        </option>
+                    )}
+                    {mobile && visibleWorkspace && <option value="chat">{translate('Back to chat')}</option>}
+                    <option value="alldone">Alldone</option>
+                    <option value="browser">{translate('Browser')}</option>
+                    <option value="vms">
+                        {translate('VMs')}
+                        {vmJobs.length ? ` (${vmJobs.length})` : ''}
+                    </option>
+                </select>
+                <span aria-hidden="true">
+                    <Icon name="chevron-down" size={14} color="currentColor" />
+                </span>
+            </label>
+            {!mobile && (
+                <button
+                    type="button"
+                    className="anna-pane-toggle anna-pane-toggle-right"
+                    aria-label={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
+                    title={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
+                    aria-expanded={visibleWorkspace}
+                    onClick={toggleWorkspace}
+                >
+                    <Icon name="sidebar" size={18} color="currentColor" />
+                </button>
+            )}
+        </header>
+    )
+
     const content = (
         <div
             className={`anna-shell anna-zoom-shell ${active ? (chatOnly ? 'anna-zoom-active anna-chat-only' : 'anna-zoom-active') : 'anna-fullscreen'} anna-mobile-${chatOnly ? 'chat' : mobilePane}`}
@@ -560,14 +641,10 @@ export default function AnnaShell({ children, routeId }) {
                 '--anna-border': colors.Grey300,
                 '--anna-focus': colors.UtilityBlue150,
                 '--anna-surface': colors.Grey100,
-                '--anna-floating-size': `${FLOATING_ACTION_SIZE}px`,
-                '--anna-floating-gap': `${FLOATING_ACTION_STACK_GAP}px`,
-                '--anna-floating-left': `${FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.left}px`,
-                '--anna-floating-right': `${FLOATING_ACTION_VIEWPORT_GAP + safeAreaInsets.right}px`,
-                '--anna-floating-bottom': `${getFloatingActionBottom(safeAreaInsets.bottom)}px`,
             }}
             onClickCapture={interceptLink}
         >
+            {mobile && active && header}
             <main className="anna-layout" ref={layout}>
                 <section
                     className="anna-conversation"
@@ -577,87 +654,7 @@ export default function AnnaShell({ children, routeId }) {
                     aria-hidden={!active || (!chatOnly && mobile && mobilePane !== 'chat')}
                     inert={!active || (!chatOnly && mobile && mobilePane !== 'chat') ? '' : undefined}
                 >
-                    <header className="anna-header">
-                        <button
-                            type="button"
-                            className="anna-pane-toggle"
-                            aria-label={translate('Close chat — Alldone only')}
-                            title={translate('Close chat — Alldone only')}
-                            onClick={closeChat}
-                        >
-                            <span aria-hidden="true" style={{ display: 'flex' }}>
-                                <AssistantChatToggleIcon expanded color="currentColor" />
-                            </span>
-                        </button>
-                        <button
-                            type="button"
-                            className="anna-header-assistant"
-                            title={`${assistantName} – ${translate('Go to home')}`}
-                            aria-label={`${assistantName} – ${translate('Go to home')}`}
-                            onClick={() =>
-                                present({
-                                    id: `home-${Date.now()}`,
-                                    view: 'link',
-                                    path: '/projects/tasks/open',
-                                    manual: true,
-                                })
-                            }
-                        >
-                            <span className="anna-small-avatar">
-                                {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
-                            </span>
-                            <strong className="anna-brand">{assistantName}</strong>
-                            {openTasksAmount > 0 && (
-                                <span
-                                    className="anna-open-tasks-badge"
-                                    aria-label={translate('%{count} open tasks today', { count: openTasksAmount })}
-                                    title={translate('%{count} open tasks today', { count: openTasksAmount })}
-                                >
-                                    <AmountTag
-                                        feedAmount={openTasksAmount}
-                                        isFollowedButton={false}
-                                        showFullAmount={true}
-                                        style={{ backgroundColor: colors.Primary100 }}
-                                    />
-                                </span>
-                            )}
-                        </button>
-                        <label className="anna-header-picker">
-                            <select
-                                aria-label={translate('Workspace')}
-                                value={mobile ? '' : vmSurface ? 'vms' : surface}
-                                onChange={event => selectSurface(event.target.value)}
-                            >
-                                {mobile && (
-                                    // A mobile selection opens that pane, including when reopening the same surface.
-                                    <option value="" disabled hidden>
-                                        {vmSurface ? translate('VMs') : surfaceLabel}
-                                    </option>
-                                )}
-                                <option value="alldone">Alldone</option>
-                                <option value="browser">{translate('Browser')}</option>
-                                <option value="vms">
-                                    {translate('VMs')}
-                                    {vmJobs.length ? ` (${vmJobs.length})` : ''}
-                                </option>
-                            </select>
-                            <span aria-hidden="true">
-                                <Icon name="chevron-down" size={14} color="currentColor" />
-                            </span>
-                        </label>
-                        {!mobile && (
-                            <button
-                                type="button"
-                                className="anna-pane-toggle anna-pane-toggle-right"
-                                aria-label={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
-                                title={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
-                                aria-expanded={visibleWorkspace}
-                                onClick={toggleWorkspace}
-                            >
-                                <Icon name="sidebar" size={18} color="currentColor" />
-                            </button>
-                        )}
-                    </header>
+                    {!mobile && header}
                     {active && !visibleWorkspace && pendingNotice}
                     {active && !visibleWorkspace && navigationError && (
                         <div className="anna-error" role="alert">
@@ -747,40 +744,6 @@ export default function AnnaShell({ children, routeId }) {
                     aria-hidden={active && !visibleWorkspace}
                     inert={active && !visibleWorkspace ? '' : undefined}
                 >
-                    {mobile && visibleWorkspace && (
-                        <div className="anna-workspace-switcher">
-                            <span className="anna-workspace-switcher-label" aria-hidden="true">
-                                <span>{surfaceLabel}</span>
-                                <Icon name="chevron-up" size={16} color="currentColor" />
-                            </span>
-                            <select
-                                aria-label={translate('Workspace')}
-                                title={surfaceLabel}
-                                value={surface}
-                                onChange={event => {
-                                    if (event.target.value === 'chat') backToChat()
-                                    else if (event.target.value === 'retry-vms') retryVms()
-                                    else selectSurface(event.target.value)
-                                }}
-                            >
-                                <option value="chat">{translate('Back to chat')}</option>
-                                <option value="alldone">Alldone</option>
-                                <option value="browser">{translate('Browser')}</option>
-                                <option value="vms">{translate('VMs')}</option>
-                                {vmJobs.map(job => (
-                                    <option key={job.id} value={`vm:${job.id}`}>
-                                        {`VM · ${job.title} — ${vmStatusLabel(job.status)}`}
-                                    </option>
-                                ))}
-                                {selectedVmId && !selectedVm && (
-                                    <option value={surface} disabled>
-                                        VM
-                                    </option>
-                                )}
-                                {vmError && <option value="retry-vms">{translate('vm_workspace_retry')}</option>}
-                            </select>
-                        </div>
-                    )}
                     {visibleWorkspace && pendingNotice}
                     {visibleWorkspace && navigationError && (
                         <div className="anna-error" role="alert">
