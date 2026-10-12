@@ -19,7 +19,8 @@ import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLo
 import { useVoiceCall } from '../UIComponents/AssistantVoiceCallProvider'
 import { getDb } from '../../utils/backends/firestore'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
-import { setAnnaMode, useAnnaMode } from '../../utils/annaMode'
+import { setAnnaMode, setAnnaLayout, useAnnaLayout } from '../../utils/annaMode'
+import useAnnaChatWidth, { MIN_CHAT_WIDTH } from './useAnnaChatWidth'
 import NavigationService from '../../utils/NavigationService'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import { translate, useTranslator } from '../../i18n/TranslationService'
@@ -51,7 +52,11 @@ function useMobilePane() {
 // must never destroy a note editor, an unsent message, a selection, or the workspace scroll state.
 export default function AnnaShell({ children, routeId }) {
     useTranslator()
-    const active = useAnnaMode()
+    const layoutMode = useAnnaLayout()
+    const active = layoutMode !== 'alldone'
+    const chatOnly = layoutMode === 'chat'
+    const autoFollow = useRef(false)
+    autoFollow.current = active && !chatOnly
     const { safeAreaInsets } = useModalSizing()
     const user = useSelector(state => state.loggedUser)
     const call = useVoiceCall()
@@ -68,12 +73,14 @@ export default function AnnaShell({ children, routeId }) {
     )
     const assistant = resolvedAssistant || {}
     const assistantName = assistant.displayName?.trim() || translate('Assistant')
-    const assistantDescription = typeof assistant.description === 'string' ? assistant.description.trim() : ''
     const [mobilePane, setMobilePane] = useState('chat')
     const [surface, setSurface] = useState('alldone')
     const surfaceRef = useRef(surface)
     surfaceRef.current = surface
     const selectedVmId = surface.startsWith('vm:') ? surface.slice(3) : null
+    const vmSurface = surface === 'vms' || !!selectedVmId
+    const lastVmId = useRef(null)
+    if (selectedVmId) lastVmId.current = selectedVmId
     const {
         jobs: vmJobs,
         error: vmError,
@@ -95,10 +102,13 @@ export default function AnnaShell({ children, routeId }) {
     const [workspacePage, setWorkspacePage] = useState(null)
     const [browserPage, setBrowserPage] = useState(null)
     const [navigationError, setNavigationError] = useState('')
-    const [chatWidth, setChatWidth] = useState(36)
     const workspaceContent = useRef(null)
-    useWorkspaceViewportOwner(workspaceContent, active)
     const layout = useRef(null)
+    const chatPane = useRef(null)
+    const workspaceStage = useRef(null)
+    const focusAfterSwitch = useRef(null)
+    const previousMode = useRef(layoutMode)
+    const { width: chatWidth, maximum: maxChatWidth, resize: setChatWidth } = useAnnaChatWidth(user.uid, layout)
     const presentationSeen = useRef(new Set())
     const browserSeen = useRef(null)
     const heldBrowser = useRef(false)
@@ -107,23 +117,66 @@ export default function AnnaShell({ children, routeId }) {
     const requestGeneration = useRef(0)
     const revealGeneration = useRef(0)
     const mobile = useMobilePane()
-    const visibleWorkspace = active && (mobilePane === 'workspace' || !mobile)
+    const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !mobile)
+    useWorkspaceViewportOwner(workspaceContent, active, visibleWorkspace && surface === 'alldone')
     const selectSurface = nextSurface => {
         requestGeneration.current++
-        setSurface(nextSurface)
+        if (mobile) focusAfterSwitch.current = 'workspace'
+        const vm = vmJobs.find(job => job.id === lastVmId.current) || vmJobs[0]
+        setSurface(nextSurface === 'vms' && vm ? `vm:${vm.id}` : nextSurface)
+        setAnnaLayout('split')
         setMobilePane('workspace')
     }
+    const closeChat = () => {
+        focusAfterSwitch.current = 'workspace'
+        requestGeneration.current++
+        followedBrowser.current = null
+        setSurface('alldone')
+        setMobilePane('chat')
+        setAnnaMode(false)
+    }
+    const toggleWorkspace = () => {
+        if (mobile && chatOnly) focusAfterSwitch.current = 'workspace'
+        requestGeneration.current++
+        followedBrowser.current = null
+        setAnnaLayout(chatOnly ? 'split' : 'chat')
+        setMobilePane(chatOnly ? 'workspace' : 'chat')
+    }
+    const backToChat = () => {
+        focusAfterSwitch.current = 'chat'
+        setMobilePane('chat')
+    }
+    useEffect(() => {
+        const target = focusAfterSwitch.current || (previousMode.current === 'alldone' && active ? 'chat' : null)
+        previousMode.current = layoutMode
+        focusAfterSwitch.current = null
+        if (target) (target === 'chat' ? chatPane : workspaceStage).current?.focus({ preventScroll: true })
+    }, [layoutMode, mobilePane, surface])
+    useEffect(() => {
+        if (!active) {
+            requestGeneration.current++
+            followedBrowser.current = null
+            setSurface('alldone')
+            setMobilePane('chat')
+        }
+    }, [active])
+    useEffect(() => {
+        if (surface === 'vms' && vmJobs.length) setSurface(`vm:${vmJobs[0].id}`)
+    }, [surface, vmJobs])
     const surfaceLabel = selectedVmId
         ? selectedVm
             ? `VM · ${selectedVm.title}`
             : 'VM'
-        : surface === 'browser'
-          ? translate('Browser')
-          : 'Alldone'
+        : surface === 'vms'
+          ? translate('VMs')
+          : surface === 'browser'
+            ? translate('Browser')
+            : 'Alldone'
     const returnFromBrowser = useCallback(runId => {
         const followed = followedBrowser.current
         if (
             !followed ||
+            !autoFollow.current ||
             runId !== browserRef.current?.runId ||
             followed.key !== browserActivityKey(browserRef.current) ||
             followed.generation !== requestGeneration.current ||
@@ -180,6 +233,8 @@ export default function AnnaShell({ children, routeId }) {
                     if (key && browserSeen.current !== key) {
                         browserSeen.current = key
                         if (
+                            autoFollow.current &&
+                            surfaceRef.current !== 'vms' &&
                             !surfaceRef.current.startsWith('vm:') &&
                             Date.now() - Number(next.updatedAt || 0) < 120000
                         ) {
@@ -258,16 +313,19 @@ export default function AnnaShell({ children, routeId }) {
                 await URLTrigger.processUrl(NavigationService.createNavigationProp(), presentation.path)
                 if (generation !== requestGeneration.current) return
                 setSurface('alldone')
-                if (presentation.manual) setMobilePane('workspace')
+                if (presentation.manual) {
+                    setAnnaLayout('split')
+                    setMobilePane('workspace')
+                }
                 setPending(null)
-                acknowledge(presentation, mobile && mobilePane === 'chat' ? 'opened_hidden' : 'opened')
+                acknowledge(presentation, !presentation.manual && !visibleWorkspace ? 'opened_hidden' : 'opened')
             } catch (_) {
                 if (generation !== requestGeneration.current) return
                 setNavigationError(translate('This item could not be opened. Please try again.'))
                 acknowledge(presentation, 'failed')
             }
         },
-        [acknowledge, mobile, mobilePane]
+        [acknowledge, visibleWorkspace]
     )
 
     useEffect(() => {
@@ -276,16 +334,17 @@ export default function AnnaShell({ children, routeId }) {
         presentationSeen.current.add(presentation.id)
         const fresh = Date.now() - Number(presentation.createdAt || 0) < 120000
         if (!fresh && conversation?.annaPresentationStatus?.id === presentation.id) return
-        if (!active || browserControl || browserTakeover || selectedVmId) {
+        if (!active || chatOnly || browserControl || browserTakeover || vmSurface) {
             setPending(presentation)
             acknowledge(presentation, 'deferred')
         } else present(presentation)
     }, [
         conversation?.annaPresentation?.id,
         active,
+        chatOnly,
         browserControl,
         browserTakeover,
-        selectedVmId,
+        vmSurface,
         present,
         acknowledge,
     ])
@@ -306,7 +365,7 @@ export default function AnnaShell({ children, routeId }) {
                     ? page
                     : selectedVm && visibleWorkspace
                       ? sanitizeCallPageContext({ path: vmJobPath(selectedVm), title: selectedVm.title })
-                      : { path: '/', title: active && surface === 'browser' ? 'Browser' : 'Anna' }
+                      : { path: '/', title: visibleWorkspace && surface === 'browser' ? 'Browser' : 'Anna' }
             setAnnaWorkspaceContext(context)
             const key = JSON.stringify(context)
             if (key === previous) return
@@ -404,19 +463,42 @@ export default function AnnaShell({ children, routeId }) {
     }
     const photo = assistant.photoURL || assistant.photoURL300 || assistant.photoURL50
     const currentBrowserPage = browserPage?.runId === browser?.runId ? browserPage : browser
-    const chatPageContext = !active
-        ? null
-        : surface === 'browser'
-          ? { surface, path: currentBrowserPage?.url || '', title: currentBrowserPage?.title || translate('Browser') }
-          : selectedVm
-            ? { surface: 'vm', path: vmJobPath(selectedVm), title: selectedVm.title }
-            : workspacePage && { ...workspacePage, surface }
+    const chatPageContext =
+        !active || chatOnly
+            ? null
+            : surface === 'browser'
+              ? {
+                    surface,
+                    path: currentBrowserPage?.url || '',
+                    title: currentBrowserPage?.title || translate('Browser'),
+                }
+              : selectedVm
+                ? { surface: 'vm', path: vmJobPath(selectedVm), title: selectedVm.title }
+                : workspacePage && { ...workspacePage, surface }
+
+    const pendingNotice = pending && (
+        <div className="anna-pending" role="status">
+            <span>
+                {translate('%{assistantName} would like to show you:', { assistantName })} {pending.title}
+            </span>
+            <button onClick={() => present({ ...pending, manual: true })}>{translate('Open')}</button>
+            <button
+                aria-label={translate('Dismiss')}
+                onClick={() => {
+                    acknowledge(pending, 'dismissed')
+                    setPending(null)
+                }}
+            >
+                ×
+            </button>
+        </div>
+    )
 
     const content = (
         <div
-            className={`anna-shell anna-zoom-shell ${active ? 'anna-zoom-active' : 'anna-fullscreen'} anna-mobile-${mobilePane}`}
+            className={`anna-shell anna-zoom-shell ${active ? (chatOnly ? 'anna-zoom-active anna-chat-only' : 'anna-zoom-active') : 'anna-fullscreen'} anna-mobile-${chatOnly ? 'chat' : mobilePane}`}
             style={{
-                '--anna-chat-width': `${chatWidth}%`,
+                '--anna-chat-width': `${chatWidth}px`,
                 '--anna-ink': colors.Text01,
                 '--anna-muted': colors.Text02,
                 '--anna-placeholder': colors.Text03,
@@ -435,84 +517,86 @@ export default function AnnaShell({ children, routeId }) {
             }}
             onClickCapture={interceptLink}
         >
-            <header className="anna-header" hidden={!active}>
-                <button
-                    type="button"
-                    className="anna-header-assistant"
-                    title={translate('Go to home')}
-                    aria-label={`${assistantName} – ${translate('Go to home')}`}
-                    onClick={() => {
-                        present({ id: `home-${Date.now()}`, view: 'link', path: '/projects/tasks/open', manual: true })
-                    }}
-                >
-                    <span className="anna-small-avatar">
-                        {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
-                    </span>
-                    <span className="anna-header-details">
-                        <span className="anna-header-identity">
-                            <strong className="anna-brand" title={assistantName}>
-                                {assistantName}
-                            </strong>
-                            {assistantDescription && <span title={assistantDescription}>{assistantDescription}</span>}
-                        </span>
-                    </span>
-                </button>
-                {!mobile && (
-                    <nav className="anna-workspace-toolbar" aria-label={translate('Workspace')}>
-                        <button aria-pressed={surface === 'alldone'} onClick={() => selectSurface('alldone')}>
-                            Alldone
-                        </button>
-                        <button aria-pressed={surface === 'browser'} onClick={() => selectSurface('browser')}>
-                            {translate('Browser')}
-                        </button>
-                        {vmJobs.map(job => (
-                            <button
-                                key={job.id}
-                                className="anna-vm-tab"
-                                aria-pressed={selectedVmId === job.id}
-                                title={`${job.title} — ${vmStatusLabel(job.status)}`}
-                                aria-label={`VM: ${job.title} — ${vmStatusLabel(job.status)}`}
-                                onClick={() => selectSurface(`vm:${job.id}`)}
-                            >
-                                <span className={`anna-vm-dot anna-vm-dot-${job.status}`} aria-hidden="true" />
-                                <span>VM · {job.title}</span>
-                            </button>
-                        ))}
-                        {vmError && (
-                            <button onClick={retryVms} title={translate('vm_workspace_list_error')}>
-                                {translate('vm_workspace_retry')}
-                            </button>
-                        )}
-                    </nav>
-                )}
-                <button
-                    className="anna-zoom-back"
-                    aria-label={translate('Zoom in Alldone')}
-                    onClick={() => setAnnaMode(false)}
-                >
-                    <span aria-hidden="true">
-                        <Icon name="minimize-2" size={16} color="currentColor" />
-                    </span>
-                    <span>{translate('Zoom in Alldone')}</span>
-                </button>
-            </header>
-            <nav className="anna-mobile-tabs" hidden={!active} aria-label={translate('Assistant views')}>
-                <button aria-pressed={mobilePane === 'chat'} onClick={() => setMobilePane('chat')}>
-                    {translate('Chat')}
-                    {textBusy ? ' ···' : ''}
-                </button>
-                <button aria-pressed={mobilePane === 'workspace'} onClick={() => setMobilePane('workspace')}>
-                    {translate('Workspace')}
-                    {pending ? ' •' : ''}
-                </button>
-            </nav>
             <main className="anna-layout" ref={layout}>
                 <section
                     className="anna-conversation"
+                    ref={chatPane}
+                    tabIndex={-1}
                     aria-label={translate('Conversation with %{assistantName}', { assistantName })}
-                    aria-hidden={!active || (mobile && mobilePane !== 'chat')}
-                    inert={!active || (mobile && mobilePane !== 'chat') ? '' : undefined}
+                    aria-hidden={!active || (!chatOnly && mobile && mobilePane !== 'chat')}
+                    inert={!active || (!chatOnly && mobile && mobilePane !== 'chat') ? '' : undefined}
                 >
+                    <header className="anna-header">
+                        <button
+                            type="button"
+                            className="anna-pane-toggle"
+                            aria-label={translate('Close chat — Alldone only')}
+                            title={translate('Close chat — Alldone only')}
+                            onClick={closeChat}
+                        >
+                            <Icon name="sidebar" size={18} color="currentColor" />
+                        </button>
+                        <button
+                            type="button"
+                            className="anna-header-assistant"
+                            title={`${assistantName} – ${translate('Go to home')}`}
+                            aria-label={`${assistantName} – ${translate('Go to home')}`}
+                            onClick={() =>
+                                present({
+                                    id: `home-${Date.now()}`,
+                                    view: 'link',
+                                    path: '/projects/tasks/open',
+                                    manual: true,
+                                })
+                            }
+                        >
+                            <span className="anna-small-avatar">
+                                {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
+                            </span>
+                            <strong className="anna-brand">{assistantName}</strong>
+                        </button>
+                        <label className="anna-header-picker">
+                            <select
+                                aria-label={translate('Workspace')}
+                                value={vmSurface ? 'vms' : surface}
+                                onChange={event => selectSurface(event.target.value)}
+                            >
+                                <option value="alldone">Alldone</option>
+                                <option value="browser">{translate('Browser')}</option>
+                                <option value="vms">
+                                    {translate('VMs')}
+                                    {vmJobs.length ? ` (${vmJobs.length})` : ''}
+                                </option>
+                            </select>
+                            <span aria-hidden="true">
+                                <Icon name="chevron-down" size={14} color="currentColor" />
+                            </span>
+                        </label>
+                        <button
+                            type="button"
+                            className="anna-pane-toggle anna-pane-toggle-right"
+                            aria-label={translate(
+                                chatOnly || (mobile && mobilePane === 'chat')
+                                    ? 'Show workspace'
+                                    : 'Hide workspace — chat only'
+                            )}
+                            title={translate(
+                                chatOnly || (mobile && mobilePane === 'chat')
+                                    ? 'Show workspace'
+                                    : 'Hide workspace — chat only'
+                            )}
+                            aria-expanded={visibleWorkspace}
+                            onClick={mobile && !chatOnly ? () => selectSurface(surface) : toggleWorkspace}
+                        >
+                            <Icon name="sidebar" size={18} color="currentColor" />
+                        </button>
+                    </header>
+                    {active && !visibleWorkspace && pendingNotice}
+                    {active && !visibleWorkspace && navigationError && (
+                        <div className="anna-error" role="alert">
+                            {navigationError}
+                        </div>
+                    )}
                     {visited && (
                         <>
                             {loading && (
@@ -547,7 +631,7 @@ export default function AnnaShell({ children, routeId }) {
                                     onResumeHandled={id =>
                                         setResumeRequest(current => (current?.id === id ? null : current))
                                     }
-                                    visible={active && (!mobile || mobilePane === 'chat')}
+                                    visible={active && (chatOnly || !mobile || mobilePane === 'chat')}
                                     onExpand={() => setMobilePane('chat')}
                                     onSendingChange={setTextBusy}
                                     onWorkStateChange={setWorkState}
@@ -563,34 +647,37 @@ export default function AnnaShell({ children, routeId }) {
                     role="separator"
                     aria-label={translate('Conversation width')}
                     aria-orientation="vertical"
-                    aria-valuemin={30}
-                    aria-valuemax={55}
+                    aria-valuemin={MIN_CHAT_WIDTH}
+                    aria-valuemax={maxChatWidth}
                     aria-valuenow={chatWidth}
-                    tabIndex={active ? 0 : -1}
+                    aria-valuetext={`${Math.round(chatWidth)}px`}
+                    tabIndex={active && !chatOnly && !mobile ? 0 : -1}
                     onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)}
                     onPointerMove={event => {
                         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                             const bounds = layout.current.getBoundingClientRect()
-                            setChatWidth(
-                                Math.max(30, Math.min(55, ((event.clientX - bounds.left) / bounds.width) * 100))
-                            )
+                            setChatWidth(event.clientX - bounds.left)
                         }
                     }}
                     onPointerUp={event => event.currentTarget.releasePointerCapture(event.pointerId)}
                     onKeyDown={event => {
+                        if (['Home', 'End'].includes(event.key)) {
+                            event.preventDefault()
+                            setChatWidth(event.key === 'Home' ? MIN_CHAT_WIDTH : maxChatWidth)
+                        }
                         if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
                             event.preventDefault()
-                            setChatWidth(value =>
-                                Math.max(30, Math.min(55, value + (event.key === 'ArrowLeft' ? -2 : 2)))
-                            )
+                            setChatWidth(chatWidth + (event.key === 'ArrowLeft' ? -20 : 20))
                         }
                     }}
                 />
                 <section
                     className="anna-stage"
+                    ref={workspaceStage}
+                    tabIndex={-1}
                     aria-label={translate('Alldone workspace')}
-                    aria-hidden={active && mobile && mobilePane !== 'workspace'}
-                    inert={active && mobile && mobilePane !== 'workspace' ? '' : undefined}
+                    aria-hidden={active && !visibleWorkspace}
+                    inert={active && !visibleWorkspace ? '' : undefined}
                 >
                     {mobile && visibleWorkspace && (
                         <div className="anna-workspace-switcher">
@@ -603,12 +690,15 @@ export default function AnnaShell({ children, routeId }) {
                                 title={surfaceLabel}
                                 value={surface}
                                 onChange={event => {
-                                    if (event.target.value === 'retry-vms') retryVms()
+                                    if (event.target.value === 'chat') backToChat()
+                                    else if (event.target.value === 'retry-vms') retryVms()
                                     else selectSurface(event.target.value)
                                 }}
                             >
+                                <option value="chat">{translate('Back to chat')}</option>
                                 <option value="alldone">Alldone</option>
                                 <option value="browser">{translate('Browser')}</option>
+                                <option value="vms">{translate('VMs')}</option>
                                 {vmJobs.map(job => (
                                     <option key={job.id} value={`vm:${job.id}`}>
                                         {`VM · ${job.title} — ${vmStatusLabel(job.status)}`}
@@ -623,25 +713,8 @@ export default function AnnaShell({ children, routeId }) {
                             </select>
                         </div>
                     )}
-                    {active && pending && (
-                        <div className="anna-pending" role="status">
-                            <span>
-                                {translate('%{assistantName} would like to show you:', { assistantName })}{' '}
-                                {pending.title}
-                            </span>
-                            <button onClick={() => present({ ...pending, manual: true })}>{translate('Open')}</button>
-                            <button
-                                aria-label={translate('Dismiss')}
-                                onClick={() => {
-                                    acknowledge(pending, 'dismissed')
-                                    setPending(null)
-                                }}
-                            >
-                                ×
-                            </button>
-                        </div>
-                    )}
-                    {active && navigationError && (
+                    {visibleWorkspace && pendingNotice}
+                    {visibleWorkspace && navigationError && (
                         <div className="anna-error" role="alert">
                             {navigationError}
                         </div>
@@ -658,7 +731,7 @@ export default function AnnaShell({ children, routeId }) {
                                     rootRef={workspaceContent}
                                     conversation={conversation}
                                     assistantName={assistantName}
-                                    available={visibleWorkspace && !browserControl && !browserTakeover && !selectedVmId}
+                                    available={visibleWorkspace && !browserControl && !browserTakeover && !vmSurface}
                                     onOpen={openWorkspaceChange}
                                     onComplete={returnWorkspaceHome}
                                     workState={currentWorkState}
@@ -675,21 +748,46 @@ export default function AnnaShell({ children, routeId }) {
                             )}
                         </div>
                     </div>
-                    {vmJobs.map(job => (
-                        <div
-                            key={job.id}
-                            className={`anna-vm-surface ${!active || selectedVmId !== job.id ? 'anna-surface-hidden' : ''}`}
-                            aria-hidden={!active || selectedVmId !== job.id}
-                            inert={!active || selectedVmId !== job.id ? '' : undefined}
-                        >
-                            <AnnaVmWorkspace job={job} active={visibleWorkspace && selectedVmId === job.id} />
+                    <div
+                        className={`anna-vms ${!active || !vmSurface ? 'anna-surface-hidden' : ''}`}
+                        aria-hidden={!active || !vmSurface}
+                        inert={!active || !vmSurface ? '' : undefined}
+                    >
+                        <div className="anna-vm-selector">
+                            <select
+                                aria-label={translate('VM session')}
+                                value={selectedVmId || ''}
+                                onChange={event => selectSurface(`vm:${event.target.value}`)}
+                            >
+                                {!selectedVmId && <option value="">{translate('VMs')}</option>}
+                                {vmJobs.map(job => (
+                                    <option
+                                        key={job.id}
+                                        value={job.id}
+                                    >{`${job.title} — ${vmStatusLabel(job.status)}`}</option>
+                                ))}
+                                {selectedVmId && !selectedVm && (
+                                    <option value={selectedVmId}>{translate('vm_workspace_unavailable')}</option>
+                                )}
+                            </select>
+                            {vmError && <button onClick={retryVms}>{translate('vm_workspace_retry')}</button>}
                         </div>
-                    ))}
-                    {selectedVmId && !selectedVm && active && (
-                        <div className="anna-empty" role="status">
-                            {translate('vm_workspace_unavailable')}
-                        </div>
-                    )}
+                        {vmJobs.map(job => (
+                            <div
+                                key={job.id}
+                                className={`anna-vm-surface ${!active || selectedVmId !== job.id ? 'anna-surface-hidden' : ''}`}
+                                aria-hidden={!active || selectedVmId !== job.id}
+                                inert={!active || selectedVmId !== job.id ? '' : undefined}
+                            >
+                                <AnnaVmWorkspace job={job} active={visibleWorkspace && selectedVmId === job.id} />
+                            </div>
+                        ))}
+                        {vmSurface && !selectedVm && (
+                            <div className="anna-empty" role="status">
+                                {translate(selectedVmId ? 'vm_workspace_unavailable' : 'No VM sessions yet')}
+                            </div>
+                        )}
+                    </div>
                     {visited && (
                         <div
                             className={`anna-browser-surface ${!active || surface !== 'browser' ? 'anna-surface-hidden' : ''}`}

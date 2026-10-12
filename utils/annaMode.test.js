@@ -1,9 +1,33 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { isAnnaMode, resolveAnnaMode, setAnnaMode, useAnnaMode, withAnnaMode, withoutAnnaMode } from './annaMode'
+import {
+    isAnnaMode,
+    resolveAnnaMode,
+    resolveAnnaLayout,
+    setAnnaLayout,
+    setAnnaMode,
+    useAnnaMode,
+    withAnnaMode,
+    withoutAnnaMode,
+} from './annaMode'
 
 beforeEach(() => window.history.replaceState(null, '', '/projects/tasks/open'))
 afterEach(() => window.history.replaceState(null, '', '/'))
+
+it('preserves chat-only mode through navigation and reload without changing the resource URL', () => {
+    setAnnaLayout('chat')
+    expect(isAnnaMode()).toBe(true)
+    expect(resolveAnnaLayout(new URL(window.location.href))).toBe('chat')
+    const target = withAnnaMode('/projects/p1/notes/n1/editor?newComment=1#draft')
+    expect(new URL(target).searchParams.get('assistant')).toBe('chat')
+    expect(withoutAnnaMode(target)).toBe(`${window.location.origin}/projects/p1/notes/n1/editor?newComment=1#draft`)
+    window.history.replaceState(null, '', target)
+    expect(resolveAnnaLayout(window.location)).toBe('chat')
+    setAnnaMode(false)
+    expect(resolveAnnaLayout(window.location)).toBe('alldone')
+    setAnnaMode(true)
+    expect(resolveAnnaLayout(window.location)).toBe('split')
+})
 
 it('writes the layout without changing the route, other parameters, fragment or history state', () => {
     window.history.replaceState({ task: 't1' }, '', '/projects/p1/tasks/t1/chat?filter=mine#comment')

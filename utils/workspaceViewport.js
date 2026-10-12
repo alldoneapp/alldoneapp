@@ -12,7 +12,7 @@ export const getWorkspaceViewport = (fallback = {}) => {
     return { active: false, top: 0, left: 0, right: width, bottom: height, width, height }
 }
 
-export const setWorkspaceViewport = rect => {
+export const setWorkspaceViewport = (rect, visible = true) => {
     if (typeof window === 'undefined') return
     const next =
         rect?.width > 0 && rect?.height > 0
@@ -24,6 +24,7 @@ export const setWorkspaceViewport = rect => {
                   bottom: rect.top + rect.height,
                   width: rect.width,
                   height: rect.height,
+                  ...(!visible ? { hidden: true } : {}),
               }
             : null
     const previous = window[VIEWPORT_KEY] || null

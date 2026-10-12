@@ -1,4 +1,11 @@
 {
+    "Close chat — Alldone only": "Cerrar chat — solo Alldone",
+    "Hide workspace — chat only": "Ocultar espacio de trabajo — solo chat",
+    "Show workspace": "Mostrar espacio de trabajo",
+    "Back to chat": "Volver al chat",
+    "VMs": "VMs",
+    "VM session": "Sesión de VM",
+    "No VM sessions yet": "Todavía no hay sesiones de VM",
     "vm_workspace_queued": "En cola",
     "vm_workspace_starting": "Iniciando…",
     "vm_workspace_running": "En ejecución",
