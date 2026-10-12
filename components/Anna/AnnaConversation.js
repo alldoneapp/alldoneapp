@@ -23,6 +23,7 @@ import { isBrowserOffline } from '../../utils/connectionState'
 import AnnaChatComposer from './AnnaChatComposer'
 import useAnnaDraft from './useAnnaDraft'
 import AnnaMessageAuthor from './AnnaMessageAuthor'
+import AnnaTimestamp from './AnnaTimestamp'
 import { annaMessageCache } from './annaMessageCache'
 import { formatAnnaActivityText } from './annaActivityText'
 
@@ -587,12 +588,7 @@ function AnnaThreadMessages({
                                     {translate('Looking at:')} {notice.title}
                                 </span>
                             )}
-                            <time dateTime={new Date(notice.created).toISOString()}>
-                                {new Date(notice.created).toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                })}
-                            </time>
+                            <AnnaTimestamp timestamp={notice.created} />
                         </p>
                     )
                 const own = message.creatorId === user.uid && !message.fromAssistant
