@@ -198,6 +198,12 @@ target_has_changes() {
         fi
     fi
 
+    # Tests must use this exact verified deployment baseline, not a new remote
+    # read later in the pipeline and not the most recent push's parent.
+    if [ "$t" = "web-production" ] && [ "$mode" = "marker" ]; then
+        WEB_TEST_BASE="$base"
+    fi
+
     if ! commit_exists "$CI_COMMIT_SHA"; then
         log "this commit is not available locally; assuming a deploy is needed."
         return 0
@@ -257,6 +263,7 @@ target_has_changes() {
 
 cmd_compute() {
     : >"$SCOPE_FILE"
+    WEB_TEST_BASE=""
     for t in $TARGETS; do
         TARGET="$t"
         if target_has_changes "$t"; then
@@ -266,6 +273,11 @@ cmd_compute() {
         fi
     done
     TARGET=""
+    full_tested_at=""
+    if fetch_marker web-full-tests; then
+        full_tested_at="$(g for-each-ref --format='%(taggerdate:unix)' "$(marker_ref web-full-tests)")"
+    fi
+    (cd "$PROJECT_DIR" && node "${SCRIPT_DIR}/selectTargetedJestFiles.js" "$WEB_TEST_BASE" "$CI_COMMIT_SHA" "${PROJECT_DIR}/web-test-scope.json" "$full_tested_at")
     log "wrote $SCOPE_FILE:"
     sed 's/^/  /' "$SCOPE_FILE"
 }
@@ -325,13 +337,28 @@ cmd_record() {
 
     url="https://${CI_SERVER_HOST:-gitlab.com}/${CI_PROJECT_PATH:-}.git"
     ref="$(marker_ref "$TARGET")"
+    source_ref="$CI_COMMIT_SHA"
+    if [ "$TARGET" = "web-full-tests" ]; then
+        # Annotated tags carry the validation time, not the source commit time.
+        # A superseded full run must not move this marker backwards.
+        latest="$(g ls-remote origin "refs/heads/${CI_DEFAULT_BRANCH:-master}" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+        if [ "$latest" != "$CI_COMMIT_SHA" ]; then
+            log "not recording full-suite time for an unverified or superseded commit."
+            return 0
+        fi
+        if ! g -c user.name='Alldone CI' -c user.email='ci@alldone.app' tag --force --annotate "${MARKER_NAMESPACE}/${TARGET}" "$CI_COMMIT_SHA" --message='Full web test suite passed'; then
+            log "WARNING: full-suite timestamp could not be recorded; the next deployment will run the full suite."
+            return 0
+        fi
+        source_ref="$ref"
+    fi
 
     # The token is handed to git through a credential helper reading the environment, so
     # it never appears in a remote URL, a process command line or a GIT_TRACE dump - the
     # same precaution ci/github-push.sh takes.
     if g \
         -c "credential.${url}.helper=!f() { echo username=${marker_push_user}; echo password=\${MARKER_PUSH_TOKEN}; }; f" \
-        push --force --quiet "$url" "${CI_COMMIT_SHA}:${ref}" >/dev/null 2>&1; then
+        push --force --quiet "$url" "${source_ref}:${ref}" >/dev/null 2>&1; then
         log "marker ${ref} now points at ${CI_COMMIT_SHA}."
     else
         [ "$CMD" != "functions-begin" ] || die "Could not record Functions attempt; refusing an untracked partial deploy."

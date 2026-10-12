@@ -1,0 +1,9 @@
+[
+    "components/LoginScreen/loginBootstrap.test.js",
+    "utils/webFirebaseAuth.test.js",
+    "utils/annaMode.test.js",
+    "__tests__/URLSystem/BrowserHistoryTitles.test.js",
+    "__tests__/ConnectionStateGuardrails.test.js",
+    "components/Anna/AnnaShell.test.js",
+    "components/Anna/AnnaConversation.test.js"
+]
