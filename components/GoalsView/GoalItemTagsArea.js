@@ -51,6 +51,7 @@ export default function GoalItemTagsArea({
     inParentGoal,
     loggedUserCanUpdateObject,
     inCommentPopup,
+    wrapTags = false,
 }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -99,7 +100,7 @@ export default function GoalItemTagsArea({
         <View
             onLayout={onLayoutTagsContainer}
             nativeID={`social_tags_${projectId}_${goal.id}`}
-            style={[localStyles.container, containerStyle]}
+            style={[localStyles.container, containerStyle, wrapTags && localStyles.wrappedContainer]}
         >
             <View nativeID={`initial_social_tag_${projectId}_${goal.id}`} />
             {isInTaskList && (
@@ -230,5 +231,11 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    wrappedContainer: {
+        flex: 1,
+        minWidth: 0,
+        flexWrap: 'wrap',
+        rowGap: 8,
     },
 })
