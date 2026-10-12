@@ -359,9 +359,6 @@ export default class GoalItemPresentation extends PureComponent {
     }
 
     needRenderTagsInNextLine = () => {
-        // Mobile tags participate in normal flow and determine their own height.
-        // The desktop measurement assumes one absolutely positioned badge row.
-        if (this.state.smallScreenNavigation) return
         const { showSummarizeTag } = this.getTagsData()
         if (showSummarizeTag) {
             this.setStateIfMounted({ showTagsInNextLine: false })
@@ -401,7 +398,9 @@ export default class GoalItemPresentation extends PureComponent {
         const { assigneesIds } = goal
         const { isMiddleScreen, smallScreenNavigation } = this.state
         const tagsAmount = this.getTagsAmount()
-        const showSummarizeTag = !smallScreenNavigation && isMiddleScreen && tagsAmount - assigneesIds.length > 3
+        const showSummarizeTag =
+            (isMiddleScreen && tagsAmount - assigneesIds.length > 3) ||
+            (smallScreenNavigation && tagsAmount - assigneesIds.length > 2)
         return { tagsAmount, showSummarizeTag }
     }
 
@@ -425,7 +424,6 @@ export default class GoalItemPresentation extends PureComponent {
             tasksAmount,
             loggedUserId,
             unlockedKeysByGuides,
-            smallScreenNavigation,
         } = this.state
         const {
             onPress,
@@ -553,10 +551,7 @@ export default class GoalItemPresentation extends PureComponent {
                         )}
 
                         <View
-                            style={[
-                                localStyles.internalContainer,
-                                smallScreenNavigation && localStyles.mobileContainer,
-                            ]}
+                            style={localStyles.internalContainer}
                             pointerEvents={
                                 isLocked || activeDragGoalMode || isActiveOrganizeModeInTasks ? 'none' : 'auto'
                             }
@@ -571,7 +566,7 @@ export default class GoalItemPresentation extends PureComponent {
                             />
                             <TouchableOpacity
                                 onPress={!blockAction ? onPress : undefined}
-                                style={[localStyles.content, smallScreenNavigation && { minWidth: 0 }]}
+                                style={localStyles.content}
                                 disabled={blockAction}
                             >
                                 <View
@@ -596,13 +591,7 @@ export default class GoalItemPresentation extends PureComponent {
                                     </SocialText>
                                 </View>
                             </TouchableOpacity>
-                            <View
-                                style={[
-                                    localStyles.tagsArea,
-                                    smallScreenNavigation && localStyles.mobileTagsArea,
-                                    activeDragGoalMode && { paddingRight: 28 },
-                                ]}
-                            >
+                            <View style={[localStyles.tagsArea, activeDragGoalMode && { paddingRight: 28 }]}>
                                 {showSummarizeTag ? (
                                     <>
                                         {amountTags > 0 && (
@@ -636,9 +625,8 @@ export default class GoalItemPresentation extends PureComponent {
                                         assigneesCapacity={assigneesCapacity}
                                         commentsData={goal.commentsData}
                                         onLayoutTagsContainer={this.onLayoutContainers}
-                                        wrapTags={smallScreenNavigation}
                                         containerStyle={
-                                            !smallScreenNavigation && showTagsInNextLine
+                                            showTagsInNextLine
                                                 ? activeDragGoalMode
                                                     ? [localStyles.tagsInNewLine, localStyles.tagsInNewLineWhenOrganize]
                                                     : localStyles.tagsInNewLine
@@ -661,7 +649,7 @@ export default class GoalItemPresentation extends PureComponent {
                                 )}
                             </View>
                         </View>
-                        {!smallScreenNavigation && tagsAmount > 0 && !showSummarizeTag && showTagsInNextLine && (
+                        {tagsAmount > 0 && !showSummarizeTag && showTagsInNextLine && (
                             <View style={{ height: 32, zIndex: -1 }} />
                         )}
                         {showSummarizeTag && showTagsSummarizeArea && (
@@ -770,17 +758,6 @@ const localStyles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginLeft: 8,
-    },
-    mobileContainer: {
-        flexWrap: 'wrap',
-    },
-    mobileTagsArea: {
-        position: 'relative',
-        right: 'auto',
-        bottom: 'auto',
-        width: '100%',
-        marginLeft: 0,
-        paddingVertical: 8,
     },
     highlightBorder: {
         borderWidth: 2,
