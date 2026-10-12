@@ -362,6 +362,7 @@ describe('AssistantOptions search button', () => {
             StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
 
         expect(getControlsStyle().flexDirection).toBe('row')
+        expect(tree.root.findByType(TextInput).props.placeholder).toBe('Start a new chat')
 
         await act(async () => {
             tree.root.findByType(TextInput).props.onContentSizeChange(100, 80)
@@ -397,7 +398,7 @@ describe('AssistantOptions search button', () => {
         expect(getInput().props.fixedHeight).toBe(88)
     })
 
-    it('keeps the same stacked alignment on small screens', async () => {
+    it('keeps mobile call/send side by side with a short placeholder when text wraps', async () => {
         mockState.smallScreenNavigation = true
         try {
             let tree
@@ -416,10 +417,17 @@ describe('AssistantOptions search button', () => {
             const controls = StyleSheet.flatten(
                 tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style
             )
-            expect(controls.flexDirection).toBe('column')
+            expect(controls.flexDirection).toBe('row')
             expect(controls.alignItems).toBe('center')
             expect(controls.width).toBeUndefined()
-            expect(getInput().props.fixedHeight).toBe(88)
+            expect(getInput().props.fixedHeight).toBe(70)
+            expect(getInput().props.placeholder).toBe('New message …')
+            await act(async () => getInput().props.onContentSizeChange(100, 160))
+            expect(getInput().props.fixedHeight).toBe(120)
+            expect(
+                StyleSheet.flatten(tree.root.findByProps({ testID: 'assistant-message-controls' }).props.style)
+                    .flexDirection
+            ).toBe('row')
         } finally {
             mockState.smallScreenNavigation = false
         }
