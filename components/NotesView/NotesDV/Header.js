@@ -81,7 +81,8 @@ export default class Header extends Component {
                             : null,
                     ]}
                 >
-                    {isMiddleScreen && accessGranted && (
+                    {/* Compact navigation can be active even above the middle-screen breakpoint. */}
+                    {(mobile || isMiddleScreen) && accessGranted && (
                         <View style={localStyles.backButtonMobile}>
                             <BackButton projectId={projectId} note={note} />
                         </View>
