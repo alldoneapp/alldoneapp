@@ -1623,7 +1623,7 @@ export async function setTaskDescription(projectId, taskId, description, task, o
     await createTaskDescriptionChangedFeed(projectId, task, oldDescription, description, taskId, batch)
     await processFollowersWhenEditTexts(projectId, FOLLOWER_TASKS_TYPE, taskId, task, mentionedUserIds, true, batch)
 
-    batch.commit()
+    return batch.commit()
 }
 
 export async function setTaskAutoEstimation(projectId, task, autoEstimation, batch) {

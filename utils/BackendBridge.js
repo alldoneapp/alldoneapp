@@ -173,7 +173,7 @@ export default class Backend {
     }
 
     static async setProjectDescription(projectId, newDescription, project, oldDescription) {
-        bridge.setProjectDescription(projectId, newDescription, project, oldDescription)
+        return bridge.setProjectDescription(projectId, newDescription, project, oldDescription)
     }
 
     static async removeProject(projectId) {
