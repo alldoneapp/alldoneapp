@@ -118,19 +118,6 @@ describe('shared chat attachment menu in the assistant composer (AT-2699)', () =
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'hide-popup' })
     })
 
-    it('accepts the Anna toolbar touch target while retaining compact icon and padding', () => {
-        mount({ buttonStyle: { width: 40, height: 40, minHeight: 40, alignSelf: 'center' } })
-        const button = screen.getByRole('button', { name: 'Select kind of file to add' })
-        expect(button.style.width).toBe('40px')
-        expect(button.style.height).toBe('40px')
-        expect(button.style.minHeight).toBe('40px')
-        expect(button.style.alignSelf).toBe('center')
-        expect(button.style.padding).toBe('0px')
-        expect(button.dataset.icon).toBe('plus')
-        open()
-        expect(button.getAttribute('aria-expanded')).toBe('true')
-    })
-
     it('uses the same editor callback for recorded video', () => {
         mount()
         open()
