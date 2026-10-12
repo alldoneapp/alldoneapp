@@ -14,14 +14,16 @@ import store from '../../../redux/store'
 import { translate } from '../../../i18n/TranslationService'
 import { setUserDateFormat, setUserFirstDayInCalendar } from '../../../utils/backends/Users/usersFirestore'
 import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
+import { DATE_FORMAT_EUROPE, DATE_FORMAT_AMERICA, getTimeFormatForDateFormat } from '../../../utils/dateTimeFormats'
 
-export const DATE_FORMAT_EUROPE = 'DD.MM.YYYY'
-export const DATE_FORMAT_AMERICA = 'MM.DD.YYYY'
-
-export const TIME_FORMAT_EUROPE = 'HH:mm'
-export const TIME_FORMAT_AMERICA = 'hh:mm a'
-export const TIME_FORMAT_EUROPE_S = 'HH:mm:ss'
-export const TIME_FORMAT_AMERICA_S = 'hh:mm:ss a'
+export {
+    DATE_FORMAT_EUROPE,
+    DATE_FORMAT_AMERICA,
+    TIME_FORMAT_EUROPE,
+    TIME_FORMAT_AMERICA,
+    TIME_FORMAT_EUROPE_S,
+    TIME_FORMAT_AMERICA_S,
+} from '../../../utils/dateTimeFormats'
 
 export const SUNDAY_FIRST_IN_CALENDAR = 0
 export const MONDAY_FIRST_IN_CALENDAR = 1
@@ -121,16 +123,8 @@ export const getDateFormat = (removeYear = false, twoDigitYear = false) => {
     return removeYear ? dateFormat.substr(0, 5) : twoDigitYear ? dateFormat.substr(0, 8) : dateFormat
 }
 
-export const getTimeFormat = (showSeconds = false) => {
-    const dateFormat = store.getState().dateFormat || DATE_FORMAT_EUROPE
-    return dateFormat === DATE_FORMAT_EUROPE
-        ? showSeconds
-            ? TIME_FORMAT_EUROPE_S
-            : TIME_FORMAT_EUROPE
-        : showSeconds
-          ? TIME_FORMAT_AMERICA_S
-          : TIME_FORMAT_AMERICA
-}
+export const getTimeFormat = (showSeconds = false) =>
+    getTimeFormatForDateFormat(store.getState().dateFormat, showSeconds)
 
 const localStyles = StyleSheet.create({
     container: {

@@ -350,6 +350,42 @@ it('shows linked red activity between messages without posting to the assistant'
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
     now.mockRestore()
 })
+
+it('uses the user date/time setting for messages and every notice, including changes while chat is open', () => {
+    const timestamp = new Date(2026, 9, 12, 13, 7).getTime()
+    const now = jest.spyOn(Date, 'now').mockReturnValue(timestamp)
+    // An American browser preference must not override the saved Alldone setting.
+    jest.spyOn(Date.prototype, 'toLocaleTimeString').mockReturnValue('01:07 PM')
+    mockMessages = [
+        { id: 'user', creatorId: 'u1', created: timestamp, commentText: 'Hello' },
+        { id: 'assistant', creatorId: 'a1', created: timestamp, commentText: 'Hi' },
+    ]
+    const pageContext = { surface: 'alldone', path: '/tasks', title: 'Alldone.app - Tasks' }
+    render({ pageContext })
+    now.mockReturnValue(timestamp + 1000)
+    mockActivityState.followedFeedsAmount = 1
+    mockActivityState.followedFeedsData = {
+        p1: [{ id: 'feed', objectId: 'task', objectTypes: 'tasks', lastChangeDate: timestamp + 1000 }],
+    }
+    mockActivityState.projectChatNotifications = {
+        p1: {
+            totalFollowed: 1,
+            otherChat: { totalFollowed: 1, followedNotifications: [{ commentId: 'message', date: timestamp + 1000 }] },
+        },
+    }
+    for (const [dateFormat, expected] of [
+        [undefined, '13:07'],
+        ['MM.DD.YYYY', '01:07 pm'],
+        ['DD.MM.YYYY', '13:07'],
+    ]) {
+        mockActivityState.dateFormat = dateFormat
+        render({ pageContext })
+        const times = [...container.querySelectorAll('time')]
+        expect(times).toHaveLength(5)
+        expect(times.map(node => node.textContent)).toEqual(Array(5).fill(expected))
+        expect(times.every(node => Number.isFinite(Date.parse(node.dateTime)))).toBe(true)
+    }
+})
 it('reports persisted run completion to the workspace without waiting for the spinner timeout', () => {
     const onWorkStateChange = jest.fn()
     mockMessages = [

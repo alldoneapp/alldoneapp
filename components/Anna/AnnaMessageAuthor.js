@@ -3,6 +3,7 @@ import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import { getTimestampInMilliseconds } from '../ChatsView/Utils/messageTimestamps'
 import { translate } from '../../i18n/TranslationService'
 import MessageSendStatus from '../ChatsView/ChatDV/EditorView/MessageSendStatus'
+import AnnaTimestamp from './AnnaTimestamp'
 
 export default function AnnaMessageAuthor({ message, creator, own }) {
     return (
@@ -17,12 +18,7 @@ export default function AnnaMessageAuthor({ message, creator, own }) {
                 </span>
             )}
             <span className="anna-message-author-name">{own ? translate('You') : creator?.displayName}</span>
-            <time>
-                {new Date(getTimestampInMilliseconds(message.created || message.lastChangeDate)).toLocaleTimeString(
-                    [],
-                    { hour: '2-digit', minute: '2-digit' }
-                )}
-            </time>
+            <AnnaTimestamp timestamp={getTimestampInMilliseconds(message.created || message.lastChangeDate)} />
             <MessageSendStatus
                 label={message.submission && translate('assistantLineSending')}
                 pendingSend={
