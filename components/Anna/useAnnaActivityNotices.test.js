@@ -173,10 +173,10 @@ it('keeps notices after marking read, closing/reopening, and remounting with an 
     render()
     now.mockReturnValue(2500)
     addFeeds([feed('saved')])
-    const original = notices[0]
+    const { source, ...original } = notices[0]
     addFeeds([])
     render({ enabled: false })
-    expect(notices).toEqual([original])
+    expect(notices).toEqual([{ ...original, source }])
     act(() => root.unmount())
     root = createRoot(container)
     render()

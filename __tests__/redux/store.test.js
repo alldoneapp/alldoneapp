@@ -40,6 +40,30 @@ import { PROJECT_TYPE_ARCHIVED } from '../../components/SettingsView/ProjectsSet
 import { SET_OKR_TODAY_OPERATION, getOkrTodayOperation } from '../../redux/okrTodayVisibility'
 
 describe('Redux Reducers', () => {
+    it('retains the exact red chat message identity for assistant previews without changing badge counts', () => {
+        const notification = {
+            chatId: 'task1',
+            commentId: 'message1',
+            chatType: 'tasks',
+            date: 1000,
+            creatorId: 'anna',
+            creatorType: 'assistant',
+            followed: true,
+        }
+        const state = theReducer(
+            { ...initialState, loggedUser: { uid: 'user', projectIds: ['p1'] } },
+            {
+                type: 'Set chat notifications in projects',
+                projectId: 'p1',
+                notifications: [notification, { ...notification, commentId: 'grey', followed: false }],
+            }
+        )
+        expect(state.projectChatNotifications.p1).toMatchObject({ totalFollowed: 1, totalUnfollowed: 1 })
+        expect(state.projectChatNotifications.p1.task1.followedNotifications).toEqual([
+            { commentId: 'message1', chatType: 'tasks', date: 1000, creatorId: 'anna', creatorType: 'assistant' },
+        ])
+        expect(state.projectChatNotifications.p1.task1.followedCommentIds).toEqual(['message1'])
+    })
     it('should return the initial state', () => {
         const state = theReducer(undefined, {})
         expect(state).toEqual(initialState)

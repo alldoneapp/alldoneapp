@@ -70,6 +70,29 @@ describe('AssistantProgress', () => {
         act(() => tree.unmount())
     })
 
+    test('shows transport feedback before backend activity without claiming to think or read', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<AssistantProgress preparingText="Sending your message" runId="local" />)
+        })
+        expect(renderedText(tree)).toContain('Sending your message')
+        expect(renderedText(tree)).not.toContain('assistant_progress_preparing_1')
+        act(() => tree.update(<AssistantProgress preparingText="Waiting for the assistant" runId="local" />))
+        expect(renderedText(tree)).toContain('Waiting for the assistant')
+        expect(tree.root.findAllByProps({ testID: 'assistant-progress-step-text' })).toHaveLength(1)
+        act(() =>
+            tree.update(
+                <AssistantProgress
+                    activity={{ phase: 'tool', toolName: 'create_task' }}
+                    preparingText="Waiting for the assistant"
+                    runId="server"
+                />
+            )
+        )
+        expect(renderedText(tree)).not.toContain('Waiting for the assistant')
+        act(() => tree.unmount())
+    })
+
     test('retains real phase transitions and replaces history when a new run starts', () => {
         let tree
         act(() => {

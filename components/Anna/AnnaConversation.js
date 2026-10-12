@@ -25,7 +25,8 @@ import useAnnaDraft from './useAnnaDraft'
 import AnnaMessageAuthor from './AnnaMessageAuthor'
 import AnnaTimestamp from './AnnaTimestamp'
 import { annaMessageCache } from './annaMessageCache'
-import { formatAnnaActivityText } from './annaActivityText'
+import AnnaActivityNotice from './AnnaActivityNotice'
+import AssistantProgress from '../ChatsView/ChatDV/EditorView/AssistantProgress'
 
 const MESSAGES_PER_PAGE = 50
 
@@ -65,16 +66,6 @@ export default function AnnaConversation({
     const activityNotices = useAnnaActivityNotices(user.uid, conversation, active)
     const contextNotices = [...pageNotices, ...activityNotices].sort((a, b) => a.created - b.created)
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
-    const [liveActivityThreads, setLiveActivityThreads] = useState(() => new Set())
-    const onLiveActivityChange = useCallback((key, visible) => {
-        setLiveActivityThreads(previous => {
-            if (previous.has(key) === visible) return previous
-            const next = new Set(previous)
-            if (visible) next.add(key)
-            else next.delete(key)
-            return next
-        })
-    }, [])
     // The draft belongs to the continuous conversation, including across midnight.
     const {
         initialText,
@@ -322,7 +313,6 @@ export default function AnnaConversation({
                         onRetry={retryMessage}
                         onAcknowledge={acknowledge}
                         onWorkStateChange={onWorkStateChange}
-                        onLiveActivityChange={onLiveActivityChange}
                         onChange={messagesChanged}
                         onLoadEarlier={preservePosition}
                         visible={visible}
@@ -338,11 +328,6 @@ export default function AnnaConversation({
                         }}
                     />
                 ))}
-                {sending && liveActivityThreads.size === 0 && (
-                    <p className="anna-muted" role="status">
-                        {translate('%{assistantName} is working…', { assistantName })}
-                    </p>
-                )}
             </div>
             {newMessages && (
                 <button className="anna-latest" onClick={latest}>
@@ -465,26 +450,32 @@ function AnnaThreadMessages({
     onRetry,
     onAcknowledge,
     onWorkStateChange,
-    onLiveActivityChange,
 }) {
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [limit, setLimit] = useState(MESSAGES_PER_PAGE)
     const chatId = thread.chatId || thread.id
     const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit, annaMessageCache)
-    // Match the body renderer, including its stale-run rule. Sending, errors and
-    // VM approval states still carry their own useful status messages.
-    const hasLiveActivity = messages.some(message =>
-        showsAssistantLiveActivity(
-            getMessageCreator(message, user, assistant)?.isAssistant,
-            resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate)),
-            message.assistantRun
-        )
+    // A persisted response takes over from local startup feedback, including one that
+    // has already finished while the callable is still completing its cleanup.
+    const repliedMessageIds = new Set(
+        messages
+            .filter(message => message.assistantRun?.kind === 'chat')
+            .map(message => message.assistantRun.triggerMessageId)
     )
-    useLayoutEffect(() => {
-        const key = `${thread.projectId}/${chatId}`
-        onLiveActivityChange(key, hasLiveActivity)
-        return () => onLiveActivityChange(key, false)
-    }, [thread.projectId, chatId, hasLiveActivity, onLiveActivityChange])
+    // Older servers omitted triggerMessageId. Only use their visible card as a fallback within
+    // this thread; a card in yesterday's chat cannot represent a newly submitted request today.
+    const hasLegacyLiveActivity = messages.some(
+        message =>
+            !message.assistantRun?.triggerMessageId &&
+            showsAssistantLiveActivity(
+                getMessageCreator(message, user, assistant)?.isAssistant,
+                resolveEffectiveMessageLoading(message, getTimestampInMilliseconds(message.lastChangeDate)),
+                message.assistantRun
+            )
+    )
+    const pendingMessage =
+        !hasLegacyLiveActivity &&
+        localMessages.findLast(message => message.running && !repliedMessageIds.has(message.id))
     const workStateKey = JSON.stringify(getAnnaWorkspaceWorkState(messages))
     useEffect(() => {
         if (current) onWorkStateChange?.({ projectId: thread.projectId, chatId, ...JSON.parse(workStateKey) })
@@ -521,6 +512,8 @@ function AnnaThreadMessages({
         last?.submission?.status,
         contextNotices.length,
         contextNotices.at(-1)?.id,
+        pendingMessage?.key,
+        pendingMessage?.status,
         onChange,
     ])
     const timeline = [
@@ -567,27 +560,14 @@ function AnnaThreadMessages({
                 </div>
             )}
             {timeline.map(({ message, notice }) => {
+                if (notice?.kind)
+                    return <AnnaActivityNotice key={`context-${notice.id}`} notice={notice} onChange={onChange} />
                 if (notice)
                     return (
-                        <p
-                            className={`anna-context-notice${notice.kind ? ' anna-activity-notice' : ''}`}
-                            key={`context-${notice.id}`}
-                        >
-                            {notice.kind ? (
-                                <a href={notice.path}>
-                                    <span className="anna-activity-dot" aria-hidden="true" />
-                                    <span>
-                                        {translate(notice.kind === 'feed' ? 'New update' : 'New chat message')}
-                                        {notice.entryText ? `: ${formatAnnaActivityText(notice.entryText)}` : ''}
-                                        {notice.projectName ? ` · ${notice.projectName}` : ''}
-                                    </span>
-                                    <Icon name="arrow-right" size={14} color="currentColor" />
-                                </a>
-                            ) : (
-                                <span>
-                                    {translate('Looking at:')} {notice.title}
-                                </span>
-                            )}
+                        <p className="anna-context-notice" key={`context-${notice.id}`}>
+                            <span>
+                                {translate('Looking at:')} {notice.title}
+                            </span>
                             <AnnaTimestamp timestamp={notice.created} />
                         </p>
                     )
@@ -627,6 +607,19 @@ function AnnaThreadMessages({
                     </article>
                 )
             })}
+            {pendingMessage && (
+                <div className="anna-message anna-pending-activity" role="status" aria-label={assistantName}>
+                    <AssistantProgress
+                        runId={pendingMessage.key}
+                        activity={{ phase: 'preparing', startedAt: pendingMessage.created }}
+                        preparingText={translate(
+                            pendingMessage.status === 'sending'
+                                ? 'assistant_progress_sending'
+                                : 'assistant_progress_waiting'
+                        )}
+                    />
+                </div>
+            )}
         </section>
     )
 }
