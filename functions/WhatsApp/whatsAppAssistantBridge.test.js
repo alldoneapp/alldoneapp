@@ -1,6 +1,10 @@
+jest.mock('firebase-admin', () => ({ firestore: jest.fn(() => ({})) }))
 jest.mock('../Assistant/assistantHelper', () => ({
     interactWithChatStream: jest.fn(),
     getAssistantForChat: jest.fn(),
+    THREAD_CONTEXT_MESSAGE_LIMIT: 20,
+    loadAssistantThreadState: jest.fn(async () => null),
+    buildCompactThreadContextMessage: jest.fn(state => state?.summary || ''),
     addBaseInstructions: jest.fn(async () => {}),
     reduceGoldWhenChatWithAI: jest.fn(),
     executeToolNatively: jest.fn(),
@@ -94,6 +98,16 @@ jest.mock('./whatsAppDailyTopic', () => ({
     storeAssistantMessageInTopic: jest.fn(),
 }))
 
+jest.mock('../Assistant/automaticThreadCompaction', () => ({
+    runAutomaticThreadCompaction: jest.fn(async () => ({ compacted: false, hard: false, reason: 'below_threshold' })),
+}))
+jest.mock('./whatsAppHistoryContext', () => ({ loadWhatsAppHistoryContext: jest.fn(async () => '') }))
+jest.mock('../Assistant/assistantActivityContext', () => ({ loadAssistantActivityContext: jest.fn(async () => '') }))
+
+const { runAutomaticThreadCompaction } = require('../Assistant/automaticThreadCompaction')
+const { loadWhatsAppHistoryContext } = require('./whatsAppHistoryContext')
+const { loadAssistantActivityContext } = require('../Assistant/assistantActivityContext')
+
 const assistantHelper = require('../Assistant/assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
@@ -112,6 +126,72 @@ function createAsyncStream(items) {
 describe('WhatsApp assistant attachment handoff', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        runAutomaticThreadCompaction
+            .mockReset()
+            .mockResolvedValue({ compacted: false, hard: false, reason: 'below_threshold' })
+        assistantHelper.loadAssistantThreadState.mockReset().mockResolvedValue(null)
+        loadWhatsAppHistoryContext.mockReset().mockResolvedValue('')
+        loadAssistantActivityContext.mockReset().mockResolvedValue('')
+    })
+
+    function prepareMessage() {
+        getUserData.mockResolvedValue({ gold: 10, language: 'de' })
+        assistantHelper.getAssistantForChat.mockResolvedValue({ uid: 'a1', model: 'MODEL_GPT4O', allowedTools: [] })
+        getConversationHistory.mockResolvedValue([['user', 'latest request']])
+        assistantHelper.interactWithChatStream.mockResolvedValue(createAsyncStream([{ content: 'Done.' }]))
+    }
+
+    test('uses the rolling summary, previous daily history and shared notices with the current message exactly once', async () => {
+        prepareMessage()
+        assistantHelper.loadAssistantThreadState.mockResolvedValueOnce({
+            summary: 'Earlier decisions',
+            trimHistoryBeforeMs: 100,
+            trimHistoryBeforeMessageId: 'm10',
+        })
+        loadWhatsAppHistoryContext.mockResolvedValueOnce('Yesterday: discuss the meeting')
+        loadAssistantActivityContext.mockResolvedValueOnce('Displayed activity: agenda updated')
+        await processWhatsAppAssistantMessage('u1', 'p1', 'today', 'latest request', 'a1', null, {
+            skipCurrentMessageAppend: true,
+            messageId: 'm20',
+        })
+        const messages = assistantHelper.interactWithChatStream.mock.calls[0][0]
+        expect(messages).toContainEqual(['system', 'Earlier decisions'])
+        expect(messages).toContainEqual(['system', 'Displayed activity: agenda updated'])
+        expect(messages).toContainEqual(['system', expect.stringContaining('Yesterday: discuss the meeting')])
+        expect(messages.filter(([role]) => role === 'user')).toEqual([['user', 'latest request']])
+        expect(getConversationHistory).toHaveBeenCalledWith('p1', 'today', 20, null, 100, {
+            trimHistoryBeforeMessageId: 'm10',
+            triggeringMessageId: 'm20',
+        })
+        expect(runAutomaticThreadCompaction).toHaveBeenNthCalledWith(
+            1,
+            expect.objectContaining({ hardOnly: true, triggeringMessageId: 'm20', assistantId: 'a1' })
+        )
+        expect(runAutomaticThreadCompaction).toHaveBeenNthCalledWith(2, expect.objectContaining({ hardOnly: false }))
+        expect(runAutomaticThreadCompaction.mock.invocationCallOrder[1]).toBeGreaterThan(
+            storeAssistantMessageInTopic.mock.invocationCallOrder[0]
+        )
+        expect(loadAssistantActivityContext).toHaveBeenCalledWith(expect.anything(), 'u1')
+    })
+
+    test('does not silently drop older messages if required compaction fails', async () => {
+        prepareMessage()
+        runAutomaticThreadCompaction.mockResolvedValueOnce({ hard: true, compacted: false, reason: 'in_progress' })
+        await expect(processWhatsAppAssistantMessage('u1', 'p1', 'today', 'request', 'a1')).rejects.toThrow(
+            'Hard thread compaction did not complete'
+        )
+        expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
+        expect(storeAssistantMessageInTopic).not.toHaveBeenCalled()
+    })
+
+    test('returns the stored response even when post-response summarization fails', async () => {
+        prepareMessage()
+        runAutomaticThreadCompaction
+            .mockResolvedValueOnce({ hard: false })
+            .mockRejectedValueOnce(new Error('summary unavailable'))
+        await expect(processWhatsAppAssistantMessage('u1', 'p1', 'today', 'request', 'a1')).resolves.toBe('Done.')
+        expect(storeAssistantMessageInTopic).toHaveBeenCalledTimes(1)
+        expect(assistantHelper.interactWithChatStream).toHaveBeenCalledTimes(1)
     })
 
     test('passes current message context into WhatsApp tool runtime context', async () => {

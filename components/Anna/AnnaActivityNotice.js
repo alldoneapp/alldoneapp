@@ -6,6 +6,7 @@ import { isBrowserOffline } from '../../utils/connectionState'
 import { loadAnnaActivityContent } from './annaActivityContent'
 import { annaActivityHistory } from './annaActivityHistory'
 import { getAnnaActivityLabel } from './annaActivityText'
+import { publishAnnaActivityContext } from './annaActivityContext'
 
 export default function AnnaActivityNotice({ notice, onChange }) {
     const userId = useSelector(state => state.loggedUser?.uid)
@@ -16,6 +17,16 @@ export default function AnnaActivityNotice({ notice, onChange }) {
         [userId, notice.id, notice.content]
     )
     const content = resolved?.userId === userId && resolved.id === notice.id ? resolved.content : savedContent
+
+    useEffect(() => {
+        if (!userId || notice.userId !== userId || connectionState === 'offline' || isBrowserOffline()) return
+        publishAnnaActivityContext(userId, {
+            ...notice,
+            ...(content?.version === 1
+                ? { content: { ...content, label: getAnnaActivityLabel({ ...notice, content }) } }
+                : {}),
+        }).catch(() => {}) // Keep the timeline usable; a reconnect/remount retries the reference sync.
+    }, [userId, notice, content, connectionState])
 
     useLayoutEffect(() => {
         // Enrichment can add several wrapped lines. Use the conversation's existing follow/anchor

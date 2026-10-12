@@ -5,6 +5,7 @@ import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
+import { publishAnnaActivityContext } from './annaActivityContext'
 jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn().mockResolvedValue(null) }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 let mockActivityState
@@ -81,6 +82,7 @@ jest.mock('../UIControls/RambleButton', () => ({
     },
 }))
 const mockContextUpdate = jest.fn().mockResolvedValue(undefined)
+const mockContextSet = jest.fn().mockResolvedValue(undefined)
 let mockMessages = []
 const mockThreadMessages = {}
 jest.mock(
@@ -100,7 +102,7 @@ jest.mock('../../utils/backends/Chats/commentOutbox', () => ({
 jest.mock('../Feeds/Utils/HelperFunctions', () => ({ STAYWARD_COMMENT: 'stayward' }))
 jest.mock('../../utils/backends/firestore', () => ({
     getId: jest.fn(() => 'm1'),
-    getDb: () => ({ doc: () => ({ update: mockContextUpdate }) }),
+    getDb: () => ({ doc: () => ({ update: mockContextUpdate, set: mockContextSet }) }),
     runHttpsCallableFunction: jest.fn(),
 }))
 jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000 }))
@@ -472,6 +474,32 @@ it('saves the visible context and one project conversation message before invoki
         expect.objectContaining({ messageId: 'm1', assistantId: 'a1', isPublicFor: [0] }),
         { timeout: 3600000 }
     )
+})
+
+it('waits for displayed notices to reach shared storage before asking the assistant to read them', async () => {
+    const write = deferred()
+    mockContextSet.mockReturnValueOnce(write.promise)
+    const published = publishAnnaActivityContext('u1', {
+        id: 'chat/p1/topic/send-context',
+        userId: 'u1',
+        kind: 'chat',
+        sourceProjectId: 'p1',
+        projectId: 'p1',
+        chatId: 'anna_u1',
+        created: 1,
+        content: { label: 'Agenda updated' },
+    })
+    render()
+    type('What is this update about?')
+    await submit()
+    expect(createObjectMessage).toHaveBeenCalledTimes(1)
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    await act(async () => {
+        write.resolve()
+        await published
+    })
+    expect(runHttpsCallableFunction).toHaveBeenCalledTimes(1)
+    expect(mockContextSet.mock.calls[0][0].content.label).toBe('Agenda updated')
 })
 
 it('uses the selected assistant name in the welcome text, composer and Gold message', async () => {

@@ -4,6 +4,7 @@ import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { STAYWARD_COMMENT } from '../Feeds/Utils/HelperFunctions'
 import { getDb, getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { translate } from '../../i18n/TranslationService'
+import { flushAnnaActivityContext } from './annaActivityContext'
 
 // Keep each submission separate from the next draft and from other assistant
 // runs. Its permanent outbox ID is also the backend's idempotency key on retry.
@@ -101,6 +102,8 @@ export default function useAnnaMessageSends({
                 if (!isActive()) return null
                 job.status = 'working'
                 publish()
+                await flushAnnaActivityContext(job.userId)
+                if (!isActive()) return null
                 return {
                     response: runHttpsCallableFunction(
                         'askToBotSecondGen',

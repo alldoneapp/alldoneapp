@@ -402,7 +402,8 @@ async function getConversationHistory(
     chatId,
     limit = THREAD_CONTEXT_MESSAGE_LIMIT,
     userTimezoneOffset = null,
-    trimHistoryBeforeMs = 0
+    trimHistoryBeforeMs = 0,
+    options = {}
 ) {
     const snapshot = await admin
         .firestore()
@@ -413,10 +414,22 @@ async function getConversationHistory(
 
     const messages = []
     let multimodalUserMessages = 0
-    for (const doc of snapshot.docs.reverse()) {
+    let reachedTrigger = !options.triggeringMessageId
+    const eligibleDocs = snapshot.docs.filter(doc => {
+        if (doc.id === options.triggeringMessageId) reachedTrigger = true
+        return reachedTrigger
+    })
+    for (const doc of eligibleDocs.reverse()) {
         const data = doc.data()
         const messageTimestamp = Number(data.created || data.lastChangeDate || 0)
-        if (trimHistoryBeforeMs && Number.isFinite(messageTimestamp) && messageTimestamp < trimHistoryBeforeMs) {
+        if (
+            trimHistoryBeforeMs &&
+            Number.isFinite(messageTimestamp) &&
+            (messageTimestamp < trimHistoryBeforeMs ||
+                (options.trimHistoryBeforeMessageId &&
+                    messageTimestamp === trimHistoryBeforeMs &&
+                    doc.id.localeCompare(options.trimHistoryBeforeMessageId) <= 0))
+        ) {
             continue
         }
         if (data.commentText) {
