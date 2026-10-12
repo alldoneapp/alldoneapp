@@ -380,6 +380,13 @@ export default function AnnaConversation({
                             <div className="anna-composer-attachment">
                                 <AddFeedAttachButton
                                     compact
+                                    buttonStyle={{
+                                        width: 40,
+                                        height: 40,
+                                        minHeight: 40,
+                                        borderRadius: 20,
+                                        alignSelf: 'center',
+                                    }}
                                     projectId={conversation.projectId}
                                     getPopoverViewport={() => {
                                         const pane = composer.current?.getPane()

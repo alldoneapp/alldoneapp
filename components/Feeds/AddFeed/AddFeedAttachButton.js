@@ -18,6 +18,7 @@ export default function AddFeedAttachButton({
     addAttachmentTag,
     projectId,
     compact = false,
+    buttonStyle,
     getPopoverViewport,
 }) {
     const dispatch = useDispatch()
@@ -68,11 +69,12 @@ export default function AddFeedAttachButton({
                     noBorder={smallScreen || compact}
                     icon={compact ? 'plus' : 'folder-plus'}
                     iconSize={compact ? 16 : 24}
-                    buttonStyle={
-                        compact
+                    buttonStyle={{
+                        ...(compact
                             ? { width: 24, height: 24, minHeight: 24, padding: 0, paddingHorizontal: 0 }
-                            : { marginRight: 4 }
-                    }
+                            : { marginRight: 4 }),
+                        ...buttonStyle,
+                    }}
                     onPress={openModal}
                     disabled={isDisabled}
                     shortcutText={'U'}
