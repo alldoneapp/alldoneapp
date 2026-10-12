@@ -3,6 +3,16 @@ module.exports = (config, webpack) => ({
     ...config,
     plugins: [
         ...config.plugins,
+        new webpack.NormalModuleReplacementPlugin(
+            /(?:NotesEditorView|NoteTitlePresentation|sharedNoteSubscriptions)$/,
+            path.join(__dirname, 'note-content.js')
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+            /(?:TagList|BackButton|NoteTitleEdition|BotLine|DVHamburgButton)$/,
+            resource => {
+                if (resource.context.endsWith('/NotesView/NotesDV')) resource.request = path.join(__dirname, 'empty.js')
+            }
+        ),
         ...[
             /react-redux$/,
             /redux\/store$/,
@@ -17,6 +27,7 @@ module.exports = (config, webpack) => ({
             /utils\/assistantHelper$/,
             /utils\/appResume$/,
             /utils\/NavigationService$/,
+            /utils\/SharedHelper$/,
             /URLSystem\/URLTrigger$/,
             /i18n\/TranslationService$/,
             /AdminPanel\/Assistants\/assistantsHelper$/,

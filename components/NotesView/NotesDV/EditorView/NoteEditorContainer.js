@@ -30,6 +30,8 @@ export default function NoteEditorContainer({
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const loggedUser = useSelector(state => state.loggedUser)
+    const mobile = useSelector(state => state.smallScreenNavigation)
+    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const dispatch = useDispatch()
     // App-wide connectivity signal (OFFLINE_SUPPORT_PLAN.md Stage 1) — fed by
     // utils/connectionState.js. '' until the first transition, then 'offline' or
@@ -91,7 +93,10 @@ export default function NoteEditorContainer({
     }, [note.id])
 
     return (
-        <View style={localstyles.container} dataSet={{ noteEditor: true }}>
+        <View
+            style={localstyles.container}
+            dataSet={{ noteEditor: true, noteEditorLayout: mobile ? 'mobile' : isMiddleScreen ? 'tablet' : 'desktop' }}
+        >
             {visibilityStateRef.current !== 'hidden' && (
                 <NotesEditorView
                     key={`${project.id}/${note.id}`}

@@ -1,6 +1,9 @@
 // Synthetic account and transport only; the shell, chat, browser pane, hooks and CSS are real.
 export * from '../at2718/dependencies'
 import { useSyncExternalStore } from 'react'
+import { getResponsiveLayoutState } from '../../utils/responsiveLayout'
+import { getWorkspaceViewport, WORKSPACE_VIEWPORT_EVENT } from '../../utils/workspaceViewport'
+import { DV_TAB_NOTE_EDITOR } from '../../utils/TabNavigationConstants'
 export const useDispatch = () => () => {}
 const user = { uid: 'demo', displayName: 'Alex', defaultProjectId: 'p1', gold: 1000 }
 const assistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
@@ -31,17 +34,43 @@ window.__annaActivity = patch => {
     activityRevision++
     activityListeners.forEach(callback => callback())
 }
-export const useSelector = selector => {
-    useSyncExternalStore(subscribeActivity, () => activityRevision)
-    return selector({
+const subscribeState = callback => {
+    const unsubscribe = subscribeActivity(callback)
+    window.addEventListener('resize', callback)
+    window.addEventListener(WORKSPACE_VIEWPORT_EVENT, callback)
+    return () => {
+        unsubscribe()
+        window.removeEventListener('resize', callback)
+        window.removeEventListener(WORKSPACE_VIEWPORT_EVENT, callback)
+    }
+}
+const getState = () => {
+    const viewport = getWorkspaceViewport()
+    return {
         loggedUser: user,
         loggedUserProjects: [{ id: 'p1', name: 'Launch' }],
         defaultAssistant: assistant,
         connectionState: new URLSearchParams(window.location.search).has('reveal') ? 'online' : 'offline',
         smallScreenNavigation: (window.__alldoneWorkspaceViewport?.width || window.innerWidth) < 640,
+        ...(new URLSearchParams(window.location.search).has('noteWidth')
+            ? getResponsiveLayoutState({
+                  width: viewport.width,
+                  preferCompactNavigation: viewport.active,
+                  route: 'NotesDetailedView',
+              })
+            : {}),
+        assignee: user,
+        selectedNavItem: DV_TAB_NOTE_EDITOR,
         showLoadingDataSpinner: new URLSearchParams(window.location.search).has('floating'),
         ...activityState,
-    })
+    }
+}
+export const useSelector = selector => {
+    useSyncExternalStore(
+        subscribeState,
+        () => `${activityRevision}:${getWorkspaceViewport().width}:${getWorkspaceViewport().active}`
+    )
+    return selector(getState())
 }
 import translations from '../../i18n/translations/en.json'
 export const translate = (text, values = {}) =>
@@ -281,7 +310,9 @@ window.__annaBrowserFixture = async (status, commentId = 'browse1') => {
         })
 }
 export default {
-    getState: () => ({ loggedUser: user }),
+    getState,
+    subscribe: subscribeState,
+    accessGranted: () => true,
     dispatch: () => {},
     createNavigationProp: () => ({}),
     processUrl: async (_, path) => {

@@ -666,29 +666,52 @@ async function checkNoteWidth(page, width) {
     await editor.waitFor({ state: 'visible' })
     const editorNode = await editor.elementHandle()
     const checkGeometry = async () => {
+        // Responsive store updates follow the pane's ResizeObserver. Wait for
+        // the heading and editor to settle before comparing their content edges.
+        await page.waitForFunction(() => {
+            const header = document
+                .querySelector('[data-testid="note-header"]')
+                .firstElementChild.getBoundingClientRect()
+            const editor = document.querySelector('[data-note-editor] .ql-editor')
+            const style = getComputedStyle(editor)
+            return Math.abs(header.left - editor.getBoundingClientRect().left - parseFloat(style.paddingLeft)) <= 2
+        })
         const geometry = await page.locator('[data-note-editor]').evaluate(note => {
             const editor = note.querySelector('.ql-editor')
             const toolbar = note.querySelector('.ql-toolbar-container')
             const rect = node => node.getBoundingClientRect().toJSON()
             const paddings = node => [getComputedStyle(node).paddingLeft, getComputedStyle(node).paddingRight]
+            const contentRect = node => {
+                const box = node.getBoundingClientRect()
+                const style = getComputedStyle(node)
+                return {
+                    left: box.left + parseFloat(style.paddingLeft),
+                    right: box.right - parseFloat(style.paddingRight),
+                }
+            }
             return {
                 note: rect(note),
+                heading: rect(document.querySelector('[data-testid="note-header"]').firstElementChild),
                 editor: rect(editor),
                 toolbar: rect(toolbar),
+                editorContent: contentRect(editor),
+                toolbarContent: contentRect(toolbar),
                 editorPadding: paddings(editor),
                 toolbarPadding: paddings(toolbar),
                 containerPadding: paddings(note.querySelector('.ql-container')),
                 placeholderLeft: editor.classList.contains('ql-blank')
                     ? getComputedStyle(editor, '::before').left
-                    : '0px',
+                    : null,
             }
         })
-        assert.deepEqual(geometry.editorPadding, ['0px', '0px'])
-        assert.deepEqual(geometry.toolbarPadding, ['0px', '0px'])
+        for (const content of [geometry.editorContent, geometry.toolbarContent]) {
+            assert.ok(Math.abs(content.left - geometry.heading.left) <= 2, JSON.stringify(geometry))
+            assert.ok(Math.abs(content.right - geometry.heading.right) <= 2, JSON.stringify(geometry))
+        }
         assert.deepEqual(geometry.containerPadding, ['0px', '0px'])
         assert.ok(Math.abs(geometry.note.width - geometry.editor.width) <= 2, JSON.stringify(geometry))
         assert.ok(Math.abs(geometry.note.width - geometry.toolbar.width) <= 2, JSON.stringify(geometry))
-        assert.equal(geometry.placeholderLeft, '0px')
+        if (geometry.placeholderLeft !== null) assert.equal(geometry.placeholderLeft, geometry.editorPadding[0])
     }
     await checkGeometry()
     await editor.fill(
@@ -705,13 +728,14 @@ async function checkNoteWidth(page, width) {
     await closeChat(page)
     assert.equal(await editor.evaluate((node, original) => node === original, editorNode), true)
     assert.ok((await readInput(editorNode)).includes('Keep this unsaved draft'))
-    assert.equal(await editor.evaluate(node => getComputedStyle(node).paddingLeft), '0px')
+    await checkGeometry()
+    await page.screenshot({ path: path.join(BUILD, `note-width-alldone-${width}.png`) })
     await page.getByText('Zoom out to assistant', { exact: true }).click()
     if (width <= 760) await showWorkspace(page)
     await checkGeometry()
     assert.ok((await readInput(editorNode)).includes('Keep this unsaved draft'))
     console.info(
-        `PASS ${width}px: note body, toolbar and placeholder use pane width; toggling preserves the editor and full-width Alldone notes`
+        `PASS ${width}px: note body, toolbar and placeholder align with the heading in both layouts; resizing and toggling preserve drafts`
     )
 }
 
