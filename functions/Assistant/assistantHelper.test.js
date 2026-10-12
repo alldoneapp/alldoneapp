@@ -7426,6 +7426,7 @@ describe('execute_task_in_vm existing task routing', () => {
         })
         resolveTargetTaskSpy = jest.spyOn(vmTargetTask, 'resolveVmTargetTask').mockResolvedValue({
             ok: true,
+            projectId: 'project-1',
             objectType: 'tasks',
             objectId: 'task-1',
             isPublicFor: [0, 'user-1'],
@@ -7489,6 +7490,93 @@ describe('execute_task_in_vm existing task routing', () => {
                 originObjectId: 'menubar-chat',
             })
         )
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('uses the resolved task project for chat, task context and VM launch, keeping the delegate persona', async () => {
+        resolveTargetTaskSpy.mockResolvedValue({
+            ok: true,
+            projectId: 'private-project',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            isPublicFor: ['user-1'],
+        })
+        mockDocGet.mockImplementation(function () {
+            const docs = {
+                'items/private-project/tasks/task-1': { name: 'Review architecture', isPublicFor: ['user-1'] },
+                'projects/private-project': { name: 'Privat' },
+                'assistants/project-1/items/assistant-1': {
+                    displayName: 'Team CTO',
+                    instructions: 'Review carefully.',
+                },
+            }
+            return Promise.resolve({ exists: !!docs[this?.path], data: () => docs[this?.path] || {} })
+        })
+        await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Review architecture in a VM',
+                task_type: 'research',
+                target_task_id: 'task-1',
+                target_project_id: 'private-project',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            { message: 'Review this task' },
+            {
+                originProjectId: 'private-project',
+                originObjectType: 'tasks',
+                originObjectId: 'task-1',
+            }
+        )
+        expect(resolveTargetTaskSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                targetProjectId: 'private-project',
+                preferredProjectId: 'private-project',
+                requestUserId: 'user-1',
+            })
+        )
+        expect(ensureChatExistsSpy).toHaveBeenCalledWith(
+            'private-project',
+            'tasks',
+            'task-1',
+            'assistant-1',
+            ['user-1'],
+            ['user-1']
+        )
+        expect(startVmJobSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'private-project',
+                objectId: 'task-1',
+                assistantId: 'assistant-1',
+            })
+        )
+        const context = startVmJobSpy.mock.calls[0][0].threadContext
+        expect(context).toContain('Review architecture')
+        expect(context).toContain('Privat')
+        expect(context).toContain('Team CTO')
+        expect(context).toContain('Review carefully.')
+        expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+    })
+
+    test('does not create a chat or launch when target access is rejected', async () => {
+        resolveTargetTaskSpy.mockResolvedValue({ ok: false, message: 'You do not have access to that task.' })
+        const result = await executeToolNatively(
+            'execute_task_in_vm',
+            {
+                objective: 'Review architecture',
+                task_type: 'research',
+                target_task_id: 'task-1',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null
+        )
+        expect(result.success).toBe(false)
+        expect(ensureChatExistsSpy).not.toHaveBeenCalled()
+        expect(startVmJobSpy).not.toHaveBeenCalled()
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 

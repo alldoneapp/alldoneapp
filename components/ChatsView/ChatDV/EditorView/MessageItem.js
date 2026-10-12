@@ -43,7 +43,7 @@ export default function MessageItem({
     const itemSwipe = useRef(null)
     const dismissibleRef = useRef(null)
     const editOpenTimeoutRef = useRef(null)
-    const creatorData = useGetUserPresentationData(message.creatorId)
+    const creatorData = useGetUserPresentationData(message.creatorId, { fromAssistant: message.fromAssistant })
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const activeChatMessageId = useSelector(state => state.activeChatMessageId)
 

@@ -10062,6 +10062,9 @@ async function executeToolNativelyImpl(
 
                 const requestedTargetTaskId =
                     typeof toolArgs.target_task_id === 'string' ? toolArgs.target_task_id.trim() : ''
+                if (toolArgs.target_project_id && !requestedTargetTaskId) {
+                    return { success: false, message: 'target_project_id requires target_task_id.' }
+                }
 
                 // Explicit continuation wins over the ambient thread: the assistant is telling us
                 // to carry on an earlier VM run, which means hosting this job on that thread so the
@@ -10112,12 +10115,19 @@ async function executeToolNativelyImpl(
                     const target = await resolveVmTargetTask({
                         db: admin.firestore(),
                         projectId: effectiveProjectId,
+                        targetProjectId: toolArgs.target_project_id,
+                        preferredProjectId:
+                            toolRuntimeContext?.originObjectType === 'tasks' &&
+                            toolRuntimeContext?.originObjectId === requestedTargetTaskId
+                                ? toolRuntimeContext.originProjectId
+                                : null,
                         taskId: requestedTargetTaskId,
                         requestUserId,
                     })
                     if (!target.ok) {
                         return { success: false, message: target.message }
                     }
+                    effectiveProjectId = target.projectId
                     effectiveObjectType = target.objectType
                     effectiveObjectId = target.objectId
 
@@ -10177,6 +10187,7 @@ async function executeToolNativelyImpl(
                 // so the sandbox agent is grounded instead of starting cold. Best-effort.
                 let threadContext = await buildVmThreadContext({
                     projectId: effectiveProjectId,
+                    assistantProjectId: projectId,
                     objectType: effectiveObjectType,
                     objectId: effectiveObjectId,
                     assistantId,
@@ -12231,6 +12242,7 @@ function formatVmTimezoneLabel(offsetMinutes) {
  */
 async function buildVmThreadContext({
     projectId,
+    assistantProjectId = projectId,
     objectType = 'tasks',
     objectId,
     assistantId,
@@ -12293,7 +12305,11 @@ async function buildVmThreadContext({
     // than the settings-editing framing of getAssistantSettingsContextMessage.
     if (opts.assistantPersona && assistantId) {
         try {
-            const resolved = await resolveCurrentAssistantDocForToolExecution(projectId, assistantId, requestUserId)
+            const resolved = await resolveCurrentAssistantDocForToolExecution(
+                assistantProjectId,
+                assistantId,
+                requestUserId
+            )
             const assistant = resolved?.assistant || {}
             const personaLines = ['Assistant persona (act as this assistant):']
             if (assistant.displayName) personaLines.push(`- Name: ${assistant.displayName}`)

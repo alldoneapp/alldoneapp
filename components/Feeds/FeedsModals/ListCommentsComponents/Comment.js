@@ -233,7 +233,9 @@ export default function Comment({
 
     const { commentText, lastChangeDate, creatorId } = comment
 
-    const { photoURL, displayName, isAssistant } = useGetUserPresentationData(creatorId)
+    const { photoURL, displayName, isAssistant } = useGetUserPresentationData(creatorId, {
+        fromAssistant: comment.fromAssistant,
+    })
 
     const textsFiltered = divideQuotedText(commentText, 'quote')
 

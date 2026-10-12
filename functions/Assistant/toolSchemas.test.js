@@ -490,6 +490,8 @@ describe('VM assistant tool schema', () => {
         expect(properties.executionMode.description).toContain('existing non-interactive runner')
         expect(properties.executionMode.description).toContain('never silently downgrade')
         expect(properties.target_task_id.type).toBe('string')
+        expect(properties.target_project_id.type).toBe('string')
+        expect(properties.target_project_id.description).toContain("task's project")
         expect(properties.target_task_id.description).toContain('existing task')
         expect(properties.target_task_id.description).toContain('instead of creating a duplicate host task')
         expect(properties.target_task_id.description).toContain('Never pass both')
