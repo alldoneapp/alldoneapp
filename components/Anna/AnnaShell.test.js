@@ -31,9 +31,31 @@ import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
 import { setAnnaMode, setAnnaLayout } from '../../utils/annaMode'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
-import DefaultAssistantButton from '../SidebarMenu/DefaultAssistantButton'
+import LoggedUserSidebarHeader from '../SidebarMenu/LoggedUserSidebar/LoggedUserSidebarHeader'
+import ProjectItem from '../SidebarMenu/ProjectFolding/ProjectItem/ProjectItem'
 jest.mock('../SidebarMenu/Themes', () => ({
-    Themes: { modern: { CustomSideMenu: { AllProjects: {} } } },
+    Themes: {
+        modern: {
+            CustomSideMenu: {
+                Header: {},
+                AllProjects: {},
+                ProjectList: { ProjectItem: { container: () => ({}), containerActive: () => ({}) } },
+            },
+        },
+    },
+}))
+jest.mock('../SidebarMenu/ProjectFolding/ProjectItem/ProjectItemIcon', () => () => null)
+jest.mock('../SidebarMenu/ProjectFolding/ProjectItem/ProjectItemName', () => ({ projectName }) => (
+    <span>{projectName}</span>
+))
+jest.mock('../SidebarMenu/ProjectFolding/ProjectItem/ProjectRightArea', () => () => null)
+jest.mock('../SidebarMenu/ProjectFolding/ProjectSectionList', () => () => null)
+jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({ checkIfSelectedProject: index => index >= 0 }))
+jest.mock('../ModalsManager/modalsManager', () => ({ exitsOpenModals: () => false }))
+jest.mock('../../utils/backends/Users/usersFirestore', () => ({ updateShowAllProjectsByTime: jest.fn() }))
+jest.mock('../../redux/store', () => ({
+    __esModule: true,
+    default: { getState: () => ({ loggedUser: mockUser, smallScreenNavigation: mockMobileNavigation, route: 'Root' }) },
 }))
 
 const mockSet = jest.fn().mockResolvedValue(undefined)
@@ -74,7 +96,7 @@ jest.mock('../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel', () => props => 
     return <input aria-label="Private login input" />
 })
 const mockUpdate = jest.fn().mockResolvedValue(undefined)
-const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user' }
+const mockUser = { uid: 'u1', gold: 100, displayName: 'Test user', sidebarExpanded: true }
 const mockDispatch = jest.fn()
 let mockMobileNavigation = false
 let mockAssistant
@@ -86,6 +108,8 @@ jest.mock('react-redux', () => ({
     useSelector: selector =>
         selector({
             loggedUser: mockUser,
+            currentUser: mockUser,
+            selectedProjectIndex: -1,
             defaultAssistant: mockDefaultAssistant,
             projectAssistants: { p1: [mockAssistant] },
             sidebarNumbers: mockSidebarNumbers,
@@ -139,6 +163,17 @@ jest.mock('../../redux/actions', () => ({
     hideGlobalSearchPopup: () => ({ type: 'HIDE_SEARCH' }),
     setGlobalSearchResults: results => ({ type: 'SEARCH_RESULTS', results }),
     navigateToAllProjectsTasks: options => ({ type: 'ALL_PROJECTS_TASKS', options }),
+    storeLoggedUser: user => ({ type: 'LOGGED_USER', user }),
+    switchProject: index => ({ type: 'PROJECT', index }),
+    updateFeedActiveTab: tab => ({ type: 'FEED_TAB', tab }),
+    storeCurrentUser: user => ({ type: 'CURRENT_USER', user }),
+    setSelectedTypeOfProject: projectType => ({ type: 'PROJECT_TYPE', projectType }),
+    switchShortcutProject: index => ({ type: 'SHORTCUT_PROJECT', index }),
+    setSearchText: text => ({ type: 'SEARCH_TEXT', text }),
+    resetNotesAmounts: () => ({ type: 'RESET_NOTES_AMOUNTS' }),
+    setSelectedSidebarTab: tab => ({ type: 'SIDEBAR_TAB', tab }),
+    setTaskViewToggleIndex: index => ({ type: 'TASK_INDEX', index }),
+    setTaskViewToggleSection: section => ({ type: 'TASK_SECTION', section }),
 }))
 jest.mock('../../i18n/TranslationService', () => ({
     translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
@@ -147,9 +182,12 @@ jest.mock('../../i18n/TranslationService', () => ({
 
 const conversation = { id: 'anna_u1', projectId: 'p1', assistantId: 'a1' }
 const state = { conversation, loading: false, error: '', retry: jest.fn() }
+const scrollView = { current: { scrollTo: jest.fn() } }
+const sidebarHeader = () => <LoggedUserSidebarHeader expanded navigation={NavigationService} scrollView={scrollView} />
+const assistantToggle = () => document.querySelector('[role="button"][aria-expanded]')
 const content = (id, withSidebar = false) => (
     <AnnaShell routeId={id}>
-        {withSidebar && <DefaultAssistantButton />}
+        {withSidebar && sidebarHeader()}
         <input aria-label="Real workspace editor" defaultValue="Unsaved note" />
     </AnnaShell>
 )
@@ -732,6 +770,32 @@ it('holds assistant navigation during browser control until Open is clicked', as
     )
 })
 
+it.each([false, true])('keeps the logo navigation separate from the chat toggle when chat is %s', active => {
+    render(content(1, true))
+    if (!active) fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+    const logo = screen.getByLabelText('Alldone.app')
+    const toggle = assistantToggle()
+    expect(logo.parentElement).toBe(toggle.parentElement)
+    expect(logo.contains(toggle)).toBe(false)
+    expect(logo.parentElement.textContent).not.toContain('Anna Alldone')
+
+    mockDispatch.mockClear()
+    NavigationService.navigate.mockClear()
+    scrollView.current.scrollTo.mockClear()
+    fireEvent.click(logo)
+
+    expect(toggle.getAttribute('aria-expanded')).toBe(String(active))
+    expect(scrollView.current.scrollTo).toHaveBeenCalledWith({ x: 0, y: 0, animated: true })
+    expect(NavigationService.navigate).toHaveBeenCalledWith('Root')
+    expect(mockDispatch).toHaveBeenCalledWith([
+        { type: 'SEARCH_TEXT', text: '' },
+        { type: 'SEARCH_RESULTS', results: null },
+        { type: 'HIDE_SEARCH' },
+        { type: 'RESET_NOTES_AMOUNTS' },
+        { type: 'ALL_PROJECTS_TASKS', options: undefined },
+    ])
+})
+
 it.each([
     ['mobile', 'alldone'],
     ['mobile', 'workspace'],
@@ -762,8 +826,12 @@ it.each([
         else if (start === 'browser' || start.startsWith('vm:')) chooseSurface(start)
 
         for (const opens of [start === 'alldone', start !== 'alldone']) {
-            fireEvent.click(screen.getByLabelText('Anna Alldone'))
-            expect(screen.getByLabelText('Anna Alldone').getAttribute('aria-expanded')).toBe(String(opens))
+            fireEvent.click(assistantToggle())
+            expect(assistantToggle().getAttribute('aria-expanded')).toBe(String(opens))
+            expect(assistantToggle().getAttribute('aria-label')).toBe(
+                `Anna Alldone: ${opens ? 'Close assistant chat' : 'Open assistant chat'}`
+            )
+            expect(assistantToggle().querySelector('path').getAttribute('d')).toBe(opens ? 'm8 8 4 4-4 4' : 'M9 3v18')
             expect(screen.getByLabelText('Conversation with Carl Code Mentor').getAttribute('aria-hidden')).toBe(
                 String(!opens)
             )
@@ -789,6 +857,60 @@ it.each([
         expect(mockUnmounts).toBe(0)
         expect(URLTrigger.processUrl).not.toHaveBeenCalled()
         if (device === 'mobile') expect(mockDispatch).toHaveBeenCalledWith({ type: 'HIDE_SIDEBAR' })
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it.each([
+    ['desktop', 'fullscreen'],
+    ['desktop', 'alldone'],
+    ['desktop', 'chat-only'],
+    ['mobile', 'workspace'],
+    ['mobile', 'chat'],
+    ['mobile', 'chat-only'],
+])('shows the selected sidebar project while keeping the chat open on %s from %s', (device, start) => {
+    const originalMatchMedia = window.matchMedia
+    mockMobileNavigation = device === 'mobile'
+    window.matchMedia = () => ({
+        matches: mockMobileNavigation,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    try {
+        render(
+            <AnnaShell routeId="project-navigation">
+                {sidebarHeader()}
+                <ProjectItem
+                    itemIndex={0}
+                    projectData={{ id: 'p2', index: 1, name: 'Familie', color: '#39CCCC' }}
+                    projectType="active"
+                />
+            </AnnaShell>
+        )
+        const chat = screen.getByLabelText('Persistent conversation')
+        chat.value = 'Keep my chat draft'
+        if (start === 'fullscreen') fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+        else if (start === 'workspace') chooseSurface('alldone')
+        else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
+
+        fireEvent.click(screen.getByText('Familie'))
+        expect(assistantToggle().getAttribute('aria-expanded')).toBe(String(start !== 'fullscreen'))
+        expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
+        expect(
+            document.querySelector(
+                device === 'mobile' ? '.anna-workspace-switcher select' : '.anna-header-picker select'
+            ).value
+        ).toBe('alldone')
+        expect(mockDispatch).toHaveBeenLastCalledWith(expect.arrayContaining([{ type: 'PROJECT', index: 1 }]))
+        if (device === 'mobile') {
+            expect(document.querySelector('.anna-mobile-workspace')).toBeTruthy()
+            expect(mockDispatch).toHaveBeenLastCalledWith(expect.arrayContaining([{ type: 'HIDE_SIDEBAR' }]))
+        }
+        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+        expect(chat.value).toBe('Keep my chat draft')
+        expect(mockUnmounts).toBe(0)
     } finally {
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia

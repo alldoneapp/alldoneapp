@@ -17,6 +17,7 @@ import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
 import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
+import AddFeedAttachButton from '../Feeds/AddFeed/AddFeedAttachButton'
 import { isDictationSupported } from '../../hooks/useRambleRecorder'
 import { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS } from '../../functions/WhatsApp/assistantLivePricing'
 import { isBrowserOffline } from '../../utils/connectionState'
@@ -376,6 +377,21 @@ export default function AnnaConversation({
                                     style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
                                 />
                             )}
+                            <div className="anna-composer-attachment">
+                                <AddFeedAttachButton
+                                    compact
+                                    projectId={conversation.projectId}
+                                    getPopoverViewport={() => {
+                                        const pane = composer.current?.getPane()
+                                        return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
+                                    }}
+                                    isDisabled={voiceActive || dictationBusy || offline || !conversation.projectId}
+                                    addAttachmentTag={(text, uri) => {
+                                        if (voiceActive || dictationBusy || offline || isBrowserOffline()) return
+                                        composer.current?.addAttachment(text, uri)
+                                    }}
+                                />
+                            </div>
                         </div>
                         <div className="anna-composer-actions">
                             {call.needsAudioPlayback && (

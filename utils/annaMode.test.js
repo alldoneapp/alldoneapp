@@ -4,6 +4,7 @@ import {
     isAnnaMode,
     resolveAnnaMode,
     resolveAnnaLayout,
+    restoreAnnaLayout,
     setAnnaLayout,
     setAnnaMode,
     useAnnaMode,
@@ -83,4 +84,144 @@ it('removes only layout parameters before matching a resource route', () => {
     )
     expect(withoutAnnaMode('/projects/tasks/open?anna=1')).toBe('/projects/tasks/open')
     expect(withoutAnnaMode('/projects/tasks/open#?assistant=1')).toBe('/projects/tasks/open#?assistant=1')
+})
+
+describe('mobile launch layout', () => {
+    const originalMatchMedia = window.matchMedia
+    const preferenceKey = 'anna-mobile-layout:v1'
+
+    beforeEach(() => {
+        window.localStorage.clear()
+        window.matchMedia = () => ({ matches: true })
+    })
+    afterEach(() => {
+        jest.restoreAllMocks()
+        window.localStorage.clear()
+        delete window.Capacitor
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    })
+
+    it.each(['split', 'chat', 'alldone'])('restores %s from device storage in a new app instance', layout => {
+        // The mode is saved immediately, even if the process is killed next.
+        setAnnaLayout(layout)
+        expect(window.localStorage.getItem(preferenceKey)).toBe(layout)
+
+        window.history.replaceState({ launch: true }, '', '/?utm_source=twa#resume')
+        jest.isolateModules(() => require('./annaMode').restoreAnnaLayout())
+
+        expect(resolveAnnaLayout(window.location)).toBe(layout)
+        expect(window.location.pathname).toBe('/')
+        expect(new URLSearchParams(window.location.search).get('utm_source')).toBe('twa')
+        expect(window.location.hash).toBe('#resume')
+        expect(window.history.state).toEqual({ launch: true })
+    })
+
+    it('remembers closing the chat rather than restoring an older open preference', () => {
+        setAnnaMode(true)
+        setAnnaMode(false)
+        window.history.replaceState(null, '', '/')
+        restoreAnnaLayout()
+        expect(isAnnaMode()).toBe(false)
+        expect(window.localStorage.getItem(preferenceKey)).toBe('alldone')
+    })
+
+    it.each(['1', '0', 'chat'])('honors an explicit assistant=%s launch and remembers its choice', setting => {
+        window.localStorage.setItem(preferenceKey, 'split')
+        window.history.replaceState(null, '', `/?assistant=${setting}`)
+        const expected = resolveAnnaLayout(window.location)
+        restoreAnnaLayout()
+        expect(window.location.search).toBe(`?assistant=${setting}`)
+        expect(window.localStorage.getItem(preferenceKey)).toBe(expected)
+    })
+
+    it.each([
+        '/projects/p1/notes/n1/editor?newComment=1',
+        '/projects/tasks/open?share_text=Shared+task',
+        '/meet/karsten',
+        '/app-auth',
+    ])('preserves incoming resource or special-purpose links: %s', path => {
+        window.localStorage.setItem(preferenceKey, 'chat')
+        window.history.replaceState(null, '', path)
+        restoreAnnaLayout()
+        expect(window.location.pathname + window.location.search).toBe(path)
+        expect(isAnnaMode()).toBe(false)
+        expect(window.localStorage.getItem(preferenceKey)).toBe('chat')
+    })
+
+    it('uses the ordinary launch view for a missing or invalid saved preference', () => {
+        window.history.replaceState(null, '', '/')
+        restoreAnnaLayout()
+        expect(isAnnaMode()).toBe(false)
+        window.localStorage.setItem(preferenceKey, 'invalid')
+        restoreAnnaLayout()
+        expect(isAnnaMode()).toBe(false)
+        expect(window.location.search).toBe('')
+    })
+
+    it('restores the native iOS shell on a wide screen too', () => {
+        window.matchMedia = () => ({ matches: false })
+        window.Capacitor = { isNativePlatform: () => true }
+        setAnnaMode(true)
+        window.history.replaceState(null, '', '/index.html')
+        restoreAnnaLayout()
+        expect(isAnnaMode()).toBe(true)
+    })
+
+    it('remembers Android mode in landscape without relying on the compact breakpoint', () => {
+        window.matchMedia = () => ({ matches: false })
+        jest.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Linux; Android 16)')
+        setAnnaMode(true)
+        window.history.replaceState(null, '', '/?utm_source=twa')
+        restoreAnnaLayout()
+        expect(isAnnaMode()).toBe(true)
+    })
+
+    it('keeps desktop launches controlled by the URL', () => {
+        window.matchMedia = () => ({ matches: false })
+        window.localStorage.setItem(preferenceKey, 'chat')
+        window.history.replaceState(null, '', '/')
+        restoreAnnaLayout()
+        expect(isAnnaMode()).toBe(false)
+        setAnnaMode(true)
+        expect(window.localStorage.getItem(preferenceKey)).toBe('chat')
+    })
+
+    it('continues to launch and switch views when device storage is blocked', () => {
+        jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+            throw new Error('Storage blocked')
+        })
+        jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+            throw new Error('Storage blocked')
+        })
+        window.history.replaceState(null, '', '/')
+        expect(() => restoreAnnaLayout()).not.toThrow()
+        expect(() => setAnnaMode(true)).not.toThrow()
+        expect(isAnnaMode()).toBe(true)
+        expect(() => setAnnaMode(false)).not.toThrow()
+        expect(isAnnaMode()).toBe(false)
+    })
+
+    it('remembers a layout restored by browser history while the app is mounted', () => {
+        global.IS_REACT_ACT_ENVIRONMENT = true
+        const container = document.createElement('div')
+        const root = createRoot(container)
+        const View = () => <span>{useAnnaMode() ? 'assistant' : 'fullscreen'}</span>
+        try {
+            act(() => root.render(<View />))
+            act(() => setAnnaMode(true))
+            act(() => {
+                window.history.replaceState(null, '', '/projects/tasks/open')
+                window.dispatchEvent(new PopStateEvent('popstate'))
+            })
+            expect(container.textContent).toBe('fullscreen')
+            expect(window.localStorage.getItem(preferenceKey)).toBe('alldone')
+            window.history.replaceState(null, '', '/')
+            restoreAnnaLayout()
+            expect(isAnnaMode()).toBe(false)
+        } finally {
+            act(() => root.unmount())
+            delete global.IS_REACT_ACT_ENVIRONMENT
+        }
+    })
 })

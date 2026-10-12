@@ -13,6 +13,7 @@ import AnnaVmWorkspace, { vmStatusLabel } from './AnnaVmWorkspace'
 import useAnnaVmJobs, { vmJobPath } from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaChatNavigationContext from './AnnaChatNavigationContext'
+import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { isAnnaNavigationPath, resolveAnnaLink } from './annaNavigation'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
@@ -164,6 +165,16 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('chat')
         setAnnaMode(true)
     }, [layoutMode, mobilePane])
+    const showAlldoneNavigation = useCallback(() => {
+        if (!active) return
+        requestGeneration.current++
+        followedBrowser.current = null
+        if (visibleWorkspace && surface === 'alldone') workspaceStage.current?.focus({ preventScroll: true })
+        else focusAfterSwitch.current = 'workspace'
+        setSurface('alldone')
+        setMobilePane('workspace')
+        setAnnaLayout('split')
+    }, [active, visibleWorkspace, surface])
     useEffect(() => {
         const target = focusAfterSwitch.current || (previousMode.current === 'alldone' && active ? 'chat' : null)
         previousMode.current = layoutMode
@@ -895,7 +906,11 @@ export default function AnnaShell({ children, routeId }) {
         <AnnaBrowserTakeoverContext.Provider
             value={{ open: openBrowserTakeover, approvalId: browserTakeover?.approval.approvalId }}
         >
-            <AnnaChatNavigationContext.Provider value={openChat}>{content}</AnnaChatNavigationContext.Provider>
+            <AnnaChatNavigationContext.Provider value={openChat}>
+                <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
+                    {content}
+                </AnnaWorkspaceNavigationContext.Provider>
+            </AnnaChatNavigationContext.Provider>
         </AnnaBrowserTakeoverContext.Provider>
     )
 }

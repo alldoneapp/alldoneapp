@@ -51,8 +51,18 @@ function PreservedContentHost({ contentNode, onPresenceChange, onInlinePresenceC
  * meaningless and ignored; `onClickOutside` doubles as the sheet's close
  * request (backdrop tap / Escape / drag affordance).
  */
-export default function AppPopover({ content, children, isOpen, onClickOutside, modalId, ...popoverProps }) {
-    const { isSheet } = useModalSizing()
+export default function AppPopover({
+    content,
+    children,
+    isOpen,
+    onClickOutside,
+    modalId,
+    useSheet = true,
+    getViewport,
+    ...popoverProps
+}) {
+    const { isSheet: sheetSized } = useModalSizing()
+    const isSheet = useSheet && sheetSized
     const contentNodeRef = useRef(null)
     const [contentHostCount, setContentHostCount] = useState(0)
     const [contentRenderer, setContentRenderer] = useState(null)
@@ -105,6 +115,7 @@ export default function AppPopover({ content, children, isOpen, onClickOutside, 
         <>
             <Popover
                 {...popoverProps}
+                viewport={getViewport ? getViewport() : popoverProps.viewport}
                 content={
                     isSheet ? null : (
                         <PreservedContentHost

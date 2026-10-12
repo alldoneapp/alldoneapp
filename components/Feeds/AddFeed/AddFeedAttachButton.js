@@ -18,6 +18,7 @@ export default function AddFeedAttachButton({
     addAttachmentTag,
     projectId,
     compact = false,
+    getPopoverViewport,
 }) {
     const dispatch = useDispatch()
     const blockShortcuts = useSelector(state => state.blockShortcuts)
@@ -51,6 +52,8 @@ export default function AddFeedAttachButton({
             position={['bottom', 'top', 'right', 'left']}
             padding={4}
             align={'start'}
+            getViewport={getPopoverViewport}
+            useSheet={!getPopoverViewport}
         >
             <Hotkeys
                 keyName={'alt+U'}

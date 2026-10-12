@@ -2,11 +2,15 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import Delta from 'quill-delta'
 import AnnaChatComposer from './AnnaChatComposer'
+import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
 
 let mockInputProps, mockEditor
 const mockInput = { clear: jest.fn(), focus: jest.fn(), clearAndSetContent: jest.fn() }
 jest.mock('react-quill-new', () => ({ Quill: { import: () => require('quill-delta').default } }))
-jest.mock('../Feeds/CommentsTextInput/textInputHelper', () => ({ TASK_THEME: 'task' }))
+jest.mock('../Feeds/CommentsTextInput/textInputHelper', () => ({
+    TASK_THEME: 'task',
+    insertAttachmentInsideEditor: jest.fn(),
+}))
 jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000 }))
 jest.mock('../Feeds/CommentsTextInput/CustomTextInput3', () => {
     const React = require('react')
@@ -81,6 +85,23 @@ it('restores a saved rich draft once without taking focus or replaying it after 
     expect(mockInputProps.initialTextExtended).toBe(draft)
     expect(mockInput.clearAndSetContent).not.toHaveBeenCalled()
     expect(mockInput.focus).not.toHaveBeenCalled()
+})
+
+it('enables the shared attachment formats and inserts picked files at the saved caret', () => {
+    render()
+    expect(mockInputProps.otherFormats).toEqual(['image', 'attachment', 'customImageFormat', 'videoFormat'])
+    mockInputProps.onCustomSelectionChange({ index: 7, length: 0 })
+    composer.current.addAttachment('plan.pdf', 'blob:plan')
+    expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(7, mockEditor, 'plan.pdf', 'blob:plan')
+    mockEditor.getSelection.mockReturnValue({ index: 12, length: 0 })
+    composer.current.addAttachment('photo.png', 'blob:photo')
+    expect(insertAttachmentInsideEditor).toHaveBeenLastCalledWith(12, mockEditor, 'photo.png', 'blob:photo')
+})
+
+it('does not insert a picked file while the editor is disabled', () => {
+    render({ disabled: true })
+    composer.current.addAttachment('plan.pdf', 'blob:plan')
+    expect(insertAttachmentInsideEditor).not.toHaveBeenCalled()
 })
 
 it('leaves Enter to the mention picker, then sends when it is closed', () => {

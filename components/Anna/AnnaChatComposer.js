@@ -1,7 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import ReactQuill from 'react-quill-new'
 import CustomTextInput3 from '../Feeds/CommentsTextInput/CustomTextInput3'
-import { TASK_THEME } from '../Feeds/CommentsTextInput/textInputHelper'
+import { insertAttachmentInsideEditor, TASK_THEME } from '../Feeds/CommentsTextInput/textInputHelper'
 import { CHAT_INPUT_LIMIT_IN_CHARACTERS } from '../../utils/assistantHelper'
 
 const Delta = ReactQuill.Quill.import('delta')
@@ -40,6 +40,12 @@ const AnnaChatComposer = forwardRef(function AnnaChatComposer(
         },
         setContent: text => input.current?.clearAndSetContent(text),
         getPane: () => frame.current?.closest('.anna-conversation'),
+        addAttachment: (text, uri) => {
+            const quill = editor.current
+            if (!quill || disabled) return
+            const { index } = quill.getSelection() || selection.current
+            insertAttachmentInsideEditor(index, quill, text, uri)
+        },
         insertDictation: (text, visible) => {
             const quill = editor.current
             if (!quill || disabled || !text) return
@@ -92,6 +98,7 @@ const AnnaChatComposer = forwardRef(function AnnaChatComposer(
                 maxHeight="min(240px, 35dvh)"
                 onContentSizeChange={(_, naturalHeight) => setHeight(Math.max(48, naturalHeight))}
                 characterLimit={CHAT_INPUT_LIMIT_IN_CHARACTERS}
+                otherFormats={['image', 'attachment', 'customImageFormat', 'videoFormat']}
                 disabledEdition={disabled}
                 keepBreakLines
                 hideDictation

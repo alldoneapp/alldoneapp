@@ -1,14 +1,11 @@
 import React, { useContext } from 'react'
-import { StyleSheet, Text, TouchableOpacity } from 'react-native'
+import { StyleSheet, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import Svg, { Path, Rect } from 'react-native-svg'
 
-import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
-import styles, { colors } from '../styles/global'
-import { COLORS_THEME_DEFAULT, getTheme } from '../../Themes/Themes'
+import { colors } from '../styles/global'
+import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
-import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
-import useOnHover from '../../hooks/UseOnHover'
 import {
     hideFloatPopup,
     hideGlobalSearchPopup,
@@ -26,22 +23,15 @@ export default function DefaultAssistantButton() {
     const assistant = useSelector(state => state.defaultAssistant)
     const themeName = useSelector(state => state.loggedUser.themeName)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
-    const { expanded } = useCollapsibleSidebar()
     const active = useAnnaMode()
     const showChat = useContext(AnnaChatNavigationContext)
-    const { hover, onHover, offHover } = useOnHover(active, active)
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.AllProjects')
 
     if (!assistant?.uid) return null
 
     const name = assistant.displayName?.trim() || translate('Assistant')
-    const status = translate(active ? 'Assistant chat open' : 'Open assistant chat')
-    const statusColor = active
-        ? themeName === COLORS_THEME_DEFAULT
-            ? colors.UtilityBlue
-            : colors.Primary100
-        : colors.Text03
-    const photo = assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL
+    const status = translate(active ? 'Close assistant chat' : 'Open assistant chat')
+    const statusColor = theme.titleInactive?.color || colors.Text03
     const toggleChat = () => {
         if (smallScreenNavigation) dispatch(hideWebSideBar())
         if (active) setAnnaMode(false)
@@ -58,68 +48,41 @@ export default function DefaultAssistantButton() {
     return (
         <TouchableOpacity
             accessibilityRole="button"
-            accessibilityLabel={name}
+            accessibilityLabel={`${name}: ${status}`}
             aria-expanded={active}
-            style={[
-                localStyles.container,
-                theme.containerInactive,
-                (active || hover) && theme.containerActive,
-                !expanded && localStyles.containerCollapsed,
-            ]}
+            style={localStyles.container}
             onPress={toggleChat}
-            onMouseEnter={onHover}
-            onMouseLeave={offHover}
         >
-            <AssistantAvatar
-                assistantId={assistant.uid}
-                photoURL={photo?.uri || photo}
-                size={22}
-                containerStyle={{ flexShrink: 0, marginRight: expanded ? 10 : 0 }}
-            />
-            {expanded && (
-                <>
-                    <Text numberOfLines={1} style={[localStyles.name, active ? theme.title : theme.titleInactive]}>
-                        {name}
-                    </Text>
-                    <span style={localStyles.status} title={status} aria-hidden="true">
-                        <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                            {active && <Rect x={3} y={3} width={6} height={18} fill={statusColor} fillOpacity={0.25} />}
-                            <Rect x={3} y={3} width={18} height={18} rx={2} stroke={statusColor} strokeWidth={2} />
-                            <Path
-                                d={active ? 'M9 3v18' : 'm8 8 4 4-4 4'}
-                                stroke={statusColor}
-                                strokeWidth={2}
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            />
-                        </Svg>
-                    </span>
-                </>
-            )}
+            <span style={localStyles.icon} title={status} aria-hidden="true">
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                    {!active && <Rect x={3} y={3} width={6} height={18} fill={statusColor} fillOpacity={0.25} />}
+                    <Rect x={3} y={3} width={18} height={18} rx={2} stroke={statusColor} strokeWidth={2} />
+                    <Path
+                        d={active ? 'm8 8 4 4-4 4' : 'M9 3v18'}
+                        stroke={statusColor}
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                </Svg>
+            </span>
         </TouchableOpacity>
     )
 }
 
 const localStyles = StyleSheet.create({
     container: {
-        marginTop: 32,
-        height: 56,
+        width: 32,
+        height: 32,
         flexShrink: 0,
-        flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 24,
+        justifyContent: 'center',
     },
-    containerCollapsed: {
-        paddingHorizontal: 17,
-    },
-    name: {
-        ...styles.body1,
-        flex: 1,
-        minWidth: 0,
-    },
-    status: {
+    icon: {
         display: 'flex',
-        flexShrink: 0,
-        marginLeft: 8,
+        width: '100%',
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 })

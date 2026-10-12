@@ -25,6 +25,36 @@ describe('AppPopover add-task reopen lifecycle (AT-2660)', () => {
         delete window.matchMedia
     })
 
+    it('keeps a scoped chat picker beside its trigger when the workspace switches to sheet sizing', () => {
+        window.innerWidth = 1280
+        window.innerHeight = 900
+        setWorkspaceViewport({ top: 0, left: 420, width: 860, height: 900 })
+        let chatWidth = 420
+        const getViewport = jest.fn(() => ({ top: 0, left: 0, right: chatWidth, bottom: 900 }))
+        const view = render(
+            <AppPopover
+                isOpen
+                useSheet={false}
+                getViewport={getViewport}
+                position={['top']}
+                content={<button>File or image</button>}
+            >
+                <button>Attach</button>
+            </AppPopover>
+        )
+        act(() => jest.advanceTimersByTime(100))
+        expect(document.querySelector('[data-testid="bottom-sheet"]')).toBeNull()
+        expect(Number.parseFloat(document.querySelector('.react-tiny-popover-container').style.left)).toBeLessThan(420)
+        chatWidth = 700
+        act(() => setWorkspaceViewport({ top: 0, left: 700, width: 580, height: 900 }))
+        act(() => jest.advanceTimersByTime(100))
+        expect(getViewport).toHaveLastReturnedWith({ top: 0, left: 0, right: 700, bottom: 900 })
+        expect(document.querySelector('[data-testid="bottom-sheet"]')).toBeNull()
+        expect(screen.getByText('File or image').isConnected).toBe(true)
+        expect(Number.parseFloat(document.querySelector('.react-tiny-popover-container').style.left)).toBeLessThan(700)
+        view.unmount()
+    })
+
     it('does not revive a closing portal when the workspace resizes during its fade', () => {
         window.innerWidth = 1440
         window.innerHeight = 900
