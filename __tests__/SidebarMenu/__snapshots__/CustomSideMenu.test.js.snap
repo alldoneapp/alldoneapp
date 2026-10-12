@@ -84,7 +84,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
           dir={null}
         >
           <div
-            className="css-view-g5y9jx r-flex-13awgt0 r-marginBottom-6gpygo r-marginTop-1v1z2uz r-borderBottomWidth-wgabs5"
+            className="css-view-g5y9jx r-flex-13awgt0 r-marginBottom-6gpygo r-marginTop-knv0ih r-borderBottomWidth-wgabs5"
             dir={null}
             style={
               {
@@ -622,7 +622,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
           dir={null}
         >
           <div
-            className="css-view-g5y9jx r-flex-13awgt0 r-marginBottom-6gpygo r-marginTop-1v1z2uz r-borderBottomWidth-wgabs5"
+            className="css-view-g5y9jx r-flex-13awgt0 r-marginBottom-6gpygo r-marginTop-knv0ih r-borderBottomWidth-wgabs5"
             dir={null}
             style={
               {
@@ -1160,7 +1160,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
           dir={null}
         >
           <div
-            className="css-view-g5y9jx r-flex-13awgt0 r-marginBottom-6gpygo r-marginTop-1v1z2uz r-borderBottomWidth-wgabs5"
+            className="css-view-g5y9jx r-flex-13awgt0 r-marginBottom-6gpygo r-marginTop-knv0ih r-borderBottomWidth-wgabs5"
             dir={null}
             style={
               {
