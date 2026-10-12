@@ -24,7 +24,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
     }
   >
     <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-wy61xf r-justifyContent-1wtj0ep r-maxHeight-1azjx3i r-minHeight-1el8sus r-paddingBottom-1l7z4oj r-paddingTop-fd4yh7 r-paddingInline-3pj75a"
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-wy61xf r-justifyContent-1wtj0ep r-maxHeight-1azjx3i r-minHeight-1el8sus r-paddingBottom-qn3fzs r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
       dir={null}
     >
       <button
@@ -564,7 +564,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
     }
   >
     <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-wy61xf r-justifyContent-1wtj0ep r-maxHeight-1azjx3i r-minHeight-1el8sus r-paddingBottom-1l7z4oj r-paddingTop-fd4yh7 r-paddingInline-3pj75a"
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-wy61xf r-justifyContent-1wtj0ep r-maxHeight-1azjx3i r-minHeight-1el8sus r-paddingBottom-qn3fzs r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
       dir={null}
     >
       <button
@@ -1104,7 +1104,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
     }
   >
     <div
-      className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-wy61xf r-justifyContent-1wtj0ep r-maxHeight-1azjx3i r-minHeight-1el8sus r-paddingBottom-1l7z4oj r-paddingTop-fd4yh7 r-paddingInline-3pj75a"
+      className="css-view-g5y9jx r-alignItems-1awozwy r-flex-13awgt0 r-flexDirection-18u37iz r-height-wy61xf r-justifyContent-1wtj0ep r-maxHeight-1azjx3i r-minHeight-1el8sus r-paddingBottom-qn3fzs r-paddingLeft-1qhn6m8 r-paddingRight-i023vh"
       dir={null}
     >
       <button

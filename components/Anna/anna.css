@@ -173,11 +173,11 @@
     min-width: 0;
     align-items: baseline;
     gap: 6px;
-    color: var(--anna-accent);
+    color: var(--anna-muted);
     text-decoration: none;
 }
 .anna-activity-notice a:hover {
-    text-decoration: underline;
+    text-decoration: none;
 }
 .anna-activity-content {
     display: flex;
@@ -197,6 +197,7 @@
 }
 .anna-activity-notice a > :last-child {
     flex-shrink: 0;
+    color: var(--anna-accent);
 }
 .anna-messages {
     overflow: auto;
