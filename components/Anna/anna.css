@@ -361,6 +361,7 @@
     justify-content: center;
     width: 40px;
     height: 40px;
+    flex: none;
 }
 .anna-send {
     width: 40px;
