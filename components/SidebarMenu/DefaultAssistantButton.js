@@ -27,6 +27,7 @@ export default function DefaultAssistantButton() {
     if (!assistant?.uid) return null
 
     const name = assistant.displayName?.trim() || translate('Assistant')
+    const status = active ? 'on' : 'off'
     const photo = assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL
     const openChat = () => {
         if (smallScreenNavigation) dispatch(hideWebSideBar())
@@ -37,7 +38,8 @@ export default function DefaultAssistantButton() {
         <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={name}
-            title={name}
+            accessibilityState={{ expanded: active }}
+            title={`${name} · ${status}`}
             style={[
                 localStyles.container,
                 theme.containerInactive,
@@ -55,9 +57,12 @@ export default function DefaultAssistantButton() {
                 containerStyle={{ flexShrink: 0, marginRight: expanded ? 10 : 0 }}
             />
             {expanded && (
-                <Text numberOfLines={1} style={[localStyles.name, active ? theme.title : theme.titleInactive]}>
-                    {name}
-                </Text>
+                <>
+                    <Text numberOfLines={1} style={[localStyles.name, active ? theme.title : theme.titleInactive]}>
+                        {name}
+                    </Text>
+                    <Text style={[localStyles.status, active ? theme.title : theme.titleInactive]}>{status}</Text>
+                </>
             )}
         </TouchableOpacity>
     )
@@ -79,5 +84,10 @@ const localStyles = StyleSheet.create({
         ...styles.body1,
         flex: 1,
         minWidth: 0,
+    },
+    status: {
+        ...styles.caption1,
+        flexShrink: 0,
+        marginLeft: 8,
     },
 })
