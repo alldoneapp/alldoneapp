@@ -832,6 +832,18 @@ it.each([
                 `Anna Alldone: ${opens ? 'Close assistant chat' : 'Open assistant chat'}`
             )
             expect(assistantToggle().querySelector('path').getAttribute('d')).toBe(opens ? 'm8 8 4 4-4 4' : 'M9 3v18')
+            if (opens) {
+                const collapseButton = screen.getByLabelText('Close chat — Alldone only')
+                const collapseIcon = collapseButton.querySelector('svg')
+                expect(collapseIcon.querySelector('path').getAttribute('d')).toBe(
+                    assistantToggle().querySelector('path').getAttribute('d')
+                )
+                expect(collapseIcon.getAttribute('width')).toBe('18')
+                expect(collapseIcon.getAttribute('height')).toBe('18')
+                expect(collapseIcon.parentElement.getAttribute('aria-hidden')).toBe('true')
+                expect(collapseButton.title).toBe('Close chat — Alldone only')
+                expect(collapseButton.parentElement.firstElementChild).toBe(collapseButton)
+            }
             expect(screen.getByLabelText('Conversation with Carl Code Mentor').getAttribute('aria-hidden')).toBe(
                 String(!opens)
             )
