@@ -1,15 +1,23 @@
 import React, { useContext } from 'react'
 import { StyleSheet, Text, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
+import Svg, { Path, Rect } from 'react-native-svg'
 
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
-import styles from '../styles/global'
-import { getTheme } from '../../Themes/Themes'
+import styles, { colors } from '../styles/global'
+import { COLORS_THEME_DEFAULT, getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import useCollapsibleSidebar from './Collapsible/UseCollapsibleSidebar'
 import useOnHover from '../../hooks/UseOnHover'
-import { hideWebSideBar } from '../../redux/actions'
-import { useAnnaMode } from '../../utils/annaMode'
+import {
+    hideFloatPopup,
+    hideGlobalSearchPopup,
+    hideWebSideBar,
+    navigateToAllProjectsTasks,
+    setGlobalSearchResults,
+} from '../../redux/actions'
+import { setAnnaMode, useAnnaMode } from '../../utils/annaMode'
+import NavigationService from '../../utils/NavigationService'
 import AnnaChatNavigationContext from '../Anna/AnnaChatNavigationContext'
 import { translate } from '../../i18n/TranslationService'
 
@@ -27,26 +35,38 @@ export default function DefaultAssistantButton() {
     if (!assistant?.uid) return null
 
     const name = assistant.displayName?.trim() || translate('Assistant')
-    const status = active ? 'on' : 'off'
+    const status = translate(active ? 'Assistant chat open' : 'Open assistant chat')
+    const statusColor = active
+        ? themeName === COLORS_THEME_DEFAULT
+            ? colors.UtilityBlue
+            : colors.Primary100
+        : colors.Text03
     const photo = assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL
-    const openChat = () => {
+    const toggleChat = () => {
         if (smallScreenNavigation) dispatch(hideWebSideBar())
-        showChat()
+        if (active) setAnnaMode(false)
+        else showChat()
+        dispatch([
+            hideFloatPopup(),
+            hideGlobalSearchPopup(),
+            setGlobalSearchResults(null),
+            navigateToAllProjectsTasks({ taskViewToggleSection: 'Open', taskViewToggleIndex: 0 }),
+        ])
+        NavigationService.navigate('Root')
     }
 
     return (
         <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={name}
-            accessibilityState={{ expanded: active }}
-            title={`${name} · ${status}`}
+            aria-expanded={active}
             style={[
                 localStyles.container,
                 theme.containerInactive,
                 (active || hover) && theme.containerActive,
                 !expanded && localStyles.containerCollapsed,
             ]}
-            onPress={openChat}
+            onPress={toggleChat}
             onMouseEnter={onHover}
             onMouseLeave={offHover}
         >
@@ -61,7 +81,19 @@ export default function DefaultAssistantButton() {
                     <Text numberOfLines={1} style={[localStyles.name, active ? theme.title : theme.titleInactive]}>
                         {name}
                     </Text>
-                    <Text style={[localStyles.status, active ? theme.title : theme.titleInactive]}>{status}</Text>
+                    <span style={localStyles.status} title={status} aria-hidden="true">
+                        <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                            {active && <Rect x={3} y={3} width={6} height={18} fill={statusColor} fillOpacity={0.25} />}
+                            <Rect x={3} y={3} width={18} height={18} rx={2} stroke={statusColor} strokeWidth={2} />
+                            <Path
+                                d={active ? 'M9 3v18' : 'm8 8 4 4-4 4'}
+                                stroke={statusColor}
+                                strokeWidth={2}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </Svg>
+                    </span>
                 </>
             )}
         </TouchableOpacity>
@@ -86,7 +118,7 @@ const localStyles = StyleSheet.create({
         minWidth: 0,
     },
     status: {
-        ...styles.caption1,
+        display: 'flex',
         flexShrink: 0,
         marginLeft: 8,
     },

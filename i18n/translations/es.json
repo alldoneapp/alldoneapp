@@ -79,6 +79,8 @@
     "Anna activity item updated": "Elemento actualizado",
     "%{count} open tasks today": "%{count} tareas abiertas hoy",
     "Close chat — Alldone only": "Cerrar chat — solo Alldone",
+    "Assistant chat open": "Chat del asistente abierto",
+    "Open assistant chat": "Abrir chat del asistente",
     "Hide workspace — chat only": "Ocultar espacio de trabajo — solo chat",
     "Show workspace": "Mostrar espacio de trabajo",
     "Back to chat": "Volver al chat",
