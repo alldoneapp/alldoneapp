@@ -4,6 +4,9 @@ import { getFollowedFeedAmount, getRedChatNotifications } from '../../utils/noti
 import { annaActivityHistory } from './annaActivityHistory'
 
 const EMPTY = {}
+// Visible messages can be acknowledged as read just after the unread snapshot arrives.
+// Let that local reconciliation finish before turning a fleeting badge into permanent history.
+const CHAT_NOTICE_SETTLE_MS = 300
 const timestamp = value => {
     const number = value?.toMillis ? value.toMillis() : Number(value)
     return Number.isFinite(number) ? number : 0
@@ -64,9 +67,20 @@ export default function useAnnaActivityNotices(userId, conversation, enabled) {
     const saved = useMemo(() => annaActivityHistory.read(userId), [userId])
     const [state, setState] = useState({ userId, notices: saved })
     const tracker = useRef(null)
+    const latest = useRef(null)
+    latest.current = { user, projects: projects || [], feeds, feedAmount, chats, activeChat }
+
+    useEffect(
+        () => () => {
+            tracker.current?.pending.forEach(clearTimeout)
+            tracker.current = null
+        },
+        []
+    )
 
     useEffect(() => {
         if (!enabled || !userId || user?.uid !== userId) {
+            tracker.current?.pending.forEach(clearTimeout)
             tracker.current = null
             return
         }
@@ -81,11 +95,24 @@ export default function useAnnaActivityNotices(userId, conversation, enabled) {
         if (!tracker.current || tracker.current.userId !== userId) {
             // Baseline existing unread activity. Also ignore old items arriving
             // in a delayed first snapshot, instead of replaying the inbox.
-            tracker.current = { userId, since: Date.now(), seen: new Set([...saved, ...events].map(event => event.id)) }
+            tracker.current?.pending.forEach(clearTimeout)
+            tracker.current = {
+                userId,
+                since: Date.now(),
+                seen: new Set([...saved, ...events].map(event => event.id)),
+                pending: new Map(),
+            }
             setState(previous => (previous.userId === userId ? previous : { userId, notices: saved }))
             return
         }
         const current = tracker.current
+        const eligibleIds = new Set(events.map(event => event.id))
+        current.pending.forEach((timer, id) => {
+            if (!eligibleIds.has(id)) {
+                clearTimeout(timer)
+                current.pending.delete(id)
+            }
+        })
         const incoming = events.filter(event => !current.seen.has(event.id) && event.occurredAt >= current.since)
         events.forEach(event => current.seen.add(event.id))
         if (current.seen.size > 5000) {
@@ -93,27 +120,47 @@ export default function useAnnaActivityNotices(userId, conversation, enabled) {
             current.seen = new Set(events.map(event => event.id))
         }
         if (!incoming.length || !conversation.projectId || !conversation.id) return
-        const created = Date.now()
-        const arrivals = incoming.map(({ source, ...event }) => ({
-            ...annaActivityHistory.append(userId, {
-                ...event,
-                created,
-                projectId: conversation.projectId,
-                chatId: conversation.id,
-            }),
-            source,
-        }))
-        setState(previous => ({
-            userId,
-            notices: [
-                ...new Map(
-                    [...(previous.userId === userId ? previous.notices : saved), ...arrivals].map(notice => [
-                        notice.id,
-                        notice,
-                    ])
-                ).values(),
-            ],
-        }))
+        const saveArrivals = confirmed => {
+            if (!confirmed.length) return
+            const created = Date.now()
+            const arrivals = confirmed.map(({ source, ...event }) => ({
+                ...annaActivityHistory.append(userId, {
+                    ...event,
+                    created,
+                    projectId: conversation.projectId,
+                    chatId: conversation.id,
+                }),
+                source,
+            }))
+            setState(previous => ({
+                userId,
+                notices: [
+                    ...new Map(
+                        [...(previous.userId === userId ? previous.notices : saved), ...arrivals].map(notice => [
+                            notice.id,
+                            notice,
+                        ])
+                    ).values(),
+                ],
+            }))
+        }
+        saveArrivals(incoming.filter(event => event.kind !== 'chat'))
+        incoming
+            .filter(event => event.kind === 'chat')
+            .forEach(event => {
+                // Each message gets its own deadline: a busy inbox cannot postpone earlier arrivals.
+                current.pending.set(
+                    event.id,
+                    setTimeout(() => {
+                        current.pending.delete(event.id)
+                        if (tracker.current !== current || latest.current.user?.uid !== userId) return
+                        const confirmed = collectAnnaActivity(latest.current).find(
+                            candidate => candidate.id === event.id
+                        )
+                        if (confirmed) saveArrivals([confirmed])
+                    }, CHAT_NOTICE_SETTLE_MS)
+                )
+            })
     }, [
         userId,
         user,

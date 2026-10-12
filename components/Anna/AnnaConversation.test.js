@@ -182,6 +182,7 @@ afterEach(() => {
     act(() => root.unmount())
     container.remove()
     jest.restoreAllMocks()
+    jest.useRealTimers()
     delete global.IS_REACT_ACT_ENVIRONMENT
 })
 
@@ -321,6 +322,7 @@ it('adds one chat hint per context change without posting a message or starting 
 })
 
 it('shows linked red activity between messages without posting to the assistant', () => {
+    jest.useFakeTimers()
     const now = jest.spyOn(Date, 'now').mockReturnValue(1000)
     render()
     mockMessages = [{ id: 'm1', creatorId: 'u1', created: 1500, commentText: 'Working here' }]
@@ -336,6 +338,7 @@ it('shows linked red activity between messages without posting to the assistant'
         },
     }
     render()
+    act(() => jest.advanceTimersByTime(300))
     const links = [...container.querySelectorAll('.anna-activity-notice a')]
     expect(links.map(link => link.getAttribute('href'))).toEqual([
         '/projects/p1/user/u1/updates/followed',
@@ -353,6 +356,7 @@ it('shows linked red activity between messages without posting to the assistant'
 })
 
 it('uses the user date/time setting for messages and every notice, including changes while chat is open', () => {
+    jest.useFakeTimers()
     const timestamp = new Date(2026, 9, 12, 13, 7).getTime()
     const now = jest.spyOn(Date, 'now').mockReturnValue(timestamp)
     // An American browser preference must not override the saved Alldone setting.
@@ -381,6 +385,7 @@ it('uses the user date/time setting for messages and every notice, including cha
     ]) {
         mockActivityState.dateFormat = dateFormat
         render({ pageContext })
+        act(() => jest.advanceTimersByTime(300))
         const times = [...container.querySelectorAll('time')]
         expect(times).toHaveLength(5)
         expect(times.map(node => node.textContent)).toEqual(Array(5).fill(expected))
