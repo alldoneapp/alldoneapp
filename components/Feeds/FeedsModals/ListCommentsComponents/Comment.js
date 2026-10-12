@@ -36,6 +36,7 @@ import GmailTag from '../../../Tags/GmailTag'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
+import MessageSendStatus from '../../../ChatsView/ChatDV/EditorView/MessageSendStatus'
 
 const INLINE_COMMENT_ELEMENT_TYPES = new Set([TEXT_ELEMENT, HASH_ELEMENT, URL_ELEMENT, MENTION_ELEMENT, EMAIL_ELEMENT])
 
@@ -416,6 +417,7 @@ export default function Comment({
                         {localizedMoment(date).fromNow()}
                     </Text>
                     {linkedEmail && linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
+                    <MessageSendStatus pendingSend={comment.pendingSend} dark style={{ marginLeft: 8 }} />
                 </View>
 
                 {contentOverride ||

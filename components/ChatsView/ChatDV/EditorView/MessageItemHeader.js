@@ -12,6 +12,7 @@ import { DV_TAB_ASSISTANT_CUSTOMIZATIONS } from '../../../../utils/TabNavigation
 import { getAssistantProjectId } from '../../../AdminPanel/Assistants/assistantsHelper'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
+import MessageSendStatus from './MessageSendStatus'
 
 export default function MessageItemHeader({
     projectId,
@@ -127,6 +128,7 @@ export default function MessageItemHeader({
                 </TouchableOpacity>
             )}
             {linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
+            <MessageSendStatus pendingSend={message.pendingSend} style={{ marginLeft: 8 }} />
         </View>
     )
 }

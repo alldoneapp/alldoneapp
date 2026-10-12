@@ -67,7 +67,6 @@ import useCommentPopupAutoFocus, {
 } from './commentPopupAutoFocus'
 import RichCommentDismissSurface from './RichCommentDismissSurface'
 import DeferredCommentComposer from './DeferredCommentComposer'
-import PendingCommentSends from './PendingCommentSends'
 import { readCommentDraft, saveCommentDraft, clearCommentDraft } from '../../../../utils/commentDraftStore'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import {
@@ -551,7 +550,6 @@ export default function RichCommentModal({
                             </View>
                         )}
 
-                        <PendingCommentSends projectId={projectId} objectId={objectId} objectType={objectType} dark />
                         {!!sendError && (
                             <Text accessibilityRole="alert" style={{ color: '#ffffff', marginBottom: 8 }}>
                                 {sendError}

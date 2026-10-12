@@ -1,6 +1,4 @@
 // Synthetic account and transport only; the shell, chat, browser pane, hooks and CSS are real.
-export * from '../at2718/dependencies'
-export const useDispatch = () => () => {}
 const user = { uid: 'demo', displayName: 'Alex', defaultProjectId: 'p1', gold: 1000 }
 const assistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
 const chat = {
@@ -21,7 +19,6 @@ const listeners = new Map()
 export const useSelector = selector =>
     selector({
         loggedUser: user,
-        loggedUserProjects: [{ id: 'p1' }],
         defaultAssistant: assistant,
         connectionState: 'offline',
         smallScreenNavigation: (window.__alldoneWorkspaceViewport?.width || window.innerWidth) < 640,
@@ -43,6 +40,7 @@ export const subscribePageHidden = () => () => {}
 export const STAYWARD_COMMENT = 'stayward'
 export const CHAT_INPUT_LIMIT_IN_CHARACTERS = 10000
 export const getTimestampInMilliseconds = value => value
+export const resolveEffectiveMessageLoading = () => false
 let messageSequence = 0
 const pendingMessages = new Map()
 const messageListeners = new Set()
@@ -81,8 +79,7 @@ export const getDb = () => ({
     runTransaction: fn => fn({ get: ref => ref.get(), set: (ref, patch) => ref.set(patch) }),
     doc: path => ({
         get: async () => ({ exists: !!data[path], data: () => data[path] }),
-        onSnapshot: (...args) => {
-            const callback = args.find(value => typeof value === 'function')
+        onSnapshot: callback => {
             listeners.set(path, callback)
             callback({ exists: !!data[path], data: () => data[path] })
             return () => listeners.delete(path)

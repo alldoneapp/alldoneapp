@@ -111,17 +111,3 @@ it('does not repeatedly notify unchanged geometry', () => {
     expect(listener).toHaveBeenCalledTimes(1)
     window.removeEventListener(WORKSPACE_VIEWPORT_EVENT, listener)
 })
-
-it('publishes pane visibility while retaining geometry for hidden dialogs', () => {
-    const listener = jest.fn()
-    window.addEventListener(WORKSPACE_VIEWPORT_EVENT, listener)
-    setWorkspaceViewport(pane)
-    setWorkspaceViewport(pane, false)
-    expect(getWorkspaceViewport()).toMatchObject({ ...pane, active: true, hidden: true })
-    setWorkspaceViewport(pane, false)
-    expect(listener).toHaveBeenCalledTimes(2)
-    setWorkspaceViewport(pane)
-    expect(getWorkspaceViewport().hidden).toBeUndefined()
-    expect(listener).toHaveBeenCalledTimes(3)
-    window.removeEventListener(WORKSPACE_VIEWPORT_EVENT, listener)
-})

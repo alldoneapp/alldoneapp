@@ -7,7 +7,7 @@ import { unwatch, watchUserData } from '../../../utils/backends/firestore'
 
 export default function useGetUserPresentationData(userId) {
     const isAnonymous = useSelector(state => !!state.loggedUser.isAnonymous)
-    const [userData, setUserData] = useState(getUnknownUserData())
+    const [userData, setUserData] = useState(() => getUserPresentationData(userId) || getUnknownUserData())
 
     const updateEditor = userData => {
         setUserData(userData || getUnknownUserData())

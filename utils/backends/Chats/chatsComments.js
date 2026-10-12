@@ -555,7 +555,8 @@ export async function createObjectMessage(
     skipAssistantTrigger = false,
     explicitAssistantEnabled = null,
     explicitAssistantId = null,
-    onAssistantRunSettled = null
+    onAssistantRunSettled = null,
+    submission = null
 ) {
     // Editing an existing message retains the existing edit path. New comments
     // acquire their permanent ID and disk copy before any preliminary read.
@@ -578,9 +579,10 @@ export async function createObjectMessage(
     if (!userId) throw new Error('Sign in before sending a comment.')
     if (!projectId || !objectId || !objectType || typeof comment !== 'string' || !comment.trim())
         throw new Error('A comment and its destination are required.')
-    const id = getId()
+    const id = submission?.id || getId()
     const entry = commentOutbox.enqueue({
         id,
+        ...(submission?.created && { created: submission.created }),
         userId,
         projectId,
         objectId,
@@ -592,8 +594,8 @@ export async function createObjectMessage(
         explicitAssistantId,
     })
     if (onAssistantRunSettled) pendingAssistantCallbacks.set(id, onAssistantRunSettled)
-    // The return value means locally saved. Pending/failed state remains visible
-    // in the comment popup until the server transaction acknowledges this ID.
+    // The return value means locally saved. The regular message list renders
+    // this ID with its pending/failed state until delivery is acknowledged.
     commentOutbox.flushOne(entry).catch(() => {})
     return id
 }

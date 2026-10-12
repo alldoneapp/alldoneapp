@@ -498,7 +498,7 @@ function AnnaThreadMessages({
                 commentText: message.text,
                 created: message.created,
                 submission: message,
-                local: true,
+                lastChangeDate: message.created,
             })),
     ]
     const last = displayedMessages[displayedMessages.length - 1]
@@ -582,29 +582,20 @@ function AnnaThreadMessages({
                         className={`anna-message ${own ? 'anna-message-user' : ''}`}
                     >
                         <AnnaMessageAuthor message={message} creator={creator} own={own} />
-                        {message.local ? (
-                            <div className="anna-message-text">{message.commentText}</div>
-                        ) : (
-                            <MessageItemBody
-                                messageId={message.id}
-                                projectId={thread.projectId}
-                                commentText={message.commentText || ''}
-                                chat={{ ...conversation, ...thread, id: chatId }}
-                                objectType="topics"
-                                creatorData={creator}
-                                isLoading={resolveEffectiveMessageLoading(
-                                    message,
-                                    getTimestampInMilliseconds(message.lastChangeDate)
-                                )}
-                                assistantRun={message.assistantRun}
-                                containerStyle={{ margin: 0, padding: 0 }}
-                            />
-                        )}
-                        {message.submission?.status === 'sending' && (
-                            <span className="anna-message-status" role="status">
-                                {translate('assistantLineSending')}
-                            </span>
-                        )}
+                        <MessageItemBody
+                            messageId={message.id}
+                            projectId={thread.projectId}
+                            commentText={message.commentText || ''}
+                            chat={{ ...conversation, ...thread, id: chatId }}
+                            objectType="topics"
+                            creatorData={creator}
+                            isLoading={resolveEffectiveMessageLoading(
+                                message,
+                                getTimestampInMilliseconds(message.lastChangeDate)
+                            )}
+                            assistantRun={message.assistantRun}
+                            containerStyle={{ margin: 0, padding: 0 }}
+                        />
                         {message.submission?.error && (
                             <div className="anna-error" role="alert">
                                 {message.submission.error}{' '}
