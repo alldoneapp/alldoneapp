@@ -5,6 +5,7 @@ import { createObjectMessage } from '../../utils/backends/Chats/chatsComments'
 import { getId, runHttpsCallableFunction } from '../../utils/backends/firestore'
 import { commentOutbox } from '../../utils/backends/Chats/commentOutbox'
 import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
+jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn().mockResolvedValue(null) }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 let mockActivityState
 jest.mock('react-redux', () => ({ useSelector: selector => selector(mockActivityState) }))
@@ -104,13 +105,13 @@ jest.mock('../../utils/backends/firestore', () => ({
 }))
 jest.mock('../../utils/assistantHelper', () => ({ CHAT_INPUT_LIMIT_IN_CHARACTERS: 10000 }))
 jest.mock('../ChatsView/Utils/ChatHelper', () => ({ getTimestampInMilliseconds: value => value }))
-let mockWorkingTemplate = '%{assistantName} is working…'
 jest.mock('../../i18n/TranslationService', () => ({
-    translate: (text, values = {}) =>
-        (text === '%{assistantName} is working…' ? mockWorkingTemplate : text).replace(
-            /%{(\w+)}/g,
-            (_, key) => values[key] ?? ''
-        ),
+    translate: (text, values = {}) => text.replace(/%{(\w+)}/g, (_, key) => values[key] ?? ''),
+}))
+jest.mock('../ChatsView/ChatDV/EditorView/AssistantThinking3D/AssistantThinking3D', () => ({
+    __esModule: true,
+    default: () => null,
+    useAssistantThinking3DEnabled: () => false,
 }))
 jest.mock('./useAnnaMessageReadState', () => jest.fn())
 const mockCreators = {}
@@ -166,7 +167,6 @@ beforeEach(() => {
     mockDictation = null
     mockDictationSupported = true
     mockMessages = []
-    mockWorkingTemplate = '%{assistantName} is working…'
     Object.keys(mockThreadMessages).forEach(key => delete mockThreadMessages[key])
     Object.keys(mockCreators).forEach(key => delete mockCreators[key])
     createObjectMessage.mockResolvedValue('m1')
@@ -341,10 +341,11 @@ it('shows linked red activity between messages without posting to the assistant'
         '/projects/p1/user/u1/updates/followed',
         '/projects/p1/user/u1/chats/followed',
     ])
-    expect(links[0].textContent).toContain('New update: created task · Launch')
-    expect(links[1].textContent).toContain('New chat message · Launch')
+    expect(links[0].querySelector('.anna-activity-title').textContent).toBe('created task')
+    expect(links[1].querySelector('.anna-activity-title').textContent).toBe('New chat message')
+    expect(links[0].querySelector('.anna-activity-meta').textContent).toBe('Launch')
     expect(container.querySelector('.anna-messages').textContent.indexOf('Working here')).toBeLessThan(
-        container.querySelector('.anna-messages').textContent.indexOf('New update')
+        container.querySelector('.anna-messages').textContent.indexOf('created task')
     )
     expect(createObjectMessage).not.toHaveBeenCalled()
     expect(runHttpsCallableFunction).not.toHaveBeenCalled()
@@ -999,42 +1000,120 @@ it('keeps typing out of the transcript render and synchronous storage paths', ()
     expect(container.querySelector('[aria-label="Send message"]').disabled).toBe(false)
 })
 
-it.each(['running', 'cancel_requested'])('hides the working line only while a %s live card is shown', async status => {
-    if (status === 'cancel_requested') mockWorkingTemplate = '%{assistantName} arbeitet…'
-    const workingLine = mockWorkingTemplate.replace('%{assistantName}', 'Existing assistant')
-    const pending = deferred()
-    runHttpsCallableFunction.mockReturnValueOnce(pending.promise)
-    mockCreators.a1 = { displayName: 'Carl', isAssistant: true, photoURL: 'carl.png' }
-    render()
-    type('Please help')
+it('shows the real activity card immediately through slow preparation, delivery, failure and retry', async () => {
+    const resolution = deferred()
+    const delivery = deferred()
+    const response = deferred()
+    commentOutbox.retry.mockReturnValueOnce(delivery.promise)
+    runHttpsCallableFunction.mockReturnValueOnce(response.promise)
+    render({ resolveConversation: () => resolution.promise })
+    type('Create a task')
     await submit()
-    expect(container.textContent).toContain(workingLine)
+    expect(createObjectMessage).not.toHaveBeenCalled()
+    expect(container.querySelector('.anna-pending-activity [data-testid="assistant-progress"]')).not.toBeNull()
+    expect(container.textContent).toContain('assistant_progress_sending')
+    expect(container.textContent).not.toContain('assistant_progress_thinking_1')
+    type('Keep my next draft')
+    await act(async () => resolution.resolve({ projectId: 'p1', id: 'anna_u1', assistantId: 'a1' }))
+    expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('assistant_progress_sending')
+    await act(async () => delivery.resolve())
+    expect(container.textContent).toContain('assistant_progress_waiting')
+    expect(container.querySelectorAll('[data-testid="assistant-progress"]')).toHaveLength(1)
+    await act(async () => response.reject(new Error('Could not connect')))
+    expect(container.querySelector('.anna-pending-activity')).toBeNull()
+    expect(container.querySelector('[role="alert"]').textContent).toContain('Could not connect')
+    const retried = deferred()
+    runHttpsCallableFunction.mockReturnValueOnce(retried.promise)
+    await click('Retry')
+    expect(container.querySelector('.anna-pending-activity')).not.toBeNull()
+    expect(container.querySelector('textarea').value).toBe('Keep my next draft')
+    await act(async () => retried.resolve({}))
+    expect(container.querySelector('.anna-pending-activity')).toBeNull()
+})
+
+it('keeps a follow-up startup card until that exact message has a backend response', async () => {
+    const first = deferred(),
+        second = deferred()
+    createObjectMessage.mockImplementation((...args) => Promise.resolve(args[11].id))
+    runHttpsCallableFunction.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+    mockCreators.a1 = { displayName: 'Carl', isAssistant: true }
+    render()
+    type('First request')
+    await submit()
     mockMessages = [
         {
-            id: 'response',
+            id: 'reply1',
             creatorId: 'a1',
-            fromAssistant: true,
             isLoading: true,
             lastChangeDate: Date.now(),
-            commentText: 'Working',
-            assistantRun: { kind: 'chat', status, runId: 'r1' },
+            assistantRun: { kind: 'chat', triggerMessageId: 'm1' },
         },
     ]
     render()
-    expect(container.textContent).not.toContain(workingLine)
-    const author = container.querySelector('[data-anna-message-id="response"] .anna-message-author')
-    expect(author.firstElementChild.className).toBe('anna-message-avatar')
-    expect(author.querySelector('.anna-message-author-name').textContent).toBe('Carl')
-    expect(author.querySelector('.anna-message-avatar').innerHTML).toContain('carl.png')
-    expect(container.querySelector('.anna-message-user .anna-message-avatar')).toBeNull()
-    // A stale response no longer shows a card. Keep useful pending feedback.
-    mockMessages[0].lastChangeDate = Date.now() - 6 * 60 * 1000
+    expect(container.querySelector('.anna-pending-activity')).toBeNull()
+    type('Follow up')
+    await submit()
+    expect(container.querySelector('.anna-pending-activity')).not.toBeNull()
+    // A fast answer may arrive complete, without a loading snapshot ever reaching the browser.
+    mockMessages.push({
+        id: 'reply2',
+        creatorId: 'a1',
+        commentText: 'Done',
+        isLoading: false,
+        assistantRun: { kind: 'chat', triggerMessageId: 'm2', status: 'completed' },
+    })
     render()
-    expect(container.textContent).toContain(workingLine)
-    await act(async () => pending.resolve({}))
+    expect(container.querySelector('.anna-pending-activity')).toBeNull()
+    await act(async () => {
+        first.resolve({})
+        second.resolve({})
+    })
 })
 
-it('also suppresses the redundant line for a live card in an earlier visible thread', async () => {
+it.each(['running', 'cancel_requested'])(
+    'hands the early activity card over to its %s backend response',
+    async status => {
+        const pending = deferred()
+        runHttpsCallableFunction.mockReturnValueOnce(pending.promise)
+        mockCreators.a1 = { displayName: 'Carl', isAssistant: true, photoURL: 'carl.png' }
+        render()
+        type('Please help')
+        await submit()
+        expect(container.querySelector('.anna-pending-activity [data-testid="assistant-progress"]')).not.toBeNull()
+        expect(container.textContent).toContain('assistant_progress_waiting')
+        expect(container.textContent).not.toContain('is working…')
+        mockMessages = [
+            {
+                id: 'response',
+                creatorId: 'a1',
+                fromAssistant: true,
+                isLoading: true,
+                lastChangeDate: Date.now(),
+                commentText: 'Working',
+                assistantRun: { kind: 'chat', status, runId: 'r1', triggerMessageId: 'm1' },
+            },
+        ]
+        render()
+        expect(container.querySelector('.anna-pending-activity')).toBeNull()
+        const author = container.querySelector('[data-anna-message-id="response"] .anna-message-author')
+        expect(author.firstElementChild.className).toBe('anna-message-avatar')
+        expect(author.querySelector('.anna-message-author-name').textContent).toBe('Carl')
+        expect(author.querySelector('.anna-message-avatar').innerHTML).toContain('carl.png')
+        expect(container.querySelector('.anna-message-user .anna-message-avatar')).toBeNull()
+        // Once the server owns this response, stale/completed cards must not bring back a startup card.
+        mockMessages[0].lastChangeDate = Date.now() - 6 * 60 * 1000
+        render()
+        expect(container.querySelector('.anna-pending-activity')).toBeNull()
+        mockMessages[0].isLoading = false
+        mockMessages[0].commentText = 'Finished'
+        render()
+        expect(container.querySelector('.anna-pending-activity')).toBeNull()
+        await act(async () => pending.resolve({}))
+    }
+)
+
+it('does not let an earlier thread hide the startup card for a new request', async () => {
     const pending = deferred()
     runHttpsCallableFunction.mockReturnValueOnce(pending.promise)
     mockCreators.a2 = { displayName: 'Other assistant', isAssistant: true }
@@ -1054,9 +1133,9 @@ it('also suppresses the redundant line for a live card in an earlier visible thr
     render({ threads })
     type('Help today')
     await submit()
-    expect(container.textContent).not.toContain('is working…')
+    expect(container.querySelector('.anna-pending-activity')).not.toBeNull()
     render({ threads: [threads[1]] })
-    expect(container.textContent).toContain('Existing assistant is working…')
+    expect(container.querySelector('.anna-pending-activity')).not.toBeNull()
     await act(async () => pending.resolve({}))
 })
 
@@ -1079,7 +1158,7 @@ it('preserves pending, offline and VM interaction feedback without a live card',
         },
     ]
     render({ offline: true })
-    expect(container.textContent).toContain('Existing assistant is working…')
+    expect(container.textContent).toContain('assistant_progress_waiting')
     expect(container.textContent).toContain('Please confirm the plan')
     expect(container.textContent).toContain('You are offline.')
     await act(async () => pending.resolve({}))

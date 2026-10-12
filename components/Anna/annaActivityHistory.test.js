@@ -54,3 +54,26 @@ it('keeps a live arrival usable when browser storage is unavailable', () => {
     expect(history.read('user')).toEqual([])
     expect(history.append('user', notice)).toMatchObject(notice)
 })
+
+it("adds a preview without replacing the arrival, thread, link, or another tab's snapshot", () => {
+    const history = createAnnaActivityHistory()
+    history.append('user', notice)
+    const content = { version: 1, objectName: 'Task title', actorName: 'Anna', preview: '' }
+    const enriched = history.enrich(
+        'user',
+        { ...notice, created: 5000, chatId: 'tomorrow', source: { privatePayload: true } },
+        content
+    )
+    expect(enriched).toMatchObject({ created: 1000, chatId: 'anna', path: notice.path, content })
+    expect(enriched.source).toBeUndefined()
+    expect(history.enrich('user', notice, { ...content, objectName: 'Later title' })).toEqual(enriched)
+    expect(createAnnaActivityHistory().read('user')).toEqual([enriched])
+})
+
+it('rejects malformed preview content without removing the original notice', () => {
+    const history = createAnnaActivityHistory()
+    history.append('user', notice)
+    history.enrich('user', notice, { version: 1, objectName: { unsafe: true } })
+    expect(history.read('user')).toHaveLength(1)
+    expect(history.read('user')[0].content).toBeUndefined()
+})

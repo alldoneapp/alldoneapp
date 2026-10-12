@@ -22,6 +22,13 @@ const chat = {
 const data = {
     [`chatObjects/p1/chats/${chat.id}`]: chat,
     'users/demo/private/annaConversation': { projectId: 'p1', chatId: chat.id, assistantId: 'a1' },
+    'feedsObjectsLastStates/p1/tasks/task1': { name: 'Discuss the visit with Daniela' },
+    'chatObjects/p1/chats/chat1': { title: 'Sprint planning', type: 'tasks' },
+    'chatComments/p1/tasks/chat1/comments/message1': {
+        creatorId: 'a1',
+        fromAssistant: true,
+        commentText: '**Review finished.** Two decisions need your input before we can release the next version.',
+    },
 }
 const listeners = new Map()
 let activityState = { sidebarNumbers: { p1: { demo: 20 } }, followedFeedsData: {}, projectChatNotifications: {} }
@@ -52,6 +59,7 @@ const getState = () => {
         loggedUser: user,
         loggedUserProjects: [{ id: 'p1', name: 'Launch' }],
         defaultAssistant: assistant,
+        globalAssistants: [assistant],
         connectionState: new URLSearchParams(window.location.search).has('floating') ? 'offline' : 'online',
         smallScreenNavigation: (window.__alldoneWorkspaceViewport?.width || window.innerWidth) < 640,
         ...(new URLSearchParams(window.location.search).has('noteWidth')

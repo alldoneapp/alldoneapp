@@ -28,6 +28,7 @@ export function collectAnnaActivity({ user, projects, feeds, feedAmount, chats, 
                     path: `/projects/${projectId}/user/${user.uid}/updates/followed`,
                     projectName: names.get(projectId) || '',
                     entryText: feed.entryText || '',
+                    source: feed,
                 })
             })
         })
@@ -45,6 +46,7 @@ export function collectAnnaActivity({ user, projects, feeds, feedAmount, chats, 
                     sourceProjectId: projectId,
                     path: `/projects/${projectId}/user/${user.uid}/chats/followed`,
                     projectName: names.get(projectId) || '',
+                    source: notification,
                 })
             })
         })
@@ -92,14 +94,15 @@ export default function useAnnaActivityNotices(userId, conversation, enabled) {
         }
         if (!incoming.length || !conversation.projectId || !conversation.id) return
         const created = Date.now()
-        const arrivals = incoming.map(event =>
-            annaActivityHistory.append(userId, {
+        const arrivals = incoming.map(({ source, ...event }) => ({
+            ...annaActivityHistory.append(userId, {
                 ...event,
                 created,
                 projectId: conversation.projectId,
                 chatId: conversation.id,
-            })
-        )
+            }),
+            source,
+        }))
         setState(previous => ({
             userId,
             notices: [

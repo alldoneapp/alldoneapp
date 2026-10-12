@@ -179,6 +179,25 @@
 .anna-activity-notice a:hover {
     text-decoration: underline;
 }
+.anna-activity-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 3px;
+}
+.anna-activity-title {
+    font-weight: 500;
+}
+.anna-activity-preview,
+.anna-activity-meta {
+    color: var(--anna-muted);
+}
+.anna-activity-meta {
+    font-size: 10px;
+}
+.anna-activity-notice a > :last-child {
+    flex-shrink: 0;
+}
 .anna-activity-notice .anna-activity-dot {
     flex: none;
     width: 6px;

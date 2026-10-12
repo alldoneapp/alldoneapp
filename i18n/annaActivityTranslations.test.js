@@ -77,3 +77,10 @@ it.each(Object.keys(locales))('preserves generated and custom text without trans
         expect(formatAnnaActivityText(phrase)).toBe(phrase)
     expect(formatAnnaActivityText(undefined)).toBe('')
 })
+
+it.each(Object.entries(locales))('covers all structured activity descriptions in %s', (_, translations) => {
+    for (const key of Object.keys(en).filter(key => key.startsWith('Anna activity '))) {
+        expect(translations[key]).toBeTruthy()
+        expect((translations[key].match(/%\{\w+\}/g) || []).sort()).toEqual((en[key].match(/%\{\w+\}/g) || []).sort())
+    }
+})

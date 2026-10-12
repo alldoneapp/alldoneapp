@@ -1010,6 +1010,9 @@ export const theReducer = (state = initialState, action) => {
                         projectChatNotifications[projectId][chatId].followedNotifications.push({
                             commentId: notification.commentId,
                             date: notification.date,
+                            chatType: notification.chatType,
+                            creatorId: notification.creatorId,
+                            creatorType: notification.creatorType,
                         })
                     }
                 } else {

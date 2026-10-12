@@ -183,6 +183,7 @@ export default function AssistantProgress({
     runId,
     compact = false,
     appearance = 'light',
+    preparingText,
     children,
 }) {
     const scrollRef = useRef(null)
@@ -203,7 +204,11 @@ export default function AssistantProgress({
             : appendAssistantActivity(observed.runId === runId ? observed.entries : [], activity || PREPARING_ACTIVITY)
         setObserved({ runId, signature, entries })
     }
-    const currentStepText = describeActivity(entries[entries.length - 1]).text
+    // The client can show this same card before the server has started. Keep transport feedback
+    // separate from real backend phases: sending/waiting must not claim to be reading or thinking.
+    const describeEntry = entry =>
+        entry.phase === 'preparing' && preparingText ? { emoji: '⏳', text: preparingText } : describeActivity(entry)
+    const currentStepText = describeEntry(entries[entries.length - 1]).text
     const scrollToLatest = () => scrollRef.current?.scrollToEnd({ animated: !reducedMotion })
     const latestKey = getAssistantActivityKey(entries[entries.length - 1])
     useEffect(() => {
@@ -248,7 +253,7 @@ export default function AssistantProgress({
             >
                 {entries.map((entry, index) => {
                     const isCurrent = index === entries.length - 1
-                    const { emoji, text } = describeActivity(entry)
+                    const { emoji, text } = describeEntry(entry)
                     return (
                         <View
                             key={getAssistantActivityKey(entry)}

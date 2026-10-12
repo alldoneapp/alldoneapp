@@ -165,6 +165,18 @@ async function checkImmediateSending(page, width) {
     await input.fill('First quick message')
     await input.press('Enter')
     await page.getByText('First quick message', { exact: true }).waitFor({ timeout: 1000 })
+    await page
+        .locator('.anna-pending-activity')
+        .getByTestId('assistant-progress')
+        .waitFor({ timeout: 1000 })
+        .catch(async error => {
+            console.error(await page.locator('.anna-messages').innerHTML())
+            await page.screenshot({ path: path.join(BUILD, `pending-failure-${width}.png`) })
+            throw error
+        })
+    await page.getByText('Sending your message', { exact: true }).waitFor({ timeout: 1000 })
+    assert.equal(await page.getByText('Carl Code Mentor is working…', { exact: true }).count(), 0)
+    assert.equal(await page.locator('.anna-conversation').evaluate(node => node.scrollWidth <= node.clientWidth), true)
     assert.equal(await readInput(input), '')
     assert.equal(await input.isEnabled(), true)
     assert.equal(await input.evaluate(element => element === document.activeElement), true)
@@ -182,7 +194,7 @@ async function checkImmediateSending(page, width) {
     assert.equal(await page.getByText('First quick message', { exact: true }).count(), 1)
     assert.equal(await page.getByText('Second quick message', { exact: true }).count(), 1)
     await page.locator('.anna-message-user').getByRole('button', { name: 'Retry', exact: true }).click()
-    await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
+    await page.locator('.anna-pending-activity').waitFor({ state: 'detached' })
     assert.equal(await readInput(input), 'A later draft that must survive')
     assert.equal(await page.getByText('First quick message', { exact: true }).count(), 1)
     assert.equal(await page.getByText('Second quick message', { exact: true }).count(), 1)
@@ -260,7 +272,7 @@ async function checkWorkspaceReveal(page, width) {
     await page.locator('[data-anna-object-id="created-2"]').click()
     await ring.waitFor({ state: 'detached', timeout: 1000 })
     await page.evaluate(() => window.__annaCompleteRequest())
-    await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
+    await page.locator('.anna-pending-activity').waitFor({ state: 'detached' })
     assert.equal(homeReturns, 0, 'Direct interaction cancels the return even if the request later completes')
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await create()
@@ -268,7 +280,7 @@ async function checkWorkspaceReveal(page, width) {
     await page.screenshot({ path: path.join(BUILD, `reveal-reduced-motion-${width}.png`) })
     await ring.waitFor({ state: 'detached', timeout: 5000 })
     await page.evaluate(() => window.__annaCompleteRequest())
-    await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
+    await page.locator('.anna-pending-activity').waitFor({ state: 'detached' })
     await page.waitForTimeout(250)
     assert.equal(homeReturns, 1, 'The next uninterrupted request returns home once')
     page.off('console', trackHome)
@@ -399,7 +411,7 @@ async function checkBrowserLogin(page, width) {
     if (width <= 760) await showChat(page)
     await chat.fill('A message while signing in')
     await chat.press('Enter')
-    await page.getByText('Carl Code Mentor is working…', { exact: true }).waitFor({ state: 'detached' })
+    await page.locator('.anna-pending-activity').waitFor({ state: 'detached' })
     if (width <= 760) await showWorkspace(page)
     assert.equal(await readInput(input), 'Fixture private input', 'Sending chat does not close or release login')
     assert.equal(captures, 1, 'Switching panes or reopening must not create another paid snapshot')
@@ -632,6 +644,7 @@ async function checkActivityNotices(page, width) {
                 p1: [
                     {
                         id: 'feed1',
+                        creatorId: 'a1',
                         objectId: 'task1',
                         objectTypes: 'tasks',
                         lastChangeDate: now,
@@ -647,7 +660,13 @@ async function checkActivityNotices(page, width) {
             },
         })
     })
-    await page.getByText('New chat message · Launch', { exact: true }).waitFor()
+    await page.getByText('New chat message: Sprint planning', { exact: true }).waitFor()
+    await page.getByText('created task: Discuss the visit with Daniela', { exact: true }).waitFor()
+    await page
+        .getByText('Review finished. Two decisions need your input before we can release the next version.', {
+            exact: true,
+        })
+        .waitFor()
     assert.equal(await page.locator('.anna-activity-notice').count(), 2)
     const header = await page.locator('.anna-header').boundingBox()
     const badge = await page.getByLabel('123 open tasks today').boundingBox()
@@ -658,15 +677,15 @@ async function checkActivityNotices(page, width) {
     assert.ok(picker.x + picker.width <= header.x + header.width, 'Header stays inside chat pane')
     assert.equal(await page.locator('.anna-conversation').evaluate(node => node.scrollWidth <= node.clientWidth), true)
     await page.screenshot({ path: path.join(BUILD, `activity-${width}.png`) })
-    await page.getByText('New update: created task · Launch', { exact: true }).click()
+    await page.getByText('created task: Discuss the visit with Daniela', { exact: true }).click()
     await page.waitForURL(url => url.pathname === '/projects/p1/user/demo/updates/followed')
     if (width <= 760) await page.locator('.anna-workspace-switcher select').selectOption('chat')
-    await page.getByText('New chat message · Launch', { exact: true }).click()
+    await page.getByText('New chat message: Sprint planning', { exact: true }).click()
     await page.waitForURL(url => url.pathname === '/projects/p1/user/demo/chats/followed')
     if (width <= 760) await page.locator('.anna-workspace-switcher select').selectOption('chat')
     await page.getByLabel('123 open tasks today').click()
     await page.waitForURL(url => url.pathname === '/projects/tasks/open')
-    console.info(`PASS ${width}px: live activity links, task badge and header geometry`)
+    console.info(`PASS ${width}px: substantive activity/chat previews, feature links, task badge and header geometry`)
 }
 
 async function checkNoteWidth(page, width) {
@@ -761,6 +780,7 @@ async function main() {
         for (const width of process.env.FLOATING_WORKSPACE_ONLY ||
         process.env.LAYOUT_ONLY ||
         process.env.ACTIVITY_ONLY ||
+        process.env.SENDING_ONLY ||
         process.env.NOTE_WIDTH_ONLY
             ? [1440, 1024, 390, 320]
             : [1440, 1024, 390]) {
@@ -780,6 +800,13 @@ async function main() {
             if (process.env.ACTIVITY_ONLY) {
                 await checkActivityNotices(page, width)
                 assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
+            if (process.env.SENDING_ONLY) {
+                await checkImmediateSending(page, width)
+                assert.deepEqual(errors, [])
+                console.info(`PASS ${width}px: immediate live activity card, follow-up, retry and preserved drafts`)
                 await page.close()
                 continue
             }
