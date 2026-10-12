@@ -5,7 +5,7 @@ const showWorkspaceSchema = {
     function: {
         name: TOOL_NAME,
         description:
-            "Show a real alldone task, note, goal, project list, or the conversation in the user's Anna workspace. Does not mutate the displayed work. Use verified IDs; projectId is required for individual objects and optional for cross-project lists. A successful result only queues presentation; the user may keep their current view open.",
+            "Show a real alldone task, note, goal, project list, or the conversation in the user's Anna workspace. Prefer tasks, notes or goals list views when showing created or updated items. Open an individual detail view when the user asks for details or needs its content. Successful mutations already reveal the saved item; do not repeat that confirmation. Does not mutate the displayed work. Use verified IDs; projectId is required for individual objects and optional for cross-project lists. A successful result only queues presentation; the user may keep their current view open.",
         parameters: {
             type: 'object',
             properties: {
@@ -32,8 +32,10 @@ function isAnnaWorkspacePath(path) {
     return (
         typeof path === 'string' &&
         path.length <= 700 &&
-        (/^\/projects\/(tasks\/open|notes\/all|goals\/open)$/.test(path) ||
-            /^\/projects\/[a-zA-Z0-9_-]+\/user\/[a-zA-Z0-9_-]+\/(tasks\/open|notes\/all|goals\/open)$/.test(path) ||
+        (/^\/projects\/(tasks\/(open|done)|notes\/all|goals\/open|contacts\/all)$/.test(path) ||
+            /^\/projects\/[a-zA-Z0-9_-]+\/user\/[a-zA-Z0-9_-]+\/(tasks\/(open|done)|notes\/all|goals\/open|contacts\/all)$/.test(
+                path
+            ) ||
             /^\/projects\/[a-zA-Z0-9_-]+\/(tasks\/[a-zA-Z0-9_-]+\/(properties|chat)|notes\/[a-zA-Z0-9_-]+\/editor|goals\/[a-zA-Z0-9_-]+\/(properties|chat)|contacts\/[a-zA-Z0-9_-]+\/properties)$/.test(
                 path
             ))

@@ -191,7 +191,12 @@ async function checkImmediateSending(page, width) {
     page.off('console', trackControl)
 }
 async function checkWorkspaceReveal(page, width) {
-    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&reveal=1`)
+    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&reveal=1&revealList=1`)
+    const navigations = []
+    const trackNavigation = message => {
+        if (message.text().startsWith('Anna fixture navigation: ')) navigations.push(message.text())
+    }
+    page.on('console', trackNavigation)
     const input = page.getByLabel('Message Carl Code Mentor')
     const ring = page.locator('.anna-reveal-ring')
     const workspace = page.getByTestId('workspace-scroll')
@@ -231,12 +236,16 @@ async function checkWorkspaceReveal(page, width) {
     assert.ok(box.y >= pane.y && box.y + box.height <= pane.y + pane.height, 'Target must be in view')
     assert.ok(outline.x <= box.x && outline.x + outline.width >= box.x + box.width, 'Frame must enclose the real row')
     assert.ok(outline.x >= pane.x && outline.x + outline.width <= pane.x + pane.width, 'Frame stays inside Alldone')
-    assert.equal(new URL(page.url()).pathname, '/', 'Keep the current list when its listener mounts the task')
+    assert.equal(new URL(page.url()).pathname, '/projects/p1/user/a1/tasks/open', 'Reveal in the actual assignee list')
     assert.equal(await page.locator('.anna-reveal-label').innerText(), '✓\nCreated by Carl Code Mentor')
     if (width > 760) assert.equal(await readInput(input), 'Keep this unsent draft')
     await page.screenshot({ path: path.join(BUILD, `reveal-${width}.png`) })
     await ring.waitFor({ state: 'detached', timeout: 5000 })
-    assert.equal(new URL(page.url()).pathname, '/', 'Do not return home while the request is still running')
+    assert.equal(
+        new URL(page.url()).pathname,
+        '/projects/p1/user/a1/tasks/open',
+        'Do not return home while the request is still running'
+    )
     await page.waitForURL(url => url.pathname === '/projects/tasks/open')
     await firstHome
     assert.equal(new URL(page.url()).searchParams.get('assistant'), '1', 'Keep assistant mode on home')
@@ -260,14 +269,26 @@ async function checkWorkspaceReveal(page, width) {
     await page.waitForTimeout(250)
     assert.equal(homeReturns, 1, 'The next uninterrupted request returns home once')
     page.off('console', trackHome)
+    page.off('console', trackNavigation)
+    assert.ok(
+        navigations.every(path => !path.endsWith('/properties')),
+        'Saved tasks should remain in the list'
+    )
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     console.log(
-        `PASS ${width}px: real ScrollView reveal; home only after highlight and completed request; user interaction cancels return; drafts, assistant mode and reduced motion are preserved`
+        `PASS ${width}px: navigate to assignee list and reveal in real ScrollView; home only after completed request; user interaction cancels return; drafts and reduced motion are preserved`
     )
 }
 async function showWorkspace(page) {
-    if ((await page.locator('.anna-stage').getAttribute('aria-hidden')) === 'true')
-        await page.getByRole('button', { name: 'Show workspace', exact: true }).click()
+    if ((await page.locator('.anna-stage').getAttribute('aria-hidden')) !== 'true') return
+    if (page.viewportSize().width <= 760) {
+        const picker = page.locator('.anna-header-picker select')
+        const surface = await picker.evaluate(select => {
+            const label = select.selectedOptions[0].textContent
+            return [...select.options].find(option => option.value && option.textContent.startsWith(label)).value
+        })
+        await picker.selectOption(surface)
+    } else await page.getByRole('button', { name: 'Show workspace', exact: true }).click()
 }
 async function showChat(page) {
     if (await page.locator('.anna-workspace-switcher select').isVisible())
@@ -537,7 +558,10 @@ async function checkAssistantLayouts(page, width) {
         const stage = await page.locator('.anna-stage').boundingBox()
         assert.equal(stage.y, 0, 'Workspace starts at the top of the window')
         assert.ok(header.x + header.width <= stage.x, 'Header belongs entirely to the chat pane')
-    } else await showWorkspace(page)
+    } else {
+        assert.equal(await page.locator('.anna-pane-toggle-right').count(), 0)
+        await showWorkspace(page)
+    }
     await page.getByLabel('Workspace draft').fill('Keep the workspace draft')
     const editorNode = await page.getByLabel('Workspace draft').elementHandle()
     await showChat(page)
@@ -606,6 +630,12 @@ async function main() {
                 errors.push(error.message)
                 console.error(error.stack)
             })
+            if (process.env.REVEAL_ONLY) {
+                await checkWorkspaceReveal(page, width)
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
             if (process.env.LAYOUT_ONLY) {
                 await checkAssistantLayouts(page, width)
                 await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1`)

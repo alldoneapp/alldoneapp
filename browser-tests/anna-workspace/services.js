@@ -23,7 +23,7 @@ export const useSelector = selector =>
         loggedUser: user,
         loggedUserProjects: [{ id: 'p1' }],
         defaultAssistant: assistant,
-        connectionState: 'offline',
+        connectionState: new URLSearchParams(window.location.search).has('reveal') ? 'online' : 'offline',
         smallScreenNavigation: (window.__alldoneWorkspaceViewport?.width || window.innerWidth) < 640,
         showLoadingDataSpinner: new URLSearchParams(window.location.search).has('floating'),
     })
@@ -61,9 +61,18 @@ export const subscribeMessages = listener => {
     messageListeners.add(listener)
     return () => messageListeners.delete(listener)
 }
-export const createObjectMessage = async (projectId, chatId, text) => {
-    const id = `sent-${++messageSequence}`
-    pendingMessages.set(id, { id, projectId, chatId, commentText: text, creatorId: user.uid, created: Date.now() })
+export const getId = () => `sent-${++messageSequence}`
+export const createObjectMessage = async (projectId, chatId, text, ...options) => {
+    const metadata = options.at(-1)
+    const id = metadata?.id || getId()
+    pendingMessages.set(id, {
+        id,
+        projectId,
+        chatId,
+        commentText: text,
+        creatorId: user.uid,
+        created: metadata?.created || Date.now(),
+    })
     return id
 }
 export const commentOutbox = {
@@ -142,6 +151,7 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
                 projectId: 'p1',
                 change: 'created',
                 path: `/projects/p1/tasks/${id}/properties`,
+                listPath: '/projects/p1/user/a1/tasks/open',
                 expiresAt: Date.now() + 120000,
             }
             const chatPath = `chatObjects/p1/chats/${chat.id}`
@@ -262,6 +272,7 @@ export default {
         const url = new URL(path, window.location.origin)
         for (const [key, value] of new URLSearchParams(window.location.search)) url.searchParams.set(key, value)
         history.pushState(null, '', url)
+        workspaceListeners.forEach(callback => callback())
         document.title = 'Assistant tasks | Alldone'
         console.info(`Anna fixture navigation: ${path}`)
     },

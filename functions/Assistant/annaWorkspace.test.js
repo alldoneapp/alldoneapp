@@ -265,7 +265,7 @@ it('updates changed assistant settings and repairs a missing registry without re
     expect(data.get(`chatObjects/p1/chats/${reference.chatId}`).assistantId).toBe('a2')
 })
 
-it('validates all history in one batch, reuses project reads, and still rejects foreign or missing chats', async () => {
+it('loads three recent threads per page, batches access checks, and rejects foreign or missing chats', async () => {
     const { db, data } = database()
     for (let day = 1; day <= 7; day++) {
         const chatId = `AnnaChat2026100${day}u1`
@@ -279,10 +279,18 @@ it('validates all history in one batch, reuses project reads, and still rejects 
         'AnnaChat20261007u1',
         'AnnaChat20261006u1',
         'AnnaChat20261005u1',
-        'AnnaChat20261004u1',
-        'AnnaChat20261001u1',
     ])
     expect(db.getAll).toHaveBeenCalledTimes(1)
-    expect(db.getAll.mock.calls[0]).toHaveLength(8)
-    expect(result.nextBefore).toEqual({ created: 1, id: 'p1__AnnaChat20261001u1' })
+    expect(db.getAll.mock.calls[0]).toHaveLength(4)
+    expect(result.nextBefore).toEqual({ created: 5, id: 'p1__AnnaChat20261005u1' })
+
+    const earlier = await listAnnaConversations({ db, userId: 'u1', before: result.nextBefore })
+    expect(earlier.threads.map(thread => thread.chatId)).toEqual(['AnnaChat20261004u1'])
+    expect(db.getAll).toHaveBeenCalledTimes(2)
+    expect(db.getAll.mock.calls[1]).toHaveLength(4)
+    expect(earlier.nextBefore).toEqual({ created: 2, id: 'p1__AnnaChat20261002u1' })
+
+    const oldest = await listAnnaConversations({ db, userId: 'u1', before: earlier.nextBefore })
+    expect(oldest.threads.map(thread => thread.chatId)).toEqual(['AnnaChat20261001u1'])
+    expect(oldest.nextBefore).toBeNull()
 })

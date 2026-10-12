@@ -10,7 +10,6 @@ import Icon from '../../Icon'
 import AssistantSwitchControl from './AssistantSwitchControl'
 import AssistantLineSkeleton from './AssistantLineSkeleton'
 import { useProjectSectionAccent } from '../../TaskListView/TaskHierarchy'
-import { setAnnaMode } from '../../../utils/annaMode'
 
 export default function AssistantLine({
     showLastComment = true,
@@ -79,7 +78,6 @@ export default function AssistantLine({
                         {!!assistantSwitch && <AssistantSwitchControl {...assistantSwitch} inline />}
                     </View>
                 }
-                onZoomOut={() => setAnnaMode(true)}
                 projectOverride={selectedProject}
                 assistantIdOverride={assistantId}
                 showAllQuickActions={showAllQuickActions}

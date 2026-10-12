@@ -61,6 +61,13 @@ async function recordAnnaWorkspaceChange({ db, runtime, toolName, result, now = 
                     return null
                 if (target.type === 'contact' && data.isPrivate && data.recorderUserId !== runtime.requestUserId)
                     return null
+                // Open tasks belong to the current reviewer; completed tasks
+                // belong to their original assignee's Done list.
+                const taskUserId = data.done
+                    ? data.userId
+                    : data.currentReviewerId || data.userIds?.at(-1) || data.userId
+                const listUserId = target.type === 'task' && validId(taskUserId) ? taskUserId : runtime.requestUserId
+                const listTab = target.type === 'task' ? (data.done ? 'done' : 'open') : 'all'
                 return {
                     ...target,
                     id: randomUUID(),
@@ -69,6 +76,7 @@ async function recordAnnaWorkspaceChange({ db, runtime, toolName, result, now = 
                         data.name || data.title || data.extendedTitle || data.displayName || data.extendedName || ''
                     ).slice(0, 120),
                     path: `/projects/${target.projectId}/${target.type}s/${target.objectId}/${target.type === 'note' ? 'editor' : 'properties'}`,
+                    listPath: `/projects/${target.projectId}/user/${listUserId}/${target.type}s/${listTab}`,
                     createdAt: now,
                     expiresAt: now + 120000,
                 }

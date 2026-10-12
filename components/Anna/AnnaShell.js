@@ -136,7 +136,6 @@ export default function AnnaShell({ children, routeId }) {
         setAnnaMode(false)
     }
     const toggleWorkspace = () => {
-        if (mobile && chatOnly) focusAfterSwitch.current = 'workspace'
         requestGeneration.current++
         followedBrowser.current = null
         setAnnaLayout(chatOnly ? 'split' : 'chat')
@@ -399,28 +398,44 @@ export default function AnnaShell({ children, routeId }) {
     ])
 
     const openWorkspaceChange = useCallback(async (change, isCancelled) => {
-        if (
-            !isAnnaWorkspacePath(change.path) ||
-            heldBrowser.current ||
-            takeoverRef.current ||
-            surfaceRef.current.startsWith('vm:') ||
-            isCancelled()
-        )
-            throw new Error('Workspace is unavailable')
-        revealGeneration.current = requestGeneration.current
-        setSurface('alldone')
-        // Give the live list a moment to receive the committed row before
-        // falling back to its detail screen (for filters or virtualized lists).
-        const deadline = Date.now() + 600
-        while (!findWorkspaceObject(workspaceContent.current, change) && Date.now() < deadline) {
-            await new Promise(resolve => setTimeout(resolve, 75))
-            if (heldBrowser.current || takeoverRef.current || surfaceRef.current.startsWith('vm:') || isCancelled())
+        const generation = requestGeneration.current
+        const assertAvailable = () => {
+            if (
+                !isAnnaWorkspacePath(change.path) ||
+                heldBrowser.current ||
+                takeoverRef.current ||
+                surfaceRef.current.startsWith('vm:') ||
+                generation !== requestGeneration.current ||
+                isCancelled()
+            )
                 throw new Error('Workspace is unavailable')
         }
-        // Keep the current list when its row exists; details are the fallback for
-        // filtered-out, completed or not-yet-mounted objects.
-        if (!findWorkspaceObject(workspaceContent.current, change))
-            await URLTrigger.processUrl(NavigationService.createNavigationProp(), change.path)
+        const waitForTarget = async ms => {
+            const deadline = Date.now() + ms
+            while (true) {
+                assertAvailable()
+                if (findWorkspaceObject(workspaceContent.current, change)) return true
+                if (Date.now() >= deadline) return false
+                await new Promise(resolve => setTimeout(resolve, 75))
+            }
+        }
+        assertAvailable()
+        revealGeneration.current = generation
+        setSurface('alldone')
+        // Keep the current view when its live listener can reveal the saved row.
+        if (await waitForTarget(600)) return
+        // Otherwise try its actual project/assignee list before opening details.
+        // The list may need a fresh Firestore subscription before its row mounts.
+        if (isAnnaWorkspacePath(change.listPath)) {
+            try {
+                await URLTrigger.processUrl(NavigationService.createNavigationProp(), change.listPath)
+            } catch (_) {
+                // A list navigation failure can still use the verified detail link.
+            }
+            if (await waitForTarget(2500)) return
+        }
+        assertAvailable()
+        await URLTrigger.processUrl(NavigationService.createNavigationProp(), change.path)
     }, [])
 
     const returnWorkspaceHome = useCallback(async () => {
@@ -558,9 +573,15 @@ export default function AnnaShell({ children, routeId }) {
                         <label className="anna-header-picker">
                             <select
                                 aria-label={translate('Workspace')}
-                                value={vmSurface ? 'vms' : surface}
+                                value={mobile ? '' : vmSurface ? 'vms' : surface}
                                 onChange={event => selectSurface(event.target.value)}
                             >
+                                {mobile && (
+                                    // A mobile selection opens that pane, including when reopening the same surface.
+                                    <option value="" disabled hidden>
+                                        {vmSurface ? translate('VMs') : surfaceLabel}
+                                    </option>
+                                )}
                                 <option value="alldone">Alldone</option>
                                 <option value="browser">{translate('Browser')}</option>
                                 <option value="vms">
@@ -572,24 +593,18 @@ export default function AnnaShell({ children, routeId }) {
                                 <Icon name="chevron-down" size={14} color="currentColor" />
                             </span>
                         </label>
-                        <button
-                            type="button"
-                            className="anna-pane-toggle anna-pane-toggle-right"
-                            aria-label={translate(
-                                chatOnly || (mobile && mobilePane === 'chat')
-                                    ? 'Show workspace'
-                                    : 'Hide workspace — chat only'
-                            )}
-                            title={translate(
-                                chatOnly || (mobile && mobilePane === 'chat')
-                                    ? 'Show workspace'
-                                    : 'Hide workspace — chat only'
-                            )}
-                            aria-expanded={visibleWorkspace}
-                            onClick={mobile && !chatOnly ? () => selectSurface(surface) : toggleWorkspace}
-                        >
-                            <Icon name="sidebar" size={18} color="currentColor" />
-                        </button>
+                        {!mobile && (
+                            <button
+                                type="button"
+                                className="anna-pane-toggle anna-pane-toggle-right"
+                                aria-label={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
+                                title={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
+                                aria-expanded={visibleWorkspace}
+                                onClick={toggleWorkspace}
+                            >
+                                <Icon name="sidebar" size={18} color="currentColor" />
+                            </button>
+                        )}
                     </header>
                     {active && !visibleWorkspace && pendingNotice}
                     {active && !visibleWorkspace && navigationError && (

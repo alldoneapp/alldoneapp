@@ -31,11 +31,28 @@ afterEach(() => jest.restoreAllMocks())
 it('bounds the saved index and preserves a cursor for history outside that window', () => {
     save()
     const restored = readAnnaConversationCache('u1', user)
-    expect(restored.threads).toEqual(threads.slice(-7))
-    expect(restored.nextBefore).toEqual({ created: 5, id: 'p1__AnnaChat20261005u1' })
+    expect(restored.threads).toEqual(threads.slice(-3))
+    expect(restored.nextBefore).toEqual({ created: 9, id: 'p1__AnnaChat20261009u1' })
     expect(restored.conversation.id).toBe(conversation.id)
     expect(restored.conversation.annaPresentation).toBeUndefined()
     expect(restored.conversation.annaPageContext).toBeUndefined()
+})
+
+it('trims a previous seven-thread cache without skipping the removed history', () => {
+    save()
+    const key = localStorage.key(0)
+    const cached = JSON.parse(localStorage.getItem(key))
+    localStorage.setItem(
+        key,
+        JSON.stringify({
+            ...cached,
+            threads: threads.slice(-7),
+            nextBefore: { created: 5, id: 'p1__AnnaChat20261005u1' },
+        })
+    )
+    const restored = readAnnaConversationCache('u1', user)
+    expect(restored.threads).toEqual(threads.slice(-3))
+    expect(restored.nextBefore).toEqual({ created: 9, id: 'p1__AnnaChat20261009u1' })
 })
 
 it('isolates accounts and default projects and filters history for lost project access', () => {

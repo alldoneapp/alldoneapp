@@ -71,6 +71,7 @@ it('records the actual cross-project task only after checking the saved object a
             objectId: 't1',
             change: 'created',
             path: '/projects/p2/tasks/t1/properties',
+            listPath: '/projects/p2/user/u1/tasks/open',
             createdAt: 1000,
             expiresAt: 121000,
             triggerMessageId: 'request1',
@@ -95,6 +96,7 @@ it('reveals the destination after moving a task, even when persistence still rep
         projectId: 'p2',
         objectId: 't1',
         path: '/projects/p2/tasks/t1/properties',
+        listPath: '/projects/p2/user/u1/tasks/open',
         change: 'updated',
     })
 })
@@ -148,20 +150,37 @@ it('queues only successful, accessible, changed objects from a bulk task update'
     })
     expect(data.get(chatPath).annaWorkspaceChanges.map(cue => cue.objectId)).toEqual(['t1', 't2'])
 })
-it.each(['note', 'contact'])('uses a supported canonical detail route for a saved %s', async type => {
-    const id = `${type}-1`
-    const collection = type === 'note' ? 'noteItems' : 'projectsContacts'
-    const { db, data } = database({ [`${collection}/p2/${type}s/${id}`]: { isPublicFor: [0] } })
-    await recordAnnaWorkspaceChange({
-        db,
-        runtime,
-        toolName: `update_${type}`,
-        result: { success: true, [`${type}Id`]: id, projectId: 'p2', changes: ['name'] },
-    })
+it.each([
+    [{ userId: 'assistant1', currentReviewerId: 'assistant1', done: false }, 'assistant1', 'open'],
+    [{ userId: 'u1', currentReviewerId: 'reviewer1', userIds: ['u1', 'reviewer1'] }, 'reviewer1', 'open'],
+    [{ userId: 'u1', userIds: ['u1', 'reviewer1'] }, 'reviewer1', 'open'],
+    [{ userId: 'assistant1', currentReviewerId: 'reviewer1', done: true }, 'assistant1', 'done'],
+])('routes the saved task to its actual owner and status list: %j', async (task, userId, tab) => {
+    const { db, data } = database({ 'items/p2/tasks/t1': { ...task, isPublicFor: [0] } })
+    await recordAnnaWorkspaceChange({ db, runtime, toolName: 'update_task', result })
     const [cue] = data.get(chatPath).annaWorkspaceChanges
-    expect(cue.path).toBe(`/projects/p2/${type}s/${id}/${type === 'note' ? 'editor' : 'properties'}`)
-    expect(isAnnaWorkspacePath(cue.path)).toBe(true)
+    expect(cue.listPath).toBe(`/projects/p2/user/${userId}/tasks/${tab}`)
+    expect(isAnnaWorkspacePath(cue.listPath)).toBe(true)
 })
+it.each(['note', 'contact'])(
+    'prefers the project All list with a canonical detail fallback for a saved %s',
+    async type => {
+        const id = `${type}-1`
+        const collection = type === 'note' ? 'noteItems' : 'projectsContacts'
+        const { db, data } = database({ [`${collection}/p2/${type}s/${id}`]: { isPublicFor: [0] } })
+        await recordAnnaWorkspaceChange({
+            db,
+            runtime,
+            toolName: `update_${type}`,
+            result: { success: true, [`${type}Id`]: id, projectId: 'p2', changes: ['name'] },
+        })
+        const [cue] = data.get(chatPath).annaWorkspaceChanges
+        expect(cue.listPath).toBe(`/projects/p2/user/u1/${type}s/all`)
+        expect(isAnnaWorkspacePath(cue.listPath)).toBe(true)
+        expect(cue.path).toBe(`/projects/p2/${type}s/${id}/${type === 'note' ? 'editor' : 'properties'}`)
+        expect(isAnnaWorkspacePath(cue.path)).toBe(true)
+    }
+)
 it('keeps a bounded queue, expires old work and retains acknowledgements for surviving cues', async () => {
     const { db, data } = database()
     data.get(chatPath).annaWorkspaceChanges = [

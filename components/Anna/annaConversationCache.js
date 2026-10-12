@@ -1,7 +1,7 @@
 // Keep only the small index needed to mount the chat immediately. Message bodies
 // stay in Firestore's existing IndexedDB cache; live reads remain authoritative.
 const PREFIX = 'alldone.annaConversation.v1:'
-const MAX_THREADS = 7
+const MAX_THREADS = 3
 const keyFor = (userId, projectId) => `${PREFIX}${encodeURIComponent(userId)}:${encodeURIComponent(projectId)}`
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value)
 const validThread = (thread, userId) =>
@@ -33,12 +33,20 @@ export const readAnnaConversationCache = (userId, user) => {
         )
             return null
         const projects = new Set([user.defaultProjectId, ...(user.projectIds || [])])
+        const accessibleThreads = cached.threads.filter(
+            thread => validThread(thread, userId) && projects.has(thread.projectId)
+        )
+        const threads = accessibleThreads.slice(-MAX_THREADS)
+        const oldest = threads[0]
         return {
             conversation,
-            threads: cached.threads
-                .filter(thread => validThread(thread, userId) && projects.has(thread.projectId))
-                .slice(-MAX_THREADS),
-            nextBefore: cached.nextBefore || null,
+            threads,
+            // An older app may have cached more threads. Start pagination at the
+            // retained boundary so trimming that cache never skips history.
+            nextBefore:
+                accessibleThreads.length > MAX_THREADS && oldest
+                    ? { created: oldest.created, id: `${oldest.projectId}__${oldest.chatId}` }
+                    : cached.nextBefore || null,
         }
     } catch (_) {
         return null

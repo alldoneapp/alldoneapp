@@ -82,8 +82,8 @@ let mockMessages = []
 const mockThreadMessages = {}
 jest.mock(
     '../../hooks/Chats/useGetMessages',
-    () => (_a, _b, _projectId, chatId) =>
-        Object.assign([...(mockThreadMessages[chatId] || mockMessages)], { loaded: true })
+    () => (_a, _b, _projectId, chatId, _type, limit) =>
+        Object.assign((mockThreadMessages[chatId] || mockMessages).slice(-limit), { loaded: true })
 )
 const mockMessageRender = jest.fn()
 jest.mock('../ChatsView/ChatDV/EditorView/MessageItemBody', () => props => {
@@ -881,8 +881,30 @@ it('does not restore another account or default project draft', () => {
     expect(container.querySelector('textarea').value).toBe('')
 })
 
+it('shows the latest 50 messages per thread and expands only the requested thread', async () => {
+    const threads = ['day1', 'day2', 'anna_u1'].map(chatId => ({ projectId: 'p1', chatId }))
+    for (const { chatId } of threads) {
+        mockThreadMessages[chatId] = Array.from({ length: 101 }, (_, index) => ({
+            id: `${chatId}-${index}`,
+            creatorId: 'a1',
+            commentText: `Previous message ${index}`,
+            created: index + 1,
+        }))
+    }
+    render({ threads })
+    const messageIds = chatId =>
+        [...container.querySelectorAll(`[data-anna-chat-id="${chatId}"]`)].map(node => node.dataset.annaMessageId)
+    for (const { chatId } of threads) {
+        expect(messageIds(chatId)).toEqual(mockThreadMessages[chatId].slice(-50).map(message => message.id))
+    }
+    await click('Earlier messages')
+    expect(messageIds('day1')).toEqual(mockThreadMessages.day1.slice(-100).map(message => message.id))
+    expect(messageIds('day2')).toHaveLength(50)
+    expect(messageIds('anna_u1')).toHaveLength(50)
+})
+
 it('keeps typing out of the transcript render and synchronous storage paths', () => {
-    mockMessages = Array.from({ length: 40 }, (_, i) => ({
+    mockMessages = Array.from({ length: 50 }, (_, i) => ({
         id: `message-${i}`,
         creatorId: 'a1',
         commentText: `Previous message ${i}`,

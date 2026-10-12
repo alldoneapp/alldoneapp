@@ -39,7 +39,7 @@ const readProjectsMap = () => {
 }
 
 /**
- * The entry to rage mode, next to "Anna Alldone: How can I help?" in the assistant line: Anna takes
+ * The entry to rage mode, at the top right of the assistant line: Anna takes
  * off from the assistant's avatar beside it, the page slides away under her and a vertical-scrolling raid begins over ground built
  * from your day (`raidArena.js`); leaving slides the page back. Purely for fun — none of the app's
  * data is written (only the raid's own profile and progress), and its DOM is never touched.
