@@ -534,7 +534,7 @@ export default function AnnaShell({ children, routeId }) {
                             title={translate('Close chat — Alldone only')}
                             onClick={closeChat}
                         >
-                            <Icon name="sidebar" size={18} color="currentColor" />
+                            <Icon name="x" size={18} color="currentColor" />
                         </button>
                         <button
                             type="button"
