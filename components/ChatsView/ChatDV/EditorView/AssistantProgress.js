@@ -219,17 +219,22 @@ export default function AssistantProgress({
             ]}
             testID="assistant-progress"
         >
-            <View style={localStyles.header}>
-                <View style={[localStyles.liveDot, darkAppearance && localStyles.darkLiveDot]} />
-                <Text style={[localStyles.heading, darkAppearance && localStyles.darkHeading]}>
-                    {translate('assistant_progress_live_activity')}
-                </Text>
-                <View style={localStyles.stage}>
-                    {show3D ? (
-                        <AssistantThinking3D appearance={appearance} spinnerColor={indicatorColor} size={32} />
-                    ) : (
-                        <ActivityIndicator size="small" color={indicatorColor} />
-                    )}
+            <View style={localStyles.header} testID="assistant-progress-header">
+                <View style={localStyles.title} testID="assistant-progress-title">
+                    <View style={[localStyles.liveDot, darkAppearance && localStyles.darkLiveDot]} />
+                    <Text style={[localStyles.heading, darkAppearance && localStyles.darkHeading]}>
+                        {translate('assistant_progress_live_activity')}
+                    </Text>
+                </View>
+                <View style={localStyles.headerActions} testID="assistant-progress-header-actions">
+                    {children}
+                    <View style={localStyles.stage} testID="assistant-progress-animation">
+                        {show3D ? (
+                            <AssistantThinking3D appearance={appearance} spinnerColor={indicatorColor} size={32} />
+                        ) : (
+                            <ActivityIndicator size="small" color={indicatorColor} />
+                        )}
+                    </View>
                 </View>
             </View>
             <ScrollView
@@ -284,7 +289,6 @@ export default function AssistantProgress({
                     )
                 })}
             </ScrollView>
-            {children}
         </View>
     )
 }
@@ -306,11 +310,27 @@ const localStyles = StyleSheet.create({
         borderColor: colors.Secondary200,
     },
     header: {
-        height: 28,
+        minHeight: 32,
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'center',
+        columnGap: 8,
         paddingLeft: 9,
         marginBottom: 4,
+    },
+    title: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        minHeight: 32,
+        maxWidth: '100%',
+        flexShrink: 1,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        columnGap: 8,
+        marginLeft: 'auto',
+        maxWidth: '100%',
     },
     liveDot: {
         width: 5,
@@ -326,10 +346,10 @@ const localStyles = StyleSheet.create({
         letterSpacing: 1.2,
         textTransform: 'uppercase',
         color: '#60739A',
-        flex: 1,
+        flexShrink: 1,
     },
     darkHeading: { color: colors.UtilityBlue150 },
-    stage: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+    stage: { width: 32, height: 32, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
     trail: { maxHeight: 132, flexGrow: 0 },
     trailContent: { paddingTop: 2 },
     stepRow: {

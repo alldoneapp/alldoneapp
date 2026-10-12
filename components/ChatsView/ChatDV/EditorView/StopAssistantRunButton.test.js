@@ -113,7 +113,7 @@ describe('StopAssistantRunButton', () => {
     test.each(['light', 'dark'])('provides a touch target that fits the %s activity card', appearance => {
         const tree = renderButton({ variant: 'card', appearance })
         expect(StyleSheet.flatten(stopButton(tree).props.style)).toEqual(
-            expect.objectContaining({ minHeight: 44, minWidth: 44, maxWidth: '100%', alignSelf: 'flex-end' })
+            expect.objectContaining({ minHeight: 44, minWidth: 44, maxWidth: '100%', marginTop: 0 })
         )
         act(() => tree.unmount())
     })

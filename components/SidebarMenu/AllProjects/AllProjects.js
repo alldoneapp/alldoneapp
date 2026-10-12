@@ -35,7 +35,7 @@ const localStyles = StyleSheet.create({
     allProjectsSection: {
         flex: 1,
         marginBottom: 12,
-        marginTop: 8,
+        marginTop: 32,
     },
     activeSection: {
         borderBottomWidth: 2,

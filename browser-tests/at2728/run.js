@@ -6,6 +6,38 @@ const { execFileSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '../..')
 const output = path.join(__dirname, '.build')
+const reducedMotion = process.argv.includes('--animated') ? 'no-preference' : 'reduce'
+
+async function checkHeader(card, button) {
+    const header = await card.getByTestId('assistant-progress-header').boundingBox()
+    const title = await card.getByTestId('assistant-progress-title').boundingBox()
+    const actions = await card.getByTestId('assistant-progress-header-actions').boundingBox()
+    const animation = await card.getByTestId('assistant-progress-animation').boundingBox()
+    const target = await button.boundingBox()
+    const outline = await button.getByTestId('stop-assistant-run-content').boundingBox()
+    const trail = await card.getByTestId('assistant-progress-trail').boundingBox()
+    if (!(await button.isDisabled())) {
+        assert.equal(await button.evaluate(node => node.tabIndex), 0, 'Stop remains keyboard focusable')
+    }
+    assert(title.width > 100, 'German heading has visible glyphs and realistic font metrics')
+    const labelWidth = await button.evaluate(node => {
+        const range = document.createRange()
+        range.selectNodeContents(node.querySelector('[data-testid="stop-assistant-run-content"]').lastElementChild)
+        return range.getBoundingClientRect().width
+    })
+    assert(labelWidth > 20, 'Stop label is rendered with usable fonts')
+    assert(target.height >= 44 && target.width >= 44, 'touch target is at least 44px')
+    assert(outline.height === 28, 'visible Stop outline is compact')
+    assert(target.x + target.width <= animation.x, 'Stop is immediately left of the animation')
+    assert(Math.abs(target.y + target.height / 2 - animation.y - animation.height / 2) <= 1, 'controls aligned')
+    assert(target.y >= header.y && target.y + target.height <= header.y + header.height, 'Stop is in header')
+    assert(
+        title.x + title.width <= actions.x || title.y + title.height <= actions.y,
+        'title and controls do not overlap, including when the pending label wraps the header'
+    )
+    assert(header.y + header.height <= trail.y, 'header does not overlap activity steps')
+    assert.equal(await card.getByTestId('assistant-progress-header').getByRole('button').count(), 1)
+}
 
 async function main() {
     execFileSync(
@@ -49,9 +81,11 @@ async function main() {
     let browser
     try {
         const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
-        browser = await chromium.launch({ args: ['--no-sandbox'] })
-        for (const width of [1280, 390, 320]) {
-            const page = await browser.newPage({ viewport: { width, height: 800 }, reducedMotion: 'reduce' })
+        browser = await chromium.launch({
+            args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
+        })
+        for (const width of [1280, 390, 320, 240]) {
+            const page = await browser.newPage({ viewport: { width, height: 800 }, reducedMotion })
             page.setDefaultTimeout(10000)
             const errors = []
             page.on('pageerror', error => {
@@ -61,6 +95,9 @@ async function main() {
             await page.goto(`http://127.0.0.1:${server.address().port}`)
             await page.getByTestId('surface-light').getByRole('button', { name: 'Assistent stoppen' }).waitFor()
             await page.evaluate(() => document.fonts.ready)
+            if (reducedMotion === 'no-preference') {
+                await page.getByTestId('surface-dark').getByTestId('assistant-thinking-3d').locator('canvas').waitFor()
+            }
             for (const appearance of ['light', 'dark']) {
                 const surface = page.getByTestId(`surface-${appearance}`)
                 const card = surface.getByTestId('assistant-progress')
@@ -72,6 +109,7 @@ async function main() {
                 assert(target.x >= bounds.x && target.x + target.width <= bounds.x + bounds.width, 'button fits card')
                 assert(target.y + target.height < bounds.y + bounds.height, 'button stays inside card')
                 assert.equal(await card.getByTestId('assistant-progress-trail').getByRole('button').count(), 0)
+                await checkHeader(card, button)
                 for (const id of ['anna', 'carl', 'unknown']) {
                     const author = surface.getByTestId(`author-${appearance}-${id}`)
                     const header =
@@ -112,7 +150,7 @@ async function main() {
                 }
             }
             assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no overflow')
-            await page.screenshot({ path: path.join(output, `loading-${width}.png`) })
+            await page.screenshot({ path: path.join(output, `loading-${width}-${reducedMotion}.png`), fullPage: true })
             // Test Enter in the chat and Space in the dark popup, with duplicate protection across both.
             const appearance = width === 390 ? 'dark' : 'light'
             const stop = page.getByTestId(`surface-${appearance}`).getByRole('button', { name: 'Assistent stoppen' })
@@ -130,7 +168,13 @@ async function main() {
                     .boundingBox()
                 const target = await pending.boundingBox()
                 assert(target.x >= card.x && target.x + target.width <= card.x + card.width, 'pending label fits card')
+                await checkHeader(page.getByTestId(`surface-${surface}`).getByTestId('assistant-progress'), pending)
             }
+            assert(
+                await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+                'no pending overflow'
+            )
+            await page.screenshot({ path: path.join(output, `stopping-${width}-${reducedMotion}.png`), fullPage: true })
             assert.deepEqual(await page.evaluate(() => window.__cancelRequests), [
                 {
                     projectId: 'project-1',
@@ -143,7 +187,7 @@ async function main() {
             ])
             assert.deepEqual(errors, [])
             console.log(
-                `PASS ${width}px: assistant avatars, fallback, long names, light/dark containment, keyboard stop and shared pending state`
+                `PASS ${width}px (${reducedMotion}): compact header Stop, no overlap, light/dark containment, keyboard stop and shared pending state`
             )
             await page.close()
         }
