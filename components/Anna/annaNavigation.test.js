@@ -23,6 +23,14 @@ describe('Anna entry and navigation', () => {
         )
     })
     it.each([
+        '/updates/followed',
+        '/projects/chats/followed',
+        '/projects/p1/user/u1/updates/followed',
+        '/projects/p1/user/u1/chats/followed',
+    ])('opens activity feature links in the workspace: %s', path => {
+        expect(resolveAnnaLink(path, 'https://my.alldone.app')).toBe(path)
+    })
+    it.each([
         'https://evil.test/projects/tasks/open',
         'javascript:alert(1)',
         '//my.alldone.app.evil.test/projects/tasks/open',

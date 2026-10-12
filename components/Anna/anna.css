@@ -100,6 +100,10 @@
 .anna-header-assistant:hover .anna-brand {
     color: var(--anna-accent);
 }
+.anna-open-tasks-badge {
+    flex: none;
+    display: inline-flex;
+}
 .anna-header-details {
     display: flex;
     flex: 1;
@@ -162,6 +166,25 @@
     flex: none;
     font-size: 10px;
     white-space: nowrap;
+}
+.anna-activity-notice a {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--anna-accent);
+    text-decoration: none;
+}
+.anna-activity-notice a:hover {
+    text-decoration: underline;
+}
+.anna-activity-notice .anna-activity-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--anna-unread);
 }
 .anna-messages {
     overflow: auto;

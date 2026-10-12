@@ -1,4 +1,7 @@
 {
+    "New update": "Nueva actividad",
+    "New chat message": "Nuevo mensaje de chat",
+    "%{count} open tasks today": "%{count} tareas abiertas hoy",
     "Close chat — Alldone only": "Cerrar chat — solo Alldone",
     "Hide workspace — chat only": "Ocultar espacio de trabajo — solo chat",
     "Show workspace": "Mostrar espacio de trabajo",

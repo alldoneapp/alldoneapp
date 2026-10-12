@@ -13,7 +13,9 @@ import AnnaVmWorkspace, { vmStatusLabel } from './AnnaVmWorkspace'
 import useAnnaVmJobs, { vmJobPath } from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
-import { resolveAnnaLink } from './annaNavigation'
+import { isAnnaNavigationPath, resolveAnnaLink } from './annaNavigation'
+import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
+import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
 import { isAnnaWorkspacePath } from '../../functions/Assistant/annaWorkspaceContract'
 import { getAssistantFromState } from '../AdminPanel/Assistants/assistantStateLookup'
 import { useVoiceCall } from '../UIComponents/AssistantVoiceCallProvider'
@@ -59,6 +61,14 @@ export default function AnnaShell({ children, routeId }) {
     autoFollow.current = active && !chatOnly
     const { safeAreaInsets } = useModalSizing()
     const user = useSelector(state => state.loggedUser)
+    const openTasksAmount = useSelector(state =>
+        getAllProjectsOpenTasksAmount(
+            state.sidebarNumbers,
+            state.loggedUser.uid,
+            state.loggedUser.archivedProjectIds,
+            state.loggedUser.templateProjectIds
+        )
+    )
     const call = useVoiceCall()
     const [visited, setVisited] = useState(active)
     const [textBusy, setTextBusy] = useState(false)
@@ -303,7 +313,11 @@ export default function AnnaShell({ children, routeId }) {
                 acknowledge(presentation, 'presented')
                 return
             }
-            if (!isAnnaWorkspacePath(presentation.path)) {
+            if (
+                !(presentation.manual
+                    ? isAnnaNavigationPath(presentation.path)
+                    : isAnnaWorkspacePath(presentation.path))
+            ) {
                 setNavigationError(translate('This workspace link is not supported.'))
                 acknowledge(presentation, 'failed')
                 return
@@ -518,6 +532,7 @@ export default function AnnaShell({ children, routeId }) {
                 '--anna-muted': colors.Text02,
                 '--anna-placeholder': colors.Text03,
                 '--anna-accent': colors.Primary200,
+                '--anna-unread': colors.UtilityRed200,
                 '--anna-neutral': colors.Grey200,
                 '--anna-tint': colors.UtilityBlue100,
                 '--anna-hover': colors.UtilityBlue112,
@@ -569,6 +584,20 @@ export default function AnnaShell({ children, routeId }) {
                                 {photo ? <img src={photo} alt="" /> : assistantName.charAt(0)}
                             </span>
                             <strong className="anna-brand">{assistantName}</strong>
+                            {openTasksAmount > 0 && (
+                                <span
+                                    className="anna-open-tasks-badge"
+                                    aria-label={translate('%{count} open tasks today', { count: openTasksAmount })}
+                                    title={translate('%{count} open tasks today', { count: openTasksAmount })}
+                                >
+                                    <AmountTag
+                                        feedAmount={openTasksAmount}
+                                        isFollowedButton={false}
+                                        showFullAmount={true}
+                                        style={{ backgroundColor: colors.Primary100 }}
+                                    />
+                                </span>
+                            )}
                         </button>
                         <label className="anna-header-picker">
                             <select
@@ -647,6 +676,7 @@ export default function AnnaShell({ children, routeId }) {
                                         setResumeRequest(current => (current?.id === id ? null : current))
                                     }
                                     visible={active && (chatOnly || !mobile || mobilePane === 'chat')}
+                                    active={active}
                                     onExpand={() => setMobilePane('chat')}
                                     onSendingChange={setTextBusy}
                                     onWorkStateChange={setWorkState}

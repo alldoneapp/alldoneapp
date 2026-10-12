@@ -91,7 +91,7 @@ export default function NoteEditorContainer({
     }, [note.id])
 
     return (
-        <View style={localstyles.container}>
+        <View style={localstyles.container} dataSet={{ noteEditor: true }}>
             {visibilityStateRef.current !== 'hidden' && (
                 <NotesEditorView
                     key={`${project.id}/${note.id}`}

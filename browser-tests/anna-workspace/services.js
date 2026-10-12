@@ -1,5 +1,6 @@
 // Synthetic account and transport only; the shell, chat, browser pane, hooks and CSS are real.
 export * from '../at2718/dependencies'
+import { useSyncExternalStore } from 'react'
 export const useDispatch = () => () => {}
 const user = { uid: 'demo', displayName: 'Alex', defaultProjectId: 'p1', gold: 1000 }
 const assistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
@@ -18,15 +19,30 @@ const data = {
     'users/demo/private/annaConversation': { projectId: 'p1', chatId: chat.id, assistantId: 'a1' },
 }
 const listeners = new Map()
-export const useSelector = selector =>
-    selector({
+let activityState = { sidebarNumbers: { p1: { demo: 20 } }, followedFeedsData: {}, projectChatNotifications: {} }
+let activityRevision = 0
+const activityListeners = new Set()
+const subscribeActivity = callback => {
+    activityListeners.add(callback)
+    return () => activityListeners.delete(callback)
+}
+window.__annaActivity = patch => {
+    activityState = { ...activityState, ...patch }
+    activityRevision++
+    activityListeners.forEach(callback => callback())
+}
+export const useSelector = selector => {
+    useSyncExternalStore(subscribeActivity, () => activityRevision)
+    return selector({
         loggedUser: user,
-        loggedUserProjects: [{ id: 'p1' }],
+        loggedUserProjects: [{ id: 'p1', name: 'Launch' }],
         defaultAssistant: assistant,
         connectionState: new URLSearchParams(window.location.search).has('reveal') ? 'online' : 'offline',
         smallScreenNavigation: (window.__alldoneWorkspaceViewport?.width || window.innerWidth) < 640,
         showLoadingDataSpinner: new URLSearchParams(window.location.search).has('floating'),
+        ...activityState,
     })
+}
 import translations from '../../i18n/translations/en.json'
 export const translate = (text, values = {}) =>
     (text.startsWith('vm_workspace_') ? translations[text] || text : text).replace(
