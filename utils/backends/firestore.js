@@ -1523,7 +1523,7 @@ export async function setProjectDescription(projectId, newDescription, project, 
     }
     await tryAddFollower(projectId, followProjectData, batch)
     batch.update(db.doc(`projects/${projectId}`), { description: newDescription })
-    batch.commit()
+    return batch.commit()
 }
 
 export async function createDefaultProject(user) {

@@ -291,7 +291,7 @@ export function updateSkillPrivacy(projectId, skill, isPublicFor) {
 }
 
 export async function updateSkillDescription(projectId, skill, description) {
-    updateSkillData(projectId, skill.id, { description }, null)
+    await updateSkillData(projectId, skill.id, { description }, null)
 
     createGenericTaskWhenMentionInTitleEdition(
         projectId,

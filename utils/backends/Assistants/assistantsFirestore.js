@@ -721,8 +721,8 @@ export async function updateAssistantName(projectId, assistant, newName) {
         assistantNameChangedUpdatesChain(projectId, assistant, assistant.displayName, newName)
 }
 
-export function updateAssistantDescription(projectId, description, assistant) {
-    updateAssistantData(projectId, assistant.uid, { description }, null)
+export async function updateAssistantDescription(projectId, description, assistant) {
+    await updateAssistantData(projectId, assistant.uid, { description }, null)
     if (!isGlobalAssistant(assistant.uid))
         assistantDescriptionChangedUpdatesChain(projectId, assistant, assistant.description, description)
 }

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import Icon from '../Icon'
-import AssistantChatToggleIcon from '../UIComponents/AssistantChatToggleIcon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import AnnaConversation from './AnnaConversation'
@@ -585,9 +584,7 @@ export default function AnnaShell({ children, routeId }) {
                             title={translate('Close chat — Alldone only')}
                             onClick={closeChat}
                         >
-                            <span aria-hidden="true" style={{ display: 'flex' }}>
-                                <AssistantChatToggleIcon expanded color="currentColor" />
-                            </span>
+                            <Icon name="x" size={18} color="currentColor" />
                         </button>
                         <button
                             type="button"
