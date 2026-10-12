@@ -383,3 +383,6 @@ web-bundler/certs/
 
 # Claude Code local state (agent worktrees, launch config, scratch)
 .claude/
+# Generated per-pipeline selection and source stamp (never credentials).
+functions-deploy-scope.json
+functions/ci-deployment.json

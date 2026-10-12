@@ -112,11 +112,13 @@ deploy_scope:
         # A cached older build_firebase:latest may predate git being baked in; the guard
         # jobs install it the same way. No-ops on every image that already has git.
         - command -v git >/dev/null 2>&1 || apk add --no-cache git
+        - npm ci --prefix ci/function-scope-tools --ignore-scripts --no-audit --no-fund
         - sh ci/deployScope.sh compute
     artifacts:
         expire_in: 1 week
         paths:
             - deploy-scope.env
+            - functions-deploy-scope.json
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
@@ -675,6 +677,8 @@ deploy:cloud:functions:staging:
     resource_group: functions-staging-deploy
     interruptible: false
     before_script:
+        - npm ci --prefix ci/function-scope-tools --ignore-scripts --no-audit --no-fund
+        - sh ci/deployScope.sh functions-plan functions-staging || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         - echo "DEBUG - Replacing MCP config for functions deployment"
         - echo "Environment variables for MCP functions (DEV):"
         - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_DEV:0:20}...
@@ -706,22 +710,19 @@ deploy:cloud:functions:staging:
         # source being deployed, so an out-of-order staging deploy deletes work too.
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:functions:staging
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh functions-begin functions-staging
         - |
             set -o pipefail
-            firebase deploy --only functions --token "$GOOGLE_FIREBASE_DEPLOY_TOKEN" --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" 2>&1 | tee "$CI_PROJECT_DIR/functions-deploy.log"
+            node "$CI_PROJECT_DIR/ci/runFunctionsDeployment.js" --token "$GOOGLE_FIREBASE_DEPLOY_TOKEN" --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" 2>&1 | tee "$CI_PROJECT_DIR/functions-deploy.log"
         # firebase-tools can exit zero after a partial concurrent deployment. Verify the
         # per-function completion log and inventory before a green job can hide stale code.
-        - firebase functions:list --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js $CI_PROJECT_DIR/functions-deploy.log
+        - firebase functions:list --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js $CI_PROJECT_DIR/functions-deploy.log $CI_PROJECT_DIR/functions-deploy-scope.json
         - rm -rf tmp_project_name
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh record functions-staging
     allow_failure:
         exit_codes: 75
     rules:
         - if: '$CI_COMMIT_BRANCH == "develop"'
-          changes:
-              - functions/**/*
-              # firebase.json carries the functions runtime, region and ignore list,
-              # so a change there has to redeploy them too.
-              - firebase.json
         # Manual feature-branch QA uses the current backend on staging, matching
         # deploy:web-staging-live, without advancing the old develop branch.
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
@@ -741,10 +742,10 @@ deploy:cloud:functions:production:
     dependencies:
         - 'deploy_scope'
     before_script:
-        # First, before any of the setup below: exit 76 when the deployed functions already
-        # match this commit. Scoped by the deploy marker rather than `changes:` so this job
-        # also ships what a superseded pipeline skipped — see deploy_scope.
-        - sh ci/deployScope.sh require functions-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
+        # Refresh inside the deployment lock: an earlier pipeline may have completed
+        # or partially failed since deploy_scope computed its artifact. Exit 76 on no-op.
+        - npm ci --prefix ci/function-scope-tools --ignore-scripts --no-audit --no-fund
+        - sh ci/deployScope.sh functions-plan functions-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         - echo "Environment variables for MCP functions (PROD):"
         - echo "API_KEY:" ${GOOGLE_FIREBASE_WEB_API_KEY_PROD:0:20}...
         - echo "AUTH_DOMAIN:" $GOOGLE_FIREBASE_WEB_AUTH_DOMAIN_PROD
@@ -776,17 +777,16 @@ deploy:cloud:functions:production:
         # is as small as possible. Exit 75 means "superseded", declared allowed below.
         - sh $CI_PROJECT_DIR/ci/assertNewestCommit.sh deploy:cloud:functions:production
         - firebase use $(< tmp_project_name) --token $GOOGLE_FIREBASE_DEPLOY_TOKEN
+        - sh $CI_PROJECT_DIR/ci/deployScope.sh functions-begin functions-production
         - |
             set -o pipefail
-            firebase deploy --only functions --token "$GOOGLE_FIREBASE_DEPLOY_TOKEN" --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" 2>&1 | tee "$CI_PROJECT_DIR/functions-deploy.log"
+            node "$CI_PROJECT_DIR/ci/runFunctionsDeployment.js" --token "$GOOGLE_FIREBASE_DEPLOY_TOKEN" --non-interactive --force -m "Pipeline $CI_PIPELINE_ID, build $CI_BUILD_ID" 2>&1 | tee "$CI_PROJECT_DIR/functions-deploy.log"
         # A 2026-09-10 deploy returned zero after GCP quota omitted one new task worker.
-        # Require a completed update or verified no-op for every export, then check inventory.
+        # Require a completed update or verified no-op for every selected export, then check full inventory.
         # Presence alone missed the stale voice worker on 2026-09-11.
-        - firebase functions:list --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js $CI_PROJECT_DIR/functions-deploy.log
+        - firebase functions:list --token $GOOGLE_FIREBASE_DEPLOY_TOKEN --json | node $CI_PROJECT_DIR/ci/assertFirebaseFunctionsDeployed.js $CI_PROJECT_DIR/functions/index.js $CI_PROJECT_DIR/functions-deploy.log $CI_PROJECT_DIR/functions-deploy-scope.json
         - rm -rf tmp_project_name
-        # Only after a successful deploy. The path list lives in
-        # ci/deploy-scope/functions-production.paths (functions/ plus firebase.json, which
-        # carries the runtime, region and ignore list).
+        # Advance the successful marker only after every selected function was verified.
         - sh $CI_PROJECT_DIR/ci/deployScope.sh record functions-production
     allow_failure:
         exit_codes: 75

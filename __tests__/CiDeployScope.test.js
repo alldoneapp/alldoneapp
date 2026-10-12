@@ -38,7 +38,8 @@ describe('production deploys are scoped by what shipped, not by what this push t
     )
 
     it.each(Object.entries(MARKER_SCOPED_JOBS))('%s asks the marker whether it must run', (name, target) => {
-        expect(allLines(job(name))).toContain(`deployScope.sh require ${target}`)
+        const command = target === 'functions-production' ? 'functions-plan' : 'require'
+        expect(allLines(job(name))).toContain(`deployScope.sh ${command} ${target}`)
     })
 
     it.each(Object.entries(MARKER_SCOPED_JOBS))('%s records the marker after deploying', (name, target) => {
@@ -48,7 +49,7 @@ describe('production deploys are scoped by what shipped, not by what this push t
 
         // Recording before the deploy would mark work as shipped that never shipped, and the
         // next pipeline would then skip it forever.
-        const deployIndex = lines.findIndex(l => /firebase deploy|deploy\.sh/.test(l))
+        const deployIndex = lines.findIndex(l => /firebase deploy|deploy\.sh|runFunctionsDeployment\.js/.test(l))
         expect(deployIndex).toBeGreaterThanOrEqual(0)
         expect(recordIndex).toBeGreaterThan(deployIndex)
     })
