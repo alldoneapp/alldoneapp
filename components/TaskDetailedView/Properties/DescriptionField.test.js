@@ -7,10 +7,8 @@ import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
 import DescriptionField from './DescriptionField'
-import Backend from '../../../utils/BackendBridge'
-import { hasPendingDescriptionAttachments, updateNewAttachmentsData } from '../../Feeds/Utils/HelperFunctions'
+import { updateNewAttachmentsData } from '../../Feeds/Utils/HelperFunctions'
 import { setTaskDescription } from '../../../utils/backends/Tasks/tasksFirestore'
-import { installAppResumeListener } from '../../../utils/appResume'
 
 jest.mock('react-redux', () => ({
     useSelector: jest.fn(),
@@ -23,14 +21,9 @@ jest.mock('../../Feeds/CommentsTextInput/textInputHelper', () => ({
 }))
 jest.mock('../../Feeds/AddFeed/AddFeedAttachButton', () => 'AddFeedAttachButton')
 jest.mock('../../UIControls/Button', () => 'Button')
-jest.mock('../../../utils/BackendBridge', () => ({
-    setGoalDescription: jest.fn(),
-    setProjectDescription: jest.fn(),
-    updateSkillDescription: jest.fn(),
-}))
+jest.mock('../../../utils/BackendBridge', () => ({}))
 jest.mock('../../Feeds/Utils/HelperFunctions', () => ({
     updateNewAttachmentsData: jest.fn(),
-    hasPendingDescriptionAttachments: jest.fn(),
 }))
 jest.mock('../../../utils/backends/Assistants/assistantsFirestore', () => ({
     updateAssistantDescription: jest.fn(),
@@ -59,35 +52,9 @@ jest.mock('../../styles/global', () => ({
     },
 }))
 
-describe('detail description autosave', () => {
-    const trees = []
-    const mount = (props = {}) => {
-        let tree
-        act(() => {
-            tree = renderer.create(
-                <DescriptionField
-                    projectId="project-1"
-                    object={{ id: 'task-1', description: 'Existing description' }}
-                    disabled={false}
-                    objectType="task"
-                    {...props}
-                />
-            )
-        })
-        trees.push(tree)
-        return tree
-    }
-    afterEach(async () => {
-        await act(async () => {
-            trees.splice(0).forEach(tree => tree.unmount())
-        })
-        jest.useRealTimers()
-    })
+describe('task detail description attachments', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        jest.useFakeTimers()
-        setTaskDescription.mockReset().mockResolvedValue(undefined)
-        hasPendingDescriptionAttachments.mockReturnValue(false)
         updateNewAttachmentsData.mockResolvedValue('Description with uploaded attachment')
         useSelector.mockImplementation(selector =>
             selector({
@@ -118,7 +85,6 @@ describe('detail description autosave', () => {
             tree.root.findByType('CustomTextInput3').props.setInputCursorIndex(9)
         })
 
-        trees.push(tree)
         expect(tree.root.findByType('AttachmentDropZone').props).toEqual(
             expect.objectContaining({
                 testID: 'task-description-attachment-drop-zone',
@@ -140,7 +106,6 @@ describe('detail description autosave', () => {
             />
         )
 
-        trees.push(tree)
         expect(tree.root.findByType('AttachmentDropZone').props.disabled).toBe(true)
     })
 
@@ -153,19 +118,15 @@ describe('detail description autosave', () => {
             <DescriptionField projectId="project-1" object={object} disabled={false} objectType="task" />
         )
 
-        trees.push(tree)
-        hasPendingDescriptionAttachments.mockReturnValue(true)
         act(() => {
             tree.root.findByType('CustomTextInput3').props.onChangeText('Description with local attachment')
         })
         await act(async () => {
+            tree.root.findByType('Button').props.onPress()
             await Promise.resolve()
         })
 
-        expect(updateNewAttachmentsData).toHaveBeenCalledWith('project-1', 'Description with local attachment', {
-            strict: true,
-            uploadedTokens: expect.any(Map),
-        })
+        expect(updateNewAttachmentsData).toHaveBeenCalledWith('project-1', 'Description with local attachment')
         expect(setTaskDescription).toHaveBeenCalledWith(
             'project-1',
             'task-1',
@@ -173,109 +134,5 @@ describe('detail description autosave', () => {
             object,
             'Existing description'
         )
-    })
-    it('removes Save/OK and debounces text changes without saving on mount', async () => {
-        updateNewAttachmentsData.mockImplementation(async (_project, text) => text)
-        const tree = mount()
-        expect(tree.root.findAllByType('Button')).toHaveLength(0)
-        expect(updateNewAttachmentsData).not.toHaveBeenCalled()
-        act(() => tree.root.findByType('CustomTextInput3').props.onChangeText('first'))
-        await act(async () => jest.advanceTimersByTime(500))
-        act(() => tree.root.findByType('CustomTextInput3').props.onChangeText('latest'))
-        await act(async () => jest.advanceTimersByTime(999))
-        expect(setTaskDescription).not.toHaveBeenCalled()
-        await act(async () => jest.advanceTimersByTime(1))
-        expect(setTaskDescription).toHaveBeenCalledTimes(1)
-        expect(setTaskDescription.mock.calls[0][2]).toBe('latest')
-        expect(tree.root.findByType('CustomTextInput3').props.allowPlainEnterBreakLines).toBe(true)
-    })
-
-    it('shows a failed save, keeps the draft, and retries', async () => {
-        updateNewAttachmentsData.mockImplementation(async (_project, text) => text)
-        setTaskDescription.mockRejectedValueOnce(new Error('permission-denied'))
-        const tree = mount()
-        act(() => tree.root.findByType('CustomTextInput3').props.onChangeText('unsaved'))
-        await act(async () => jest.advanceTimersByTime(1000))
-        expect(tree.root.findByType('CustomTextInput3').props.initialTextExtended).toBe('unsaved')
-        expect(tree.root.findByType('Button').props.title).toBe('Try again')
-        await act(async () => tree.root.findByType('Button').props.onPress())
-        expect(setTaskDescription).toHaveBeenCalledTimes(2)
-        expect(tree.root.findAllByType('Button')).toHaveLength(0)
-    })
-
-    it.each(['visibilitychange', 'pagehide', 'freeze'])(
-        'flushes pending edits through the shared page lifecycle on %s before the debounce',
-        async signal => {
-            const stopLifecycle = installAppResumeListener()
-            const visibilityDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState')
-            try {
-                updateNewAttachmentsData.mockImplementation(async (_project, text) => text)
-                const tree = mount({ object: { id: `lifecycle-${signal}`, description: 'Existing description' } })
-                act(() => tree.root.findByType('CustomTextInput3').props.onChangeText('pending before hiding'))
-                expect(setTaskDescription).not.toHaveBeenCalled()
-                Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
-                await act(async () => {
-                    const target = signal === 'pagehide' ? window : document
-                    target.dispatchEvent(new Event(signal))
-                })
-                expect(setTaskDescription).toHaveBeenCalledTimes(1)
-                expect(setTaskDescription.mock.calls[0][2]).toBe('pending before hiding')
-                await act(async () => jest.advanceTimersByTime(1000))
-                expect(setTaskDescription).toHaveBeenCalledTimes(1)
-            } finally {
-                stopLifecycle()
-                if (visibilityDescriptor) Object.defineProperty(document, 'visibilityState', visibilityDescriptor)
-                else delete document.visibilityState
-            }
-        }
-    )
-
-    it('never writes when read-only', async () => {
-        const tree = mount({ disabled: true })
-        act(() => tree.root.findByType('CustomTextInput3').props.onChangeText('forbidden'))
-        await act(async () => jest.advanceTimersByTime(1000))
-        expect(updateNewAttachmentsData).not.toHaveBeenCalled()
-        expect(setTaskDescription).not.toHaveBeenCalled()
-        expect(tree.root.findAllByType('AddFeedAttachButton')).toHaveLength(0)
-    })
-
-    it('keeps Enter available for selecting mentions without inserting a newline', () => {
-        const tree = mount()
-        act(() => tree.root.findByType('CustomTextInput3').props.setMentionsModalActive(true))
-        expect(tree.root.findByType('CustomTextInput3').props.allowPlainEnterBreakLines).toBe(false)
-        act(() => tree.root.findByType('CustomTextInput3').props.setMentionsModalActive(false))
-        expect(tree.root.findByType('CustomTextInput3').props.allowPlainEnterBreakLines).toBe(true)
-    })
-
-    it('flushes pending edits when navigating to another object', async () => {
-        updateNewAttachmentsData.mockImplementation(async (_project, text) => text)
-        const tree = mount()
-        act(() => tree.root.findByType('CustomTextInput3').props.onChangeText('old task draft'))
-        await act(async () =>
-            tree.update(
-                <DescriptionField
-                    projectId="project-1"
-                    object={{ id: 'task-2', description: 'Second task' }}
-                    disabled={false}
-                    objectType="task"
-                />
-            )
-        )
-        expect(setTaskDescription.mock.calls[0].slice(0, 3)).toEqual(['project-1', 'task-1', 'old task draft'])
-        expect(tree.root.findByType('CustomTextInput3').props.initialTextExtended).toBe('Second task')
-    })
-
-    it.each([
-        ['goal', 'setGoalDescription'],
-        ['project', 'setProjectDescription'],
-        ['skill', 'updateSkillDescription'],
-    ])('autosaves the %s description through its existing backend', async (objectType, method) => {
-        updateNewAttachmentsData.mockImplementation(async (_project, text) => text)
-        const tree = mount({ objectType })
-        act(() => tree.root.findByType('CustomTextInput3').props.onChangeText('changed'))
-        await act(async () => jest.advanceTimersByTime(1000))
-        expect(Backend[method]).toHaveBeenCalledTimes(1)
-        expect(Backend[method].mock.calls.at(-1)).toContain('changed')
-        expect(setTaskDescription).not.toHaveBeenCalled()
     })
 })

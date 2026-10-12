@@ -1320,7 +1320,7 @@ export async function updateGoalProgress(projectId, progress, goal) {
 }
 
 export async function setGoalDescription(projectId, goalId, description, goal, oldDescription) {
-    await updateGoalData(projectId, goal.id, { description }, null)
+    updateGoalData(projectId, goal.id, { description }, null)
 
     createGenericTaskWhenMentionInTitleEdition(
         projectId,
