@@ -1551,14 +1551,25 @@
     margin: 8px 0;
 }
 
-/* The note page supplies the outer gutter in both Alldone and assistant mode.
-   Avoid adding viewport-based desktop margins inside its editor and toolbar. */
+/* Use the same responsive state as the detail header, which follows the Alldone
+   pane in assistant mode. Mobile pages already supply their 16px outer gutter. */
+[data-note-editor-layout='desktop'] {
+    --note-editor-gutter: 104px;
+}
+[data-note-editor-layout='tablet'] {
+    --note-editor-gutter: 56px;
+}
+[data-note-editor-layout='mobile'] {
+    --note-editor-gutter: 0px;
+}
 [data-note-editor] .ql-toolbar-container,
-[data-note-editor] .ql-container,
 [data-note-editor] .ql-editor {
+    padding-inline: var(--note-editor-gutter, 0px);
+}
+[data-note-editor] .ql-container {
     padding-inline: 0;
 }
 [data-note-editor] .ql-editor.ql-blank::before {
-    inset-inline: 0;
+    inset-inline: var(--note-editor-gutter, 0px);
     padding-inline: 0;
 }
