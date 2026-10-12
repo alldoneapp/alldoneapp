@@ -67,15 +67,25 @@ let mockTransactionState
 let mockTakeoverProps
 let mockTakeoverMounts = 0
 let mockVmJobs = []
+let mockVmError = false
+let mockSelectedRunId
+const mockRetryVms = jest.fn()
 jest.mock('./useAnnaVmJobs', () => ({
     __esModule: true,
-    default: () => ({ jobs: mockVmJobs, error: false, retry: jest.fn() }),
+    default: (userId, { selectedRunId }) => {
+        mockSelectedRunId = selectedRunId
+        return { jobs: mockVmJobs, error: mockVmError, retry: mockRetryVms }
+    },
     vmJobPath: job => `/projects/${job.projectId}/tasks/${job.objectId}/chat`,
 }))
 jest.mock('./AnnaVmWorkspace', () => ({
     __esModule: true,
-    default: ({ job }) => <div>Live VM {job.title}</div>,
-    vmStatusLabel: value => value,
+    default: ({ job, active }) => (
+        <div data-active={active}>
+            Live VM {job.title}
+            <textarea aria-label={`Feedback for ${job.title}`} />
+        </div>
+    ),
 }))
 const mockReleaseBrowser = jest.fn()
 const mockRunTransaction = jest.fn()
@@ -205,7 +215,10 @@ const choose = (selector, value) =>
     })
 const chooseSurface = value => {
     choose(document.querySelector('.anna-header-picker select'), value.startsWith('vm:') ? 'vms' : value)
-    if (value.startsWith('vm:')) choose(document.querySelector('.anna-vm-selector select'), value.slice(3))
+    if (value.startsWith('vm:')) {
+        const job = mockVmJobs.find(job => job.id === value.slice(3))
+        act(() => screen.getByLabelText(job.title).focus())
+    }
 }
 const showChat = () => choose(document.querySelector('.anna-header-picker select'), 'chat')
 const showWorkspace = () => fireEvent.click(screen.getByLabelText('Show workspace'))
@@ -280,11 +293,12 @@ it('defers assistant presentation in chat-only mode until the user opens it', as
     expect(document.querySelector('.anna-chat-only')).toBeNull()
 })
 
-it('shows an empty VM workspace and keeps its session picker separate from the chat header', () => {
+it('shows an empty VM workspace without a session dropdown', () => {
     render(content(1))
     chooseSurface('vms')
     expect(document.querySelector('.anna-vms').textContent).toContain('No VM sessions yet')
     expect(document.querySelector('.anna-header-picker select').options).toHaveLength(3)
+    expect(document.querySelector('.anna-vms select')).toBeNull()
 })
 
 it('saves keyboard resizing independently of pane visibility', () => {
@@ -479,6 +493,7 @@ beforeEach(() => {
     mockTakeoverProps = null
     mockTakeoverMounts = 0
     mockVmJobs = []
+    mockVmError = false
     jest.clearAllMocks()
     mockReleaseBrowser.mockResolvedValue(undefined)
     mockRunTransaction.mockImplementation(fn =>
@@ -606,6 +621,79 @@ it('opens running VMs without remounting the chat or workspace and keeps focus o
     expect(screen.getByLabelText('Real workspace editor')).toBe(input)
     expect(input.value).toBe('Keep my edit')
     expect(mockUnmounts).toBe(0)
+})
+
+it.each(['desktop', 'mobile'])('shows every VM panel and preserves selection and drafts on %s', device => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({
+        matches: device === 'mobile',
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    mockVmJobs = [
+        { id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'initiated' },
+        { id: 'vm2', projectId: 'p1', objectId: 't2', title: 'Review plan', status: 'awaiting_user' },
+    ]
+    try {
+        const view = render(content(1))
+        chooseSurface('vms')
+        const panels = [...document.querySelectorAll('.anna-vm-surface')]
+        expect(panels).toHaveLength(2)
+        expect(panels.map(panel => panel.getAttribute('aria-label'))).toEqual(['Launch report', 'Review plan'])
+        expect(document.querySelector('.anna-vms select')).toBeNull()
+        expect(panels.every(panel => !panel.classList.contains('anna-surface-hidden'))).toBe(true)
+        expect(panels.every(panel => panel.querySelector('[data-active]').dataset.active === 'true')).toBe(true)
+        expect(mockSelectedRunId).toBe('vm1')
+        const feedback = screen.getByLabelText('Feedback for Review plan')
+        feedback.value = 'Keep my feedback'
+        act(() => feedback.focus())
+        expect(mockSelectedRunId).toBe('vm2')
+        expect(document.activeElement).toBe(feedback)
+        expect(mockConversationProps.pageContext).toMatchObject({ surface: 'vm', title: 'Review plan' })
+        expect(panels[1].getAttribute('aria-current')).toBe('true')
+        act(() => panels[0].dispatchEvent(new Event('pointerdown', { bubbles: true })))
+        act(() => panels[0].focus())
+        expect(mockSelectedRunId).toBe('vm2')
+        act(() => panels[0].dispatchEvent(new Event('pointerup', { bubbles: true })))
+        fireEvent.click(panels[0])
+        expect(mockSelectedRunId).toBe('vm1')
+        act(() => feedback.focus())
+        mockVmJobs = mockVmJobs.map(job => (job.id === 'vm2' ? { ...job, status: 'completed' } : job))
+        view.rerender(content(1))
+        expect(mockSelectedRunId).toBe('vm2')
+        expect(screen.getByLabelText('Review plan')).toBe(panels[1])
+        chooseSurface('browser')
+        expect(panels.every(panel => panel.querySelector('[data-active]').dataset.active === 'false')).toBe(true)
+        chooseSurface('vms')
+        expect(mockSelectedRunId).toBe('vm2')
+        expect(screen.getByLabelText('Feedback for Review plan')).toBe(feedback)
+        expect(feedback.value).toBe('Keep my feedback')
+        expect(mockUnmounts).toBe(0)
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it('keeps other VM panels available if the selected session disappears, and allows retrying discovery', () => {
+    mockVmJobs = [
+        { id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'initiated' },
+        { id: 'vm2', projectId: 'p1', objectId: 't2', title: 'Review plan', status: 'awaiting_user' },
+    ]
+    const view = render(content(1))
+    chooseSurface('vm:vm2')
+    mockVmJobs = [mockVmJobs[0]]
+    view.rerender(content(1))
+    expect(document.querySelector('.anna-vms [role="status"]').textContent).toBe('vm_workspace_unavailable')
+    expect(screen.getByLabelText('Launch report').querySelector('[data-active]').dataset.active).toBe('true')
+    mockVmError = true
+    view.rerender(content(1))
+    expect(document.querySelector('.anna-vms [role="alert"]')).toBeTruthy()
+    fireEvent.click(screen.getByText('vm_workspace_retry'))
+    expect(mockRetryVms).toHaveBeenCalledTimes(1)
+    act(() => screen.getByLabelText('Launch report').focus())
+    expect(mockSelectedRunId).toBe('vm1')
+    expect(document.querySelector('.anna-vms [role="status"]')).toBeNull()
 })
 
 it.each(['desktop', 'mobile'])(
@@ -1005,14 +1093,18 @@ it('switches mobile browser, VM and chat through the top dropdown without losing
         chooseSurface('vm:vm2')
         finishNext('completed')
         expect(selector.value).toBe('vms')
-        expect(document.querySelector('.anna-vm-selector select').value).toBe('vm2')
-        expect(document.querySelectorAll('.anna-vm-surface')[1].getAttribute('aria-hidden')).toBe('false')
+        expect(screen.getByLabelText('Review plan').getAttribute('aria-current')).toBe('true')
+        expect(
+            [...document.querySelectorAll('.anna-vm-surface [data-active]')].every(
+                node => node.dataset.active === 'true'
+            )
+        ).toBe(true)
         showChat()
         expect(document.activeElement).toBe(screen.getByLabelText('Conversation with Carl Code Mentor'))
         expect(chat.closest('section').getAttribute('aria-hidden')).toBe('false')
         expect(screen.getByLabelText('Alldone workspace').hasAttribute('inert')).toBe(true)
         chooseSurface('vms')
-        expect(document.querySelector('.anna-vm-selector select').value).toBe('vm2')
+        expect(screen.getByLabelText('Review plan').getAttribute('aria-current')).toBe('true')
         chooseSurface('browser')
         expect(selector.value).toBe('browser')
         expect(document.activeElement).toBe(screen.getByLabelText('Alldone workspace'))

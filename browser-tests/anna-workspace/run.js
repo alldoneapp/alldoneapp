@@ -319,7 +319,10 @@ async function closeChat(page) {
 async function selectWorkspaceSurface(page, surface) {
     if (await page.locator('.anna-fullscreen').count()) await page.evaluate(() => window.zoomAnna(true))
     await page.locator('.anna-header-picker select').selectOption(surface.startsWith('vm:') ? 'vms' : surface)
-    if (surface.startsWith('vm:')) await page.getByLabel('VM session', { exact: true }).selectOption(surface.slice(3))
+    if (surface.startsWith('vm:')) {
+        const index = surface.slice(3) === 'vm1' ? 0 : 1
+        await page.locator('.anna-vm-surface').nth(index).focus()
+    }
 }
 async function assertSelectedSurface(page, surface) {
     assert.equal(await page.locator('.anna-header-picker select').inputValue(), surface)
@@ -452,23 +455,54 @@ async function checkVmWorkspace(page, width) {
     await chat.fill('Keep this unsent message')
     if (width <= 760) await showWorkspace(page)
     await page.getByLabel('Workspace draft').fill('Keep the workspace edit')
-    const selectVm = () => selectWorkspaceSurface(page, 'vm:vm1', /^VM: Prepare the launch report/)
+    const selectVm = () => selectWorkspaceSurface(page, 'vm:vm1')
     await selectVm()
-    await page.locator('.anna-vm-terminal pre').waitFor({ state: 'visible' })
-    await assertClearOfSelector(page, page.locator('.anna-vm-surface:not(.anna-surface-hidden) h2'))
-    await assertClearOfSelector(page, page.locator('.anna-vm-surface:not(.anna-surface-hidden) .anna-vm-task-link'))
-    assert.match(await page.locator('.anna-vm-terminal pre').textContent(), /Reading launch.md/)
+    const panels = page.locator('.anna-vm-surface')
+    const first = page.getByRole('region', { name: 'Prepare the launch report', exact: true })
+    const second = page.getByRole('region', { name: 'Review the mobile experience', exact: true })
+    await page.evaluate(() => window.__annaVmFixture('running', 'Checking mobile layout…', 'vm2'))
+    await second.locator('pre').waitFor({ state: 'visible' })
+    assert.equal(await second.locator('pre').textContent(), 'Checking mobile layout…')
+    assert.equal(await page.locator('.anna-vms select').count(), 0, 'VM sessions have no dropdown')
+    assert.equal(await panels.count(), 2)
+    assert.equal(await first.isVisible(), true)
+    assert.equal(await second.isVisible(), true)
+    const firstBounds = await first.boundingBox()
+    const secondBounds = await second.boundingBox()
+    assert.ok(secondBounds.y >= firstBounds.y + firstBounds.height, 'VM panels stack without overlap')
+    await second.focus()
+    assert.equal(await second.getAttribute('aria-current'), 'true')
+    assert.equal(await first.getAttribute('aria-current'), null)
+    assert.equal(await second.evaluate(node => node === document.activeElement), true)
+    await selectVm()
+    await first.locator('.anna-vm-terminal pre').waitFor({ state: 'visible' })
+    await assertClearOfSelector(page, first.locator('h2'))
+    await assertClearOfSelector(page, first.locator('.anna-vm-task-link'))
+    assert.equal(await first.locator('.anna-vm-task-link').getAttribute('href'), '/projects/p1/tasks/t1/chat')
+    assert.equal(await second.locator('.anna-vm-task-link').getAttribute('href'), '/projects/p1/tasks/t2/chat')
+    assert.match(await first.locator('.anna-vm-terminal pre').textContent(), /Reading launch.md/)
     assert.equal(await page.getByLabel('Workspace draft').isVisible(), false)
     await page.evaluate(() => window.__annaVmFixture('running', '💻 npm test\nChecking the report output…'))
     await page.getByText('💻 npm test\nChecking the report output…', { exact: true }).waitFor()
-    assert.equal(await page.locator('.anna-vm-selector option').count(), 2)
-    const bounds = await page.locator('.anna-vm-terminal').boundingBox()
+    assert.equal(await panels.count(), 2)
+    await page.evaluate(() => window.__annaVmFixture('running', 'Mobile checks are still running…', 'vm2'))
+    await second.getByText('Mobile checks are still running…', { exact: true }).waitFor()
+    const bounds = await first.locator('.anna-vm-terminal').boundingBox()
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+    await first.focus()
+    await page.locator('.anna-vms').evaluate(node => {
+        node.scrollTop = 0
+    })
     await page.screenshot({ path: path.join(BUILD, `vm-live-${width}.png`) })
     await page.evaluate(() => window.__annaVmFixture('awaiting_user', 'Please review the plan.'))
     await page.getByText('Request changes', { exact: true }).click()
     await page.getByPlaceholder('What should change in the plan?').fill('Keep this feedback draft')
+    await second.focus()
+    assert.equal(
+        await page.getByPlaceholder('What should change in the plan?').inputValue(),
+        'Keep this feedback draft'
+    )
     await selectWorkspaceSurface(page, 'browser')
     await selectVm()
     assert.equal(
@@ -479,7 +513,16 @@ async function checkVmWorkspace(page, width) {
     await page.getByText('💻 npm test\nTests are running…', { exact: true }).waitFor()
     await page.evaluate(() => window.__annaVmFixture('completed', 'The launch report is ready.'))
     await page.getByText('The launch report is ready.', { exact: true }).waitFor()
-    assert.equal(await page.locator('.anna-vm-terminal').count(), 0)
+    assert.equal(await first.locator('.anna-vm-terminal').count(), 0)
+    assert.equal(await panels.count(), 2, 'Selected completed VM remains alongside other sessions')
+    await second.getByRole('button', { name: translations['Stop assistant'], exact: true }).click()
+    await page.waitForFunction(() => window.__annaStoppedVm)
+    const stopped = await page.evaluate(() => window.__annaStoppedVm)
+    assert.equal(stopped.runId, 'vm2')
+    assert.equal(stopped.objectId, 't2')
+    await second.scrollIntoViewIfNeeded()
+    const visibleSecond = await second.boundingBox()
+    assert.ok(visibleSecond.y + visibleSecond.height <= 901, 'Later panels can be scrolled into view')
     await selectWorkspaceSurface(page, 'alldone')
     assert.equal(await page.getByLabel('Workspace draft').inputValue(), 'Keep the workspace edit')
     if (width <= 760) await showChat(page)
@@ -782,10 +825,11 @@ async function checkNoteWidth(page, width) {
 }
 
 async function main() {
-    const { chromium } = require('playwright')
+    const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     const browser = await chromium.launch({
         headless: true,
+        ...(process.env.CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } : {}),
         ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}),
     })
     try {
@@ -794,7 +838,8 @@ async function main() {
         process.env.LAYOUT_ONLY ||
         process.env.ACTIVITY_ONLY ||
         process.env.SENDING_ONLY ||
-        process.env.NOTE_WIDTH_ONLY
+        process.env.NOTE_WIDTH_ONLY ||
+        process.env.VM_ONLY
             ? [1440, 1024, 390, 320]
             : [1440, 1024, 390]) {
             const page = await browser.newPage({ viewport: { width, height: 900 } })
@@ -804,6 +849,12 @@ async function main() {
                 errors.push(error.message)
                 console.error(error.stack)
             })
+            if (process.env.VM_ONLY) {
+                await checkVmWorkspace(page, width)
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
             if (process.env.NOTE_WIDTH_ONLY) {
                 await checkNoteWidth(page, width)
                 assert.deepEqual(errors, [])
@@ -875,11 +926,6 @@ async function main() {
                 continue
             }
             await checkVmWorkspace(page, width)
-            if (process.env.VM_ONLY) {
-                assert.deepEqual(errors, [])
-                await page.close()
-                continue
-            }
             await checkBrowserLogin(page, width)
             if (process.env.LOGIN_ONLY) {
                 assert.deepEqual(errors, [])
