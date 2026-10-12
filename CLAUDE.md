@@ -1052,6 +1052,11 @@ the hidden mobile workspace, cancels on interaction, and uses `appResume` for pa
 lifecycle signals. Keep feedback failures separate from mutation success so they
 never trigger a repeated write. Rows and detail titles expose `data-anna-object-*`
 and `data-anna-project-id`; new supported object views must use those same anchors.
+Keep the current view when the saved row is already mounted; otherwise try the cue's
+`listPath` before its detail `path`. Task lists use the persisted current reviewer
+for open tasks and the original assignee for completed tasks. Notes and contacts
+use the project's All list. Allow the list listener to mount the row before falling
+back to details, and cancel either navigation when the user interacts.
 Coverage: `annaWorkspaceChanges.test.js`, `AnnaWorkspaceReveal.test.js`,
 `annaWorkspaceRevealTargets.test.js`, and `browser-tests/anna-workspace`.
 React Native Web replaces a ScrollView DOM node's `scrollTo` with its `{ x, y,

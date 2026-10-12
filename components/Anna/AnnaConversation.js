@@ -23,6 +23,8 @@ import AnnaChatComposer from './AnnaChatComposer'
 import useAnnaDraft from './useAnnaDraft'
 import AnnaMessageAuthor from './AnnaMessageAuthor'
 
+const MESSAGES_PER_PAGE = 50
+
 const getMessageCreator = (message, user, assistant) => {
     if (message.creatorId === user.uid && !message.fromAssistant) return user
     const creator = getUserPresentationData(message.creatorId)
@@ -459,7 +461,7 @@ function AnnaThreadMessages({
     onLiveActivityChange,
 }) {
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
-    const [limit, setLimit] = useState(40)
+    const [limit, setLimit] = useState(MESSAGES_PER_PAGE)
     const chatId = thread.chatId || thread.id
     const messages = useGetMessages(false, false, thread.projectId, chatId, 'topics', limit)
     // Match the body renderer, including its stale-run rule. Sending, errors and
@@ -522,7 +524,7 @@ function AnnaThreadMessages({
     ].sort((a, b) => a.created - b.created)
     const expandEarlier = () => {
         onLoadEarlier()
-        setLimit(value => value + 40)
+        setLimit(value => value + MESSAGES_PER_PAGE)
     }
     return (
         <section aria-label={thread.dateKey || translate('Earlier conversation')}>

@@ -48,6 +48,9 @@ function Fixture() {
     const [, refresh] = useState(0)
     useEffect(() => subscribeWorkspaceTasks(() => refresh(value => value + 1)), [])
     const revealFixture = new URLSearchParams(window.location.search).has('reveal')
+    const revealListVisible =
+        !new URLSearchParams(window.location.search).has('revealList') ||
+        window.location.pathname === '/projects/p1/user/a1/tasks/open'
     return (
         <>
             <style>{`@font-face { font-family: alldone; src: url("${alldoneFont}") format("truetype"); }`}</style>
@@ -79,7 +82,7 @@ function Fixture() {
                         openGlobal={() => setDialog(true)}
                         toggleNotifications={() => setNotifications(value => !value)}
                     />
-                    {revealFixture && (
+                    {revealFixture && revealListVisible && (
                         <div style={{ paddingTop: 30, font: '15px Arial', color: '#334155' }}>
                             <h2 style={{ fontSize: 20 }}>Launch tasks</h2>
                             {Array.from({ length: 24 }, (_, index) => (

@@ -266,7 +266,7 @@ it.each(['edit', 'zoom'])('cancels pending result navigation when the user choos
     }
 })
 
-it('opens the saved detail when a changed row is outside the current list filter', async () => {
+it('still supports a legacy saved-object cue without a list route', async () => {
     jest.useFakeTimers()
     const visibility = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
     const change = {
@@ -290,6 +290,54 @@ it('opens the saved detail when a changed row is outside the current list filter
         jest.useRealTimers()
     }
 })
+
+it.each(['mounted', 'missing', 'interrupted'])(
+    'tries the saved task list before details when the row is %s',
+    async outcome => {
+        jest.useFakeTimers()
+        const visibility = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+        const change = {
+            id: 'saved1',
+            projectId: 'p1',
+            objectId: 'task1',
+            type: 'task',
+            change: 'created',
+            path: '/projects/p1/tasks/task1/properties',
+            listPath: '/projects/p1/user/assistant1/tasks/open',
+            expiresAt: Date.now() + 120000,
+        }
+        useAnnaConversation.mockReturnValue({
+            ...state,
+            conversation: { ...conversation, annaWorkspaceChanges: [change] },
+        })
+        try {
+            render(content(1))
+            await act(async () => {})
+            for (let i = 0; i < 10; i++) await act(async () => jest.advanceTimersByTime(75))
+            expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual([change.listPath])
+            if (outcome === 'mounted') {
+                // A fresh list subscription delivers its row after navigation.
+                const row = document.createElement('div')
+                Object.assign(row.dataset, { annaObjectType: 'task', annaObjectId: 'task1', annaProjectId: 'p1' })
+                row.getBoundingClientRect = () => ({ width: 200, height: 40 })
+                document.querySelector('.anna-workspace-content').append(row)
+            } else if (outcome === 'interrupted') {
+                act(() =>
+                    screen
+                        .getByLabelText('Real workspace editor')
+                        .dispatchEvent(new Event('pointerdown', { bubbles: true }))
+                )
+            }
+            for (let i = 0; i < 40; i++) await act(async () => jest.advanceTimersByTime(75))
+            expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual(
+                outcome === 'missing' ? [change.listPath, change.path] : [change.listPath]
+            )
+        } finally {
+            visibility.mockRestore()
+            jest.useRealTimers()
+        }
+    }
+)
 
 it.each(['home', 'browser'])(
     'finishes a reveal at %s, retaining assistant mode, the chat draft and manual surface selection',
@@ -661,15 +709,21 @@ it('holds assistant navigation during browser control until Open is clicked', as
     )
 })
 
-it('switches mobile panes without removing the workspace or chat', async () => {
+it('uses the mobile selector and close control without removing the workspace or chat', async () => {
     window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
     render(content(1))
     const stage = screen.getByLabelText('Alldone workspace')
     expect(stage.getAttribute('aria-hidden')).toBe('true')
-    showWorkspace()
+    expect(screen.getByLabelText('Show workspace')).toBeNull()
+    expect(document.querySelector('.anna-pane-toggle-right')).toBeNull()
+    chooseSurface('alldone')
     expect(stage.getAttribute('aria-hidden')).toBe('false')
     expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
     expect(screen.getByLabelText('Real workspace editor')).toBeTruthy()
+    showChat()
+    fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+    expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+    expect(stage.getAttribute('aria-hidden')).toBe('false')
     delete window.matchMedia
     await act(async () => {})
 })
@@ -687,7 +741,7 @@ it('selects mobile workspace surfaces and follows browser completion without los
         editor.value = 'My unsaved workspace edit'
         const chat = screen.getByLabelText('Persistent conversation')
         chat.value = 'My unsent chat message'
-        showWorkspace()
+        chooseSurface('alldone')
         const selector = document.querySelector('.anna-stage select')
         const choose = value =>
             act(() => {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
-import { Keyboard, StyleSheet, View, Text, TouchableOpacity } from 'react-native'
+import { Keyboard, StyleSheet, View, Text } from 'react-native'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
@@ -18,7 +18,6 @@ import Button from '../../../UIControls/Button'
 import { colors } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
 import { runHttpsCallableFunction } from '../../../../utils/backends/firestore'
-import Icon from '../../../Icon'
 // The canonical, dependency-free definition of the key — deliberately not the re-export from
 // `chatsComments`, which would drag the whole comments backend into this composer.
 import { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY } from '../../../../utils/backends/Chats/chatNotificationPriority'
@@ -55,7 +54,6 @@ export const DEFERRED_QUICK_ACTION_REFRESH_MS = 1000
 const QUICK_ACTION_HORIZONTAL_MARGIN = 16
 
 export default function AssistantOptions({
-    onZoomOut,
     headerControls = null,
     projectOverride = null,
     assistantIdOverride = null,
@@ -408,19 +406,10 @@ export default function AssistantOptions({
                     <Text style={localStyles.headerText} numberOfLines={1}>
                         {`${assistant.displayName}: ${translate('How can I help?')}`}
                     </Text>
-                    {/* Rage mode is Anna's: she is the one who flies out and shoots the page apart.
-                        Hidden without WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
-                    <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
                 </View>
-                {!!onZoomOut && (
-                    <TouchableOpacity
-                        style={localStyles.zoomButton}
-                        onPress={onZoomOut}
-                        accessibilityLabel={translate('Zoom out to assistant')}
-                    >
-                        <Icon name={'maximize-2'} size={16} color={colors.Text03} />
-                    </TouchableOpacity>
-                )}
+                {/* Rage mode is Anna's: she is the one who flies out and shoots the page apart.
+                    Hidden without WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
+                <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
             </View>
             <View style={localStyles.firstRow}>
                 {/* Rage mode's Anna takes off from this avatar and lands back on it. */}
@@ -569,9 +558,6 @@ const localStyles = StyleSheet.create({
         marginLeft: 0,
     },
     rageButton: {
-        marginLeft: 8,
-    },
-    zoomButton: {
         marginLeft: 8,
         width: 28,
         height: 28,
