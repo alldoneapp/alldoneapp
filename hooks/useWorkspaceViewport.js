@@ -16,10 +16,10 @@ export default function useWorkspaceViewport() {
     return viewport
 }
 
-export function useWorkspaceViewportOwner(ref, active) {
+export function useWorkspaceViewportOwner(ref, active, visible = true) {
     useLayoutEffect(() => {
         if (!active || !ref.current) return
-        const update = () => setWorkspaceViewport(ref.current?.getBoundingClientRect())
+        const update = () => setWorkspaceViewport(ref.current?.getBoundingClientRect(), visible)
         const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
         observer?.observe(ref.current)
         window.addEventListener('resize', update)
@@ -32,5 +32,5 @@ export function useWorkspaceViewportOwner(ref, active) {
             window.removeEventListener('scroll', update, true)
             setWorkspaceViewport(null)
         }
-    }, [active, ref])
+    }, [active, ref, visible])
 }
