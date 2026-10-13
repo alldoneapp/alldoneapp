@@ -26,6 +26,7 @@ import Backend from '../../utils/BackendBridge'
 import Icon from '../Icon'
 import TaskSummarizeTags from '../Tags/TaskSummarizeTags'
 import GoalItemTagsArea from './GoalItemTagsArea'
+import GoalMobileTags from './GoalMobileTags'
 import { LINKED_OBJECT_TYPE_GOAL } from '../../utils/LinkingHelper'
 import { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import { isEqual } from 'lodash'
@@ -359,8 +360,7 @@ export default class GoalItemPresentation extends PureComponent {
     }
 
     needRenderTagsInNextLine = () => {
-        // Mobile tags participate in normal flow and determine their own height.
-        // The desktop measurement assumes one absolutely positioned badge row.
+        // The mobile summary and its expanded row determine their own height.
         if (this.state.smallScreenNavigation) return
         const { showSummarizeTag } = this.getTagsData()
         if (showSummarizeTag) {
@@ -603,7 +603,27 @@ export default class GoalItemPresentation extends PureComponent {
                                     activeDragGoalMode && { paddingRight: 28 },
                                 ]}
                             >
-                                {showSummarizeTag ? (
+                                {smallScreenNavigation ? (
+                                    <GoalMobileTags
+                                        projectId={projectId}
+                                        goal={goal}
+                                        assigneesIds={assigneesIds}
+                                        assigneesCapacity={assigneesCapacity}
+                                        commentsData={goal.commentsData}
+                                        disableTagsActions={isAnonymous}
+                                        backlinksCount={backlinksCount}
+                                        backlinkObject={backlinkObject}
+                                        parentMilestonesData={parentMilestonesData}
+                                        inDoneMilestone={inDoneMilestone}
+                                        tasksAmount={tasksAmount}
+                                        isEmptyGoal={isEmptyGoal}
+                                        parentGoaltasks={parentGoaltasks}
+                                        areObservedTask={areObservedTask}
+                                        inParentGoal={inParentGoal}
+                                        loggedUserCanUpdateObject={loggedUserCanUpdateObject}
+                                        inCommentPopup={inCommentPopup}
+                                    />
+                                ) : showSummarizeTag ? (
                                     <>
                                         {amountTags > 0 && (
                                             <TaskSummarizeTags
@@ -636,7 +656,6 @@ export default class GoalItemPresentation extends PureComponent {
                                         assigneesCapacity={assigneesCapacity}
                                         commentsData={goal.commentsData}
                                         onLayoutTagsContainer={this.onLayoutContainers}
-                                        wrapTags={smallScreenNavigation}
                                         containerStyle={
                                             !smallScreenNavigation && showTagsInNextLine
                                                 ? activeDragGoalMode

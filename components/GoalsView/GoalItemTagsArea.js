@@ -51,7 +51,8 @@ export default function GoalItemTagsArea({
     inParentGoal,
     loggedUserCanUpdateObject,
     inCommentPopup,
-    wrapTags = false,
+    milestoneOnly = false,
+    hideMilestone = false,
 }) {
     const dispatch = useDispatch()
     const currentUserId = useSelector(state => state.currentUser.uid)
@@ -96,11 +97,22 @@ export default function GoalItemTagsArea({
     const milestoneDate =
         isInTaskList && goal.completionMilestoneDate !== BACKLOG_DATE_NUMERIC && moment(goal.completionMilestoneDate)
 
+    const milestoneTag = milestoneDate && (
+        <MilestoneDateTag
+            date={milestoneDate}
+            onMilestoneTagClick={goToGoals}
+            style={{ marginLeft: 8, marginRight: 0 }}
+            inDetailedView={true}
+        />
+    )
+
+    if (milestoneOnly) return milestoneTag || null
+
     return (
         <View
             onLayout={onLayoutTagsContainer}
             nativeID={`social_tags_${projectId}_${goal.id}`}
-            style={[localStyles.container, containerStyle, wrapTags && localStyles.wrappedContainer]}
+            style={[localStyles.container, containerStyle]}
         >
             <View nativeID={`initial_social_tag_${projectId}_${goal.id}`} />
             {isInTaskList && (
@@ -204,14 +216,7 @@ export default function GoalItemTagsArea({
                     inParentGoal={inParentGoal || !loggedUserCanUpdateObject}
                 />
             )}
-            {milestoneDate && (
-                <MilestoneDateTag
-                    date={milestoneDate}
-                    onMilestoneTagClick={goToGoals}
-                    style={{ marginLeft: 8, marginRight: 0 }}
-                    inDetailedView={true}
-                />
-            )}
+            {!hideMilestone && milestoneTag}
             {showAssignees && (
                 <GoalItemAssigneesArea
                     projectId={projectId}
@@ -231,11 +236,5 @@ const localStyles = StyleSheet.create({
     container: {
         flexDirection: 'row',
         alignItems: 'center',
-    },
-    wrappedContainer: {
-        flex: 1,
-        minWidth: 0,
-        flexWrap: 'wrap',
-        rowGap: 8,
     },
 })

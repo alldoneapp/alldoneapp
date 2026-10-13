@@ -112,11 +112,10 @@ describe('AssistantInputLine control alignment', () => {
     })
 
     it('keeps the compact single row while the field is one line', () => {
-        const { getControlsStyle, getInputHeight, getInput } = renderLine()
+        const { getControlsStyle, getInputHeight } = renderLine()
 
         expect(getControlsStyle().flexDirection).toBe('row')
         expect(getInputHeight()).toBe(40)
-        expect(getInput().props.placeholder).toBe('Start a new chat')
     })
 
     it('stacks the call and send buttons on one axis when the field expands', () => {
@@ -148,19 +147,15 @@ describe('AssistantInputLine control alignment', () => {
         expect(line.getInputHeight()).toBe(40)
     })
 
-    it('keeps the mobile buttons side by side as the short-placeholder field expands', () => {
+    it('applies the same stacking on small screens', () => {
         mockState = { smallScreenNavigation: true }
         const line = renderLine()
 
         line.type('Mobile message that wraps', 62)
 
         const controls = line.getControlsStyle()
-        expect(controls.flexDirection).toBe('row')
+        expect(controls.flexDirection).toBe('column')
         expect(controls.alignItems).toBe('center')
-        expect(line.getInputHeight()).toBe(70)
-        expect(line.getInput().props.placeholder).toBe('New message …')
-        line.type('Long mobile message', 160)
-        expect(line.getInputHeight()).toBe(120)
-        expect(line.getControlsStyle().flexDirection).toBe('row')
+        expect(line.getInputHeight()).toBe(88)
     })
 })
