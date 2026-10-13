@@ -357,6 +357,8 @@ test:functions:deployment:
                 branch_args="--branch origin/$CI_DEFAULT_BRANCH"
             fi
             node ci/runFunctionsTests.js $branch_args --check-scope || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
+            # Selected VM bootstrap tests execute Bash; the base image is Alpine.
+            apk add --no-cache bash
             npm ci --prefix functions --ignore-scripts --no-audit --no-fund
             node ci/runFunctionsTests.js $branch_args
     rules:
