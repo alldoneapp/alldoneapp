@@ -20,6 +20,7 @@ import { useSelector } from 'react-redux'
 
 import TaskTag, { MIN_TASK_TAG_LABEL_WIDTH, UNNAMED_TASK_LABEL } from './TaskTag'
 import LoadingTag from './LoadingTag'
+import TaskTagTitle from './TaskTagTitle'
 import { setWorkspaceViewport } from '../../utils/workspaceViewport'
 
 const mountedTrees = []
@@ -64,6 +65,13 @@ jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({ getAssistant: ()
 jest.mock('../Workstreams/WorkstreamHelper', () => ({ WORKSTREAM_ID_PREFIX: 'workstream_' }))
 jest.mock('../../utils/EstimationHelper', () => ({ getEstimationRealValue: () => 0 }))
 jest.mock('../../utils/LinkingHelper', () => ({ handleNestedLinks: text => text }))
+// Layout tests keep the title's dependencies local; TaskTagTitle.test.js exercises
+// the real parser, renderer and nested DOM events.
+jest.mock('./TaskTagTitle', () => {
+    const React = require('react')
+    const { Text } = require('react-native')
+    return ({ text }) => <Text>{text}</Text>
+})
 jest.mock('../TaskListView/Utils/TasksHelper', () => ({
     __esModule: true,
     default: { getUserInProject: () => ({ photoURL: '' }), getContactInProject: () => null },
@@ -311,5 +319,40 @@ describe('shared subtask listeners', () => {
         expect(mockUnwatch).not.toHaveBeenCalled()
         act(() => second.unmount())
         expect(mockUnwatch).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('TaskTag title integration (AT-2746)', () => {
+    it('passes the original extended title and project to the inline renderer', () => {
+        const title = 'Update https://example.com/path?x=1 @Karsten#user-1 #release'
+        const tree = render({ task: task({ extendedName: title }) })
+        const titleRenderer = tree.root.findByType(TaskTagTitle)
+        expect(titleRenderer.props).toMatchObject({ text: title, projectId: 'project-1', disabled: false })
+    })
+
+    it('falls back to the name when older tasks have no extended title', () => {
+        const tree = render({ task: task({ extendedName: undefined, name: 'Legacy task' }) })
+        expect(titleText(tree)).toContain('Legacy task')
+    })
+
+    it('keeps the task menu, checkbox and metadata alongside a parsed title', () => {
+        const onPress = jest.fn()
+        const saveDueDateCallback = jest.fn()
+        const tree = render({
+            task: task({ extendedName: 'https://example.com', recurrence: 'weekly', dueDate: 1791849600000 }),
+            onPress,
+            saveDueDateCallback,
+        })
+        act(() => labelButton(tree).props.onPress())
+        expect(onPress).toHaveBeenCalledTimes(1)
+        expect(tree.root.findByType('Icon').props.name).toBe('square')
+        expect(tree.root.findByType('TaskRecurrence').props.task.recurrence).toBe('weekly')
+        expect(tree.root.findByType('DateTagButton').props.saveDueDateBeforeSaveTask).toBe(saveDueDateCallback)
+        expect(tree.root.findByType('SVGGenericUser').props.svgid).toBe('task-1')
+    })
+
+    it('blocks inline actions under the existing disabled and guide permissions', () => {
+        const tree = render({ disabled: true })
+        expect(tree.root.findByType(TaskTagTitle).props.disabled).toBe(true)
     })
 })
