@@ -1,58 +1,50 @@
-# AT-2744: Mobile goal badges
+# AT-2744: Collapsible mobile goal tags
 
-`GoalItemPresentation` positioned all badges absolutely against the right edge
-and reserved only one fixed extra line. A row wider than the mobile goal card
-therefore extended past its left edge. In compact navigation, badges now occupy
-normal flow below the progress/title row. `GoalItemTagsArea` wraps them with an
-8px row gap, so the header and progress background grow with the content.
-Desktop positioning and the desktop summary toggle are retained.
+This corrects the automatic wrapping shipped in MR !657. Compact navigation
+(up to 818px with the sidebar expanded) shows a separate milestone date and
+one shared `TaskSummarizeTags` chip. Clicking it reveals the existing goal
+badges and assignees in a second row; clicking again collapses them. That row
+scrolls horizontally when necessary, preserving one expanded row without page
+overflow. The summary count excludes the milestone date and includes schedule,
+coffee, focus area and visible assignee tags. Desktop rendering is retained.
 
-This browser harness renders the real goal header, progress bars, task/coffee
-counters, schedule badge, focus-area badge, milestone date, assignee badges,
-Swipeable and AppPopover. Account/backend/navigation boundaries, rich title
-parsing and modal contents are fixtures; it never reads or changes live data.
+The harness renders the real goal header, progress bars, task/coffee counters,
+schedule/focus badges, milestone date, reminder date, assignee wrappers,
+Swipeable and AppPopover. Account/backend/navigation boundaries, rich-title
+parsing and modal contents are fixtures. External requests are blocked and no
+production data is read or written. These are local component-harness checks,
+not authenticated production verification or physical-device tests.
 
-With Node 22, root and `web-bundler` dependencies, repository replacement
-packages applied to `node_modules`, and Playwright/Chromium available:
+With Node 22, existing root/web-bundler dependencies and Playwright Chromium:
 
 ```bash
 node browser-tests/at2744/run.js
 npm test -- --runInBand --watch=false \
+    components/GoalsView/GoalMobileTags.test.js \
     components/GoalsView/GoalItemPresentationSwipeGuard.test.js \
-    components/UIControls/GoalDateTagButton.test.js
+    components/UIControls/GoalDateTagButton.test.js \
+    __tests__/Tags/TaskSummarizeTags.test.js
 ```
 
-If Playwright is installed elsewhere, set `PLAYWRIGHT_MODULE` to its module
-path and `PLAYWRIGHT_BROWSERS_PATH` to its browser directory. `--skip-build`
-reuses the bundle. `--baseline` captures measurements without asserting the
-fixed geometry; run against the pre-fix header to reproduce the overflow.
-Builds, generated screenshots and measurements stay in the ignored `.build/`.
+`PLAYWRIGHT_MODULE` and `PLAYWRIGHT_BROWSERS_PATH` can point to an existing
+Playwright installation. `--skip-build` reuses the compiled bundle;
+`HARNESS_OUTPUT` sets its output folder (default: ignored `.build/`).
+`--desktop-only` captures six desktop baselines. `DESKTOP_BASELINE` points to
+screenshots from master captured with the same harness/browser/fonts; all six
+must be byte-identical to the corrected desktop screenshots.
 
-Checks cover 320, 360, 390, 430, 600, 818 and 1280px viewports:
+Checks cover mobile widths 320, 360, 375, 390, 430, 600 and 818px, desktop
+900, 1024 and 1280px, long labels and eight avatars, initial collapse,
+expand/re-collapse, separate nonduplicated milestone date, card/page overflow,
+following-task overlap, backlog date, reminder date, organize mode, badge
+navigation and popup triggers, title editing, and mounted desktop/mobile resize.
+Jest also covers tag-count edge cases, hidden avatars, non-linear milestones,
+standalone goals, done assignees, and permission propagation.
 
-- All badges inside the header horizontally and vertically, without overlap,
-  clipping or overlap with the following task.
-- Long goal and focus-area labels, including eight independently clickable
-  assignees; the existing focus-area ellipsis is retained.
-- Organize mode and an additional reminder-date badge at 320px.
-- Task-count navigation, coffee/date navigation, schedule/progress/assignee
-  popup triggers, focus-area popup and title editing remain functional.
-- A mounted row resizes from phone to desktop and back without stale layout.
-- No browser runtime errors.
+[Collapsed mobile](screenshots/mobile-after.png),
+[expanded mobile](screenshots/mobile-expanded.png),
+[long labels and eight avatars](screenshots/mobile-long.png).
 
-Five focused Jest tests and all browser checks passed. The harness compiled
-through the shipped webpack/Babel configuration. The original header overflowed
-42px to the left at 390px and 112px at 320px; the regression assertions fail on
-that source. Desktop geometry and screenshot are identical before and after.
-The complete production build
-and the broader `GoalsViewAllProjectsPerformance` Jest suite were attempted but
-killed by the 2GB VM memory limit. Physical-device Safari/WebView verification
-remains outstanding.
-
-| Mobile before                            | Mobile after                           |
-| ---------------------------------------- | -------------------------------------- |
-| ![Before](screenshots/mobile-before.png) | ![After](screenshots/mobile-after.png) |
-
-[Long labels and eight assignees](screenshots/mobile-long.png),
-[desktop before](screenshots/desktop-before.png),
-[desktop after](screenshots/desktop-after.png).
+Production builds and CI/deployment verification are recorded separately in
+the correction MR. Live Goals verification requires an authorized browser
+session; never use production badge actions that write data during that check.

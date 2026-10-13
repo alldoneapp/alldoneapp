@@ -35,7 +35,7 @@ const goal = {
     dynamicProgress: 90,
     hasStar: '#FFFFFF',
     progressByDoneMilestone: { m1: { progress: 90, doneDate: Date.now() } },
-    completionMilestoneDate: moment('2026-10-31').valueOf(),
+    completionMilestoneDate: params.has('backlog') ? Number.MAX_SAFE_INTEGER : moment('2026-10-31').valueOf(),
     startingMilestoneDate: moment('2026-10-01').valueOf(),
     dateByDoneMilestone: {},
     parentDoneMilestoneIds: [],
