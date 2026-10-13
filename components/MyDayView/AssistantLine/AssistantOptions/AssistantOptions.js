@@ -28,6 +28,7 @@ import {
     markAssistantLineSendCreated,
 } from '../assistantLinePendingSend'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
+import '../assistantInput.css'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
@@ -291,19 +292,19 @@ export default function AssistantOptions({
         [composerMaxHeight]
     )
 
-    // Stack the voice + send buttons into a column as soon as the field grows
-    // past one line, and release that only when the field is emptied again. See
-    // getAssistantControlsStacked for why the release must not depend on the
-    // measured height.
+    // Mobile keeps voice/send side by side. Desktop retains the expansion
+    // latch; release only on empty text so width changes cannot cause reflow loops.
     useEffect(() => {
-        setControlsStacked(wasStacked =>
-            getAssistantControlsStacked({
-                inputHeight: inputLayout.height,
-                hasText: message.length > 0,
-                wasStacked,
-            })
+        setControlsStacked(
+            wasStacked =>
+                !isMobile &&
+                getAssistantControlsStacked({
+                    inputHeight: inputLayout.height,
+                    hasText: message.length > 0,
+                    wasStacked,
+                })
         )
-    }, [inputLayout.height, message])
+    }, [inputLayout.height, message, isMobile])
 
     const updateMessage = useCallback(text => {
         setMessage(text)
@@ -411,19 +412,26 @@ export default function AssistantOptions({
                     Hidden without WebGL, under reduced motion, or after ?rageMode=off (rageModeFlag.js). */}
                 <RageModeButton color={colors.Text03} size={18} style={localStyles.rageButton} />
             </View>
-            <View style={localStyles.firstRow}>
+            <View testID="assistant-composer-row" style={localStyles.firstRow}>
                 {/* Rage mode's Anna takes off from this avatar and lands back on it. */}
-                <View style={localStyles.avatarWrapper} nativeID={RAGE_LAUNCH_ANCHOR_ID}>
-                    <AssistantAvatarButton projectIndex={assistantProject.index} assistant={assistant} size={48} />
+                <View
+                    style={[localStyles.avatarWrapper, isMobile && localStyles.avatarWrapperMobile]}
+                    nativeID={RAGE_LAUNCH_ANCHOR_ID}
+                >
+                    <AssistantAvatarButton
+                        projectIndex={assistantProject.index}
+                        assistant={assistant}
+                        size={isMobile ? 32 : 48}
+                    />
                 </View>
                 <CustomTextInput3
                     ref={inputRef}
-                    containerStyle={localStyles.messageInput}
+                    containerStyle={[localStyles.messageInput, isMobile && localStyles.messageInputMobile]}
                     fixedHeight={inputDisplayHeight}
                     maxHeight={composerMaxHeight}
                     onChangeText={updateMessage}
-                    onContentSizeChange={(width, height) => updateInputHeight(height)}
-                    placeholder={translate('Start a new chat')}
+                    onContentSizeChange={(width, height) => updateInputHeight(height + 8)}
+                    placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
                     projectId={conversationProjectId}
                     styleTheme={TASK_THEME}
                     setMentionsModalActive={setMentionsModalActive}
@@ -472,7 +480,11 @@ export default function AssistantOptions({
                             assistant={assistant}
                             projectId={conversationProjectId}
                             skipNavigationOnThreadCreate
-                            buttonStyle={[localStyles.voiceButton, controlsStacked && localStyles.voiceButtonExpanded]}
+                            buttonStyle={[
+                                localStyles.voiceButton,
+                                isMobile && localStyles.voiceButtonMobile,
+                                controlsStacked && localStyles.voiceButtonExpanded,
+                            ]}
                         />
                         <Button
                             title={sendButtonTitle}
@@ -587,6 +599,17 @@ const localStyles = StyleSheet.create({
         color: colors.Text01,
         textAlignVertical: 'top',
     },
+    messageInputMobile: {
+        paddingHorizontal: 2,
+        paddingVertical: 3,
+        marginRight: 4,
+        minWidth: 0,
+    },
+    avatarWrapperMobile: {
+        width: 32,
+        height: 40,
+        marginRight: 4,
+    },
     avatarWrapper: {
         width: 56,
         height: 56,
@@ -613,6 +636,9 @@ const localStyles = StyleSheet.create({
     voiceButton: {
         marginLeft: 0,
         marginRight: 8,
+    },
+    voiceButtonMobile: {
+        marginRight: 4,
     },
     voiceButtonExpanded: {
         marginRight: 0,
