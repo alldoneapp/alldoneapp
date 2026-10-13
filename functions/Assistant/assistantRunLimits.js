@@ -24,11 +24,20 @@ const HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS = 25 * 60 * 1000
 // the 3600s one.
 const SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS = 25 * 60 * 1000
 
+// Writing is deliberately bounded to fit an Eventarc worker. Automatic routing and drafting
+// may run consecutively, so their combined budget determines the worker's timeout.
+const WRITING_ROUTING_MAX_RUN_WALL_CLOCK_MS = 60 * 1000
+const WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS = 3 * 60 * 1000
+const WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS =
+    WRITING_ROUTING_MAX_RUN_WALL_CLOCK_MS + WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS
+
 // Context assembly happens before the run and result posting after it, so the transport has to
 // outlive the run itself.
 const TRANSPORT_HEADROOM_MS = 5 * 60 * 1000
 
 const transportTimeoutSecondsFor = maxRunWallClockMs => (maxRunWallClockMs + TRANSPORT_HEADROOM_MS) / 1000
+
+const WRITING_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS)
 
 // 3600s — the ceiling for HTTP-invoked functions (onCall/onRequest) only. Event-triggered functions
 // cap at 540s and so cannot host a full assistant run at all.
@@ -50,6 +59,10 @@ const HEARTBEAT_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(HEARTBEAT_
 const SCHEDULED_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS)
 
 module.exports = {
+    WRITING_ROUTING_MAX_RUN_WALL_CLOCK_MS,
+    WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+    WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS,
+    WRITING_FUNCTION_TIMEOUT_SECONDS,
     ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,

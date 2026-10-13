@@ -916,6 +916,67 @@ describe('Responses API compatibility helpers', () => {
         warnSpy.mockRestore()
     })
 
+    test('allows a large inline screenshot without counting its Base64 as prompt text or changing the request', () => {
+        const screenshot = `data:image/jpeg;base64,${'aB12'.repeat(180000)}`
+        const request = {
+            input: [
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'input_text', text: 'Rewrite the selected passage.' },
+                        { type: 'input_image', image_url: screenshot },
+                    ],
+                },
+            ],
+            tools: [],
+        }
+        const estimate = enforceOpenAiInputTokenPreflight(request, { route: 'writing', model: 'gpt-6-luna' })
+        expect(estimate.payloadBytes).toBeGreaterThan(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT)
+        expect(estimate.estimatedInputTokens).toBeLessThan(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT)
+        expect(estimate.imageCount).toBe(1)
+        expect(estimate.imageTokenReserve).toBeGreaterThan(0)
+        expect(estimate.usedTokenizer).toBe(false)
+        expect(request.input[0].content[1].image_url).toBe(screenshot)
+        expect(
+            enforceOpenAiInputTokenPreflight({
+                ...request,
+                input: [
+                    {
+                        role: 'user',
+                        content: [
+                            request.input[0].content[0],
+                            { type: 'input_image', image_url: 'https://example.com/same-screenshot.jpg' },
+                        ],
+                    },
+                ],
+            }).estimatedInputTokens
+        ).toBe(estimate.estimatedInputTokens)
+    })
+
+    test('still blocks oversized real text and includes the image token budget', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+        mockTiktokenEncode.mockReturnValueOnce({ length: OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT - 1 })
+        expect(() =>
+            enforceOpenAiInputTokenPreflight({
+                input: [
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'input_text', text: 'x'.repeat(210000) },
+                            { type: 'input_image', image_url: `data:image/jpeg;base64,${'aB12'.repeat(100000)}` },
+                        ],
+                    },
+                ],
+            })
+        ).toThrow(expect.objectContaining({ code: 'OPENAI_INPUT_TOKEN_PREFLIGHT_LIMIT' }))
+        expect(mockTiktokenEncode).toHaveBeenLastCalledWith(
+            expect.not.stringContaining('data:image/jpeg;base64,'),
+            [],
+            []
+        )
+        warnSpy.mockRestore()
+    })
+
     test('blocks an oversized OpenAI request during preflight before dispatch', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
         expect(OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT).toBe(200000)

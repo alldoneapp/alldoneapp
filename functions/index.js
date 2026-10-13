@@ -29,6 +29,7 @@ const {
     ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
     SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
+    WRITING_FUNCTION_TIMEOUT_SECONDS,
 } = require('./Assistant/assistantRunLimits')
 const { Timestamp } = require('firebase-admin/firestore')
 const { completeOnDemandAssistantTaskAfterRun } = require('./Assistant/generatedAssistantTaskCompletion')
@@ -2809,6 +2810,25 @@ exports.menubarAssistantThread = onRequest(
         const { handleMenubarAssistantThread } = require('./MenubarApp/menubarApp')
         return await handleMenubarAssistantThread(req, res)
     }
+)
+
+// Writing requests are queued; the native app polls its exact private revision.
+exports.menubarWritingStart = onRequest(
+    { timeoutSeconds: 60, memory: '512MiB', region: 'europe-west1' },
+    async (req, res) => require('./MenubarApp/menubarWriting').handleMenubarWritingStart(req, res)
+)
+exports.menubarWritingSession = onRequest(
+    { timeoutSeconds: 120, memory: '512MiB', region: 'europe-west1' },
+    async (req, res) => require('./MenubarApp/menubarWriting').handleMenubarWritingSession(req, res)
+)
+exports.processMenubarWritingRunSecondGen = onDocumentWritten(
+    {
+        document: 'menubarWritingRuns/{runId}',
+        timeoutSeconds: WRITING_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async event => require('./MenubarApp/menubarWriting').processMenubarWritingRun(event)
 )
 
 // IOS SHARE EXTENSION

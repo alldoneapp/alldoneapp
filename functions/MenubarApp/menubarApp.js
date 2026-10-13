@@ -2633,6 +2633,8 @@ module.exports = {
     handleMenubarAssistantThread,
     processMenubarAssistantRun,
     __private__: {
+        resolveTokenUser,
+        isRateLimited,
         collectAttendeeEmails,
         dedupeUpcomingMeetings,
         parseEventInstant,

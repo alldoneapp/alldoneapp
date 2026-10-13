@@ -463,6 +463,10 @@ function hasValidCompactThreadRuntimeContext(toolRuntimeContext = null) {
 
 function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = null) {
     if (!Array.isArray(allowedTools)) return []
+    if (toolRuntimeContext?.writingDraft) {
+        const { writingReadTools } = require('./assistantWritingPolicy')
+        allowedTools = writingReadTools(allowedTools)
+    }
     // Presentation is an Anna surface capability, not a change to the saved assistant's tools.
     allowedTools = allowedTools.filter(name => !['show_workspace', 'highlight_workspace'].includes(name))
     if (toolRuntimeContext?.annaConversation) allowedTools = [...allowedTools, 'show_workspace', 'highlight_workspace']
@@ -13669,13 +13673,31 @@ function estimateOpenAiRequestInputTokens(requestParams = {}) {
         tools: requestParams.tools || [],
     })
     const payloadBytes = Buffer.byteLength(serializedPayload, 'utf8')
+    let imageCount = 0
+    const tokenCountingInput = JSON.stringify(requestParams.input || [], (_key, value) => {
+        if (value && typeof value === 'object' && value.type === 'input_image') {
+            imageCount++
+            // Images are encoded as visual tokens. Their URL/Base64 bytes are transport data,
+            // not text tokens. Only replace the counting representation; never mutate the request.
+            return { type: 'input_image', detail: value.detail || 'auto', image_url: '[Image]' }
+        }
+        return value
+    })
+    const tokenCountingPayload = `{"input":${tokenCountingInput},"tools":${JSON.stringify(requestParams.tools || [])}}`
+    const tokenCountingBytes = Buffer.byteLength(tokenCountingPayload, 'utf8')
+    // Conservative reserve, not a billing calculation. The documented vision families can use
+    // up to 36K patch tokens or 48,169 tile tokens per image. Keep headroom without tokenizing
+    // Base64 text: https://developers.openai.com/api/docs/guides/images-vision#calculating-costs
+    const imageTokenReserve = imageCount * 50000
 
-    // Every token contains at least one source byte. Small payloads therefore cannot reach the
-    // hard limit and do not need the more expensive tokenizer pass on every request.
-    if (payloadBytes < OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT) {
+    // Every text token contains at least one source byte. Small text plus the image reserve
+    // cannot reach the hard limit, so it does not need the more expensive tokenizer pass.
+    if (tokenCountingBytes + imageTokenReserve < OPENAI_INPUT_TOKEN_PREFLIGHT_HARD_LIMIT) {
         return {
-            estimatedInputTokens: Math.ceil(payloadBytes / 4),
+            estimatedInputTokens: Math.ceil(tokenCountingBytes / 4) + imageTokenReserve,
             payloadBytes,
+            imageCount,
+            imageTokenReserve,
             usedTokenizer: false,
         }
     }
@@ -13683,8 +13705,10 @@ function estimateOpenAiRequestInputTokens(requestParams = {}) {
     const encoder = new Tiktoken(cl100k_base.bpe_ranks, cl100k_base.special_tokens, cl100k_base.pat_str)
     try {
         return {
-            estimatedInputTokens: encodeOrdinaryText(encoder, serializedPayload).length,
+            estimatedInputTokens: encodeOrdinaryText(encoder, tokenCountingPayload).length + imageTokenReserve,
             payloadBytes,
+            imageCount,
+            imageTokenReserve,
             usedTokenizer: true,
         }
     } finally {
