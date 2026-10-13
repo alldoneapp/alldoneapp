@@ -161,6 +161,13 @@ describe('web test selection policy', () => {
     it('selects CI changes without treating every pipeline edit as application-wide', () => {
         expect(policy([changed('ci/runWebTests.js'), changed('.gitlab-ci.yml')]).mode).toBe('targeted')
     })
+    it('maps deployment scripts and path lists through source-reading tests', () => {
+        const inputs = ['ci/deployScope.sh', 'ci/deploy-scope/web-production.paths']
+        const plan = policy(inputs.map(file => changed(file)))
+        expect(plan.mode).toBe('targeted')
+        expect(plan.inputs).toEqual(inputs.sort())
+        expect(policy([changed('utils/unknown.sh')]).mode).toBe('full')
+    })
     it('selects backend runtime dependencies and test changes without unrelated frontend changes', () => {
         expect(
             selectPlan({

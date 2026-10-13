@@ -130,6 +130,14 @@ describe('web test execution gate', () => {
         write('__tests__/SourceWiring.test.js', "const fs = require('fs'); fs.readFileSync('components/Unrelated.js')")
         expect(resolveSuites(root, plan, listTests).suites).not.toContain(sourceGuard)
     })
+    it('runs only the source reader for a CI shell change, and retains full validation if unmapped', () => {
+        const next = { ...plan, inputs: ['ci/deployScope.sh'] }
+        write('__tests__/SourceWiring.test.js', "const fs = require('fs'); fs.readFileSync('ci/deployScope.sh')")
+        const discover = extra => (extra.length ? [] : listTests([]))
+        expect(resolveSuites(root, next, discover).suites).toEqual([sourceGuard])
+        write('__tests__/SourceWiring.test.js', "const fs = require('fs'); fs.readFileSync('ci/other.sh')")
+        expect(resolveSuites(root, next, discover).mode).toBe('full')
+    })
     it('allows a mapped infrastructure-only change to skip unrelated web tests', () => {
         const next = { ...plan, inputs: ['firebase.json'] }
         expect(resolveSuites(root, next, extra => (extra.length ? [] : listTests([]))).mode).toBe('none')
