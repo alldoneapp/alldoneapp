@@ -1974,3 +1974,32 @@ describe('browser tool approvals', () => {
         await assertFails(getDoc(doc(memberDb, 'browserRuns/run-1')))
     })
 })
+
+describe('private writing sessions', () => {
+    it('keeps drafts and screenshot chunks owner-only even when the project is shared', async () => {
+        const base = `users/${MEMBER_ID}/private/writing/sessions/session1`
+        const chunk = `${base}/revisions/revision1/imageChunks/0`
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), base), { projectId: PROJECT_ID, title: 'Private draft' })
+            await setDoc(doc(context.firestore(), chunk), { data: 'private-image-bytes' })
+        })
+        const ownerDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        await assertSucceeds(getDoc(doc(ownerDb, base)))
+        await assertSucceeds(getDoc(doc(ownerDb, chunk)))
+        await assertFails(getDoc(doc(teammateDb, base)))
+        await assertFails(getDoc(doc(teammateDb, chunk)))
+        await assertFails(getDoc(doc(outsiderDb, chunk)))
+    })
+
+    it('does not let clients forge or read the server writing queue', async () => {
+        const ownerDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const path = 'menubarWritingRuns/writing-run1'
+        await testEnv.withSecurityRulesDisabled(async context => {
+            await setDoc(doc(context.firestore(), path), { userId: MEMBER_ID, status: 'pending' })
+        })
+        await assertFails(getDoc(doc(ownerDb, path)))
+        await assertFails(setDoc(doc(ownerDb, path), { userId: MEMBER_ID, status: 'pending' }))
+    })
+})
