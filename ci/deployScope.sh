@@ -99,7 +99,7 @@ NOT_NEEDED_EXIT_CODE=76
 
 # Production targets reported by `compute`. Functions also refresh their selection
 # inside the serialized deploy job; staging uses that same selection directly.
-TARGETS="web-production functions-production runner-production firestore-rules-production"
+TARGETS="web-production functions-production runner-production firestore-rules-production firestore-tests"
 
 log() {
     echo "deploy-scope${TARGET:+ [$TARGET]}: $1"
@@ -174,14 +174,25 @@ target_has_changes() {
     mode=""
 
     if have_git; then
-        marker="$(marker_remote_sha "$t" || true)"
-        if [ -n "$marker" ] && fetch_marker "$t"; then
+        marker_target="$t"
+        marker="$(marker_remote_sha "$marker_target" || true)"
+        # Before the first dedicated test marker, a successful rules deployment
+        # is a tested baseline: that deployment was gated by the emulator suite.
+        if [ "$t" = "firestore-tests" ] && [ -z "$marker" ]; then
+            marker_target="firestore-rules-production"
+            marker="$(marker_remote_sha "$marker_target" || true)"
+        fi
+        if [ -n "$marker" ] && fetch_marker "$marker_target"; then
             base="$marker"
             mode="marker"
         fi
     fi
 
     if [ -z "$base" ]; then
+        if [ "$t" = "firestore-tests" ]; then
+            log "no verified test baseline; running the complete rules suite."
+            return 0
+        fi
         # No marker yet (or no git): fall back to the range this push introduced, which
         # is what `rules: changes:` used to compare. Same behaviour as before, including
         # the same hole - hence the warning.
@@ -273,11 +284,9 @@ cmd_compute() {
         fi
     done
     TARGET=""
-    full_tested_at=""
-    if fetch_marker web-full-tests; then
-        full_tested_at="$(g for-each-ref --format='%(taggerdate:unix)' "$(marker_ref web-full-tests)")"
-    fi
-    (cd "$PROJECT_DIR" && node "${SCRIPT_DIR}/selectTargetedJestFiles.js" "$WEB_TEST_BASE" "$CI_COMMIT_SHA" "${PROJECT_DIR}/web-test-scope.json" "$full_tested_at")
+    (cd "$PROJECT_DIR" && node "${SCRIPT_DIR}/selectTargetedJestFiles.js" "$WEB_TEST_BASE" "$CI_COMMIT_SHA" "${PROJECT_DIR}/web-test-scope.json")
+    functions_test_base="$(node -e 'const fs = require("fs"); const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); console.log(p.base || "")' "${PROJECT_DIR}/functions-deploy-scope.json")"
+    (cd "$PROJECT_DIR" && node "${SCRIPT_DIR}/selectTargetedJestFiles.js" "$functions_test_base" "$CI_COMMIT_SHA" "${PROJECT_DIR}/functions-test-scope.json" --functions)
     log "wrote $SCOPE_FILE:"
     sed 's/^/  /' "$SCOPE_FILE"
 }

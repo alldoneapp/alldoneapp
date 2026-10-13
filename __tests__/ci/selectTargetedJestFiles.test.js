@@ -8,7 +8,7 @@ const path = require('path')
 
 const SELECTOR = path.resolve(__dirname, '../../ci/selectTargetedJestFiles.js')
 
-const { selectPlan, makePlan, FULL_SUITE_INTERVAL_SECONDS } = require('../../ci/selectTargetedJestFiles')
+const { selectPlan, makePlan } = require('../../ci/selectTargetedJestFiles')
 
 // `cwd` alone does NOT decide which repository a git command talks to: the pointer variables win
 // over it. If `GIT_DIR`/`GIT_WORK_TREE` are exported by the surrounding environment, `git init`
@@ -37,7 +37,12 @@ const scratchEnv = () => {
 }
 
 const git = (cwd, args) =>
-    execFileSync('git', args, { cwd, env: scratchEnv(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+    execFileSync('git', args, {
+        cwd,
+        env: scratchEnv(),
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
 
 const createRepo = () => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'targeted-jest-')))
@@ -77,12 +82,21 @@ const runSelector = (dir, args) => {
         env: scratchEnv(),
         encoding: 'utf8',
     })
-    return { status: result.status, plan: fs.existsSync(output) ? JSON.parse(fs.readFileSync(output, 'utf8')) : null }
+    return {
+        status: result.status,
+        plan: fs.existsSync(output) ? JSON.parse(fs.readFileSync(output, 'utf8')) : null,
+    }
 }
 
 const recent = 100000
 const policy = changes =>
-    selectPlan({ changes, base: 'base', head: 'head', lastFullTestedAt: recent, now: recent + 10 })
+    selectPlan({
+        changes,
+        base: 'base',
+        head: 'head',
+        lastFullTestedAt: recent,
+        now: recent + 10,
+    })
 const changed = (file, status = 'M') => ({ file, status })
 
 describe('web test selection policy', () => {
@@ -101,7 +115,6 @@ describe('web test selection policy', () => {
         'babel.config.js',
         '__mocks__/firebase.js',
         'i18n/translations/de.json',
-        'ci/runWebTests.js',
         'redux/store.js',
     ])('runs the full suite for broad changes: %s', file => {
         expect(policy([changed(file)]).mode).toBe('full')
@@ -120,30 +133,49 @@ describe('web test selection policy', () => {
             '__tests__/__snapshots__/Foo.test.js.snap',
         ])
     })
-    it.each([undefined, 0, recent - FULL_SUITE_INTERVAL_SECONDS, recent + 20])(
-        'requires a full run for missing, stale or future validation time: %s',
+    it.each([undefined, 0, recent - 86400, recent + 20])(
+        'selects affected suites independently of the previous full-run time: %s',
         lastFullTestedAt => {
             expect(
                 selectPlan({
                     changes: [changed('utils/a.js')],
                     base: 'base',
                     head: 'head',
-                    now: recent,
                     lastFullTestedAt,
+                    now: recent,
                 }).mode
-            ).toBe('full')
+            ).toBe('targeted')
         }
     )
-    it('runs a full suite exactly at the 24-hour boundary', () => {
+    it('does not run tests when no test inputs changed, even after 24 hours', () => {
         expect(
             selectPlan({
                 changes: [],
                 base: 'base',
                 head: 'head',
-                now: recent + FULL_SUITE_INTERVAL_SECONDS,
                 lastFullTestedAt: recent,
+                now: recent + 86400,
             }).mode
-        ).toBe('full')
+        ).toBe('none')
+    })
+    it('selects CI changes without treating every pipeline edit as application-wide', () => {
+        expect(policy([changed('ci/runWebTests.js'), changed('.gitlab-ci.yml')]).mode).toBe('targeted')
+    })
+    it('selects backend runtime dependencies and test changes without unrelated frontend changes', () => {
+        expect(
+            selectPlan({
+                kind: 'functions',
+                base: 'base',
+                head: 'head',
+                runtimeFiles: ['utils/shared.js'],
+                changes: [
+                    changed('functions/MenubarApp/writer.js'),
+                    changed('functions/MenubarApp/writer.test.js'),
+                    changed('utils/shared.js'),
+                    changed('components/Unrelated.js'),
+                ],
+            }).inputs
+        ).toEqual(['functions/MenubarApp/writer.js', 'functions/MenubarApp/writer.test.js', 'utils/shared.js'])
     })
     it('ignores backend/docs-only changes when a recent full validation exists', () => {
         expect(policy([changed('functions/Assistant/foo.js'), changed('README.md')]).mode).toBe('none')
@@ -225,6 +257,39 @@ describe('committed comparison ranges', () => {
         expect(result.plan.inputs).toEqual(['components/Foo.js'])
     }, 30000)
 
+    it('catches up skipped rules tests before the first dedicated test marker', () => {
+        write(repo, 'functions/index.js', 'exports.alpha = () => 1')
+        write(repo, 'firestore.rules', 'rules_version = 2;')
+        write(repo, '__tests__/Firestore/rules.test.js', "test('base', () => {})")
+        const base = commit(repo, 'tested rules')
+        for (const target of [
+            'web-production',
+            'functions-production',
+            'runner-production',
+            'firestore-rules-production',
+        ])
+            git(repo, ['tag', `deployed/${target}`, base])
+        write(repo, '__tests__/Firestore/rules.test.js', "test('new rules regression', () => {})")
+        const skipped = commit(repo, 'superseded test pipeline')
+        write(repo, 'components/Foo.js', 'module.exports = 1')
+        const head = commit(repo, 'next pipeline')
+        const remote = path.join(repo, 'remote.git')
+        git(repo, ['clone', '--bare', repo, remote])
+        git(repo, ['remote', 'add', 'origin', `file://${remote}`])
+        execFileSync('sh', [path.resolve(__dirname, '../../ci/deployScope.sh'), 'compute'], {
+            cwd: repo,
+            encoding: 'utf8',
+            env: {
+                ...scratchEnv(),
+                CI_PROJECT_DIR: repo,
+                CI_COMMIT_SHA: head,
+                CI_COMMIT_BEFORE_SHA: skipped,
+                DEPLOY_SCOPE_PATHS_DIR: path.resolve(__dirname, '../../ci/deploy-scope'),
+            },
+        })
+        expect(fs.readFileSync(path.join(repo, 'deploy-scope.env'), 'utf8')).toContain('DEPLOY_FIRESTORE_TESTS=1')
+    }, 30000)
+
     it('publishes the exact verified deployment baseline and full-validation time in the CI scope artifact', () => {
         write(repo, 'components/Foo.js', 'module.exports = 1')
         write(repo, 'functions/index.js', 'exports.alpha = () => 1')
@@ -261,6 +326,11 @@ describe('committed comparison ranges', () => {
         const plan = JSON.parse(fs.readFileSync(path.join(repo, 'web-test-scope.json'), 'utf8'))
         expect(scope).toContain('DEPLOY_WEB_PRODUCTION=1')
         expect(scope).toContain('DEPLOY_FUNCTIONS_PRODUCTION=0')
-        expect(plan).toMatchObject({ base, head, mode: 'targeted', inputs: ['components/Foo.js'] })
+        expect(plan).toMatchObject({
+            base,
+            head,
+            mode: 'targeted',
+            inputs: ['components/Foo.js'],
+        })
     }, 30000)
 })

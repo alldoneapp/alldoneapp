@@ -49,8 +49,10 @@ function validateImage(raw) {
 
 function normalizeInput(body) {
     const requestId = id(body.requestId, 'requestId')
+    if (body.instructions != null && typeof body.instructions !== 'string')
+        throw error(400, 'Instructions must be text')
     const instructions = typeof body.instructions === 'string' ? body.instructions.trim() : ''
-    if (!instructions || instructions.length > 4000) throw error(400, 'Instructions must contain 1–4000 characters')
+    if (instructions.length > 4000) throw error(400, 'Instructions must contain at most 4000 characters')
     const image = validateImage(body.image)
     const raw = body.textbox
     if (!raw || typeof raw !== 'object') throw error(400, 'Textbox context is required')
@@ -133,7 +135,13 @@ async function handleMenubarWritingStart(req, res) {
             transaction.set(
                 session,
                 {
-                    title: sessionDoc.data()?.title || input.instructions.slice(0, 100),
+                    title:
+                        sessionDoc.data()?.title ||
+                        input.instructions.slice(0, 100) ||
+                        (input.textbox.appName
+                            ? `Writing in ${input.textbox.appName}`
+                            : 'Writing from screenshot'
+                        ).slice(0, 100),
                     updatedAt: now,
                     createdAt: sessionDoc.data()?.createdAt || now,
                     revisionCount: (sessionDoc.data()?.revisionCount || 0) + 1,

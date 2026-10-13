@@ -131,6 +131,7 @@ deploy_scope:
             - deploy-scope.env
             - functions-deploy-scope.json
             - web-test-scope.json
+            - functions-test-scope.json
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
@@ -307,8 +308,8 @@ test:web:changed:
 
 # Production tests compare with the exact commit last deployed. The scope
 # artifact freezes that comparison for this pipeline. Small changes run related
-# suites plus critical smoke/guardrails; broad changes, uncertain graphs and the
-# first deployment after 24 hours run the complete web suite.
+# suites and source-reading guards that depend on changed inputs. Global changes
+# or uncertain dependency mapping retain complete-suite validation.
 test:web:deployment:
     stage: build_web
     image: $CI_REGISTRY_IMAGE/build_base:latest
@@ -329,38 +330,43 @@ test:web:deployment:
         # job; every other non-zero status remains a real failure.
         - sh ci/deployScope.sh require web-production || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
         - node ci/runWebTests.js
-        # Advance the periodic full-suite marker only after all tests passed.
-        # Missing write permission leaves it old and conservatively repeats a full run.
-        - |
-            if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] && node -e 'process.exit(JSON.parse(require("fs").readFileSync("web-test-result.json", "utf8")).mode === "full" ? 0 : 1)'; then
-                sh ci/deployScope.sh record web-full-tests
-            fi
     rules:
         - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
         - if: '$CI_COMMIT_BRANCH == "develop"'
           changes: *web-relevant-paths
 
-# Parent-goal changes can detach tasks and transfer them across projects. Keep their
-# permission, hierarchy and partial-failure regressions as a required pre-merge check.
-test:assistant:parent-goal:
+# Backend tests use the same verified baseline as function deployment, including
+# changes skipped by a superseded pipeline. No-op plans skip dependency installation.
+test:functions:deployment:
     stage: build_web
-    image: $CI_REGISTRY_IMAGE/build_base:latest
+    image: $CI_REGISTRY_IMAGE/build_base:$APP_IMAGE_TAG
+    variables:
+        APP_IMAGE_TAG: latest
+    needs:
+        - job: deploy_scope
+          optional: true
     before_script:
         - ln -s /app/node_modules node_modules
         - cp -R -f replacement_node_modules/* node_modules/
         - node ci/writeTestEnv.js
-        - npm ci --prefix functions --ignore-scripts --no-audit --no-fund
     script:
-        - npx jest --config ci/jest.functions.config.js --runInBand --silent --testPathPatterns='functions/(shared/(taskParentGoal|TaskService.parentGoal|TaskUpdateService).*test.js|Assistant/(assistantHelper|toolSchemas).test.js|MCP/mcpServerSimple.test.js)'
+        - |
+            branch_args=""
+            if [ "$CI_COMMIT_BRANCH" != "$CI_DEFAULT_BRANCH" ]; then
+                sh ci/ensureMergeBase.sh "$CI_DEFAULT_BRANCH"
+                branch_args="--branch origin/$CI_DEFAULT_BRANCH"
+            fi
+            node ci/runFunctionsTests.js $branch_args --check-scope || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
+            npm ci --prefix functions --ignore-scripts --no-audit --no-fund
+            node ci/runFunctionsTests.js $branch_args
     rules:
-        - changes:
-              - .gitlab-ci.yml
-              - functions/shared/taskParentGoal*.js
-              - functions/shared/TaskService*.js
-              - functions/shared/TaskUpdateService*.js
-              - functions/Assistant/assistantHelper*.js
-              - functions/Assistant/toolSchemas*.js
-              - functions/MCP/mcpServerSimple*.js
+        - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+          changes:
+              compare_to: 'refs/heads/master'
+              paths: *branch-image-paths
+          variables:
+              APP_IMAGE_TAG: $CI_COMMIT_REF_SLUG
+        - if: '$CI_COMMIT_BRANCH'
 
 # Behavioral authorization gate for Firestore rules. This runs against the
 # official emulator and exercises real get/list/write decisions; compilation
@@ -370,10 +376,18 @@ test:firestore:rules:
     image: $CI_REGISTRY_IMAGE/build_base:$APP_IMAGE_TAG
     variables:
         APP_IMAGE_TAG: latest
+    needs:
+        - job: deploy_scope
+          optional: true
     before_script:
         - ln -s /app/node_modules node_modules
     script:
-        - npm run test:firestore-rules
+        - |
+            if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+                sh ci/deployScope.sh require firestore-tests || { status=$?; if [ "$status" -eq 76 ]; then exit 0; fi; exit "$status"; }
+            fi
+            npm run test:firestore-rules
+            if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then sh ci/deployScope.sh record firestore-tests; fi
     rules:
         # Dependency-changing feature branches build a branch-scoped image.
         - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
@@ -646,6 +660,10 @@ deploy:web-dev:
 deploy:cloud:functions:staging:
     image: $CI_REGISTRY_IMAGE/build_functions:latest
     stage: deploy_web
+    needs:
+        - job: deploy_scope
+          optional: true
+        - test:functions:deployment
     # Serialize functions deploys: two pushes in quick succession otherwise run
     # `firebase deploy` concurrently and the older commit can finish last,
     # overwriting the newer code (last writer wins per function).
@@ -707,6 +725,10 @@ deploy:cloud:functions:staging:
 deploy:cloud:functions:production:
     image: $CI_REGISTRY_IMAGE/build_functions:latest
     stage: deploy_web
+    needs:
+        - deploy_scope
+        - test:functions:deployment
+        - test:web:deployment
     # Serialize functions deploys: two pushes in quick succession otherwise run
     # `firebase deploy` concurrently and the older commit can finish last,
     # overwriting the newer code (last writer wins per function).

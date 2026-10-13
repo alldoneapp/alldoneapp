@@ -101,15 +101,16 @@ describe('production deploys are scoped by what shipped, not by what this push t
         expect(allLines(job('test:web:changed'))).not.toContain('xargs')
     })
 
-    it('records a periodic full validation only after successful execution', () => {
-        const lines = [].concat(job('test:web:deployment').script)
-        expect(lines.findIndex(line => line.includes('record web-full-tests'))).toBeGreaterThan(
-            lines.findIndex(line => line.includes('node ci/runWebTests.js'))
-        )
-        expect(lines.join('\n')).toContain('web-test-result.json')
-        expect(lines.join('\n')).toContain('=== "full"')
+    it('gates function deployments on affected backend tests', () => {
+        expect(job('deploy:cloud:functions:production').needs).toContain('test:functions:deployment')
+        expect(allLines(job('test:functions:deployment'))).toContain('runFunctionsTests.js')
+        expect(allLines(job('test:functions:deployment'))).toContain('--check-scope')
+        expect(job('test:functions:deployment').allow_failure).toBeUndefined()
     })
-
+    it('gates Firestore tests by their own tested baseline', () => {
+        expect(allLines(job('test:firestore:rules'))).toContain('require firestore-tests')
+        expect(allLines(job('test:firestore:rules'))).toContain('record firestore-tests')
+    })
     it('does not ask users to reload for a bundle that was never deployed', () => {
         // update:version:production makes clients reload. It used to run on every master
         // push, including ones that deployed nothing.
@@ -216,7 +217,10 @@ describe('the webpack preview is feature-branch QA, not a production deploy', ()
     it('stays manual on feature branches and requires the artifact-producing build', () => {
         expect(previewJob().needs).toEqual(['build_web_webpack_check'])
         expect(previewJob().rules).toHaveLength(1)
-        expect(previewJob().rules[0]).toMatchObject({ when: 'manual', allow_failure: true })
+        expect(previewJob().rules[0]).toMatchObject({
+            when: 'manual',
+            allow_failure: true,
+        })
     })
 })
 

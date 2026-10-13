@@ -31,6 +31,34 @@ const select = (changes, base = fixture) => {
 }
 
 describe('function dependency selection', () => {
+    it('ignores comment and formatting changes inside runtime modules', () => {
+        expect(select({ 'functions/beta.js': '// no runtime change\n' + fixture['functions/beta.js'] }).mode).toBe(
+            'none'
+        )
+    })
+    it('does not redeploy Functions for unrelated test-job edits', () => {
+        const source =
+            'test:web:\n  script: npm test\ndeploy:cloud:functions:production:\n  image: functions:1\n  script: deploy\n'
+        const base = { ...fixture, '.gitlab-ci.yml': source }
+        expect(select({ '.gitlab-ci.yml': source.replace('npm test', 'npm test --changed') }, base).mode).toBe('none')
+        expect(
+            select({ '.gitlab-ci.yml': source.replace('image: functions:1', 'image: functions:2') }, base).mode
+        ).toBe('full')
+    })
+    it('keeps prompt edits separate from shared writing tool policy', () => {
+        const base = {
+            ...fixture,
+            'functions/shared.js': "const tools = require('./writingTools'); exports.value = tools.value",
+            'functions/writingTools.js': 'exports.value = 1',
+            'functions/writer.js': "module.exports = require('./writingPrompt')",
+            'functions/writingPrompt.js': "module.exports = 'Write a draft'",
+            'functions/index.js': fixture['functions/index.js'] + "\nexports.writer = () => require('./writer')",
+        }
+        expect(select({ 'functions/writingPrompt.js': "module.exports = 'Write from context'" }, base).names).toEqual([
+            'writer',
+        ])
+        expect(select({ 'functions/writingTools.js': 'exports.value = 2' }, base).names).toEqual(['alpha', 'beta'])
+    })
     it('selects only callers of a changed module, including transitive callers outside functions', () => {
         expect(select({ 'functions/beta.js': 'exports.run = () => 2' }).names).toEqual(['beta'])
         expect(select({ 'utils/common.js': 'exports.value = 2' }).names).toEqual(['alpha', 'beta'])

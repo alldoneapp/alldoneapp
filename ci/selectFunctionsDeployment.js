@@ -51,7 +51,11 @@ const parse = (source, file = '') =>
     })
 
 function gitTree(root, ref, blobs = new Map()) {
-    const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 30 * 1024 * 1024 })
+    const git = args =>
+        execFileSync('git', ['-C', root, ...args], {
+            encoding: 'utf8',
+            maxBuffer: 30 * 1024 * 1024,
+        })
     const sha = git(['rev-parse', '--verify', `${ref}^{commit}`]).trim()
     const entries = new Map(
         git(['ls-tree', '-r', '-z', sha])
@@ -419,12 +423,46 @@ function buildGraph(tree) {
     return functions
 }
 
+function functionDeploymentEnvironment(tree) {
+    const yaml = loadTool('js-yaml')
+    const source = tree.read('.gitlab-ci.yml')
+    const config = source ? yaml.safeLoad(source) || {} : {}
+    const fields = ['image', 'before_script', 'script', 'variables', 'services', 'extends', 'inherit']
+    const pick = job => Object.fromEntries(fields.filter(key => job?.[key] !== undefined).map(key => [key, job[key]]))
+    return JSON.stringify({
+        variables: config.variables,
+        include: config.include,
+        defaults: pick(config.default),
+        jobs: ['deploy:cloud:functions:production', 'deploy:cloud:functions:staging'].map(name => pick(config[name])),
+    })
+}
+
 function selectDeployment({ before, after, changed, force = false }) {
     const current = buildGraph(after)
     const names = [...current.keys()].sort()
     const full = reason => ({ mode: 'full', names, reason })
     if (!before || force) return full(force ? 'Explicit full deployment requested' : 'No verified deployment baseline')
-    const relevant = changed
+    const relevant = changed.filter(file => {
+        if (!before || !/\.[cm]?[jt]sx?$|\.json$/.test(file)) return true
+        const oldSource = before.read(file),
+            newSource = after.read(file)
+        if (oldSource == null || newSource == null) return true
+        try {
+            const semantic = source =>
+                /\.json$/.test(file) ? JSON.stringify(JSON.parse(source)) : normalize(parse(source, file).program)
+            return semantic(oldSource) !== semantic(newSource)
+        } catch (_) {
+            return true
+        }
+    })
+    if (relevant.includes('.gitlab-ci.yml')) {
+        try {
+            if (functionDeploymentEnvironment(before) !== functionDeploymentEnvironment(after))
+                return full('Functions deployment environment changed')
+        } catch (_) {
+            return full('Cannot verify Functions deployment configuration')
+        }
+    }
     if (relevant.some(globalFile)) return full('Runtime, dependencies or shared environment configuration changed')
     if (relevant.includes('firebase.json')) {
         const config = tree => JSON.stringify(JSON.parse(tree.read('firebase.json') || '{}').functions)
@@ -432,12 +470,9 @@ function selectDeployment({ before, after, changed, force = false }) {
     }
     if (
         relevant.some(file =>
-            [
-                'ci/assertFirebaseFunctionsDeployed.js',
-                '.gitlab-ci.yml',
-                'ci/Dockerfile_functions',
-                'ci/Dockerfile_firebase',
-            ].includes(file)
+            ['ci/assertFirebaseFunctionsDeployed.js', 'ci/Dockerfile_functions', 'ci/Dockerfile_firebase'].includes(
+                file
+            )
         )
     )
         return full('Deployment environment or completion guard changed')
@@ -505,7 +540,12 @@ function makePlan(root, base, head, force = false) {
               .filter(Boolean)
         : []
     const selection = selectDeployment({ before, after, changed, force })
-    return { version: 1, head: after.sha, base: before?.sha || null, ...selection }
+    return {
+        version: 1,
+        head: after.sha,
+        base: before?.sha || null,
+        ...selection,
+    }
 }
 
 if (require.main === module) {
@@ -527,4 +567,11 @@ if (require.main === module) {
         process.exitCode = 1
     }
 }
-module.exports = { buildGraph, selectDeployment, makePlan, nonRuntime }
+module.exports = {
+    buildGraph,
+    selectDeployment,
+    makePlan,
+    nonRuntime,
+    gitTree,
+    functionDeploymentEnvironment,
+}
