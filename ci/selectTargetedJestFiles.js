@@ -50,10 +50,12 @@ function selectPlan({ changes, base, head, kind = 'web', runtimeFiles = [] }) {
     if (broad) return fallback(`Shared configuration or application-wide change: ${broad.file}`)
     const removed = relevant.find(change => change.status === 'D')
     if (removed) return fallback(`Removed or renamed dependency requires the old graph: ${removed.file}`)
-    // Jest can trace JS/TS and JSON imports. Styles, assets and unknown formats
-    // can affect rendering without an import edge in Jest's graph.
+    // Jest traces imports; CI scripts and path lists use source-reading tests.
+    // The runner still falls back to full validation for any unmapped input.
+    // Styles, assets and unknown product formats can affect rendering without an edge.
     const unsupported = relevant.find(
-        change => !/\.[cm]?[jt]sx?$|\.json$|\.snap$|^\.gitlab-ci\.yml$|^\.firebaserc$/.test(change.file)
+        change =>
+            !/\.[cm]?[jt]sx?$|\.json$|\.snap$|^\.gitlab-ci\.yml$|^\.firebaserc$|^ci\/.*\.(sh|paths)$/.test(change.file)
     )
     if (unsupported) return fallback(`Cannot reliably trace this change: ${unsupported.file}`)
     const inputs = [...new Set(relevant.map(change => change.file))].sort()
