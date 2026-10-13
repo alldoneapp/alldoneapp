@@ -40,6 +40,7 @@ import EditorToolbar, {
 import './toolbar-styles.css'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import Backend from '../../../../utils/BackendBridge'
+import { beginLoadingOperation } from '../../../../utils/redux/loadingOperation'
 import URLsNotes, { URL_NOTE_DETAILS_EDITOR } from '../../../../URLSystem/Notes/URLsNotes'
 import styles, { colors, getRandomCollabColor } from '../../../styles/global'
 import { translate } from '../../../../i18n/TranslationService'
@@ -218,6 +219,12 @@ const NotesEditorView = ({
     const initialUserMentionsIdsRef = useRef({})
     const color = useRef(getRandomCollabColor())
     const dispatch = useDispatch()
+    // Use the screen's shared floating loader while the cached note is being
+    // compared with Storage. Releasing this owner never hides other loads.
+    useEffect(() => {
+        if (storageRefreshing && !contentUnavailableOffline)
+            return beginLoadingOperation('note_content_sync', { dispatch })
+    }, [storageRefreshing, contentUnavailableOffline, dispatch])
     const isInitialRefs = useRef(true)
     const noteUnmountedRef = useRef(false)
     exportLoadingRef = loadingRef.current
@@ -965,10 +972,9 @@ const NotesEditorView = ({
                 ydoc.current = null
                 // Offline with no local copy: tell the user why the note cannot
                 // open instead of spinning forever; the retry below picks the
-                // content up as soon as connectivity returns. The LoadingNoteData
-                // spinner overlays the editor (zIndex 10000) and would cover the
-                // message, so the loading flag is cleared while the explanation is
-                // up — the editor stays locked through contentUnavailableOffline
+                // content up as soon as connectivity returns. Clear loading
+                // feedback while the explanation is up — the editor stays
+                // locked through contentUnavailableOffline
                 // in the pointerEvents/readOnly/disabled gates below.
                 const unavailableOffline = isBrowserOffline()
                 setContentUnavailableOffline(unavailableOffline)
@@ -1448,12 +1454,12 @@ const NotesEditorView = ({
                     </Text>
                 </View>
             ) : null}
-            {dataLoaded && (storageRefreshing || storageUnverified) && (
+            {dataLoaded && storageUnverified && (
                 <Text
                     accessibilityRole="status"
                     style={[styles.body2, { color: colors.Text03, paddingHorizontal: 16 }]}
                 >
-                    {translate(storageUnverified ? 'Note content is available locally; sync is pending' : 'Syncing')}
+                    {translate('Note content is available locally; sync is pending')}
                 </Text>
             )}
             <CustomScrollView

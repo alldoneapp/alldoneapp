@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import LoadingData from '../UIComponents/LoadingData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import Header from './Header/Header'
 import BackButton from './Header/BackButton'
@@ -181,6 +182,7 @@ export default function GoalDetailedView({ navigation }) {
     const hideCreateNoteSection = isGuide && !loggedUserIsGoalOwner
     return (
         <View style={localStyles.container}>
+            <LoadingData />
             {((!loggedUser.isAnonymous && !smallScreenNavigation) ||
                 (loggedUser.isAnonymous && smallScreenNavigation && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />

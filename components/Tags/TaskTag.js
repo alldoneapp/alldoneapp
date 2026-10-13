@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Image, StyleSheet, TouchableOpacity, View } from 'react-native'
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 import { subscribeSharedNoteData } from '../../utils/Notes/sharedNoteSubscriptions'
 
 import Icon from '../Icon'
-import styles, { colors } from '../styles/global'
+import styles, { colors, windowTagStyle } from '../styles/global'
 import SVGGenericUser from '../../assets/svg/SVGGenericUser'
 import ReactDOM from 'react-dom'
 import useWorkspaceViewport from '../../hooks/useWorkspaceViewport'
+import { handleNestedLinks } from '../../utils/LinkingHelper'
 import TasksHelper, {
     OPEN_STEP,
     RECURRENCE_NEVER,
@@ -30,8 +31,8 @@ import LoadingTag from './LoadingTag'
 import { getEstimationRealValue } from '../../utils/EstimationHelper'
 import ProjectHelper from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
+import { cleanTextMetaData } from '../../functions/Utils/parseTextUtils'
 import { setTaskDescription } from '../../utils/backends/Tasks/tasksFirestore'
-import TaskTagTitle from './TaskTagTitle'
 
 // The row keeps at least this much space for the icon + title. A task row that has been
 // squeezed to nothing is indistinguishable from a task that vanished (AT-2454), so the
@@ -175,12 +176,9 @@ export default function TaskTag({
                         disabled={disabled || !loggedUserCanUpdateObject}
                     >
                         <Icon name={icon} color={colors.Primary100} size={16} />
-                        <TaskTagTitle
-                            text={name || UNNAMED_TASK_LABEL}
-                            projectId={projectId}
-                            disabled={disabled || !loggedUserCanUpdateObject}
-                            style={localStyles.name}
-                        />
+                        <Text style={[localStyles.name, windowTagStyle()]} numberOfLines={1}>
+                            {name || UNNAMED_TASK_LABEL}
+                        </Text>
                     </TouchableOpacity>
 
                     <View onLayout={onChangeTagsArea} style={localStyles.tagsContainer}>
@@ -319,8 +317,8 @@ const getIco = task => {
 
 const getName = task => {
     if (task) {
-        // Keep mention IDs and media metadata for the same parser used by task titles.
-        return task.extendedName || task.name || ''
+        const cleanedText = cleanTextMetaData(task.extendedName)
+        return handleNestedLinks(cleanedText)
     }
     return 'Task removed'
 }

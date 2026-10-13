@@ -19,7 +19,6 @@ import {
     DV_TAB_USER_NOTE,
 } from '../../utils/TabNavigationConstants'
 import URLsTasks, { URL_TASK_DETAILS_NOTE } from '../../URLSystem/Tasks/URLsTasks'
-import LoadingNoteData from '../UIComponents/LoadingNoteData'
 import URLsGoals, { URL_GOAL_DETAILS_NOTE } from '../../URLSystem/Goals/URLsGoals'
 import URLsPeople, { URL_PEOPLE_DETAILS_NOTE } from '../../URLSystem/People/URLsPeople'
 import URLsContacts, { URL_CONTACT_DETAILS_NOTE } from '../../URLSystem/Contacts/URLsContacts'
@@ -140,7 +139,6 @@ const NoteIntegration = ({
 
     return (
         <View style={{ marginHorizontal: mobile || mobileCollapsed ? 0 : isMiddleScreen ? -56 : -104, flex: 1 }}>
-            <LoadingNoteData />
             {!noteId && !note ? (
                 <View style={localStyles.container}>
                     <Text style={localStyles.title}>

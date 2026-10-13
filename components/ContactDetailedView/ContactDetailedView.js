@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import v4 from 'uuid/v4'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import LoadingData from '../UIComponents/LoadingData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import Header from './Header/Header'
 import BackButton from '../UserDetailedView/Header/BackButton'
@@ -143,6 +144,7 @@ const ContactDetailedView = ({ navigation }) => {
 
     return (
         <View style={localStyles.container}>
+            <LoadingData />
             {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
