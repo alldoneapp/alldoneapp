@@ -204,6 +204,75 @@ test('concurrent retries queue once and store screenshots only in the owner-priv
     expect((await start(input({ instructions: 'Different request' }))).statusCode).toBe(409)
 })
 
+test.each(['', '   \n  ', undefined, null])(
+    'generates from screenshot and project context with optional instructions %p',
+    async instructions => {
+        const reply = await start(input({ instructions }))
+        expect(reply.statusCode).toBe(200)
+        const { sessionId, runId } = reply.body
+        const saved = await session({ action: 'revision', sessionId, runId, includeImage: true })
+        expect(saved.body.revision.instructions).toBe('')
+        expect(saved.body.revision.image).toEqual(input().image)
+        expect((await session({ action: 'list' })).body.sessions[0].title).toBe('Writing in Chrome')
+        await processMenubarWritingRun({ data: { after: await db.doc(`menubarWritingRuns/${runId}`).get() } })
+        expect(runWritingAssistant).toHaveBeenCalledWith(
+            expect.objectContaining({
+                instructions: '',
+                projectId: 'project-b',
+                assistantId: 'assistant-project-b',
+                image: input().image,
+                textbox: input().textbox,
+            })
+        )
+        expect((await session({ action: 'revision', sessionId, runId })).body.revision.draftText).toBe('Hello there.')
+    }
+)
+
+test('automatic project selection uses screenshot context when instructions are empty', async () => {
+    runWritingAssistant
+        .mockResolvedValueOnce({ draftText: '{"projectId":"project-b","confidence":0.9,"reasoning":"Screen context"}' })
+        .mockResolvedValueOnce({
+            draftText: 'Hello there.',
+            assistantId: 'assistant-project-b',
+            assistantName: 'Beta assistant',
+        })
+    const { sessionId, runId } = (await start(input({ instructions: '', projectId: null }))).body
+    await processMenubarWritingRun({ data: { after: await db.doc(`menubarWritingRuns/${runId}`).get() } })
+    expect(runWritingAssistant).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+            instructions: '',
+            routing: true,
+            projectId: 'project-a',
+            image: input().image,
+            textbox: input().textbox,
+        })
+    )
+    expect(runWritingAssistant).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+            instructions: '',
+            projectId: 'project-b',
+            assistantId: 'assistant-project-b',
+            image: input().image,
+        })
+    )
+    const result = await session({ action: 'revision', sessionId, runId })
+    expect(result.body.revision.projectId).toBe('project-b')
+    expect(result.body.revision.draftText).toBe('Hello there.')
+})
+
+test.each(['x'.repeat(4001), 42, [], {}])('rejects oversized or non-text instructions %p', async instructions => {
+    expect((await start(input({ instructions }))).statusCode).toBe(400)
+    expect([...db.entries.keys()].some(key => key.startsWith('menubarWritingRuns/'))).toBe(false)
+})
+
+test('optional instructions still require the screenshot and textbox', async () => {
+    expect((await start(input({ instructions: '', image: null }))).statusCode).toBe(400)
+    expect((await start(input({ instructions: '', textbox: null }))).statusCode).toBe(400)
+    expect(runWritingAssistant).not.toHaveBeenCalled()
+})
+
 test('another user cannot read, revise, cancel or delete a private session', async () => {
     const { sessionId, runId } = (await start()).body
     for (const action of ['read', 'revision', 'cancel', 'delete']) {

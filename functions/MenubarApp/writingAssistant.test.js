@@ -61,6 +61,30 @@ test('uses the shared context builder, configured model and normal Gold policy, 
     )
 })
 
+test('empty instructions keep the screenshot, textbox and normal assistant context in the model request', async () => {
+    const mock = helper()
+    const result = await runWritingAssistant({ ...request, instructions: '' }, mock)
+    const messages = mock.interactWithChatStream.mock.calls[0][0]
+    expect(messages).toContainEqual(['system', 'Normal profile and project context'])
+    const content = messages.at(-1)[1]
+    expect(JSON.parse(content[0].text)).toEqual({ instructions: '', textbox: request.textbox })
+    expect(content[1]).toEqual({
+        type: 'image_url',
+        image_url: { url: 'data:image/jpeg;base64,private-image' },
+    })
+    expect(mock.addBaseInstructions).toHaveBeenCalledWith(
+        expect.any(Array),
+        'Anna',
+        'en',
+        'My writing style',
+        ['search'],
+        null,
+        { projectId: 'project', assistantId: 'assistant', requestUserId: 'user' }
+    )
+    expect(result.draftText).toBe('Dear Alex,\nThursday works.')
+    expect(mock.reduceGoldWhenChatWithAI).toHaveBeenCalledTimes(1)
+})
+
 test('execution rejects a hallucinated mutation even if the assistant normally permits it', async () => {
     const mock = helper()
     mock.collectAssistantTextWithToolCalls.mockImplementation(async options => {

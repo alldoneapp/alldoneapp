@@ -464,7 +464,7 @@ function hasValidCompactThreadRuntimeContext(toolRuntimeContext = null) {
 function filterAllowedToolsForRuntimeContext(allowedTools, toolRuntimeContext = null) {
     if (!Array.isArray(allowedTools)) return []
     if (toolRuntimeContext?.writingDraft) {
-        const { writingReadTools } = require('./assistantWritingPolicy')
+        const { writingReadTools } = require('./assistantWritingTools')
         allowedTools = writingReadTools(allowedTools)
     }
     // Presentation is an Anna surface capability, not a change to the saved assistant's tools.

@@ -1,0 +1,8 @@
+# Rules, their behavioral fixtures, emulator configuration and test runtime.
+^firestore\.rules$
+^firebase\.json$
+^__tests__/Firestore/
+^ci/check-firestore-rule-coverage\.js$
+^ci/check-runtime\.js$
+^ci/Dockerfile_base$
+^package(-lock)?\.json$

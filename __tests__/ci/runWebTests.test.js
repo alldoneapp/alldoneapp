@@ -40,18 +40,20 @@ describe('web test execution gate', () => {
 
     it('includes dependent components even when the changed source has a changed co-located test', () => {
         const result = resolveSuites(root, plan, listTests)
-        expect(result.suites).toEqual(expect.arrayContaining([...smoke, own, dependent, sourceGuard]))
+        expect(result.suites).toEqual([dependent, own].sort())
         expect(new Set(result.suites).size).toBe(result.suites.length)
     })
     it('falls back to every suite when any changed input is unmapped, even if another input has tests', () => {
         const result = resolveSuites(root, plan, extra => (extra[1] === 'components/Foo.js' ? [] : listTests(extra)))
         expect(result.mode).toBe('full')
     })
-    it('rejects discovery that loses a critical smoke suite', () => {
-        expect(() => resolveSuites(root, plan, extra => (extra.length ? [own] : [own]))).toThrow('required web smoke')
+    it('does not require unrelated smoke suites', () => {
+        expect(resolveSuites(root, plan, () => [own]).suites).toEqual([own])
     })
-    it('uses the full suite for a large change instead of spawning unbounded discovery', () => {
-        expect(resolveSuites(root, { ...plan, inputs: Array(31).fill('source.js') }, listTests).mode).toBe('full')
+    it('keeps a large but mapped change targeted', () => {
+        expect(resolveSuites(root, { ...plan, inputs: Array(31).fill('components/Foo.js') }, listTests).mode).toBe(
+            'targeted'
+        )
     })
 
     function processRunner({ status = 0, discoveryFails = false } = {}) {
@@ -60,7 +62,10 @@ describe('web test execution gate', () => {
             if (args.includes('--listTests')) {
                 if (discoveryFails) return { status: 1 }
                 const index = args.indexOf('--findRelatedTests')
-                return { status: 0, stdout: JSON.stringify(listTests(index >= 0 ? args.slice(index) : [])) }
+                return {
+                    status: 0,
+                    stdout: JSON.stringify(listTests(index >= 0 ? args.slice(index) : [])),
+                }
             }
             return { status }
         })
@@ -73,7 +78,7 @@ describe('web test execution gate', () => {
         expect(run({ root, runProcess })).toBe(0)
         const args = runProcess.mock.calls.at(-1)[1]
         expect(args).toContain('--runTestsByPath')
-        expect(args).toEqual(expect.arrayContaining([own, dependent, ...smoke]))
+        expect(args).toEqual(expect.arrayContaining([own, dependent]))
         expect(JSON.parse(fs.readFileSync(path.join(root, 'web-test-result.json'), 'utf8'))).toEqual({
             head,
             mode: 'targeted',
@@ -85,18 +90,49 @@ describe('web test execution gate', () => {
         expect(run({ root, runProcess: processRunner({ status: 1 }) })).toBe(1)
         expect(fs.existsSync(path.join(root, 'web-test-result.json'))).toBe(false)
     })
-    it.each([
-        null,
-        { ...plan, head: 'stale' },
-        { ...plan, mode: 'none', inputs: [] },
-        { ...plan, inputs: [] },
-        { ...plan, version: 99 },
-    ])('runs the full suite for missing, stale or invalid plans: %j', value => {
-        if (value) writePlan(value)
+    it.each([null, { ...plan, head: 'stale' }, { ...plan, inputs: [] }, { ...plan, version: 99 }])(
+        'runs the full suite for missing, stale or invalid plans: %j',
+        value => {
+            if (value) writePlan(value)
+            const runProcess = processRunner()
+            expect(run({ root, runProcess })).toBe(0)
+            expect(runProcess.mock.calls.at(-1)[1]).not.toContain('--runTestsByPath')
+            expect(JSON.parse(fs.readFileSync(path.join(root, 'web-test-result.json'), 'utf8')).mode).toBe('full')
+        }
+    )
+    it('accepts a verified no-op plan without executing tests', () => {
+        writePlan({ ...plan, mode: 'none', inputs: [] })
         const runProcess = processRunner()
         expect(run({ root, runProcess })).toBe(0)
-        expect(runProcess.mock.calls.at(-1)[1]).not.toContain('--runTestsByPath')
-        expect(JSON.parse(fs.readFileSync(path.join(root, 'web-test-result.json'), 'utf8')).mode).toBe('full')
+        expect(runProcess.mock.calls.filter(([command]) => command === process.execPath)).toHaveLength(0)
+        expect(JSON.parse(fs.readFileSync(path.join(root, 'web-test-result.json'))).mode).toBe('none')
+    })
+    it('checks backend no-op scope before dependency installation', () => {
+        write('functions-test-scope.json', JSON.stringify({ ...plan, kind: 'functions', mode: 'none', inputs: [] }))
+        const runProcess = processRunner()
+        expect(
+            run({
+                root,
+                kind: 'functions',
+                planFile: 'functions-test-scope.json',
+                checkScope: true,
+                runProcess,
+            })
+        ).toBe(76)
+        expect(runProcess.mock.calls).toHaveLength(1)
+    })
+    it('retains a source-reading test only for its changed source', () => {
+        write(
+            '__tests__/SourceWiring.test.js',
+            "const fs = require('fs'); const path = require('path'); const source = path.resolve(__dirname, '../components/Foo.js'); fs.readFileSync(source)"
+        )
+        expect(resolveSuites(root, plan, listTests).suites).toContain(sourceGuard)
+        write('__tests__/SourceWiring.test.js', "const fs = require('fs'); fs.readFileSync('components/Unrelated.js')")
+        expect(resolveSuites(root, plan, listTests).suites).not.toContain(sourceGuard)
+    })
+    it('allows a mapped infrastructure-only change to skip unrelated web tests', () => {
+        const next = { ...plan, inputs: ['firebase.json'] }
+        expect(resolveSuites(root, next, extra => (extra.length ? [] : listTests([]))).mode).toBe('none')
     })
     it('executes the full suite if Jest dependency discovery fails', () => {
         writePlan(plan)
@@ -131,7 +167,7 @@ describe('web test execution gate', () => {
                     )
                 )
             expect(resolveSuites(root, { ...plan, inputs: [input, 'components/Foo.test.js'] }, graph).suites).toEqual(
-                expect.arrayContaining([own, dependent, ...smoke])
+                expect.arrayContaining([own, dependent])
             )
         },
         30000
