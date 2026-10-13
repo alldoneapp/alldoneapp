@@ -9,6 +9,7 @@ import Button from '../../../UIControls/Button'
 import AssistantAvatarButton from '../../../MyDayView/AssistantLine/AssistantOptions/AssistantAvatarButton'
 import AssistantVoiceCallButton from '../../../UIComponents/AssistantVoiceCallButton'
 import CustomTextInput3 from '../../../Feeds/CommentsTextInput/CustomTextInput3'
+import '../../../MyDayView/AssistantLine/assistantInput.css'
 import { TASK_THEME } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import AttachmentDropZone from '../../../Feeds/CommentsTextInput/AttachmentDropZone'
 import { updateNewAttachmentsData } from '../../../Feeds/Utils/HelperFunctions'
@@ -39,19 +40,19 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
     const inputRef = useRef(null)
     const isShiftPressed = useRef(false)
 
-    // Same rule as the My Day assistant line: once the field grows past one
-    // line the voice and send buttons stack directly below each other, and the
-    // field expands into the width that frees up. Released only when the field
-    // is emptied, so the width change can never feed back into the wrapping.
+    // Mobile keeps voice/send side by side, matching the My Day composer.
+    // Desktop retains its expansion latch to avoid width/height reflow loops.
     useEffect(() => {
-        setControlsStacked(wasStacked =>
-            getAssistantControlsStacked({
-                inputHeight: inputLayout.height,
-                hasText: message.length > 0,
-                wasStacked,
-            })
+        setControlsStacked(
+            wasStacked =>
+                !isMobile &&
+                getAssistantControlsStacked({
+                    inputHeight: inputLayout.height,
+                    hasText: message.length > 0,
+                    wasStacked,
+                })
         )
-    }, [inputLayout.height, message])
+    }, [inputLayout.height, message, isMobile])
 
     // A composer holding a dropped/pasted attachment may grow past the text cap so the image
     // preview is visible rather than clipped into a scroller (AT-2444).
@@ -178,18 +179,18 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
             projectId={projectId}
             setInputCursorIndex={setInputCursorIndex}
         >
-            <View style={localStyles.row}>
-                <View style={localStyles.avatarWrapper}>
-                    <AssistantAvatarButton assistant={assistant} size={40} />
+            <View testID="assistant-composer-row" style={localStyles.row}>
+                <View style={[localStyles.avatarWrapper, isMobile && localStyles.avatarWrapperMobile]}>
+                    <AssistantAvatarButton assistant={assistant} size={isMobile ? 32 : 40} />
                 </View>
                 <CustomTextInput3
                     ref={inputRef}
-                    containerStyle={localStyles.messageInput}
+                    containerStyle={[localStyles.messageInput, isMobile && localStyles.messageInputMobile]}
                     fixedHeight={getAssistantInputDisplayHeight(inputLayout.height, controlsStacked, composerMaxHeight)}
                     maxHeight={composerMaxHeight}
                     onChangeText={updateMessage}
-                    onContentSizeChange={(width, height) => updateInputHeight(height)}
-                    placeholder={translate('Start a new chat')}
+                    onContentSizeChange={(width, height) => updateInputHeight(height + 8)}
+                    placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
                     projectId={projectId}
                     styleTheme={TASK_THEME}
                     setMentionsModalActive={setMentionsModalActive}
@@ -214,7 +215,11 @@ export default function AssistantInputLine({ assistant, projectId, noBottomMargi
                         compact
                         assistant={assistant}
                         projectId={projectId}
-                        buttonStyle={[localStyles.voiceButton, controlsStacked && localStyles.voiceButtonExpanded]}
+                        buttonStyle={[
+                            localStyles.voiceButton,
+                            isMobile && localStyles.voiceButtonMobile,
+                            controlsStacked && localStyles.voiceButtonExpanded,
+                        ]}
                     />
                     <Button
                         title={sendButtonTitle}
@@ -248,6 +253,17 @@ const localStyles = StyleSheet.create({
         alignItems: 'flex-end',
         width: '100%',
     },
+    messageInputMobile: {
+        paddingHorizontal: 2,
+        paddingVertical: 3,
+        marginRight: 4,
+        minWidth: 0,
+    },
+    avatarWrapperMobile: {
+        width: 32,
+        height: 40,
+        marginRight: 4,
+    },
     avatarWrapper: {
         marginRight: 12,
     },
@@ -260,7 +276,7 @@ const localStyles = StyleSheet.create({
         backgroundColor: 'white',
         minHeight: 40,
         maxHeight: 120,
-        paddingVertical: 8,
+        paddingVertical: 3,
         paddingHorizontal: 12,
         fontSize: 14,
         lineHeight: 22,
@@ -280,6 +296,9 @@ const localStyles = StyleSheet.create({
     voiceButton: {
         marginLeft: 0,
         marginRight: 8,
+    },
+    voiceButtonMobile: {
+        marginRight: 4,
     },
     voiceButtonExpanded: {
         marginRight: 0,

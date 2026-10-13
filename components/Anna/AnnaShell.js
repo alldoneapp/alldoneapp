@@ -10,7 +10,7 @@ import AnnaWorkspaceReveal from './AnnaWorkspaceReveal'
 import { findWorkspaceObject } from './annaWorkspaceRevealTargets'
 import AnnaBrowserWorkspace from './AnnaBrowserWorkspace'
 import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCompletion'
-import AnnaVmWorkspace, { vmStatusLabel } from './AnnaVmWorkspace'
+import AnnaVmWorkspace from './AnnaVmWorkspace'
 import useAnnaVmJobs, { vmJobPath } from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaChatNavigationContext from './AnnaChatNavigationContext'
@@ -95,6 +95,7 @@ export default function AnnaShell({ children, routeId }) {
         selectedRunId: selectedVmId,
     })
     const selectedVm = vmJobs.find(job => job.id === selectedVmId)
+    const vmPointerDown = useRef(false)
     const [browserControl, setBrowserControl] = useState(false)
     const [browser, setBrowser] = useState(null)
     const browserCompleted = useAnnaBrowserCompletion(browser)
@@ -135,6 +136,11 @@ export default function AnnaShell({ children, routeId }) {
         setSurface(nextSurface === 'vms' && vm ? `vm:${vm.id}` : nextSurface)
         setAnnaLayout('split')
         setMobilePane('workspace')
+    }
+    const selectVm = runId => {
+        if (runId === selectedVmId) return
+        requestGeneration.current++
+        setSurface(`vm:${runId}`)
     }
     const closeChat = () => {
         focusAfterSwitch.current = 'workspace'
@@ -786,38 +792,44 @@ export default function AnnaShell({ children, routeId }) {
                         className={`anna-vms ${!active || !vmSurface ? 'anna-surface-hidden' : ''}`}
                         aria-hidden={!active || !vmSurface}
                         inert={!active || !vmSurface ? '' : undefined}
+                        onPointerDownCapture={() => {
+                            vmPointerDown.current = true
+                        }}
+                        onPointerUpCapture={() => {
+                            vmPointerDown.current = false
+                        }}
+                        onPointerCancelCapture={() => {
+                            vmPointerDown.current = false
+                        }}
+                        onPointerLeave={() => {
+                            vmPointerDown.current = false
+                        }}
                     >
-                        <div className="anna-vm-selector">
-                            <select
-                                aria-label={translate('VM session')}
-                                value={selectedVmId || ''}
-                                onChange={event => selectSurface(`vm:${event.target.value}`)}
-                            >
-                                {!selectedVmId && <option value="">{translate('VMs')}</option>}
-                                {vmJobs.map(job => (
-                                    <option
-                                        key={job.id}
-                                        value={job.id}
-                                    >{`${job.title} — ${vmStatusLabel(job.status)}`}</option>
-                                ))}
-                                {selectedVmId && !selectedVm && (
-                                    <option value={selectedVmId}>{translate('vm_workspace_unavailable')}</option>
-                                )}
-                            </select>
-                            {vmError && <button onClick={retryVms}>{translate('vm_workspace_retry')}</button>}
-                        </div>
-                        {vmJobs.map(job => (
-                            <div
-                                key={job.id}
-                                className={`anna-vm-surface ${!active || selectedVmId !== job.id ? 'anna-surface-hidden' : ''}`}
-                                aria-hidden={!active || selectedVmId !== job.id}
-                                inert={!active || selectedVmId !== job.id ? '' : undefined}
-                            >
-                                <AnnaVmWorkspace job={job} active={visibleWorkspace && selectedVmId === job.id} />
+                        {vmError && (
+                            <div className="anna-error" role="alert">
+                                {translate('vm_workspace_unavailable')}
+                                <button onClick={retryVms}>{translate('vm_workspace_retry')}</button>
                             </div>
+                        )}
+                        {vmJobs.map(job => (
+                            <section
+                                key={job.id}
+                                className={`anna-vm-surface ${selectedVmId === job.id ? 'anna-vm-selected' : ''}`}
+                                aria-label={job.title}
+                                aria-current={selectedVmId === job.id ? 'true' : undefined}
+                                tabIndex={0}
+                                onFocusCapture={() => {
+                                    // Selecting another run may remove a completed panel above it.
+                                    // Keep pointer targets in place until their click has finished.
+                                    if (!vmPointerDown.current) selectVm(job.id)
+                                }}
+                                onClickCapture={() => selectVm(job.id)}
+                            >
+                                <AnnaVmWorkspace job={job} active={visibleWorkspace && vmSurface} />
+                            </section>
                         ))}
-                        {vmSurface && !selectedVm && (
-                            <div className="anna-empty" role="status">
+                        {vmSurface && (!vmJobs.length || (selectedVmId && !selectedVm)) && (
+                            <div className={vmJobs.length ? 'anna-error' : 'anna-empty'} role="status">
                                 {translate(selectedVmId ? 'vm_workspace_unavailable' : 'No VM sessions yet')}
                             </div>
                         )}
