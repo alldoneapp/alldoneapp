@@ -7,6 +7,8 @@ import { installAppResumeListener } from '../../../../utils/appResume'
 const mockToolbar = jest.fn(() => null)
 const mockSave = jest.fn(() => Promise.resolve(true))
 const mockDownload = jest.fn()
+const mockDispatch = jest.fn()
+let mockBrowserOffline = false
 let mockSeed
 const mockState = {
     loggedUser: { uid: 'user', displayName: 'User' },
@@ -16,7 +18,7 @@ const mockState = {
     blockShortcuts: true,
     smallScreenNavigation: false,
 }
-jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState), useDispatch: () => jest.fn() }))
+jest.mock('react-redux', () => ({ useSelector: selector => selector(mockState), useDispatch: () => mockDispatch }))
 jest.mock('../../../../redux/store', () => ({ getState: () => mockState, subscribe: () => () => {} }))
 jest.mock('react-hot-keys', () => () => null)
 jest.mock('./EditorToolbar', () => {
@@ -91,7 +93,7 @@ jest.mock('../../../../utils/backends/firestore', () => ({
     getNotesCollaborationServerData: () => ({ NOTES_COLLABORATION_SERVER: 'ws://fixture' }),
 }))
 jest.mock('../../../../utils/backends/Notes/notesFirestore', () => ({ setNoteData: (...args) => mockSave(...args) }))
-jest.mock('../../../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
+jest.mock('../../../../utils/connectionState', () => ({ isBrowserOffline: () => mockBrowserOffline }))
 jest.mock('./noteLocalPersistence', () => ({
     createNoteLocalPersistence: (_id, document) => {
         require('yjs').applyUpdate(document, mockSeed)
@@ -135,6 +137,10 @@ beforeEach(() => {
     })
     mockToolbar.mockClear()
     mockSave.mockClear()
+    mockDownload.mockClear()
+    mockDispatch.mockClear()
+    mockBrowserOffline = false
+    mockState.isLoadingNoteData = false
     const doc = new Y.Doc()
     doc.getText('quill').insert(0, 'Original\n')
     originalBytes = Y.encodeStateAsUpdate(doc)
@@ -164,6 +170,11 @@ it('shows cached content before download, skips renders per key, then saves the 
     })
     const editor = exportRef.getEditor()
     expect(editor.getText()).toContain('Cached Original')
+    expect(view.queryByText('Syncing')).toBeNull()
+    const loadingOperation = mockDispatch.mock.calls
+        .map(([action]) => action)
+        .find(action => action.source === 'note_content_sync')
+    expect(loadingOperation).toMatchObject({ type: 'Start loading operation' })
     const renders = mockToolbar.mock.calls.length
     act(() => {
         editor.insertText(0, 'Typed ', 'user')
@@ -178,11 +189,89 @@ it('shows cached content before download, skips renders per key, then saves the 
         resolveDownload(originalBytes)
     })
     expect(mockSave).toHaveBeenCalledTimes(1)
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'Finish loading operation', id: loadingOperation.id })
     const saved = new Y.Doc()
     Y.applyUpdate(saved, mockSave.mock.calls[0][2])
     expect(saved.getText('quill').toString()).toBe('More Typed Cached Original\n')
     saved.destroy()
     view.unmount()
+})
+
+it('releases pending sync feedback when closing a note before the download finishes', async () => {
+    let view
+    await act(async () => {
+        view = render(<NotesEditorView {...props} />)
+    })
+    const operation = mockDispatch.mock.calls
+        .map(([action]) => action)
+        .find(action => action.source === 'note_content_sync')
+    expect(operation).toBeDefined()
+    view.unmount()
+    expect(mockDispatch).toHaveBeenCalledWith({ type: 'Finish loading operation', id: operation.id })
+    await act(async () => resolveDownload(originalBytes))
+    expect(mockSave).not.toHaveBeenCalled()
+})
+
+it('keeps the pending-sync explanation when only an offline local copy is available', async () => {
+    mockBrowserOffline = true
+    let view
+    await act(async () => {
+        view = render(<NotesEditorView {...props} />)
+    })
+    expect(exportRef.getEditor().getText()).toContain('Cached Original')
+    expect(view.getByText('Note content is available locally; sync is pending')).toBeTruthy()
+    expect(mockDownload).not.toHaveBeenCalled()
+    expect(mockDispatch.mock.calls.some(([action]) => action.source === 'note_content_sync')).toBe(false)
+    view.unmount()
+})
+
+it('keeps failed-sync feedback and retries the Storage comparison without losing cached content', async () => {
+    const failure = new Error('Storage unavailable')
+    mockDownload.mockRejectedValueOnce(failure).mockRejectedValueOnce(failure).mockRejectedValueOnce(failure)
+    let view
+    await act(async () => {
+        view = render(<NotesEditorView {...props} />)
+    })
+    await act(async () => {
+        await jest.advanceTimersByTimeAsync(750)
+    })
+    expect(view.getByText('Note content is available locally; sync is pending')).toBeTruthy()
+    expect(exportRef.getEditor().getText()).toContain('Cached Original')
+    expect(mockSave).not.toHaveBeenCalled()
+
+    mockDownload.mockResolvedValue(originalBytes)
+    await act(async () => {
+        await jest.advanceTimersByTimeAsync(5000)
+    })
+    expect(view.queryByText('Note content is available locally; sync is pending')).toBeNull()
+    expect(mockSave).toHaveBeenCalledTimes(1)
+    expect(exportRef.getEditor().getText()).toContain('Cached Original')
+    view.unmount()
+})
+
+it('preserves the offline explanation and locked editor when no cached content is available', async () => {
+    mockBrowserOffline = true
+    mockState.isLoadingNoteData = true
+    const empty = new Y.Doc()
+    mockSeed = Y.encodeStateAsUpdate(empty)
+    empty.destroy()
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {})
+    let view
+    try {
+        await act(async () => {
+            view = render(<NotesEditorView {...props} />)
+        })
+        await act(async () => {
+            await jest.advanceTimersByTimeAsync(10000)
+        })
+        expect(view.getByText('This note is not available offline yet')).toBeTruthy()
+        expect(view.getByText('It will load automatically when you are back online')).toBeTruthy()
+        expect(exportRef.getEditor().isEnabled()).toBe(false)
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'Set is loading note data', isLoadingNoteData: false })
+    } finally {
+        view?.unmount()
+        error.mockRestore()
+    }
 })
 it('captures edits during an in-flight save before close and uploads them after the first snapshot', async () => {
     let releaseUpload

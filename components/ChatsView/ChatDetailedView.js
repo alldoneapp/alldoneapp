@@ -6,7 +6,6 @@ import { useSelector, useDispatch } from 'react-redux'
 import LoadingData from '../UIComponents/LoadingData'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
 import Header from './ChatDV/Header'
-import LoadingNoteData from '../UIComponents/LoadingNoteData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import { DV_TAB_CHAT_BOARD, DV_TAB_CHAT_NOTE, DV_TAB_CHAT_PROPERTIES } from '../../utils/TabNavigationConstants'
 import ChatBoard from './ChatDV/ChatBoard'
@@ -120,7 +119,6 @@ const ChatDetailedView = ({ navigation }) => {
     return (
         <View style={localStyles.container}>
             <LoadingData />
-            <LoadingNoteData />
 
             {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />

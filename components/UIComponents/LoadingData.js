@@ -13,7 +13,7 @@ export const LOADING_DATA_SPINNER_MIN_VISIBLE_MS = 500
 
 export default function LoadingData() {
     const annaMode = useAnnaMode()
-    const spinnerRequested = useSelector(state => state.showLoadingDataSpinner)
+    const spinnerRequested = useSelector(state => state.showLoadingDataSpinner || state.isLoadingNoteData)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const sidebarExpanded = useSelector(state => state.loggedUser.sidebarExpanded)

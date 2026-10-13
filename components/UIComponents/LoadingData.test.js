@@ -9,6 +9,7 @@ import Spinner from './Spinner'
 
 const mockState = {
     showLoadingDataSpinner: false,
+    isLoadingNoteData: false,
     smallScreenNavigation: false,
     loggedUser: { isAnonymous: false, sidebarExpanded: true },
 }
@@ -36,6 +37,7 @@ describe('LoadingData component', () => {
     beforeEach(() => {
         jest.useFakeTimers()
         mockState.showLoadingDataSpinner = false
+        mockState.isLoadingNoteData = false
         mockState.smallScreenNavigation = false
         mockState.loggedUser = { isAnonymous: false, sidebarExpanded: true }
         mockState.sidebarHovered = false
@@ -63,6 +65,38 @@ describe('LoadingData component', () => {
         setSpinnerRequested(tree, false)
         act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_DELAY_MS + LOADING_DATA_SPINNER_MIN_VISIBLE_MS))
 
+        expect(tree.root.findAllByType(Spinner)).toHaveLength(0)
+        act(() => tree.unmount())
+    })
+
+    it('uses the shared floating spinner for a cold note and keeps unrelated loading visible', () => {
+        const tree = renderLoadingData()
+        mockState.isLoadingNoteData = true
+        act(() => tree.update(<LoadingData />))
+        act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_DELAY_MS))
+        expect(tree.root.findAllByType(Spinner)).toHaveLength(1)
+        expect(tree.root.findByType(Spinner).props).toMatchObject({ containerSize: 24, spinnerSize: 16 })
+
+        setSpinnerRequested(tree, true)
+        mockState.isLoadingNoteData = false
+        act(() => tree.update(<LoadingData />))
+        act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_MIN_VISIBLE_MS))
+        expect(tree.root.findAllByType(Spinner)).toHaveLength(1)
+
+        setSpinnerRequested(tree, false)
+        act(() => jest.advanceTimersByTime(1))
+        expect(tree.root.findAllByType(Spinner)).toHaveLength(0)
+        act(() => tree.unmount())
+    })
+
+    it('does not flash when a note opens before the spinner delay', () => {
+        const tree = renderLoadingData()
+        mockState.isLoadingNoteData = true
+        act(() => tree.update(<LoadingData />))
+        act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_DELAY_MS - 1))
+        mockState.isLoadingNoteData = false
+        act(() => tree.update(<LoadingData />))
+        act(() => jest.advanceTimersByTime(LOADING_DATA_SPINNER_DELAY_MS))
         expect(tree.root.findAllByType(Spinner)).toHaveLength(0)
         act(() => tree.unmount())
     })

@@ -4,7 +4,6 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import CustomSideMenu from '../../SidebarMenu/CustomSideMenu'
 import Backend from '../../../utils/BackendBridge'
-import LoadingNoteData from '../../UIComponents/LoadingNoteData'
 import LoadingData from '../../UIComponents/LoadingData'
 
 import {
@@ -112,7 +111,6 @@ export default function NotesDetailedView({ navigation }) {
     return (
         <View style={localStyles.container}>
             <LoadingData />
-            <LoadingNoteData />
 
             {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
