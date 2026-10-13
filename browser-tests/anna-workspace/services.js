@@ -191,7 +191,12 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
                 : [],
         }
     if (name === 'respondToVmInteractionSecondGen') {
-        window.__annaVmFixture('running', '💻 npm test\nTests are running…')
+        window.__annaVmFixture('running', '💻 npm test\nTests are running…', request.runId)
+        return {}
+    }
+    if (name === 'cancelAssistantRunSecondGen') {
+        window.__annaStoppedVm = request
+        window.__annaVmFixture('cancel_requested', 'Stopping the VM…', request.runId)
         return {}
     }
     if (name === 'askToBotSecondGen') {
@@ -292,17 +297,19 @@ const vmJobs = [
 ]
 window.__annaVmFixture = (
     status = 'running',
-    commentText = '📄 Reading launch.md\n💬 Preparing the launch report…'
+    commentText = '📄 Reading launch.md\n💬 Preparing the launch report…',
+    runId = 'vm1'
 ) => {
-    vmJobs[0].status = status === 'running' ? 'initiated' : status
+    const job = vmJobs.find(job => job.id === runId)
+    job.status = status === 'running' ? 'initiated' : status
     return getDb()
-        .doc('chatComments/p1/tasks/t1/comments/vm-comment')
+        .doc(`chatComments/${job.projectId}/${job.objectType}/${job.objectId}/comments/${job.commentId}`)
         .set({
             commentText,
             isLoading: ['running', 'awaiting_user'].includes(status),
             assistantRun: {
                 kind: 'vm_job',
-                runId: 'vm1',
+                runId,
                 requestUserId: 'demo',
                 status,
                 ...(status === 'awaiting_user'

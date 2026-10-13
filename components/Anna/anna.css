@@ -1164,8 +1164,7 @@
     position: relative;
     flex: none;
 }
-.anna-header-picker select,
-.anna-vm-selector select {
+.anna-header-picker select {
     max-width: 100%;
     font-family: inherit;
     color: var(--anna-ink);
@@ -1222,26 +1221,33 @@
     flex-direction: column;
     min-height: 0;
     min-width: 0;
+    overflow: auto;
+    gap: 16px;
+    padding: 16px;
+    background: var(--anna-surface);
 }
-.anna-vm-selector {
-    display: flex;
+.anna-vms .anna-vm-surface {
     flex: none;
-    gap: 8px;
-    padding: 12px 20px;
-    background: white;
-    border-bottom: 1px solid var(--anna-border);
+    border: 1px solid var(--anna-border);
+    border-radius: 12px;
+    overflow: hidden;
 }
-.anna-vm-selector select {
-    min-width: 0;
-    padding: 8px;
-    font-size: 13px;
+.anna-vms .anna-vm-selected {
+    border-color: var(--anna-accent);
 }
-.anna-vm-selector button {
-    border: 0;
-    background: transparent;
-    color: var(--anna-accent);
+.anna-vm-surface:focus-visible {
+    outline: 2px solid var(--anna-accent);
+    outline-offset: 3px;
+}
+.anna-vms .anna-vm-activity {
+    flex: none;
+    max-height: min(480px, 60dvh);
 }
 @media (max-width: 760px) {
+    .anna-vms {
+        gap: 12px;
+        padding: 12px;
+    }
     .anna-chat-only .anna-stage {
         width: 100%;
     }
