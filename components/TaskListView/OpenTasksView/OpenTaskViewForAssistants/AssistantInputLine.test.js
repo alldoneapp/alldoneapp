@@ -157,7 +157,7 @@ describe('AssistantInputLine control alignment', () => {
         const controls = line.getControlsStyle()
         expect(controls.flexDirection).toBe('row')
         expect(controls.alignItems).toBe('center')
-        expect(line.getInputHeight()).toBe(70)
+        expect(line.getInputHeight()).toBe(78)
         expect(line.getInput().props.placeholder).toBe('New message …')
         line.type('Long mobile message', 160)
         expect(line.getInputHeight()).toBe(120)
