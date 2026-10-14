@@ -430,7 +430,8 @@ export default function AssistantOptions({
                     fixedHeight={inputDisplayHeight}
                     maxHeight={composerMaxHeight}
                     onChangeText={updateMessage}
-                    onContentSizeChange={(width, height) => updateInputHeight(height + 8)}
+                    // Include the frame's padding and borders in the natural height.
+                    onContentSizeChange={(width, height) => updateInputHeight(height + (isMobile ? 16 : 8))}
                     placeholder={isMobile ? `${translate('New message')} …` : translate('Start a new chat')}
                     projectId={conversationProjectId}
                     styleTheme={TASK_THEME}
@@ -600,8 +601,9 @@ const localStyles = StyleSheet.create({
         textAlignVertical: 'top',
     },
     messageInputMobile: {
-        paddingHorizontal: 2,
-        paddingVertical: 3,
+        paddingHorizontal: 8,
+        // 24px text + 2 × 7px padding + 2px border = the 40px control row.
+        paddingVertical: 7,
         marginRight: 4,
         minWidth: 0,
     },

@@ -420,7 +420,7 @@ describe('AssistantOptions search button', () => {
             expect(controls.flexDirection).toBe('row')
             expect(controls.alignItems).toBe('center')
             expect(controls.width).toBeUndefined()
-            expect(getInput().props.fixedHeight).toBe(70)
+            expect(getInput().props.fixedHeight).toBe(78)
             expect(getInput().props.placeholder).toBe('New message …')
             await act(async () => getInput().props.onContentSizeChange(100, 160))
             expect(getInput().props.fixedHeight).toBe(120)

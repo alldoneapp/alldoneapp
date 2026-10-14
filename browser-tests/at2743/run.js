@@ -5,7 +5,43 @@ const path = require('node:path')
 const { execFileSync } = require('node:child_process')
 
 const root = path.resolve(__dirname, '../..')
-const output = path.join(__dirname, '.build')
+const output = process.env.HARNESS_OUTPUT || path.join(__dirname, '.build')
+const baseline = process.argv.includes('--baseline')
+const desktopBaseline = process.env.DESKTOP_BASELINE
+
+async function screenshotsMatch(page, actual, expected) {
+    if (actual.equals(expected)) return true
+    // Chromium can round antialiased border/scrollbar pixels by one channel
+    // level between runs. Decode in the browser to avoid another dependency.
+    return page.evaluate(
+        async sources => {
+            const pixels = await Promise.all(
+                sources.map(async source => {
+                    const image = new Image()
+                    image.src = `data:image/png;base64,${source}`
+                    await image.decode()
+                    const canvas = document.createElement('canvas')
+                    canvas.width = image.width
+                    canvas.height = image.height
+                    const context = canvas.getContext('2d')
+                    context.drawImage(image, 0, 0)
+                    return {
+                        width: image.width,
+                        height: image.height,
+                        data: context.getImageData(0, 0, image.width, image.height).data,
+                    }
+                })
+            )
+            const [first, second] = pixels
+            return (
+                first.width === second.width &&
+                first.height === second.height &&
+                first.data.every((channel, index) => Math.abs(channel - second.data[index]) <= 1)
+            )
+        },
+        [actual.toString('base64'), expected.toString('base64')]
+    )
+}
 
 async function measure(page) {
     return page.evaluate(() => {
@@ -34,6 +70,9 @@ async function measure(page) {
             placeholderLineHeight: placeholder.lineHeight,
             placeholderLetterSpacing: placeholder.letterSpacing,
             fontReady: [...document.fonts].every(font => font.status === 'loaded'),
+            textLeftInset: text.left - field.left,
+            firstLineCenter: text.top + parseFloat(style.lineHeight) / 2,
+            caretTop: editor.firstElementChild.getBoundingClientRect().top,
             hasVisibleGlyphs: (() => {
                 const canvas = document.createElement('canvas')
                 const context = canvas.getContext('2d')
@@ -87,10 +126,15 @@ async function main() {
                 [375, 667],
                 [390, 520],
                 [430, 600],
+                [600, 800],
+                [1024, 768],
                 [1440, 900],
             ]) {
                 const name = `${board ? 'board' : 'card'}-${width}`
-                const page = await browser.newPage({ viewport: { width, height } })
+                const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 640 })
+                await page.route('**/*', route =>
+                    route.request().url().startsWith('http://127.0.0.1:') ? route.continue() : route.abort()
+                )
                 const errors = []
                 page.on('pageerror', error => {
                     errors.push(error.stack || error.message)
@@ -119,6 +163,28 @@ async function main() {
                     assert(empty.controls.every(button => button.width >= 40 && button.height === 40))
                     assert.equal(empty.controlsDirection, 'row')
                     assert.equal(empty.controls[0].y, empty.controls[1].y)
+                    if (!baseline && width < 640) {
+                        assert.equal(empty.textLeftInset, 9, `${name}: text has 8px padding plus the border`)
+                        assert.equal(empty.caretTop, empty.text.y, `${name}: empty caret matches placeholder top`)
+                        assert.equal(
+                            empty.firstLineCenter,
+                            empty.field.y + 20,
+                            `${name}: first line centers on the 40px field/control row`
+                        )
+                        for (const button of empty.buttons) {
+                            assert(
+                                Math.abs(button.y + button.height / 2 - empty.firstLineCenter) <= 2,
+                                `${name}: inline controls align with the first text line`
+                            )
+                        }
+                        if (empty.field.height === 40) {
+                            assert.equal(
+                                empty.firstLineCenter,
+                                empty.controls[0].y + 20,
+                                `${name}: compact text centers on voice/send controls`
+                            )
+                        }
+                    }
                     assert(empty.text.bottom <= empty.field.bottom - 2, `${name}: placeholder is not clipped`)
                     assert(empty.controls[0].x > empty.field.right, `${name}: actions stay beside the field`)
                     assert(
@@ -149,6 +215,13 @@ async function main() {
                 await page.waitForTimeout(200)
                 const multiline = await measure(page)
                 assert(multiline.field.height >= 56, `${name}: two lines fit with padding`)
+                if (!baseline && width < 640) {
+                    assert(
+                        multiline.text.bottom <= multiline.field.bottom - 8,
+                        `${name}: expanded text retains bottom padding without clipping`
+                    )
+                    assert.equal(multiline.textLeftInset, empty.textLeftInset, `${name}: typed text keeps the inset`)
+                }
                 assert.equal(multiline.lineHeight, '24px')
                 await page.screenshot({ path: path.join(output, `multiline-${name}.png`) })
                 if (width === 390) {
@@ -162,6 +235,11 @@ async function main() {
                     assert.equal(await editor.innerText(), textBeforeResize)
                 }
                 await editor.fill('Hallo Anna')
+                await editor.press('End')
+                await editor.press('Shift+Enter')
+                await editor.press('a')
+                assert((await editor.innerText()).includes('\n'), `${name}: Shift+Enter preserves multiline editing`)
+                await editor.fill('Hallo Anna')
                 await page.waitForTimeout(200)
                 await page.locator('[aria-label="Senden"]').click()
                 await page.waitForTimeout(200)
@@ -170,6 +248,19 @@ async function main() {
                     assert.deepEqual(await page.evaluate(() => window.__sent), ['Hallo Anna'])
                     assert.deepEqual(errors, [], `${name}: no runtime errors`)
                     assert.equal((await measure(page)).controlsDirection, 'row')
+                }
+                if (desktopBaseline && width >= 640) {
+                    for (const state of ['after', 'long', 'multiline']) {
+                        const file = `${state}-${name}.png`
+                        assert(
+                            await screenshotsMatch(
+                                page,
+                                fs.readFileSync(path.join(output, file)),
+                                fs.readFileSync(path.join(desktopBaseline, file))
+                            ),
+                            `${name} ${state}: desktop pixels match master (1/255 rounding tolerance)`
+                        )
+                    }
                 }
                 console.log(`${name}: PASS`)
                 await page.close()
