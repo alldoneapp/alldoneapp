@@ -57,6 +57,14 @@ class Autoformat extends Module {
 
     registerTextInputElementPasteListener() {
         this.quill.clipboard.addMatcher(Node.ELEMENT_NODE, (node, delta) => {
+            const href = node.tagName === 'A' ? node.getAttribute('href') : null
+            if (href && /^(https?|ftp):\/\//i.test(href) && REGEX_URL.test(href) && node.textContent.trim()) {
+                // Text inputs whitelist our URL embed, not Quill's native `link` format, so
+                // Quill drops an anchor's href before this matcher runs. Restore it from the
+                // anchor and replace all parsed label ops: a filename such as Plan.md may
+                // already have become a false URL embed while traversing the child text.
+                delta = new Delta().insert(node.textContent, { link: href })
+            }
             if (delta && delta.ops && delta.ops[0] && delta.ops[0].insert) {
                 const projectId = store.getState().quillEditorProjectId
                 const { attributes } = delta.ops[0]

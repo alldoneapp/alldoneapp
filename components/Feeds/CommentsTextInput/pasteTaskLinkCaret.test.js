@@ -72,6 +72,8 @@ import {
 const PROJECT_ID = 'PROJ1'
 const TASK_URL = `https://alldone.app/projects/${PROJECT_ID}/tasks/TASK9`
 const ATLASSIAN_URL = 'https://jtl-software.atlassian.net/wiki/spaces/AD/pages/edit-v2/1527349338?'
+const TEAMS_DOCUMENT_URL = 'https://company.sharepoint.com/:t:/s/PlatformTeam/IQDdocument123?e=share123&web=1'
+const TEAMS_DOCUMENT_LABEL = 'MCP Server Q4 Execution Plan.md'
 const NOTE_FORMATS = [...ALLOWED_FORMATS, 'taskTagFormat']
 
 // The real url/taskTagFormat blots render React through redux and the Firebase bridge. This
@@ -334,6 +336,68 @@ describe('AT-2416 pasting a task link keeps the caret behind the link', () => {
             expect(() => pasteInto(quill, { at: 6, text: 'qM54HU5TsTOe3YwSprint7qM54HU5TsTOe3YwMS1' })).not.toThrow()
             expect(embedIndexOf(quill, 'milestoneTag')).toBe(-1)
             expect(quill.getSelection()).not.toBeNull()
+        })
+    })
+
+    describe('named HTML hyperlinks preserve their destination', () => {
+        const escapedTeamsUrl = TEAMS_DOCUMENT_URL.replace('&', '&amp;')
+
+        it.each([
+            ['filename label', TEAMS_DOCUMENT_LABEL],
+            ['nested formatting', '<strong>MCP Server</strong> <span>Q4 Execution Plan.md</span>'],
+            ['URL label pointing elsewhere', 'https://example.com/visible-label'],
+        ])('keeps the SharePoint destination for a %s instead of parsing the label', (_kind, label) => {
+            const quill = buildEditor('input')
+
+            pasteInto(quill, {
+                at: 0,
+                text: TEAMS_DOCUMENT_URL,
+                html: `<a href="${escapedTeamsUrl}">${label}</a>`,
+            })
+
+            const urls = quill
+                .getContents()
+                .ops.filter(op => op.insert.url)
+                .map(op => op.insert.url.url)
+            expect(urls).toEqual([TEAMS_DOCUMENT_URL])
+            expect(quill.getText().trim()).toBe('')
+            expect(quill.getSelection().index).toBe(embedIndexOf(quill, 'url') + 2)
+        })
+
+        it('preserves surrounding text, multiple links, and the caret when replacing a selection', () => {
+            const quill = buildEditor('input')
+            quill.setText('alpha XXXX omega')
+
+            pasteInto(quill, {
+                at: 6,
+                selected: 4,
+                text: 'See plan and task today',
+                html: `<p>See <a href="${escapedTeamsUrl}">${TEAMS_DOCUMENT_LABEL}</a> and <a href="${TASK_URL}">My task</a> today</p>`,
+            })
+
+            const urls = quill
+                .getContents()
+                .ops.filter(op => op.insert.url)
+                .map(op => op.insert.url.url)
+            expect(urls).toEqual([TEAMS_DOCUMENT_URL, TASK_URL])
+            expect(quill.getText()).toMatch(/^alpha See\s+and\s+today omega\n$/)
+            const caret = quill.getSelection().index
+            expect(quill.getText(caret)).toBe(' omega\n')
+            quill.insertText(caret, '!', 'user')
+            expect(quill.getText()).toMatch(/today! omega\n$/)
+        })
+
+        it('does not turn a non-web href into a URL embed', () => {
+            const quill = buildEditor('input')
+
+            pasteInto(quill, {
+                at: 0,
+                text: 'Open document',
+                html: '<a href="javascript:alert(1)">Open document</a>',
+            })
+
+            expect(embedIndexOf(quill, 'url')).toBe(-1)
+            expect(quill.getText()).toBe('Open document\n')
         })
     })
 })
