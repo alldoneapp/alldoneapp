@@ -620,6 +620,46 @@ async function checkDictation(page, width) {
     console.info(`PASS ${width}px: dictation inserts editable text; call exclusion, cancellation and layout work`)
 }
 
+async function checkLaunchLayout(page, width) {
+    const origin = `http://127.0.0.1:${server.address().port}`
+    const preferenceKey = 'anna-mobile-layout:v1'
+    for (const layout of ['split', 'chat', 'alldone']) {
+        // An explicit layout link is authoritative, even with an older preference.
+        const setting = layout === 'split' ? '1' : layout === 'chat' ? 'chat' : '0'
+        await page.goto(`${origin}/?assistant=${setting}`)
+        await page.locator('.anna-shell').waitFor()
+        assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey), layout)
+
+        // A fresh document at the installed PWA's start_url has no layout parameter.
+        await page.goto(`${origin}/?utm_source=web_app_manifest`)
+        await page.locator('.anna-shell').waitFor()
+        assert.equal(await page.locator('.anna-fullscreen').count(), Number(layout === 'alldone'))
+        assert.equal(await page.locator('.anna-chat-only').count(), Number(layout === 'chat'))
+        assert.equal(await page.getByLabel('Message Carl Code Mentor').isVisible(), layout !== 'alldone')
+        assert.equal(
+            await page.getByLabel('Workspace draft').isVisible(),
+            layout === 'alldone' || (layout === 'split' && width > 760)
+        )
+        assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey), layout)
+    }
+
+    // Exercise the actual controls as well as explicit links, then cold-launch again.
+    await page.getByText('Zoom out to assistant', { exact: true }).click()
+    await page.goto(`${origin}/`)
+    await page.getByLabel('Message Carl Code Mentor').waitFor()
+    if (width > 760) {
+        await page.getByRole('button', { name: 'Hide workspace — chat only' }).click()
+        await page.goto(`${origin}/`)
+        await page.locator('.anna-chat-only').waitFor()
+        await page.getByRole('button', { name: 'Show workspace', exact: true }).click()
+    }
+    await closeChat(page)
+    await page.goto(`${origin}/`)
+    await page.locator('.anna-fullscreen').waitFor()
+    assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey), 'alldone')
+    console.info(`PASS ${width}px: PWA cold launch restores split/chat/closed layouts and remembers pane controls`)
+}
+
 async function checkAssistantLayouts(page, width) {
     await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&vm=1`)
     const chat = page.getByLabel('Message Carl Code Mentor')
@@ -835,6 +875,7 @@ async function main() {
     try {
         for (const width of process.env.MOBILE_NAVIGATION_ONLY ||
         process.env.FLOATING_WORKSPACE_ONLY ||
+        process.env.LAUNCH_LAYOUT_ONLY ||
         process.env.LAYOUT_ONLY ||
         process.env.ACTIVITY_ONLY ||
         process.env.SENDING_ONLY ||
@@ -849,6 +890,12 @@ async function main() {
                 errors.push(error.message)
                 console.error(error.stack)
             })
+            if (process.env.LAUNCH_LAYOUT_ONLY) {
+                await checkLaunchLayout(page, width)
+                assert.deepEqual(errors, [])
+                await page.close()
+                continue
+            }
             if (process.env.VM_ONLY) {
                 await checkVmWorkspace(page, width)
                 assert.deepEqual(errors, [])
@@ -881,6 +928,7 @@ async function main() {
                 continue
             }
             if (process.env.LAYOUT_ONLY) {
+                await checkLaunchLayout(page, width)
                 await checkAssistantLayouts(page, width)
                 await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1`)
                 await page.getByLabel('Message Carl Code Mentor').waitFor()

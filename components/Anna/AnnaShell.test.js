@@ -29,7 +29,7 @@ import AnnaShell from './AnnaShell'
 import useAnnaConversation from './useAnnaConversation'
 import URLTrigger from '../../URLSystem/URLTrigger'
 import NavigationService from '../../utils/NavigationService'
-import { setAnnaMode, setAnnaLayout } from '../../utils/annaMode'
+import { restoreAnnaLayout, setAnnaMode, setAnnaLayout } from '../../utils/annaMode'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import LoggedUserSidebarHeader from '../SidebarMenu/LoggedUserSidebar/LoggedUserSidebarHeader'
@@ -1196,6 +1196,54 @@ it('does not create a conversation until the user first opens the assistant view
     expect(useAnnaConversation.mock.calls.at(-1)[1].enabled).toBe(true)
     expect(screen.getByLabelText('Persistent conversation')).toBeTruthy()
     await act(async () => {})
+})
+
+it.each([
+    ['desktop', 'split'],
+    ['desktop', 'chat'],
+    ['desktop', 'alldone'],
+    ['mobile', 'split'],
+    ['mobile', 'chat'],
+    ['mobile', 'alldone'],
+])('restores the selected %s %s layout before mounting a new app instance', async (device, layout) => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({
+        matches: device === 'mobile',
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    try {
+        render(content(1))
+        if (layout === 'chat') {
+            if (device === 'desktop') fireEvent.click(screen.getByLabelText('Hide workspace — chat only'))
+            // Chat-only links can also be opened on mobile, which shows one pane at a time.
+            else act(() => setAnnaLayout('chat'))
+        }
+        if (layout === 'alldone') fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+        expect(window.localStorage.getItem('anna-mobile-layout:v1')).toBe(layout)
+
+        act(() => testRoot.unmount())
+        testRoot = null
+        testContainer.remove()
+        // The installed PWA starts from its manifest URL, without a layout query.
+        window.history.replaceState(null, '', '/?utm_source=web_app_manifest')
+        restoreAnnaLayout()
+        mockConversationProps = null
+        render(content(1))
+        await act(async () => {})
+
+        expect(document.querySelector('.anna-fullscreen') !== null).toBe(layout === 'alldone')
+        expect(document.querySelector('.anna-chat-only') !== null).toBe(layout === 'chat')
+        expect(useAnnaConversation.mock.calls.at(-1)[1].enabled).toBe(layout !== 'alldone')
+        expect(mockConversationProps?.visible ?? false).toBe(layout !== 'alldone')
+        expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe(
+            String(layout !== 'alldone' && (layout === 'chat' || device === 'mobile'))
+        )
+        expect(window.localStorage.getItem('anna-mobile-layout:v1')).toBe(layout)
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
 })
 
 it('uses the conversation assistant for labels and reacts when that assistant is renamed', async () => {

@@ -1,45 +1,38 @@
 import { useSyncExternalStore } from 'react'
-import { isCapacitorShell } from './CapacitorShell'
 
-const MOBILE_LAYOUT_KEY = 'anna-mobile-layout:v1'
+// Keep the existing key so mobile installations retain their preference too.
+const LAYOUT_KEY = 'anna-mobile-layout:v1'
 const layouts = new Set(['alldone', 'split', 'chat'])
 
 // The URL owns the current layout, so a reload or a copied link opens the same view.
 // Replacing only the current history entry keeps the workspace mounted.
-// A mobile launcher starts at / rather than the last URL: use the device's
-// saved layout for that cold start, before the app or login router mounts.
-const isMobileLayoutDevice = () => {
-    if (typeof window === 'undefined') return false
-    return (
-        isCapacitorShell() ||
-        /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent) ||
-        (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1) ||
-        !!window.matchMedia?.('(max-width: 760px)')?.matches
-    )
-}
-const saveMobileLayout = layout => {
-    if (!isMobileLayoutDevice()) return
+// Installed launchers (including the macOS PWA) start at / rather than the last
+// URL: restore the device's layout before the app or login router mounts.
+const saveLayout = layout => {
+    if (typeof window === 'undefined') return
     try {
-        window.localStorage.setItem(MOBILE_LAYOUT_KEY, layout)
+        window.localStorage.setItem(LAYOUT_KEY, layout)
     } catch (_) {
         // Switching views still works when device storage is unavailable.
     }
 }
 
 export function restoreAnnaLayout() {
-    if (!isMobileLayoutDevice()) return
+    if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     if (
         params.has('assistant') ||
         (['localhost', '127.0.0.1'].includes(window.location.hostname) && params.has('anna'))
     ) {
-        saveMobileLayout(getAnnaLayout())
+        saveLayout(getAnnaLayout())
         return
     }
     // Resource, booking, auth and share links retain their incoming layout.
     if (!['/', '/index.html'].includes(window.location.pathname)) return
     try {
-        const saved = window.localStorage.getItem(MOBILE_LAYOUT_KEY)
+        // Read before any write: the launch URL's default must not replace the
+        // preference saved by the previous app instance.
+        const saved = window.localStorage.getItem(LAYOUT_KEY)
         if (layouts.has(saved)) setAnnaLayout(saved)
     } catch (_) {
         // An unavailable or invalid preference leaves the normal launch view.
@@ -49,7 +42,7 @@ export function restoreAnnaLayout() {
 const listeners = new Set()
 const notify = () => listeners.forEach(listener => listener())
 const onHistoryPop = () => {
-    saveMobileLayout(getAnnaLayout())
+    saveLayout(getAnnaLayout())
     notify()
 }
 const subscribe = listener => {
@@ -67,7 +60,7 @@ export function setAnnaLayout(layout) {
     if (typeof window === 'undefined') return
     const url = withAnnaLayout(window.location.href, layout)
     if (url !== window.location.href) window.history.replaceState(window.history.state, '', url)
-    saveMobileLayout(getAnnaLayout())
+    saveLayout(getAnnaLayout())
     notify()
 }
 export const useAnnaMode = () => useSyncExternalStore(subscribe, isAnnaMode, () => false)

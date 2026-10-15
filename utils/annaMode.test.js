@@ -12,8 +12,14 @@ import {
     withoutAnnaMode,
 } from './annaMode'
 
-beforeEach(() => window.history.replaceState(null, '', '/projects/tasks/open'))
-afterEach(() => window.history.replaceState(null, '', '/'))
+beforeEach(() => {
+    window.localStorage.clear()
+    window.history.replaceState(null, '', '/projects/tasks/open')
+})
+afterEach(() => {
+    window.localStorage.clear()
+    window.history.replaceState(null, '', '/')
+})
 
 it('preserves chat-only mode through navigation and reload without changing the resource URL', () => {
     setAnnaLayout('chat')
@@ -86,13 +92,13 @@ it('removes only layout parameters before matching a resource route', () => {
     expect(withoutAnnaMode('/projects/tasks/open#?assistant=1')).toBe('/projects/tasks/open#?assistant=1')
 })
 
-describe('mobile launch layout', () => {
+describe.each(['desktop', 'mobile'])('%s launch layout', device => {
     const originalMatchMedia = window.matchMedia
     const preferenceKey = 'anna-mobile-layout:v1'
 
     beforeEach(() => {
         window.localStorage.clear()
-        window.matchMedia = () => ({ matches: true })
+        window.matchMedia = () => ({ matches: device === 'mobile' })
     })
     afterEach(() => {
         jest.restoreAllMocks()
@@ -177,14 +183,37 @@ describe('mobile launch layout', () => {
         expect(isAnnaMode()).toBe(true)
     })
 
-    it('keeps desktop launches controlled by the URL', () => {
+    it('restores on desktop without depending on screen width or installed-app detection', () => {
         window.matchMedia = () => ({ matches: false })
         window.localStorage.setItem(preferenceKey, 'chat')
         window.history.replaceState(null, '', '/')
         restoreAnnaLayout()
-        expect(isAnnaMode()).toBe(false)
+        expect(resolveAnnaLayout(window.location)).toBe('chat')
         setAnnaMode(true)
-        expect(window.localStorage.getItem(preferenceKey)).toBe('chat')
+        expect(window.localStorage.getItem(preferenceKey)).toBe('split')
+    })
+
+    it('does not overwrite a saved layout during repeated startup initialization', () => {
+        window.localStorage.setItem(preferenceKey, 'chat')
+        window.history.replaceState(null, '', '/?utm_source=web_app_manifest')
+        const writes = jest.spyOn(Storage.prototype, 'setItem')
+        restoreAnnaLayout()
+        restoreAnnaLayout()
+        expect(resolveAnnaLayout(window.location)).toBe('chat')
+        expect(writes.mock.calls.filter(([key]) => key === preferenceKey)).toEqual([
+            [preferenceKey, 'chat'],
+            [preferenceKey, 'chat'],
+        ])
+    })
+
+    it('keeps the saved layout through responsive changes', () => {
+        setAnnaLayout('split')
+        window.matchMedia = () => ({ matches: device !== 'mobile' })
+        window.dispatchEvent(new Event('resize'))
+        window.history.replaceState(null, '', '/index.html')
+        restoreAnnaLayout()
+        expect(resolveAnnaLayout(window.location)).toBe('split')
+        expect(window.localStorage.getItem(preferenceKey)).toBe('split')
     })
 
     it('continues to launch and switch views when device storage is blocked', () => {
