@@ -37,7 +37,7 @@ export default function ConnectionStateModal({ connectionState, closeModal }) {
                 {translate(
                     isOnline
                         ? 'Alldone is online again, all functionalities are available'
-                        : 'Edition in notes will be disabled till Alldone goes back online again'
+                        : 'You can keep working with the data available on this device. Your changes will sync when Alldone is back online.'
                 )}
             </Text>
             <CloseButton style={localstyles.closeButton} close={closeModal} />
