@@ -33,3 +33,21 @@ scrolling without horizontal overflow at 1440, 1024, 390 and 320 pixels.
 
 Review screenshots: [desktop](../../docs/screenshots/AT-2745-desktop-vms.png)
 and [mobile](../../docs/screenshots/AT-2745-mobile-vms.png).
+
+For AT-2754, assistant layout preferences also survive desktop and installed macOS
+PWA cold launches. The existing local preference stores only `split`, `chat`, or
+`alldone`; launch restoration happens before React mounts. Explicit layout URLs
+take precedence, and resource/auth/share links keep their incoming layout. The
+existing mobile preference key is retained so no migration is needed.
+
+```bash
+npm test -- --runInBand --watch=false utils/annaMode.test.js \
+    components/Anna/AnnaShell.test.js URLSystem/Tasks/URLsTasksHistory.test.js
+LAUNCH_LAYOUT_ONLY=1 node browser-tests/anna-workspace/run.js
+```
+
+The browser check opens fresh documents at the PWA manifest start URL, verifies
+all three layouts and the pane controls at 1440, 1024, 390 and 320 pixels, and
+checks for runtime errors. On macOS, also verify the installed app by selecting a
+layout, quitting it, and reopening it from the Dock. Preferences are local to the
+installation's browser storage and cannot survive clearing or blocking storage.
