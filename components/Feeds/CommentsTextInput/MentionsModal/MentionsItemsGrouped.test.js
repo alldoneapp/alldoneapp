@@ -150,9 +150,9 @@ describe('AT-2497 — the notes list is rendered in the order it was given', () 
         const items = [note('a', OTHER_LATE), note('b', CURRENT), note('c', OTHER_LATE)]
 
         const text = renderedText(renderGrouped(items))
-        // The current project is rendered without a header (it is where you already are).
+        // Every project, including the current one, has exactly one header (AT-2759).
         expect(text.filter(entry => entry === 'Late')).toHaveLength(1)
-        expect(text).not.toContain('Current')
+        expect(text.filter(entry => entry === 'Current')).toHaveLength(1)
         // and its two notes stay together under it rather than being split by the regroup
         // (the current project's own row leads, as always).
         expect(renderedNotes(renderGrouped(items), ['a', 'b', 'c'])).toEqual(['b', 'a', 'c'])
