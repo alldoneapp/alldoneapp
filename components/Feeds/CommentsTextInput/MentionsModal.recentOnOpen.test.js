@@ -26,6 +26,33 @@ const CURRENT_PROJECT_ID = 'project-current'
 const mockSearchTypesenseCollection = jest.fn()
 const mockMultiSearchTypesense = jest.fn()
 
+// react-test-renderer has no DOM scroll node; keep the keyboard flow real.
+jest.mock('../../UIControls/CustomScrollView', () => {
+    const React = require('react')
+    return {
+        __esModule: true,
+        default: React.forwardRef(({ children }, ref) => {
+            React.useImperativeHandle(ref, () => ({ scrollTo: () => {} }))
+            return React.createElement('div', null, children)
+        }),
+    }
+})
+
+jest.mock('../../UIComponents/Spinner', () => ({ __esModule: true, default: () => null }))
+
+// Keep editor creation and Quill's import graph outside this popup/search test.
+jest.mock('./textInputHelper', () => ({
+    MENTION_MODAL_TASKS_TAB: 0,
+    MENTION_MODAL_GOALS_TAB: 1,
+    MENTION_MODAL_NOTES_TAB: 2,
+    MENTION_MODAL_CONTACTS_TAB: 3,
+    MENTION_MODAL_TOPICS_TAB: 4,
+}))
+jest.mock('../../NewObjectsInMentions/NewObjectsInMentions', () => ({
+    __esModule: true,
+    default: () => null,
+}))
+
 jest.mock('../../../utils/typesenseSearch', () => ({
     searchTypesenseCollection: (...args) => mockSearchTypesenseCollection(...args),
     multiSearchTypesense: (...args) => mockMultiSearchTypesense(...args),
@@ -60,6 +87,7 @@ const mockStoreState = {
     },
     loggedUserProjects: [],
     projectUsers: {},
+    openModals: {},
     mentionModalStack: [],
     smallScreenNavigation: false,
 }
@@ -73,6 +101,11 @@ jest.mock('react-redux', () => ({
     ...jest.requireActual('react-redux'),
     useDispatch: () => () => {},
     useSelector: selector => selector(mockStoreState),
+}))
+
+jest.mock('../../TaskListView/Utils/TasksHelper', () => ({
+    __esModule: true,
+    default: { getPeopleById: () => ({ photoURL: '' }) },
 }))
 
 jest.mock('../../MyPlatform', () => ({ isMobile: false }))
@@ -109,20 +142,22 @@ const note = (id, title, projectId = CURRENT_PROJECT_ID) => ({
 const notesSearches = () => (mockMultiSearchTypesense.mock.calls[0] || [[]])[0]
 const notesSearchFor = predicate => notesSearches().find(predicate)
 
-const renderAndSearch = async (mentionText = '') => {
+const mountedTrees = []
+const renderAndSearch = async (mentionText = '', selectItemToMention = () => {}) => {
     let tree
     await act(async () => {
         tree = renderer.create(
             <MentionsModal
                 mentionText={mentionText}
                 projectId={CURRENT_PROJECT_ID}
-                selectItemToMention={() => {}}
+                selectItemToMention={selectItemToMention}
                 keepFocus={() => {}}
                 insertNormalMention={() => {}}
                 contentLocation={{ top: 0 }}
             />
         )
     })
+    mountedTrees.push(tree)
     // useTextChange debounces the search behind a 700ms interval.
     await act(async () => {
         jest.advanceTimersByTime(1000)
@@ -136,6 +171,7 @@ const callFor = indexPrefix => mockSearchTypesenseCollection.mock.calls.find(cal
 describe('MentionsModal suggests recent items before anything is typed (AT-2497)', () => {
     beforeEach(() => {
         jest.useFakeTimers()
+        mockStoreState.mentionModalStack = []
         mockRenderedItems.current = []
         mockSearchTypesenseCollection.mockReset()
         mockSearchTypesenseCollection.mockResolvedValue({ hits: [] })
@@ -144,7 +180,53 @@ describe('MentionsModal suggests recent items before anything is typed (AT-2497)
     })
 
     afterEach(() => {
+        act(() => mountedTrees.splice(0).forEach(tree => tree.unmount()))
+        jest.runOnlyPendingTimers()
         jest.useRealTimers()
+    })
+
+    it.each(['Tasks', 'Goals', 'Chats'])(
+        'labels the current project in the %s tab without changing its selectable rows (AT-2759)',
+        async tabName => {
+            const hit = {
+                id: 'match',
+                uid: 'match',
+                userId: 'me',
+                projectId: CURRENT_PROJECT_ID,
+                name: 'Matching result',
+                extendedName: 'Matching result',
+                assigneesIds: [],
+                progress: 50,
+            }
+            mockSearchTypesenseCollection.mockResolvedValue({ hits: [hit] })
+            const tree = await renderAndSearch('match')
+            await act(async () => tree.root.findByProps({ text: tabName }).props.onPress())
+
+            const MentionProjectHeader = require('./MentionsModal/MentionProjectHeader').default
+            const MentionsItems = require('./MentionsModal/MentionsItems').default
+            expect(tree.root.findByType(MentionProjectHeader).props).toMatchObject({
+                project: mockStoreState.loggedUserProjectsMap[CURRENT_PROJECT_ID],
+                amount: 1,
+            })
+            expect(tree.root.findByType(MentionsItems).props.items).toEqual([hit])
+            expect(tree.root.findByType(MentionsItems).props.projectId).toBe(CURRENT_PROJECT_ID)
+            act(() => tree.unmount())
+        }
+    )
+
+    it('keeps ArrowDown and Enter on result rows after adding the project header', async () => {
+        mockStoreState.mentionModalStack = ['mention-modal-id', 'nested-popup']
+        const hit = { id: 'chat', name: 'Matching chat', projectId: CURRENT_PROJECT_ID }
+        mockSearchTypesenseCollection.mockImplementation(async collection => ({
+            hits: collection === CHATS_INDEX_NAME_PREFIX ? [hit] : [],
+        }))
+        const select = jest.fn()
+        const tree = await renderAndSearch('match', select)
+        await act(async () => tree.root.findByProps({ text: 'Chats' }).props.onPress())
+        act(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' })))
+        act(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })))
+        const { MENTION_MODAL_TOPICS_TAB } = require('./textInputHelper')
+        expect(select).toHaveBeenCalledWith(hit, MENTION_MODAL_TOPICS_TAB, CURRENT_PROJECT_ID)
     })
 
     it('asks the notes tab to match all when the mention text is still empty', async () => {

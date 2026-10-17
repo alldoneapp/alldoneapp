@@ -35,6 +35,7 @@ import MentionsContactsGrouped from './MentionsModal/MentionsContactsGrouped'
 import { buildMentionProjectsScope, MENTION_CONTACTS_QUERY_BY, mergeMentionPages } from './MentionsModal/mentionSearch'
 import MentionsItemsGrouped from './MentionsModal/MentionsItemsGrouped'
 import MentionsItems from './MentionsModal/MentionsItems'
+import MentionProjectHeader from './MentionsModal/MentionProjectHeader'
 import Header from './MentionsModal/Header'
 import EmptyMatch from './MentionsModal/EmptyMatch'
 import useWindowSize from '../../../utils/useWindowSize'
@@ -124,6 +125,7 @@ export default function MentionsModal({
         : getSafeAreaModalMaxHeightBelow(height, contentLocation?.top || 0)
     const maxHeight = tmpHeight < 548 ? tmpHeight : 548
     const loggedUser = useSelector(state => state.loggedUser)
+    const currentProject = useSelector(state => state.loggedUserProjectsMap?.[projectId])
 
     const onKeyDown = event => {
         const { key } = event
@@ -593,15 +595,23 @@ export default function MentionsModal({
                                 activeTab={activeTab}
                             />
                         ) : (
-                            <MentionsItems
-                                key={activeTab}
-                                selectItemToMention={selectItemToMention}
-                                items={itemsByTab[activeTab]}
-                                activeItemIndex={activeItemIndex}
-                                itemsComponentsRefs={itemsComponentsRefs}
-                                projectId={projectId}
-                                activeTab={activeTab}
-                            />
+                            <View>
+                                {currentProject && (
+                                    <MentionProjectHeader
+                                        project={currentProject}
+                                        amount={itemsByTab[activeTab].length}
+                                    />
+                                )}
+                                <MentionsItems
+                                    key={activeTab}
+                                    selectItemToMention={selectItemToMention}
+                                    items={itemsByTab[activeTab]}
+                                    activeItemIndex={activeItemIndex}
+                                    itemsComponentsRefs={itemsComponentsRefs}
+                                    projectId={projectId}
+                                    activeTab={activeTab}
+                                />
+                            </View>
                         )}
                     </View>
                 ) : (

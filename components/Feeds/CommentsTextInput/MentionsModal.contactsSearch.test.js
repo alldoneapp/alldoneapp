@@ -19,6 +19,21 @@ const OTHER_PROJECT_ID = 'project-other'
 const mockSearchTypesenseCollection = jest.fn()
 const mockMultiSearchTypesense = jest.fn()
 
+jest.mock('../../UIComponents/Spinner', () => ({ __esModule: true, default: () => null }))
+
+// Keep editor creation and Quill's import graph outside this popup/search test.
+jest.mock('./textInputHelper', () => ({
+    MENTION_MODAL_TASKS_TAB: 0,
+    MENTION_MODAL_GOALS_TAB: 1,
+    MENTION_MODAL_NOTES_TAB: 2,
+    MENTION_MODAL_CONTACTS_TAB: 3,
+    MENTION_MODAL_TOPICS_TAB: 4,
+}))
+jest.mock('../../NewObjectsInMentions/NewObjectsInMentions', () => ({
+    __esModule: true,
+    default: () => null,
+}))
+
 jest.mock('../../../utils/typesenseSearch', () => ({
     searchTypesenseCollection: (...args) => mockSearchTypesenseCollection(...args),
     multiSearchTypesense: (...args) => mockMultiSearchTypesense(...args),
