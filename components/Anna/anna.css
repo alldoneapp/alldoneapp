@@ -120,7 +120,7 @@
 }
 .anna-header-assistant {
     display: flex;
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     gap: 8px;
     align-items: center;
@@ -1190,9 +1190,6 @@
 .anna-pane-toggle:hover {
     background: var(--anna-tint);
     color: var(--anna-accent);
-}
-.anna-pane-toggle-right > div {
-    transform: scaleX(-1);
 }
 .anna-header-picker {
     position: relative;

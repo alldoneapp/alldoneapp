@@ -580,6 +580,18 @@ export default function AnnaShell({ children, routeId }) {
                     </span>
                     <strong className="anna-brand">{defaultAssistantName}</strong>
                 </button>
+                {!mobile && (
+                    <button
+                        type="button"
+                        className="anna-pane-toggle anna-header-expand"
+                        aria-label={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
+                        title={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
+                        aria-expanded={!visibleWorkspace}
+                        onClick={toggleWorkspace}
+                    >
+                        <Icon name={chatOnly ? 'minimize-2' : 'maximize-2'} size={18} color="currentColor" />
+                    </button>
+                )}
             </div>
             {(mobile || chatOnly) && (
                 <button
@@ -630,18 +642,15 @@ export default function AnnaShell({ children, routeId }) {
                         <Icon name="chevron-down" size={14} color="currentColor" />
                     </span>
                 </label>
-                {!mobile && (
-                    <button
-                        type="button"
-                        className="anna-pane-toggle anna-pane-toggle-right"
-                        aria-label={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
-                        title={translate(chatOnly ? 'Show workspace' : 'Hide workspace — chat only')}
-                        aria-expanded={visibleWorkspace}
-                        onClick={toggleWorkspace}
-                    >
-                        <Icon name="sidebar" size={18} color="currentColor" />
-                    </button>
-                )}
+                <button
+                    type="button"
+                    className="anna-pane-toggle anna-header-close"
+                    aria-label={translate('Close assistant chat')}
+                    title={translate('Close assistant chat')}
+                    onClick={closeChat}
+                >
+                    <Icon name="x" size={20} color="currentColor" />
+                </button>
             </div>
         </header>
     )
