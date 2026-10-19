@@ -4,8 +4,7 @@ import { describeBackgroundCallSupport, BACKGROUND_SUPPORT_FOREGROUND_ONLY } fro
 import useModalSizing from '../../hooks/useModalSizing'
 import { translate } from '../../i18n/TranslationService'
 import Button from '../UIControls/Button'
-import Icon from '../Icon'
-import Spinner from './Spinner'
+import VoiceCallConnecting from './VoiceCallConnecting'
 import VoiceMicrophoneStatus from './VoiceMicrophoneStatus'
 import styles, { colors } from '../styles/global'
 
@@ -45,11 +44,15 @@ export default function FloatingCallControls({ call }) {
                     </>
                 ) : (
                     <>
-                        <View style={localStyles.details}>
-                            {!!call.callName && (
-                                <Text style={localStyles.name} numberOfLines={1}>
-                                    {call.callName}
-                                </Text>
+                        <View style={[localStyles.details, connecting && localStyles.connectingDetails]}>
+                            {connecting ? (
+                                <VoiceCallConnecting assistantName={call.callName} />
+                            ) : (
+                                !!call.callName && (
+                                    <Text style={localStyles.name} numberOfLines={1}>
+                                        {call.callName}
+                                    </Text>
+                                )
                             )}
                             <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} />
                         </View>
@@ -78,17 +81,8 @@ export default function FloatingCallControls({ call }) {
                         )}
                         <Button
                             type="danger"
-                            icon={
-                                connecting ? (
-                                    <View style={localStyles.connecting}>
-                                        <Spinner containerSize={24} spinnerSize={24} containerColor="transparent" />
-                                        <Icon name="x" size={12} color={colors.Text03} style={localStyles.cancelIcon} />
-                                    </View>
-                                ) : (
-                                    'phone-call'
-                                )
-                            }
-                            title={connecting ? translate('Calling') : duration}
+                            icon={connecting ? 'x' : 'phone-call'}
+                            title={connecting ? translate('Cancel call') : duration}
                             onPress={call.endCall}
                             disabled={call.status === 'ending'}
                             buttonStyle={localStyles.button}
@@ -125,8 +119,7 @@ const localStyles = StyleSheet.create({
     button: { height: 48, minHeight: 48, borderRadius: 24 },
     muteButton: { width: 48, height: 48, minHeight: 48, borderRadius: 24, marginRight: 8 },
     details: { width: 180, minWidth: 0, flexShrink: 1, marginHorizontal: 8 },
+    connectingDetails: { width: 260 },
     name: { ...styles.body2, color: colors.Text02 },
     error: { ...styles.caption1, color: colors.UtilityRed200, maxWidth: 220, flexShrink: 1 },
-    connecting: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-    cancelIcon: { position: 'absolute' },
 })

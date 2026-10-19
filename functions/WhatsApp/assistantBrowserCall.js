@@ -10,9 +10,13 @@ const { getCallEligibilityReason } = require('./whatsAppCallTwilioWebhook')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
 const { getRunCallQueueResource, getRunCallTaskId } = require('./whatsAppCallOpenAIWebhook')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
-const { getLiveConfigurationError, getLiveSessionDefaults } = require('./assistantLiveConfig')
 const { buildLiveSession } = require('./assistantLiveProtocol')
-const { LIVE_GOLD_PER_MINUTE, LIVE_INITIALIZATION_SECONDS, calculateLiveVoiceGold } = require('./assistantLivePricing')
+const {
+    LIVE_MODEL,
+    LIVE_GOLD_PER_MINUTE,
+    LIVE_INITIALIZATION_SECONDS,
+    calculateLiveVoiceGold,
+} = require('./assistantLivePricing')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { createDirectCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
 
@@ -157,12 +161,7 @@ async function startAssistantBrowserCall(data, auth) {
         user,
     })
     if (eligibilityReason) throw getHttpsErrorForEligibility(eligibilityReason)
-    const configurationError = getLiveConfigurationError(config)
-    if (configurationError)
-        throw new HttpsError(
-            'unavailable',
-            `${configurationError} Ask Alldone support to enable GPT-Live access for the configured key.`
-        )
+    if (!config.openAiApiKey) throw getHttpsErrorForEligibility('configuration')
     if (Number(user.gold) <= calculateLiveVoiceGold(LIVE_INITIALIZATION_SECONDS))
         throw getHttpsErrorForEligibility('gold_required')
 
@@ -179,6 +178,7 @@ async function startAssistantBrowserCall(data, auth) {
         chatId,
         language: user.language,
         channel: 'browser_call',
+        realtimeModel: '',
     })
     if (!leaseResult.success) throw getHttpsErrorForEligibility(leaseResult.reason || 'active_call')
 
@@ -187,7 +187,15 @@ async function startAssistantBrowserCall(data, auth) {
         await updateCallSession(sessionId, {
             pageContext: sanitizeCallPageContext(data.pageContext),
             pageContextSequence: 0,
-            ...getLiveSessionDefaults(),
+            voiceProvider: 'gpt-live',
+            voiceModel: LIVE_MODEL,
+            voiceGoldPerMinute: LIVE_GOLD_PER_MINUTE,
+            voiceSeconds: 0,
+            voiceBilledGold: 0,
+            backendBilledGold: 0,
+            backendTokens: 0,
+            voiceUsageFinal: false,
+            controllerConnected: false,
         })
         const assistant = await getAssistantForChat(projectId, assistantId, userId)
         const result = await createOpenAIWebRTCSession({
@@ -234,11 +242,6 @@ async function startAssistantBrowserCall(data, auth) {
         })
         await finalizeCallSession(sessionId, 'browser_start_failed', 'failed').catch(() => {})
         if (error instanceof HttpsError) throw error
-        if ([401, 403, 404].includes(error.status))
-            throw new HttpsError(
-                'unavailable',
-                'GPT-Live is unavailable. Ask Alldone support to verify the configured OpenAI key and gpt-live-1 access.'
-            )
         throw new HttpsError('internal', 'The browser assistant call could not be started.')
     }
 }
