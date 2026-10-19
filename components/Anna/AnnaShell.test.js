@@ -265,7 +265,7 @@ it.each(['browser', 'vm:vm1'])('returns to the same Alldone page when closing ch
     render(content(1))
     const workspace = screen.getByLabelText('Real workspace editor')
     chooseSurface(surface)
-    fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+    fireEvent.click(document.querySelector('.anna-header-tasks'))
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
     expect(document.querySelector('.anna-workspace').getAttribute('aria-hidden')).toBe('false')
     act(() => setAnnaMode(true))
@@ -835,7 +835,7 @@ it('preserves both editors when zooming out and back without remounting the work
     const chat = screen.getByLabelText('Persistent conversation')
     workspace.value = 'Work in progress'
     chat.value = 'Unsent message'
-    fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+    fireEvent.click(document.querySelector('.anna-header-tasks'))
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
     act(() => setAnnaMode(true))
     expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
@@ -871,7 +871,7 @@ it('holds assistant navigation during browser control until Open is clicked', as
 
 it.each([false, true])('keeps the logo navigation separate from the chat toggle when chat is %s', active => {
     render(content(1, true))
-    if (!active) fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+    if (!active) fireEvent.click(document.querySelector('.anna-header-tasks'))
     const logo = screen.getByLabelText('Alldone.app')
     const toggle = assistantToggle()
     expect(logo.parentElement).toBe(toggle.parentElement)
@@ -919,7 +919,7 @@ it.each([
         render(content(1, true))
         const chat = screen.getByLabelText('Persistent conversation')
         chat.value = 'Keep my chat draft'
-        if (start === 'alldone') fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+        if (start === 'alldone') fireEvent.click(document.querySelector('.anna-header-tasks'))
         else if (start === 'workspace') showAlldoneWorkspace()
         else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
         else if (start === 'browser' || start.startsWith('vm:')) chooseSurface(start)
@@ -932,16 +932,10 @@ it.each([
             )
             expect(assistantToggle().querySelector('path').getAttribute('d')).toBe(opens ? 'm8 8 4 4-4 4' : 'M9 3v18')
             if (opens) {
-                const collapseButton = screen.getByLabelText('Close chat — Alldone only')
-                const collapseIcon = collapseButton.querySelector('svg')
-                expect(collapseIcon.querySelector('path').getAttribute('d')).toBe(
-                    assistantToggle().querySelector('path').getAttribute('d')
+                expect(document.querySelector('[aria-label="Close chat — Alldone only"]')).toBeNull()
+                expect(document.querySelector('.anna-header-left').firstElementChild).toBe(
+                    screen.getByLabelText('Anna Alldone – Latest messages')
                 )
-                expect(collapseIcon.getAttribute('width')).toBe('18')
-                expect(collapseIcon.getAttribute('height')).toBe('18')
-                expect(collapseIcon.parentElement.getAttribute('aria-hidden')).toBe('true')
-                expect(collapseButton.title).toBe('Close chat — Alldone only')
-                expect(collapseButton.parentElement.firstElementChild).toBe(collapseButton)
             }
             expect(screen.getByLabelText('Conversation with Carl Code Mentor').getAttribute('aria-hidden')).toBe(
                 String(!opens)
@@ -1003,7 +997,7 @@ it.each([
         )
         const chat = screen.getByLabelText('Persistent conversation')
         chat.value = 'Keep my chat draft'
-        if (start === 'fullscreen') fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+        if (start === 'fullscreen') fireEvent.click(document.querySelector('.anna-header-tasks'))
         else if (start === 'workspace') showAlldoneWorkspace()
         else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
 
@@ -1225,7 +1219,7 @@ it.each([
             // Chat-only links can also be opened on mobile, which shows one pane at a time.
             else act(() => setAnnaLayout('chat'))
         }
-        if (layout === 'alldone') fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+        if (layout === 'alldone') fireEvent.click(document.querySelector('.anna-header-tasks'))
         expect(window.localStorage.getItem('anna-mobile-layout:v1')).toBe(layout)
 
         act(() => testRoot.unmount())
@@ -1292,7 +1286,7 @@ it('opens assistant mode from the app header avatar and keeps the workspace edit
             </AnnaShell>
         )
         const draft = screen.getByLabelText('Workspace draft')
-        fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+        fireEvent.click(document.querySelector('.anna-header-tasks'))
         expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
         fireEvent.click(screen.getByLabelText('Anna Alldone: Open assistant chat'))
         expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
@@ -1320,11 +1314,14 @@ it('shows the live task total on the separate task button, including zero', () =
 it.each([
     ['desktop', 'alldone'],
     ['desktop', 'browser'],
+    ['desktop', 'vms'],
     ['desktop', 'chat-only'],
     ['mobile', 'chat'],
+    ['mobile', 'workspace'],
     ['mobile', 'browser'],
+    ['mobile', 'vms'],
     ['mobile', 'chat-only'],
-])('scrolls the conversation without changing the current view on %s from %s', (device, start) => {
+])('returns to the chat and its latest message on %s from %s', (device, start) => {
     const originalMatchMedia = window.matchMedia
     window.matchMedia = () => ({
         matches: device === 'mobile',
@@ -1333,30 +1330,38 @@ it.each([
     })
     try {
         render(content(1))
-        if (start === 'browser') chooseSurface('browser')
+        if (start === 'browser' || start === 'vms') chooseSurface(start)
+        else if (start === 'workspace') showAlldoneWorkspace()
         else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
         const shell = document.querySelector('.anna-shell')
-        const classes = shell.className
         const surface = selectedSurface()
+        const picker = document.querySelector('.anna-header-picker select')
+        const surfaceLabel = picker.selectedOptions[0].textContent
         const path = window.location.href
         const chat = screen.getByLabelText('Persistent conversation')
         chat.value = 'Keep my draft'
         fireEvent.click(screen.getByLabelText('Anna Alldone – Latest messages'))
         expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
-        expect(shell.className).toBe(classes)
-        expect(selectedSurface()).toBe(surface)
+        expect(shell.classList.contains('anna-mobile-chat')).toBe(true)
+        expect(mockConversationProps.visible).toBe(true)
+        expect(document.activeElement).toBe(screen.getByLabelText('Conversation with Carl Code Mentor'))
+        expect(shell.classList.contains('anna-chat-only')).toBe(start === 'chat-only')
+        expect(selectedSurface()).toBe(device === 'mobile' ? '' : surface)
+        expect(picker.selectedOptions[0].textContent).toBe(surfaceLabel)
         expect(window.location.href).toBe(path)
         expect(URLTrigger.processUrl).not.toHaveBeenCalled()
         expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
         expect(chat.value).toBe('Keep my draft')
         expect(mockUnmounts).toBe(0)
+        fireEvent.click(screen.getByLabelText('Anna Alldone – Latest messages'))
+        expect(mockScrollToLatest).toHaveBeenCalledTimes(2)
     } finally {
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
 })
 
-it.each(['desktop', 'mobile'])('uses the top-left app-view action for the task button on %s', device => {
+it.each(['desktop', 'mobile'])('opens the app view from the task button on %s', device => {
     const originalMatchMedia = window.matchMedia
     window.matchMedia = () => ({
         matches: device === 'mobile',

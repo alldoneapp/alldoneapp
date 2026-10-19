@@ -8,6 +8,7 @@ import PremiumBar from './PremiumBar/PremiumBar'
 import GoldArea from './GoldArea'
 import TasksStatisticsArea from './TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../Premium/PremiumHelper'
+import AssistantModeButton from './AssistantModeButton'
 
 export default function TopBarStatisticArea() {
     const smallScreen = useSelector(state => state.smallScreen)
@@ -23,6 +24,7 @@ export default function TopBarStatisticArea() {
             <GoldArea />
             <TasksStatisticsArea />
             {premiumStatus === PLAN_STATUS_PREMIUM ? <PremiumBar /> : <QuotaBar />}
+            <AssistantModeButton inline />
         </View>
     )
 }
@@ -30,5 +32,6 @@ export default function TopBarStatisticArea() {
 const localStyles = StyleSheet.create({
     statisticArea: {
         flexDirection: 'row',
+        alignItems: 'center',
     },
 })
