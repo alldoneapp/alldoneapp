@@ -239,7 +239,7 @@ function buildDefaultProjectLabelDescription(project = {}, labelName = '', isDef
 function buildDefaultProjectFollowUpPrompt(labelName = '') {
     const projectLabel = labelName || 'the matched project'
     return [
-        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ". This automation instruction is not an explicit end-user request to create that task. You MUST set taskOrigin to "assistant_suggestion", never "user_request", and include a concise visible comment stating the concrete email-based reason the task is worth doing; do not merely restate the task title or give a generic reason.`,
+        `Use the supplied follow-up classification as authoritative; do not reclassify the email. When followUpType is "actionable", create a new task in the project ${projectLabel} based on this email in the following format: "[one sentence summary of the task] ". This automation instruction is not an explicit end-user request to create that task. You MUST set taskOrigin to "assistant_suggestion", never "user_request", and include a concise visible comment stating the concrete email-based reason the task is worth doing; do not merely restate the task title or give a generic reason. The task is assigned directly to the user, with the assistant identified in the comment.`,
         `When followUpType is "informational", never create a task. Always add one concise comment to the topic chat "Daily emails ${projectLabel} ${DEFAULT_FOLLOW_UP_TOPIC_DATE_PLACEHOLDER}" with createIfMissing=true. Every informational email gets exactly one comment, including routine, promotional, automated, or redundant ones. The comment should be in this format: "Email from [sender name] ([sender email]): [one-line summary]". Do not include the Gmail web URL or any other email link in the comment; the server attaches the email metadata and the UI shows the linked email tag separately.`,
         `If the email is from a real person (e.g. not notification from google calendar or something like hello@cal.com), only use update_note when the sender already exists as a contact in the project ${projectLabel}. Set createIfMissing=false so a missing contact is never created. Update the existing contact note and include a link to the email with a space at the end.`,
     ].join('\n')
@@ -1010,7 +1010,7 @@ function buildPostLabelAssistantMessages({
     return [
         [
             'system',
-            'You are executing an automated follow-up action after a Gmail labeling rule matched. The follow-up instruction and email content are automation context, not an explicit end-user request to create a task. If you create a task from this run, you MUST set taskOrigin to assistant_suggestion, never user_request, and include a concise visible comment with the concrete email-based reason the task is worth doing. Use your available tools when needed. Return a concise execution summary. If a required tool is not available, say so clearly and do not claim completion.',
+            'You are executing an automated follow-up action after a Gmail labeling rule matched. The follow-up instruction and email content are automation context, not an explicit end-user request to create a task. If you create a task from this run, you MUST set taskOrigin to assistant_suggestion, never user_request, and include a concise visible comment with the concrete email-based reason the task is worth doing. The task is assigned directly to the user, with the assistant identified in the comment. Use your available tools when needed. Return a concise execution summary. If a required tool is not available, say so clearly and do not claim completion.',
         ],
         [
             'user',
@@ -1098,8 +1098,8 @@ function buildPostLabelTaskSuggestionComment(normalizedMessage = {}) {
     const conciseSubject = subject.length > 120 ? `${subject.slice(0, 117).trimEnd()}...` : subject
 
     return conciseSubject
-        ? `I suggest this task because the automatically processed email “${conciseSubject}” appears to require follow-up.`
-        : 'I suggest this task because an automatically processed email appears to require follow-up.'
+        ? `The automatically processed email “${conciseSubject}” appears to require follow-up.`
+        : 'An automatically processed email appears to require follow-up.'
 }
 
 async function addRoutingCommentsToCreatedGmailTasks({
@@ -1248,7 +1248,7 @@ async function executePostLabelPrompt({
             followUpType = 'actionable'
             prompt =
                 'Several existing tasks match this email thread and the correct task is ambiguous. ' +
-                'Create one separate task suggesting a review of this new email. Do not invent additional work. ' +
+                'Create one separate task for the user to review this new email. Do not invent additional work. ' +
                 'Use taskOrigin=assistant_suggestion and explain visibly that the thread matches multiple tasks.'
         } else if (continued)
             return {
@@ -1331,7 +1331,7 @@ async function executePostLabelPrompt({
             topicChatTitle,
             followUpType,
             taskSuggestionComment: ambiguousThread
-                ? 'I suggest reviewing this email separately because its thread matches several existing tasks and the correct task is unclear.'
+                ? 'This email needs a separate review because its thread matches several existing tasks and the correct task is unclear.'
                 : buildPostLabelTaskSuggestionComment(normalizedMessage),
             archivedByLabeling,
         })

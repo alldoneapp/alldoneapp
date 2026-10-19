@@ -450,6 +450,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
             'MUST set taskOrigin to "assistant_suggestion", never "user_request"'
         )
         expect(labels[0].postLabelPrompt).toContain('concrete email-based reason')
+        expect(labels[0].postLabelPrompt).toContain('assigned directly to the user')
         expect(labels[0].postLabelPrompt).toContain('update_note')
         expect(labels[0].postLabelPromptDirectionScope).toBe('incoming')
         expect(labels[2]).toEqual(
@@ -781,7 +782,7 @@ describe('serverSideGmailLabelingSync helpers', () => {
                         direction: 'incoming',
                         followUpType: 'informational',
                         taskSuggestionComment:
-                            'I suggest this task because the automatically processed email “Urgent request” appears to require follow-up.',
+                            'The automatically processed email “Urgent request” appears to require follow-up.',
                         targetContactEmail: 'sender@example.com',
                         targetContactName: 'Eva-Maria Würz',
                         topicChatTitle: '',

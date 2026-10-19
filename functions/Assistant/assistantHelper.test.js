@@ -2318,7 +2318,7 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('Never claim that an integration must be connected separately')
     })
 
-    test('requires proactive task creation to use the suggestion flow with a concrete visible reason', async () => {
+    test('instructs assistants to assign tasks directly with a concrete visible reason', async () => {
         const messages = []
 
         await addBaseInstructions(messages, 'Project Bot', 'en', 'Be helpful.', ['create_task'])
@@ -2333,6 +2333,8 @@ describe('assistant attachment handoff helpers', () => {
         expect(systemMessages).toContain('must set taskOrigin to assistant_suggestion')
         expect(systemMessages).toContain('concrete context-specific reason')
         expect(systemMessages).toContain('do not merely restate the title or give a generic reason')
+        expect(systemMessages).toContain('assigned directly to the user')
+        expect(systemMessages).toContain('does not require the user to accept or reject')
     })
 
     test('uses a conversational style with natural humor across assistant channels', async () => {
@@ -4137,11 +4139,16 @@ describe('assistant create_task project routing comments', () => {
             confidence: 0.84,
             commentId: 'routing-comment-1',
         })
-        expect(result).toMatchObject({ taskOrigin: 'user_request', suggested: false, commentId: null })
-        expect(addAssistantTaskComment).not.toHaveBeenCalled()
+        expect(result).toMatchObject({ taskOrigin: 'user_request', suggested: false, commentId: 'task-comment-1' })
+        expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            projectId: 'project-client',
+            taskId: 'task-1',
+            assistantId: 'assistant-1',
+            comment: 'Assistant added this task for you. You asked me to create this task.',
+        })
     })
 
-    test('creates proactive assistant tasks as suggestions with a visible explanatory comment', async () => {
+    test('assigns proactive assistant tasks directly to the user with a visible explanatory comment', async () => {
         const getUserProjects = jest.fn().mockResolvedValue([{ id: 'project-client', name: 'Client Work' }])
         ProjectService.mockImplementation(() => ({
             initialize: jest.fn().mockResolvedValue(undefined),
@@ -4196,9 +4203,10 @@ describe('assistant create_task project routing comments', () => {
             expect.objectContaining({
                 userId: 'user-1',
                 creatorId: 'assistant-1',
-                suggestedBy: 'assistant-1',
+                suggestedBy: null,
+                assigneeType: 'USER',
                 assistantId: '',
-                taskMetadata: { assistantSuggestion: { assistantId: 'assistant-1' } },
+                taskMetadata: null,
             }),
             expect.objectContaining({ userId: 'user-1', projectId: 'project-client' })
         )
@@ -4206,12 +4214,12 @@ describe('assistant create_task project routing comments', () => {
             projectId: 'project-client',
             taskId: 'task-suggested',
             assistantId: 'assistant-1',
-            comment: 'This client email asks for a decision before tomorrow.',
+            comment: 'Assistant added this task for you. This client email asks for a decision before tomorrow.',
         })
         expect(updateUserMemory).not.toHaveBeenCalled()
         expect(result).toMatchObject({
             taskOrigin: 'assistant_suggestion',
-            suggested: true,
+            suggested: false,
             commentId: 'task-comment-1',
         })
     })
@@ -4378,8 +4386,7 @@ describe('assistant create_task project routing comments', () => {
                     threadId: 'thread-1',
                     webUrl: 'https://mail.google.com/mail/u/0/#all/message-1',
                     archiveOnComplete: true,
-                    taskSuggestionComment:
-                        'I suggest this task because the invoice email appears to require follow-up.',
+                    taskSuggestionComment: 'The invoice email appears to require follow-up.',
                 },
             }
         )
@@ -4389,8 +4396,10 @@ describe('assistant create_task project routing comments', () => {
                 name: 'Bereitstellung der Rechnung 004 fuer JTL',
                 projectId: 'project-jtl',
                 creatorId: 'assistant-1',
-                suggestedBy: 'assistant-1',
-                taskMetadata: { assistantSuggestion: { assistantId: 'assistant-1' } },
+                userId: 'user-1',
+                assigneeType: 'USER',
+                suggestedBy: null,
+                taskMetadata: null,
                 gmailData: expect.objectContaining({
                     origin: 'gmail_label_follow_up',
                     projectId: 'gmail-connection-project',
@@ -4409,14 +4418,14 @@ describe('assistant create_task project routing comments', () => {
         expect(result.projectName).toBe('JTL Software - Project Juno')
         expect(result).toMatchObject({
             taskOrigin: 'assistant_suggestion',
-            suggested: true,
+            suggested: false,
             commentId: 'task-comment-1',
         })
         expect(addAssistantTaskComment).toHaveBeenCalledWith({
             projectId: 'project-jtl',
             taskId: 'task-jtl',
             assistantId: 'assistant-1',
-            comment: 'I suggest this task because the invoice email appears to require follow-up.',
+            comment: 'Assistant added this task for you. The invoice email appears to require follow-up.',
         })
         expect(result.projectSelection).toMatchObject({
             source: 'gmailLabelMatchedProject',
@@ -4425,6 +4434,142 @@ describe('assistant create_task project routing comments', () => {
             assistantProvidedReasoning: false,
         })
         expect(addProjectRoutingReasonComment).not.toHaveBeenCalled()
+    })
+})
+
+describe('assistant task assignment and attribution', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockDocGet.mockReset()
+        mockFirestoreGetAll.mockReset()
+        mockCreateAndPersistTask.mockReset()
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Project One' }]),
+        }))
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({ defaultProjectId: 'project-1', projectIds: ['project-1'] }),
+        })
+        mockFirestoreGetAll.mockResolvedValue([
+            { exists: false },
+            { exists: true, id: 'assistant-1', data: () => ({ displayName: 'Anna' }) },
+        ])
+        mockCreateAndPersistTask.mockImplementation(async params => {
+            const task = require('../shared/TaskModelBuilder').createTaskObject({ ...params, taskId: 'task-new' })
+            return { success: true, taskId: task.id, task }
+        })
+    })
+
+    afterEach(() => mockFirestoreGetAll.mockReset())
+
+    test.each([
+        ['Anna', 'user_request'],
+        ['Anna', 'assistant_suggestion'],
+        ['Mira', 'user_request'],
+        ['Mira', 'assistant_suggestion'],
+    ])('%s directly assigns a %s task and explains why in its own comment', async (displayName, taskOrigin) => {
+        mockFirestoreGetAll.mockResolvedValue([
+            { exists: false },
+            { exists: true, id: 'assistant-1', data: () => ({ displayName }) },
+        ])
+
+        const result = await executeToolNatively(
+            'create_task',
+            {
+                name: 'Reply to the client',
+                projectId: 'project-1',
+                taskOrigin,
+                comment: '  The client needs your decision by tomorrow.  ',
+                // Inferred tasks must remain user-owned even if the model requests tracking.
+                trackAssistantWork: taskOrigin === 'assistant_suggestion',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { annaConversation: true }
+        )
+
+        expect(result).toMatchObject({
+            suggested: false,
+            taskOrigin,
+            commentId: 'task-comment-1',
+            task: {
+                userId: 'user-1',
+                userIds: ['user-1'],
+                currentReviewerId: 'user-1',
+                assigneeType: 'USER',
+                suggestedBy: null,
+                taskMetadata: null,
+            },
+        })
+        expect(addAssistantTaskComment).toHaveBeenCalledTimes(1)
+        expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            projectId: 'project-1',
+            taskId: 'task-new',
+            assistantId: 'assistant-1',
+            comment: `${displayName} added this task for you. The client needs your decision by tomorrow.`,
+        })
+    })
+
+    test('keeps work explicitly delegated to Anna assigned to the assistant', async () => {
+        const result = await executeToolNatively(
+            'create_task',
+            {
+                name: 'Research the client',
+                projectId: 'project-1',
+                taskOrigin: 'user_request',
+                trackAssistantWork: true,
+                comment: 'You asked me to research the client before your meeting.',
+            },
+            'project-1',
+            'assistant-1',
+            'user-1',
+            null,
+            { annaConversation: true }
+        )
+
+        expect(result.task).toMatchObject({
+            userId: 'assistant-1',
+            currentReviewerId: 'assistant-1',
+            assigneeType: 'assistant',
+            executionMode: 'direct',
+            suggestedBy: null,
+            taskMetadata: { annaWorkspace: { ownerId: 'user-1', assistantId: 'assistant-1' } },
+        })
+        expect(addAssistantTaskComment).toHaveBeenCalledWith(
+            expect.objectContaining({ comment: 'You asked me to research the client before your meeting.' })
+        )
+    })
+
+    test('preserves user-authored MCP task creation without an assistant identity', async () => {
+        const result = await executeToolNatively(
+            'create_task',
+            { name: 'Reply to the client', projectId: 'project-1', taskOrigin: 'user_request' },
+            'project-1',
+            null,
+            'user-1',
+            null
+        )
+
+        expect(result.task).toMatchObject({ userId: 'user-1', creatorId: 'user-1', suggestedBy: null })
+        expect(addAssistantTaskComment).not.toHaveBeenCalled()
+    })
+
+    test('reports failure if the assistant attribution comment cannot be saved', async () => {
+        addAssistantTaskComment.mockResolvedValueOnce(null)
+
+        await expect(
+            executeToolNatively(
+                'create_task',
+                { name: 'Reply to the client', projectId: 'project-1', taskOrigin: 'user_request' },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null
+            )
+        ).rejects.toThrow('Task was created, but its assistant comment could not be added')
     })
 })
 

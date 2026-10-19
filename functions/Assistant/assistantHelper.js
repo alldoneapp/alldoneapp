@@ -5503,8 +5503,7 @@ async function executeToolNativelyImpl(
             const taskComment =
                 providedTaskComment ||
                 (isGmailLabelFollowUp
-                    ? gmailSuggestionComment ||
-                      'I suggest this task because an automatically processed email appears to require follow-up.'
+                    ? gmailSuggestionComment || 'An automatically processed email appears to require follow-up.'
                     : '')
             const isAssistantSuggestion = taskOrigin === 'assistant_suggestion'
 
@@ -5512,7 +5511,7 @@ async function executeToolNativelyImpl(
                 throw new Error('Assistant task comments require an assistant identity')
             }
             if (isAssistantSuggestion && !taskComment) {
-                throw new Error('Assistant-suggested tasks require a comment explaining why they are suggested')
+                throw new Error('Assistant-inferred tasks require a comment explaining why they were added')
             }
 
             const createTaskProjectSelection = await resolveCreateTaskTargetProject(db, {
@@ -5646,6 +5645,12 @@ async function executeToolNativelyImpl(
                     toolRuntimeContext?.annaConversation === true &&
                     toolArgs.trackAssistantWork === true &&
                     !isAssistantSuggestion
+                const creationComment =
+                    assistantId && !trackAssistantWork
+                        ? `${feedUser.displayName || 'Assistant'} added this task for you. ${
+                              taskComment || 'You asked me to create this task.'
+                          }`
+                        : taskComment
                 // Create task using unified service
                 const result = await cachedTaskService.createAndPersistTask(
                     {
@@ -5662,13 +5667,11 @@ async function executeToolNativelyImpl(
                         feedUser,
                         gmailData: gmailTaskData,
                         creatorId: isAssistantSuggestion ? assistantId : creatorId,
-                        suggestedBy: isAssistantSuggestion ? assistantId : null,
+                        suggestedBy: null,
                         assistantId: trackAssistantWork ? assistantId : '',
-                        taskMetadata: isAssistantSuggestion
-                            ? { assistantSuggestion: { assistantId } }
-                            : trackAssistantWork
-                              ? { annaWorkspace: { ownerId: creatorId, assistantId } }
-                              : null,
+                        taskMetadata: trackAssistantWork
+                            ? { annaWorkspace: { ownerId: creatorId, assistantId } }
+                            : null,
                     },
                     {
                         userId: creatorId,
@@ -5830,12 +5833,12 @@ async function executeToolNativelyImpl(
                 }
 
                 let taskCommentResult = null
-                if (taskComment) {
+                if (creationComment) {
                     taskCommentResult = await addAssistantTaskComment({
                         projectId: resolvedProjectId,
                         taskId: resolvedTaskId,
                         assistantId,
-                        comment: taskComment,
+                        comment: creationComment,
                     })
                     if (!taskCommentResult) {
                         throw new Error('Task was created, but its assistant comment could not be added')
@@ -5850,7 +5853,7 @@ async function executeToolNativelyImpl(
                     message: result.message,
                     task: result.task,
                     taskOrigin,
-                    suggested: isAssistantSuggestion,
+                    suggested: false,
                     commentId: taskCommentResult?.commentId || null,
                     projectSelection: {
                         source: createTaskProjectSelection.source,
@@ -12623,7 +12626,7 @@ async function addBaseInstructions(
         ])
         messages.push([
             'system',
-            'For every create_task call, classify the origin of that specific task. Set taskOrigin to user_request only when the end user explicitly asked to create/add/remind them about that task. A system or automation instruction, scheduled run, email content, tool result, or your own inference does not by itself establish an explicit end-user task request; look for the request in the underlying end-user content. If you decide a task would be useful without that explicit request—for example, you infer a follow-up from an important email—you must set taskOrigin to assistant_suggestion. For assistant_suggestion, include a concise, non-empty, visible comment with the concrete context-specific reason the task is worth doing; do not merely restate the title or give a generic reason. The comment is shown in the task thread and the user must accept or reject the suggestion.',
+            'For every create_task call, classify the origin of that specific task. Set taskOrigin to user_request only when the end user explicitly asked to create/add/remind them about that task. A system or automation instruction, scheduled run, email content, tool result, or your own inference does not by itself establish an explicit end-user task request; look for the request in the underlying end-user content. If you decide a task would be useful without that explicit request—for example, you infer a follow-up from an important email—you must set taskOrigin to assistant_suggestion. Tasks created on behalf of the user are assigned directly to the user. Include a concise, non-empty, visible comment with the concrete context-specific reason the task is worth doing; do not merely restate the title or give a generic reason. The server identifies you as the assistant who added the task in that comment. taskOrigin records the source and does not require the user to accept or reject the task.',
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes('add_chat_comment')) {

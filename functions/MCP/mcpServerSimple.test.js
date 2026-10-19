@@ -221,11 +221,12 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         )
     })
 
-    test('exposes the assistant suggestion origin contract for create_task', async () => {
+    test('exposes the task origin and direct user assignment contract for create_task', async () => {
         const tool = (await listTools()).find(entry => entry.name === 'create_task')
 
         expect(tool.description).toContain('only when the end user explicitly asked')
         expect(tool.description).toContain('automation instruction')
+        expect(tool.description).toContain('assigned directly to the user')
         expect(tool.inputSchema.properties.taskOrigin.enum).toEqual(['user_request', 'assistant_suggestion'])
         expect(tool.inputSchema.properties.comment.description).toContain('context-specific reason')
     })
