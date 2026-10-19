@@ -10,8 +10,8 @@ import { translate } from '../../i18n/TranslationService'
 function AssistantModePanelIcon({ expanded, color }) {
     return (
         <Svg
-            width={18}
-            height={18}
+            width={24}
+            height={24}
             viewBox="0 0 24 24"
             fill="none"
             stroke={color}
@@ -46,7 +46,7 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
             aria-pressed={expanded}
             testID="top-bar-assistant-mode"
             style={[localStyles.button, hovered && localStyles.hovered, !inline && localStyles.centered]}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            hitSlop={{ top: 8, bottom: 8, left: 3, right: 3 }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             onPress={() => {
@@ -56,17 +56,23 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
             }}
         >
             <span style={localStyles.glyph} title={label} aria-hidden="true">
-                <View style={localStyles.panel}>
+                <View style={[localStyles.panel, expanded && localStyles.shiftedPanel]}>
                     <AssistantModePanelIcon
                         expanded={expanded}
                         color={highlighted ? colors.Primary100 : colors.Text03}
                     />
                 </View>
-                <View style={[localStyles.avatar, hovered && localStyles.hoveredAvatar]}>
+                <View
+                    style={[
+                        localStyles.avatar,
+                        expanded ? localStyles.avatarLeft : localStyles.avatarRight,
+                        hovered && localStyles.hoveredAvatar,
+                    ]}
+                >
                     <AssistantAvatar
                         photoURL={assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL}
                         assistantId={assistant.uid}
-                        size={12}
+                        size={14}
                     />
                 </View>
             </span>
@@ -76,8 +82,8 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
 
 const localStyles = StyleSheet.create({
     button: {
-        // Match Search's 28px control and 24px total icon footprint.
-        width: 28,
+        // Keep the panel at Search's 24px size, with room for the overlapping avatar.
+        width: 38,
         height: 28,
         alignItems: 'center',
         justifyContent: 'center',
@@ -89,25 +95,37 @@ const localStyles = StyleSheet.create({
     glyph: {
         display: 'flex',
         position: 'relative',
-        width: 24,
+        width: 34,
         height: 24,
         alignItems: 'center',
         justifyContent: 'center',
     },
     panel: {
-        transform: [{ translateX: -3 }, { translateY: 3 }],
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: 24,
+        height: 24,
+    },
+    shiftedPanel: {
+        left: 10,
     },
     avatar: {
         position: 'absolute',
-        top: 0,
-        right: 0,
-        width: 14,
-        height: 14,
+        top: 4,
+        width: 16,
+        height: 16,
         borderWidth: 1,
         borderColor: '#FFFFFF',
-        borderRadius: 7,
+        borderRadius: 8,
         overflow: 'hidden',
         backgroundColor: '#FFFFFF',
+    },
+    avatarLeft: {
+        left: 0,
+    },
+    avatarRight: {
+        right: 0,
     },
     hoveredAvatar: {
         borderColor: '#E2EFFF',
@@ -115,7 +133,7 @@ const localStyles = StyleSheet.create({
     centered: {
         position: 'absolute',
         left: '50%',
-        marginLeft: -14,
+        marginLeft: -19,
         top: 14,
     },
 })
