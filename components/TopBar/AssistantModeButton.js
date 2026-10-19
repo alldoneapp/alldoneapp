@@ -26,7 +26,7 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
             aria-pressed={expanded}
             testID="top-bar-assistant-mode"
             style={[localStyles.button, hovered && localStyles.hovered, !inline && localStyles.centered]}
-            hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             onPress={() => {
@@ -36,10 +36,8 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
             }}
         >
             <AssistantModeIcon
-                assistant={assistant}
                 expanded={expanded}
                 color={highlighted ? colors.Primary100 : colors.Text03}
-                hovered={hovered}
                 title={label}
             />
         </TouchableOpacity>
@@ -48,8 +46,8 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
 
 const localStyles = StyleSheet.create({
     button: {
-        // Keep the panel at Search's 24px size, with room for the overlapping avatar.
-        width: 46,
+        // Match Search's 28px control and 24px icon footprint.
+        width: 28,
         height: 28,
         alignItems: 'center',
         justifyContent: 'center',
@@ -61,7 +59,7 @@ const localStyles = StyleSheet.create({
     centered: {
         position: 'absolute',
         left: '50%',
-        marginLeft: -23,
+        marginLeft: -14,
         top: 14,
     },
 })

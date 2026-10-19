@@ -52,16 +52,14 @@ export default function DefaultAssistantButton() {
             accessibilityLabel={`${name}: ${status}`}
             aria-expanded={active}
             style={[localStyles.container, hovered && localStyles.hovered]}
-            hitSlop={{ top: 6, bottom: 6, left: 0, right: 0 }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             onPress={toggleChat}
         >
             <AssistantModeIcon
-                assistant={assistant}
                 expanded={active}
                 color={active || hovered ? colors.Primary100 : statusColor}
-                hovered={hovered}
                 title={`${name}: ${status}`}
             />
         </TouchableOpacity>
@@ -70,7 +68,7 @@ export default function DefaultAssistantButton() {
 
 const localStyles = StyleSheet.create({
     container: {
-        width: 46,
+        width: 32,
         height: 32,
         flexShrink: 0,
         alignItems: 'center',
