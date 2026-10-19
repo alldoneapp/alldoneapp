@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import Icon from '../Icon'
-import AssistantChatToggleIcon from '../UIComponents/AssistantChatToggleIcon'
 import { colors } from '../styles/global'
 import useAnnaConversation from './useAnnaConversation'
 import AnnaConversation from './AnnaConversation'
@@ -81,6 +80,7 @@ export default function AnnaShell({ children, routeId }) {
     const defaultAssistant = useSelector(state => state.defaultAssistant) || {}
     const defaultAssistantName = defaultAssistant.displayName?.trim() || translate('Assistant')
     const [mobilePane, setMobilePane] = useState('chat')
+    const [latestChatRequest, setLatestChatRequest] = useState(0)
     const [surface, setSurface] = useState('alldone')
     const surfaceRef = useRef(surface)
     surfaceRef.current = surface
@@ -163,6 +163,16 @@ export default function AnnaShell({ children, routeId }) {
         focusAfterSwitch.current = 'chat'
         setMobilePane('chat')
     }
+    const showLatestChat = () => {
+        backToChat()
+        setLatestChatRequest(request => request + 1)
+    }
+    useLayoutEffect(() => {
+        if (!latestChatRequest) return
+        // A hidden mobile pane has no scroll height. Reveal it before scrolling.
+        chatPane.current?.focus({ preventScroll: true })
+        chatConversation.current?.scrollToLatest()
+    }, [latestChatRequest])
     const openChat = useCallback(() => {
         requestGeneration.current++
         // Focus immediately if already visible; otherwise wait for the pane switch.
@@ -554,21 +564,10 @@ export default function AnnaShell({ children, routeId }) {
             <div className="anna-header-left">
                 <button
                     type="button"
-                    className="anna-pane-toggle"
-                    aria-label={translate('Close chat — Alldone only')}
-                    title={translate('Close chat — Alldone only')}
-                    onClick={closeChat}
-                >
-                    <span aria-hidden="true" style={{ display: 'flex' }}>
-                        <AssistantChatToggleIcon expanded color="currentColor" />
-                    </span>
-                </button>
-                <button
-                    type="button"
                     className="anna-header-assistant"
                     title={`${defaultAssistantName} – ${translate('Latest messages')}`}
                     aria-label={`${defaultAssistantName} – ${translate('Latest messages')}`}
-                    onClick={() => chatConversation.current?.scrollToLatest()}
+                    onClick={showLatestChat}
                 >
                     <span className="anna-small-avatar">
                         {photo ? <img src={photo} alt="" /> : defaultAssistantName.charAt(0)}

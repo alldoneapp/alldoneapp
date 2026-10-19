@@ -314,7 +314,7 @@ async function showChat(page) {
 }
 async function closeChat(page) {
     await showChat(page)
-    await page.getByRole('button', { name: 'Close chat — Alldone only', exact: true }).click()
+    await page.locator('.anna-header-tasks').click()
 }
 async function selectWorkspaceSurface(page, surface) {
     if (await page.locator('.anna-fullscreen').count()) await page.evaluate(() => window.zoomAnna(true))
@@ -1029,17 +1029,12 @@ async function main() {
             await page.screenshot({ path: path.join(BUILD, `chat-${width}.png`) })
             assert.equal(new URL(page.url()).searchParams.get('assistant'), '1')
             await page.reload()
-            await page
-                .getByRole('button', { name: 'Close chat — Alldone only', exact: true })
-                .waitFor({ state: 'visible' })
+            await page.locator('.anna-header-tasks').waitFor({ state: 'visible' })
             await closeChat(page)
             assert.equal(new URL(page.url()).searchParams.has('assistant'), false)
             await page.reload()
             await page.getByText('Zoom out to assistant', { exact: true }).waitFor({ state: 'visible' })
-            assert.equal(
-                await page.getByRole('button', { name: 'Close chat — Alldone only', exact: true }).isVisible(),
-                false
-            )
+            assert.equal(await page.locator('.anna-header-tasks').isVisible(), false)
             await checkImmediateSending(page, width)
             assert.deepEqual(errors, [])
             console.log(
