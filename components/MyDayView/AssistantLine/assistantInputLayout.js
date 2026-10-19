@@ -52,10 +52,11 @@ export const ASSISTANT_CONTROLS_STACKED_HEIGHT = ASSISTANT_CONTROL_BUTTON_SIZE *
 // down to one line keeps the taller composer until the last character is gone —
 // deliberate, and far less jarring than a flapping layout.
 export const getAssistantControlsStacked = ({ inputHeight, hasText, wasStacked = false }) => {
+    // A wrapped placeholder is still an empty field. Keep its natural height
+    // instead of reserving space for a stacked button column.
+    if (!hasText) return false
     // Grew past a single line: stack immediately so the buttons line up.
     if (Number.isFinite(inputHeight) && inputHeight > ASSISTANT_INPUT_MIN_HEIGHT) return true
-    // Nothing typed: always return to the compact single-row layout.
-    if (!hasText) return false
     // One line but text present: hold whatever we had, never flap.
     return wasStacked
 }

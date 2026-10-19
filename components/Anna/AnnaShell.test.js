@@ -1048,7 +1048,7 @@ it.each([
             )
             if (opens) {
                 expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
-                expect(document.activeElement).toBe(screen.getByLabelText('Conversation with Carl Code Mentor'))
+                expect(document.activeElement).toBe(chat)
                 if (device === 'desktop') expect(selectedSurface()).toBe('alldone')
             } else expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
             expect(mockDispatch).toHaveBeenLastCalledWith([
@@ -1203,7 +1203,7 @@ it('switches mobile browser, VM and chat through the top dropdown without losing
             )
         ).toBe(true)
         showChat()
-        expect(document.activeElement).toBe(screen.getByLabelText('Conversation with Carl Code Mentor'))
+        expect(document.activeElement).toBe(chat)
         expect(chat.closest('section').getAttribute('aria-hidden')).toBe('false')
         expect(screen.getByLabelText('Alldone workspace').hasAttribute('inert')).toBe(true)
         chooseSurface('vms')
@@ -1403,6 +1403,31 @@ it('opens assistant mode from the app header avatar and keeps the workspace edit
         else delete window.matchMedia
     }
 })
+
+it.each(['chat', 'workspace', 'closed'])(
+    'waits for the first conversation input without stealing focus from %s',
+    destination => {
+        setAnnaMode(false)
+        useAnnaConversation.mockReturnValue({ ...state, conversation: null, loading: true })
+        const view = render(content(1))
+        fireEvent.click(screen.getByLabelText('Anna Alldone: Open assistant chat'))
+        expect(document.activeElement).toBe(document.querySelector('.anna-conversation'))
+
+        if (destination === 'workspace') act(() => screen.getByLabelText('Real workspace editor').focus())
+        else if (destination === 'closed') closeAssistant()
+
+        useAnnaConversation.mockReturnValue(state)
+        view.rerender(content(1))
+
+        const target =
+            destination === 'chat'
+                ? 'Persistent conversation'
+                : destination === 'workspace'
+                  ? 'Real workspace editor'
+                  : 'Alldone workspace'
+        expect(document.activeElement).toBe(screen.getByLabelText(target))
+    }
+)
 
 it('shows the live task total on the separate task button, including zero', () => {
     mockSidebarNumbers = { p1: { u1: 20 }, p2: { u1: 7, someoneElse: 90 } }

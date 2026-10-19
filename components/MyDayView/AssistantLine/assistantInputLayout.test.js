@@ -88,6 +88,11 @@ describe('assistant controls stacking', () => {
         expect(getAssistantControlsStacked({ inputHeight: 40, hasText: false, wasStacked: true })).toBe(false)
     })
 
+    it('keeps a wrapped placeholder in the row layout without starting the expansion latch', () => {
+        expect(getAssistantControlsStacked({ inputHeight: 64, hasText: false, wasStacked: false })).toBe(false)
+        expect(getAssistantControlsStacked({ inputHeight: 88, hasText: false, wasStacked: true })).toBe(false)
+    })
+
     it('ignores invalid measurements without dropping the stack', () => {
         expect(getAssistantControlsStacked({ inputHeight: NaN, hasText: true, wasStacked: true })).toBe(true)
         expect(getAssistantControlsStacked({ inputHeight: NaN, hasText: false, wasStacked: true })).toBe(false)

@@ -5,12 +5,19 @@ import { useSelector } from 'react-redux'
 import MentionProjectHeader from './MentionProjectHeader'
 import MentionsContacts from './MentionsContacts'
 
-function ContactsByProject({ project, contacts, selectUserToMention, activeUserIndex, usersComponentsRefs }) {
+function ContactsByProject({
+    project,
+    contacts,
+    selectUserToMention,
+    activeUserIndex,
+    usersComponentsRefs,
+    showHeader,
+}) {
     if (contacts.length === 0) return null
 
     return (
         <View>
-            <MentionProjectHeader project={project} amount={contacts.length} />
+            {showHeader && <MentionProjectHeader project={project} amount={contacts.length} />}
             <MentionsContacts
                 projectId={project.id}
                 selectUserToMention={selectUserToMention}
@@ -28,6 +35,7 @@ export default function MentionsContactsGrouped({
     selectUserToMention,
     activeUserIndex,
     usersComponentsRefs,
+    showCurrentProjectHeader = true,
 }) {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
 
@@ -96,6 +104,7 @@ export default function MentionsContactsGrouped({
                         selectUserToMention={selectUserToMention}
                         activeUserIndex={activeIndexByProject[pId]}
                         usersComponentsRefs={usersComponentsRefs}
+                        showHeader={showCurrentProjectHeader || pId !== currentProjectId}
                     />
                 )
             })}

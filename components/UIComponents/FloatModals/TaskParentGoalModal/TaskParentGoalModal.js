@@ -10,6 +10,7 @@ import CustomScrollView from '../../../UIControls/CustomScrollView'
 import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import Backend from '../../../../utils/BackendBridge'
 import MentionsGoalsGrouped from './MentionsGoalsGrouped'
+import MentionProjectHeader from '../../../Feeds/CommentsTextInput/MentionsModal/MentionProjectHeader'
 import EmptyMatch from '../../../Feeds/CommentsTextInput/MentionsModal/EmptyMatch'
 import useWindowSize from '../../../../utils/useWindowSize'
 import NewObjectsInMentions from '../../../NewObjectsInMentions/NewObjectsInMentions'
@@ -85,6 +86,7 @@ export default function TaskParentGoalModal({
     }
 
     const items = activeTab === CURRENT_MILESTONE ? currentMilestoneGoals : allMilestonesGoals
+    const currentProject = projectsMap[projectId]
     const loadedActiveGoalAndMilestones = effectiveActiveGoal && activeMilestoneDate
     const isActiveGoalInCurrentMilestoneTab =
         loadedActiveGoalAndMilestones && getIfGoalsAreInCurrentMilestone(effectiveActiveGoal)
@@ -419,6 +421,15 @@ export default function TaskParentGoalModal({
                         }
                     />
                 </View>
+                {currentProject && (
+                    <MentionProjectHeader
+                        project={currentProject}
+                        amount={
+                            items.filter(goal => goal.projectId === projectId).length +
+                            (isActiveGoalInActiveTab ? 1 : 0)
+                        }
+                    />
+                )}
                 <NewObjectsInMentions
                     ref={newForm}
                     projectId={projectId}
@@ -447,6 +458,7 @@ export default function TaskParentGoalModal({
                         itemsComponentsRefs={itemsComponentsRefs}
                         currentProjectId={projectId}
                         currentlyAssignedGoal={effectiveActiveGoal}
+                        showCurrentProjectHeader={false}
                     />
                 ) : (
                     <EmptyMatch

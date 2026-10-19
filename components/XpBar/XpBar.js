@@ -27,7 +27,7 @@ export const barProgWidth = {
     [XP_BAR_MOBILE]: 70,
 }
 
-export default function XpBar({ size = XP_BAR_DESKTOP }) {
+export default function XpBar({ size = XP_BAR_DESKTOP, compact = false }) {
     const dispatch = useDispatch()
     const topBarWidth = useSelector(state => state.topBarWidth)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -41,6 +41,7 @@ export default function XpBar({ size = XP_BAR_DESKTOP }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const showSkillPointsNotification = useSelector(state => state.loggedUser.showSkillPointsNotification)
     const [offSet, setOffset] = useState(0)
+    const [compactWidth, setCompactWidth] = useState(100)
 
     const theme = getTheme(Themes, themeName, 'TopBar.TopBarStatisticArea.XpBar')
 
@@ -58,7 +59,9 @@ export default function XpBar({ size = XP_BAR_DESKTOP }) {
 
     const levelProgress = getRelativeLevelXp(level, xp) / getXpNeededToReachLevel(level + 1)
     const xpPercent = Number.isFinite(levelProgress) ? Math.max(0, Math.min(1, levelProgress)) : 0
-    const barPosition = xpPercent * (barProgWidthOffSet[size] - 26)
+    const width = compact ? compactWidth : barWidthOffSet[size]
+    const progressWidth = compact ? compactWidth - 26 : barProgWidthOffSet[size]
+    const barPosition = xpPercent * (progressWidth - 26)
 
     const bgColor = size === XP_BAR_MOBILE ? theme.bgColorMobile : theme.bgColorDesktop
 
@@ -96,17 +99,29 @@ export default function XpBar({ size = XP_BAR_DESKTOP }) {
     const showSkillPoints = skillPoints > 0 && showSkillPointsNotification
 
     return (
-        <View nativeID="xpArea" style={[localStyles.parent, { marginRight: size === XP_BAR_DESKTOP ? 16 : 8 }]}>
+        <View
+            nativeID="xpArea"
+            style={[
+                localStyles.parent,
+                { marginRight: compact ? 4 : size === XP_BAR_DESKTOP ? 16 : 8 },
+                compact && localStyles.compactParent,
+            ]}
+            onLayout={
+                compact
+                    ? ({ nativeEvent: { layout } }) => setCompactWidth(Math.max(52, Math.min(100, layout.width)))
+                    : undefined
+            }
+        >
             <TouchableOpacity
                 style={[
                     localStyles.container,
                     theme.container,
-                    { width: barWidthOffSet[size], backgroundColor: bgColor },
-                    appendSizeLimits(),
+                    { width, backgroundColor: bgColor },
+                    !compact && appendSizeLimits(),
                 ]}
                 onPress={navigateToUserProfile}
             >
-                <View style={[localStyles.bar, theme.bar, { width: barProgWidthOffSet[size] }]}>
+                <View style={[localStyles.bar, theme.bar, { width: progressWidth }]}>
                     <View style={[localStyles.filledBar, theme.filledBar, { width: barPosition + 13 }]} />
                 </View>
                 <View
@@ -133,6 +148,11 @@ const localStyles = StyleSheet.create({
         flex: 1,
         alignItems: 'flex-end',
         marginRight: 16,
+    },
+    compactParent: {
+        flexShrink: 1,
+        minWidth: 52,
+        maxWidth: 100,
     },
     container: {
         flexDirection: 'row',

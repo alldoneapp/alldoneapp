@@ -13,12 +13,13 @@ function GoalsByProject({
     activeItemIndex,
     itemsComponentsRefs,
     currentlyAssignedGoal,
+    showHeader,
 }) {
     if (goals.length === 0) return null
 
     return (
         <View>
-            <MentionProjectHeader project={project} amount={goals.length} />
+            {showHeader && <MentionProjectHeader project={project} amount={goals.length} />}
             <MentionsItems
                 selectItemToMention={selectItemToMention}
                 items={goals}
@@ -39,6 +40,7 @@ export default function MentionsGoalsGrouped({
     activeItemIndex,
     itemsComponentsRefs,
     currentlyAssignedGoal,
+    showCurrentProjectHeader = true,
 }) {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
 
@@ -108,6 +110,7 @@ export default function MentionsGoalsGrouped({
                         activeItemIndex={activeIndexByProject[pId]}
                         itemsComponentsRefs={itemsComponentsRefs}
                         currentlyAssignedGoal={currentlyAssignedGoal}
+                        showHeader={showCurrentProjectHeader || pId !== currentProjectId}
                     />
                 )
             })}

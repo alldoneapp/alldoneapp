@@ -559,6 +559,12 @@ export default function MentionsModal({
                 }}
                 indicatorStyle={{ right: -6 }}
             >
+                {currentProject && (
+                    <MentionProjectHeader
+                        project={currentProject}
+                        amount={itemsByTab[activeTab].filter(item => item.projectId === projectId).length}
+                    />
+                )}
                 {showNewForm && (
                     <NewObjectsInMentions
                         key={`${activeTab}_${modalId.current}`}
@@ -583,6 +589,7 @@ export default function MentionsModal({
                                 contacts={itemsByTab[activeTab]}
                                 activeUserIndex={activeItemIndex}
                                 usersComponentsRefs={itemsComponentsRefs}
+                                showCurrentProjectHeader={false}
                             />
                         ) : activeTab === MENTION_MODAL_NOTES_TAB ? (
                             <MentionsItemsGrouped
@@ -593,25 +600,18 @@ export default function MentionsModal({
                                 activeItemIndex={activeItemIndex}
                                 itemsComponentsRefs={itemsComponentsRefs}
                                 activeTab={activeTab}
+                                showCurrentProjectHeader={false}
                             />
                         ) : (
-                            <View>
-                                {currentProject && (
-                                    <MentionProjectHeader
-                                        project={currentProject}
-                                        amount={itemsByTab[activeTab].length}
-                                    />
-                                )}
-                                <MentionsItems
-                                    key={activeTab}
-                                    selectItemToMention={selectItemToMention}
-                                    items={itemsByTab[activeTab]}
-                                    activeItemIndex={activeItemIndex}
-                                    itemsComponentsRefs={itemsComponentsRefs}
-                                    projectId={projectId}
-                                    activeTab={activeTab}
-                                />
-                            </View>
+                            <MentionsItems
+                                key={activeTab}
+                                selectItemToMention={selectItemToMention}
+                                items={itemsByTab[activeTab]}
+                                activeItemIndex={activeItemIndex}
+                                itemsComponentsRefs={itemsComponentsRefs}
+                                projectId={projectId}
+                                activeTab={activeTab}
+                            />
                         )}
                     </View>
                 ) : (

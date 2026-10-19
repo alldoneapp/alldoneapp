@@ -5,12 +5,20 @@ import { useSelector } from 'react-redux'
 import MentionProjectHeader from './MentionProjectHeader'
 import MentionsItems from './MentionsItems'
 
-function ItemsByProject({ project, items, selectItemToMention, activeItemIndex, itemsComponentsRefs, activeTab }) {
+function ItemsByProject({
+    project,
+    items,
+    selectItemToMention,
+    activeItemIndex,
+    itemsComponentsRefs,
+    activeTab,
+    showHeader,
+}) {
     if (items.length === 0) return null
 
     return (
         <View>
-            <MentionProjectHeader project={project} amount={items.length} />
+            {showHeader && <MentionProjectHeader project={project} amount={items.length} />}
             <MentionsItems
                 selectItemToMention={selectItemToMention}
                 items={items}
@@ -30,6 +38,7 @@ export default function MentionsItemsGrouped({
     activeItemIndex,
     itemsComponentsRefs,
     activeTab,
+    showCurrentProjectHeader = true,
 }) {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
 
@@ -96,6 +105,7 @@ export default function MentionsItemsGrouped({
                         activeItemIndex={activeIndexByProject[pId]}
                         itemsComponentsRefs={itemsComponentsRefs}
                         activeTab={activeTab}
+                        showHeader={showCurrentProjectHeader || pId !== currentProjectId}
                     />
                 )
             })}
