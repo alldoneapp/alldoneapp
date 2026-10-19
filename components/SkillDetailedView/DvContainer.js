@@ -44,7 +44,9 @@ export default function DvContainer({ projectId }) {
 
     return (
         <View style={{ flex: 1 }}>
-            {!isMiddleScreen && userHasAccessToProject && <BackButton projectId={projectId} />}
+            {!smallScreenNavigation && !isMiddleScreen && userHasAccessToProject && (
+                <BackButton projectId={projectId} />
+            )}
 
             <CustomView
                 ref={scrollRef}

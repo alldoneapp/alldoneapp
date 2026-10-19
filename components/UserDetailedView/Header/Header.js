@@ -10,14 +10,14 @@ import { DV_TAB_USER_CHAT } from '../../../utils/TabNavigationConstants'
 import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 
 export default function Header({ contact, project, isFullscreen, setFullscreen }) {
-    const mobile = useSelector(state => state.isMiddleScreen)
+    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const accessGranted = SharedHelper.accessGranted(null, project.id)
 
     return (
         <View style={[localStyles.container, isFullscreen && !accessGranted && localStyles.sharedChatContainer]}>
             <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
-                {mobile && accessGranted && (
+                {inlineBackButton && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton user={contact} projectIndex={project.index} />
                     </View>

@@ -20,7 +20,7 @@ const Header = ({ project }) => {
     const [editTitle, setEditTitle] = useState(false)
     const [focused, setFocused] = useState(true)
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
-    const mobile = useSelector(state => state.isMiddleScreen)
+    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
     const loggedUser = useSelector(state => state.loggedUser)
     const [projectTitle, setProjectTitle] = useState(project.name)
     const accessGranted = SharedHelper.accessGranted(loggedUser, project.id)
@@ -83,7 +83,7 @@ const Header = ({ project }) => {
     return (
         <View style={localStyles.container}>
             <View style={localStyles.upperHeader}>
-                {mobile && accessGranted && (
+                {inlineBackButton && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton project={project} />
                     </View>

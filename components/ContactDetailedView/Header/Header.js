@@ -21,7 +21,7 @@ import ProjectMoveIndicator from '../../UIComponents/ProjectMoveIndicator'
 export default function Header({ contact, disabled, isFullscreen, setFullscreen, projectId }) {
     const loggedUser = useSelector(state => state.loggedUser)
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
     const selectedNavItem = useSelector(state => state.selectedNavItem)
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
     const [inputWidth, setInputWidth] = useState(0)
@@ -94,7 +94,7 @@ export default function Header({ contact, disabled, isFullscreen, setFullscreen,
             dataSet={{ annaObjectType: 'contact', annaObjectId: contact.uid, annaProjectId: projectId }}
         >
             <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
-                {isMiddleScreen && accessGranted && (
+                {inlineBackButton && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton user={contact} projectIndex={project.index} />
                     </View>

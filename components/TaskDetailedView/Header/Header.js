@@ -26,7 +26,7 @@ const Header = ({
 }) => {
     const loggedUser = useSelector(state => state.loggedUser)
     const photoURL = useSelector(state => state.assignee.photoURL)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const taskTitleInEditMode = useSelector(state => state.taskTitleInEditMode)
     const selectedTab = useSelector(state => state.selectedNavItem)
@@ -40,7 +40,7 @@ const Header = ({
             ]}
         >
             <View style={[localStyles.upperHeader, isFullscreen && { paddingBottom: accessGranted ? 16 : 8 }]}>
-                {isMiddleScreen && accessGranted && (
+                {inlineBackButton && accessGranted && (
                     <View style={localStyles.backButtonMobile}>
                         <BackButton projectId={projectId} task={task} />
                     </View>

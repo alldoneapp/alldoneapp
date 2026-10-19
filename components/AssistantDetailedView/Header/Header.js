@@ -23,7 +23,7 @@ export default function Header({
     setFullscreen,
 }) {
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -50,7 +50,7 @@ export default function Header({
     return (
         <View style={[localStyles.container, isFullscreen && { paddingBottom: 8 }]}>
             <View style={localStyles.upperHeader}>
-                {isMiddleScreen && <BackButton assistant={assistant} />}
+                {inlineBackButton && <BackButton assistant={assistant} />}
 
                 {mobile && loggedUser.isAnonymous && (
                     <View style={localStyles.backButtonMobile}>

@@ -17,7 +17,7 @@ import BotLine from '../../ChatsView/ChatDV/BotLine/BotLine'
 
 export default function Header({ goal, projectId, navigation, accessGranted, isFullscreen, setFullscreen }) {
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
     const mobile = useSelector(state => state.smallScreenNavigation)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const loggedUser = useSelector(state => state.loggedUser)
@@ -47,7 +47,7 @@ export default function Header({ goal, projectId, navigation, accessGranted, isF
     return (
         <View style={[localStyles.container, isFullscreen && { paddingBottom: 8 }]}>
             <View style={localStyles.upperHeader}>
-                {isMiddleScreen && accessGranted && <BackButton projectId={projectId} goal={goal} />}
+                {inlineBackButton && accessGranted && <BackButton projectId={projectId} goal={goal} />}
 
                 {mobile && loggedUser.isAnonymous && (
                     <View style={localStyles.backButtonMobile}>

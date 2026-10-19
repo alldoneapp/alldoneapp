@@ -16,7 +16,7 @@ import { setDvIsFullScreen } from '../../../redux/actions'
 
 export default function Header({ projectId, userHasAccessToProject }) {
     const dispatch = useDispatch()
-    const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const inlineBackButton = useSelector(state => state.isMiddleScreen || state.smallScreenNavigation)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const skillId = useSelector(state => state.skillInDv.id)
@@ -31,7 +31,7 @@ export default function Header({ projectId, userHasAccessToProject }) {
     return (
         <View style={[localStyles.container, isFullScreen && { paddingBottom: 8 }]}>
             <View style={localStyles.upperHeader}>
-                {isMiddleScreen && userHasAccessToProject && <BackButton projectId={projectId} />}
+                {inlineBackButton && userHasAccessToProject && <BackButton projectId={projectId} />}
 
                 {smallScreenNavigation && isAnonymous && (
                     <View style={localStyles.backButtonMobile}>

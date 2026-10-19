@@ -108,7 +108,7 @@ const ProjectDetailedView = ({ navigation }) => {
             )}
 
             <View style={{ flex: 1 }}>
-                {!isMiddleScreen && accessGranted && (
+                {!mobile && !isMiddleScreen && accessGranted && (
                     <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                         <BackButton project={project} />
                     </View>

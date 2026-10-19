@@ -190,7 +190,9 @@ export default function GoalDetailedView({ navigation }) {
 
             {goal && (
                 <View style={{ flex: 1 }}>
-                    {!isMiddleScreen && accessGranted && <BackButton projectId={projectId} goal={goal} />}
+                    {!smallScreenNavigation && !isMiddleScreen && accessGranted && (
+                        <BackButton projectId={projectId} goal={goal} />
+                    )}
 
                     <CustomView
                         ref={scrollRef}
