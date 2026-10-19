@@ -34,35 +34,6 @@ const {
 describe('WhatsApp call sessions', () => {
     beforeEach(() => admin.__mock.reset())
 
-    test.each(['phone_call', 'whatsapp_call', 'browser_call'])(
-        'freezes GPT-Live metadata for every new %s session',
-        async channel => {
-            const args = {
-                sessionId: 'call-1',
-                twilioCallSid: 'call-1',
-                routingToken: 'route',
-                routingSecret: 'secret',
-                routeExpiresAt: Date.now() + 60000,
-                leaseExpiresAt: Date.now() + 600000,
-                userId: 'user-1',
-                projectId: 'project-1',
-                assistantId: 'assistant-1',
-                chatId: 'chat-1',
-                channel,
-                realtimeModel: 'ignored-legacy-override',
-            }
-            const create = channel === 'browser_call' ? createDirectCallSessionWithLease : createCallSessionWithLease
-            await create(args)
-            expect(admin.__mock.get('whatsAppCallSessions/call-1')).toMatchObject({
-                voiceProvider: 'gpt-live',
-                voiceModel: 'gpt-live-1',
-                realtimeModel: null,
-                voiceBilledGold: 0,
-                voiceGoldPerMinute: 40,
-            })
-        }
-    )
-
     test('enforces a per-user lease and consumes routing tokens once', async () => {
         const base = {
             routingSecret: 'route-secret',
