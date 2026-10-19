@@ -136,14 +136,18 @@ jest.mock('./AnnaConversation', () => {
         __esModule: true,
         default: React.forwardRef((props, ref) => {
             mockConversationProps = props
-            React.useImperativeHandle(ref, () => ({ scrollToLatest: mockScrollToLatest }))
+            const input = React.useRef(null)
+            React.useImperativeHandle(ref, () => ({
+                scrollToLatest: mockScrollToLatest,
+                focusInput: () => input.current?.focus(),
+            }))
             React.useEffect(
                 () => () => {
                     mockUnmounts++
                 },
                 []
             )
-            return <textarea aria-label="Persistent conversation" />
+            return <textarea ref={input} aria-label="Persistent conversation" />
         }),
     }
 })
@@ -207,6 +211,7 @@ const WorkspaceNavigationFixture = () => (
 const content = (id, withSidebar = false) => (
     <AnnaShell routeId={id}>
         <WorkspaceNavigationFixture />
+        <AssistantModeButton inline />
         {withSidebar && sidebarHeader()}
         <input aria-label="Real workspace editor" defaultValue="Unsaved note" />
     </AnnaShell>
@@ -228,6 +233,14 @@ const chooseSurface = value => {
 const showChat = () => choose(document.querySelector('.anna-header-picker select'), 'chat')
 const showWorkspace = () => fireEvent.click(screen.getByLabelText('Show workspace'))
 const showAlldoneWorkspace = () => fireEvent.click(screen.getByLabelText('Show Alldone with chat'))
+const closeAssistant = () => {
+    const taskButton = document.querySelector('.anna-header-tasks')
+    if (taskButton) fireEvent.click(taskButton)
+    else {
+        showAlldoneWorkspace()
+        fireEvent.click(screen.getByLabelText('Anna Alldone: Close assistant chat'))
+    }
+}
 
 it('preserves editors and the selected surface while hiding the workspace, including background browser activity', () => {
     render(content(1))
@@ -265,7 +278,7 @@ it.each(['browser', 'vm:vm1'])('returns to the same Alldone page when closing ch
     render(content(1))
     const workspace = screen.getByLabelText('Real workspace editor')
     chooseSurface(surface)
-    fireEvent.click(document.querySelector('.anna-header-tasks'))
+    closeAssistant()
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
     expect(document.querySelector('.anna-workspace').getAttribute('aria-hidden')).toBe('false')
     act(() => setAnnaMode(true))
@@ -375,8 +388,8 @@ it('still supports a legacy saved-object cue without a list route', async () => 
     }
 })
 
-it.each(['mounted', 'missing', 'interrupted'])(
-    'tries the saved task list before details when the row is %s',
+it.each(['mounted', 'delayed', 'missing', 'interrupted'])(
+    'keeps a created task in its list when the row is %s',
     async outcome => {
         jest.useFakeTimers()
         const visibility = jest.spyOn(document, 'hidden', 'get').mockReturnValue(false)
@@ -413,9 +426,15 @@ it.each(['mounted', 'missing', 'interrupted'])(
                 )
             }
             for (let i = 0; i < 40; i++) await act(async () => jest.advanceTimersByTime(75))
-            expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual(
-                outcome === 'missing' ? [change.listPath, change.path] : [change.listPath]
-            )
+            expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual([change.listPath])
+            if (outcome === 'delayed') {
+                const row = document.createElement('div')
+                Object.assign(row.dataset, { annaObjectType: 'task', annaObjectId: 'task1', annaProjectId: 'p1' })
+                row.getBoundingClientRect = () => ({ width: 200, height: 40 })
+                document.querySelector('.anna-workspace-content').append(row)
+                for (let i = 0; i < 10; i++) await act(async () => jest.advanceTimersByTime(75))
+                expect(URLTrigger.processUrl.mock.calls.map(call => call[1])).toEqual([change.listPath])
+            }
         } finally {
             visibility.mockRestore()
             jest.useRealTimers()
@@ -835,7 +854,7 @@ it('preserves both editors when zooming out and back without remounting the work
     const chat = screen.getByLabelText('Persistent conversation')
     workspace.value = 'Work in progress'
     chat.value = 'Unsent message'
-    fireEvent.click(document.querySelector('.anna-header-tasks'))
+    closeAssistant()
     expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
     act(() => setAnnaMode(true))
     expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
@@ -871,7 +890,7 @@ it('holds assistant navigation during browser control until Open is clicked', as
 
 it.each([false, true])('keeps the logo navigation separate from the chat toggle when chat is %s', active => {
     render(content(1, true))
-    if (!active) fireEvent.click(document.querySelector('.anna-header-tasks'))
+    if (!active) closeAssistant()
     const logo = screen.getByLabelText('Alldone.app')
     const toggle = assistantToggle()
     expect(logo.parentElement).toBe(toggle.parentElement)
@@ -919,7 +938,7 @@ it.each([
         render(content(1, true))
         const chat = screen.getByLabelText('Persistent conversation')
         chat.value = 'Keep my chat draft'
-        if (start === 'alldone') fireEvent.click(document.querySelector('.anna-header-tasks'))
+        if (start === 'alldone') closeAssistant()
         else if (start === 'workspace') showAlldoneWorkspace()
         else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
         else if (start === 'browser' || start.startsWith('vm:')) chooseSurface(start)
@@ -997,7 +1016,7 @@ it.each([
         )
         const chat = screen.getByLabelText('Persistent conversation')
         chat.value = 'Keep my chat draft'
-        if (start === 'fullscreen') fireEvent.click(document.querySelector('.anna-header-tasks'))
+        if (start === 'fullscreen') closeAssistant()
         else if (start === 'workspace') showAlldoneWorkspace()
         else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
 
@@ -1219,7 +1238,7 @@ it.each([
             // Chat-only links can also be opened on mobile, which shows one pane at a time.
             else act(() => setAnnaLayout('chat'))
         }
-        if (layout === 'alldone') fireEvent.click(document.querySelector('.anna-header-tasks'))
+        if (layout === 'alldone') closeAssistant()
         expect(window.localStorage.getItem('anna-mobile-layout:v1')).toBe(layout)
 
         act(() => testRoot.unmount())
@@ -1286,7 +1305,7 @@ it('opens assistant mode from the app header avatar and keeps the workspace edit
             </AnnaShell>
         )
         const draft = screen.getByLabelText('Workspace draft')
-        fireEvent.click(document.querySelector('.anna-header-tasks'))
+        closeAssistant()
         expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
         fireEvent.click(screen.getByLabelText('Anna Alldone: Open assistant chat'))
         expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
@@ -1304,11 +1323,30 @@ it('opens assistant mode from the app header avatar and keeps the workspace edit
 it('shows the live task total on the separate task button, including zero', () => {
     mockSidebarNumbers = { p1: { u1: 20 }, p2: { u1: 7, someoneElse: 90 } }
     const view = render(content(1))
+    act(() => setAnnaLayout('chat'))
     expect(screen.getByLabelText('27 open tasks today').querySelector('.anna-open-tasks-badge').textContent).toBe('27')
     expect(document.querySelector('.anna-header-assistant').textContent).not.toContain('27')
     mockSidebarNumbers = { p1: { u1: 0 } }
     view.rerender(content(1))
     expect(screen.getByLabelText('0 open tasks today').querySelector('.anna-open-tasks-badge').textContent).toBe('0')
+})
+
+it('hides the duplicated task count in the desktop sidebar and closes it from Alldone', () => {
+    render(content(1))
+    const workspace = screen.getByLabelText('Real workspace editor')
+    workspace.value = 'Keep my edit'
+    expect(document.querySelector('.anna-header-tasks')).toBeNull()
+    expect(document.querySelector('.anna-header-sidebar')).toBeTruthy()
+    expect(screen.getByLabelText('Anna Alldone: Close assistant chat')).toBeTruthy()
+    closeAssistant()
+    expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+    expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+    expect(workspace.value).toBe('Keep my edit')
+    fireEvent.click(screen.getByLabelText('Anna Alldone: Open assistant chat'))
+    expect(document.querySelector('.anna-zoom-active')).toBeTruthy()
+    expect(document.querySelector('.anna-header-tasks')).toBeNull()
+    expect(screen.getByLabelText('Anna Alldone: Close assistant chat')).toBeTruthy()
+    expect(mockUnmounts).toBe(0)
 })
 
 it.each([
@@ -1344,7 +1382,7 @@ it.each([
         expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
         expect(shell.classList.contains('anna-mobile-chat')).toBe(true)
         expect(mockConversationProps.visible).toBe(true)
-        expect(document.activeElement).toBe(screen.getByLabelText('Conversation with Carl Code Mentor'))
+        expect(document.activeElement).toBe(chat)
         expect(shell.classList.contains('anna-chat-only')).toBe(start === 'chat-only')
         expect(selectedSurface()).toBe(device === 'mobile' ? '' : surface)
         expect(picker.selectedOptions[0].textContent).toBe(surfaceLabel)
@@ -1361,7 +1399,7 @@ it.each([
     }
 })
 
-it.each(['desktop', 'mobile'])('opens the app view from the task button on %s', device => {
+it.each(['desktop', 'mobile'])('opens the app view from the header controls on %s', device => {
     const originalMatchMedia = window.matchMedia
     window.matchMedia = () => ({
         matches: device === 'mobile',
@@ -1375,7 +1413,7 @@ it.each(['desktop', 'mobile'])('opens the app view from the task button on %s', 
         const chat = screen.getByLabelText('Persistent conversation')
         workspace.value = 'Keep my note'
         const path = window.location.href
-        fireEvent.click(document.querySelector('.anna-header-tasks'))
+        closeAssistant()
         expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
         expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
         expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)

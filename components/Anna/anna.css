@@ -48,6 +48,9 @@
     gap: inherit;
     min-width: 0;
 }
+.anna-header-sidebar {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
 .anna-header-right {
     justify-content: flex-end;
 }

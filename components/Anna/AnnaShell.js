@@ -12,7 +12,7 @@ import useAnnaBrowserCompletion, { browserActivityKey } from './useAnnaBrowserCo
 import AnnaVmWorkspace from './AnnaVmWorkspace'
 import useAnnaVmJobs, { vmJobPath } from './useAnnaVmJobs'
 import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
-import AnnaChatNavigationContext from './AnnaChatNavigationContext'
+import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from './AnnaChatNavigationContext'
 import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import BrowserTakeoverPanel from '../ChatsView/ChatDV/EditorView/BrowserTakeoverPanel'
 import { isAnnaNavigationPath, resolveAnnaLink } from './annaNavigation'
@@ -145,14 +145,14 @@ export default function AnnaShell({ children, routeId }) {
         requestGeneration.current++
         setSurface(`vm:${runId}`)
     }
-    const closeChat = () => {
+    const closeChat = useCallback(() => {
         focusAfterSwitch.current = 'workspace'
         requestGeneration.current++
         followedBrowser.current = null
         setSurface('alldone')
         setMobilePane('chat')
         setAnnaMode(false)
-    }
+    }, [])
     const toggleWorkspace = () => {
         requestGeneration.current++
         followedBrowser.current = null
@@ -170,7 +170,10 @@ export default function AnnaShell({ children, routeId }) {
     useLayoutEffect(() => {
         if (!latestChatRequest) return
         // A hidden mobile pane has no scroll height. Reveal it before scrolling.
+        // The input owns focus for this action; the normal pane-switch effect must not take it back.
+        focusAfterSwitch.current = null
         chatPane.current?.focus({ preventScroll: true })
+        chatConversation.current?.focusInput()
         chatConversation.current?.scrollToLatest()
     }, [latestChatRequest])
     const openChat = useCallback(() => {
@@ -480,10 +483,13 @@ export default function AnnaShell({ children, routeId }) {
             try {
                 await URLTrigger.processUrl(NavigationService.createNavigationProp(), change.listPath)
             } catch (_) {
-                // A list navigation failure can still use the verified detail link.
+                // Other saved changes may still use their verified detail link.
             }
             if (await waitForTarget(2500)) return
         }
+        // A new task is confirmed in its list. Slow listeners or hidden rows
+        // must not turn that confirmation into an unsolicited detail view.
+        if (change.type === 'task' && change.change === 'created') return
         assertAvailable()
         await URLTrigger.processUrl(NavigationService.createNavigationProp(), change.path)
     }, [])
@@ -560,7 +566,7 @@ export default function AnnaShell({ children, routeId }) {
     )
 
     const header = (
-        <header className="anna-header">
+        <header className={`anna-header${!mobile && !chatOnly ? ' anna-header-sidebar' : ''}`}>
             <div className="anna-header-left">
                 <button
                     type="button"
@@ -575,25 +581,27 @@ export default function AnnaShell({ children, routeId }) {
                     <strong className="anna-brand">{defaultAssistantName}</strong>
                 </button>
             </div>
-            <button
-                type="button"
-                className="anna-header-tasks"
-                aria-label={translate('%{count} open tasks today', { count: openTasksAmount })}
-                title={translate('%{count} open tasks today', { count: openTasksAmount })}
-                onClick={closeChat}
-            >
-                <span aria-hidden="true" className="anna-task-icon">
-                    <Icon name="check-square" size={20} color="currentColor" />
-                </span>
-                <span className="anna-open-tasks-badge" aria-hidden="true">
-                    <AmountTag
-                        feedAmount={openTasksAmount}
-                        isFollowedButton={false}
-                        showFullAmount={true}
-                        style={{ backgroundColor: colors.Primary100 }}
-                    />
-                </span>
-            </button>
+            {(mobile || chatOnly) && (
+                <button
+                    type="button"
+                    className="anna-header-tasks"
+                    aria-label={translate('%{count} open tasks today', { count: openTasksAmount })}
+                    title={translate('%{count} open tasks today', { count: openTasksAmount })}
+                    onClick={closeChat}
+                >
+                    <span aria-hidden="true" className="anna-task-icon">
+                        <Icon name="check-square" size={20} color="currentColor" />
+                    </span>
+                    <span className="anna-open-tasks-badge" aria-hidden="true">
+                        <AmountTag
+                            feedAmount={openTasksAmount}
+                            isFollowedButton={false}
+                            showFullAmount={true}
+                            style={{ backgroundColor: colors.Primary100 }}
+                        />
+                    </span>
+                </button>
+            )}
             <div className="anna-header-right">
                 <label className="anna-header-picker">
                     <select
@@ -893,9 +901,11 @@ export default function AnnaShell({ children, routeId }) {
             value={{ open: openBrowserTakeover, approvalId: browserTakeover?.approval.approvalId }}
         >
             <AnnaChatNavigationContext.Provider value={openChat}>
-                <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
-                    {content}
-                </AnnaWorkspaceNavigationContext.Provider>
+                <AnnaSidebarCloseContext.Provider value={active && !chatOnly && !mobile ? closeChat : null}>
+                    <AnnaWorkspaceNavigationContext.Provider value={showAlldoneNavigation}>
+                        {content}
+                    </AnnaWorkspaceNavigationContext.Provider>
+                </AnnaSidebarCloseContext.Provider>
             </AnnaChatNavigationContext.Provider>
         </AnnaBrowserTakeoverContext.Provider>
     )

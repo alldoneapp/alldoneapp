@@ -223,6 +223,8 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
                 type: 'task',
                 projectId: 'p1',
                 change: 'created',
+                // Older saved cues still carry a detail fallback. A new task
+                // must remain in its list even when that list arrives slowly.
                 path: `/projects/p1/tasks/${id}/properties`,
                 listPath: '/projects/p1/user/a1/tasks/open',
                 expiresAt: Date.now() + 120000,
@@ -232,10 +234,13 @@ export const runHttpsCallableFunction = async (name, request = {}) => {
             await getDb()
                 .doc(chatPath)
                 .update({ annaWorkspaceChanges: [...(data[chatPath].annaWorkspaceChanges || []), cue] })
-            setTimeout(() => {
-                workspaceTasks.push({ id, title: 'Prepare the launch checklist' })
-                workspaceListeners.forEach(callback => callback())
-            }, 250)
+            setTimeout(
+                () => {
+                    workspaceTasks.push({ id, title: 'Prepare the launch checklist' })
+                    workspaceListeners.forEach(callback => callback())
+                },
+                new URLSearchParams(window.location.search).has('revealSlow') ? 3500 : 250
+            )
             // Let the browser test verify the running state before completing;
             // screenshots and slow CI must not race a fixed completion timeout.
             await new Promise(resolve => {

@@ -204,7 +204,7 @@ async function checkImmediateSending(page, width) {
     page.off('console', trackControl)
 }
 async function checkWorkspaceReveal(page, width) {
-    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&reveal=1&revealList=1`)
+    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&reveal=1&revealList=1&revealSlow=1`)
     const navigations = []
     const trackNavigation = message => {
         if (message.text().startsWith('Anna fixture navigation: ')) navigations.push(message.text())
@@ -314,7 +314,11 @@ async function showChat(page) {
 }
 async function closeChat(page) {
     await showChat(page)
-    await page.locator('.anna-header-tasks').click()
+    if (await page.locator('.anna-header-tasks').isVisible()) await page.locator('.anna-header-tasks').click()
+    else {
+        await selectWorkspaceSurface(page, 'alldone')
+        await page.getByLabel('Carl Code Mentor: Close assistant chat', { exact: true }).click()
+    }
 }
 async function selectWorkspaceSurface(page, surface) {
     if (await page.locator('.anna-fullscreen').count()) await page.evaluate(() => window.zoomAnna(true))
@@ -729,7 +733,8 @@ async function checkAssistantLayouts(page, width) {
 async function checkActivityNotices(page, width) {
     await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1`)
     await page.getByLabel('Message Carl Code Mentor').waitFor()
-    assert.equal(await page.getByLabel('20 open tasks today').innerText(), '20')
+    if (width <= 760) assert.equal(await page.getByLabel('20 open tasks today').innerText(), '20')
+    else assert.equal(await page.locator('.anna-header-tasks').count(), 0)
     await page.evaluate(() => {
         const now = Date.now()
         window.__annaActivity({
@@ -764,11 +769,16 @@ async function checkActivityNotices(page, width) {
         .waitFor()
     assert.equal(await page.locator('.anna-activity-notice').count(), 2)
     const header = await page.locator('.anna-header').boundingBox()
-    const badge = await page.getByLabel('123 open tasks today').boundingBox()
+    const badge = width <= 760 ? await page.getByLabel('123 open tasks today').boundingBox() : null
     const picker = await page.locator('.anna-header-picker').boundingBox()
     const brand = await page.locator('.anna-brand').boundingBox()
-    assert.ok(badge.x >= brand.x + brand.width - 1, 'Badge follows assistant name')
-    assert.ok(badge.x + badge.width <= picker.x, 'Badge must not overlap workspace picker')
+    if (badge) {
+        assert.ok(badge.x >= brand.x + brand.width - 1, 'Badge follows assistant name')
+        assert.ok(badge.x + badge.width <= picker.x, 'Badge must not overlap workspace picker')
+    } else {
+        assert.equal(await page.locator('.anna-header-tasks').count(), 0)
+        assert.ok(brand.x + brand.width <= picker.x, 'Assistant name must not overlap workspace picker')
+    }
     assert.ok(picker.x + picker.width <= header.x + header.width, 'Header stays inside chat pane')
     assert.equal(await page.locator('.anna-conversation').evaluate(node => node.scrollWidth <= node.clientWidth), true)
     await page.screenshot({ path: path.join(BUILD, `activity-${width}.png`) })
@@ -778,7 +788,7 @@ async function checkActivityNotices(page, width) {
     await page.getByText('New chat message: Sprint planning', { exact: true }).click()
     await page.waitForURL(url => url.pathname === '/projects/p1/user/demo/chats/followed')
     if (width <= 760) await showChat(page)
-    await page.getByLabel('123 open tasks today').click()
+    await closeChat(page)
     await page.waitForURL(url => url.pathname === '/projects/tasks/open')
     console.info(`PASS ${width}px: substantive activity/chat previews, feature links, task badge and header geometry`)
 }
@@ -1029,7 +1039,7 @@ async function main() {
             await page.screenshot({ path: path.join(BUILD, `chat-${width}.png`) })
             assert.equal(new URL(page.url()).searchParams.get('assistant'), '1')
             await page.reload()
-            await page.locator('.anna-header-tasks').waitFor({ state: 'visible' })
+            await page.locator('.anna-header').waitFor({ state: 'visible' })
             await closeChat(page)
             assert.equal(new URL(page.url()).searchParams.has('assistant'), false)
             await page.reload()

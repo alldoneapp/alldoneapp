@@ -70,7 +70,7 @@ it('records the actual cross-project task only after checking the saved object a
             projectId: 'p2',
             objectId: 't1',
             change: 'created',
-            path: '/projects/p2/tasks/t1/properties',
+            path: '/projects/p2/user/u1/tasks/open',
             listPath: '/projects/p2/user/u1/tasks/open',
             createdAt: 1000,
             expiresAt: 121000,
@@ -99,6 +99,16 @@ it('reveals the destination after moving a task, even when persistence still rep
         listPath: '/projects/p2/user/u1/tasks/open',
         change: 'updated',
     })
+})
+it.each(['u1', 'assistant1'])('confirms a new task in its actual assignee list for %s', async userId => {
+    const { db, data } = database({
+        'items/p2/tasks/t1': { userId, currentReviewerId: userId, isPublicFor: [0] },
+    })
+    await recordAnnaWorkspaceChange({ db, runtime, toolName: 'create_task', result })
+    const [cue] = data.get(chatPath).annaWorkspaceChanges
+    expect(cue.path).toBe(`/projects/p2/user/${userId}/tasks/open`)
+    expect(cue.listPath).toBe(cue.path)
+    expect(isAnnaWorkspacePath(cue.path)).toBe(true)
 })
 it.each([
     { 'projects/p2': { userIds: ['someone-else'] } },

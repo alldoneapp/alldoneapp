@@ -3,6 +3,7 @@ import { ScrollView, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import { createRoot } from 'react-dom/client'
 import AnnaShell from '../../components/Anna/AnnaShell'
+import AssistantModeButton from '../../components/TopBar/AssistantModeButton'
 import AnnaWorkspaceNavigationContext from '../../components/Anna/AnnaWorkspaceNavigationContext'
 import { restoreAnnaLayout, setAnnaMode } from '../../utils/annaMode'
 import { GlobalOverlayFixture, OverlayLaunchers } from './overlay-fixture'
@@ -178,6 +179,9 @@ function Fixture() {
             <GlobalOverlayFixture dialog={dialog} notifications={notifications} closeDialog={() => setDialog(false)} />
             <AnnaShell routeId="fixture-note">
                 <WorkspaceNavigationFixture />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', background: 'white' }}>
+                    <AssistantModeButton inline />
+                </div>
                 <ScrollView
                     testID="workspace-scroll"
                     style={{ flex: 1, minWidth: 0, backgroundColor: 'white' }}

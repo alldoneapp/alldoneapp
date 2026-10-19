@@ -23,6 +23,8 @@ export function findWorkspaceObject(root, change) {
     const selector = `[data-anna-object-type="${change.type}"][data-anna-object-id="${change.objectId}"][data-anna-project-id="${change.projectId}"]`
     return (
         Array.from(root.querySelectorAll(selector)).find(node => {
+            if (change.type === 'task' && change.change === 'created' && node.dataset.annaObjectView === 'detail')
+                return false
             const box = node.getBoundingClientRect()
             return (
                 !node.closest('[hidden], [aria-hidden="true"], [data-anna-highlight-ui]') &&

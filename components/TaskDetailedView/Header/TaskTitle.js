@@ -119,6 +119,7 @@ class TaskTitle extends Component {
                     annaObjectType: titleType === TITLE_NOTE ? 'note' : 'task',
                     annaObjectId: object.id,
                     annaProjectId: projectId,
+                    annaObjectView: 'detail',
                 }}
             >
                 <View style={localStyles.upperContainer} />

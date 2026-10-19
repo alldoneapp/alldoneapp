@@ -68,6 +68,7 @@ async function recordAnnaWorkspaceChange({ db, runtime, toolName, result, now = 
                     : data.currentReviewerId || data.userIds?.at(-1) || data.userId
                 const listUserId = target.type === 'task' && validId(taskUserId) ? taskUserId : runtime.requestUserId
                 const listTab = target.type === 'task' ? (data.done ? 'done' : 'open') : 'all'
+                const listPath = `/projects/${target.projectId}/user/${listUserId}/${target.type}s/${listTab}`
                 return {
                     ...target,
                     id: randomUUID(),
@@ -75,8 +76,11 @@ async function recordAnnaWorkspaceChange({ db, runtime, toolName, result, now = 
                     title: String(
                         data.name || data.title || data.extendedTitle || data.displayName || data.extendedName || ''
                     ).slice(0, 120),
-                    path: `/projects/${target.projectId}/${target.type}s/${target.objectId}/${target.type === 'note' ? 'editor' : 'properties'}`,
-                    listPath: `/projects/${target.projectId}/user/${listUserId}/${target.type}s/${listTab}`,
+                    path:
+                        target.type === 'task' && target.change === 'created'
+                            ? listPath
+                            : `/projects/${target.projectId}/${target.type}s/${target.objectId}/${target.type === 'note' ? 'editor' : 'properties'}`,
+                    listPath,
                     createdAt: now,
                     expiresAt: now + 120000,
                 }
