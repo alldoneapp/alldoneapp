@@ -2,7 +2,8 @@ import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { TouchableOpacity } from 'react-native'
 import AssistantModeButton from './AssistantModeButton'
-import AnnaChatNavigationContext from '../Anna/AnnaChatNavigationContext'
+import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from '../Anna/AnnaChatNavigationContext'
+import AssistantChatToggleIcon from '../UIComponents/AssistantChatToggleIcon'
 import { resolveAnnaLayout, setAnnaMode } from '../../utils/annaMode'
 
 let mockState
@@ -44,6 +45,26 @@ it('enables assistant mode without changing the current page through the default
     expect(window.location.pathname).toBe('/projects/p1/notes/n1')
     expect(window.location.search).toBe('?filter=open&assistant=1')
     expect(window.location.hash).toBe('#draft')
+})
+
+it('replaces the avatar with the sidebar close action while desktop chat is open', () => {
+    const showChat = jest.fn()
+    const closeChat = jest.fn()
+    const component = renderer.create(
+        <AnnaChatNavigationContext.Provider value={showChat}>
+            <AnnaSidebarCloseContext.Provider value={closeChat}>
+                <AssistantModeButton inline />
+            </AnnaSidebarCloseContext.Provider>
+        </AnnaChatNavigationContext.Provider>
+    )
+
+    expect(component.root.findAllByType('AssistantAvatar')).toHaveLength(0)
+    expect(component.root.findByType(AssistantChatToggleIcon)).toBeTruthy()
+    const button = component.root.findByType(TouchableOpacity)
+    expect(button.props.accessibilityLabel).toBe('Anna Alldone: Close assistant chat')
+    act(() => button.props.onPress())
+    expect(closeChat).toHaveBeenCalledTimes(1)
+    expect(showChat).not.toHaveBeenCalled()
 })
 
 it('updates its avatar and label when the default project selects another assistant or that assistant is renamed', () => {

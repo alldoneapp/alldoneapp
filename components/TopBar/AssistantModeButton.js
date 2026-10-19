@@ -2,18 +2,21 @@ import React, { useContext } from 'react'
 import { StyleSheet, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
 import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
-import AnnaChatNavigationContext from '../Anna/AnnaChatNavigationContext'
+import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from '../Anna/AnnaChatNavigationContext'
+import AssistantChatToggleIcon from '../UIComponents/AssistantChatToggleIcon'
+import { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 
 export default function AssistantModeButton({ onOpen, inline = false }) {
     const assistant = useSelector(state => state.defaultAssistant)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const showChat = useContext(AnnaChatNavigationContext)
+    const closeSidebar = useContext(AnnaSidebarCloseContext)
 
     if (isAnonymous || !assistant?.uid) return null
 
     const name = assistant.displayName?.trim() || translate('Assistant')
-    const label = `${name}: ${translate('Open assistant chat')}`
+    const label = `${name}: ${translate(closeSidebar ? 'Close assistant chat' : 'Open assistant chat')}`
     return (
         <TouchableOpacity
             accessibilityRole="button"
@@ -22,14 +25,19 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
             style={[localStyles.button, !inline && localStyles.centered]}
             onPress={() => {
                 onOpen?.()
-                showChat()
+                if (closeSidebar) closeSidebar()
+                else showChat()
             }}
         >
-            <AssistantAvatar
-                photoURL={assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL}
-                assistantId={assistant.uid}
-                size={28}
-            />
+            {closeSidebar ? (
+                <AssistantChatToggleIcon expanded color={colors.Text03} />
+            ) : (
+                <AssistantAvatar
+                    photoURL={assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL}
+                    assistantId={assistant.uid}
+                    size={28}
+                />
+            )}
         </TouchableOpacity>
     )
 }

@@ -38,6 +38,17 @@ it('finds the offscreen exact object, never a matching title in another project 
     scroller.setAttribute('aria-hidden', 'true')
     expect(findWorkspaceObject(root, change)).toBeNull()
 })
+it('uses the list row rather than a detail title when confirming task creation', () => {
+    const detail = row.cloneNode(true)
+    detail.dataset.annaObjectView = 'detail'
+    detail.getBoundingClientRect = () => bounds(440, 100, 520, 60)
+    scroller.prepend(detail)
+
+    expect(findWorkspaceObject(root, { ...change, change: 'created' })).toBe(row)
+    row.remove()
+    expect(findWorkspaceObject(root, { ...change, change: 'created' })).toBeNull()
+    expect(findWorkspaceObject(root, { ...change, change: 'updated' })).toBe(detail)
+})
 it('scrolls an offscreen row within Alldone and leaves an already visible row in place', () => {
     expect(scrollWorkspaceObject(row, root)).toEqual([scroller])
     expect(nativeScroll).toHaveBeenCalledWith({ top: 1070, left: 0, behavior: 'smooth' })

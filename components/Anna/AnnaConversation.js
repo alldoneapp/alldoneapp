@@ -281,7 +281,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight
         setNewMessages(false)
     }, [])
-    useImperativeHandle(ref, () => ({ scrollToLatest: latest }), [latest])
+    useImperativeHandle(ref, () => ({ scrollToLatest: latest, focusInput: () => composer.current?.focus() }), [latest])
     return (
         <>
             <div

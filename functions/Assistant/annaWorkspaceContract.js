@@ -5,7 +5,7 @@ const showWorkspaceSchema = {
     function: {
         name: TOOL_NAME,
         description:
-            "Show a real alldone task, note, goal, project list, or the conversation in the user's Anna workspace. Prefer tasks, notes or goals list views when showing created or updated items. Open an individual detail view when the user asks for details or needs its content. Successful mutations already reveal the saved item; do not repeat that confirmation. Does not mutate the displayed work. Use verified IDs; projectId is required for individual objects and optional for cross-project lists. A successful result only queues presentation; the user may keep their current view open.",
+            "Show a real alldone task, note, goal, project list, or the conversation in the user's Anna workspace. Prefer tasks, notes or goals list views when showing created or updated items. New tasks are automatically scrolled into view and highlighted in their task list; do not open task details to confirm creation, even if the list is still loading. Open an individual detail view when the user asks for details or needs its content. Successful mutations already reveal the saved item; do not repeat that confirmation. Does not mutate the displayed work. Use verified IDs; projectId is required for individual objects and optional for cross-project lists. A successful result only queues presentation; the user may keep their current view open.",
         parameters: {
             type: 'object',
             properties: {

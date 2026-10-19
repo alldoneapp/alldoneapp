@@ -215,6 +215,8 @@ it('returns to the latest messages on request, preserves the draft and resumes f
     expect(log.scrollTop).toBe(1200)
     expect(container.querySelector('.anna-latest')).toBeNull()
     expect(container.querySelector('textarea').value).toBe('Keep this draft')
+    act(() => ref.current.focusInput())
+    expect(document.activeElement).toBe(container.querySelector('textarea'))
     Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1500 })
     mockMessages = [...mockMessages, { id: 'second', creatorId: 'u1', created: 2, commentText: 'Next message' }]
     render({ ref })
