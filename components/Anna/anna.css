@@ -58,7 +58,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
     min-width: 44px;
     height: 36px;
     padding: 0 4px;
@@ -72,7 +71,13 @@
     color: var(--anna-accent);
 }
 .anna-task-icon {
+    position: relative;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
 }
 .anna-brand {
     color: var(--anna-ink);
@@ -135,7 +140,9 @@
     color: var(--anna-accent);
 }
 .anna-open-tasks-badge {
-    flex: none;
+    position: absolute;
+    top: 0;
+    left: 14px;
     display: inline-flex;
 }
 .anna-header-details {
