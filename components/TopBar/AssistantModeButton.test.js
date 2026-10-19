@@ -28,7 +28,7 @@ it('uses the configured assistant avatar and opens the chat through its shell co
         </AnnaChatNavigationContext.Provider>
     )
     expect(component.root.findByType('AssistantAvatar').props).toEqual(
-        expect.objectContaining({ photoURL: 'anna.png', size: 12, assistantId: 'anna' })
+        expect.objectContaining({ photoURL: 'anna.png', size: 14, assistantId: 'anna' })
     )
     const button = component.root.findByType(TouchableOpacity)
     expect(button.props.accessibilityLabel).toBe('Anna Alldone: Open assistant chat')
@@ -58,7 +58,7 @@ it('keeps the configured assistant avatar on the sidebar close action while desk
     )
 
     expect(component.root.findByType('AssistantAvatar').props).toEqual(
-        expect.objectContaining({ photoURL: 'anna.png', size: 12, assistantId: 'anna' })
+        expect.objectContaining({ photoURL: 'anna.png', size: 14, assistantId: 'anna' })
     )
     const button = component.root.findByType(TouchableOpacity)
     expect(button.props.accessibilityLabel).toBe('Anna Alldone: Close assistant chat')
