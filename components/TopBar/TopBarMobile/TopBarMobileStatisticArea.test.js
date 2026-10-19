@@ -59,4 +59,10 @@ describe('mobile sidebar opener', () => {
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'show web sidebar' })
         expect(expandSecondaryBar).toHaveBeenCalledTimes(1)
     })
+
+    it.each([false, true])('shows the Gold balance in the main row only when compact is %s', compact => {
+        const component = renderer.create(<TopBarMobileStatisticArea compact={compact} />)
+        expect(component.root.findAllByType('GoldArea')).toHaveLength(compact ? 0 : 1)
+        expect(component.root.findAllByType('HomeButton')).toHaveLength(1)
+    })
 })

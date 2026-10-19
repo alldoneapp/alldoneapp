@@ -12,6 +12,8 @@ import { Themes } from '../Themes'
 import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
 import XpBar, { XP_BAR_MOBILE } from '../../XpBar/XpBar'
+import AssistantModeButton from '../AssistantModeButton'
+import GoldArea from '../GoldArea'
 
 const SECONDARY_BAR_MOBILE = 36
 
@@ -21,74 +23,78 @@ export default function TopBarMobile() {
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
     const expandedNavPicker = useSelector(state => state.expandedNavPicker)
+    const compact = useSelector(state => state.reallySmallScreenNavigation)
     const height = useRef(new Animated.Value(0)).current
+    const secondaryBarHeight = compact ? SECONDARY_BAR_MOBILE * 2 : SECONDARY_BAR_MOBILE
 
     const theme = getTheme(Themes, themeName, 'TopBarMobile')
 
-    const toggleNavPickerOff = () => {
-        dispatch(toggleNavPicker(false))
-    }
-
-    const toggleNavPickerOn = () => {
-        dispatch(toggleNavPicker(true))
-    }
-
     const expandSecondaryBar = () => {
-        if (expandedNavPicker) {
-            Animated.timing(
-                // Animate value over time
-                height, // The value to drive
-                {
-                    toValue: 0, // Animate to final value
-                    duration: 200,
-                    // height is a layout prop, so the native driver cannot drive it.
-                    useNativeDriver: false,
-                }
-            ).start(toggleNavPickerOff) // Start the animation
-        } else {
-            Animated.timing(
-                // Animate value over time
-                height, // The value to drive
-                {
-                    toValue: SECONDARY_BAR_MOBILE, // Animate to final value
-                    duration: 200,
-                    // height is a layout prop, so the native driver cannot drive it.
-                    useNativeDriver: false,
-                }
-            ).start(toggleNavPickerOn) // Start the animation
-        }
+        dispatch(toggleNavPicker(!expandedNavPicker))
     }
 
     useEffect(() => {
         if (expandedNavPicker) dispatch(toggleNavPicker(false))
     }, [])
+    useEffect(() => {
+        const animation = Animated.timing(height, {
+            toValue: expandedNavPicker ? secondaryBarHeight : 0,
+            duration: 200,
+            // Height is a layout prop, so the native driver cannot drive it.
+            useNativeDriver: false,
+        })
+        animation.start()
+        return () => animation.stop()
+    }, [expandedNavPicker, secondaryBarHeight, height])
+
+    const statistics = (
+        <>
+            <TasksStatisticsArea />
+            {premiumStatus === PLAN_STATUS_PREMIUM ? (
+                <PremiumBar size={QUOTA_BAR_MOBILE} />
+            ) : (
+                <QuotaBar size={QUOTA_BAR_MOBILE} />
+            )}
+        </>
+    )
 
     return (
         <View>
-            <View style={[localStyles.container, theme.container]}>
+            <View testID="top-bar-mobile" style={[localStyles.container, theme.container]}>
                 <View style={localStyles.statisticArea}>
-                    <TopBarMobileStatisticArea expandSecondaryBar={expandSecondaryBar} homeIconColor={theme.homeIcon} />
+                    <TopBarMobileStatisticArea
+                        expandSecondaryBar={expandSecondaryBar}
+                        homeIconColor={theme.homeIcon}
+                        compact={compact}
+                    />
                 </View>
                 <View style={localStyles.notificationArea}>
-                    {!isAnonymous && <MobileNotificationArea expandSecondaryBar={expandSecondaryBar} />}
+                    {!isAnonymous && (
+                        <MobileNotificationArea expandSecondaryBar={expandSecondaryBar} compact={compact} />
+                    )}
                 </View>
+                <AssistantModeButton onOpen={() => expandedNavPicker && expandSecondaryBar()} />
             </View>
 
             {!isAnonymous && (
                 <Animated.View
                     style={[localStyles.itemsContainerMobile, theme.itemsContainerMobile, { height: height }]}
                 >
-                    {expandedNavPicker && (
-                        <>
-                            {!isAnonymous && <XpBar key={'karma-bar-tablet'} size={XP_BAR_MOBILE} />}
-                            <TasksStatisticsArea />
-                            {premiumStatus === PLAN_STATUS_PREMIUM ? (
-                                <PremiumBar size={QUOTA_BAR_MOBILE} />
-                            ) : (
-                                <QuotaBar size={QUOTA_BAR_MOBILE} />
-                            )}
-                        </>
-                    )}
+                    {expandedNavPicker &&
+                        (compact ? (
+                            <View style={localStyles.compactStatistics}>
+                                <View style={localStyles.statisticsRow}>
+                                    <XpBar size={XP_BAR_MOBILE} />
+                                    <GoldArea />
+                                </View>
+                                <View style={localStyles.statisticsRow}>{statistics}</View>
+                            </View>
+                        ) : (
+                            <>
+                                <XpBar size={XP_BAR_MOBILE} />
+                                {statistics}
+                            </>
+                        ))}
                 </Animated.View>
             )}
         </View>
@@ -117,5 +123,14 @@ const localStyles = StyleSheet.create({
         paddingHorizontal: 16,
         marginLeft: -18,
         overflow: 'hidden',
+    },
+    compactStatistics: {
+        flex: 1,
+    },
+    statisticsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        height: SECONDARY_BAR_MOBILE,
     },
 })

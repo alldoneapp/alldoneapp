@@ -32,13 +32,44 @@
 .anna-header {
     min-height: 60px;
     flex: none;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     gap: 8px;
     flex-wrap: nowrap;
     padding: 10px 12px;
     border-bottom: 1px solid var(--anna-border);
     background: #fff;
+}
+.anna-header-left,
+.anna-header-right {
+    display: flex;
+    align-items: center;
+    gap: inherit;
+    min-width: 0;
+}
+.anna-header-right {
+    justify-content: flex-end;
+}
+.anna-header-tasks {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 44px;
+    height: 36px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--anna-muted);
+}
+.anna-header-tasks:hover {
+    background: var(--anna-tint);
+    color: var(--anna-accent);
+}
+.anna-task-icon {
+    display: flex;
 }
 .anna-brand {
     color: var(--anna-ink);
@@ -1162,7 +1193,8 @@
 }
 .anna-header-picker {
     position: relative;
-    flex: none;
+    flex: 0 1 98px;
+    min-width: 0;
 }
 .anna-header-picker select {
     max-width: 100%;
@@ -1256,6 +1288,7 @@
         gap: 6px;
     }
     .anna-pane-toggle,
+    .anna-header-tasks,
     .anna-header-picker select {
         height: 44px;
     }

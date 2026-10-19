@@ -197,6 +197,30 @@ beforeEach(() => {
     root = createRoot(container)
 })
 
+it('returns to the latest messages on request, preserves the draft and resumes following messages', () => {
+    const ref = React.createRef()
+    render({ ref })
+    type('Keep this draft')
+    const log = container.querySelector('[role="log"]')
+    Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1200 })
+    Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
+    log.scrollTop = 100
+    act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
+    mockMessages = [{ id: 'first', creatorId: 'u1', created: 1, commentText: 'First message' }]
+    render({ ref })
+    expect(log.scrollTop).toBe(100)
+    expect(container.querySelector('.anna-latest')).not.toBeNull()
+
+    act(() => ref.current.scrollToLatest())
+    expect(log.scrollTop).toBe(1200)
+    expect(container.querySelector('.anna-latest')).toBeNull()
+    expect(container.querySelector('textarea').value).toBe('Keep this draft')
+    Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1500 })
+    mockMessages = [...mockMessages, { id: 'second', creatorId: 'u1', created: 2, commentText: 'Next message' }]
+    render({ ref })
+    expect(log.scrollTop).toBe(1500)
+})
+
 it('places the shared attachment picker next to the microphone and inserts the selected file', () => {
     render()
     const tools = container.querySelector('.anna-composer-tools')

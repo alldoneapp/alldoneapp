@@ -34,6 +34,7 @@ import AnnaBrowserTakeoverContext from './AnnaBrowserTakeoverContext'
 import AnnaWorkspaceNavigationContext from './AnnaWorkspaceNavigationContext'
 import LoggedUserSidebarHeader from '../SidebarMenu/LoggedUserSidebar/LoggedUserSidebarHeader'
 import ProjectItem from '../SidebarMenu/ProjectFolding/ProjectItem/ProjectItem'
+import AssistantModeButton from '../TopBar/AssistantModeButton'
 jest.mock('../SidebarMenu/Themes', () => ({
     Themes: {
         modern: {
@@ -63,6 +64,7 @@ const mockSet = jest.fn().mockResolvedValue(undefined)
 const mockSnapshots = {}
 let mockBrowserProps
 let mockConversationProps
+const mockScrollToLatest = jest.fn()
 let mockTransactionState
 let mockTakeoverProps
 let mockTakeoverMounts = 0
@@ -112,7 +114,7 @@ const mockDispatch = jest.fn()
 let mockMobileNavigation = false
 let mockAssistant
 let mockSidebarNumbers
-const mockDefaultAssistant = { uid: 'anna', displayName: 'Anna Alldone' }
+let mockDefaultAssistant
 let mockUnmounts = 0
 jest.mock('react-redux', () => ({
     useDispatch: () => mockDispatch,
@@ -128,20 +130,23 @@ jest.mock('react-redux', () => ({
         }),
 }))
 jest.mock('./useAnnaConversation', () => ({ __esModule: true, default: jest.fn() }))
-jest.mock('./AnnaConversation', () => ({
-    __esModule: true,
-    default: props => {
-        mockConversationProps = props
-        const React = require('react')
-        React.useEffect(
-            () => () => {
-                mockUnmounts++
-            },
-            []
-        )
-        return <textarea aria-label="Persistent conversation" />
-    },
-}))
+jest.mock('./AnnaConversation', () => {
+    const React = require('react')
+    return {
+        __esModule: true,
+        default: React.forwardRef((props, ref) => {
+            mockConversationProps = props
+            React.useImperativeHandle(ref, () => ({ scrollToLatest: mockScrollToLatest }))
+            React.useEffect(
+                () => () => {
+                    mockUnmounts++
+                },
+                []
+            )
+            return <textarea aria-label="Persistent conversation" />
+        }),
+    }
+})
 jest.mock('../AdminPanel/Assistants/assistantsHelper', () => ({ getAssistant: () => mockAssistant }))
 jest.mock('../UIComponents/AssistantVoiceCallProvider', () => ({
     useVoiceCall: () => ({ status: 'idle', voiceSeconds: 0 }),
@@ -486,6 +491,7 @@ beforeEach(() => {
     window.localStorage.clear()
     setAnnaMode(true)
     mockAssistant = { uid: 'a1', displayName: 'Carl Code Mentor' }
+    mockDefaultAssistant = { uid: 'anna', displayName: 'Anna Alldone' }
     mockUnmounts = 0
     mockBrowserProps = null
     mockConversationProps = null
@@ -1246,29 +1252,139 @@ it.each([
     }
 })
 
-it('uses the conversation assistant for labels and reacts when that assistant is renamed', async () => {
+it('keeps conversation attribution tied to its assistant when the project default is different', async () => {
     const view = render(content(1))
-    expect(screen.getByText('Carl Code Mentor')).toBeTruthy()
     expect(mockConversationProps.assistant.displayName).toBe('Carl Code Mentor')
     expect(screen.getByLabelText('Conversation with Carl Code Mentor')).toBeTruthy()
-    expect(testContainer.textContent).not.toContain('Anna')
+    expect(screen.getByText('Anna Alldone')).toBeTruthy()
 
     mockAssistant = { ...mockAssistant, displayName: 'Mira' }
     view.rerender(content(1))
-    expect(screen.getByText('Mira')).toBeTruthy()
     expect(mockConversationProps.assistant.displayName).toBe('Mira')
+    expect(screen.getByLabelText('Conversation with Mira')).toBeTruthy()
+    expect(screen.getByText('Anna Alldone')).toBeTruthy()
     await act(async () => {})
 })
 
-it('shows the same live task total as Home beside the assistant name and hides zero', async () => {
+it('updates the header name and photo from the current default-project assistant despite an older conversation', () => {
+    const view = render(content(1))
+    expect(screen.getByLabelText('Anna Alldone – Latest messages')).toBeTruthy()
+    mockDefaultAssistant = { uid: 'mira', displayName: 'Mira', photoURL50: 'mira.png' }
+    view.rerender(content(1))
+    expect(screen.getByLabelText('Mira – Latest messages')).toBeTruthy()
+    expect(document.querySelector('.anna-small-avatar img').getAttribute('src')).toBe('mira.png')
+    expect(screen.getByLabelText('Anna Alldone – Latest messages')).toBeNull()
+    expect(mockConversationProps.assistant.uid).toBe('a1')
+    mockDefaultAssistant = { ...mockDefaultAssistant, displayName: 'Mira Coach', photoURL50: 'mira-new.png' }
+    view.rerender(content(1))
+    expect(screen.getByLabelText('Mira Coach – Latest messages')).toBeTruthy()
+    expect(document.querySelector('.anna-small-avatar img').getAttribute('src')).toBe('mira-new.png')
+})
+
+it('opens assistant mode from the app header avatar and keeps the workspace editor mounted', () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+    try {
+        render(
+            <AnnaShell routeId="avatar-entry">
+                <AssistantModeButton />
+                <input aria-label="Workspace draft" defaultValue="Unsaved note" />
+            </AnnaShell>
+        )
+        const draft = screen.getByLabelText('Workspace draft')
+        fireEvent.click(screen.getByLabelText('Close chat — Alldone only'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        fireEvent.click(screen.getByLabelText('Anna Alldone: Open assistant chat'))
+        expect(document.querySelector('.anna-zoom-active.anna-mobile-chat')).toBeTruthy()
+        expect(mockConversationProps.visible).toBe(true)
+        expect(screen.getByLabelText('Workspace draft')).toBe(draft)
+        expect(draft.value).toBe('Unsaved note')
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        expect(mockUnmounts).toBe(0)
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it('shows the live task total on the separate task button, including zero', () => {
     mockSidebarNumbers = { p1: { u1: 20 }, p2: { u1: 7, someoneElse: 90 } }
     const view = render(content(1))
-    expect(screen.getByLabelText('27 open tasks today').textContent).toBe('27')
-    await act(async () => screen.getByLabelText('27 open tasks today').click())
-    expect(URLTrigger.processUrl).toHaveBeenLastCalledWith({}, '/projects/tasks/open')
+    expect(screen.getByLabelText('27 open tasks today').querySelector('.anna-open-tasks-badge').textContent).toBe('27')
+    expect(document.querySelector('.anna-header-assistant').textContent).not.toContain('27')
     mockSidebarNumbers = { p1: { u1: 0 } }
     view.rerender(content(1))
-    expect(document.querySelector('.anna-open-tasks-badge')).toBeNull()
+    expect(screen.getByLabelText('0 open tasks today').querySelector('.anna-open-tasks-badge').textContent).toBe('0')
+})
+
+it.each([
+    ['desktop', 'alldone'],
+    ['desktop', 'browser'],
+    ['desktop', 'chat-only'],
+    ['mobile', 'chat'],
+    ['mobile', 'browser'],
+    ['mobile', 'chat-only'],
+])('scrolls the conversation without changing the current view on %s from %s', (device, start) => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({
+        matches: device === 'mobile',
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    try {
+        render(content(1))
+        if (start === 'browser') chooseSurface('browser')
+        else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
+        const shell = document.querySelector('.anna-shell')
+        const classes = shell.className
+        const surface = selectedSurface()
+        const path = window.location.href
+        const chat = screen.getByLabelText('Persistent conversation')
+        chat.value = 'Keep my draft'
+        fireEvent.click(screen.getByLabelText('Anna Alldone – Latest messages'))
+        expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
+        expect(shell.className).toBe(classes)
+        expect(selectedSurface()).toBe(surface)
+        expect(window.location.href).toBe(path)
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+        expect(chat.value).toBe('Keep my draft')
+        expect(mockUnmounts).toBe(0)
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
+it.each(['desktop', 'mobile'])('uses the top-left app-view action for the task button on %s', device => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({
+        matches: device === 'mobile',
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    try {
+        render(content(1))
+        chooseSurface('browser')
+        const workspace = screen.getByLabelText('Real workspace editor')
+        const chat = screen.getByLabelText('Persistent conversation')
+        workspace.value = 'Keep my note'
+        const path = window.location.href
+        fireEvent.click(document.querySelector('.anna-header-tasks'))
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
+        expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+        expect(workspace.value).toBe('Keep my note')
+        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+        const workspaceUrl = new URL(path)
+        workspaceUrl.searchParams.delete('assistant')
+        expect(window.location.href).toBe(workspaceUrl.href)
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+        expect(mockUnmounts).toBe(0)
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
 })
 
 it.each(['updates', 'chats'])('opens linked %s activity from chat-only mode inside Alldone', async feature => {
