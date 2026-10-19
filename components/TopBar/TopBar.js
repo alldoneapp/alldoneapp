@@ -8,8 +8,10 @@ import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import { setTopBarWidth } from '../../redux/actions'
 import HomeButton from './HomeButton'
+import AssistantModeButton from './AssistantModeButton'
 import ConnectionStatusChip from './ConnectionStatusChip'
 import { showConnectionChipBelowHeader } from './connectionChipPlacement'
+import { getDesktopTopBarMargins } from './topBarLayout'
 
 export default function TopBar() {
     const dispatch = useDispatch()
@@ -37,16 +39,14 @@ export default function TopBar() {
             style={[
                 localStyles.container,
                 theme.container,
-                !smallScreenNavigation && {
-                    marginHorizontal: isMiddleScreen ? 56 : 104,
-                },
-                !smallScreenNavigation && !sidebarExpanded && { marginLeft: isMiddleScreen ? 112 : 160 },
+                !smallScreenNavigation && getDesktopTopBarMargins({ isMiddleScreen, sidebarExpanded }),
             ]}
             onLayout={onLayout}
+            testID="top-bar-desktop"
         >
             <View style={localStyles.leftArea}>
-                <HomeButton color={theme.homeIcon} style={localStyles.homeButton} />
-                {userIsAnonymous ? <View style={{ flex: 1 }} /> : <TopBarStatisticArea />}
+                <AssistantModeButton inline style={localStyles.leadingButton} />
+                {!userIsAnonymous && <TopBarStatisticArea />}
             </View>
             <View style={localStyles.rightArea}>
                 {/* Renders nothing while the connection is live (PT-4660), so this
@@ -58,6 +58,7 @@ export default function TopBar() {
                 {!chipBelowHeader && <ConnectionStatusChip />}
                 <NotificationArea />
             </View>
+            <HomeButton color={theme.homeIcon} style={localStyles.homeButton} />
         </View>
     )
 }
@@ -76,13 +77,23 @@ const localStyles = StyleSheet.create({
     leftArea: {
         flexDirection: 'row',
         alignItems: 'center',
+        flex: 1,
+        maxWidth: '50%',
+        minWidth: 0,
+        paddingRight: 32,
     },
     rightArea: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-end',
     },
+    leadingButton: {
+        marginRight: 8,
+    },
     homeButton: {
-        marginRight: 16,
+        position: 'absolute',
+        left: '50%',
+        marginLeft: -14,
+        top: 10,
     },
 })

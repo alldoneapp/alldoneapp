@@ -17,7 +17,7 @@ jest.mock('react-redux', () => ({
 jest.mock('./TopBarMobileStatisticArea', () => 'TopBarMobileStatisticArea')
 jest.mock('./MobileNotificationArea', () => 'MobileNotificationArea')
 jest.mock('../ConnectionStatusChip', () => 'ConnectionStatusChip')
-jest.mock('../AssistantModeButton', () => 'AssistantModeButton')
+jest.mock('../HomeButton', () => 'HomeButton')
 jest.mock('../GoldArea', () => 'GoldArea')
 jest.mock('../QuotaBar/QuotaBar', () => ({
     __esModule: true,
@@ -53,9 +53,9 @@ describe('TopBarMobile connection health', () => {
         expect(component.root.findAllByType('ConnectionStatusChip')).toHaveLength(0)
     })
 
-    it('includes the centered assistant-mode entry point in the top row', () => {
+    it('includes the centered Home button in the top row', () => {
         const component = renderer.create(<TopBarMobile />)
-        expect(component.root.findByProps({ testID: 'top-bar-mobile' }).findByType('AssistantModeButton')).toBeTruthy()
+        expect(component.root.findByProps({ testID: 'top-bar-mobile' }).findByType('HomeButton')).toBeTruthy()
     })
 
     it('keeps the Gold balance accessible in expanded statistics on narrow phones', () => {

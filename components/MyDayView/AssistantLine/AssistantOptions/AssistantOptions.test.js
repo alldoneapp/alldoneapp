@@ -365,6 +365,9 @@ describe('AssistantOptions search button', () => {
         expect(tree.root.findByType(TextInput).props.placeholder).toBe('Start a new chat')
 
         await act(async () => {
+            tree.root.findByType(TextInput).props.onChangeText('A message long enough to wrap')
+        })
+        await act(async () => {
             tree.root.findByType(TextInput).props.onContentSizeChange(100, 80)
         })
 
@@ -384,7 +387,7 @@ describe('AssistantOptions search button', () => {
             getInput().props.onChangeText('A message long enough to wrap')
         })
         await act(async () => {
-            getInput().props.onContentSizeChange(100, 80)
+            getInput().props.onContentSizeChange(100, 72)
         })
 
         const expandedStyle = StyleSheet.flatten(getControls().props.style)

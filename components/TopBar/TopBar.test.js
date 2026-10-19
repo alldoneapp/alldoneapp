@@ -9,6 +9,7 @@ jest.mock('react-redux', () => ({
 jest.mock('./TopBarStatisticArea', () => 'TopBarStatisticArea')
 jest.mock('./NotificationArea', () => 'NotificationArea')
 jest.mock('./HomeButton', () => 'HomeButton')
+jest.mock('./AssistantModeButton', () => 'AssistantModeButton')
 jest.mock('./ConnectionStatusChip', () => 'ConnectionStatusChip')
 
 import TopBar from './TopBar'

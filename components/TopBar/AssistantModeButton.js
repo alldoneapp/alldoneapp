@@ -6,7 +6,7 @@ import AssistantModeIcon from '../UIComponents/AssistantModeIcon'
 import { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
 
-export default function AssistantModeButton({ onOpen, inline = false }) {
+export default function AssistantModeButton({ onOpen, inline = false, style }) {
     const assistant = useSelector(state => state.defaultAssistant)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const showChat = useContext(AnnaChatNavigationContext)
@@ -25,7 +25,7 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
             accessibilityLabel={label}
             aria-pressed={expanded}
             testID="top-bar-assistant-mode"
-            style={[localStyles.button, hovered && localStyles.hovered, !inline && localStyles.centered]}
+            style={[localStyles.button, hovered && localStyles.hovered, !inline && localStyles.centered, style]}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}

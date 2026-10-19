@@ -12,18 +12,19 @@ import { Themes } from '../Themes'
 import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
 import XpBar, { XP_BAR_MOBILE } from '../../XpBar/XpBar'
-import AssistantModeButton from '../AssistantModeButton'
+import HomeButton from '../HomeButton'
 import GoldArea from '../GoldArea'
 
 const SECONDARY_BAR_MOBILE = 36
 
-export default function TopBarMobile() {
+export default function TopBarMobile({ compact: compactOverride, showMenu = true }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const premiumStatus = useSelector(state => state.loggedUser.premium.status)
     const expandedNavPicker = useSelector(state => state.expandedNavPicker)
-    const compact = useSelector(state => state.reallySmallScreenNavigation)
+    const reallySmallScreenNavigation = useSelector(state => state.reallySmallScreenNavigation)
+    const compact = compactOverride ?? reallySmallScreenNavigation
     const height = useRef(new Animated.Value(0)).current
     const secondaryBarHeight = compact ? SECONDARY_BAR_MOBILE * 2 : SECONDARY_BAR_MOBILE
 
@@ -64,8 +65,8 @@ export default function TopBarMobile() {
                 <View style={localStyles.statisticArea}>
                     <TopBarMobileStatisticArea
                         expandSecondaryBar={expandSecondaryBar}
-                        homeIconColor={theme.homeIcon}
                         compact={compact}
+                        showMenu={showMenu}
                     />
                 </View>
                 <View style={localStyles.notificationArea}>
@@ -73,7 +74,11 @@ export default function TopBarMobile() {
                         <MobileNotificationArea expandSecondaryBar={expandSecondaryBar} compact={compact} />
                     )}
                 </View>
-                <AssistantModeButton onOpen={() => expandedNavPicker && expandSecondaryBar()} />
+                <HomeButton
+                    color={theme.homeIcon}
+                    style={localStyles.homeButton}
+                    expandSecondaryBar={expandSecondaryBar}
+                />
             </View>
 
             {!isAnonymous && (
@@ -115,6 +120,12 @@ const localStyles = StyleSheet.create({
     },
     notificationArea: {
         flexDirection: 'row',
+    },
+    homeButton: {
+        position: 'absolute',
+        left: '50%',
+        marginLeft: -14,
+        top: 14,
     },
     itemsContainerMobile: {
         flexDirection: 'row',

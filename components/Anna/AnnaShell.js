@@ -115,7 +115,8 @@ export default function AnnaShell({ children, routeId }) {
     const chatPane = useRef(null)
     const chatConversation = useRef(null)
     const workspaceStage = useRef(null)
-    const focusAfterSwitch = useRef(null)
+    const focusAfterSwitch = useRef(active ? 'chat' : null)
+    const awaitingChatInputFocus = useRef(false)
     const previousMode = useRef(layoutMode)
     const { width: chatWidth, maximum: maxChatWidth, resize: setChatWidth } = useAnnaChatWidth(user.uid, layout)
     const presentationSeen = useRef(new Set())
@@ -128,6 +129,11 @@ export default function AnnaShell({ children, routeId }) {
     const mobile = useMobilePane()
     const visibleWorkspace = active && !chatOnly && (mobilePane === 'workspace' || !mobile)
     useWorkspaceViewportOwner(workspaceContent, active, visibleWorkspace && surface === 'alldone')
+    const focusChatInput = useCallback(() => {
+        chatPane.current?.focus({ preventScroll: true })
+        awaitingChatInputFocus.current = !chatConversation.current
+        chatConversation.current?.focusInput()
+    }, [])
     const selectSurface = nextSurface => {
         if (mobile && nextSurface === 'alldone') {
             closeChat()
@@ -179,11 +185,11 @@ export default function AnnaShell({ children, routeId }) {
     const openChat = useCallback(() => {
         requestGeneration.current++
         // Focus immediately if already visible; otherwise wait for the pane switch.
-        if (layoutMode === 'split' && mobilePane === 'chat') chatPane.current?.focus({ preventScroll: true })
+        if (layoutMode === 'split' && mobilePane === 'chat') focusChatInput()
         else focusAfterSwitch.current = 'chat'
         setMobilePane('chat')
         setAnnaMode(true)
-    }, [layoutMode, mobilePane])
+    }, [layoutMode, mobilePane, focusChatInput])
     const showAlldoneNavigation = useCallback(() => {
         if (!active) return
         requestGeneration.current++
@@ -198,8 +204,22 @@ export default function AnnaShell({ children, routeId }) {
         const target = focusAfterSwitch.current || (previousMode.current === 'alldone' && active ? 'chat' : null)
         previousMode.current = layoutMode
         focusAfterSwitch.current = null
-        if (target) (target === 'chat' ? chatPane : workspaceStage).current?.focus({ preventScroll: true })
-    }, [layoutMode, mobilePane, surface])
+        if (target === 'chat' && active) focusChatInput()
+        else if (target === 'workspace') {
+            awaitingChatInputFocus.current = false
+            workspaceStage.current?.focus({ preventScroll: true })
+        }
+    }, [layoutMode, mobilePane, surface, active, focusChatInput])
+    useEffect(() => {
+        if (!active) {
+            awaitingChatInputFocus.current = false
+            return
+        }
+        if (!awaitingChatInputFocus.current || !chatConversation.current) return
+        awaitingChatInputFocus.current = false
+        // Loading must not take focus back after the user starts editing elsewhere.
+        if (chatPane.current?.contains(document.activeElement)) chatConversation.current.focusInput()
+    }, [active, visited, conversation])
     useEffect(() => {
         if (!active) {
             requestGeneration.current++
