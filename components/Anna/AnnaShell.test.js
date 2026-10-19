@@ -978,12 +978,12 @@ it.each([false, true])('keeps the logo navigation separate from the chat toggle 
 })
 
 it.each([false, true])(
-    'keeps the sidebar avatar in sync with the selected default assistant when chat is %s',
+    'keeps the sidebar panel avatar-free and its label in sync with the selected assistant when chat is %s',
     active => {
         mockDefaultAssistant = { ...mockDefaultAssistant, photoURL50: 'anna.png' }
         const view = render(content(1, true))
         if (!active) closeAssistant()
-        expect(assistantToggle().querySelector('img').getAttribute('src')).toBe('anna.png')
+        expect(assistantToggle().querySelector('img')).toBeNull()
 
         mockDefaultAssistant = { uid: 'mira', displayName: 'Mira', photoURL300: 'mira.png' }
         view.rerender(content(1, true))
@@ -992,7 +992,7 @@ it.each([false, true])(
         expect(assistantToggle().getAttribute('aria-label')).toBe(
             `Mira: ${active ? 'Close assistant chat' : 'Open assistant chat'}`
         )
-        expect(assistantToggle().querySelector('img').getAttribute('src')).toBe('mira.png')
+        expect(assistantToggle().querySelector('img')).toBeNull()
     }
 )
 
