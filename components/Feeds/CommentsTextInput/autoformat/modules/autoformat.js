@@ -13,6 +13,7 @@ import {
 } from '../../textInputHelper'
 import store from '../../../../../redux/store'
 import { tryToextractPeopleForMention, REGEX_URL } from '../../../Utils/HelperFunctions'
+import { getUrlTokenParts } from '../../../Utils/linkDetection'
 import { loadQuill } from '../../../../NotesView/NotesDV/EditorView/mentionsHelper'
 import { checkIsLimitedByTraffic } from '../../../../Premium/PremiumHelper'
 
@@ -125,9 +126,7 @@ class Autoformat extends Module {
                             editorId: this.editorId,
                             userIdAllowedToEditTags: this.userIdAllowedToEditTags,
                         }
-                        delta.ops[0].insert = ' '
-                        delta.ops.push({ insert: { mention } })
-                        delta.ops.push({ insert: ' ' })
+                        delta = new Delta().insert(' ').insert({ mention }).insert(' ')
                     } else {
                         const execRes = formatUrl(urlToProcess)
                         if (execRes) {
@@ -139,9 +138,9 @@ class Autoformat extends Module {
                                 this.userIdAllowedToEditTags
                             )
 
-                            delta.ops[0].insert = ' '
-                            delta.ops.push({ insert: { url } })
-                            delta.ops.push({ insert: ' ' })
+                            // Consume the native link attribute as well as its label. Keeping
+                            // it on the leading space makes each HTML wrapper add another chip.
+                            delta = new Delta().insert(' ').insert({ url }).insert(' ')
                         }
                     }
                 } else if (this.singleLine || this.disabledEnterKey) {
@@ -584,6 +583,14 @@ function transformedMatchOps(quillInstance, atIndex, transform, result, editorId
         ops.insert({ hashtag })
         ops.delete(result[0].length)
     } else if (transform.insert === 'email') {
+        // A Teams message URL contains @thread.v2; other URLs can carry real email
+        // addresses in their path/query. Leave those tokens for the URL transform.
+        if (getUrlTokenParts(transformedMatch)) {
+            return {
+                ops: ops.retain(resultIndex + result[0].length),
+                rightIndex: resultIndex + result[0].length,
+            }
+        }
         const id = v4()
         const email = { text: transformedMatch, id, editorId, userIdAllowedToEditTags }
         ops.retain(resultIndex)

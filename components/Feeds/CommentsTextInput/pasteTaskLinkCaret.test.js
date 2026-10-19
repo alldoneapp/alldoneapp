@@ -67,13 +67,18 @@ import {
     createPlaceholder,
     QUILL_EDITOR_NOTE_TYPE,
     QUILL_EDITOR_TEXT_INPUT_TYPE,
+    processPastedText,
+    processPastedTextWithBreakLines,
 } from './textInputHelper'
+import { parseFeedComment } from '../Utils/feedCommentParser'
 
 const PROJECT_ID = 'PROJ1'
 const TASK_URL = `https://alldone.app/projects/${PROJECT_ID}/tasks/TASK9`
 const ATLASSIAN_URL = 'https://jtl-software.atlassian.net/wiki/spaces/AD/pages/edit-v2/1527349338?'
 const TEAMS_DOCUMENT_URL = 'https://company.sharepoint.com/:t:/s/PlatformTeam/IQDdocument123?e=share123&web=1'
 const TEAMS_DOCUMENT_LABEL = 'MCP Server Q4 Execution Plan.md'
+const TEAMS_MESSAGE_URL =
+    'https://teams.microsoft.com/l/message/19:31a6fbacdfd24ed9b4204b6984dce10e@thread.v2/1792410546073?context=%7B%22contextType%22%3A%22chat%22%7D'
 const NOTE_FORMATS = [...ALLOWED_FORMATS, 'taskTagFormat']
 
 // The real url/taskTagFormat blots render React through redux and the Firebase bridge. This
@@ -88,10 +93,15 @@ const registerStubBlot = blotName => {
             const node = super.create(value)
             node.setAttribute('data-id', value.id || '')
             node.setAttribute('href', value.url || value.objectUrl || '')
+            node.setAttribute('data-text', value.text || '')
             return node
         }
         static value(node) {
-            return { id: node.getAttribute('data-id'), url: node.getAttribute('href') }
+            return {
+                id: node.getAttribute('data-id'),
+                url: node.getAttribute('href'),
+                text: node.getAttribute('data-text'),
+            }
         }
     }
     StubBlot.blotName = blotName
@@ -398,6 +408,139 @@ describe('AT-2416 pasting a task link keeps the caret behind the link', () => {
 
             expect(embedIndexOf(quill, 'url')).toBe(-1)
             expect(quill.getText()).toBe('Open document\n')
+        })
+    })
+
+    describe('Teams URLs stay links throughout paste, typing and saved-text reconstruction', () => {
+        it.each(['div', 'p', 'span'])('converts a link inside a %s wrapper exactly once', tag => {
+            const quill = buildEditor('input')
+            quill.setText('alpha XXXX omega')
+            pasteInto(quill, {
+                at: 6,
+                selected: 4,
+                text: TEAMS_MESSAGE_URL,
+                html: `<${tag}><a href="${TEAMS_MESSAGE_URL}"><strong>teams</strong></a> after</${tag}>`,
+            })
+
+            const urls = quill.getContents().ops.filter(op => op.insert.url)
+            expect(urls).toHaveLength(1)
+            expect(urls[0].insert.url.url).toBe(TEAMS_MESSAGE_URL)
+            expect(embedIndexOf(quill, 'email')).toBe(-1)
+            expect(quill.getText()).toMatch(/^alpha\s+after\s+omega\n$/)
+            expect(quill.getText(quill.getSelection().index)).toBe(' omega\n')
+        })
+
+        it('does not duplicate a link through multiple nested wrappers or retain native link attributes', () => {
+            const quill = buildEditor('input')
+            pasteInto(quill, {
+                at: 0,
+                text: TEAMS_MESSAGE_URL,
+                html: `<div><p><span><a href="${TEAMS_MESSAGE_URL}">teams</a></span></p></div>`,
+            })
+            const ops = quill.getContents().ops
+            expect(ops.filter(op => op.insert.url).map(op => op.insert.url.url)).toEqual([TEAMS_MESSAGE_URL])
+            expect(ops.some(op => op.attributes?.link)).toBe(false)
+        })
+
+        it('keeps two hyperlinks that were actually present in the clipboard', () => {
+            const quill = buildEditor('input')
+            pasteInto(quill, {
+                at: 0,
+                text: `${TEAMS_MESSAGE_URL} ${TEAMS_MESSAGE_URL}`,
+                html: `<div><a href="${TEAMS_MESSAGE_URL}">first</a> <a href="${TEAMS_MESSAGE_URL}">second</a></div>`,
+            })
+            expect(
+                quill
+                    .getContents()
+                    .ops.filter(op => op.insert.url)
+                    .map(op => op.insert.url.url)
+            ).toEqual([TEAMS_MESSAGE_URL, TEAMS_MESSAGE_URL])
+        })
+
+        it('converts a wrapped person hyperlink to one mention', () => {
+            const quill = buildEditor('input')
+            jest.requireMock('../Utils/HelperFunctions').tryToextractPeopleForMention.mockReturnValueOnce({
+                peopleName: 'Karsten',
+                uid: 'user-1',
+            })
+            pasteInto(quill, {
+                at: 0,
+                text: 'Karsten',
+                html: '<div><a href="https://alldone.app/person">Karsten</a></div>',
+            })
+            expect(quill.getContents().ops.filter(op => op.insert.mention)).toHaveLength(1)
+            expect(embedIndexOf(quill, 'url')).toBe(-1)
+        })
+
+        it.each([
+            ['plain text', ''],
+            ['HTML text', TEAMS_MESSAGE_URL],
+        ])('keeps a Teams URL pasted as %s through the saved-title parser', (_kind, html) => {
+            const quill = buildEditor('input')
+            pasteInto(quill, { at: 0, text: TEAMS_MESSAGE_URL, html })
+            expect(embedIndexOf(quill, 'email')).toBe(-1)
+            expect(embedValueOf(quill, 'url').url).toBe(TEAMS_MESSAGE_URL)
+            // CustomTextInput3 serializes URL chips back to their complete destination on save.
+            const savedText = quill
+                .getContents()
+                .ops.map(op => op.insert.url?.url || op.insert)
+                .join('')
+                .trim()
+            expect(parseFeedComment(savedText, false, false)).toEqual([{ type: 'url', link: TEAMS_MESSAGE_URL }])
+        })
+
+        it.each(['input', 'note'])('autoformats a typed Teams URL as a URL in a %s editor', kind => {
+            const quill = buildEditor(kind)
+            const emailInsertions = []
+            quill.on('text-change', delta => emailInsertions.push(...delta.ops.filter(op => op.insert?.email)))
+            quill.setText('hello  omega')
+            quill.setSelection(6)
+            quill.insertText(6, TEAMS_MESSAGE_URL, 'user')
+            quill.setSelection(6 + TEAMS_MESSAGE_URL.length)
+            quill.insertText(6 + TEAMS_MESSAGE_URL.length, ' ', 'user')
+            expect(embedIndexOf(quill, 'email')).toBe(-1)
+            expect(embedValueOf(quill, 'url').url).toBe(TEAMS_MESSAGE_URL)
+            expect(quill.getText()).toContain(' omega')
+            expect(emailInsertions).toEqual([])
+        })
+
+        it.each([
+            ['single-line parser', processPastedText],
+            ['multi-line parser', processPastedTextWithBreakLines],
+        ])('%s preserves Teams URLs alongside real emails when loading or pasting text', (_kind, parse) => {
+            const delta = parse(`${TEAMS_MESSAGE_URL} mail@example.com,`, Quill.import('delta'), PROJECT_ID, 'editor-1')
+            expect(delta.ops.filter(op => op.insert.url).map(op => op.insert.url.url)).toEqual([TEAMS_MESSAGE_URL])
+            expect(delta.ops.filter(op => op.insert.email).map(op => op.insert.email.text)).toEqual([
+                'mail@example.com',
+            ])
+        })
+
+        it('uses an HTML hyperlink destination even when its visible label is an email address', () => {
+            const delta = processPastedTextWithBreakLines(
+                'mail@example.com',
+                Quill.import('delta'),
+                PROJECT_ID,
+                'note-1',
+                null,
+                false,
+                '',
+                null,
+                true,
+                { link: TEAMS_MESSAGE_URL }
+            )
+            expect(delta.ops.filter(op => op.insert.url).map(op => op.insert.url.url)).toEqual([TEAMS_MESSAGE_URL])
+            expect(delta.ops.some(op => op.insert.email)).toBe(false)
+        })
+
+        it('still autoformats a typed real email address', () => {
+            const quill = buildEditor('input')
+            quill.setText('hello ')
+            quill.setSelection(6)
+            quill.insertText(6, 'mail@example.com', 'user')
+            quill.setSelection(22)
+            quill.insertText(22, ' ', 'user')
+            expect(embedValueOf(quill, 'email').text).toBe('mail@example.com')
+            expect(embedIndexOf(quill, 'url')).toBe(-1)
         })
     })
 })

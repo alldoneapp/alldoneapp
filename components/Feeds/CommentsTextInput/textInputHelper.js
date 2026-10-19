@@ -22,6 +22,7 @@ import {
     VIDEO_TRIGGER,
 } from '../Utils/HelperFunctions'
 import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../utils/LinkingHelper'
+import { getUrlTokenParts } from '../Utils/linkDetection'
 import { cloneDeep } from 'lodash'
 import Backend from '../../../utils/BackendBridge'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
@@ -499,7 +500,7 @@ export const processPastedTextWithBreakLines = (
                 const mention = { text: mentionText, id, userId, editorId, userIdAllowedToEditTags }
                 delta.insert({ mention })
                 isFormatedList ? delta.insert(' ', attributes) : delta.insert(' ')
-            } else if (REGEX_EMAIL.test(word)) {
+            } else if (!isFomatedLink && !getUrlTokenParts(word) && REGEX_EMAIL.test(word)) {
                 const emailMatch = word.match(REGEX_EMAIL)
                 const id = v4()
                 // Create email object with just the email part, no punctuation
@@ -692,7 +693,7 @@ export const processPastedText = (
             const mention = { text: mentionText, id, userId, editorId, userIdAllowedToEditTags }
             delta.insert({ mention })
             delta.insert(' ')
-        } else if (REGEX_EMAIL.test(word)) {
+        } else if (!getUrlTokenParts(word) && REGEX_EMAIL.test(word)) {
             const emailMatch = word.match(REGEX_EMAIL)
             const id = v4()
             // Create email object with just the email part, no punctuation
