@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
         maxHeight: 72,
         paddingBottom: 24,
         paddingLeft: 24,
-        // Center the 32px toggle over the badges, which have a 24px right inset.
+        // Keep the assistant toggle inset from the sidebar edge.
         paddingRight: 16,
         alignItems: 'center',
         justifyContent: 'space-between',
