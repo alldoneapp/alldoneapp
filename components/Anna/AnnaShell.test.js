@@ -615,6 +615,69 @@ it('ignores completion from a superseded browser and returns when the current se
     }
 })
 
+it('keeps the expand action immediately after the assistant name and the close action at the far right', () => {
+    render(content(1))
+    const identity = screen.getByLabelText('Anna Alldone – Latest messages')
+    const expand = screen.getByLabelText('Hide workspace — chat only')
+    const close = screen.getByLabelText('Close assistant chat')
+    expect(identity.nextElementSibling).toBe(expand)
+    expect(expand.closest('.anna-header-left')).toBeTruthy()
+    expect(close.parentElement).toBe(document.querySelector('.anna-header-right'))
+    expect(close.parentElement.lastElementChild).toBe(close)
+
+    fireEvent.click(expand)
+    expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+    expect(identity.nextElementSibling).toBe(screen.getByLabelText('Show workspace'))
+    fireEvent.click(screen.getByLabelText('Show workspace'))
+    expect(document.querySelector('.anna-chat-only')).toBeNull()
+    expect(identity.nextElementSibling).toBe(screen.getByLabelText('Hide workspace — chat only'))
+})
+
+it.each([
+    ['desktop', 'split'],
+    ['desktop', 'chat-only'],
+    ['mobile', 'chat'],
+    ['mobile', 'browser'],
+])('closes Anna through the header X on %s from %s without losing drafts or the current page', (device, start) => {
+    const originalMatchMedia = window.matchMedia
+    mockMobileNavigation = device === 'mobile'
+    window.matchMedia = () => ({
+        matches: mockMobileNavigation,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+    })
+    try {
+        window.history.replaceState({}, '', '/projects/p1/notes/n1?assistant=1&filter=open#draft')
+        render(content(1))
+        const editor = screen.getByLabelText('Real workspace editor')
+        const chat = screen.getByLabelText('Persistent conversation')
+        editor.value = 'Keep my workspace draft'
+        chat.value = 'Keep my unsent message'
+        if (start === 'chat-only') act(() => setAnnaLayout('chat'))
+        else if (start === 'browser') chooseSurface('browser')
+
+        const close = screen.getByLabelText('Close assistant chat')
+        expect(close.parentElement.lastElementChild).toBe(close)
+        fireEvent.click(close)
+
+        expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
+        expect(window.location.pathname).toBe('/projects/p1/notes/n1')
+        expect(window.location.search).toBe('?filter=open')
+        expect(window.location.hash).toBe('#draft')
+        expect(screen.getByLabelText('Real workspace editor')).toBe(editor)
+        expect(editor.value).toBe('Keep my workspace draft')
+        expect(URLTrigger.processUrl).not.toHaveBeenCalled()
+
+        act(() => setAnnaMode(true))
+        expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
+        expect(chat.value).toBe('Keep my unsent message')
+        expect(mockUnmounts).toBe(0)
+    } finally {
+        if (originalMatchMedia) window.matchMedia = originalMatchMedia
+        else delete window.matchMedia
+    }
+})
+
 it('shows surface selection without manual Alldone control switches', () => {
     render(content(1))
     const toolbar = document.querySelector('.anna-header-picker')
@@ -972,7 +1035,7 @@ it.each([
                 opens ? 'm13 8 4 4-4 4' : 'm16 8-4 4 4 4'
             )
             if (opens) {
-                expect(document.querySelector('[aria-label="Close chat — Alldone only"]')).toBeNull()
+                expect(screen.getByLabelText('Close assistant chat').closest('.anna-header-right')).toBeTruthy()
                 expect(document.querySelector('.anna-header-left').firstElementChild).toBe(
                     screen.getByLabelText('Anna Alldone – Latest messages')
                 )
@@ -1077,7 +1140,7 @@ it.each(['chat', 'browser', 'vms', 'vm:vm1'])(
             expect(document.querySelectorAll('.anna-header')).toHaveLength(1)
             expect(document.querySelector('.anna-header').closest('.anna-conversation')).toBeNull()
             expect(document.querySelector('.anna-workspace-switcher')).toBeNull()
-            expect(document.querySelector('.anna-pane-toggle-right')).toBeNull()
+            expect(document.querySelector('.anna-header-expand')).toBeNull()
             chooseSurface('alldone')
             expect(document.querySelector('.anna-fullscreen')).toBeTruthy()
             expect(document.querySelector('.anna-header')).toBeNull()
