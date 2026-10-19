@@ -602,15 +602,15 @@ export default function AnnaShell({ children, routeId }) {
                     onClick={closeChat}
                 >
                     <span aria-hidden="true" className="anna-task-icon">
-                        <Icon name="check-square" size={20} color="currentColor" />
-                    </span>
-                    <span className="anna-open-tasks-badge" aria-hidden="true">
-                        <AmountTag
-                            feedAmount={openTasksAmount}
-                            isFollowedButton={false}
-                            showFullAmount={true}
-                            style={{ backgroundColor: colors.Primary100 }}
-                        />
+                        <Icon name="home" size={24} color="currentColor" />
+                        <span className="anna-open-tasks-badge">
+                            <AmountTag
+                                feedAmount={openTasksAmount}
+                                isFollowedButton={false}
+                                showFullAmount={true}
+                                style={{ backgroundColor: colors.Primary100 }}
+                            />
+                        </span>
                     </span>
                 </button>
             )}
