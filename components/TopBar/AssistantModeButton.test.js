@@ -3,7 +3,6 @@ import renderer, { act } from 'react-test-renderer'
 import { TouchableOpacity } from 'react-native'
 import AssistantModeButton from './AssistantModeButton'
 import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from '../Anna/AnnaChatNavigationContext'
-import AssistantChatToggleIcon from '../UIComponents/AssistantChatToggleIcon'
 import { resolveAnnaLayout, setAnnaMode } from '../../utils/annaMode'
 
 let mockState
@@ -29,7 +28,7 @@ it('uses the configured assistant avatar and opens the chat through its shell co
         </AnnaChatNavigationContext.Provider>
     )
     expect(component.root.findByType('AssistantAvatar').props).toEqual(
-        expect.objectContaining({ photoURL: 'anna.png', size: 28, assistantId: 'anna' })
+        expect.objectContaining({ photoURL: 'anna.png', size: 20, assistantId: 'anna' })
     )
     const button = component.root.findByType(TouchableOpacity)
     expect(button.props.accessibilityLabel).toBe('Anna Alldone: Open assistant chat')
@@ -47,7 +46,7 @@ it('enables assistant mode without changing the current page through the default
     expect(window.location.hash).toBe('#draft')
 })
 
-it('replaces the avatar with the sidebar close action while desktop chat is open', () => {
+it('keeps the configured assistant avatar on the sidebar close action while desktop chat is open', () => {
     const showChat = jest.fn()
     const closeChat = jest.fn()
     const component = renderer.create(
@@ -58,8 +57,9 @@ it('replaces the avatar with the sidebar close action while desktop chat is open
         </AnnaChatNavigationContext.Provider>
     )
 
-    expect(component.root.findAllByType('AssistantAvatar')).toHaveLength(0)
-    expect(component.root.findByType(AssistantChatToggleIcon)).toBeTruthy()
+    expect(component.root.findByType('AssistantAvatar').props).toEqual(
+        expect.objectContaining({ photoURL: 'anna.png', size: 20, assistantId: 'anna' })
+    )
     const button = component.root.findByType(TouchableOpacity)
     expect(button.props.accessibilityLabel).toBe('Anna Alldone: Close assistant chat')
     act(() => button.props.onPress())
@@ -67,11 +67,18 @@ it('replaces the avatar with the sidebar close action while desktop chat is open
     expect(showChat).not.toHaveBeenCalled()
 })
 
-it('updates its avatar and label when the default project selects another assistant or that assistant is renamed', () => {
-    const component = renderer.create(<AssistantModeButton />)
+it.each([false, true])('updates the selected assistant avatar and name with the close action %s', expanded => {
+    const action = expanded ? 'Close assistant chat' : 'Open assistant chat'
+    const closeChat = expanded ? jest.fn() : null
+    const button = () => (
+        <AnnaSidebarCloseContext.Provider value={closeChat}>
+            <AssistantModeButton />
+        </AnnaSidebarCloseContext.Provider>
+    )
+    const component = renderer.create(button())
     mockState.defaultAssistant = { uid: 'mira', displayName: 'Mira', photoURL50: 'mira.png' }
-    act(() => component.update(<AssistantModeButton />))
-    expect(component.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe('Mira: Open assistant chat')
+    act(() => component.update(button()))
+    expect(component.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe(`Mira: ${action}`)
     expect(component.root.findByType('AssistantAvatar').props).toEqual(
         expect.objectContaining({ photoURL: 'mira.png', assistantId: 'mira' })
     )
@@ -80,8 +87,8 @@ it('updates its avatar and label when the default project selects another assist
         displayName: 'Mira Coach',
         photoURL50: 'mira-new.png',
     }
-    act(() => component.update(<AssistantModeButton />))
-    expect(component.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe('Mira Coach: Open assistant chat')
+    act(() => component.update(button()))
+    expect(component.root.findByType(TouchableOpacity).props.accessibilityLabel).toBe(`Mira Coach: ${action}`)
     expect(component.root.findByType('AssistantAvatar').props.photoURL).toBe('mira-new.png')
 })
 
