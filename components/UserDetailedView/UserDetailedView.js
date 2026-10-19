@@ -166,7 +166,7 @@ const UserDetailedView = ({ navigation }) => {
 
             {!!user && (
                 <View style={{ flex: 1 }}>
-                    {!isMiddleScreen && accessGranted && (
+                    {!mobile && !isMiddleScreen && accessGranted && (
                         <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                             <BackButton user={user} projectIndex={projectIndex} constant={URL_PEOPLE_DETAILS} />
                         </View>

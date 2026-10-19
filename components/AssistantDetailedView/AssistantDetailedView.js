@@ -157,7 +157,7 @@ export default function AssistantDetailedView({ navigation }) {
             {!smallScreenNavigation ? <CustomSideMenu navigation={navigation} isWeb /> : null}
             {!!assistant && !!projectOriginId && (
                 <View style={{ flex: 1 }}>
-                    {!isMiddleScreen && <BackButton assistant={assistant} />}
+                    {!smallScreenNavigation && !isMiddleScreen && <BackButton assistant={assistant} />}
 
                     <CustomView
                         ref={scrollRef}

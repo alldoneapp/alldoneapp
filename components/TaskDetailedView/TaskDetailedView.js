@@ -263,7 +263,7 @@ const TaskDetailedView = ({ navigation }) => {
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
             <View style={{ flex: 1 }}>
-                {!isMiddleScreen && accessGranted && (
+                {!smallScreenNavigation && !isMiddleScreen && accessGranted && (
                     <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                         <BackButton projectId={projectId} task={task} />
                     </View>

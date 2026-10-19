@@ -151,7 +151,7 @@ const ContactDetailedView = ({ navigation }) => {
 
             {!!contact && (
                 <View style={{ flex: 1 }}>
-                    {!isMiddleScreen && accessGranted && (
+                    {!mobile && !isMiddleScreen && accessGranted && (
                         <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                             <BackButton user={contact} projectIndex={projectIndex} constant={URL_CONTACT_DETAILS} />
                         </View>
