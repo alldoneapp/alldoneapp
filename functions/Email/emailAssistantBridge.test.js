@@ -313,6 +313,7 @@ describe('emailAssistantBridge current recipient and safe follow-up context', ()
         )
         expect(systemText).toContain('use taskOrigin=assistant_suggestion')
         expect(systemText).toContain('concise visible comment with the concrete reason')
+        expect(systemText).toContain('assigned directly to the user')
 
         expect(mockExecuteToolNatively).toHaveBeenCalledWith(
             'create_task',

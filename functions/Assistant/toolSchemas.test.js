@@ -210,7 +210,7 @@ describe('User memory assistant tool schemas', () => {
         })
     })
 
-    test('distinguishes direct user requests from proactive task suggestions', () => {
+    test('records task origin while assigning assistant-created tasks directly to the user', () => {
         const properties = toolSchemas.create_task.function.parameters.properties
 
         expect(properties.taskOrigin.enum).toEqual(['user_request', 'assistant_suggestion'])
@@ -219,7 +219,9 @@ describe('User memory assistant tool schemas', () => {
         expect(properties.comment.description).toContain('Required and non-empty')
         expect(properties.comment.description).toContain('context-specific reason')
         expect(properties.comment.description).toContain('do not merely restate the title')
-        expect(toolSchemas.create_task.function.description).toContain('suggested-task approval flow')
+        expect(toolSchemas.create_task.function.description).toContain('assigned directly to the user')
+        expect(properties.taskOrigin.description).toContain('without approval')
+        expect(properties.comment.description).toContain('assistant name')
         expect(toolSchemas.create_task.function.description).toContain('automation instruction')
         expect(toolSchemas.create_task.function.parameters.required).toEqual(['name', 'taskOrigin'])
     })
