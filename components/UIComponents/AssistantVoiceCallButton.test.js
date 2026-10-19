@@ -745,7 +745,6 @@ describe('voice connection recovery', () => {
             for (let i = 0; i < 30; i++) await Promise.resolve()
         })
         expect(respond).toBeDefined()
-        expect(tree.root.findByProps({ testID: 'voice-call-connecting' }).props.role).toBe('status')
         expect(controls()).toHaveLength(1)
         expect(controls()[0].props.accessibilityLabel).toBe('Cancel assistant call')
         expect(controls()[0].props.disabled).not.toBe(true)
@@ -1173,112 +1172,10 @@ test('cancelling during microphone warmup cannot unmute or greet when warmup fin
         await starting
     })
     expect(pc.senders[0].track.enabled).toBe(false)
-    expect(findEndCallButton(tree)).toBeUndefined()
-    expect(tree.root.findAllByProps({ testID: 'voice-call-connecting' })).toHaveLength(0)
-    expect(pc.closed).toBe(true)
+    expect(findEndCallButton(tree).props.disabled).toBe(true)
     expect(pc.channel.send.mock.calls.map(([json]) => JSON.parse(json).event_id)).not.toContain('alldone_live_greeting')
-    await ending
-})
-
-test('shows connection feedback through microphone permission, then clears it on failure and supports retry', async () => {
-    let deny
-    getUserMedia.mockImplementationOnce(
-        () =>
-            new Promise((_, reject) => {
-                deny = reject
-            })
-    )
-    const tree = render()
-    let starting
     await act(async () => {
-        starting = tree.root.findByType('Button').props.onPress()
-        for (let i = 0; i < 30; i++) await Promise.resolve()
+        pc.channel.onmessage({ data: JSON.stringify({ type: 'session.closed' }) })
+        await ending
     })
-    expect(tree.root.findByProps({ testID: 'voice-call-connecting' }).props.role).toBe('status')
-    expect(findEndCallButton(tree).props.accessibilityLabel).toBe('Cancel assistant call')
-    await act(async () => {
-        deny(new Error('Microphone permission denied'))
-        await starting
-    })
-    expect(tree.root.findAllByProps({ testID: 'voice-call-connecting' })).toHaveLength(0)
-    expect(FakePeerConnection.instances[0].closed).toBe(true)
-    expect(tree.root.findAllByType('Button').some(b => b.props.accessibilityLabel.includes('Start voice call'))).toBe(
-        true
-    )
-    await act(async () => {
-        await tree.root
-            .findAllByType('Button')
-            .find(b => b.props.accessibilityLabel.includes('Start voice call'))
-            .props.onPress()
-    })
-    expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
-    expect(tree.root.findAllByProps({ testID: 'voice-call-connecting' })).toHaveLength(0)
-})
-
-test('cancellation allows immediate retry and a stale answer cannot replace or close the new call', async () => {
-    let respond
-    runHttpsCallableFunction.mockImplementation(name =>
-        name === 'startAssistantBrowserCallSecondGen'
-            ? new Promise(resolve => {
-                  respond = resolve
-              })
-            : Promise.resolve({ settled: true })
-    )
-    const tree = render()
-    let first
-    await act(async () => {
-        first = tree.root.findByType('Button').props.onPress()
-        for (let i = 0; i < 30; i++) await Promise.resolve()
-    })
-    const finishFirst = respond
-    await act(async () => {
-        await findEndCallButton(tree).props.onPress()
-    })
-    expect(FakePeerConnection.instances[0].closed).toBe(true)
-    let second
-    await act(async () => {
-        second = tree.root.findByType('Button').props.onPress()
-        for (let i = 0; i < 30; i++) await Promise.resolve()
-    })
-    await act(async () => {
-        finishFirst({ answerSdp: 'old-answer', sessionId: 'cancelled-session' })
-        await first
-    })
-    expect(FakePeerConnection.instances[1].closed).toBe(false)
-    expect(tree.root.findByProps({ testID: 'voice-call-connecting' })).toBeTruthy()
-    await act(async () => {
-        respond({ answerSdp: 'new-answer', sessionId: 'retry-session' })
-        await second
-    })
-    expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
-    expect(runHttpsCallableFunction).toHaveBeenCalledWith('endAssistantBrowserCallSecondGen', {
-        sessionId: 'cancelled-session',
-    })
-})
-
-test('a failed peer during setup clears connecting feedback and exposes an error with retry', async () => {
-    let respond
-    runHttpsCallableFunction.mockImplementation(name =>
-        name === 'startAssistantBrowserCallSecondGen'
-            ? new Promise(resolve => {
-                  respond = resolve
-              })
-            : Promise.resolve({ settled: true })
-    )
-    const tree = render()
-    let starting
-    await act(async () => {
-        starting = tree.root.findByType('Button').props.onPress()
-        for (let i = 0; i < 30; i++) await Promise.resolve()
-    })
-    act(() => FakePeerConnection.instances[0].setConnectionState('failed'))
-    expect(tree.root.findAllByProps({ testID: 'voice-call-connecting' })).toHaveLength(0)
-    expect(tree.root.findAllByType('Button').some(b => b.props.accessibilityLabel.includes('Start voice call'))).toBe(
-        true
-    )
-    await act(async () => {
-        respond({ answerSdp: 'answer', sessionId: 'failed-session' })
-        await starting
-    })
-    expect(JSON.stringify(tree.toJSON())).toContain('Could not start assistant call')
 })

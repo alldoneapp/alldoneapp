@@ -30,62 +30,21 @@ jest.mock('../Assistant/assistantConversationStyle', () => ({ getConversationSty
 
 const { getAssistantForChat } = require('../Assistant/assistantHelper')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
-const { extractRoutingTokenFromSipHeaders } = require('./whatsAppCallSecurity')
+const { extractRoutingTokenFromSipHeaders, verifyOpenAIWebhookSignature } = require('./whatsAppCallSecurity')
 const { consumeRoutingToken, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
-const {
-    buildInitialRealtimeSession,
-    getRunCallTaskId,
-    handleOpenAIRealtimeCallWebhook,
-} = require('./whatsAppCallOpenAIWebhook')
+const { getRunCallTaskId, handleOpenAIRealtimeCallWebhook } = require('./whatsAppCallOpenAIWebhook')
 
-describe('OpenAI incoming Realtime call webhook', () => {
-    const config = {
-        openAiApiKey: 'key',
-        openAiWebhookSecret: 'secret',
-        routingTokenSecret: 'route-secret',
-        realtimeModel: 'gpt-realtime-2',
-        transcriptionModel: 'gpt-realtime-whisper',
-        reasoningEffort: 'medium',
-    }
-
+describe('GPT-Live-only SIP routing', () => {
     beforeEach(() => {
         jest.clearAllMocks()
-        getWhatsAppCallConfig.mockReturnValue(config)
-        global.fetch = jest.fn(async () => ({ ok: true, status: 200, text: async () => '' }))
-    })
-
-    test('builds the documented voice session configuration', () => {
-        const session = buildInitialRealtimeSession({
-            config,
-            voice: 'marin',
-            assistant: { displayName: 'Anna Alldone', instructions: 'Act as Anna.' },
+        getWhatsAppCallConfig.mockReturnValue({
+            openAiApiKey: 'key',
+            openAiWebhookSecret: 'secret',
+            routingTokenSecret: 'route-secret',
+            openAiProjectId: 'project',
         })
-        expect(session).toEqual(
-            expect.objectContaining({
-                type: 'realtime',
-                model: 'gpt-realtime-2',
-                output_modalities: ['audio'],
-                reasoning: { effort: 'medium' },
-                audio: {
-                    input: expect.objectContaining({
-                        transcription: { model: 'gpt-realtime-whisper' },
-                        turn_detection: expect.objectContaining({
-                            type: 'semantic_vad',
-                            interrupt_response: true,
-                            create_response: true,
-                        }),
-                    }),
-                    output: { voice: 'marin' },
-                },
-            })
-        )
-        expect(session.instructions).toContain('You are Anna,')
-        expect(session.instructions).not.toContain('Anna Alldone')
-        expect(session.instructions).toContain('Act as Anna.')
-        expect(session.instructions).toContain('Never say you are ChatGPT')
-        expect(session.instructions).toContain('All task IDs are silent by default')
-        expect(session.tools).toBeUndefined()
+        global.fetch = jest.fn()
     })
 
     test('uses deterministic hashed Cloud Task IDs for webhook retries', () => {
@@ -94,119 +53,42 @@ describe('OpenAI incoming Realtime call webhook', () => {
         expect(getRunCallTaskId('call-1')).not.toContain('call-1')
     })
 
-    test('rejects an invalid one-use route without accepting the call', async () => {
-        consumeRoutingToken.mockResolvedValue({ success: false, reason: 'expired_route' })
-        const req = {
-            method: 'POST',
-            headers: {},
-            rawBody: Buffer.from(
-                JSON.stringify({
-                    type: 'realtime.call.incoming',
-                    data: { call_id: 'openai-call', sip_headers: [] },
+    test.each(['openai-call', 'live_1', undefined])(
+        'ignores old events (%s) without consuming or rejecting the shared SIP leg',
+        async call_id => {
+            const res = { status: jest.fn().mockReturnThis(), send: jest.fn().mockReturnThis() }
+            const log = jest.spyOn(console, 'error').mockImplementation(() => {})
+            await handleOpenAIRealtimeCallWebhook(
+                {
+                    method: 'POST',
+                    headers: {},
+                    rawBody: Buffer.from(JSON.stringify({ type: 'realtime.call.incoming', data: { call_id } })),
+                },
+                res
+            )
+            expect(res.status).toHaveBeenCalledWith(200)
+            expect(consumeRoutingToken).not.toHaveBeenCalled()
+            expect(global.fetch).not.toHaveBeenCalled()
+            expect(mockTaskEnqueue).not.toHaveBeenCalled()
+            expect(log).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    code: 'gpt_live_sip_subscription_required',
+                    action: expect.stringContaining('live.transport.incoming'),
                 })
-            ),
+            )
+            log.mockRestore()
         }
-        const res = {
-            status: jest.fn().mockReturnThis(),
-            send: jest.fn().mockReturnThis(),
-        }
-
-        await handleOpenAIRealtimeCallWebhook(req, res)
-
-        expect(global.fetch).toHaveBeenCalledWith(
-            'https://api.openai.com/v1/realtime/calls/openai-call/reject',
-            expect.objectContaining({
-                method: 'POST',
-                body: JSON.stringify({ status_code: 486 }),
-            })
-        )
-        expect(res.status).toHaveBeenCalledWith(200)
-    })
-
-    test('rejects a call when the opaque route header is missing', async () => {
-        extractRoutingTokenFromSipHeaders.mockReturnValueOnce('')
-        const req = {
-            method: 'POST',
-            headers: {},
-            rawBody: Buffer.from(
-                JSON.stringify({
-                    type: 'realtime.call.incoming',
-                    data: { call_id: 'openai-call', sip_headers: [] },
-                })
-            ),
-        }
-        const res = {
-            status: jest.fn().mockReturnThis(),
-            send: jest.fn().mockReturnThis(),
-        }
-
-        await handleOpenAIRealtimeCallWebhook(req, res)
-
-        expect(consumeRoutingToken).not.toHaveBeenCalled()
-        expect(global.fetch).toHaveBeenCalledWith(
-            'https://api.openai.com/v1/realtime/calls/openai-call/reject',
-            expect.objectContaining({ method: 'POST' })
-        )
-    })
-
-    test('accepts an eligible call and enqueues one deterministic sideband controller task', async () => {
-        consumeRoutingToken.mockResolvedValue({
-            success: true,
-            sessionId: 'session-1',
-            session: {
-                status: 'routing',
-                userId: 'user-1',
-                projectId: 'project-1',
-                assistantId: 'assistant-1',
-                language: 'German',
-            },
-        })
-        getAssistantForChat.mockResolvedValue({
-            displayName: 'Anna Alldone',
-            instructions: 'Act as Anna.',
-            realtimeVoice: 'cedar',
-        })
-        const req = {
-            method: 'POST',
-            headers: {},
-            rawBody: Buffer.from(
-                JSON.stringify({
-                    type: 'realtime.call.incoming',
-                    data: { call_id: 'openai-call', sip_headers: [] },
-                })
-            ),
-        }
-        const res = {
-            status: jest.fn().mockReturnThis(),
-            send: jest.fn().mockReturnThis(),
-        }
-
-        await handleOpenAIRealtimeCallWebhook(req, res)
-
-        expect(global.fetch).toHaveBeenCalledWith(
-            'https://api.openai.com/v1/realtime/calls/openai-call/accept',
-            expect.objectContaining({ method: 'POST' })
-        )
-        const acceptBody = JSON.parse(global.fetch.mock.calls[0][1].body)
-        expect(acceptBody.instructions).toContain('You are Anna,')
-        expect(acceptBody.instructions).toContain('Act as Anna.')
-        expect(acceptBody.instructions).toContain('All task IDs are silent by default')
-        // The accepted call must carry the caller's language so the very first response is in
-        // their language, not the English default, before the controller's instructions arrive.
-        expect(acceptBody.instructions).toContain('Start the call in German')
-        expect(mockTaskEnqueue).toHaveBeenCalledWith(
-            { sessionId: 'session-1' },
-            { id: getRunCallTaskId('session-1'), dispatchDeadlineSeconds: 1800 }
-        )
-        expect(updateCallSession).toHaveBeenCalledWith(
-            'session-1',
-            expect.objectContaining({ status: 'controller_queued', realtimeVoice: 'cedar' })
-        )
-    })
+    )
 })
 
 describe('OpenAI incoming Live SIP call webhook (phone and WhatsApp)', () => {
-    const config = { openAiApiKey: 'key', openAiWebhookSecret: 'secret', routingTokenSecret: 'route-secret' }
+    const config = {
+        openAiApiKey: 'key',
+        openAiWebhookSecret: 'secret',
+        routingTokenSecret: 'route-secret',
+        openAiProjectId: 'project',
+    }
     const routedSession = {
         status: 'routing',
         channel: 'phone_call',
@@ -232,6 +114,7 @@ describe('OpenAI incoming Live SIP call webhook (phone and WhatsApp)', () => {
         getAssistantForChat.mockResolvedValue({ displayName: 'Anna Alldone', realtimeVoice: 'cedar' })
         consumeRoutingToken.mockResolvedValue({ success: true, sessionId: 'CA1', session: routedSession })
         reconcileLiveUsage.mockResolvedValue({ currentGold: 90 })
+        updateCallSession.mockResolvedValue()
     })
 
     test('accepts the SIP call as a gpt-live-1 session and queues the shared Live controller', async () => {
@@ -269,6 +152,53 @@ describe('OpenAI incoming Live SIP call webhook (phone and WhatsApp)', () => {
             'CA1',
             expect.objectContaining({ status: 'controller_queued', realtimeVoice: 'cedar' })
         )
+    })
+
+    test.each(['phone_call', 'whatsapp_call'])(
+        'lets Live accept %s after an old event arrives first',
+        async channel => {
+            consumeRoutingToken.mockResolvedValue({
+                success: true,
+                sessionId: 'CA1',
+                session: { ...routedSession, channel, voiceProvider: 'gpt-live', voiceBilledGold: 0 },
+            })
+            await call('realtime.call.incoming', { call_id: 'old_id' })
+            expect(consumeRoutingToken).not.toHaveBeenCalled()
+            await call()
+            expect(fetchedUrls()).toEqual(['https://api.openai.com/v1/live/sessions/live_1/accept'])
+            expect(mockTaskEnqueue).toHaveBeenCalledTimes(1)
+            await call('realtime.call.incoming', { call_id: 'old_id' })
+            expect(fetchedUrls()).toHaveLength(1)
+            expect(mockTaskEnqueue).toHaveBeenCalledTimes(1)
+        }
+    )
+
+    test('reports missing SIP configuration without accepting or consuming the route', async () => {
+        getWhatsAppCallConfig.mockReturnValue({ ...config, openAiProjectId: '' })
+        const res = await call()
+        expect(res.status).toHaveBeenCalledWith(503)
+        expect(res.send).toHaveBeenCalledWith(expect.stringContaining('OPENAI_PROJECT_ID'))
+        expect(consumeRoutingToken).not.toHaveBeenCalled()
+        expect(mockTaskEnqueue).not.toHaveBeenCalled()
+        expect(fetchedUrls()).toEqual(['https://api.openai.com/v1/live/sessions/live_1/reject'])
+    })
+
+    test.each([403, 404, 500])('fails explicitly on Live accept HTTP %s without a Realtime fallback', async status => {
+        global.fetch.mockResolvedValueOnce({ ok: false, status, text: async () => 'unavailable' })
+        await call()
+        expect(mockTaskEnqueue).not.toHaveBeenCalled()
+        expect(finalizeCallSession).toHaveBeenCalledWith('CA1', 'openai_accept_failed', 'failed')
+        expect(updateCallSession).toHaveBeenCalledWith(
+            'CA1',
+            expect.objectContaining({
+                lastError: 'gpt_live_accept_failed',
+                configurationAction: expect.stringContaining('live.transport.incoming'),
+            })
+        )
+        expect(fetchedUrls()).toEqual([
+            'https://api.openai.com/v1/live/sessions/live_1/accept',
+            'https://api.openai.com/v1/live/sessions/live_1/hangup',
+        ])
     })
 
     test('accepts the deprecated live.call.incoming name during the subscription migration', async () => {
@@ -309,12 +239,60 @@ describe('OpenAI incoming Live SIP call webhook (phone and WhatsApp)', () => {
         expect(global.fetch).not.toHaveBeenCalled()
     })
 
+    test('does not start a worker when a retry cannot confirm Live acceptance', async () => {
+        consumeRoutingToken.mockResolvedValue({
+            success: true,
+            duplicate: true,
+            sessionId: 'CA1',
+            session: { ...routedSession, voiceProvider: 'gpt-live' },
+        })
+        global.fetch.mockResolvedValueOnce({ ok: false, status: 403, text: async () => 'Live access missing' })
+        await call()
+        expect(mockTaskEnqueue).not.toHaveBeenCalled()
+        expect(reconcileLiveUsage).not.toHaveBeenCalled()
+        expect(finalizeCallSession).toHaveBeenCalledWith('CA1', 'openai_accept_failed', 'failed')
+    })
+
+    test('acknowledges an already queued Live retry without accepting or charging twice', async () => {
+        consumeRoutingToken.mockResolvedValue({
+            success: true,
+            duplicate: true,
+            sessionId: 'CA1',
+            session: { ...routedSession, voiceProvider: 'gpt-live', status: 'controller_queued', acceptCompletedAt: 1 },
+        })
+        await call()
+        expect(global.fetch).not.toHaveBeenCalled()
+        expect(reconcileLiveUsage).not.toHaveBeenCalled()
+        expect(mockTaskEnqueue).not.toHaveBeenCalled()
+    })
+
+    test('rejects a missing SIP route using only the Live endpoint', async () => {
+        extractRoutingTokenFromSipHeaders.mockReturnValueOnce('')
+        await call()
+        expect(consumeRoutingToken).not.toHaveBeenCalled()
+        expect(fetchedUrls()).toEqual(['https://api.openai.com/v1/live/sessions/live_1/reject'])
+    })
+
+    test('does not consume routes or contact the provider for an invalid signature', async () => {
+        verifyOpenAIWebhookSignature.mockReturnValueOnce(false)
+        const res = await call()
+        expect(res.status).toHaveBeenCalledWith(403)
+        expect(consumeRoutingToken).not.toHaveBeenCalled()
+        expect(global.fetch).not.toHaveBeenCalled()
+    })
+
     test('does not reset voice billing when a webhook retry arrives after the first accept', async () => {
         consumeRoutingToken.mockResolvedValue({
             success: true,
             duplicate: true,
             sessionId: 'CA1',
-            session: { ...routedSession, status: 'accepted', voiceProvider: 'gpt-live', acceptCompletedAt: 1 },
+            session: {
+                ...routedSession,
+                status: 'accepted',
+                voiceProvider: 'gpt-live',
+                openAiSessionId: 'live_1',
+                acceptCompletedAt: 1,
+            },
         })
         await call()
         expect(global.fetch).not.toHaveBeenCalled()

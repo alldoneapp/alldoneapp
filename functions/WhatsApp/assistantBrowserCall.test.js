@@ -271,7 +271,7 @@ describe('Live startup failures and usage privacy', () => {
             }),
         })
     })
-    test.each([undefined, 'gpt-live-v1'])(
+    test.each([undefined, 'gpt-live-v1', 'realtime'])(
         'rejects old client protocol %s before opening a paid session',
         async voiceProtocol => {
             await expect(
@@ -281,6 +281,38 @@ describe('Live startup failures and usage privacy', () => {
             expect(reconcileLiveUsage).not.toHaveBeenCalled()
         }
     )
+    test('reports missing app configuration before creating a session or spending Gold', async () => {
+        getWhatsAppCallConfig.mockReturnValue({ browserCallsEnabled: true, openAiApiKey: '' })
+        global.fetch = jest.fn()
+        await expect(startAssistantBrowserCall(request, { uid: 'user-1' })).rejects.toMatchObject({
+            code: 'unavailable',
+            message: expect.stringContaining('OPEN_AI_KEY or OPENAI_API_KEY'),
+        })
+        expect(createDirectCallSessionWithLease).not.toHaveBeenCalled()
+        expect(global.fetch).not.toHaveBeenCalled()
+        expect(reconcileLiveUsage).not.toHaveBeenCalled()
+    })
+
+    test.each([401, 403, 404, 500])('never falls back to Realtime on app Live HTTP %s', async status => {
+        global.fetch = jest.fn(async () => ({
+            ok: false,
+            status,
+            text: async () => JSON.stringify({ error: { code: 'model_not_found' } }),
+        }))
+        await expect(startAssistantBrowserCall(request, { uid: 'user-1' })).rejects.toMatchObject({
+            code: status === 500 ? 'internal' : 'unavailable',
+            ...(status !== 500 ? { message: expect.stringContaining('gpt-live-1 access') } : {}),
+        })
+        expect(global.fetch.mock.calls.map(([url]) => url)).toEqual(['https://api.openai.com/v1/live/sessions'])
+        expect(reconcileLiveUsage).not.toHaveBeenCalled()
+        const { finalizeCallSession } = require('./whatsAppCallSessions')
+        expect(finalizeCallSession).toHaveBeenCalledWith(
+            expect.stringContaining('browser-'),
+            'browser_start_failed',
+            'failed'
+        )
+    })
+
     test.each(['missing SDP', 'queue failure'])('closes a created provider session after %s', async kind => {
         global.fetch = jest.fn(async () => ({
             ok: true,
