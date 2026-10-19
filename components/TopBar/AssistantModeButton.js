@@ -1,30 +1,10 @@
 import React, { useContext, useState } from 'react'
-import { StyleSheet, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, TouchableOpacity } from 'react-native'
 import { useSelector } from 'react-redux'
-import Svg, { Path, Rect } from 'react-native-svg'
-import AssistantAvatar from '../AdminPanel/Assistants/AssistantAvatar'
 import AnnaChatNavigationContext, { AnnaSidebarCloseContext } from '../Anna/AnnaChatNavigationContext'
+import AssistantModeIcon from '../UIComponents/AssistantModeIcon'
 import { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
-
-function AssistantModePanelIcon({ expanded, color }) {
-    return (
-        <Svg
-            width={24}
-            height={24}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={color}
-            strokeWidth={1.8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        >
-            <Rect x={3} y={3} width={18} height={18} rx={2} />
-            <Path d="M9 3v18" />
-            <Path d={expanded ? 'm13 8 4 4-4 4' : 'm16 8-4 4 4 4'} />
-        </Svg>
-    )
-}
 
 export default function AssistantModeButton({ onOpen, inline = false }) {
     const assistant = useSelector(state => state.defaultAssistant)
@@ -55,27 +35,13 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
                 else showChat()
             }}
         >
-            <span style={localStyles.glyph} title={label} aria-hidden="true">
-                <View style={[localStyles.panel, !expanded && localStyles.shiftedPanel]}>
-                    <AssistantModePanelIcon
-                        expanded={expanded}
-                        color={highlighted ? colors.Primary100 : colors.Text03}
-                    />
-                </View>
-                <View
-                    style={[
-                        localStyles.avatar,
-                        expanded ? localStyles.avatarRight : localStyles.avatarLeft,
-                        hovered && localStyles.hoveredAvatar,
-                    ]}
-                >
-                    <AssistantAvatar
-                        photoURL={assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL}
-                        assistantId={assistant.uid}
-                        size={22}
-                    />
-                </View>
-            </span>
+            <AssistantModeIcon
+                assistant={assistant}
+                expanded={expanded}
+                color={highlighted ? colors.Primary100 : colors.Text03}
+                hovered={hovered}
+                title={label}
+            />
         </TouchableOpacity>
     )
 }
@@ -91,44 +57,6 @@ const localStyles = StyleSheet.create({
     },
     hovered: {
         backgroundColor: '#E2EFFF',
-    },
-    glyph: {
-        display: 'flex',
-        position: 'relative',
-        width: 42,
-        height: 24,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    panel: {
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        width: 24,
-        height: 24,
-    },
-    shiftedPanel: {
-        left: 18,
-    },
-    avatar: {
-        position: 'absolute',
-        top: 0,
-        width: 24,
-        height: 24,
-        borderWidth: 1,
-        borderColor: '#FFFFFF',
-        borderRadius: 12,
-        overflow: 'hidden',
-        backgroundColor: '#FFFFFF',
-    },
-    avatarLeft: {
-        left: 0,
-    },
-    avatarRight: {
-        right: 0,
-    },
-    hoveredAvatar: {
-        borderColor: '#E2EFFF',
     },
     centered: {
         position: 'absolute',

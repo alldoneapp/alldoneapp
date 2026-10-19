@@ -914,6 +914,25 @@ it.each([false, true])('keeps the logo navigation separate from the chat toggle 
     ])
 })
 
+it.each([false, true])(
+    'keeps the sidebar avatar in sync with the selected default assistant when chat is %s',
+    active => {
+        mockDefaultAssistant = { ...mockDefaultAssistant, photoURL50: 'anna.png' }
+        const view = render(content(1, true))
+        if (!active) closeAssistant()
+        expect(assistantToggle().querySelector('img').getAttribute('src')).toBe('anna.png')
+
+        mockDefaultAssistant = { uid: 'mira', displayName: 'Mira', photoURL300: 'mira.png' }
+        view.rerender(content(1, true))
+
+        expect(assistantToggle().getAttribute('aria-expanded')).toBe(String(active))
+        expect(assistantToggle().getAttribute('aria-label')).toBe(
+            `Mira: ${active ? 'Close assistant chat' : 'Open assistant chat'}`
+        )
+        expect(assistantToggle().querySelector('img').getAttribute('src')).toBe('mira.png')
+    }
+)
+
 it.each([
     ['mobile', 'alldone'],
     ['mobile', 'workspace'],
@@ -949,7 +968,9 @@ it.each([
             expect(assistantToggle().getAttribute('aria-label')).toBe(
                 `Anna Alldone: ${opens ? 'Close assistant chat' : 'Open assistant chat'}`
             )
-            expect(assistantToggle().querySelector('path').getAttribute('d')).toBe(opens ? 'm8 8 4 4-4 4' : 'M9 3v18')
+            expect(assistantToggle().querySelector('svg path:last-child').getAttribute('d')).toBe(
+                opens ? 'm13 8 4 4-4 4' : 'm16 8-4 4 4 4'
+            )
             if (opens) {
                 expect(document.querySelector('[aria-label="Close chat — Alldone only"]')).toBeNull()
                 expect(document.querySelector('.anna-header-left').firstElementChild).toBe(

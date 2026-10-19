@@ -1,7 +1,7 @@
-import React, { useContext } from 'react'
+import React, { useContext, useState } from 'react'
 import { StyleSheet, TouchableOpacity } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
-import AssistantChatToggleIcon from '../UIComponents/AssistantChatToggleIcon'
+import AssistantModeIcon from '../UIComponents/AssistantModeIcon'
 
 import { colors } from '../styles/global'
 import { getTheme } from '../../Themes/Themes'
@@ -25,6 +25,7 @@ export default function DefaultAssistantButton() {
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const active = useAnnaMode()
     const showChat = useContext(AnnaChatNavigationContext)
+    const [hovered, setHovered] = useState(false)
     const theme = getTheme(Themes, themeName, 'CustomSideMenu.AllProjects')
 
     if (!assistant?.uid) return null
@@ -50,29 +51,33 @@ export default function DefaultAssistantButton() {
             accessibilityRole="button"
             accessibilityLabel={`${name}: ${status}`}
             aria-expanded={active}
-            style={localStyles.container}
+            style={[localStyles.container, hovered && localStyles.hovered]}
+            hitSlop={{ top: 6, bottom: 6, left: 0, right: 0 }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
             onPress={toggleChat}
         >
-            <span style={localStyles.icon} title={status} aria-hidden="true">
-                <AssistantChatToggleIcon expanded={active} color={statusColor} />
-            </span>
+            <AssistantModeIcon
+                assistant={assistant}
+                expanded={active}
+                color={active || hovered ? colors.Primary100 : statusColor}
+                hovered={hovered}
+                title={`${name}: ${status}`}
+            />
         </TouchableOpacity>
     )
 }
 
 const localStyles = StyleSheet.create({
     container: {
-        width: 32,
+        width: 46,
         height: 32,
         flexShrink: 0,
         alignItems: 'center',
         justifyContent: 'center',
+        borderRadius: 6,
     },
-    icon: {
-        display: 'flex',
-        width: '100%',
-        height: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
+    hovered: {
+        backgroundColor: '#E2EFFF',
     },
 })
