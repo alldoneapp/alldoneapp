@@ -47,11 +47,13 @@ import renderer, { act } from 'react-test-renderer'
 import EditTask from './EditTask'
 import { createTaskWithService } from '../../../utils/backends/Tasks/TaskServiceFrontendHelper'
 import { updateTask } from '../../../utils/backends/Tasks/tasksFirestore'
+import { parseFeedComment } from '../../Feeds/Utils/feedCommentParser'
 
 // Set during the stub input's render, so they always close over the props of the LAST render -
 // exactly like the quill callbacks inside CustomTextInput3.
 let mockDictate = null
 let mockSubmitInSameTick = null
+let mockTaskInputProps = null
 
 const mockState = {
     currentUser: { uid: 'user-1' },
@@ -119,7 +121,9 @@ const mockNewDefaultTask = () => ({
 jest.mock('./TaskInputArea', () => {
     const useDictationSubmit = require('../../Feeds/CommentsTextInput/dictationSubmit').default
 
-    return function TaskInputAreaStub({ onChangeInputText, onKeyEnterPressed }) {
+    return function TaskInputAreaStub(props) {
+        mockTaskInputProps = props
+        const { onChangeInputText, onKeyEnterPressed } = props
         const armDictationSubmit = useDictationSubmit({
             forceTriggerEnterActionForBreakLines: onKeyEnterPressed,
         })
@@ -247,9 +251,15 @@ const renderAddTaskEditor = () => {
     })
 }
 
-const renderExistingTaskEditor = () => {
+const renderExistingTaskEditor = (taskOverrides = {}) => {
     onCancelAction = jest.fn()
-    const task = { ...mockNewDefaultTask(), id: 'task-1', name: 'Existing task', extendedName: 'Existing task' }
+    const task = {
+        ...mockNewDefaultTask(),
+        id: 'task-1',
+        name: 'Existing task',
+        extendedName: 'Existing task',
+        ...taskOverrides,
+    }
 
     act(() => {
         tree = renderer.create(
@@ -365,5 +375,47 @@ describe('dictating into the add-new-task field', () => {
 
         expect(createTaskWithService).not.toHaveBeenCalled()
         expect(onCancelAction).toHaveBeenCalledWith(undefined)
+    })
+})
+
+describe('Teams links in task titles saved with Return', () => {
+    const teamsUrl =
+        'https://teams.microsoft.com/l/message/19:31a6fbacdfd24ed9b4204b6984dce10e@thread.v2/1792410546073?context=%7B%22contextType%22%3A%22chat%22%7D'
+    const title = `Prepare Quarterly Show & Tell on Friday ${teamsUrl}`
+
+    beforeEach(() => {
+        jest.clearAllMocks()
+        mockTaskInputProps = null
+    })
+
+    afterEach(() => {
+        act(() => tree?.unmount())
+        tree = null
+    })
+
+    test.each(['new', 'existing'])('preserves the complete URL when saving and reopening a %s task', async kind => {
+        kind === 'new' ? renderAddTaskEditor() : renderExistingTaskEditor()
+
+        // The real input emits its serialized title after paste. Let the task editor
+        // commit that change before the user's subsequent Return key submits it.
+        act(() => mockTaskInputProps.onChangeInputText(title, [], [], [], [], [], [], []))
+        await act(async () => {
+            mockTaskInputProps.onKeyEnterPressed(new KeyboardEvent('keydown', { key: 'Enter' }))
+            await Promise.resolve()
+        })
+
+        const save = kind === 'new' ? createTaskWithService : updateTask
+        expect(save).toHaveBeenCalledTimes(1)
+        const savedTask = save.mock.calls[0][kind === 'new' ? 0 : 1]
+        expect(savedTask.extendedName).toBe(title)
+        expect(savedTask.extendedName.split(teamsUrl)).toHaveLength(2)
+
+        act(() => tree.unmount())
+        renderExistingTaskEditor({ ...savedTask, id: 'task-1' })
+        const reopenedTitle = mockTaskInputProps.getInitialText().trim()
+        expect(reopenedTitle).toBe(title)
+        const elements = parseFeedComment(reopenedTitle, false, false)
+        expect(elements.filter(element => element.type === 'url')).toEqual([{ type: 'url', link: teamsUrl }])
+        expect(elements.some(element => element.type === 'email')).toBe(false)
     })
 })

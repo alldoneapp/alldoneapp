@@ -49,6 +49,7 @@ export const parseFeedComment = (text, isGenericTask, bold) => {
     }
 
     const parseWord = word => {
+        const urlParts = getUrlTokenParts(word)
         if (needMarkWordLikeGeneric && REGEX_GENERIC.test(word)) {
             needMarkWordLikeGeneric = false
             commentElements.push({
@@ -90,7 +91,7 @@ export const parseFeedComment = (text, isGenericTask, bold) => {
                 type: MENTION_ELEMENT,
                 text: word.substring(1),
             })
-        } else if (REGEX_EMAIL.test(word)) {
+        } else if (!urlParts && REGEX_EMAIL.test(word)) {
             const emailMatch = word.match(REGEX_EMAIL)
             const email = emailMatch[1]
 
@@ -108,7 +109,6 @@ export const parseFeedComment = (text, isGenericTask, bold) => {
                 addTextElement(punctuation)
             }
         } else {
-            const urlParts = getUrlTokenParts(word)
             if (urlParts) {
                 addTextElement(urlParts.prefix)
                 commentElements.push({ type: URL_ELEMENT, link: urlParts.url })
