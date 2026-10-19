@@ -367,110 +367,124 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                         {error || call.error}
                     </div>
                 )}
-                <div className="anna-composer-field">
-                    <AnnaChatComposer
-                        ref={composer}
-                        projectId={conversation.projectId}
-                        label={translate('Message %{assistantName}', { assistantName })}
-                        placeholder={placeholder}
-                        initialText={initialText}
-                        onResize={keepLatestVisible}
-                        disabled={voiceActive}
-                        onFocus={onExpand}
-                        onChangeText={changeDraft}
-                        onSubmit={() => send()}
-                    />
-                    <div className="anna-composer-toolbar">
-                        <div className="anna-composer-tools">
-                            {!voiceActive && !offline && conversation.projectId && isDictationSupported() && (
-                                <RambleButton
-                                    projectId={conversation.projectId}
-                                    targetKind="generic"
-                                    getCurrentText={() => draftRef.current}
-                                    onTextReady={insertDictatedText}
-                                    onPhaseChange={setDictationPhase}
-                                    getOverlayViewport={() => {
-                                        const pane = composer.current?.getPane()
-                                        return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
-                                    }}
-                                    style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
-                                />
-                            )}
-                            <div className="anna-composer-attachment">
-                                <AddFeedAttachButton
-                                    compact
-                                    buttonStyle={{
-                                        width: 40,
-                                        height: 40,
-                                        minHeight: 40,
-                                        borderRadius: 20,
-                                        alignSelf: 'center',
-                                    }}
-                                    projectId={conversation.projectId}
-                                    getPopoverViewport={() => {
-                                        const pane = composer.current?.getPane()
-                                        return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
-                                    }}
-                                    isDisabled={voiceActive || dictationBusy || offline || !conversation.projectId}
-                                    addAttachmentTag={(text, uri) => {
-                                        if (voiceActive || dictationBusy || offline || isBrowserOffline()) return
-                                        composer.current?.addAttachment(text, uri)
-                                    }}
-                                />
+                <div className={`anna-composer-slot${voiceConnecting ? ' anna-composer-slot-connecting' : ''}`}>
+                    {/* Keep the editor mounted to preserve its draft and exact dimensions while connecting. */}
+                    <div className="anna-composer-field" aria-hidden={voiceConnecting || undefined}>
+                        <AnnaChatComposer
+                            ref={composer}
+                            projectId={conversation.projectId}
+                            label={translate('Message %{assistantName}', { assistantName })}
+                            placeholder={placeholder}
+                            initialText={initialText}
+                            onResize={keepLatestVisible}
+                            disabled={voiceActive}
+                            onFocus={onExpand}
+                            onChangeText={changeDraft}
+                            onSubmit={() => send()}
+                        />
+                        <div className="anna-composer-toolbar">
+                            <div className="anna-composer-tools">
+                                {!voiceActive && !offline && conversation.projectId && isDictationSupported() && (
+                                    <RambleButton
+                                        projectId={conversation.projectId}
+                                        targetKind="generic"
+                                        getCurrentText={() => draftRef.current}
+                                        onTextReady={insertDictatedText}
+                                        onPhaseChange={setDictationPhase}
+                                        getOverlayViewport={() => {
+                                            const pane = composer.current?.getPane()
+                                            return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
+                                        }}
+                                        style={{ minWidth: 40, height: 40, borderRadius: 20, flexShrink: 0 }}
+                                    />
+                                )}
+                                <div className="anna-composer-attachment">
+                                    <AddFeedAttachButton
+                                        compact
+                                        buttonStyle={{
+                                            width: 40,
+                                            height: 40,
+                                            minHeight: 40,
+                                            borderRadius: 20,
+                                            alignSelf: 'center',
+                                        }}
+                                        projectId={conversation.projectId}
+                                        getPopoverViewport={() => {
+                                            const pane = composer.current?.getPane()
+                                            return pane && { ...pane.getBoundingClientRect().toJSON(), active: true }
+                                        }}
+                                        isDisabled={voiceActive || dictationBusy || offline || !conversation.projectId}
+                                        addAttachmentTag={(text, uri) => {
+                                            if (voiceActive || dictationBusy || offline || isBrowserOffline()) return
+                                            composer.current?.addAttachment(text, uri)
+                                        }}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                        <div className="anna-composer-actions">
-                            {call.needsAudioPlayback && (
+                            <div className="anna-composer-actions">
+                                {call.needsAudioPlayback && (
+                                    <button
+                                        type="button"
+                                        className="anna-voice-button"
+                                        aria-label={translate('Enable call audio')}
+                                        title={translate('Enable call audio')}
+                                        onClick={call.playCallAudio}
+                                    >
+                                        <Icon name="volume-2" size={20} color="currentColor" />
+                                    </button>
+                                )}
                                 <button
                                     type="button"
-                                    className="anna-voice-button"
-                                    aria-label={translate('Enable call audio')}
-                                    title={translate('Enable call audio')}
-                                    onClick={call.playCallAudio}
+                                    className={`anna-voice-button${voiceActive ? ' anna-voice-active' : ''}`}
+                                    aria-label={voiceLabel}
+                                    title={voiceHint}
+                                    disabled={
+                                        voiceActive ? call.status === 'ending' : offline || sending || dictationBusy
+                                    }
+                                    onClick={toggleVoiceCall}
                                 >
-                                    <Icon name="volume-2" size={20} color="currentColor" />
+                                    <Icon
+                                        name={voiceConnecting ? 'x' : voiceActive ? 'phone-off' : 'phone-call'}
+                                        size={20}
+                                        color="currentColor"
+                                    />
                                 </button>
-                            )}
-                            <button
-                                type="button"
-                                className={`anna-voice-button${voiceActive ? ' anna-voice-active' : ''}`}
-                                aria-label={voiceLabel}
-                                title={voiceHint}
-                                disabled={voiceActive ? call.status === 'ending' : offline || sending || dictationBusy}
-                                onClick={toggleVoiceCall}
-                            >
-                                <Icon
-                                    name={voiceConnecting ? 'x' : voiceActive ? 'phone-off' : 'phone-call'}
-                                    size={20}
-                                    color="currentColor"
-                                />
-                            </button>
-                            <button
-                                type="submit"
-                                className="anna-send"
-                                disabled={offline || voiceActive || dictationBusy || !hasText}
-                                aria-label={translate('Send message')}
-                            >
-                                <Icon name="arrow-up" size={20} color="currentColor" />
-                            </button>
+                                <button
+                                    type="submit"
+                                    className="anna-send"
+                                    disabled={offline || voiceActive || dictationBusy || !hasText}
+                                    aria-label={translate('Send message')}
+                                >
+                                    <Icon name="arrow-up" size={20} color="currentColor" />
+                                </button>
+                            </div>
                         </div>
                     </div>
+                    {voiceConnecting && (
+                        <div className="anna-composer-connecting">
+                            <VoiceCallConnecting assistantName={assistantName} style={{ flex: 1, borderRadius: 20 }} />
+                            <button
+                                type="button"
+                                className="anna-text-button anna-composer-cancel"
+                                onClick={toggleVoiceCall}
+                            >
+                                {translate('Cancel call')}
+                            </button>
+                        </div>
+                    )}
                 </div>
-                {voiceConnecting && <VoiceCallConnecting assistantName={assistantName} />}
-                <div className={`anna-composer-footer${voiceActive ? '' : ' anna-composer-footer-idle'}`}>
-                    {voiceActive ? (
+                <div
+                    className={`anna-composer-footer${voiceActive && !voiceConnecting ? '' : ' anna-composer-footer-idle'}`}
+                    style={voiceConnecting ? { visibility: 'hidden' } : undefined}
+                    aria-hidden={voiceConnecting || undefined}
+                >
+                    {voiceActive && !voiceConnecting ? (
                         <>
-                            {voiceConnecting ? (
-                                <button type="button" className="anna-text-button" onClick={toggleVoiceCall}>
-                                    {translate('Cancel call')}
-                                </button>
-                            ) : (
-                                <span role="status">
-                                    {translate('Voice call in progress')}
-                                    {' · '}
-                                    {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
-                                </span>
-                            )}
+                            <span role="status">
+                                {translate('Voice call in progress')}
+                                {' · '}
+                                {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+                            </span>
                             <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} compact />
                         </>
                     ) : (

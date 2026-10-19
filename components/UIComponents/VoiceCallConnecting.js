@@ -7,12 +7,12 @@ import { useReducedMotion } from './Ghosts/ghostAnimation'
 
 // Browser-composited motion keeps running while call setup is busy. The shared
 // preference hook also responds when reduced motion changes during a call.
-export default function VoiceCallConnecting({ assistantName }) {
+export default function VoiceCallConnecting({ assistantName, style }) {
     const reducedMotion = useReducedMotion()
     return (
         <View
             testID="voice-call-connecting"
-            style={localStyles.container}
+            style={[localStyles.container, style]}
             role="status"
             accessibilityLiveRegion="polite"
         >

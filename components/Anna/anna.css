@@ -340,6 +340,24 @@
     padding: 8px 0 max(8px, env(safe-area-inset-bottom));
     container: anna-composer / inline-size;
 }
+.anna-composer-slot {
+    position: relative;
+}
+.anna-composer-slot-connecting .anna-composer-field {
+    visibility: hidden;
+}
+.anna-composer-connecting {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    border-radius: 20px;
+}
+.anna-composer-cancel {
+    position: absolute;
+    bottom: 2px;
+    right: 8px;
+    font-size: 11px !important;
+}
 .anna-composer-field {
     display: flex;
     flex-direction: column;
