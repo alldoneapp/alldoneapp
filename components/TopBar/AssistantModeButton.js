@@ -10,8 +10,8 @@ import { translate } from '../../i18n/TranslationService'
 function AssistantModePanelIcon({ expanded, color }) {
     return (
         <Svg
-            width={24}
-            height={24}
+            width={18}
+            height={18}
             viewBox="0 0 24 24"
             fill="none"
             stroke={color}
@@ -45,7 +45,8 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
             accessibilityLabel={label}
             aria-pressed={expanded}
             testID="top-bar-assistant-mode"
-            style={[localStyles.button, highlighted && localStyles.highlighted, !inline && localStyles.centered]}
+            style={[localStyles.button, hovered && localStyles.hovered, !inline && localStyles.centered]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             onPress={() => {
@@ -61,11 +62,11 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
                         color={highlighted ? colors.Primary100 : colors.Text03}
                     />
                 </View>
-                <View style={[localStyles.avatar, expanded && localStyles.activeAvatar]}>
+                <View style={[localStyles.avatar, hovered && localStyles.hoveredAvatar]}>
                     <AssistantAvatar
                         photoURL={assistant.photoURL50 || assistant.photoURL300 || assistant.photoURL}
                         assistantId={assistant.uid}
-                        size={20}
+                        size={12}
                     />
                 </View>
             </span>
@@ -75,46 +76,46 @@ export default function AssistantModeButton({ onOpen, inline = false }) {
 
 const localStyles = StyleSheet.create({
     button: {
-        width: 44,
-        height: 44,
+        // Match Search's 28px control and 24px total icon footprint.
+        width: 28,
+        height: 28,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 14,
-        backgroundColor: '#FFFFFF',
+        borderRadius: 6,
     },
-    highlighted: {
+    hovered: {
         backgroundColor: '#E2EFFF',
     },
     glyph: {
         display: 'flex',
         position: 'relative',
-        width: 44,
-        height: 44,
+        width: 24,
+        height: 24,
         alignItems: 'center',
         justifyContent: 'center',
     },
     panel: {
-        transform: [{ translateX: -2 }, { translateY: 2 }],
+        transform: [{ translateX: -3 }, { translateY: 3 }],
     },
     avatar: {
         position: 'absolute',
         top: 0,
-        right: 2,
-        width: 24,
-        height: 24,
-        borderWidth: 2,
+        right: 0,
+        width: 14,
+        height: 14,
+        borderWidth: 1,
         borderColor: '#FFFFFF',
-        borderRadius: 12,
+        borderRadius: 7,
         overflow: 'hidden',
         backgroundColor: '#FFFFFF',
     },
-    activeAvatar: {
+    hoveredAvatar: {
         borderColor: '#E2EFFF',
     },
     centered: {
         position: 'absolute',
         left: '50%',
-        marginLeft: -22,
-        top: 6,
+        marginLeft: -14,
+        top: 14,
     },
 })
