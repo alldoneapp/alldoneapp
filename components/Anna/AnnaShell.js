@@ -170,6 +170,11 @@ export default function AnnaShell({ children, routeId }) {
         setMobilePane('chat')
     }
     const showLatestChat = () => {
+        if (!mobile && visibleWorkspace) {
+            requestGeneration.current++
+            followedBrowser.current = null
+            setSurface('alldone')
+        }
         backToChat()
         setLatestChatRequest(request => request + 1)
     }

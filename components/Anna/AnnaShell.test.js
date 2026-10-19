@@ -1462,6 +1462,7 @@ it.each([
     ['desktop', 'alldone'],
     ['desktop', 'browser'],
     ['desktop', 'vms'],
+    ['desktop', 'vm:vm1'],
     ['desktop', 'chat-only'],
     ['mobile', 'chat'],
     ['mobile', 'workspace'],
@@ -1476,8 +1477,11 @@ it.each([
         removeEventListener: jest.fn(),
     })
     try {
+        if (start === 'vm:vm1') {
+            mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'running' }]
+        }
         render(content(1))
-        if (start === 'browser' || start === 'vms') chooseSurface(start)
+        if (start === 'browser' || start === 'vms' || start.startsWith('vm:')) chooseSurface(start)
         else if (start === 'workspace') showAlldoneWorkspace()
         else if (start === 'chat-only') act(() => setAnnaLayout('chat'))
         const shell = document.querySelector('.anna-shell')
@@ -1486,19 +1490,28 @@ it.each([
         const surfaceLabel = picker.selectedOptions[0].textContent
         const path = window.location.href
         const chat = screen.getByLabelText('Persistent conversation')
+        const workspace = screen.getByLabelText('Real workspace editor')
         chat.value = 'Keep my draft'
+        workspace.value = 'Keep my edit'
         fireEvent.click(screen.getByLabelText('Anna Alldone – Latest messages'))
         expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
         expect(shell.classList.contains('anna-mobile-chat')).toBe(true)
         expect(mockConversationProps.visible).toBe(true)
         expect(document.activeElement).toBe(chat)
         expect(shell.classList.contains('anna-chat-only')).toBe(start === 'chat-only')
-        expect(selectedSurface()).toBe(device === 'mobile' ? '' : surface)
-        expect(picker.selectedOptions[0].textContent).toBe(surfaceLabel)
+        const restoresAlldone = device === 'desktop' && start !== 'chat-only'
+        expect(selectedSurface()).toBe(device === 'mobile' ? '' : restoresAlldone ? 'alldone' : surface)
+        expect(picker.selectedOptions[0].textContent).toBe(restoresAlldone ? 'Alldone' : surfaceLabel)
+        if (restoresAlldone) {
+            expect(document.querySelector('.anna-workspace').getAttribute('aria-hidden')).toBe('false')
+            expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('false')
+        }
         expect(window.location.href).toBe(path)
         expect(URLTrigger.processUrl).not.toHaveBeenCalled()
         expect(screen.getByLabelText('Persistent conversation')).toBe(chat)
         expect(chat.value).toBe('Keep my draft')
+        expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+        expect(workspace.value).toBe('Keep my edit')
         expect(mockUnmounts).toBe(0)
         fireEvent.click(screen.getByLabelText('Anna Alldone – Latest messages'))
         expect(mockScrollToLatest).toHaveBeenCalledTimes(2)
@@ -1506,6 +1519,21 @@ it.each([
         if (originalMatchMedia) window.matchMedia = originalMatchMedia
         else delete window.matchMedia
     }
+})
+
+it.each(['browser', 'vm:vm1'])('keeps the hidden %s workspace when returning to the latest messages', surface => {
+    mockVmJobs = [{ id: 'vm1', projectId: 'p1', objectId: 't1', title: 'Launch report', status: 'running' }]
+    render(content(1))
+    chooseSurface(surface)
+    fireEvent.click(screen.getByLabelText('Hide workspace — chat only'))
+    fireEvent.click(screen.getByLabelText('Anna Alldone – Latest messages'))
+    expect(document.querySelector('.anna-chat-only')).toBeTruthy()
+    expect(selectedSurface()).toBe(surface.startsWith('vm:') ? 'vms' : surface)
+    expect(screen.getByLabelText('Alldone workspace').getAttribute('aria-hidden')).toBe('true')
+    expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
+    expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
+    showWorkspace()
+    expect(selectedSurface()).toBe(surface.startsWith('vm:') ? 'vms' : surface)
 })
 
 it.each(['desktop', 'mobile'])('opens the app view from the header controls on %s', device => {
