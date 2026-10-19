@@ -1,5 +1,12 @@
 'use strict'
 
+// These tests supply project/bucket fixtures below. Do not read the runner's
+// real Functions config or parameter values when exercising the local fallback.
+jest.mock('../envFunctionsHelper', () => ({ getEnvFunctions: jest.fn(() => ({})) }))
+jest.mock('firebase-functions/params', () => ({
+    defineString: jest.fn(() => ({ value: () => '' })),
+}))
+
 const { NoteService } = require('./NoteService')
 
 describe('NoteService.getBucketName', () => {
