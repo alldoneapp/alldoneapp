@@ -10,7 +10,7 @@ import { Themes } from '../Themes'
 import GoldArea from '../GoldArea'
 import HomeButton from '../HomeButton'
 
-export default function TopBarMobileStatisticArea({ expandSecondaryBar, homeIconColor }) {
+export default function TopBarMobileStatisticArea({ expandSecondaryBar, homeIconColor, compact }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
@@ -30,7 +30,7 @@ export default function TopBarMobileStatisticArea({ expandSecondaryBar, homeIcon
             </TouchableOpacity>
             <HomeButton color={homeIconColor} style={localStyle.homeButton} expandSecondaryBar={expandSecondaryBar} />
 
-            {!isAnonymous && <GoldArea />}
+            {!isAnonymous && !compact && <GoldArea />}
         </View>
     )
 }

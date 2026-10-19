@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import React, {
+    forwardRef,
+    useCallback,
+    useEffect,
+    useImperativeHandle,
+    useLayoutEffect,
+    useRef,
+    useState,
+} from 'react'
 import useGetMessages from '../../hooks/Chats/useGetMessages'
 import MessageItemBody from '../ChatsView/ChatDV/EditorView/MessageItemBody'
 import { getAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
@@ -43,26 +51,29 @@ const getMessageCreator = (message, user, assistant) => {
     }
 }
 
-export default function AnnaConversation({
-    conversation,
-    assistant,
-    user,
-    call,
-    onExpand,
-    onSendingChange,
-    onWorkStateChange,
-    threads,
-    resolveConversation,
-    loadEarlier,
-    hasEarlier = false,
-    offline = false,
-    visible = true,
-    active = true,
-    resumeRequest,
-    onResumeHandled,
-    onBeforeSend,
-    pageContext,
-}) {
+const AnnaConversation = forwardRef(function AnnaConversation(
+    {
+        conversation,
+        assistant,
+        user,
+        call,
+        onExpand,
+        onSendingChange,
+        onWorkStateChange,
+        threads,
+        resolveConversation,
+        loadEarlier,
+        hasEarlier = false,
+        offline = false,
+        visible = true,
+        active = true,
+        resumeRequest,
+        onResumeHandled,
+        onBeforeSend,
+        pageContext,
+    },
+    ref
+) {
     const pageNotices = useAnnaContextNotices(user.uid, conversation, pageContext)
     const activityNotices = useAnnaActivityNotices(user.uid, conversation, active)
     const contextNotices = [...pageNotices, ...activityNotices].sort((a, b) => a.created - b.created)
@@ -264,12 +275,13 @@ export default function AnnaConversation({
         )
             displayedThreads.push(thread)
     })
-    const latest = () => {
+    const latest = useCallback(() => {
         follow.current = true
         scrollAnchor.current = null
         if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight
         setNewMessages(false)
-    }
+    }, [])
+    useImperativeHandle(ref, () => ({ scrollToLatest: latest }), [latest])
     return (
         <>
             <div
@@ -454,7 +466,9 @@ export default function AnnaConversation({
             </form>
         </>
     )
-}
+})
+
+export default AnnaConversation
 
 function AnnaThreadMessages({
     thread,

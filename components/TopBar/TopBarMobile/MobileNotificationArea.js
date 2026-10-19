@@ -22,7 +22,7 @@ import { ALL_PROJECTS_INDEX } from '../../SettingsView/ProjectsSettings/ProjectH
 import NavigationService from '../../../utils/NavigationService'
 import ChatsButton from '../ChatsButton'
 
-export default function MobileNotificationArea({ expandSecondaryBar }) {
+export default function MobileNotificationArea({ expandSecondaryBar, compact }) {
     const dispatch = useDispatch()
     const themeName = useSelector(state => state.loggedUser.themeName)
     const followedFeedsAmount = useSelector(getFollowedFeedAmount)
@@ -63,20 +63,17 @@ export default function MobileNotificationArea({ expandSecondaryBar }) {
 
     const feedAmount = followedFeedsAmount === 0 ? allFeedsAmount : followedFeedsAmount
     const activeFeedTab = followedFeedsAmount === 0 && allFeedsAmount > 0 ? ALL_TAB : FOLLOWED_TAB
+    const buttonStyle = [localStyles.button, compact && { marginLeft: 4 }]
 
     return (
         <View style={localStyles.container}>
-            <TouchableOpacity
-                style={[localStyles.button, { marginLeft: 0 }]}
-                onPress={onPressSearch}
-                accessible={false}
-            >
+            <TouchableOpacity style={[buttonStyle, { marginLeft: 0 }]} onPress={onPressSearch} accessible={false}>
                 <Icon size={24} name={'search'} color={theme.searchIcon} />
             </TouchableOpacity>
 
-            <ChatsButton color={theme.searchIcon} style={localStyles.button} onNavigate={collapseSecondaryBar} />
+            <ChatsButton color={theme.searchIcon} style={buttonStyle} onNavigate={collapseSecondaryBar} />
 
-            <TouchableOpacity style={localStyles.button} onPress={onPressUpdates} accessible={false}>
+            <TouchableOpacity style={buttonStyle} onPress={onPressUpdates} accessible={false}>
                 <Icon size={24} name={'bell'} color={theme.bellIcon} />
 
                 {feedAmount > 0 && (
@@ -86,7 +83,7 @@ export default function MobileNotificationArea({ expandSecondaryBar }) {
                 )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={localStyles.button} onPress={expandSecondaryBar} accessible={false}>
+            <TouchableOpacity style={buttonStyle} onPress={expandSecondaryBar} accessible={false}>
                 <Icon size={24} name={'more-vertical'} color={theme.moreVerticalIcon} />
             </TouchableOpacity>
         </View>
