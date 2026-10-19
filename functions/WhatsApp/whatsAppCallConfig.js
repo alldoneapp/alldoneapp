@@ -62,6 +62,7 @@ function getWhatsAppCallConfig() {
         openAiProjectId: value('OPENAI_PROJECT_ID'),
         openAiWebhookSecret: value('OPENAI_WEBHOOK_SECRET'),
         routingTokenSecret: value('WHATSAPP_CALL_ROUTING_SECRET'),
+        // Recaps and already accepted legacy calls only. New voice sessions use LIVE_MODEL.
         realtimeModel: value('OPENAI_REALTIME_MODEL') || DEFAULT_REALTIME_MODEL,
         transcriptionModel: value('OPENAI_REALTIME_TRANSCRIPTION_MODEL') || DEFAULT_TRANSCRIPTION_MODEL,
         reasoningEffort: value('OPENAI_REALTIME_REASONING_EFFORT') || DEFAULT_REASONING_EFFORT,

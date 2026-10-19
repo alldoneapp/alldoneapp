@@ -841,12 +841,7 @@ it('cancels voice while waiting for conversation validation without starting a l
             }),
     })
     await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
-    expect(container.querySelector('[data-testid="voice-call-connecting"]').textContent).toContain(
-        'Connecting with Existing assistant…'
-    )
-    expect(container.querySelector('[data-testid="voice-call-connecting"]').getAttribute('role')).toBe('status')
-    await click('Cancel call')
-    expect(container.querySelector('[data-testid="voice-call-connecting"]')).toBeNull()
+    await act(async () => container.querySelector('[aria-label="Cancel call"]').click())
     await act(async () => finish({ projectId: 'p1', id: 'today', assistantId: 'a1' }))
     expect(startCall).not.toHaveBeenCalled()
     expect(container.querySelector('textarea').disabled).toBe(false)
@@ -1380,34 +1375,4 @@ it('uses a generic avatar for an unknown assistant and only falls back to matchi
     expect(unknown.textContent).toContain('Assistant')
     expect(unknown.innerHTML).not.toContain('carl.png')
     expect(unknown.querySelector('svg')).not.toBeNull()
-})
-
-it('shows connecting feedback until ready and returns to the duration on success', () => {
-    render({ call: { status: 'connecting' } })
-    expect(container.querySelector('[data-testid="voice-call-connecting"]').textContent).toContain(
-        'Connecting with Existing assistant…'
-    )
-    expect(container.querySelector('.anna-composer-footer').textContent).not.toContain('0:00')
-    render({ call: { status: 'connected', voiceSeconds: 12 } })
-    expect(container.querySelector('[data-testid="voice-call-connecting"]')).toBeNull()
-    expect(container.querySelector('.anna-composer-footer').textContent).toContain('0:12')
-    render({ call: { status: 'idle', error: 'Could not start assistant call' } })
-    expect(container.querySelector('[role="alert"]').textContent).toContain('Could not start assistant call')
-    expect(container.querySelector('[aria-label="Talk with Existing assistant"]').disabled).toBe(false)
-})
-
-it('a rapid second phone click cancels preparation without starting duplicate calls', async () => {
-    const pending = deferred()
-    const resolveConversation = jest.fn(() => pending.promise)
-    const startCall = jest.fn()
-    render({ resolveConversation, call: { status: 'idle', startCall } })
-    const phone = container.querySelector('[aria-label="Talk with Existing assistant"]')
-    act(() => {
-        phone.click()
-        phone.click()
-    })
-    await act(async () => pending.resolve({ id: 'today', projectId: 'p1', assistantId: 'a1' }))
-    expect(resolveConversation).toHaveBeenCalledTimes(1)
-    expect(startCall).not.toHaveBeenCalled()
-    expect(container.querySelector('[data-testid="voice-call-connecting"]')).toBeNull()
 })

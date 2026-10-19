@@ -24,7 +24,6 @@ import { getAnnaWorkspaceWorkState } from './annaWorkspaceWorkState'
 import { getUserPresentationData } from '../ContactsView/Utils/ContactsHelper'
 import Icon from '../Icon'
 import VoiceMicrophoneStatus from '../UIComponents/VoiceMicrophoneStatus'
-import VoiceCallConnecting from '../UIComponents/VoiceCallConnecting'
 import RambleButton, { RAMBLE_PHASE_IDLE } from '../UIControls/RambleButton'
 import AddFeedAttachButton from '../Feeds/AddFeed/AddFeedAttachButton'
 import { isDictationSupported } from '../../hooks/useRambleRecorder'
@@ -122,8 +121,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     }
     const [preparingVoice, setPreparingVoice] = useState(false)
     const voiceRequest = useRef(0)
-    const preparingVoiceRef = useRef(false)
-    const voiceConnecting = preparingVoice || call.status === 'connecting'
     const voiceActive = preparingVoice || call.status !== 'idle'
     const placeholder = voiceActive
         ? translate('Voice call in progress')
@@ -157,8 +154,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     }, [])
     const toggleVoiceCall = async () => {
         if (dictationBusy) return
-        if (preparingVoiceRef.current) {
-            preparingVoiceRef.current = false
+        if (preparingVoice) {
             voiceRequest.current++
             setPreparingVoice(false)
             return
@@ -166,7 +162,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         if (call.status !== 'idle') return call.endCall()
         if (offline || isBrowserOffline()) return
         const request = ++voiceRequest.current
-        preparingVoiceRef.current = true
         setPreparingVoice(true)
         setError('')
         try {
@@ -177,7 +172,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
             if (!thread?.id) throw new Error(translate('Your conversation could not be loaded. Please try again.'))
             await onBeforeSend?.()
             if (!mounted.current || request !== voiceRequest.current) return
-            preparingVoiceRef.current = false
             setPreparingVoice(false)
             await call.startCall({
                 assistant: { ...assistant, uid: thread.assistantId },
@@ -189,7 +183,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
             if (mounted.current && request === voiceRequest.current) setError(failure.message)
         } finally {
             if (mounted.current && request === voiceRequest.current) {
-                preparingVoiceRef.current = false
                 setPreparingVoice(false)
             }
         }
@@ -439,11 +432,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                 disabled={voiceActive ? call.status === 'ending' : offline || sending || dictationBusy}
                                 onClick={toggleVoiceCall}
                             >
-                                <Icon
-                                    name={voiceConnecting ? 'x' : voiceActive ? 'phone-off' : 'phone-call'}
-                                    size={20}
-                                    color="currentColor"
-                                />
+                                <Icon name={voiceActive ? 'phone-off' : 'phone-call'} size={20} color="currentColor" />
                             </button>
                             <button
                                 type="submit"
@@ -456,21 +445,18 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                         </div>
                     </div>
                 </div>
-                {voiceConnecting && <VoiceCallConnecting assistantName={assistantName} />}
                 <div className={`anna-composer-footer${voiceActive ? '' : ' anna-composer-footer-idle'}`}>
                     {voiceActive ? (
                         <>
-                            {voiceConnecting ? (
-                                <button type="button" className="anna-text-button" onClick={toggleVoiceCall}>
-                                    {translate('Cancel call')}
-                                </button>
-                            ) : (
-                                <span role="status">
-                                    {translate('Voice call in progress')}
-                                    {' · '}
-                                    {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
-                                </span>
-                            )}
+                            <span role="status">
+                                {translate(
+                                    preparingVoice || call.status === 'connecting'
+                                        ? 'Connecting'
+                                        : 'Voice call in progress'
+                                )}
+                                {' · '}
+                                {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
+                            </span>
                             <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} compact />
                         </>
                     ) : (

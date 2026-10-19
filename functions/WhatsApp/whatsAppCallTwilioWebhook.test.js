@@ -116,6 +116,84 @@ describe('WhatsApp call Twilio routing', () => {
         expect(res.send.mock.calls[0][0]).toContain('<Response')
     })
 
+    describe.each([
+        ['phone', handleIncomingPhoneCall],
+        ['WhatsApp', handleIncomingWhatsAppCall],
+    ])('%s Live configuration', (channel, handler) => {
+        test.each(['openAiApiKey', 'openAiProjectId', 'openAiWebhookSecret', 'routingTokenSecret'])(
+            'does not create a route when %s is missing',
+            async field => {
+                getWhatsAppCallConfig.mockReturnValue({
+                    enabled: true,
+                    phoneCallsEnabled: true,
+                    openAiApiKey: 'key',
+                    openAiProjectId: 'project',
+                    openAiWebhookSecret: 'secret',
+                    routingTokenSecret: 'route',
+                    [field]: '',
+                })
+                findUserByPhone.mockResolvedValue('user-1')
+                admin.firestore.mockReturnValue({
+                    doc: () => ({
+                        get: async () => ({
+                            exists: true,
+                            id: 'user-1',
+                            data: () => ({ premium: { status: 'premium' }, gold: 100, defaultProjectId: 'project-1' }),
+                        }),
+                    }),
+                })
+                const res = {
+                    type: jest.fn().mockReturnThis(),
+                    status: jest.fn().mockReturnThis(),
+                    send: jest.fn().mockReturnThis(),
+                }
+                await handler(
+                    {
+                        method: 'POST',
+                        headers: { 'x-twilio-signature': 'signature' },
+                        body: { CallSid: 'CA1', From: '+123' },
+                    },
+                    res
+                )
+                expect(createCallSessionWithLease).not.toHaveBeenCalled()
+                expect(res.send.mock.calls[0][0]).not.toContain('<Dial')
+                if (channel === 'phone') expect(res.send.mock.calls[0][0]).toContain('GPT-Live')
+                else
+                    expect(mockSendWhatsAppMessage).toHaveBeenCalledWith(
+                        '+123',
+                        expect.stringContaining('Live SIP webhook'),
+                        expect.anything()
+                    )
+            }
+        )
+    })
+
+    test.each([
+        ['phone', handlePhoneCallStatus],
+        ['WhatsApp', handleWhatsAppCallStatus],
+    ])('gives a %s caller an explicit Live connection failure after a failed Dial', async (channel, handler) => {
+        const res = {
+            type: jest.fn().mockReturnThis(),
+            status: jest.fn().mockReturnThis(),
+            send: jest.fn().mockReturnThis(),
+        }
+        await handler(
+            {
+                method: 'POST',
+                headers: { 'x-twilio-signature': 'signature' },
+                body: { CallSid: 'CA1', From: '+123', DialCallStatus: 'no-answer' },
+            },
+            res
+        )
+        if (channel === 'phone') expect(res.send.mock.calls[0][0]).toContain('GPT-Live')
+        else
+            expect(mockSendWhatsAppMessage).toHaveBeenCalledWith(
+                '+123',
+                expect.stringContaining('GPT-Live'),
+                expect.anything()
+            )
+    })
+
     test('routes an eligible caller through the existing default assistant and daily topic', async () => {
         const user = {
             premium: { status: 'premium' },

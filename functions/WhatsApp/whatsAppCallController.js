@@ -360,6 +360,15 @@ async function runAssistantRealtimeCall(sessionId) {
         await sendCallRecap(sessionId)
         return
     }
+    // Only already accepted legacy calls may drain. Missing/unknown provider
+    // metadata on a new queued job must never select the old voice controller.
+    if (session.voiceProvider || !session.acceptCompletedAt) {
+        console.error('Live Call: Refusing legacy controller fallback', { sessionId, code: 'gpt_live_required' })
+        await updateCallSession(sessionId, { lastError: 'gpt_live_required' })
+        if (session.openAiCallId) await hangUpOpenAICall(config, session.openAiCallId).catch(() => {})
+        await finalizeControllerCall(sessionId, 'gpt_live_required', 'failed')
+        return
+    }
     if (!session.openAiCallId) return
 
     let context

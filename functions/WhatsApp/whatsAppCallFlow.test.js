@@ -72,7 +72,6 @@ jest.mock('./whatsAppCallConfig', () => ({
 }))
 
 const admin = require('firebase-admin')
-const { buildInitialRealtimeSession } = require('./whatsAppCallOpenAIWebhook')
 const { reconcileCallUsage } = require('./whatsAppCallGold')
 const { consumeRoutingToken, createCallSessionWithLease, finalizeCallSession } = require('./whatsAppCallSessions')
 const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
@@ -81,7 +80,7 @@ const { buildSipTwiML } = require('./whatsAppCallTwilioWebhook')
 describe('mocked WhatsApp assistant call flow', () => {
     beforeEach(() => admin.__mock.reset())
 
-    test('routes, accepts, transcribes, bills, finalizes, and persists the recap idempotently', async () => {
+    test('drains an existing legacy call, settles usage and persists its recap idempotently', async () => {
         const now = Date.now()
         admin.__mock.set('users/user-1', { gold: 5 })
         admin.__mock.set('chatObjects/project-1/chats/chat-1', { commentsData: { amount: 0 } })
@@ -106,22 +105,19 @@ describe('mocked WhatsApp assistant call flow', () => {
             assistantId: 'assistant-1',
             chatId: 'chat-1',
         })
+        admin.__mock.set('whatsAppCallSessions/twilio-call-1', {
+            ...admin.__mock.get('whatsAppCallSessions/twilio-call-1'),
+            voiceProvider: null,
+            voiceModel: null,
+            realtimeModel: 'gpt-realtime-2',
+            acceptCompletedAt: now,
+        })
         const consumed = await consumeRoutingToken({
             routingToken: 'opaque-route',
             routingSecret: 'route-secret',
             openAiCallId: 'openai-call-1',
         })
         expect(consumed).toEqual(expect.objectContaining({ success: true, sessionId: 'twilio-call-1' }))
-        expect(
-            buildInitialRealtimeSession({
-                config: {
-                    realtimeModel: 'gpt-realtime-2',
-                    transcriptionModel: 'gpt-realtime-whisper',
-                    reasoningEffort: 'medium',
-                },
-                voice: 'marin',
-            })
-        ).toEqual(expect.objectContaining({ model: 'gpt-realtime-2', output_modalities: ['audio'] }))
 
         const turn = {
             sessionId: 'twilio-call-1',
