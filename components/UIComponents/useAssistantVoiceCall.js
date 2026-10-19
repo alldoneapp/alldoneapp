@@ -436,10 +436,11 @@ export default function useAssistantVoiceCall() {
 
     const cleanup = useCallback(
         (resetState = true, reason = 'cleanup') => {
+            // Invalidate every pending startup continuation before a retry can begin.
+            callGenerationRef.current++
             contextSyncRef.current?.stop()
             contextSyncRef.current = null
             if (reason === 'account_changed') {
-                callGenerationRef.current++
                 clearTimeout(summaryTimerRef.current)
                 setCallSummary(null)
                 setError('')
@@ -545,6 +546,10 @@ export default function useAssistantVoiceCall() {
     }, [])
     const endCall = useCallback(async () => {
         if (endingRef.current) return
+        if (startingRef.current) {
+            cleanup(true, 'user_cancelled')
+            return
+        }
         endReasonRef.current = 'user_hangup'
         endingRef.current = true
         setStatus(STATUS_ENDING)
@@ -695,6 +700,7 @@ export default function useAssistantVoiceCall() {
                     } else if (state === 'disconnected') {
                         if (!disconnectTimerRef.current) armDisconnectTimer(pc)
                     } else if (state === 'failed' || state === 'closed') {
+                        if (startingRef.current) setError(translate('Could not start assistant call'))
                         cleanup(true, state === 'failed' ? 'peer_failed' : 'peer_closed')
                     }
                 }
