@@ -10224,7 +10224,7 @@ async function executeToolNativelyImpl(
                 )
 
                 const { startVmJob } = require('./vmJob')
-                return await startVmJob({
+                const vmResult = await startVmJob({
                     objective: toolArgs.objective,
                     taskType: toolArgs.task_type,
                     agent: toolArgs.agent,
@@ -10262,6 +10262,24 @@ async function executeToolNativelyImpl(
                         toolRuntimeContext?.originAssistantId ||
                         (toolRuntimeContext?.annaConversation ? assistantId : ''),
                 })
+                // Persist the workflow handoff before requesting another model response. That
+                // response can hang even though the VM has already started and will finish.
+                if (vmResult.success && vmResult.correlationId && toolRuntimeContext?.onVmJobStarted) {
+                    try {
+                        await toolRuntimeContext.onVmJobStarted({
+                            correlationId: vmResult.correlationId,
+                            projectId: effectiveProjectId,
+                            objectType: effectiveObjectType,
+                            objectId: effectiveObjectId,
+                        })
+                    } catch (error) {
+                        console.warn('VM workflow handoff failed; retaining successful launch result', {
+                            correlationId: vmResult.correlationId,
+                            error: error.message,
+                        })
+                    }
+                }
+                return vmResult
             } catch (error) {
                 console.error('🖥️ EXECUTE_TASK_IN_VM TOOL: Failed to start VM job', {
                     error: error.message,
