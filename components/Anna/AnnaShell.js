@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useSelector } from 'react-redux'
 import Icon from '../Icon'
 import { colors } from '../styles/global'
@@ -117,6 +118,7 @@ export default function AnnaShell({ children, routeId }) {
     const workspaceStage = useRef(null)
     const focusAfterSwitch = useRef(active ? 'chat' : null)
     const awaitingChatInputFocus = useRef(false)
+    const awaitingLatestChat = useRef(false)
     const previousMode = useRef(layoutMode)
     const { width: chatWidth, maximum: maxChatWidth, resize: setChatWidth } = useAnnaChatWidth(user.uid, layout)
     const presentationSeen = useRef(new Set())
@@ -189,12 +191,26 @@ export default function AnnaShell({ children, routeId }) {
     }, [latestChatRequest])
     const openChat = useCallback(() => {
         requestGeneration.current++
+        if (mobile) {
+            // Reveal and mount the editor within the tap. Deferring focus to an
+            // effect/timer loses the user gesture needed for the iOS keyboard.
+            flushSync(() => {
+                setVisited(true)
+                setMobilePane('chat')
+                setAnnaMode(true)
+            })
+            focusAfterSwitch.current = null
+            focusChatInput()
+            chatConversation.current?.scrollToLatest()
+            awaitingLatestChat.current = !chatConversation.current
+            return
+        }
         // Focus immediately if already visible; otherwise wait for the pane switch.
         if (layoutMode === 'split' && mobilePane === 'chat') focusChatInput()
         else focusAfterSwitch.current = 'chat'
         setMobilePane('chat')
         setAnnaMode(true)
-    }, [layoutMode, mobilePane, focusChatInput])
+    }, [mobile, layoutMode, mobilePane, focusChatInput])
     const showAlldoneNavigation = useCallback(() => {
         if (!active) return
         requestGeneration.current++
@@ -212,18 +228,24 @@ export default function AnnaShell({ children, routeId }) {
         if (target === 'chat' && active) focusChatInput()
         else if (target === 'workspace') {
             awaitingChatInputFocus.current = false
+            awaitingLatestChat.current = false
             workspaceStage.current?.focus({ preventScroll: true })
         }
     }, [layoutMode, mobilePane, surface, active, focusChatInput])
     useEffect(() => {
         if (!active) {
             awaitingChatInputFocus.current = false
+            awaitingLatestChat.current = false
             return
         }
         if (!awaitingChatInputFocus.current || !chatConversation.current) return
         awaitingChatInputFocus.current = false
         // Loading must not take focus back after the user starts editing elsewhere.
-        if (chatPane.current?.contains(document.activeElement)) chatConversation.current.focusInput()
+        if (chatPane.current?.contains(document.activeElement)) {
+            chatConversation.current.focusInput()
+            if (awaitingLatestChat.current) chatConversation.current.scrollToLatest()
+        }
+        awaitingLatestChat.current = false
     }, [active, visited, conversation])
     useEffect(() => {
         if (!active) {

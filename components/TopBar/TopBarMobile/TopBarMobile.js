@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react'
-import { Animated, ScrollView, StyleSheet, View } from 'react-native'
+import { Animated, StyleSheet, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
 import TopBarMobileStatisticArea from './TopBarMobileStatisticArea'
@@ -11,7 +11,7 @@ import { getTheme } from '../../../Themes/Themes'
 import { Themes } from '../Themes'
 import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
-import XpBar, { XP_BAR_MOBILE, barWidth } from '../../XpBar/XpBar'
+import XpBar, { XP_BAR_MOBILE } from '../../XpBar/XpBar'
 import HomeButton from '../HomeButton'
 import GoldArea from '../GoldArea'
 
@@ -26,6 +26,7 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
     const reallySmallScreenNavigation = useSelector(state => state.reallySmallScreenNavigation)
     const compact = compactOverride ?? reallySmallScreenNavigation
     const height = useRef(new Animated.Value(0)).current
+    const secondaryBarHeight = compact ? SECONDARY_BAR_MOBILE * 2 : SECONDARY_BAR_MOBILE
 
     const theme = getTheme(Themes, themeName, 'TopBarMobile')
 
@@ -38,14 +39,14 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
     }, [])
     useEffect(() => {
         const animation = Animated.timing(height, {
-            toValue: expandedNavPicker ? SECONDARY_BAR_MOBILE : 0,
+            toValue: expandedNavPicker ? secondaryBarHeight : 0,
             duration: 200,
             // Height is a layout prop, so the native driver cannot drive it.
             useNativeDriver: false,
         })
         animation.start()
         return () => animation.stop()
-    }, [expandedNavPicker, height])
+    }, [expandedNavPicker, secondaryBarHeight, height])
 
     const statistics = (
         <>
@@ -82,22 +83,17 @@ export default function TopBarMobile({ compact: compactOverride, showMenu = true
 
             {!isAnonymous && (
                 <Animated.View
-                    testID="top-bar-mobile-statistics"
                     style={[localStyles.itemsContainerMobile, theme.itemsContainerMobile, { height: height }]}
                 >
                     {expandedNavPicker &&
                         (compact ? (
-                            <ScrollView
-                                horizontal
-                                style={localStyles.compactStatistics}
-                                contentContainerStyle={localStyles.statisticsRow}
-                            >
-                                <View style={localStyles.xpContainer}>
+                            <View style={localStyles.compactStatistics}>
+                                <View style={localStyles.statisticsRow}>
                                     <XpBar size={XP_BAR_MOBILE} />
+                                    <GoldArea />
                                 </View>
-                                <GoldArea />
-                                {statistics}
-                            </ScrollView>
+                                <View style={localStyles.statisticsRow}>{statistics}</View>
+                            </View>
                         ) : (
                             <>
                                 <XpBar size={XP_BAR_MOBILE} />
@@ -141,18 +137,11 @@ const localStyles = StyleSheet.create({
     },
     compactStatistics: {
         flex: 1,
-        minWidth: 0,
     },
     statisticsRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-end',
         height: SECONDARY_BAR_MOBILE,
-        flexGrow: 1,
-    },
-    xpContainer: {
-        // XpBar normally grows into available space; reserve its mobile width in the scroll row.
-        width: barWidth[XP_BAR_MOBILE] + 8,
-        flexShrink: 0,
     },
 })

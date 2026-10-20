@@ -242,6 +242,82 @@ const closeAssistant = () => {
     }
 }
 
+it.each([
+    ['top bar', 'first open'],
+    ['sidebar', 'first open'],
+    ['top bar', 'reopen'],
+    ['sidebar', 'reopen'],
+    ['top bar', 'workspace'],
+])('scrolls and focuses within the mobile tap from the %s on %s', (entry, start) => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+    try {
+        if (start === 'first open') setAnnaMode(false)
+        render(content(1, true))
+        const workspace = screen.getByLabelText('Real workspace editor')
+        workspace.value = 'Keep my note'
+        if (start === 'reopen') closeAssistant()
+        else if (start === 'workspace') showAlldoneWorkspace()
+        const previousChat = screen.getByLabelText('Persistent conversation')
+        if (previousChat) previousChat.value = 'Keep my chat draft'
+        mockScrollToLatest.mockClear()
+        const button =
+            entry === 'sidebar' ? assistantToggle() : document.querySelector('[data-testid="top-bar-assistant-mode"]')
+        act(() => {
+            button.click()
+            // Assert before React flushes work at the end of act: focus must
+            // happen inside the actual handler, while iOS allows the keyboard.
+            const chat = screen.getByLabelText('Persistent conversation')
+            expect(document.activeElement).toBe(chat)
+            expect(chat.closest('section').hasAttribute('inert')).toBe(false)
+            expect(mockScrollToLatest).toHaveBeenCalledTimes(1)
+        })
+        if (previousChat) {
+            expect(screen.getByLabelText('Persistent conversation')).toBe(previousChat)
+            expect(previousChat.value).toBe('Keep my chat draft')
+        }
+        expect(screen.getByLabelText('Real workspace editor')).toBe(workspace)
+        expect(workspace.value).toBe('Keep my note')
+        expect(mockUnmounts).toBe(0)
+        expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
+    } finally {
+        window.matchMedia = originalMatchMedia
+    }
+})
+
+it.each([true, false])(
+    'handles a mobile conversation arriving after the tap with chat focus retained: %s',
+    retainFocus => {
+        const originalMatchMedia = window.matchMedia
+        window.matchMedia = () => ({ matches: true, addEventListener: jest.fn(), removeEventListener: jest.fn() })
+        try {
+            setAnnaMode(false)
+            useAnnaConversation.mockReturnValue({ ...state, conversation: null, loading: true })
+            const view = render(content(1))
+            fireEvent.click(document.querySelector('[data-testid="top-bar-assistant-mode"]'))
+            expect(document.activeElement).toBe(document.querySelector('.anna-conversation'))
+            const workspace = screen.getByLabelText('Real workspace editor')
+            if (!retainFocus) act(() => workspace.focus())
+            useAnnaConversation.mockReturnValue(state)
+            view.rerender(content(1))
+            expect(document.activeElement).toBe(
+                retainFocus ? screen.getByLabelText('Persistent conversation') : workspace
+            )
+            expect(mockScrollToLatest).toHaveBeenCalledTimes(retainFocus ? 1 : 0)
+        } finally {
+            window.matchMedia = originalMatchMedia
+        }
+    }
+)
+
+it('keeps the desktop reading position when opening the assistant', () => {
+    setAnnaMode(false)
+    render(content(1))
+    fireEvent.click(document.querySelector('[data-testid="top-bar-assistant-mode"]'))
+    expect(document.activeElement).toBe(screen.getByLabelText('Persistent conversation'))
+    expect(mockScrollToLatest).not.toHaveBeenCalled()
+})
+
 it('preserves editors and the selected surface while hiding the workspace, including background browser activity', () => {
     render(content(1))
     const workspace = screen.getByLabelText('Real workspace editor')
