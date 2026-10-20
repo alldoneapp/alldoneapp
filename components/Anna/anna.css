@@ -247,20 +247,6 @@
     padding: 16px 24px 24px;
     overscroll-behavior: contain;
     overflow-wrap: anywhere;
-    /* The follow controller owns anchoring. Browser anchoring would race it. */
-    overflow-anchor: none;
-    scrollbar-gutter: stable;
-    scroll-behavior: auto;
-}
-.anna-message-timeline {
-    display: flow-root;
-}
-.anna-message-answer {
-    animation: anna-answer-arrive 160ms ease-out;
-}
-.anna-messages:focus-visible {
-    outline: 2px solid var(--anna-focus);
-    outline-offset: -2px;
 }
 .anna-welcome {
     padding: 48px 4px 28px;
@@ -303,14 +289,11 @@
     border-radius: 12px;
     margin: 0 0 24px;
     padding: 10px 0;
-    min-width: 0;
-    animation: anna-message-arrive 180ms ease-out both;
 }
 .anna-message-user {
     margin-left: 32px;
     background: var(--anna-neutral);
     padding: 14px 16px;
-    border: 1px solid var(--anna-border);
 }
 .anna-message-author {
     display: flex;
@@ -1210,34 +1193,9 @@
     }
 }
 @media (prefers-reduced-motion: reduce) {
-    .anna-message,
-    .anna-message-answer,
     .anna-reveal-overlay,
     .anna-reveal-ring {
         animation: none;
-    }
-    .anna-composer-field,
-    .anna-send {
-        transition: none;
-    }
-}
-
-@keyframes anna-message-arrive {
-    from {
-        opacity: 0;
-        transform: translateY(3px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-@keyframes anna-answer-arrive {
-    from {
-        opacity: 0.65;
-    }
-    to {
-        opacity: 1;
     }
 }
 

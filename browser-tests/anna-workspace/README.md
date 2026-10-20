@@ -51,3 +51,30 @@ all three layouts and the pane controls at 1440, 1024, 390 and 320 pixels, and
 checks for runtime errors. On macOS, also verify the installed app by selecting a
 layout, quitting it, and reopening it from the Dock. Preferences are local to the
 installation's browser storage and cannot survive clearing or blocking storage.
+
+For AT-2776, opening assistant mode from the top bar or sidebar on mobile reveals
+the chat, scrolls to the latest message and focuses its composer within the tap.
+The workspace and chat drafts stay mounted. Desktop retains its reading position.
+Message viewport resizing keeps following the end until the user scrolls away.
+
+```bash
+npm test -- --runInBand --watch=false components/Anna/AnnaShell.test.js \
+    components/Anna/AnnaConversation.test.js components/TopBar/AssistantModeButton.test.js
+ASSISTANT_FOCUS_ONLY=1 node browser-tests/anna-workspace/run.js
+```
+
+The browser check uses real shell/buttons/Quill with fixture transport, touch taps
+at 390/320 pixels and mouse clicks at 1440/1024 pixels. It checks focus before the
+opening action returns to the button, first cached opening, reopening, hidden mobile chat,
+scrolling, resizing and retained drafts. Generated screenshots stay in `.build/`.
+Review the [mobile example](../../docs/screenshots/AT-2776-mobile-assistant-focus.png).
+
+On an iPhone, verify top-bar and sidebar opening after scrolling to older messages:
+the latest message should be visible and the keyboard should appear. Repeat from
+the mobile workspace, with an unsent draft, and during a voice call. Headless tests
+do not verify a physical software keyboard. With no cached conversation, the input
+does not exist until the network responds: focus/scroll are handed over only while
+the chat still owns focus, and iOS may require a second tap to show its keyboard.
+The fix uses a synchronous render only for explicit mobile opening; see
+[React's flushSync API](https://react.dev/reference/react-dom/flushSync) and
+[WebKit's user-gesture requirement](https://bugs.webkit.org/show_bug.cgi?id=195884).

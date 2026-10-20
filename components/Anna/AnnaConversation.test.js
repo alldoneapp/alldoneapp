@@ -8,10 +8,6 @@ import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
-jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({
-    ...jest.requireActual('../UIComponents/Ghosts/ghostAnimation'),
-    useReducedMotion: () => true,
-}))
 jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn().mockResolvedValue(null) }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 let mockActivityState
@@ -225,6 +221,49 @@ it('returns to the latest messages on request, preserves the draft and resumes f
     mockMessages = [...mockMessages, { id: 'second', creatorId: 'u1', created: 2, commentText: 'Next message' }]
     render({ ref })
     expect(log.scrollTop).toBe(1500)
+})
+
+it('follows viewport resizing after focus without pulling a reader away from older messages', () => {
+    const originalObserver = global.ResizeObserver
+    const observers = []
+    global.ResizeObserver = class {
+        constructor(callback) {
+            this.callback = callback
+            this.observe = jest.fn()
+            this.disconnect = jest.fn()
+            observers.push(this)
+        }
+    }
+    try {
+        const ref = React.createRef()
+        render({ ref })
+        const log = container.querySelector('[role="log"]')
+        const observer = observers.find(item => item.observe.mock.calls.some(([node]) => node === log))
+        expect(observer).toBeDefined()
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1200 })
+        Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
+        act(() => observer.callback())
+        expect(log.scrollTop).toBe(1200)
+        log.scrollTop = 100
+        act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
+        act(() => observer.callback())
+        expect(log.scrollTop).toBe(100)
+        render({ ref, visible: false })
+        Object.defineProperty(log, 'clientHeight', { configurable: true, value: 0 })
+        act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
+        render({ ref, visible: true })
+        Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
+        act(() => observer.callback())
+        expect(log.scrollTop).toBe(100)
+        act(() => ref.current.scrollToLatest())
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1500 })
+        act(() => observer.callback())
+        expect(log.scrollTop).toBe(1500)
+        act(() => root.unmount())
+        expect(observer.disconnect).toHaveBeenCalledTimes(1)
+    } finally {
+        global.ResizeObserver = originalObserver
+    }
 })
 
 it('places the shared attachment picker next to the microphone and inserts the selected file', () => {

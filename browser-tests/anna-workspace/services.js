@@ -353,6 +353,7 @@ export default {
     subscribe: subscribeState,
     accessGranted: () => true,
     dispatch: () => {},
+    navigate: () => {},
     createNavigationProp: () => ({}),
     processUrl: async (_, path) => {
         const url = new URL(path, window.location.origin)
