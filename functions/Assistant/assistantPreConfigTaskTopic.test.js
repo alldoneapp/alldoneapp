@@ -421,6 +421,12 @@ describe('assistantPreConfigTaskTopic WhatsApp auto-read', () => {
             )
         })
 
+        test('passes the server workflow handoff hook to VM tool execution', async () => {
+            const onVmJobStarted = jest.fn()
+            await runWithOptions({ onVmJobStarted })
+            expect(mockInteractWithChatStream.mock.calls[0][4]).toEqual(expect.objectContaining({ onVmJobStarted }))
+        })
+
         test('an interactive run keeps it on, because the user can simply ask again', async () => {
             await runWithOptions({})
 

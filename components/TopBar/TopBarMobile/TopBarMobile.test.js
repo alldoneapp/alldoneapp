@@ -30,6 +30,7 @@ jest.mock('../../XpBar/XpBar', () => ({
     __esModule: true,
     default: 'XpBar',
     XP_BAR_MOBILE: 'mobile',
+    barWidth: { mobile: 92 },
 }))
 jest.mock('../../Premium/PremiumHelper', () => ({ PLAN_STATUS_PREMIUM: 'premium' }))
 jest.mock('../../../redux/actions', () => ({
