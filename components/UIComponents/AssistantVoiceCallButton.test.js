@@ -200,6 +200,8 @@ beforeEach(() => {
     jest.useFakeTimers()
     window.localStorage.clear()
     jest.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    jest.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    jest.spyOn(window.HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
     jest.spyOn(console, 'warn').mockImplementation(() => {})
     jest.spyOn(console, 'log').mockImplementation(() => {})
     FakePeerConnection.instances = []
@@ -811,11 +813,11 @@ describe('voice connection recovery', () => {
         })
     })
     test('offers a user gesture to recover blocked Chrome audio playback', async () => {
-        const play = jest
-            .spyOn(window.HTMLMediaElement.prototype, 'play')
-            .mockResolvedValueOnce(undefined)
-            .mockRejectedValueOnce(Object.assign(new Error('Blocked'), { name: 'NotAllowedError' }))
-            .mockResolvedValue(undefined)
+        const play = jest.spyOn(window.HTMLMediaElement.prototype, 'play').mockImplementation(function () {
+            return this.srcObject
+                ? Promise.reject(Object.assign(new Error('Blocked'), { name: 'NotAllowedError' }))
+                : Promise.resolve()
+        })
         try {
             const tree = render({ compact: true })
             const pc = await startCall(tree)
@@ -826,6 +828,7 @@ describe('voice connection recovery', () => {
                 .findAllByType('Button')
                 .find(button => button.props.accessibilityLabel === 'Enable call audio')
             expect(enable).toBeDefined()
+            play.mockResolvedValue(undefined)
             await act(async () => {
                 await enable.props.onPress()
             })
@@ -887,15 +890,13 @@ test('waits for successful remote playback before requesting Annas greeting', as
             : { settled: false, controllerConnected: true }
     )
     let playing
-    jest.spyOn(window.HTMLMediaElement.prototype, 'play')
-        .mockResolvedValueOnce(undefined) // user-gesture priming
-        .mockImplementationOnce(
-            () =>
-                new Promise(resolve => {
-                    playing = resolve
-                })
-        )
-        .mockResolvedValue(undefined)
+    jest.spyOn(window.HTMLMediaElement.prototype, 'play').mockImplementation(function () {
+        return this.srcObject
+            ? new Promise(resolve => {
+                  playing = resolve
+              })
+            : Promise.resolve()
+    })
     const tree = render()
     const pc = await startCall(tree)
     const greetings = () =>
@@ -1354,6 +1355,7 @@ describe('connecting audio and screen wake lock (AT-2778)', () => {
     let request
     let release
     beforeEach(() => {
+        runHttpsCallableFunction.mockClear()
         tone = { stop: jest.fn(), resume: jest.fn() }
         jest.spyOn(require('./assistantCallConnectingTone'), 'startCallConnectingTone').mockReturnValue(tone)
         release = jest.fn(async () => {})
@@ -1362,6 +1364,110 @@ describe('connecting audio and screen wake lock (AT-2778)', () => {
     })
     afterEach(() => {
         delete navigator.wakeLock
+    })
+
+    test('starts media in the gesture and holds the wake lease while the Assistant Mode target is pending', async () => {
+        let resolveTarget
+        const target = new Promise(resolve => {
+            resolveTarget = resolve
+        })
+        render()
+        let starting
+        await act(async () => {
+            starting = currentCall.startCall({
+                assistant: { displayName: 'Anna' },
+                resolveTarget: () => {
+                    expect(require('./assistantCallConnectingTone').startCallConnectingTone).toHaveBeenCalledTimes(1)
+                    expect(document.querySelector('audio')).not.toBeNull()
+                    return target
+                },
+            })
+        })
+        expect(request).toHaveBeenCalledWith('screen')
+        expect(getUserMedia).not.toHaveBeenCalled()
+        expect(tone.stop).not.toHaveBeenCalled()
+        await act(async () => {
+            resolveTarget({ assistant: { uid: 'anna' }, projectId: 'p2', chatId: 'today' })
+            await starting
+        })
+        expect(runHttpsCallableFunction).toHaveBeenCalledWith(
+            'startAssistantBrowserCallSecondGen',
+            expect.objectContaining({ projectId: 'p2', chatId: 'today', assistantId: 'anna' }),
+            expect.any(Object)
+        )
+        expect(tone.stop).toHaveBeenCalledTimes(1)
+        expect(release).not.toHaveBeenCalled()
+    })
+
+    test.each(['cancel', 'lookup-error', 'unmount', 'account-changed'])(
+        'releases preparation audio and wake lock on %s, ignoring the late target',
+        async ending => {
+            let resolveTarget, rejectTarget
+            const target = new Promise((resolve, reject) => {
+                resolveTarget = resolve
+                rejectTarget = reject
+            })
+            const tree = render()
+            let starting
+            await act(async () => {
+                starting = currentCall.startCall({ resolveTarget: () => target })
+            })
+            await act(async () => {
+                if (ending === 'cancel') await currentCall.endCall()
+                if (ending === 'unmount') tree.unmount()
+                if (ending === 'account-changed') tree.update(<AssistantVoiceCallProvider userId="user-2" />)
+                if (ending === 'lookup-error') {
+                    rejectTarget(new Error('Lookup failed'))
+                    await starting
+                }
+            })
+            expect(tone.stop).toHaveBeenCalledTimes(1)
+            expect(release).toHaveBeenCalledTimes(1)
+            expect(getUserMedia).not.toHaveBeenCalled()
+            if (ending !== 'lookup-error')
+                await act(async () => {
+                    resolveTarget({ assistant: { uid: 'anna' }, projectId: 'p1', chatId: 'late' })
+                    await starting
+                })
+            expect(getUserMedia).not.toHaveBeenCalled()
+            expect(runHttpsCallableFunction).not.toHaveBeenCalled()
+        }
+    )
+
+    test('a cancelled target resolution cannot tear down or overwrite an immediate retry', async () => {
+        let finishOld
+        const oldTarget = new Promise(resolve => {
+            finishOld = resolve
+        })
+        const tree = render()
+        let oldCall
+        await act(async () => {
+            oldCall = currentCall.startCall({ resolveTarget: () => oldTarget })
+        })
+        await act(async () => currentCall.endCall())
+        let finishNew
+        const newTarget = new Promise(resolve => {
+            finishNew = resolve
+        })
+        const newTone = { stop: jest.fn(), resume: jest.fn() }
+        require('./assistantCallConnectingTone').startCallConnectingTone.mockReturnValue(newTone)
+        let newCall
+        await act(async () => {
+            newCall = currentCall.startCall({ resolveTarget: () => newTarget })
+        })
+        await act(async () => {
+            finishOld({ assistant: { uid: 'old' }, projectId: 'old', chatId: 'old' })
+            await oldCall
+        })
+        expect(FakePeerConnection.instances[1].closed).toBe(false)
+        expect(newTone.stop).not.toHaveBeenCalled()
+        expect(getUserMedia).not.toHaveBeenCalled()
+        await act(async () => {
+            finishNew({ assistant: { uid: 'anna' }, projectId: 'p1', chatId: 'new' })
+            await newCall
+        })
+        expect(newTone.stop).toHaveBeenCalledTimes(1)
+        expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
     })
 
     test('starts feedback before microphone permission and keeps one wake lease through connection and hangup', async () => {
@@ -1441,6 +1547,7 @@ describe('connecting audio and screen wake lock (AT-2778)', () => {
         })
         await setVisibility('hidden')
         expect(release).toHaveBeenCalledTimes(1)
+        tone.resume.mockClear()
         await setVisibility('visible')
         expect(request).toHaveBeenCalledTimes(2)
         expect(tone.resume).toHaveBeenCalledTimes(1)
