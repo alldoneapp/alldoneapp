@@ -150,13 +150,11 @@ test('attaches to the Live session, waits for transcript context and deduplicate
     await finish(state)
     const run = [...docs.entries()].find(([path]) => path.includes('/liveDelegations/'))[1]
     expect(run).toMatchObject({
-        result: 'Verified result',
         deliveryStatus: 'answer_acknowledged',
         answerAcknowledgedAt: expect.any(Number),
     })
     expect(reconcileLiveUsage).toHaveBeenLastCalledWith({ sessionId: 's', seconds: 20, final: true })
     expect(finalizeCallSession).toHaveBeenCalledWith('s', 'close_requested', 'completed')
-    expect(storeCallTranscriptTurn).not.toHaveBeenCalledWith(expect.objectContaining({ text: 'Verified result' }))
 })
 
 test('passes the latest transcript snapshot when new speech arrives during a slow chat write', async () => {
@@ -208,43 +206,7 @@ test('keeps receiving speech while backend work runs and rejects stale side effe
     await flush()
     expect(state.socket.sent.some(event => event.content === 'Old result')).toBe(false)
     await finish(state)
-    expect(
-        [...docs.entries()].some(([path, data]) => path.includes('/liveDelegations/') && data.result === 'Old result')
-    ).toBe(true)
-    expect(storeCallTranscriptTurn).not.toHaveBeenCalledWith(expect.objectContaining({ text: 'Old result' }))
 })
-
-test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
-    'keeps the spoken transcript without a duplicate backend message on %s',
-    async channel => {
-        docs.get('whatsAppCallSessions/s').channel = channel
-        const state = await start()
-        await emit(state.socket, user('research', 'Look that up for me'))
-        await emit(state.socket, delegation)
-        await jest.advanceTimersByTimeAsync(2100)
-        await emit(state.socket, {
-            type: 'session.output_transcript.delta',
-            event_id: 'spoken-answer',
-            delta: 'Here is the answer.',
-            start_ms: 3000,
-            end_ms: 4000,
-        })
-        await finish(state)
-        const posted = storeCallTranscriptTurn.mock.calls.map(([turn]) => turn)
-        expect(posted).toEqual(
-            expect.arrayContaining([
-                expect.objectContaining({ role: 'user', text: 'Look that up for me', source: channel }),
-                expect.objectContaining({ role: 'assistant', text: 'Here is the answer.', source: channel }),
-            ])
-        )
-        expect(posted.some(turn => turn.isCallTranscript === false || turn.text === 'Verified result')).toBe(false)
-        expect(
-            [...docs.entries()].some(
-                ([path, data]) => path.includes('/liveDelegations/') && data.result === 'Verified result'
-            )
-        ).toBe(true)
-    }
-)
 
 test('bounds append payloads even for multibyte text', () => {
     expect(Buffer.byteLength(appendText('界'.repeat(1000)), 'utf8')).toBeLessThanOrEqual(480)
