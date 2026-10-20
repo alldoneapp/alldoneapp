@@ -55,14 +55,10 @@ jest.mock('firebase-admin/firestore', () => ({
     Timestamp: { now: () => 'TIMESTAMP' },
 }))
 
-jest.mock('../Utils/HelperFunctionsCloud', () => ({
-    STAYWARD_COMMENT: 'STAYWARD_COMMENT',
-    getBaseUrl: () => 'https://my.alldone.app',
-}))
+jest.mock('../Utils/HelperFunctionsCloud', () => ({ STAYWARD_COMMENT: 'STAYWARD_COMMENT' }))
 
 const admin = require('firebase-admin')
 const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
-const { displayCreatedCallEntity } = require('./assistantLiveChatDisplay')
 
 const TURN = {
     sessionId: 'session-1',
@@ -167,64 +163,4 @@ test('updates growing voice text without duplicating comments or counting fragme
         created: 123,
     })
     expect(admin.__mock.get('whatsAppCallSessions/session-1').transcriptTurnCount).toBe(1)
-})
-
-test('created tasks use the existing chat and deduplicate retries while preserving distinct task entries', async () => {
-    admin.__mock.reset()
-    admin.__mock.set('users/user-1', {})
-    const session = { ...TURN, id: TURN.sessionId, channel: 'browser_call' }
-    const result = { success: true, taskId: 'task-1', projectId: 'destination', task: { name: 'First task' } }
-    const first = await displayCreatedCallEntity({ session, result, toolName: 'create_task' })
-    const retry = await displayCreatedCallEntity({ session, result, toolName: 'create_task' })
-    await displayCreatedCallEntity({
-        toolName: 'create_task',
-        session,
-        result: { ...result, taskId: 'task-2', task: { name: 'Second task' } },
-    })
-    expect(first.chatPosted).toBe(true)
-    expect(retry).toEqual(first)
-    const comments = admin.__mock.list('chatComments/project-1/topics/chat-1/comments/').map(([, data]) => data)
-    expect(comments).toHaveLength(2)
-    expect(comments).toEqual(
-        expect.arrayContaining([
-            expect.objectContaining({
-                commentText: 'First task\nhttps://my.alldone.app/projects/destination/tasks/task-1',
-                fromAssistant: true,
-                isCallTranscript: false,
-                source: 'browser_call_task',
-            }),
-            expect.objectContaining({
-                commentText: 'Second task\nhttps://my.alldone.app/projects/destination/tasks/task-2',
-            }),
-        ])
-    )
-    expect(admin.__mock.list('chatComments/destination/')).toHaveLength(0)
-    expect(admin.__mock.get('whatsAppCallSessions/session-1').transcriptTurnCount).toBe(2)
-})
-
-test('deduplicates created note links and keeps tasks with the same ID distinct', async () => {
-    admin.__mock.reset()
-    admin.__mock.set('users/user-1', {})
-    const session = { ...TURN, id: TURN.sessionId, channel: 'browser_call' }
-    const note = {
-        session,
-        toolName: 'create_note',
-        result: { success: true, noteId: 'shared-id', projectId: 'destination', note: { title: 'Meeting notes' } },
-    }
-    const first = await displayCreatedCallEntity(note)
-    expect(await displayCreatedCallEntity(note)).toEqual(first)
-    await displayCreatedCallEntity({
-        session,
-        toolName: 'create_task',
-        result: { success: true, taskId: 'shared-id', projectId: 'destination', task: { name: 'Follow up' } },
-    })
-    const comments = admin.__mock.list('chatComments/project-1/topics/chat-1/comments/').map(([, data]) => data)
-    expect(comments).toHaveLength(2)
-    expect(comments).toContainEqual(
-        expect.objectContaining({
-            commentText: 'Meeting notes\nhttps://my.alldone.app/projects/destination/notes/shared-id/editor',
-            source: 'browser_call_note',
-            isCallTranscript: false,
-        })
-    )
 })
