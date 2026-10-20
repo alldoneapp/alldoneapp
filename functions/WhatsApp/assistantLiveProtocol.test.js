@@ -11,6 +11,14 @@ test('uses client delegation and keeps task instructions in the configured backe
     expect(config.instructions).toContain('German')
 })
 
+test('explains voice-only background answers and requires confirmation before claiming chat delivery', () => {
+    const { instructions } = buildLiveSession({ assistant: { displayName: 'Anna' } })
+    expect(instructions).toContain('not automatically posted as chat messages')
+    expect(instructions).toContain('unless the backend confirms that specific content was posted')
+    expect(instructions).toContain('Delegate explicit requests for a written/chat answer')
+    expect(instructions).not.toContain('say links are in the chat')
+})
+
 test('preserves original whitespace, overlapping speakers and late fragments without duplicate replay', () => {
     const t = createLiveTranscript()
     const input = (id, delta, start, end) => ({

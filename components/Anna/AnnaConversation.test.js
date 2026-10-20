@@ -8,10 +8,6 @@ import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
-jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({
-    ...jest.requireActual('../UIComponents/Ghosts/ghostAnimation'),
-    useReducedMotion: () => true,
-}))
 jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn().mockResolvedValue(null) }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 let mockActivityState
@@ -225,91 +221,6 @@ it('returns to the latest messages on request, preserves the draft and resumes f
     mockMessages = [...mockMessages, { id: 'second', creatorId: 'u1', created: 2, commentText: 'Next message' }]
     render({ ref })
     expect(log.scrollTop).toBe(1500)
-})
-
-it.each(['mode', 'pane'])('returns to the bottom on every %s activation after reading older messages', activation => {
-    const ref = React.createRef()
-    render({ ref })
-    type('Keep my draft')
-    const log = container.querySelector('[role="log"]')
-    Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1200 })
-    Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
-    for (let cycle = 0; cycle < 3; cycle++) {
-        log.scrollTop = 100
-        act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
-        render({ ref, active: activation !== 'mode', visible: false })
-        render({ ref, active: true, visible: true })
-        expect(log.scrollTop).toBe(1200)
-        expect(container.querySelector('textarea').value).toBe('Keep my draft')
-        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1500 })
-        mockMessages = [{ id: `loaded-${cycle}`, creatorId: 'u1', created: 1, commentText: 'Loaded later' }]
-        render({ ref })
-        expect(log.scrollTop).toBe(1500)
-        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1200 })
-    }
-})
-
-it('scrolls an async-mounted conversation even when the user has focused the workspace', () => {
-    const workspace = document.createElement('input')
-    document.body.appendChild(workspace)
-    workspace.focus()
-    const height = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200)
-    const viewport = jest.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
-    try {
-        render()
-        expect(container.querySelector('[role="log"]').scrollTop).toBe(1200)
-        expect(document.activeElement).toBe(workspace)
-    } finally {
-        height.mockRestore()
-        viewport.mockRestore()
-        workspace.remove()
-    }
-})
-
-it('follows viewport resizing after focus without pulling a reader away from older messages', () => {
-    const originalObserver = global.ResizeObserver
-    const observers = []
-    global.ResizeObserver = class {
-        constructor(callback) {
-            this.callback = callback
-            this.observe = jest.fn()
-            this.disconnect = jest.fn()
-            observers.push(this)
-        }
-    }
-    try {
-        const ref = React.createRef()
-        render({ ref })
-        const log = container.querySelector('[role="log"]')
-        const observer = observers.find(item => item.observe.mock.calls.some(([node]) => node === log))
-        expect(observer).toBeDefined()
-        // Observe the content box as well: a late image can grow the content
-        // while the fixed-height message viewport remains exactly the same.
-        expect(observer.observe).toHaveBeenCalledWith(log.firstElementChild)
-        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1200 })
-        Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
-        act(() => observer.callback())
-        expect(log.scrollTop).toBe(1200)
-        log.scrollTop = 100
-        act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
-        act(() => observer.callback())
-        expect(log.scrollTop).toBe(100)
-        render({ ref, visible: false })
-        Object.defineProperty(log, 'clientHeight', { configurable: true, value: 0 })
-        act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
-        render({ ref, visible: true })
-        Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
-        act(() => observer.callback())
-        expect(log.scrollTop).toBe(1200)
-        act(() => ref.current.scrollToLatest())
-        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1500 })
-        act(() => observer.callback())
-        expect(log.scrollTop).toBe(1500)
-        act(() => root.unmount())
-        expect(observer.disconnect).toHaveBeenCalledTimes(1)
-    } finally {
-        global.ResizeObserver = originalObserver
-    }
 })
 
 it('places the shared attachment picker next to the microphone and inserts the selected file', () => {

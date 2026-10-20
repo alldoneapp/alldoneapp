@@ -14,6 +14,9 @@ jest.mock('../Assistant/assistantHelper', () => ({
     buildConversationSafeToolResult: (name, result) => result,
 }))
 jest.mock('./assistantLiveGold', () => ({ reconcileLiveUsage: jest.fn(async () => ({ currentGold: 99 })) }))
+jest.mock('./whatsAppCallTranscript', () => ({
+    storeCallTranscriptTurn: jest.fn(async () => ({ stored: true, commentId: 'requested-answer' })),
+}))
 jest.mock('./assistantLiveNoteTarget', () => ({
     ...jest.requireActual('./assistantLiveNoteTarget'),
     resolveCallContactNote: jest.fn(async () => null),
@@ -23,6 +26,7 @@ const admin = require('firebase-admin')
 const helper = require('../Assistant/assistantHelper')
 const { reconcileLiveUsage } = require('./assistantLiveGold')
 const { runLiveAssistant } = require('./assistantLiveBackend')
+const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
 let sessionData
 let savedOperations
 let savedBackendAnswers
@@ -112,6 +116,65 @@ test('uses contact.noteId instead of the contact ID and persists the exact resol
         'system',
         expect.stringContaining(JSON.stringify(target)),
     ])
+})
+
+test('returns research to the voice model without posting a chat answer', async () => {
+    helper.collectAssistantTextWithToolCalls.mockResolvedValueOnce({ finalResponseText: 'Verified research answer' })
+    await expect(runLiveAssistant(request())).resolves.toBe('Verified research answer')
+    expect(storeCallTranscriptTurn).not.toHaveBeenCalled()
+    const instructions = helper.interactWithChatStream.mock.calls[0][0].map(([, text]) => text).join('\n')
+    expect(instructions).toContain('not automatically posted in chat')
+    expect(instructions).toContain('Only when the caller explicitly requests a written/chat answer')
+})
+
+test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
+    'supports explicitly requested chat answers on %s',
+    async channel => {
+        helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ localTools }) => {
+            const result = await localTools.post_voice_answer_in_chat.execute({ answer: '  Written research answer  ' })
+            expect(result).toEqual({ success: true, chatPosted: true, commentId: 'requested-answer' })
+            return { finalResponseText: 'I posted the requested answer.' }
+        })
+        await runLiveAssistant(
+            request({ session: { ...session, channel }, lastUserTurn: { text: 'Please post the answer in chat.' } })
+        )
+        expect(storeCallTranscriptTurn).toHaveBeenCalledTimes(1)
+        expect(storeCallTranscriptTurn).toHaveBeenCalledWith({
+            sessionId: 's',
+            turnId: 'd:chat_answer',
+            role: 'assistant',
+            text: 'Written research answer',
+            projectId: 'p',
+            chatId: 'c',
+            userId: 'u',
+            assistantId: 'a',
+            source: `${channel}_requested`,
+            isCallTranscript: false,
+        })
+        expect(savedOperations).toContainEqual(
+            expect.objectContaining({
+                name: 'post_voice_answer_in_chat',
+                status: 'completed',
+                result: JSON.stringify({ success: true, chatPosted: true, commentId: 'requested-answer' }),
+            })
+        )
+    }
+)
+
+test('does not post an empty or superseded chat answer or claim a failed post succeeded', async () => {
+    await runLiveAssistant(request())
+    const { execute } = helper.collectAssistantTextWithToolCalls.mock.calls[0][0].localTools.post_voice_answer_in_chat
+    await expect(execute({ answer: '   ' })).rejects.toThrow('non-empty')
+    expect(storeCallTranscriptTurn).not.toHaveBeenCalled()
+    storeCallTranscriptTurn.mockRejectedValueOnce(new Error('Chat write failed'))
+    await expect(execute({ answer: 'Answer' })).rejects.toThrow('Chat write failed')
+
+    const assertActive = jest.fn(async () => {})
+    await runLiveAssistant(request({ assertActive }))
+    assertActive.mockRejectedValue(new Error('voice_request_superseded'))
+    const next = helper.collectAssistantTextWithToolCalls.mock.calls.at(-1)[0].localTools.post_voice_answer_in_chat
+    await expect(next.execute({ answer: 'Old answer' })).rejects.toThrow('voice_request_superseded')
+    expect(storeCallTranscriptTurn).toHaveBeenCalledTimes(1)
 })
 
 test.each([

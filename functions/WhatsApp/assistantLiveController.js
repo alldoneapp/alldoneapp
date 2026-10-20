@@ -22,7 +22,7 @@ const keyFor = value => crypto.createHash('sha256').update(value).digest('hex')
 const attachUrl = id => `wss://api.openai.com/v1/live/sessions/${encodeURIComponent(id)}/attach`
 const appendText = text => {
     // A UTF-8 byte bound is conservative for the API's 500-token append limit,
-    // including CJK text. The complete backend result remains in the chat.
+    // including CJK text. Complete answers remain in the session's liveDelegations.
     let result = ''
     for (const char of String(text || '')) {
         if (Buffer.byteLength(result + char, 'utf8') > 480) break
@@ -473,19 +473,9 @@ async function runAssistantLiveCall(sessionId) {
                     if (!ending && revision === transcript.revision) runProgress.flushContext()
                     runProgress.stop()
                     await runRef.update({ status: 'completed', result, completedAt: Date.now() })
-                    // Full result is durable even when the user interrupts or disconnects.
-                    await storeCallTranscriptTurn({
-                        sessionId,
-                        turnId: runId,
-                        role: 'assistant',
-                        text: result,
-                        projectId: session.projectId,
-                        chatId: session.chatId,
-                        userId: session.userId,
-                        assistantId: session.assistantId,
-                        source: `${channel}_backend`,
-                        isCallTranscript: false,
-                    })
+                    // Keep the full result in liveDelegations for follow-ups, including
+                    // interrupted requests. Only spoken turns and explicitly requested
+                    // chat output belong in the visible conversation.
                     if (ending) {
                         await runRef.update({ deliveryStatus: 'call_ended_before_delivery' })
                         return
