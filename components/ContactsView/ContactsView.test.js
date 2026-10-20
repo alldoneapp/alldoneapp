@@ -16,6 +16,7 @@ import {
 } from '../../utils/InitialLoad/secondaryViewCache'
 
 const mockDispatch = jest.fn()
+jest.mock('../MyDayView/AssistantLine/AllProjectsAssistantLine', () => 'AllProjectsAssistantLine')
 jest.mock('../../utils/redux/dispatchBatch', () => ({ batchDispatch: action => mockDispatch(action) }))
 jest.mock('react-redux', () => ({ useDispatch: () => mockDispatch, useSelector: jest.fn() }))
 jest.mock('../../hooks/useRateLimitedProjectReveal', () => jest.fn())
@@ -45,7 +46,7 @@ jest.mock('./followedPeopleBatcher', () => ({
 jest.mock('../../utils/backends/Contacts/followedPeopleFirestore', () => ({ watchFollowedPeople: jest.fn() }))
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({
     ALL_PROJECTS_INDEX: { id: 'all' },
-    checkIfSelectedAllProjects: () => true,
+    checkIfSelectedAllProjects: index => index === -1,
 }))
 jest.mock('../../redux/actions', () => ({
     setNavigationRoute: () => ({ type: 'navigation' }),
@@ -92,6 +93,28 @@ describe('ContactsView project admission', () => {
     })
 
     afterEach(() => resetSecondaryViewCacheForTests())
+
+    it('shows one global assistant line before the contacts header and filters', () => {
+        let tree
+        act(() => {
+            tree = renderer.create(<ContactsView />)
+        })
+        const nodes = tree.root.findAll(node => typeof node.type === 'string').map(node => node.type)
+        expect(tree.root.findAllByType('AllProjectsAssistantLine')).toHaveLength(1)
+        expect(nodes.indexOf('AllProjectsAssistantLine')).toBeLessThan(nodes.indexOf('ContactsHeader'))
+        expect(nodes.indexOf('AllProjectsAssistantLine')).toBeLessThan(nodes.indexOf('HashtagFiltersView'))
+    })
+
+    it('keeps the selected project section mounted with no contacts, so its assistant remains available', () => {
+        useSelector.mockImplementation(selector => selector({ ...STATE, selectedProjectIndex: 0 }))
+        let tree
+        act(() => {
+            tree = renderer.create(<ContactsView />)
+        })
+        expect(tree.root.findAllByType('AllProjectsAssistantLine')).toHaveLength(0)
+        expect(tree.root.findAllByType('ContactListByProject')).toHaveLength(1)
+        expect(tree.root.findByType('ContactListByProject').props.projectIndex).toBe(0)
+    })
 
     it('loads only admitted projects and tracks only the primary one', () => {
         let tree

@@ -22,6 +22,7 @@ import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import { useDispatch, useSelector } from 'react-redux'
 import store from '../../redux/store'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
+import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 import useNearViewportMount from '../../hooks/useNearViewportMount'
 import NotesListSkeleton from './NotesListSkeleton'
@@ -183,7 +184,8 @@ function NotesView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
-            {inAllProjects && <AllProjectsLine showActions={false} />}
+            {inAllProjects && <AllProjectsLine showActions={false} bottomSpacing={8} />}
+            {inAllProjects && <AllProjectsAssistantLine />}
             {inAllProjects && <NotesHeader />}
 
             <HashtagFiltersView />

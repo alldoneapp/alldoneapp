@@ -16,6 +16,7 @@ import { sortBy } from 'lodash'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import NothingToShowOnChats from '../UIComponents/NothingToShowOnChats'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
+import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import MarkAsRead from './MarkAsRead'
 import ChatFiltersLine from './ChatFiltersLine'
 import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
@@ -210,6 +211,7 @@ function ChatsView() {
                 {inAllProjects && (
                     <AllProjectsLine
                         showActions={false}
+                        bottomSpacing={8}
                         customRight={
                             <View style={localStyles.allProjectsActions}>
                                 {/* Archives the emails behind every project's previewed unread
@@ -221,6 +223,7 @@ function ChatsView() {
                     />
                 )}
 
+                {inAllProjects && <AllProjectsAssistantLine />}
                 <HashtagFiltersView />
 
                 <ChatsEmailConnectionStatus />

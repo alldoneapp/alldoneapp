@@ -6,6 +6,7 @@ import NotesView from './NotesView'
 import useRateLimitedProjectReveal from '../../hooks/useRateLimitedProjectReveal'
 import useNearViewportMount from '../../hooks/useNearViewportMount'
 
+jest.mock('../MyDayView/AssistantLine/AllProjectsAssistantLine', () => 'AllProjectsAssistantLine')
 jest.mock('react-redux', () => ({
     useDispatch: jest.fn(),
     useSelector: jest.fn(),
@@ -92,6 +93,14 @@ describe('NotesView progressive project mounting', () => {
             markProjectNearViewport,
         })
         useNearViewportMount.mockReturnValue({ placeholderRef: { current: null }, isNearViewport: false })
+    })
+
+    it('places one global assistant line above headers and filters', () => {
+        const tree = renderView()
+        const nodes = tree.root.findAll(node => typeof node.type === 'string').map(node => node.type)
+        expect(tree.root.findAllByType('AllProjectsAssistantLine')).toHaveLength(1)
+        expect(nodes.indexOf('AllProjectsAssistantLine')).toBeLessThan(nodes.indexOf('NotesHeader'))
+        expect(nodes.indexOf('AllProjectsAssistantLine')).toBeLessThan(nodes.indexOf('HashtagFiltersView'))
     })
 
     it('keeps the first all-projects render to one NotesByProject block', () => {

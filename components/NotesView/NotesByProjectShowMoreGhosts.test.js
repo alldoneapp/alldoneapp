@@ -21,6 +21,7 @@ const loadingActions = type =>
  * actually delivers, and then disappear in the same update that puts the real notes in.
  */
 
+jest.mock('../MyDayView/AssistantLine/ProjectAssistantLine', () => 'ProjectAssistantLine')
 jest.mock('./NotesListSkeleton', () => 'NotesListSkeleton')
 jest.mock('./NotesByDate', () => 'NotesByDate')
 jest.mock('./NotesSticky', () => 'NotesSticky')
@@ -154,6 +155,22 @@ describe('NotesByProject "Show more" ghosts', () => {
 
     afterEach(() => resetSecondaryViewCacheForTests())
 
+    it('keeps the assistant above the notes skeleton while a selected project loads', async () => {
+        let tree
+        await act(async () => {
+            tree = renderer.create(
+                <NotesByProject project={PROJECT} filterBy={0} maxNotesToRender={10} showInitialSkeleton />
+            )
+            await Promise.resolve()
+        })
+        expect(tree.root.findByType('ProjectAssistantLine').props.project).toBe(PROJECT)
+        const nodes = tree.root.findAll(node => typeof node.type === 'string').map(node => node.type)
+        expect(nodes.indexOf('ProjectHeader')).toBeLessThan(nodes.indexOf('ProjectAssistantLine'))
+        expect(nodes.indexOf('ProjectAssistantLine')).toBeLessThan(nodes.indexOf('NotesListSkeleton'))
+        expect(tree.root.findAllByType('NotesHeader')).toHaveLength(0)
+        act(() => tree.unmount())
+    })
+
     it('bounds the cached projection to the initial visible note count', () => {
         const notes = {
             20260806: [{ id: 'n1' }, { id: 'n2' }],
@@ -224,6 +241,7 @@ describe('NotesByProject "Show more" ghosts', () => {
 
         expect(header.props.customRight.type).toBe('NoteMoreButton')
         expect(header.props.customRight.props.projectId).toBe('project-1')
+        expect(tree.root.findAllByType('ProjectAssistantLine')).toHaveLength(0)
         act(() => tree.unmount())
     })
 

@@ -7,6 +7,7 @@ import renderer, { act } from 'react-test-renderer'
 import { useSelector } from 'react-redux'
 
 const mockDispatch = jest.fn()
+jest.mock('../MyDayView/AssistantLine/AllProjectsAssistantLine', () => 'AllProjectsAssistantLine')
 jest.mock('react-redux', () => ({ useDispatch: () => mockDispatch, useSelector: jest.fn() }))
 jest.mock('../../redux/actions', () => ({
     setChatsUnreadOnly: unreadOnly => ({ type: 'Set chats unread only', unreadOnly }),
@@ -108,6 +109,15 @@ const renderView = selectedProjectIndex => {
 const switchToAll = component => {
     act(() => component.root.findByProps({ testID: 'select-all' }).props.onPress())
 }
+
+it('shows a single global assistant line only in All Projects', () => {
+    const all = renderView(-1)
+    expect(all.root.findAllByType('AllProjectsAssistantLine')).toHaveLength(1)
+    act(() => all.unmount())
+    const selected = renderView(0)
+    expect(selected.root.findAllByType('AllProjectsAssistantLine')).toHaveLength(0)
+    act(() => selected.unmount())
+})
 
 describe('ChatsView unread filter', () => {
     beforeEach(() => {

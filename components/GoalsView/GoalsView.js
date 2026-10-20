@@ -23,6 +23,7 @@ import GoalsViewAllProjects from './GoalsViewAllProjects'
 import store from '../../redux/store'
 import { DV_TAB_ROOT_GOALS } from '../../utils/TabNavigationConstants'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
+import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
 
 export default function GoalsView() {
     const dispatch = useDispatch()
@@ -114,7 +115,8 @@ export default function GoalsView() {
                 activeDragGoalMode && { marginBottom: 48 },
             ]}
         >
-            {inAllProjects && <AllProjectsLine showActions={false} />}
+            {inAllProjects && <AllProjectsLine showActions={false} bottomSpacing={8} />}
+            {inAllProjects && <AllProjectsAssistantLine />}
             <HashtagFiltersView />
 
             {inAllProjects ? (

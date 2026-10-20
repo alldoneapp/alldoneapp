@@ -17,6 +17,7 @@ import { PENDING_CONTACT_FLAG } from '../../utils/backends/Contacts/pendingConta
  * does not exist yet (in practice it never got that far, because nothing published one).
  */
 
+jest.mock('../MyDayView/AssistantLine/ProjectAssistantLine', () => 'ProjectAssistantLine')
 jest.mock('./ContactsListSkeleton', () => 'ContactsListSkeleton')
 jest.mock('./ContactItem', () => 'ContactItem')
 jest.mock('./EditContact', () => 'EditContact')

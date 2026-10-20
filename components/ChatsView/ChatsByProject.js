@@ -8,6 +8,7 @@ import { StyleSheet, View } from 'react-native'
 
 import ChatsByDate from './ChatsByDate'
 import ProjectHeader from '../TaskListView/Header/ProjectHeader'
+import ProjectAssistantLine from '../MyDayView/AssistantLine/ProjectAssistantLine'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import useGetChats from '../../hooks/Chats/useGetChats'
 import ShowMoreButton from '../UIControls/ShowMoreButton'
@@ -169,6 +170,7 @@ function ChatsByProject({ project, isInAllProjects, setChatXProject, unreadOnly 
                 showRootSectionNavigation={!isInAllProjects}
             />
             <ProjectSectionBody>
+                {inSelectedProject && <ProjectAssistantLine project={project} />}
                 <StickyChats stickyChats={sortBy(stickyChats, [item => item.stickyData.days])} project={project} />
 
                 <ChatsByDate
