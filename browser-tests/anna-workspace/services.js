@@ -90,52 +90,7 @@ export const translate = translateReal
 export const useTranslator = () => {}
 export const respondToVmInteraction = request => runHttpsCallableFunction('respondToVmInteractionSecondGen', request)
 export const cancelAssistantRun = request => runHttpsCallableFunction('cancelAssistantRunSecondGen', request)
-let voiceCall = { status: 'idle', voiceSeconds: 0 }
-const voiceListeners = new Set()
-const subscribeVoice = callback => {
-    voiceListeners.add(callback)
-    return () => voiceListeners.delete(callback)
-}
-let voiceInput = { label: 'Studio USB microphone', level: 0.25, available: true, selectedDeviceId: '' }
-let voiceOutput = { level: 0.64, available: true }
-let voiceDevices = {
-    supportsInputSelection: true,
-    supportsOutputSelection: true,
-    supportsOutputPrompt: true,
-    inputDevices: [
-        { deviceId: 'usb', label: 'Studio USB microphone' },
-        { deviceId: 'headset', label: 'Bluetooth headset microphone with a long name' },
-    ],
-    outputDevices: [{ deviceId: 'headphones', label: 'USB headphones with a long device name' }],
-    outputDeviceId: '',
-}
-window.__annaVoiceLevels = patch => {
-    if (patch.input) voiceInput = { ...voiceInput, ...patch.input }
-    if (patch.output) voiceOutput = { ...voiceOutput, ...patch.output }
-    if (patch.devices) voiceDevices = { ...voiceDevices, ...patch.devices }
-}
-window.__annaVoiceCall = patch => {
-    voiceCall = { ...voiceCall, ...patch }
-    voiceListeners.forEach(callback => callback())
-}
-const voiceActions = {
-    getMicrophoneSnapshot: () => voiceInput,
-    getOutputSnapshot: () => voiceOutput,
-    getAudioDevicesSnapshot: () => voiceDevices,
-    selectMicrophone: async id => {
-        voiceInput = { ...voiceInput, selectedDeviceId: id }
-    },
-    selectAudioOutput: async id => {
-        voiceDevices = { ...voiceDevices, outputDeviceId: id }
-    },
-    endCall: () => window.__annaVoiceCall({ status: 'idle' }),
-    toggleMicrophoneMuted: () => {
-        voiceInput = { ...voiceInput, muted: !voiceCall.microphoneMuted }
-        window.__annaVoiceCall({ microphoneMuted: !voiceCall.microphoneMuted })
-    },
-    playCallAudio: () => window.__annaVoiceCall({ needsAudioPlayback: false }),
-}
-export const useVoiceCall = () => ({ ...useSyncExternalStore(subscribeVoice, () => voiceCall), ...voiceActions })
+export const useVoiceCall = () => ({ status: 'idle', voiceSeconds: 0 })
 export const getAssistant = () => assistant
 export const subscribePageVisible = () => () => {}
 export const subscribePageHidden = () => () => {}

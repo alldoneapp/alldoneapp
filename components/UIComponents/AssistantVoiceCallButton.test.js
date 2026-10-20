@@ -36,7 +36,7 @@ jest.mock('./ModalShell/BottomSheet', () => () => null)
 const { runHttpsCallableFunction } = require('../../utils/backends/firestore')
 const { createBotQuickTopic } = require('../../utils/assistantHelper')
 const AssistantVoiceCallButton = require('./AssistantVoiceCallButton').default
-const { AssistantVoiceCallProvider, useVoiceCall } = require('./AssistantVoiceCallProvider')
+const { AssistantVoiceCallProvider } = require('./AssistantVoiceCallProvider')
 const AppPopover = require('./ModalShell/AppPopover').default
 
 const MIC_HEALTH_POLL_MS = 4000
@@ -157,18 +157,12 @@ const installShell = () => {
 // its `visibilitychange` listener and its peer connection, and would react to the
 // NEXT test's visibility events with the next test's getUserMedia mock.
 let trees = []
-let currentCall
-const CallProbe = () => {
-    currentCall = useVoiceCall()
-    return null
-}
 
 const render = (props = {}) => {
     let tree
     act(() => {
         tree = renderer.create(
             <AssistantVoiceCallProvider userId="user-1">
-                <CallProbe />
                 <AssistantVoiceCallButton
                     assistant={{ uid: 'anna', displayName: 'Anna' }}
                     projectId="project-1"
@@ -1150,83 +1144,9 @@ test('selects and meters a working microphone during connection setup while the 
     )
 })
 
-test('routes explicit input choices through the WebRTC sender and keeps them selected across microphone recovery', async () => {
-    const micCapture = require('../../hooks/rambleMicCapture')
-    const builtin = makeTrack(),
-        usb = makeTrack(),
-        recovered = makeTrack()
-    builtin.getSettings = () => ({ deviceId: 'builtin', groupId: 'builtin' })
-    usb.getSettings = recovered.getSettings = () => ({ deviceId: 'usb', groupId: 'usb' })
-    usb.label = recovered.label = 'USB microphone'
-    const inputs = { builtin: makeStream(builtin), usb: makeStream(usb) }
-    jest.spyOn(micCapture, 'createInputLevelMonitor').mockImplementation(() => ({
-        ready: Promise.resolve(),
-        sample: jest.fn(),
-        isRunning: () => true,
-        getLevel: () => 0.1,
-        getPeak: () => 0.1,
-        close: jest.fn(),
-    }))
-    navigator.mediaDevices.enumerateDevices = jest.fn(async () => [
-        { kind: 'audioinput', deviceId: 'builtin', groupId: 'builtin' },
-        { kind: 'audioinput', deviceId: 'usb', groupId: 'usb' },
-    ])
-    getUserMedia.mockImplementation(async ({ audio }) => inputs[audio.deviceId?.exact || 'builtin'])
-    const tree = render()
-    let starting
-    await act(async () => {
-        starting = tree.root.findByType('Button').props.onPress()
-    })
-    await advance(1500)
-    await act(async () => starting)
-    const pc = FakePeerConnection.instances[0]
-    await act(async () => currentCall.selectMicrophone('usb'))
-    expect(pc.senders[0].track.label).toBe('USB microphone')
-    expect(currentCall.getMicrophoneSnapshot()).toMatchObject({ selectedDeviceId: 'usb', sending: true })
-    await act(async () => currentCall.toggleMicrophoneMuted())
-    expect(pc.senders[0].track.enabled).toBe(false)
-    getUserMedia.mockResolvedValue(makeStream(recovered))
-    usb.stop()
-    await act(async () => usb.onended())
-    expect(getUserMedia).toHaveBeenLastCalledWith(
-        expect.objectContaining({ audio: expect.objectContaining({ deviceId: { exact: 'usb' } }) })
-    )
-    expect(currentCall.getMicrophoneSnapshot()).toMatchObject({ selectedDeviceId: 'usb', muted: true })
-    expect(pc.senders[0].track.enabled).toBe(false)
-})
-
-test('meters the remote output independently from input and clears it for blocked or paused playback', async () => {
-    const micCapture = require('../../hooks/rambleMicCapture')
-    const remote = makeStream(makeTrack())
-    let outputLevel = 0.36
-    const outputMonitor = {
-        ready: Promise.resolve(),
-        sample: jest.fn(),
-        isRunning: () => true,
-        getLevel: () => outputLevel,
-        getPeak: () => outputLevel,
-        close: jest.fn(),
-    }
-    jest.spyOn(micCapture, 'createInputLevelMonitor').mockImplementation(stream =>
-        stream === remote ? outputMonitor : null
-    )
-    const tree = render()
-    const pc = await startCall(tree)
-    const audio = document.querySelector('audio')
-    Object.defineProperty(audio, 'paused', { configurable: true, value: false })
-    await act(async () => pc.ontrack({ streams: [remote] }))
-    expect(currentCall.getOutputSnapshot()).toMatchObject({ available: true, level: 0.36, muted: false })
-    outputLevel = 0
-    expect(currentCall.getOutputSnapshot().level).toBe(0)
-    outputLevel = 0.8
-    Object.defineProperty(audio, 'paused', { configurable: true, value: true })
-    expect(currentCall.getOutputSnapshot()).toMatchObject({ level: 0, muted: true })
-    act(() => tree.unmount())
-    expect(outputMonitor.close).toHaveBeenCalledTimes(1)
-    expect(currentCall.getOutputSnapshot().available).toBe(false)
-})
-
 test('cancelling during microphone warmup cannot unmute or greet when warmup finishes', async () => {
+    const tone = { stop: jest.fn(), resume: jest.fn() }
+    jest.spyOn(require('./assistantCallConnectingTone'), 'startCallConnectingTone').mockReturnValue(tone)
     let prepared
     const warmup = new Promise(resolve => {
         prepared = resolve
@@ -1249,6 +1169,7 @@ test('cancelling during microphone warmup cannot unmute or greet when warmup fin
         for (let i = 0; i < 30; i++) await Promise.resolve()
     })
     const pc = FakePeerConnection.instances[0]
+    expect(tone.stop).not.toHaveBeenCalled()
     await act(async () => {
         ending = findEndCallButton(tree).props.onPress()
         prepared(true)
@@ -1258,6 +1179,7 @@ test('cancelling during microphone warmup cannot unmute or greet when warmup fin
     expect(findEndCallButton(tree)).toBeUndefined()
     expect(tree.root.findAllByProps({ testID: 'voice-call-connecting' })).toHaveLength(0)
     expect(pc.closed).toBe(true)
+    expect(tone.stop).toHaveBeenCalledTimes(1)
     expect(pc.channel.send.mock.calls.map(([json]) => JSON.parse(json).event_id)).not.toContain('alldone_live_greeting')
     await ending
 })
@@ -1298,6 +1220,10 @@ test('shows connection feedback through microphone permission, then clears it on
 })
 
 test('cancellation allows immediate retry and a stale answer cannot replace or close the new call', async () => {
+    const tones = [0, 1].map(() => ({ stop: jest.fn(), resume: jest.fn() }))
+    jest.spyOn(require('./assistantCallConnectingTone'), 'startCallConnectingTone')
+        .mockReturnValueOnce(tones[0])
+        .mockReturnValueOnce(tones[1])
     let respond
     runHttpsCallableFunction.mockImplementation(name =>
         name === 'startAssistantBrowserCallSecondGen'
@@ -1327,14 +1253,173 @@ test('cancellation allows immediate retry and a stale answer cannot replace or c
         await first
     })
     expect(FakePeerConnection.instances[1].closed).toBe(false)
+    expect(tones[0].stop).toHaveBeenCalledTimes(1)
+    expect(tones[1].stop).not.toHaveBeenCalled()
     expect(tree.root.findByProps({ testID: 'voice-call-connecting' })).toBeTruthy()
     await act(async () => {
         respond({ answerSdp: 'new-answer', sessionId: 'retry-session' })
         await second
     })
     expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
+    expect(tones[1].stop).toHaveBeenCalledTimes(1)
     expect(runHttpsCallableFunction).toHaveBeenCalledWith('endAssistantBrowserCallSecondGen', {
         sessionId: 'cancelled-session',
+    })
+})
+
+describe('connecting audio and screen wake lock (AT-2778)', () => {
+    let tone
+    let request
+    let release
+    beforeEach(() => {
+        tone = { stop: jest.fn(), resume: jest.fn() }
+        jest.spyOn(require('./assistantCallConnectingTone'), 'startCallConnectingTone').mockReturnValue(tone)
+        release = jest.fn(async () => {})
+        request = jest.fn(async () => ({ release, addEventListener: jest.fn() }))
+        Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request } })
+    })
+    afterEach(() => {
+        delete navigator.wakeLock
+    })
+
+    test('starts feedback before microphone permission and keeps one wake lease through connection and hangup', async () => {
+        let allowMic
+        getUserMedia.mockImplementationOnce(() => new Promise(resolve => (allowMic = resolve)))
+        const tree = render()
+        let starting
+        await act(async () => {
+            starting = tree.root.findByType('Button').props.onPress()
+        })
+        expect(request).toHaveBeenCalledWith('screen')
+        expect(require('./assistantCallConnectingTone').startCallConnectingTone).toHaveBeenCalledTimes(1)
+        expect(tone.stop).not.toHaveBeenCalled()
+        expect(release).not.toHaveBeenCalled()
+        await act(async () => {
+            allowMic(makeStream(makeTrack()))
+            await starting
+        })
+        expect(tone.stop).toHaveBeenCalledTimes(1)
+        expect(request).toHaveBeenCalledTimes(1)
+        expect(release).not.toHaveBeenCalled()
+        await act(async () => findEndCallButton(tree).props.onPress())
+        expect(release).toHaveBeenCalledTimes(1)
+        expect(tone.stop).toHaveBeenCalledTimes(1)
+    })
+
+    test.each(['cancel', 'server-error', 'peer-failed', 'unmount', 'account-changed'])(
+        'stops the tone and releases the wake lock during pending setup: %s',
+        async ending => {
+            let resolveSetup, rejectSetup
+            runHttpsCallableFunction.mockImplementation(name =>
+                name === 'startAssistantBrowserCallSecondGen'
+                    ? new Promise((resolve, reject) => {
+                          resolveSetup = resolve
+                          rejectSetup = reject
+                      })
+                    : Promise.resolve({ settled: true })
+            )
+            const tree = render()
+            let starting
+            await act(async () => {
+                starting = tree.root.findByType('Button').props.onPress()
+                for (let i = 0; i < 30; i++) await Promise.resolve()
+            })
+            expect(tone.stop).not.toHaveBeenCalled()
+            expect(release).not.toHaveBeenCalled()
+            await act(async () => {
+                if (ending === 'cancel') await findEndCallButton(tree).props.onPress()
+                if (ending === 'peer-failed') FakePeerConnection.instances[0].setConnectionState('failed')
+                if (ending === 'unmount') tree.unmount()
+                if (ending === 'account-changed') tree.update(<AssistantVoiceCallProvider userId="user-2" />)
+                if (ending === 'server-error') {
+                    rejectSetup(new Error('network failed'))
+                    await starting
+                }
+            })
+            expect(tone.stop).toHaveBeenCalledTimes(1)
+            expect(release).toHaveBeenCalledTimes(1)
+            if (ending !== 'server-error') {
+                await act(async () => {
+                    resolveSetup({ answerSdp: 'late-answer', sessionId: 'late-session' })
+                    await starting
+                })
+            }
+            expect(tone.stop).toHaveBeenCalledTimes(1)
+            expect(release).toHaveBeenCalledTimes(1)
+        }
+    )
+
+    test('reacquires the wake lock and resumes interrupted ringback on return during setup', async () => {
+        let denyMic
+        getUserMedia.mockImplementationOnce(() => new Promise((_, reject) => (denyMic = reject)))
+        const tree = render()
+        let starting
+        await act(async () => {
+            starting = tree.root.findByType('Button').props.onPress()
+        })
+        await setVisibility('hidden')
+        expect(release).toHaveBeenCalledTimes(1)
+        await setVisibility('visible')
+        expect(request).toHaveBeenCalledTimes(2)
+        expect(tone.resume).toHaveBeenCalledTimes(1)
+        expect(tone.stop).not.toHaveBeenCalled()
+        await act(async () => {
+            denyMic(new Error('permission denied'))
+            await starting
+        })
+        expect(tone.stop).toHaveBeenCalledTimes(1)
+        expect(release).toHaveBeenCalledTimes(2)
+    })
+
+    test('rings through provider readiness and microphone preparation, stopping before transmission and greeting', async () => {
+        let finishWarmup
+        const warmup = new Promise(resolve => (finishWarmup = resolve))
+        jest.spyOn(require('./assistantVoiceMicrophone'), 'createVoiceMicrophoneSelector').mockReturnValue({
+            whenPrepared: () => warmup,
+            getSnapshot: () => ({ available: true, level: 0.1 }),
+            stop: jest.fn(),
+        })
+        FakePeerConnection.liveStartupEvents = 'started-only'
+        runHttpsCallableFunction.mockResolvedValue({ answerSdp: 'answer', voiceProvider: 'gpt-live' })
+        const tree = render()
+        let starting
+        await act(async () => {
+            starting = tree.root.findByType('Button').props.onPress()
+            for (let i = 0; i < 30; i++) await Promise.resolve()
+        })
+        const pc = FakePeerConnection.instances[0]
+        expect(pc.senders[0].track.enabled).toBe(false)
+        expect(tone.stop).not.toHaveBeenCalled()
+        await act(async () => {
+            pc.channel.onmessage({
+                data: JSON.stringify({ type: 'session.instructions.appended', client_event_id: 'alldone_live_ready' }),
+            })
+        })
+        expect(pc.senders[0].track.enabled).toBe(false)
+        expect(tone.stop).not.toHaveBeenCalled()
+        tone.stop.mockImplementation(() => {
+            expect(pc.senders[0].track.enabled).toBe(false)
+            expect(pc.channel.send.mock.calls.map(([json]) => JSON.parse(json).event_id)).not.toContain(
+                'alldone_live_greeting'
+            )
+        })
+        await act(async () => {
+            finishWarmup(true)
+            await starting
+        })
+        expect(tone.stop).toHaveBeenCalledTimes(1)
+        expect(pc.senders[0].track.enabled).toBe(true)
+        expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
+    })
+
+    test('unavailable tone playback and a rejected wake lock still allow a connected call', async () => {
+        require('./assistantCallConnectingTone').startCallConnectingTone.mockReturnValue(null)
+        request.mockRejectedValue(new Error('wake lock denied'))
+        const tree = render()
+        await startCall(tree)
+        expect(findEndCallButton(tree).props.accessibilityLabel).toBe('End assistant call')
+        await act(async () => findEndCallButton(tree).props.onPress())
+        expect(release).not.toHaveBeenCalled()
     })
 })
 

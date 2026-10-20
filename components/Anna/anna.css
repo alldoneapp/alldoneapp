@@ -498,86 +498,9 @@
 .anna-composer-footer-idle {
     justify-content: flex-end;
 }
-.anna-call-audio {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.anna-call-devices {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-}
-.anna-call-device {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-.anna-call-device label {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    min-width: 0;
-}
-.anna-call-device-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--anna-muted);
-    font-size: 12px;
-}
-.anna-call-device select {
-    width: 100%;
-    min-width: 0;
-    min-height: 40px;
-    padding: 6px 8px;
-    border: 1px solid var(--anna-border);
-    border-radius: 8px;
-    background: var(--anna-surface);
-    color: var(--anna-ink);
-    font: inherit;
-    font-size: 14px;
-    text-overflow: ellipsis;
-}
-.anna-call-device-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--anna-muted);
-    font-size: 12px;
-    min-height: 16px;
-}
-.anna-call-meter {
-    height: 5px;
-    background: var(--anna-border);
-    border-radius: 4px;
-    overflow: hidden;
-}
-.anna-call-meter > div {
-    height: 100%;
-    background: #36a77b;
-    transition: width 80ms linear;
-}
-.anna-call-hint,
-.anna-call-duration {
-    color: var(--anna-muted);
-    font-size: 11px;
-}
-.anna-call-duration {
-    min-width: 0;
-}
-.anna-composer-actions {
-    flex: none;
-}
 @container anna-composer (max-width: 420px) {
     .anna-composer-footer-idle {
         display: none;
-    }
-    .anna-call-devices {
-        grid-template-columns: minmax(0, 1fr);
-        gap: 10px;
     }
 }
 .anna-end-call {

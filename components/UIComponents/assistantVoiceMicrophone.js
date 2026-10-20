@@ -31,26 +31,23 @@ const constraints = (deviceId, raw = false) => ({
 
 // Reuse the last working desktop input immediately; live comparison still follows
 // the user's voice. Phones must keep the system's headset/speaker routing.
-export async function acquireVoiceMicrophone({ isCancelled = () => false, deviceId: requestedDeviceId = '' } = {}) {
+export async function acquireVoiceMicrophone({ isCancelled = () => false } = {}) {
     const preference = isMobileVoiceCallDevice() ? {} : readLastMicrophone()
-    const deviceId = isMobileVoiceCallDevice() ? '' : requestedDeviceId || preference.deviceId || ''
+    const deviceId = preference.deviceId || ''
     let raw = preference.raw === true
-    if (requestedDeviceId && preference.deviceId !== requestedDeviceId) raw = false
-    let pinned = !!requestedDeviceId && !isMobileVoiceCallDevice()
     let stream
     try {
         stream = await navigator.mediaDevices.getUserMedia(constraints(deviceId, raw))
     } catch (error) {
         if (!deviceId || !['NotFoundError', 'OverconstrainedError'].includes(error?.name) || isCancelled()) throw error
         raw = false
-        pinned = false
         stream = await navigator.mediaDevices.getUserMedia(constraints())
     }
     if (isCancelled()) {
         stopStream(stream)
         throw new Error('voice_start_cancelled')
     }
-    return { stream, deviceLabel: getInputDeviceLabel(stream), raw, pinned }
+    return { stream, deviceLabel: getInputDeviceLabel(stream), raw }
 }
 
 export function microphoneScore(levels) {
@@ -67,7 +64,6 @@ export function createVoiceMicrophoneSelector({
     onBeforeRepair,
     onSample,
     isPaused = () => false,
-    selectedDeviceId = '',
 }) {
     // Phones route input and output together. Opening a second, explicitly pinned
     // microphone can pull playback off Bluetooth (or onto the earpiece) before
@@ -76,7 +72,6 @@ export function createVoiceMicrophoneSelector({
     const mobile = isMobileVoiceCallDevice()
     const captures = []
     let selected
-    let manualDeviceId = selectedDeviceId
     let stopped = false
     let busy = false
     let discovering = false
@@ -141,7 +136,7 @@ export function createVoiceMicrophoneSelector({
         }
     }
     const discover = async () => {
-        if (mobile || stopped || discovering || manualDeviceId) return
+        if (mobile || stopped || discovering) return
         discovering = true
         try {
             const devices = await listAudioInputDevices()
@@ -169,23 +164,22 @@ export function createVoiceMicrophoneSelector({
             discovering = false
         }
     }
-    const switchTo = async (candidate, repair = false, manual = false) => {
-        if (stopped || (!repair && !manual && isPaused())) return false
+    const switchTo = async (candidate, repair = false) => {
+        if (stopped || (!repair && isPaused())) return
         const changedDevice = candidate !== selected
         await onSwitch(candidate.stream)
-        if (stopped) return false
+        if (stopped) return
         selected = candidate
         if (changedDevice) lastSwitch = Date.now()
         captures.forEach(c => {
             c.levels = []
         })
-        return true
     }
     const recoverSilence = async () => {
         compatibilityTried = true
         // Stop/reopen the broken processing path; applyConstraints alone does not
         // recover Chrome/macOS's bit-exact-zero capture failure.
-        for (const capture of manualDeviceId ? [selected] : [...captures]) {
+        for (const capture of [...captures]) {
             if (stopped || isPaused()) return
             const id = getInputDeviceId(capture.stream)
             if (capture === selected) await onBeforeRepair?.(capture.stream)
@@ -213,8 +207,6 @@ export function createVoiceMicrophoneSelector({
         const track = selected.stream.getAudioTracks()[0]
         const available = !stopped && selected.ready && selected.monitor?.isRunning?.() !== false
         return {
-            deviceId: getInputDeviceId(selected.stream),
-            selectedDeviceId: manualDeviceId,
             label: getInputDeviceLabel(selected.stream),
             available: !!available,
             muted: !track || track.muted === true || track.enabled === false || track.readyState === 'ended',
@@ -222,12 +214,11 @@ export function createVoiceMicrophoneSelector({
         }
     }
     const sample = async () => {
-        if (stopped) return
+        if (stopped || busy) return
         // Keep the selected input meter live even while Anna speaks. Pausing the
         // comparison must not freeze its last value or display the output level.
         for (const c of captures) if (c.ready) c.monitor?.sample()
         onSample?.(getSnapshot())
-        if (busy) return
         if (isPaused()) {
             captures.forEach(c => {
                 c.levels = []
@@ -261,18 +252,13 @@ export function createVoiceMicrophoneSelector({
         }
         if (selected.levels.length < 12) return
         const candidates = captures.filter(c => usable(c) && c.levels.length >= 12)
-        const best = manualDeviceId
-            ? selected
-            : candidates.reduce(
-                  (a, b) => (!a || microphoneScore(b.levels) > microphoneScore(a.levels) ? b : a),
-                  null
-              ) || selected
+        const best =
+            candidates.reduce((a, b) => (!a || microphoneScore(b.levels) > microphoneScore(a.levels) ? b : a), null) ||
+            selected
         const bestLevel = microphoneScore(best.levels)
         const currentLevel = microphoneScore(selected.levels)
         // A suspended/unavailable analyser is not evidence of a broken input.
-        const allSilent = (manualDeviceId ? [selected] : captures).every(
-            c => c.ready && c.monitor?.isRunning?.() !== false && !c.monitor?.getPeak()
-        )
+        const allSilent = captures.every(c => c.ready && c.monitor?.isRunning?.() !== false && !c.monitor?.getPeak())
         silentWindows = allSilent ? silentWindows + 1 : 0
         busy = true
         try {
@@ -308,42 +294,6 @@ export function createVoiceMicrophoneSelector({
     return {
         getSnapshot,
         whenPrepared: () => warmup,
-        async selectDevice(deviceId) {
-            if (stopped || mobile || busy) throw new Error('Microphone selection unavailable')
-            if (!deviceId) {
-                manualDeviceId = ''
-                captures.forEach(c => {
-                    c.levels = []
-                })
-                discover().catch(() => {})
-                return
-            }
-            busy = true
-            let candidate
-            let added = false
-            try {
-                candidate = captures.find(c => usable(c) && getInputDeviceId(c.stream) === deviceId)
-                if (!candidate) {
-                    const input = await open(deviceId)
-                    if (!input || stopped) throw new Error('Microphone unavailable')
-                    candidate = add(input)
-                    added = true
-                }
-                if (!(await switchTo(candidate, false, true))) throw new Error('Call ended')
-                manualDeviceId = deviceId
-                silentWindows = 0
-                compatibilityTried = candidate.raw
-            } catch (error) {
-                if (added && candidate !== selected) {
-                    candidate.monitor?.close()
-                    stopStream(candidate.stream)
-                    captures.splice(captures.indexOf(candidate), 1)
-                }
-                throw error
-            } finally {
-                busy = false
-            }
-        },
         stop() {
             if (stopped) return
             stopped = true

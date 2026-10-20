@@ -1049,104 +1049,6 @@ async function checkAssistantOpenFocus(page, width) {
     )
 }
 
-async function checkCallAudioControls(page, width) {
-    await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1`)
-    const editor = page.getByLabel('Message Carl Code Mentor')
-    await editor.fill('Draft preserved through the voice call')
-    const originalEditor = await editor.elementHandle()
-    await page.evaluate(() => window.__annaVoiceCall({ status: 'connecting' }))
-    await page.getByTestId('voice-call-connecting').waitFor()
-    await page.evaluate(() => window.__annaVoiceCall({ status: 'connected', voiceSeconds: 65 }))
-    await page.getByLabel('Audio input', { exact: true }).waitFor()
-    assert.equal(await editor.isVisible(), false)
-    assert.equal(await page.locator('.anna-composer-footer').count(), 0)
-    assert.equal(await page.locator('.anna-call-duration').textContent(), 'Voice call in progress · 1:05')
-    const inputMeter = page.getByRole('progressbar', { name: 'Microphone level', exact: true })
-    const outputMeter = page.getByRole('progressbar', { name: 'Audio output level', exact: true })
-    await page.waitForFunction(
-        () =>
-            Array.from(document.querySelectorAll('.anna-call-meter'))
-                .map(n => n.getAttribute('aria-valuenow'))
-                .join() === '50,80'
-    )
-    await page.getByLabel('Audio input', { exact: true }).selectOption('headset')
-    await page.getByLabel('Audio output', { exact: true }).selectOption('headphones')
-    await page.waitForFunction(
-        () =>
-            document.querySelector('select[aria-label="Audio input"]').value === 'headset' &&
-            document.querySelector('select[aria-label="Audio output"]').value === 'headphones'
-    )
-    await page.getByLabel('Mute assistant call', { exact: true }).click()
-    await page.waitForFunction(() => document.querySelector('.anna-call-meter').getAttribute('aria-valuenow') === '0')
-    assert.equal(await outputMeter.getAttribute('aria-valuenow'), '80')
-    await page.getByLabel('Unmute assistant call', { exact: true }).click()
-    await page.evaluate(() => window.__annaVoiceLevels({ input: { level: 0 }, output: { level: 0 } }))
-    await page.waitForFunction(() =>
-        Array.from(document.querySelectorAll('.anna-call-meter')).every(n => n.getAttribute('aria-valuenow') === '0')
-    )
-    await page.evaluate(() => window.__annaVoiceCall({ needsAudioPlayback: true }))
-    await page.getByLabel('Enable call audio').click()
-    const bounds = await page.locator('.anna-composer-field').boundingBox()
-    for (const node of await page
-        .locator('.anna-call-audio select, .anna-composer-actions button, .anna-call-meter')
-        .all()) {
-        const box = await node.boundingBox()
-        assert.ok(
-            box.x >= bounds.x && box.x + box.width <= bounds.x + bounds.width + 1,
-            JSON.stringify({ width, bounds, box })
-        )
-    }
-    const inputBox = await page.getByLabel('Audio input', { exact: true }).boundingBox()
-    const outputBox = await page.getByLabel('Audio output', { exact: true }).boundingBox()
-    if (bounds.width <= 420) assert.ok(outputBox.y > inputBox.y, 'Narrow composer stacks devices')
-    else assert.equal(inputBox.y, outputBox.y, 'Wide composer keeps devices side by side')
-    await page.evaluate(() => window.__annaVoiceLevels({ input: { level: 0.25 }, output: { level: 0.64 } }))
-    await page.waitForFunction(() => document.querySelector('.anna-call-meter').getAttribute('aria-valuenow') === '50')
-    await page.waitForTimeout(150)
-    await page.screenshot({ path: path.join(BUILD, `call-audio-${width}.png`) })
-    if (width === 1440) {
-        await page.getByRole('button', { name: 'Hide workspace — chat only', exact: true }).click()
-        await page.locator('.anna-chat-only').waitFor()
-        const wideInput = await page.getByLabel('Audio input', { exact: true }).boundingBox()
-        const wideOutput = await page.getByLabel('Audio output', { exact: true }).boundingBox()
-        assert.equal(wideInput.y, wideOutput.y, 'Expanded desktop chat places devices side by side')
-        await page.screenshot({ path: path.join(BUILD, 'call-audio-wide.png') })
-    }
-    // A phone keeps system routing; both live meters remain available.
-    await page.evaluate(() =>
-        window.__annaVoiceLevels({
-            devices: { supportsInputSelection: false, supportsOutputSelection: false },
-            input: { level: 0.25 },
-            output: { level: 0.64 },
-        })
-    )
-    await page.locator('.anna-call-audio select').first().waitFor({ state: 'detached' })
-    await page.getByText('Choose audio devices in your browser or system settings', { exact: true }).waitFor()
-    assert.equal(await inputMeter.count(), 1)
-    assert.equal(await outputMeter.count(), 1)
-    await page.screenshot({ path: path.join(BUILD, `call-system-audio-${width}.png`) })
-    await page.getByLabel('End call', { exact: true }).click()
-    await editor.waitFor({ state: 'visible' })
-    assert.equal(await readInput(originalEditor), 'Draft preserved through the voice call')
-    assert.equal(
-        await originalEditor.evaluate(node => node === document.querySelector('.anna-rich-composer .ql-editor')),
-        true
-    )
-    assert.equal(await page.locator('.anna-call-audio').count(), 0)
-    if (width === 390) {
-        await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&language=de`)
-        await page.getByLabel('Nachricht an Carl Code Mentor').waitFor()
-        await page.evaluate(() => window.__annaVoiceCall({ status: 'connected', voiceSeconds: 65 }))
-        await page.getByLabel('Audioeingang', { exact: true }).waitFor()
-        await page.getByLabel('Audioausgang', { exact: true }).waitFor()
-        await page.getByRole('progressbar', { name: 'Audioausgangspegel', exact: true }).waitFor()
-        await page.screenshot({ path: path.join(BUILD, 'call-audio-de-390.png') })
-    }
-    console.info(
-        `PASS ${width}px: audio controls, independent live meters, routing fallback, mute/hangup and preserved Quill draft`
-    )
-}
-
 async function main() {
     const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -1164,7 +1066,6 @@ async function main() {
         process.env.SENDING_ONLY ||
         process.env.NOTE_WIDTH_ONLY ||
         process.env.ASSISTANT_FOCUS_ONLY ||
-        process.env.CALL_AUDIO_ONLY ||
         process.env.VM_ONLY
             ? [1440, 1024, 390, 320]
             : [1440, 1024, 390]) {
@@ -1178,12 +1079,6 @@ async function main() {
                 errors.push(error.message)
                 console.error(error.stack)
             })
-            if (process.env.CALL_AUDIO_ONLY) {
-                await checkCallAudioControls(page, width)
-                assert.deepEqual(errors, [])
-                await page.close()
-                continue
-            }
             if (process.env.ASSISTANT_FOCUS_ONLY) {
                 await checkAssistantOpenFocus(page, width)
                 assert.deepEqual(errors, [])

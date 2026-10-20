@@ -3421,19 +3421,5 @@
     "The browser used by %{assistantName} will appear here when browsing.": "The browser used by %{assistantName} will appear here when browsing.",
     "Assistant views": "Assistant views",
     "Description saved": "Saved",
-    "Description autosave failed": "Could not save. Your draft is kept in this session. Please try again.",
-    "Call audio controls": "Call audio controls",
-    "Audio input": "Audio input",
-    "Audio output": "Audio output",
-    "Automatic microphone": "Automatic microphone",
-    "System default audio output": "System default audio output",
-    "Choose another audio output…": "Choose another audio output…",
-    "System audio device": "System audio device",
-    "Audio output level": "Audio output level",
-    "Audio level unavailable": "Audio level unavailable",
-    "Choose audio devices in your browser or system settings": "Choose audio devices in your browser or system settings",
-    "Could not change microphone": "Could not change microphone",
-    "Could not change audio output": "Could not change audio output",
-    "Audio device list unavailable": "Audio device list unavailable",
-    "Audio output disconnected. Using system default.": "Audio output disconnected. Using system default."
+    "Description autosave failed": "Could not save. Your draft is kept in this session. Please try again."
 }

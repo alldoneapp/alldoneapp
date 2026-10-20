@@ -323,7 +323,7 @@ it('places the shared attachment picker next to the microphone and inserts the s
     expect(insertAttachmentInsideEditor).toHaveBeenCalledWith(0, expect.any(Object), 'plan.pdf', 'blob:plan')
 })
 
-it.each([{ offline: true }, { conversation: { id: 'anna_u1', assistantId: 'a1' } }])(
+it.each([{ offline: true }, { call: { status: 'active' } }, { conversation: { id: 'anna_u1', assistantId: 'a1' } }])(
     'disables attachments when unavailable: %j',
     props => {
         render(props)
@@ -1479,39 +1479,10 @@ it('shows connecting feedback until ready and returns to the duration on success
     expect(container.querySelector('.anna-composer-footer').textContent).not.toContain('0:00')
     render({ call: { status: 'connected', voiceSeconds: 12 } })
     expect(container.querySelector('[data-testid="voice-call-connecting"]')).toBeNull()
-    expect(container.querySelector('.anna-composer-footer')).toBeNull()
-    expect(container.querySelector('.anna-call-duration').textContent).toContain('0:12')
+    expect(container.querySelector('.anna-composer-footer').textContent).toContain('0:12')
     render({ call: { status: 'idle', error: 'Could not start assistant call' } })
     expect(container.querySelector('[role="alert"]').textContent).toContain('Could not start assistant call')
     expect(container.querySelector('[aria-label="Talk with Existing assistant"]').disabled).toBe(false)
-})
-
-it('replaces the editor with audio controls during a call and restores the same draft afterward', async () => {
-    render()
-    type('Keep this exact draft')
-    const editor = container.querySelector('textarea')
-    const toggleMicrophoneMuted = jest.fn()
-    render({ call: { status: 'connected', voiceSeconds: 65, toggleMicrophoneMuted } })
-    expect(container.querySelector('textarea')).toBe(editor)
-    expect(editor.closest('[hidden]')).not.toBeNull()
-    expect(editor.disabled).toBe(true)
-    expect(container.querySelector('.anna-composer-field .anna-call-audio')).not.toBeNull()
-    expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(2)
-    expect(container.querySelector('.anna-call-duration').textContent).toContain('1:05')
-    expect(container.querySelector('.anna-composer-footer')).toBeNull()
-    expect(container.querySelector('[aria-label="Select kind of file to add"]')).toBeNull()
-    expect(container.querySelector('[aria-label="Send message"]')).toBeNull()
-    await act(async () => container.querySelector('[aria-label="Mute assistant call"]').click())
-    expect(toggleMicrophoneMuted).toHaveBeenCalledTimes(1)
-    await submit()
-    expect(createObjectMessage).not.toHaveBeenCalled()
-    render()
-    expect(container.querySelector('textarea')).toBe(editor)
-    expect(editor.closest('[hidden]')).toBeNull()
-    expect(editor.disabled).toBe(false)
-    expect(editor.value).toBe('Keep this exact draft')
-    expect(container.querySelector('.anna-call-audio')).toBeNull()
-    expect(container.querySelector('[aria-label="Send message"]').disabled).toBe(false)
 })
 
 it('a rapid second phone click cancels preparation without starting duplicate calls', async () => {

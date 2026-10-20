@@ -106,68 +106,6 @@ test('switches during the call and later follows the louder microphone in the ot
     expect(Object.values(inputs).every(s => s.getTracks()[0].stop.mock.calls.length === 1)).toBe(true)
     expect(monitors.every(m => m.close.mock.calls.length === 1)).toBe(true)
 })
-
-test('manual selection stays fixed despite a louder alternative and Automatic resumes comparison', async () => {
-    const change = await start()
-    expect(selector.getSnapshot().deviceId).toBe('usb')
-    await selector.selectDevice('builtin')
-    expect(change).toHaveBeenLastCalledWith(inputs.builtin)
-    expect(selector.getSnapshot()).toMatchObject({ deviceId: 'builtin', selectedDeviceId: 'builtin' })
-    await jest.advanceTimersByTimeAsync(8000)
-    expect(change).toHaveBeenCalledTimes(2)
-    await selector.selectDevice('')
-    await jest.advanceTimersByTimeAsync(1500)
-    expect(change).toHaveBeenLastCalledWith(inputs.usb)
-    expect(selector.getSnapshot().selectedDeviceId).toBe('')
-})
-
-test('an explicit choice works while automatic comparison pauses for assistant speech', async () => {
-    const change = await start({ isPaused: () => true })
-    await selector.selectDevice('usb')
-    expect(change).toHaveBeenCalledWith(inputs.usb)
-    await jest.advanceTimersByTimeAsync(100)
-    expect(selector.getSnapshot()).toMatchObject({ selectedDeviceId: 'usb', available: true, level: 0.3 })
-})
-
-test('denied capture or failed sender replacement keeps the current device and automatic mode', async () => {
-    const change = await start()
-    navigator.mediaDevices.getUserMedia.mockRejectedValue(new Error('Denied'))
-    await expect(selector.selectDevice('missing')).rejects.toThrow('unavailable')
-    expect(selector.getSnapshot()).toMatchObject({ deviceId: 'usb', selectedDeviceId: '' })
-    change.mockRejectedValueOnce(new Error('replaceTrack failed'))
-    await expect(selector.selectDevice('builtin')).rejects.toThrow('replaceTrack failed')
-    expect(selector.getSnapshot()).toMatchObject({ deviceId: 'usb', selectedDeviceId: '' })
-    expect(inputs.usb.getTracks()[0].stop).not.toHaveBeenCalled()
-})
-
-test('a pinned microphone is reused for recovery, with system fallback if it has been unplugged', async () => {
-    expect((await acquireVoiceMicrophone({ deviceId: 'usb' })).pinned).toBe(true)
-    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith(
-        expect.objectContaining({ audio: expect.objectContaining({ deviceId: { exact: 'usb' } }) })
-    )
-    navigator.mediaDevices.getUserMedia.mockImplementation(async ({ audio }) => {
-        if (audio.deviceId) throw Object.assign(new Error('Unplugged'), { name: 'NotFoundError' })
-        return inputs.builtin
-    })
-    expect(await acquireVoiceMicrophone({ deviceId: 'usb' })).toMatchObject({ pinned: false, stream: inputs.builtin })
-})
-
-test('hangup releases an explicit selection that resolves after the call has ended', async () => {
-    await start()
-    let grant
-    const late = makeInput('late', 0.2)
-    navigator.mediaDevices.getUserMedia.mockImplementation(
-        () =>
-            new Promise(resolve => {
-                grant = resolve
-            })
-    )
-    const changing = selector.selectDevice('late')
-    selector.stop()
-    grant(late)
-    await expect(changing).rejects.toThrow('unavailable')
-    expect(late.getTracks()[0].stop).toHaveBeenCalledTimes(1)
-})
 test('a transient click or a small difference does not cause switching', async () => {
     inputs.usb.level = 0.025
     const change = await start()

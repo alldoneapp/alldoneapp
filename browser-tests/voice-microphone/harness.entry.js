@@ -107,17 +107,6 @@ button.onclick = async () => {
             )
         await delay(300)
         const first = selected
-        let manualSelectionHeld = false
-        if (scenario === 'manual') {
-            await selector.selectDevice('builtin')
-            await delay(4500)
-            if (selected !== 'builtin' || selector.getSnapshot().selectedDeviceId !== 'builtin')
-                throw new Error('The explicitly selected microphone was overridden')
-            manualSelectionHeld = true
-            await selector.selectDevice('')
-            await delay(1600)
-            if (selected !== 'usb') throw new Error('Automatic microphone comparison did not resume')
-        }
         let warmedBeforeSending = false
         if (scenario === 'warmup') {
             await senderMonitor.ready
@@ -147,7 +136,6 @@ button.onclick = async () => {
             selected,
             switches,
             warmedBeforeSending,
-            manualSelectionHeld,
             activeTracks: opened.filter(t => t.readyState === 'live').length,
         }
     } catch (error) {
