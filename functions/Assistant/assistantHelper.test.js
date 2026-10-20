@@ -7699,43 +7699,6 @@ describe('execute_task_in_vm existing task routing', () => {
         expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
     })
 
-    test.each([true, false])('notifies the workflow only after a successful VM launch: %s', async success => {
-        const onVmJobStarted = jest.fn()
-        startVmJobSpy.mockResolvedValue({ success, correlationId: 'vm-1', status: 'started' })
-        await executeToolNatively(
-            'execute_task_in_vm',
-            { objective: 'Merge this task', task_type: 'prototype', target_task_id: 'task-1' },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            {},
-            { onVmJobStarted }
-        )
-        if (success) {
-            expect(onVmJobStarted).toHaveBeenCalledWith({
-                correlationId: 'vm-1',
-                projectId: 'project-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-            })
-        } else expect(onVmJobStarted).not.toHaveBeenCalled()
-    })
-
-    test('retains the successful VM launch when workflow bookkeeping fails', async () => {
-        const onVmJobStarted = jest.fn().mockRejectedValue(new Error('Firestore unavailable'))
-        startVmJobSpy.mockResolvedValue({ success: true, correlationId: 'vm-1', status: 'queued' })
-        const result = await executeToolNatively(
-            'execute_task_in_vm',
-            { objective: 'Merge this task', task_type: 'prototype', target_task_id: 'task-1' },
-            'project-1',
-            'assistant-1',
-            'user-1',
-            {},
-            { onVmJobStarted }
-        )
-        expect(result).toMatchObject({ success: true, correlationId: 'vm-1' })
-    })
-
     test('uses the resolved task project for chat, task context and VM launch, keeping the delegate persona', async () => {
         resolveTargetTaskSpy.mockResolvedValue({
             ok: true,

@@ -451,7 +451,6 @@ async function generatePreConfigTaskResult(
             objectType,
             objectId,
             messageId: triggerMessageId || null,
-            onVmJobStarted: options?.onVmJobStarted,
             userTimezoneOffset,
             language,
             maxRunWallClockMs: options?.maxRunWallClockMs || ASSISTANT_TASK_MAX_RUN_WALL_CLOCK_MS,

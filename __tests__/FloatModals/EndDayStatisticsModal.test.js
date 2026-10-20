@@ -30,6 +30,7 @@ import React from 'react'
 import { Provider } from 'react-redux'
 import renderer from 'react-test-renderer'
 import moment from 'moment'
+import { createStore } from 'redux'
 
 jest.mock('lottie-react', () => () => null)
 jest.mock('../../utils/backends/Users/newDayAcknowledgement', () => ({
@@ -126,6 +127,25 @@ describe('EndDayStatisticsModal — "Start new day" (AT-2367)', () => {
         const tree = render()
 
         expect(tree.root.findAllByProps({ testID: 'startNewDayButton' }).length).toBeGreaterThan(0)
+    })
+
+    it('gives a mandatory update priority over the New Day dialog', () => {
+        const tree = render()
+        expect(tree.root.findAllByProps({ testID: 'startNewDayButton' }).length).toBeGreaterThan(0)
+
+        const mandatoryUpdateStore = createStore(() => ({
+            ...store.getState(),
+            showNewVersionMandtoryNotifcation: true,
+        }))
+        renderer.act(() => {
+            tree.update(
+                <Provider store={mandatoryUpdateStore}>
+                    <EndDayStatisticsModal />
+                </Provider>
+            )
+        })
+
+        expect(tree.toJSON()).toBeNull()
     })
 
     it('closes the popup on the tap, before the Firestore write is acknowledged', () => {

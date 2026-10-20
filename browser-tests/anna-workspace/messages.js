@@ -6,14 +6,6 @@ export default (a, b, projectId, chatId) => {
     useEffect(() => subscribeMessages(refresh), [])
     return Object.assign(
         [
-            ...(new URLSearchParams(window.location.search).has('assistantFocus')
-                ? Array.from({ length: 36 }, (_, index) => ({
-                      id: `focus-history-${index}`,
-                      creatorId: 'demo',
-                      commentText: `Earlier message ${index + 1}: keep the launch conversation available while opening the assistant.`,
-                      created: Date.now() - 3600000 + index * 1000,
-                  }))
-                : []),
             {
                 id: 'm1',
                 creatorId: 'demo',
