@@ -376,6 +376,7 @@
     font-size: 11px !important;
 }
 .anna-composer-field {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -386,6 +387,16 @@
     transition:
         border-color 150ms ease,
         box-shadow 150ms ease;
+}
+.anna-composer-draft {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+.anna-composer-slot-voice .anna-composer-draft {
+    visibility: hidden;
+    pointer-events: none;
 }
 .anna-rich-composer {
     min-width: 0;
@@ -499,10 +510,115 @@
     justify-content: flex-end;
 }
 .anna-call-audio {
-    min-width: 0;
+    position: absolute;
+    inset: 0;
+    padding: 14px 12px 10px;
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
     gap: 8px;
+}
+.anna-call-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 48px;
+    min-width: 0;
+}
+.anna-call-levels {
+    display: flex;
+    gap: 10px;
+    flex: none;
+}
+.anna-call-level {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border: 1px solid var(--anna-border);
+    border-radius: 12px;
+    background: var(--anna-surface);
+    color: #227c60;
+    --anna-meter-color: #36a77b;
+}
+.anna-call-level-output {
+    color: #5964bb;
+    --anna-meter-color: #7b87ed;
+}
+.anna-call-settings {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+    overflow: auto;
+    border: 1px solid #e4e9ee;
+    border-radius: 16px;
+    background: #fff;
+    color: #18283f;
+    box-shadow: 0 8px 32px #18283f24;
+    font:
+        14px / 1.4 -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+}
+.anna-call-settings * {
+    box-sizing: border-box;
+}
+.anna-call-settings-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.anna-call-settings-heading button {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    color: #536786;
+    background: #f6f8fa;
+    cursor: pointer;
+}
+.anna-call-settings button:focus-visible,
+.anna-call-settings select:focus-visible {
+    outline: 2px solid #0c66ff;
+    outline-offset: 2px;
+}
+.anna-call-settings .anna-call-devices {
+    grid-template-columns: minmax(0, 1fr);
+}
+.anna-call-settings-button {
+    position: relative;
+    border: 1px solid var(--anna-border);
+}
+.anna-call-settings-warning,
+.anna-call-settings-error {
+    color: #a12f36;
+}
+.anna-call-notice-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+.anna-call-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 .anna-call-devices {
     display: grid;
@@ -525,7 +641,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--anna-muted);
+    color: #536786;
     font-size: 12px;
 }
 .anna-call-device select {
@@ -533,10 +649,10 @@
     min-width: 0;
     min-height: 40px;
     padding: 6px 8px;
-    border: 1px solid var(--anna-border);
+    border: 1px solid #e4e9ee;
     border-radius: 8px;
-    background: var(--anna-surface);
-    color: var(--anna-ink);
+    background: #f9fafb;
+    color: #18283f;
     font: inherit;
     font-size: 14px;
     text-overflow: ellipsis;
@@ -550,15 +666,29 @@
     min-height: 16px;
 }
 .anna-call-meter {
-    height: 5px;
-    background: var(--anna-border);
+    position: relative;
+    width: 7px;
+    height: 32px;
     border-radius: 4px;
+    background: var(--anna-border);
     overflow: hidden;
 }
 .anna-call-meter > div {
-    height: 100%;
-    background: #36a77b;
-    transition: width 80ms linear;
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    border-radius: inherit;
+    background: linear-gradient(to top, var(--anna-meter-color), #a4e9d1);
+    transition: height 80ms linear;
+}
+.anna-call-level-output .anna-call-meter > div {
+    background: linear-gradient(to top, var(--anna-meter-color), #c6ceff);
+}
+.anna-call-meter::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(to top, transparent 0 6px, var(--anna-surface) 6px 8px);
 }
 .anna-call-hint,
 .anna-call-duration {
@@ -566,7 +696,28 @@
     font-size: 11px;
 }
 .anna-call-duration {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
     min-width: 0;
+}
+.anna-call-duration > span:first-child {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.anna-call-clock {
+    color: var(--anna-ink);
+    font-size: 18px;
+    line-height: 24px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.5px;
+}
+.anna-call-settings .anna-call-hint,
+.anna-call-settings .anna-call-device-name {
+    color: #536786;
 }
 .anna-composer-actions {
     flex: none;
@@ -1294,7 +1445,8 @@
         animation: none;
     }
     .anna-composer-field,
-    .anna-send {
+    .anna-send,
+    .anna-call-meter > div {
         transition: none;
     }
 }

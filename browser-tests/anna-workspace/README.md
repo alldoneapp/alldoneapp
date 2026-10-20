@@ -131,3 +131,44 @@ focus is handed over only while the chat still owns focus. iOS may require a
 second tap to show its keyboard. The fix renders synchronously for explicit
 opening; see [React's flushSync API](https://react.dev/reference/react-dom/flushSync)
 and [WebKit's user-gesture requirement](https://bugs.webkit.org/show_bug.cgi?id=195884).
+
+## AT-2786: compact call meters and unchanged composer footprint
+
+The idle composer uses a 48px minimum editor, an 8px gap, a 40px toolbar,
+24px vertical padding and a 2px border: **122px minimum field height**. Quill
+can grow for longer drafts; the shortcut footer is also responsive. During
+calls, the same editor and toolbar remain mounted, invisible and inert, as
+the sizing reference. The call UI overlays that field and the invisible footer
+retains its space. No hardcoded call height or captured pixel width is needed.
+
+Two 7×32px vertical segmented meters identify microphone input (green, mic icon)
+and assistant output (violet, speaker icon). Audio settings retain device
+switching, the browser's output picker, routing notices and system fallback in
+the shared desktop popover/mobile sheet. Close/Escape restores trigger focus.
+The existing 100ms local polling keeps transcript rendering independent of levels.
+
+```sh
+npm test -- --runInBand components/Anna/AnnaCallAudioControls.test.js components/Anna/AnnaConversation.test.js
+CALL_AUDIO_ONLY=1 node browser-tests/anna-workspace/run.js
+```
+
+The browser runner needs Playwright/Chromium and the root + `web-bundler`
+dependencies; set `PLAYWRIGHT_MODULE` and `CHROMIUM_EXECUTABLE_PATH` if installed
+externally. `--skip-build` reuses its bundle. No Firebase credentials or paid
+calls are needed: the shell, editor, popup, controls and CSS are real, with
+fixture call/device snapshots and transport.
+
+Verified in Chromium 156 at 1440, 1024, 390 and 320px: exact field, form and
+transcript rectangles through connecting, connected, settings open, audio
+recovery, ending and return to text; empty and multiline drafts; live independent
+levels and mute; device selection/fallback; popup bounds and keyboard dismissal;
+wide chat and resizing during an active call. German labels were also checked.
+Screenshots: [text field](../../docs/screenshots/AT-2786-composer-before.png),
+[compact call](../../docs/screenshots/AT-2786-call-compact.png),
+[audio settings](../../docs/screenshots/AT-2786-audio-settings.png).
+
+The full production build was attempted normally and with a 1280MB Node heap
+on one CPU; both were killed (exit 137) by this 2GB VM. The browser harness
+compiled successfully with the shipped webpack/Babel configuration and had no
+runtime errors. Physical microphone/speaker routing and Safari/iOS hardware
+behavior still need device verification; these UI checks simulate call data.

@@ -396,34 +396,33 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                         {error || call.error}
                     </div>
                 )}
-                <div className={`anna-composer-slot${voiceConnecting ? ' anna-composer-slot-connecting' : ''}`}>
-                    {/* Keep the editor mounted to preserve its draft and exact dimensions while connecting. */}
-                    <div className="anna-composer-field" aria-hidden={voiceConnecting || undefined}>
-                        <div hidden={voiceActive && !voiceConnecting} aria-hidden={voiceActive || undefined}>
-                            <AnnaChatComposer
-                                ref={composer}
-                                projectId={conversation.projectId}
-                                label={translate('Message %{assistantName}', { assistantName })}
-                                placeholder={placeholder}
-                                initialText={initialText}
-                                onResize={keepLatestVisible}
-                                disabled={voiceActive}
-                                onFocus={onExpand}
-                                onChangeText={changeDraft}
-                                onSubmit={() => send()}
-                            />
-                        </div>
-                        {voiceActive && !voiceConnecting && <AnnaCallAudioControls call={call} />}
-                        <div className="anna-composer-toolbar">
-                            {voiceActive && !voiceConnecting ? (
-                                <span className="anna-call-duration" role="status">
-                                    {translate('Voice call in progress')}
-                                    {' · '}
-                                    {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
-                                </span>
-                            ) : (
+                <div
+                    className={`anna-composer-slot${voiceConnecting ? ' anna-composer-slot-connecting' : ''}${voiceActive ? ' anna-composer-slot-voice' : ''}`}
+                >
+                    {/* The invisible draft and toolbar retain the exact responsive call footprint. */}
+                    <div className="anna-composer-field">
+                        <div
+                            className="anna-composer-draft"
+                            aria-hidden={voiceActive || undefined}
+                            inert={voiceActive ? '' : undefined}
+                        >
+                            <div>
+                                <AnnaChatComposer
+                                    ref={composer}
+                                    projectId={conversation.projectId}
+                                    label={translate('Message %{assistantName}', { assistantName })}
+                                    placeholder={placeholder}
+                                    initialText={initialText}
+                                    onResize={keepLatestVisible}
+                                    disabled={voiceActive}
+                                    onFocus={onExpand}
+                                    onChangeText={changeDraft}
+                                    onSubmit={() => send()}
+                                />
+                            </div>
+                            <div className="anna-composer-toolbar">
                                 <div className="anna-composer-tools">
-                                    {!voiceActive && !offline && conversation.projectId && isDictationSupported() && (
+                                    {!offline && conversation.projectId && isDictationSupported() && (
                                         <RambleButton
                                             projectId={conversation.projectId}
                                             targetKind="generic"
@@ -467,27 +466,47 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                         />
                                     </div>
                                 </div>
-                            )}
-                            <div className="anna-composer-actions">
-                                {voiceActive && !voiceConnecting && (
+                                <div className="anna-composer-actions">
                                     <button
                                         type="button"
                                         className="anna-voice-button"
-                                        disabled={call.status === 'ending'}
-                                        aria-label={translate(
-                                            call.microphoneMuted ? 'Unmute assistant call' : 'Mute assistant call'
-                                        )}
-                                        aria-pressed={!!call.microphoneMuted}
-                                        onClick={call.toggleMicrophoneMuted}
+                                        aria-label={translate('Talk with %{assistantName}', { assistantName })}
+                                        title={voiceHint}
+                                        disabled={voiceActive || offline || sending || dictationBusy}
+                                        onClick={toggleVoiceCall}
                                     >
-                                        <Icon
-                                            name={call.microphoneMuted ? 'mic-off' : 'mic'}
-                                            size={20}
-                                            color="currentColor"
-                                        />
+                                        <Icon name="phone-call" size={20} color="currentColor" />
                                     </button>
-                                )}
-                                {!voiceConnecting && call.needsAudioPlayback && (
+                                    <button
+                                        type="submit"
+                                        className="anna-send"
+                                        disabled={offline || voiceActive || dictationBusy || !hasText}
+                                        aria-label={translate('Send message')}
+                                    >
+                                        <Icon name="arrow-up" size={20} color="currentColor" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {voiceActive && !voiceConnecting && (
+                            <AnnaCallAudioControls call={call} seconds={seconds}>
+                                <button
+                                    type="button"
+                                    className="anna-voice-button"
+                                    disabled={call.status === 'ending'}
+                                    aria-label={translate(
+                                        call.microphoneMuted ? 'Unmute assistant call' : 'Mute assistant call'
+                                    )}
+                                    aria-pressed={!!call.microphoneMuted}
+                                    onClick={call.toggleMicrophoneMuted}
+                                >
+                                    <Icon
+                                        name={call.microphoneMuted ? 'mic-off' : 'mic'}
+                                        size={20}
+                                        color="currentColor"
+                                    />
+                                </button>
+                                {call.needsAudioPlayback && (
                                     <button
                                         type="button"
                                         className="anna-voice-button"
@@ -500,32 +519,16 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                 )}
                                 <button
                                     type="button"
-                                    className={`anna-voice-button${voiceActive ? ' anna-voice-active' : ''}`}
+                                    className="anna-voice-button anna-voice-active"
                                     aria-label={voiceLabel}
                                     title={voiceHint}
-                                    disabled={
-                                        voiceActive ? call.status === 'ending' : offline || sending || dictationBusy
-                                    }
+                                    disabled={call.status === 'ending'}
                                     onClick={toggleVoiceCall}
                                 >
-                                    <Icon
-                                        name={voiceConnecting ? 'x' : voiceActive ? 'phone-off' : 'phone-call'}
-                                        size={20}
-                                        color="currentColor"
-                                    />
+                                    <Icon name="phone-off" size={20} color="currentColor" />
                                 </button>
-                                {!voiceActive && (
-                                    <button
-                                        type="submit"
-                                        className="anna-send"
-                                        disabled={offline || voiceActive || dictationBusy || !hasText}
-                                        aria-label={translate('Send message')}
-                                    >
-                                        <Icon name="arrow-up" size={20} color="currentColor" />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
+                            </AnnaCallAudioControls>
+                        )}
                     </div>
                     {voiceConnecting && (
                         <div className="anna-composer-connecting">
@@ -543,6 +546,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                             <button
                                 type="button"
                                 className="anna-text-button anna-composer-cancel"
+                                aria-label={translate('Cancel call')}
                                 onClick={toggleVoiceCall}
                             >
                                 {translate('Cancel call')}
@@ -550,15 +554,13 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                         </div>
                     )}
                 </div>
-                {(!voiceActive || voiceConnecting) && (
-                    <div
-                        className="anna-composer-footer anna-composer-footer-idle"
-                        style={voiceConnecting ? { visibility: 'hidden' } : undefined}
-                        aria-hidden={voiceConnecting || undefined}
-                    >
-                        <span className="anna-composer-shortcut">{translate('Shift + Enter for a new line')}</span>
-                    </div>
-                )}
+                <div
+                    className="anna-composer-footer anna-composer-footer-idle"
+                    style={voiceActive ? { visibility: 'hidden' } : undefined}
+                    aria-hidden={voiceActive || undefined}
+                >
+                    <span className="anna-composer-shortcut">{translate('Shift + Enter for a new line')}</span>
+                </div>
             </form>
         </>
     )

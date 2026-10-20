@@ -7,23 +7,24 @@ const { execFileSync } = require('child_process')
 const ROOT = path.resolve(__dirname, '../..')
 const BUILD = path.join(__dirname, '.build')
 const readInput = node => node.evaluate(element => element.value ?? element.textContent)
-execFileSync(
-    path.join(ROOT, 'web-bundler/node_modules/.bin/webpack'),
-    [
-        '--config',
-        path.join(ROOT, 'browser-tests/webpack.harness.js'),
-        '--mode',
-        'development',
-        '--no-cache',
-        '--env',
-        `harnessEntry=${path.join(__dirname, 'harness.entry.js')}`,
-        '--env',
-        `harnessOut=${BUILD}`,
-        '--env',
-        `harnessSetup=${path.join(__dirname, 'webpack.setup.js')}`,
-    ],
-    { cwd: path.join(ROOT, 'web-bundler'), stdio: 'inherit' }
-)
+if (!process.argv.includes('--skip-build'))
+    execFileSync(
+        path.join(ROOT, 'web-bundler/node_modules/.bin/webpack'),
+        [
+            '--config',
+            path.join(ROOT, 'browser-tests/webpack.harness.js'),
+            '--mode',
+            'development',
+            '--no-cache',
+            '--env',
+            `harnessEntry=${path.join(__dirname, 'harness.entry.js')}`,
+            '--env',
+            `harnessOut=${BUILD}`,
+            '--env',
+            `harnessSetup=${path.join(__dirname, 'webpack.setup.js')}`,
+        ],
+        { cwd: path.join(ROOT, 'web-bundler'), stdio: 'inherit' }
+    )
 fs.writeFileSync(
     path.join(BUILD, 'index.html'),
     '<!doctype html><html><head><meta charset="utf-8"><title>Launch | Alldone</title><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body,#root{margin:0;height:100%;width:100%;overflow:hidden}#root{display:flex}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>'
@@ -1052,98 +1053,174 @@ async function checkAssistantOpenFocus(page, width) {
 async function checkCallAudioControls(page, width) {
     await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1`)
     const editor = page.getByLabel('Message Carl Code Mentor')
-    await editor.fill('Draft preserved through the voice call')
+    await editor.waitFor()
     const originalEditor = await editor.elementHandle()
-    await page.evaluate(() => window.__annaVoiceCall({ status: 'connecting' }))
-    await page.getByTestId('voice-call-connecting').waitFor()
-    await page.evaluate(() => window.__annaVoiceCall({ status: 'connected', voiceSeconds: 65 }))
-    await page.getByLabel('Audio input', { exact: true }).waitFor()
-    assert.equal(await editor.isVisible(), false)
-    assert.equal(await page.locator('.anna-composer-footer').count(), 0)
-    assert.equal(await page.locator('.anna-call-duration').textContent(), 'Voice call in progress · 1:05')
+    const geometry = () =>
+        page.evaluate(() => {
+            const rect = selector => {
+                const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect()
+                return { x, y, width, height }
+            }
+            return { field: rect('.anna-composer-field'), form: rect('.anna-composer'), log: rect('.anna-messages') }
+        })
+    const sameGeometry = async (before, state) =>
+        assert.deepEqual(await geometry(), before, `${width}px ${state}: no layout jump`)
     const inputMeter = page.getByRole('progressbar', { name: 'Microphone level', exact: true })
     const outputMeter = page.getByRole('progressbar', { name: 'Audio output level', exact: true })
-    await page.waitForFunction(
-        () =>
-            Array.from(document.querySelectorAll('.anna-call-meter'))
-                .map(n => n.getAttribute('aria-valuenow'))
-                .join() === '50,80'
-    )
-    await page.getByLabel('Audio input', { exact: true }).selectOption('headset')
-    await page.getByLabel('Audio output', { exact: true }).selectOption('headphones')
-    await page.waitForFunction(
-        () =>
-            document.querySelector('select[aria-label="Audio input"]').value === 'headset' &&
-            document.querySelector('select[aria-label="Audio output"]').value === 'headphones'
-    )
-    await page.getByLabel('Mute assistant call', { exact: true }).click()
-    await page.waitForFunction(() => document.querySelector('.anna-call-meter').getAttribute('aria-valuenow') === '0')
-    assert.equal(await outputMeter.getAttribute('aria-valuenow'), '80')
-    await page.getByLabel('Unmute assistant call', { exact: true }).click()
-    await page.evaluate(() => window.__annaVoiceLevels({ input: { level: 0 }, output: { level: 0 } }))
-    await page.waitForFunction(() =>
-        Array.from(document.querySelectorAll('.anna-call-meter')).every(n => n.getAttribute('aria-valuenow') === '0')
-    )
-    await page.evaluate(() => window.__annaVoiceCall({ needsAudioPlayback: true }))
-    await page.getByLabel('Enable call audio').click()
-    const bounds = await page.locator('.anna-composer-field').boundingBox()
-    for (const node of await page
-        .locator('.anna-call-audio select, .anna-composer-actions button, .anna-call-meter')
-        .all()) {
-        const box = await node.boundingBox()
+    for (const draft of ['', 'Keep this draft\nwith several lines\nand its exact footprint']) {
+        await editor.fill(draft.split('\n')[0])
+        for (const line of draft.split('\n').slice(1)) {
+            await editor.press('ControlOrMeta+End')
+            await editor.press('Shift+Enter')
+            await page.keyboard.insertText(line)
+        }
+        const savedDraft = await readInput(originalEditor)
+        if (draft)
+            assert.ok(savedDraft.includes('and its exact footprint'), 'Multiline draft was entered through Quill')
+        await page.waitForTimeout(300)
+        const before = await geometry()
+        await page.evaluate(() => window.__annaVoiceCall({ status: 'connecting' }))
+        await page.getByTestId('voice-call-connecting').waitFor()
+        await sameGeometry(before, 'connecting')
+        await page.evaluate(() => window.__annaVoiceCall({ status: 'connected', voiceSeconds: 65 }))
+        await inputMeter.waitFor()
+        assert.equal(await editor.isVisible(), false)
+        assert.equal(await page.locator('.anna-composer-footer').isVisible(), false)
+        assert.equal(await page.getByRole('timer').textContent(), '1:05')
+        await sameGeometry(before, 'connected')
+        if (!draft) {
+            const meterBoxes = await Promise.all([inputMeter.boundingBox(), outputMeter.boundingBox()])
+            meterBoxes.forEach(box =>
+                assert.deepEqual({ width: box.width, height: box.height }, { width: 7, height: 32 })
+            )
+            for (const node of await page.locator('.anna-call-audio button, .anna-call-meter').all()) {
+                const box = await node.boundingBox()
+                const field = before.field
+                assert.ok(
+                    box.x >= field.x &&
+                        box.y >= field.y &&
+                        box.x + box.width <= field.x + field.width + 1 &&
+                        box.y + box.height <= field.y + field.height + 1,
+                    JSON.stringify({ field, box })
+                )
+            }
+            await page.waitForTimeout(150)
+            await page.screenshot({ path: path.join(BUILD, `call-audio-${width}.png`) })
+            console.info(JSON.stringify({ width, emptyComposer: before.field, verticalMeters: meterBoxes }))
+        }
+        await page.getByRole('button', { name: 'Audio settings', exact: true }).click()
+        const settings = page.getByRole('dialog', { name: 'Audio settings', exact: true })
+        await settings.waitFor()
+        // The shared mobile sheet animates in; measure its settled bounds.
+        await page.waitForFunction(() => {
+            const node = document.querySelector('.anna-call-settings')
+            const rect = node?.getBoundingClientRect()
+            return rect && rect.y >= 0 && rect.bottom <= innerHeight + 1
+        })
+        await sameGeometry(before, 'device settings open')
+        const box = await settings.boundingBox()
         assert.ok(
-            box.x >= bounds.x && box.x + box.width <= bounds.x + bounds.width + 1,
-            JSON.stringify({ width, bounds, box })
+            box.x >= 0 && box.y >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= 901,
+            JSON.stringify(box)
         )
+        for (const selector of await settings.locator('select').all()) {
+            const selectBox = await selector.boundingBox()
+            assert.ok(selectBox.x + selectBox.width <= box.x + box.width, 'device dropdown fits popup')
+        }
+        await page.getByLabel('Audio input', { exact: true }).selectOption('headset')
+        await page.getByLabel('Audio output', { exact: true }).selectOption('headphones')
+        await page.waitForFunction(
+            () =>
+                document.querySelector('select[aria-label="Audio input"]').value === 'headset' &&
+                document.querySelector('select[aria-label="Audio output"]').value === 'headphones'
+        )
+        await settings.getByRole('button', { name: 'Close', exact: true }).focus()
+        await page.keyboard.press('Escape')
+        await settings.waitFor({ state: 'hidden' })
+        assert.equal(
+            await page
+                .getByRole('button', { name: 'Audio settings', exact: true })
+                .evaluate(node => document.activeElement === node),
+            true
+        )
+        await page.getByLabel('Mute assistant call', { exact: true }).click()
+        await page.waitForFunction(
+            () => document.querySelector('.anna-call-meter').getAttribute('aria-valuenow') === '0'
+        )
+        assert.equal(await outputMeter.getAttribute('aria-valuenow'), '80')
+        await page.getByLabel('Unmute assistant call', { exact: true }).click()
+        await page.evaluate(() => window.__annaVoiceLevels({ input: { level: 0 }, output: { level: 0 } }))
+        await page.waitForFunction(() =>
+            Array.from(document.querySelectorAll('.anna-call-meter')).every(
+                n => n.getAttribute('aria-valuenow') === '0'
+            )
+        )
+        await page.evaluate(() => window.__annaVoiceLevels({ input: { level: 0.25 }, output: { level: 0.64 } }))
+        await page.evaluate(() => window.__annaVoiceCall({ needsAudioPlayback: true }))
+        await sameGeometry(before, 'audio recovery')
+        await page.getByLabel('Enable call audio').click()
+        await page.evaluate(() => window.__annaVoiceCall({ status: 'ending' }))
+        await sameGeometry(before, 'ending')
+        assert.equal(await page.getByLabel('End call', { exact: true }).isDisabled(), true)
+        await page.evaluate(() => window.__annaVoiceCall({ status: 'connected' }))
+        await page.getByLabel('End call', { exact: true }).click()
+        await editor.waitFor({ state: 'visible' })
+        assert.equal(await readInput(originalEditor), savedDraft)
+        assert.equal(
+            await originalEditor.evaluate(node => node === document.querySelector('.anna-rich-composer .ql-editor')),
+            true
+        )
+        await sameGeometry(before, 'ended')
     }
-    const inputBox = await page.getByLabel('Audio input', { exact: true }).boundingBox()
-    const outputBox = await page.getByLabel('Audio output', { exact: true }).boundingBox()
-    if (bounds.width <= 420) assert.ok(outputBox.y > inputBox.y, 'Narrow composer stacks devices')
-    else assert.equal(inputBox.y, outputBox.y, 'Wide composer keeps devices side by side')
-    await page.evaluate(() => window.__annaVoiceLevels({ input: { level: 0.25 }, output: { level: 0.64 } }))
-    await page.waitForFunction(() => document.querySelector('.anna-call-meter').getAttribute('aria-valuenow') === '50')
-    await page.waitForTimeout(150)
-    await page.screenshot({ path: path.join(BUILD, `call-audio-${width}.png`) })
     if (width === 1440) {
         await page.getByRole('button', { name: 'Hide workspace — chat only', exact: true }).click()
         await page.locator('.anna-chat-only').waitFor()
-        const wideInput = await page.getByLabel('Audio input', { exact: true }).boundingBox()
-        const wideOutput = await page.getByLabel('Audio output', { exact: true }).boundingBox()
-        assert.equal(wideInput.y, wideOutput.y, 'Expanded desktop chat places devices side by side')
-        await page.screenshot({ path: path.join(BUILD, 'call-audio-wide.png') })
+        await page.waitForTimeout(300)
+        const wideBefore = await geometry()
+        await page.evaluate(() => window.__annaVoiceCall({ status: 'connected' }))
+        await inputMeter.waitFor()
+        await sameGeometry(wideBefore, 'wide chat call')
+        await page.setViewportSize({ width: 800, height: 900 })
+        await page.waitForTimeout(300)
+        const resizedCall = await geometry()
+        await page.getByLabel('End call', { exact: true }).click()
+        await editor.waitFor({ state: 'visible' })
+        await sameGeometry(resizedCall, 'resize during call, then return to text')
+        await page.setViewportSize({ width, height: 900 })
+        await page.waitForTimeout(300)
     }
-    // A phone keeps system routing; both live meters remain available.
-    await page.evaluate(() =>
-        window.__annaVoiceLevels({
-            devices: { supportsInputSelection: false, supportsOutputSelection: false },
-            input: { level: 0.25 },
-            output: { level: 0.64 },
-        })
-    )
-    await page.locator('.anna-call-audio select').first().waitFor({ state: 'detached' })
+    // A platform without device APIs still shows both meters and explains system routing.
+    await page.evaluate(() => {
+        window.__annaVoiceLevels({ devices: { supportsInputSelection: false, supportsOutputSelection: false } })
+        window.__annaVoiceCall({ status: 'connected' })
+    })
+    await page.getByRole('button', { name: 'Audio settings', exact: true }).click()
     await page.getByText('Choose audio devices in your browser or system settings', { exact: true }).waitFor()
-    assert.equal(await inputMeter.count(), 1)
-    assert.equal(await outputMeter.count(), 1)
-    await page.screenshot({ path: path.join(BUILD, `call-system-audio-${width}.png`) })
+    assert.equal(await page.locator('.anna-call-settings select').count(), 0)
+    assert.equal(await page.getByRole('progressbar').count(), 2)
+    await page.getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByLabel('End call', { exact: true }).click()
-    await editor.waitFor({ state: 'visible' })
-    assert.equal(await readInput(originalEditor), 'Draft preserved through the voice call')
-    assert.equal(
-        await originalEditor.evaluate(node => node === document.querySelector('.anna-rich-composer .ql-editor')),
-        true
-    )
-    assert.equal(await page.locator('.anna-call-audio').count(), 0)
     if (width === 390) {
         await page.goto(`http://127.0.0.1:${server.address().port}/?assistant=1&language=de`)
         await page.getByLabel('Nachricht an Carl Code Mentor').waitFor()
+        await page.waitForTimeout(300)
+        const before = await geometry()
+        await page.locator('.anna-composer').screenshot({ path: path.join(BUILD, 'composer-before-de-390.png') })
         await page.evaluate(() => window.__annaVoiceCall({ status: 'connected', voiceSeconds: 65 }))
+        await page.getByRole('progressbar', { name: 'Audioausgangspegel', exact: true }).waitFor()
+        await sameGeometry(before, 'German connected')
+        await page.waitForTimeout(150)
+        await page.locator('.anna-composer').screenshot({ path: path.join(BUILD, 'call-compact-de-390.png') })
+        await page.getByRole('button', { name: 'Audioeinstellungen', exact: true }).click()
         await page.getByLabel('Audioeingang', { exact: true }).waitFor()
         await page.getByLabel('Audioausgang', { exact: true }).waitFor()
-        await page.getByRole('progressbar', { name: 'Audioausgangspegel', exact: true }).waitFor()
-        await page.screenshot({ path: path.join(BUILD, 'call-audio-de-390.png') })
+        await page.waitForFunction(
+            () => document.querySelector('.anna-call-settings').getBoundingClientRect().bottom <= innerHeight + 1
+        )
+        await page.screenshot({ path: path.join(BUILD, 'call-settings-de-390.png') })
     }
     console.info(
-        `PASS ${width}px: audio controls, independent live meters, routing fallback, mute/hangup and preserved Quill draft`
+        `PASS ${width}px: exact composer/form/transcript geometry through every call state, multiline draft, vertical meters, device popup, routing fallback, mute/recovery/hangup`
     )
 }
 
