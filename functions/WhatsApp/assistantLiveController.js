@@ -22,7 +22,7 @@ const keyFor = value => crypto.createHash('sha256').update(value).digest('hex')
 const attachUrl = id => `wss://api.openai.com/v1/live/sessions/${encodeURIComponent(id)}/attach`
 const appendText = text => {
     // A UTF-8 byte bound is conservative for the API's 500-token append limit,
-    // including CJK text. Complete answers remain in the session's liveDelegations.
+    // including CJK text. The complete backend result remains in the chat.
     let result = ''
     for (const char of String(text || '')) {
         if (Buffer.byteLength(result + char, 'utf8') > 480) break
@@ -473,10 +473,19 @@ async function runAssistantLiveCall(sessionId) {
                     if (!ending && revision === transcript.revision) runProgress.flushContext()
                     runProgress.stop()
                     await runRef.update({ status: 'completed', result, completedAt: Date.now() })
-                    // Keep the full result in liveDelegations for follow-ups, including
-                    // interrupted requests. The backend separately displays created
-                    // tasks and explicitly requested chat answers; spoken turns are
-                    // persisted from transcript events, without mirroring this result.
+                    // Full result is durable even when the user interrupts or disconnects.
+                    await storeCallTranscriptTurn({
+                        sessionId,
+                        turnId: runId,
+                        role: 'assistant',
+                        text: result,
+                        projectId: session.projectId,
+                        chatId: session.chatId,
+                        userId: session.userId,
+                        assistantId: session.assistantId,
+                        source: `${channel}_backend`,
+                        isCallTranscript: false,
+                    })
                     if (ending) {
                         await runRef.update({ deliveryStatus: 'call_ended_before_delivery' })
                         return

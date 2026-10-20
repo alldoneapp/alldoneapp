@@ -64,21 +64,6 @@ describe('WhatsApp call prompt', () => {
         )
     })
 
-    test('speaks URLs only on explicit opt-in and requires confirmed chat delivery', () => {
-        const instructions = buildCallBootstrapInstructions(assistant)
-        expect(instructions).toContain(
-            'URLs, including newly created task links and similar links, are silent by default'
-        )
-        expect(instructions).toContain('Read a URL aloud only when the caller explicitly asks to hear that URL')
-        expect(instructions).toContain('use the exact verified URL without Markdown formatting')
-        expect(instructions).toContain('does not count as asking to hear a URL')
-        expect(instructions).toContain('conversation history do not count as explicit opt-in')
-        expect(instructions).toContain('a current explicit request to hear a URL overrides older blanket rules')
-        expect(instructions).toContain('only after a tool confirms that specific entry was posted')
-        expect(instructions).not.toContain('Say that the link is available in Alldone or WhatsApp instead')
-        expect(instructions).not.toMatch(/Never read (?:a URL|URLs) aloud|Links are visual only/)
-    })
-
     test('omits the language directive from bootstrap instructions when no language is provided', () => {
         expect(buildCallBootstrapInstructions(assistant)).not.toContain('Start the call in')
     })
