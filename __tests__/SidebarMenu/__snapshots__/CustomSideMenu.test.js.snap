@@ -15,6 +15,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   <div
     className="css-view-g5y9jx r-height-136ho45 r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
     dir={null}
+    id="app-sidebar"
     onMouseEnter={[Function]}
     style={
       {
@@ -555,6 +556,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   <div
     className="css-view-g5y9jx r-height-136ho45 r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
     dir={null}
+    id="app-sidebar"
     onMouseEnter={[Function]}
     style={
       {
@@ -1095,6 +1097,7 @@ exports[`CustomSideMenu component CustomSideMenu empty snapshot test should rend
   <div
     className="css-view-g5y9jx r-height-136ho45 r-left-1d2f490 r-overflow-1udh08x r-position-u8s1d r-zIndex-1s3egr7"
     dir={null}
+    id="app-sidebar"
     onMouseEnter={[Function]}
     style={
       {
