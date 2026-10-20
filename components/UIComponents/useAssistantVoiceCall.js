@@ -9,6 +9,7 @@ import { createLiveCallConnection } from './assistantLiveConnection'
 import { sanitizeCallDiagnostics } from '../../functions/WhatsApp/assistantCallDiagnostics'
 import { beginMobileCallAudioSession, primeCallAudio } from './assistantCallAudio'
 import { startCallConnectingTone } from './assistantCallConnectingTone'
+import { createCallAudioDevices } from './assistantCallDevices'
 import { acquireVoiceMicrophone, createVoiceMicrophoneSelector } from './assistantVoiceMicrophone'
 import { createInputLevelMonitor } from '../../hooks/rambleMicCapture'
 import { keepScreenAwake } from '../../utils/screenWakeLock'
@@ -80,6 +81,7 @@ export default function useAssistantVoiceCall() {
     const callReadyRef = useRef(false)
     const startingRef = useRef(false)
     const microphoneSelectorRef = useRef(null)
+    const selectedMicrophoneIdRef = useRef('')
     const startMicrophoneSelectionRef = useRef(null)
     const playbackReadyRef = useRef(false)
     const outputMonitorRef = useRef(null)
@@ -90,6 +92,7 @@ export default function useAssistantVoiceCall() {
     const transmittedTrackRef = useRef(null)
     const firstInputSignalRef = useRef(false)
     const audioElementRef = useRef(null)
+    const audioDevicesRef = useRef(null)
     const releaseMobileAudioSessionRef = useRef(null)
     const mountedRef = useRef(true)
     const releaseWakeLockRef = useRef(null)
@@ -295,6 +298,7 @@ export default function useAssistantVoiceCall() {
         let recoveryStream
         try {
             const capture = await acquireVoiceMicrophone({
+                deviceId: selectedMicrophoneIdRef.current,
                 isCancelled: () =>
                     peerConnectionRef.current !== pc ||
                     endingRef.current ||
@@ -324,6 +328,7 @@ export default function useAssistantVoiceCall() {
             }
             localStreamRef.current = newStream
             recoveryStream = null
+            if (!capture.pinned) selectedMicrophoneIdRef.current = ''
             startMicrophoneSelectionRef.current?.(newStream, capture.raw)
             if (mountedRef.current) setMicrophoneLabel(capture.deviceLabel)
             captureDiagnostics('microphone_changed')
@@ -349,6 +354,7 @@ export default function useAssistantVoiceCall() {
         microphoneSelectorRef.current = createVoiceMicrophoneSelector({
             stream,
             raw,
+            selectedDeviceId: selectedMicrophoneIdRef.current,
             isPaused: () => {
                 if (peerConnectionRef.current !== pc || endingRef.current || isDocumentHidden()) return true
                 const output = outputMonitorRef.current
@@ -460,8 +466,11 @@ export default function useAssistantVoiceCall() {
             transmittedTrackRef.current = null
             microphoneSelectorRef.current?.stop()
             microphoneSelectorRef.current = null
+            selectedMicrophoneIdRef.current = ''
             outputMonitorRef.current?.close()
             outputMonitorRef.current = null
+            audioDevicesRef.current?.stop()
+            audioDevicesRef.current = null
             playbackReadyRef.current = false
             microphoneMutedRef.current = false
             const generation = callGenerationRef.current
@@ -691,6 +700,7 @@ export default function useAssistantVoiceCall() {
                 audio.style.display = 'none'
                 document.body.appendChild(audio)
                 audioElementRef.current = audio
+                audioDevicesRef.current = createCallAudioDevices(audio)
 
                 pc.ontrack = event => {
                     if (peerConnectionRef.current !== pc) return
@@ -738,6 +748,7 @@ export default function useAssistantVoiceCall() {
                 const localStream = capture.stream
                 localStreamRef.current = localStream
                 setMicrophoneLabel(capture.deviceLabel)
+                audioDevicesRef.current?.refresh()
                 localStream.getTracks().forEach(track => {
                     const senderTrack = track.clone()
                     senderTrack.enabled = false
@@ -879,12 +890,41 @@ export default function useAssistantVoiceCall() {
         }
     }, [])
 
+    const getAudioDevicesSnapshot = useCallback(() => audioDevicesRef.current?.getSnapshot() || {}, [])
+    const selectMicrophone = useCallback(async deviceId => {
+        const selector = microphoneSelectorRef.current
+        if (!selector || !callReadyRef.current || endingRef.current || isDocumentHidden())
+            throw new Error('Microphone selection unavailable')
+        await selector.selectDevice(deviceId)
+        if (microphoneSelectorRef.current === selector) selectedMicrophoneIdRef.current = deviceId
+    }, [])
+    const selectAudioOutput = useCallback(deviceId => audioDevicesRef.current?.selectOutput(deviceId), [])
+    const getOutputSnapshot = useCallback(() => {
+        const audio = audioElementRef.current
+        const monitor = outputMonitorRef.current
+        monitor?.sample()
+        const available = !!monitor && monitor.isRunning() && !!audio?.srcObject
+        const muted =
+            !playbackReadyRef.current || audio?.paused || audio?.muted || audio?.volume === 0 || endingRef.current
+        const devices = audioDevicesRef.current?.getSnapshot()
+        return {
+            available,
+            muted: !!muted,
+            level: available && !muted ? monitor.getLevel() : 0,
+            label: devices?.outputDevices.find(d => d.deviceId === devices.outputDeviceId)?.label || '',
+        }
+    }, [])
+
     return {
         status,
         error,
         microphoneLabel,
         microphoneMuted,
         getMicrophoneSnapshot,
+        getAudioDevicesSnapshot,
+        selectAudioOutput,
+        selectMicrophone,
+        getOutputSnapshot,
         needsAudioPlayback,
         voiceSeconds,
         callSummary,

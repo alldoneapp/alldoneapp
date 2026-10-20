@@ -2978,5 +2978,19 @@
     "The browser used by %{assistantName} will appear here when browsing.": "Der Browser von %{assistantName} erscheint hier, sobald er verwendet wird.",
     "Assistant views": "Assistentenansichten",
     "Description saved": "Gespeichert",
-    "Description autosave failed": "Speichern fehlgeschlagen. Dein Entwurf bleibt in dieser Sitzung erhalten. Bitte erneut versuchen."
+    "Description autosave failed": "Speichern fehlgeschlagen. Dein Entwurf bleibt in dieser Sitzung erhalten. Bitte erneut versuchen.",
+    "Call audio controls": "Audioeinstellungen für den Anruf",
+    "Audio input": "Audioeingang",
+    "Audio output": "Audioausgang",
+    "Automatic microphone": "Automatische Mikrofonwahl",
+    "System default audio output": "Systemstandard für Audioausgabe",
+    "Choose another audio output…": "Anderen Audioausgang wählen…",
+    "System audio device": "Audiogerät des Systems",
+    "Audio output level": "Audioausgangspegel",
+    "Audio level unavailable": "Audiopegel nicht verfügbar",
+    "Choose audio devices in your browser or system settings": "Audiogeräte in den Browser- oder Systemeinstellungen wählen",
+    "Could not change microphone": "Mikrofon konnte nicht gewechselt werden",
+    "Could not change audio output": "Audioausgang konnte nicht gewechselt werden",
+    "Audio device list unavailable": "Liste der Audiogeräte nicht verfügbar",
+    "Audio output disconnected. Using system default.": "Audioausgang getrennt. Der Systemstandard wird verwendet."
 }

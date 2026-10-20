@@ -36,7 +36,7 @@ jest.mock('./ModalShell/BottomSheet', () => () => null)
 const { runHttpsCallableFunction } = require('../../utils/backends/firestore')
 const { createBotQuickTopic } = require('../../utils/assistantHelper')
 const AssistantVoiceCallButton = require('./AssistantVoiceCallButton').default
-const { AssistantVoiceCallProvider } = require('./AssistantVoiceCallProvider')
+const { AssistantVoiceCallProvider, useVoiceCall } = require('./AssistantVoiceCallProvider')
 const AppPopover = require('./ModalShell/AppPopover').default
 
 const MIC_HEALTH_POLL_MS = 4000
@@ -157,12 +157,18 @@ const installShell = () => {
 // its `visibilitychange` listener and its peer connection, and would react to the
 // NEXT test's visibility events with the next test's getUserMedia mock.
 let trees = []
+let currentCall
+const CallProbe = () => {
+    currentCall = useVoiceCall()
+    return null
+}
 
 const render = (props = {}) => {
     let tree
     act(() => {
         tree = renderer.create(
             <AssistantVoiceCallProvider userId="user-1">
+                <CallProbe />
                 <AssistantVoiceCallButton
                     assistant={{ uid: 'anna', displayName: 'Anna' }}
                     projectId="project-1"
@@ -1142,6 +1148,82 @@ test('selects and meters a working microphone during connection setup while the 
             'microphone_sent',
         ])
     )
+})
+
+test('routes explicit input choices through the WebRTC sender and keeps them selected across microphone recovery', async () => {
+    const micCapture = require('../../hooks/rambleMicCapture')
+    const builtin = makeTrack(),
+        usb = makeTrack(),
+        recovered = makeTrack()
+    builtin.getSettings = () => ({ deviceId: 'builtin', groupId: 'builtin' })
+    usb.getSettings = recovered.getSettings = () => ({ deviceId: 'usb', groupId: 'usb' })
+    usb.label = recovered.label = 'USB microphone'
+    const inputs = { builtin: makeStream(builtin), usb: makeStream(usb) }
+    jest.spyOn(micCapture, 'createInputLevelMonitor').mockImplementation(() => ({
+        ready: Promise.resolve(),
+        sample: jest.fn(),
+        isRunning: () => true,
+        getLevel: () => 0.1,
+        getPeak: () => 0.1,
+        close: jest.fn(),
+    }))
+    navigator.mediaDevices.enumerateDevices = jest.fn(async () => [
+        { kind: 'audioinput', deviceId: 'builtin', groupId: 'builtin' },
+        { kind: 'audioinput', deviceId: 'usb', groupId: 'usb' },
+    ])
+    getUserMedia.mockImplementation(async ({ audio }) => inputs[audio.deviceId?.exact || 'builtin'])
+    const tree = render()
+    let starting
+    await act(async () => {
+        starting = tree.root.findByType('Button').props.onPress()
+    })
+    await advance(1500)
+    await act(async () => starting)
+    const pc = FakePeerConnection.instances[0]
+    await act(async () => currentCall.selectMicrophone('usb'))
+    expect(pc.senders[0].track.label).toBe('USB microphone')
+    expect(currentCall.getMicrophoneSnapshot()).toMatchObject({ selectedDeviceId: 'usb', sending: true })
+    await act(async () => currentCall.toggleMicrophoneMuted())
+    expect(pc.senders[0].track.enabled).toBe(false)
+    getUserMedia.mockResolvedValue(makeStream(recovered))
+    usb.stop()
+    await act(async () => usb.onended())
+    expect(getUserMedia).toHaveBeenLastCalledWith(
+        expect.objectContaining({ audio: expect.objectContaining({ deviceId: { exact: 'usb' } }) })
+    )
+    expect(currentCall.getMicrophoneSnapshot()).toMatchObject({ selectedDeviceId: 'usb', muted: true })
+    expect(pc.senders[0].track.enabled).toBe(false)
+})
+
+test('meters the remote output independently from input and clears it for blocked or paused playback', async () => {
+    const micCapture = require('../../hooks/rambleMicCapture')
+    const remote = makeStream(makeTrack())
+    let outputLevel = 0.36
+    const outputMonitor = {
+        ready: Promise.resolve(),
+        sample: jest.fn(),
+        isRunning: () => true,
+        getLevel: () => outputLevel,
+        getPeak: () => outputLevel,
+        close: jest.fn(),
+    }
+    jest.spyOn(micCapture, 'createInputLevelMonitor').mockImplementation(stream =>
+        stream === remote ? outputMonitor : null
+    )
+    const tree = render()
+    const pc = await startCall(tree)
+    const audio = document.querySelector('audio')
+    Object.defineProperty(audio, 'paused', { configurable: true, value: false })
+    await act(async () => pc.ontrack({ streams: [remote] }))
+    expect(currentCall.getOutputSnapshot()).toMatchObject({ available: true, level: 0.36, muted: false })
+    outputLevel = 0
+    expect(currentCall.getOutputSnapshot().level).toBe(0)
+    outputLevel = 0.8
+    Object.defineProperty(audio, 'paused', { configurable: true, value: true })
+    expect(currentCall.getOutputSnapshot()).toMatchObject({ level: 0, muted: true })
+    act(() => tree.unmount())
+    expect(outputMonitor.close).toHaveBeenCalledTimes(1)
+    expect(currentCall.getOutputSnapshot().available).toBe(false)
 })
 
 test('cancelling during microphone warmup cannot unmute or greet when warmup finishes', async () => {
