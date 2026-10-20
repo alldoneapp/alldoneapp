@@ -547,7 +547,6 @@ const runWorkflowAiStep = async (runId, run) => {
         }
 
         let failureReason = null
-        let delegatedToVm = false
 
         if (!isAiWorkflowStep(step)) {
             // The step was edited or deleted while the run was queued — nothing to run, just move on.
@@ -608,68 +607,11 @@ const runWorkflowAiStep = async (runId, run) => {
                             // spend the Gold. Send every schema instead of deferring them behind
                             // hosted tool search.
                             disableToolSearch: true,
-                            onVmJobStarted: async job => {
-                                // A tool can explicitly target another task/project. Its work
-                                // must not complete this task's workflow step.
-                                if (
-                                    job.projectId !== projectId ||
-                                    job.objectType !== 'tasks' ||
-                                    job.objectId !== taskId
-                                ) {
-                                    return
-                                }
-                                const now = Date.now()
-                                const parked = await admin.firestore().runTransaction(async transaction => {
-                                    const [runDoc, taskDoc] = await Promise.all([
-                                        transaction.get(runRef),
-                                        transaction.get(taskRef),
-                                    ])
-                                    if (
-                                        !runDoc.exists ||
-                                        RUN_TERMINAL_STATUSES.includes(runDoc.data().status) ||
-                                        !taskDoc.exists ||
-                                        getCurrentStepId(taskDoc.data()) !== stepId
-                                    ) {
-                                        return false
-                                    }
-                                    const ids = runDoc.data().awaitingCorrelationIds || []
-                                    transaction.set(
-                                        runRef,
-                                        buildAwaitingExecutionFields({
-                                            vmCorrelationIds: [...new Set([...ids, job.correlationId])],
-                                            now,
-                                        }),
-                                        { merge: true }
-                                    )
-                                    transaction.set(
-                                        taskRef,
-                                        {
-                                            workflowAiStatus: {
-                                                runId,
-                                                stepId,
-                                                status: RUN_STATUS_AWAITING_VM,
-                                                failureReason: null,
-                                                updatedAt: now,
-                                            },
-                                        },
-                                        { merge: true }
-                                    )
-                                    return true
-                                })
-                                if (!parked) return
-                                delegatedToVm = true
-                                // Close the ordering window if a very fast VM settled before
-                                // the handoff was persisted. The poller is the crash backstop.
-                                await resolveAwaitingVmRuns({ projectId, taskId })
-                            },
                         }
                     )
                 }
             } catch (error) {
                 console.error('[workflowAiStep] Assistant run failed', { runId, error: error.message })
-                // Once delegated, the VM's outcome owns settlement. A late stream failure
-                // must not turn successful VM work into a failed workflow step.
-                if (delegatedToVm) return
                 failureReason = error.message || 'run_failed'
                 try {
                     await postAssistantComment(
@@ -686,8 +628,6 @@ const runWorkflowAiStep = async (runId, run) => {
                 }
             }
         }
-
-        if (delegatedToVm) return
 
         // The assistant answering is not the same as the step's work being finished. execute_task_in_vm
         // returns as soon as the job is enqueued, so a step that dispatched one would otherwise hand the
