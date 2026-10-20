@@ -8,7 +8,7 @@ import React, {
     useState,
 } from 'react'
 import useGetMessages from '../../hooks/Chats/useGetMessages'
-import MessageItemBody from '../ChatsView/ChatDV/EditorView/MessageItemBody'
+import AnnaMessageBody from './AnnaMessageBody'
 import { getAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { getTimestampInMilliseconds } from '../ChatsView/Utils/ChatHelper'
 import {
@@ -37,6 +37,7 @@ import AnnaTimestamp from './AnnaTimestamp'
 import { annaMessageCache } from './annaMessageCache'
 import AnnaActivityNotice from './AnnaActivityNotice'
 import AssistantProgress from '../ChatsView/ChatDV/EditorView/AssistantProgress'
+import useAnnaChatScroll from './useAnnaChatScroll'
 
 const MESSAGES_PER_PAGE = 50
 
@@ -107,7 +108,9 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     })
     const [newMessages, setNewMessages] = useState(false)
     const scroll = useRef(null)
-    const follow = useRef(true)
+    const content = useRef(null)
+    const chatScroll = useAnnaChatScroll(scroll, content, visible)
+    const { follow, update: updateScroll, stop: stopFollowing } = chatScroll
     const scrollAnchor = useRef(null)
     const composer = useRef(null)
     const [dictationPhase, setDictationPhase] = useState(RAMBLE_PHASE_IDLE)
@@ -129,8 +132,8 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         ? translate('Voice call in progress')
         : translate('Talk or type to %{assistantName}…', { assistantName })
     const keepLatestVisible = useCallback(() => {
-        if (follow.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight
-    }, [])
+        updateScroll()
+    }, [updateScroll])
     const seconds = Math.floor(call.voiceSeconds || 0)
     const voiceLabel = translate(
         voiceActive
@@ -202,11 +205,11 @@ const AnnaConversation = forwardRef(function AnnaConversation(
             element.scrollTop += anchor.element.getBoundingClientRect().top - anchor.top
             return
         }
-        if (follow.current) element.scrollTop = element.scrollHeight
+        if (follow.current) updateScroll()
         else setNewMessages(true)
-    }, [])
+    }, [updateScroll])
     const preservePosition = () => {
-        follow.current = false
+        stopFollowing()
         const top = scroll.current?.getBoundingClientRect().top || 0
         const element = [...(scroll.current?.querySelectorAll('[data-anna-message-id]') || [])].find(
             node => node.getBoundingClientRect().bottom > top
@@ -283,12 +286,23 @@ const AnnaConversation = forwardRef(function AnnaConversation(
             displayedThreads.push(thread)
     })
     const latest = useCallback(() => {
-        follow.current = true
         scrollAnchor.current = null
-        if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight
+        chatScroll.latest()
         setNewMessages(false)
-    }, [])
-    useImperativeHandle(ref, () => ({ scrollToLatest: latest, focusInput: () => composer.current?.focus() }), [latest])
+    }, [chatScroll.latest])
+    const activate = useCallback(() => {
+        scrollAnchor.current = null
+        chatScroll.activate()
+        setNewMessages(false)
+    }, [chatScroll.activate])
+    // Every activation returns to the end, including restored URLs and async
+    // mounting. Streaming and the Latest messages button retain smooth motion.
+    useLayoutEffect(() => {
+        if (active && visible) activate()
+    }, [active, visible, activate])
+    useImperativeHandle(ref, () => ({ scrollToLatest: activate, focusInput: () => composer.current?.focus() }), [
+        activate,
+    ])
     return (
         <>
             <div
@@ -296,58 +310,65 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                 ref={scroll}
                 role="log"
                 aria-label={translate('Conversation with %{assistantName}', { assistantName })}
-                onWheel={() => {
+                tabIndex={0}
+                onWheel={event => {
                     scrollAnchor.current = null
+                    chatScroll.onWheel(event)
                 }}
-                onTouchStart={() => {
+                onTouchStart={event => {
                     scrollAnchor.current = null
+                    chatScroll.onTouchStart(event)
                 }}
+                onTouchMove={chatScroll.onTouchMove}
+                onKeyDown={chatScroll.onKeyDown}
                 onScroll={() => {
-                    const el = scroll.current
-                    follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90
-                    if (follow.current) setNewMessages(false)
+                    if (chatScroll.onScroll()) setNewMessages(false)
                 }}
             >
-                {hasEarlier && (
-                    <button className="anna-text-button" disabled={loadingEarlier || offline} onClick={earlier}>
-                        {translate(loadingEarlier ? 'Loading earlier days…' : 'Earlier days')}
-                    </button>
-                )}
-                {displayedThreads.map(thread => (
-                    <AnnaThreadMessages
-                        key={`${thread.projectId}/${thread.chatId || thread.id}`}
-                        thread={thread}
-                        conversation={conversation}
-                        assistant={assistant}
-                        user={user}
-                        scroll={scroll}
-                        current={
-                            thread.projectId === conversation.projectId &&
-                            (thread.chatId || thread.id) === conversation.id
-                        }
-                        localMessages={localMessages.filter(
-                            message =>
-                                message.thread?.projectId === thread.projectId &&
-                                message.thread?.id === (thread.chatId || thread.id)
-                        )}
-                        onRetry={retryMessage}
-                        onAcknowledge={acknowledge}
-                        onWorkStateChange={onWorkStateChange}
-                        onChange={messagesChanged}
-                        onLoadEarlier={preservePosition}
-                        visible={visible}
-                        offline={offline}
-                        contextNotices={contextNotices.filter(
-                            notice =>
-                                notice.projectId === thread.projectId && notice.chatId === (thread.chatId || thread.id)
-                        )}
-                        onSuggest={text => {
-                            changeDraft(text)
-                            composer.current?.setContent(text)
-                            onExpand()
-                        }}
-                    />
-                ))}
+                <div className="anna-message-timeline" ref={content}>
+                    {hasEarlier && (
+                        <button className="anna-text-button" disabled={loadingEarlier || offline} onClick={earlier}>
+                            {translate(loadingEarlier ? 'Loading earlier days…' : 'Earlier days')}
+                        </button>
+                    )}
+                    {displayedThreads.map(thread => (
+                        <AnnaThreadMessages
+                            key={`${thread.projectId}/${thread.chatId || thread.id}`}
+                            thread={thread}
+                            conversation={conversation}
+                            assistant={assistant}
+                            user={user}
+                            scroll={scroll}
+                            current={
+                                thread.projectId === conversation.projectId &&
+                                (thread.chatId || thread.id) === conversation.id
+                            }
+                            localMessages={localMessages.filter(
+                                message =>
+                                    message.thread?.projectId === thread.projectId &&
+                                    message.thread?.id === (thread.chatId || thread.id)
+                            )}
+                            onRetry={retryMessage}
+                            onAcknowledge={acknowledge}
+                            onWorkStateChange={onWorkStateChange}
+                            onChange={messagesChanged}
+                            onLoadEarlier={preservePosition}
+                            visible={visible}
+                            offline={offline}
+                            reducedMotion={chatScroll.reducedMotion}
+                            contextNotices={contextNotices.filter(
+                                notice =>
+                                    notice.projectId === thread.projectId &&
+                                    notice.chatId === (thread.chatId || thread.id)
+                            )}
+                            onSuggest={text => {
+                                changeDraft(text)
+                                composer.current?.setContent(text)
+                                onExpand()
+                            }}
+                        />
+                    ))}
+                </div>
             </div>
             {newMessages && (
                 <button className="anna-latest" onClick={latest}>
@@ -515,6 +536,7 @@ function AnnaThreadMessages({
     onRetry,
     onAcknowledge,
     onWorkStateChange,
+    reducedMotion,
 }) {
     const assistantName = assistant?.displayName?.trim() || translate('Assistant')
     const [limit, setLimit] = useState(MESSAGES_PER_PAGE)
@@ -647,7 +669,8 @@ function AnnaThreadMessages({
                         className={`anna-message ${own ? 'anna-message-user' : ''}`}
                     >
                         <AnnaMessageAuthor message={message} creator={creator} own={own} />
-                        <MessageItemBody
+                        <AnnaMessageBody
+                            reducedMotion={reducedMotion}
                             messageId={message.id}
                             projectId={thread.projectId}
                             commentText={message.commentText || ''}
