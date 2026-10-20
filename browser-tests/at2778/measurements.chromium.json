@@ -1,0 +1,135 @@
+{
+    "recordedAt": "2026-10-20",
+    "baselineCommit": "ac1f17f11a87b6c2cb6e9dd1dc18ca5063c03b5b",
+    "environment": "Linux Chromium, PulseAudio null sink, 48000 Hz mono float32 OS output capture; signaling and backend controlled, browser fake microphone",
+    "unitTests": {
+        "suites": 13,
+        "passed": 389
+    },
+    "baseline": {
+        "browser": "156.0.8078.4",
+        "baseline": true,
+        "osSinkCaptured": true,
+        "results": [
+            {
+                "label": "thread lookup: first ring",
+                "samples": 30240,
+                "rms": 0,
+                "peak": 0,
+                "frequencyHz": 0
+            }
+        ]
+    },
+    "fixed": {
+        "browser": "156.0.8078.4",
+        "baseline": false,
+        "osSinkCaptured": true,
+        "results": [
+            {
+                "label": "thread lookup: first ring",
+                "samples": 31208,
+                "rms": 0.05657,
+                "peak": 0.08002,
+                "frequencyHz": 426
+            },
+            {
+                "label": "ring gap",
+                "samples": 33437,
+                "rms": 0,
+                "peak": 0,
+                "frequencyHz": 0
+            },
+            {
+                "label": "thread lookup: repeated ring",
+                "samples": 31207,
+                "rms": 0.05095,
+                "peak": 0.08002,
+                "frequencyHz": 349
+            },
+            {
+                "label": "conversation ready: no ringback",
+                "samples": 28951,
+                "rms": 0.00071,
+                "peak": 0.00101,
+                "frequencyHz": 441
+            },
+            {
+                "label": "cancel: audible startup",
+                "samples": 23923,
+                "rms": 0.0566,
+                "peak": 0.08002,
+                "frequencyHz": 425
+            },
+            {
+                "label": "cancel: cleanup silence",
+                "samples": 23951,
+                "rms": 0,
+                "peak": 0,
+                "frequencyHz": 0
+            },
+            {
+                "label": "cancel: immediate retry",
+                "samples": 23746,
+                "rms": 0.05656,
+                "peak": 0.08002,
+                "frequencyHz": 427
+            },
+            {
+                "label": "lookup-error: audible startup",
+                "samples": 23895,
+                "rms": 0.05658,
+                "peak": 0.08002,
+                "frequencyHz": 426
+            },
+            {
+                "label": "lookup-error: cleanup silence",
+                "samples": 23951,
+                "rms": 0,
+                "peak": 0,
+                "frequencyHz": 0
+            },
+            {
+                "label": "lookup-error: immediate retry",
+                "samples": 23405,
+                "rms": 0.0566,
+                "peak": 0.08002,
+                "frequencyHz": 425
+            },
+            {
+                "label": "server-error: audible startup",
+                "samples": 25030,
+                "rms": 0.0566,
+                "peak": 0.08002,
+                "frequencyHz": 426
+            },
+            {
+                "label": "server-error: cleanup silence",
+                "samples": 23951,
+                "rms": 0,
+                "peak": 0,
+                "frequencyHz": 0
+            },
+            {
+                "label": "server-error: immediate retry",
+                "samples": 23947,
+                "rms": 0.05659,
+                "peak": 0.08002,
+                "frequencyHz": 425
+            },
+            {
+                "label": "native autoplay denial: silence",
+                "samples": 19495,
+                "rms": 0,
+                "peak": 0,
+                "frequencyHz": 0
+            },
+            {
+                "label": "native autoplay denial: recovered by gesture",
+                "samples": 24100,
+                "rms": 0.0566,
+                "peak": 0.08002,
+                "frequencyHz": 424
+            }
+        ]
+    }
+}

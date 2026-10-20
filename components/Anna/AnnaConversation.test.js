@@ -477,8 +477,8 @@ it('inserts dictation at the selection and leaves it in the composer for review'
 })
 
 it('preserves text typed while transcription runs and prevents competing calls or partial sends', async () => {
-    const startCall = jest.fn()
-    render({ call: { status: 'idle', startCall } })
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
+    render({ call: { status: 'idle', startCall, endCall: jest.fn() } })
     type('First draft')
     const pendingResult = mockDictation.onTextReady
     act(() => mockDictation.onPhaseChange('recording'))
@@ -812,14 +812,13 @@ it('prevents concurrent text execution during a voice call', async () => {
 })
 
 it('starts voice in the current conversation without sending or clearing the draft', async () => {
-    const startCall = jest.fn()
-    render({ call: { status: 'idle', startCall } })
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
+    render({ call: { status: 'idle', startCall, endCall: jest.fn() } })
     await click('Find a note')
     await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
     expect(startCall).toHaveBeenCalledWith({
-        assistant: { uid: 'a1', displayName: 'Existing assistant' },
-        projectId: 'p1',
-        chatId: 'anna_u1',
+        assistant: { displayName: 'Existing assistant' },
+        resolveTarget: expect.any(Function),
         skipNavigationOnThreadCreate: true,
     })
     expect(container.querySelector('textarea').value).toBe('Find a note')
@@ -895,35 +894,33 @@ it('resumes a paused request after hand-back without replacing an unsent draft',
 
 it('resolves the authoritative thread before starting voice and keeps the draft intact', async () => {
     let finish
-    const startCall = jest.fn()
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
     const resolveConversation = jest.fn(
         () =>
             new Promise(resolve => {
                 finish = resolve
             })
     )
-    render({ call: { status: 'idle', startCall }, resolveConversation })
+    render({ call: { status: 'idle', startCall, endCall: jest.fn() }, resolveConversation })
     await click('Find a note')
     await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
-    expect(startCall).not.toHaveBeenCalled()
+    expect(startCall).toHaveBeenCalledTimes(1)
     expect(container.querySelector('[aria-label="Cancel call"]')).not.toBeNull()
     await act(async () => finish({ projectId: 'p2', id: 'today', assistantId: 'a2' }))
-    expect(startCall).toHaveBeenCalledWith(
-        expect.objectContaining({
-            projectId: 'p2',
-            chatId: 'today',
-            assistant: expect.objectContaining({ uid: 'a2' }),
-        })
-    )
+    await expect(startCall.mock.results[0].value).resolves.toEqual({
+        projectId: 'p2',
+        chatId: 'today',
+        assistant: { displayName: 'Existing assistant', uid: 'a2' },
+    })
     expect(container.querySelector('textarea').value).toBe('Find a note')
     expect(createObjectMessage).not.toHaveBeenCalled()
 })
 
 it('cancels voice while waiting for conversation validation without starting a late call', async () => {
     let finish
-    const startCall = jest.fn()
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
     render({
-        call: { status: 'idle', startCall },
+        call: { status: 'idle', startCall, endCall: jest.fn() },
         resolveConversation: () =>
             new Promise(resolve => {
                 finish = resolve
@@ -937,14 +934,15 @@ it('cancels voice while waiting for conversation validation without starting a l
     await click('Cancel call')
     expect(container.querySelector('[data-testid="voice-call-connecting"]')).toBeNull()
     await act(async () => finish({ projectId: 'p1', id: 'today', assistantId: 'a1' }))
-    expect(startCall).not.toHaveBeenCalled()
+    expect(startCall).toHaveBeenCalledTimes(1)
+    await expect(startCall.mock.results[0].value).resolves.toBeNull()
     expect(container.querySelector('textarea').disabled).toBe(false)
 })
 
 it('keeps the draft and reports a failed voice target lookup', async () => {
-    const startCall = jest.fn()
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
     render({
-        call: { status: 'idle', startCall },
+        call: { status: 'idle', startCall, endCall: jest.fn() },
         resolveConversation: async () => {
             throw new Error('Offline')
         },
@@ -953,7 +951,7 @@ it('keeps the draft and reports a failed voice target lookup', async () => {
     await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
     expect(container.querySelector('[role="alert"]').textContent).toBe('Offline')
     expect(container.querySelector('textarea').value).toBe('Find a note')
-    expect(startCall).not.toHaveBeenCalled()
+    expect(startCall).toHaveBeenCalledTimes(1)
 })
 
 it('shows text and frees the focused composer before conversation resolution completes', async () => {
@@ -1156,12 +1154,12 @@ it('clears shell busy state on unmount and does not dispatch after delayed prepa
 it('automatically releases the workspace before starting a voice request', async () => {
     const handback = deferred()
     const onBeforeSend = jest.fn(() => handback.promise)
-    const startCall = jest.fn()
-    render({ onBeforeSend, call: { status: 'idle', startCall } })
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
+    render({ onBeforeSend, call: { status: 'idle', startCall, endCall: jest.fn() } })
     type('Preserve my text draft')
     await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
     expect(onBeforeSend).toHaveBeenCalledTimes(1)
-    expect(startCall).not.toHaveBeenCalled()
+    expect(startCall).toHaveBeenCalledTimes(1)
     await act(async () => handback.resolve())
     expect(startCall).toHaveBeenCalledTimes(1)
     expect(container.querySelector('textarea').value).toBe('Preserve my text draft')
@@ -1170,24 +1168,25 @@ it('automatically releases the workspace before starting a voice request', async
 
 it('keeps voice from starting if automatic handback fails or preparation is cancelled', async () => {
     const handback = deferred()
-    const startCall = jest.fn()
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
     const onBeforeSend = jest
         .fn()
         .mockRejectedValueOnce(new Error('Workspace unavailable'))
         .mockReturnValueOnce(handback.promise)
-    render({ onBeforeSend, call: { status: 'idle', startCall } })
+    render({ onBeforeSend, call: { status: 'idle', startCall, endCall: jest.fn() } })
     await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
-    expect(startCall).not.toHaveBeenCalled()
+    expect(startCall).toHaveBeenCalledTimes(1)
     expect(container.querySelector('[role="alert"]').textContent).toContain('Workspace unavailable')
     await act(async () => container.querySelector('[aria-label="Talk with Existing assistant"]').click())
     await act(async () => container.querySelector('[aria-label="Cancel call"]').click())
     await act(async () => handback.resolve())
-    expect(startCall).not.toHaveBeenCalled()
+    expect(startCall).toHaveBeenCalledTimes(2)
+    await expect(startCall.mock.results[1].value).resolves.toBeNull()
 })
 
 it('keeps an offline draft across remounts and sends it only after reconnecting', async () => {
-    const startCall = jest.fn()
-    render({ offline: true, call: { status: 'idle', startCall } })
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
+    render({ offline: true, call: { status: 'idle', startCall, endCall: jest.fn() } })
     type('Remember this when I reconnect')
     expect(container.querySelector('[aria-label="Send message"]').disabled).toBe(true)
     expect(container.querySelector('[aria-label="Talk with Existing assistant"]').disabled).toBe(true)
@@ -1517,8 +1516,8 @@ it('replaces the editor with audio controls during a call and restores the same 
 it('a rapid second phone click cancels preparation without starting duplicate calls', async () => {
     const pending = deferred()
     const resolveConversation = jest.fn(() => pending.promise)
-    const startCall = jest.fn()
-    render({ resolveConversation, call: { status: 'idle', startCall } })
+    const startCall = jest.fn(async ({ resolveTarget }) => resolveTarget())
+    render({ resolveConversation, call: { status: 'idle', startCall, endCall: jest.fn() } })
     const phone = container.querySelector('[aria-label="Talk with Existing assistant"]')
     act(() => {
         phone.click()
@@ -1526,6 +1525,18 @@ it('a rapid second phone click cancels preparation without starting duplicate ca
     })
     await act(async () => pending.resolve({ id: 'today', projectId: 'p1', assistantId: 'a1' }))
     expect(resolveConversation).toHaveBeenCalledTimes(1)
-    expect(startCall).not.toHaveBeenCalled()
+    expect(startCall).toHaveBeenCalledTimes(1)
+    await expect(startCall.mock.results[0].value).resolves.toBeNull()
     expect(container.querySelector('[data-testid="voice-call-connecting"]')).toBeNull()
+})
+
+it('exposes audio recovery outside the hidden composer while connecting', async () => {
+    const playCallAudio = jest.fn()
+    render({ call: { status: 'connecting', needsAudioPlayback: true, playCallAudio } })
+    const enable = container.querySelector('[aria-label="Enable call audio"]')
+    expect(container.querySelectorAll('[aria-label="Enable call audio"]')).toHaveLength(1)
+    expect(enable.closest('.anna-composer-connecting')).not.toBeNull()
+    expect(enable.closest('[aria-hidden="true"]')).toBeNull()
+    await act(async () => enable.click())
+    expect(playCallAudio).toHaveBeenCalledTimes(1)
 })
