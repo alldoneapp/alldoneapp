@@ -8,6 +8,10 @@ import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
+jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({
+    ...jest.requireActual('../UIComponents/Ghosts/ghostAnimation'),
+    useReducedMotion: () => true,
+}))
 jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn().mockResolvedValue(null) }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 let mockActivityState
@@ -250,12 +254,14 @@ it('scrolls an async-mounted conversation even when the user has focused the wor
     document.body.appendChild(workspace)
     workspace.focus()
     const height = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200)
+    const viewport = jest.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
     try {
         render()
         expect(container.querySelector('[role="log"]').scrollTop).toBe(1200)
         expect(document.activeElement).toBe(workspace)
     } finally {
         height.mockRestore()
+        viewport.mockRestore()
         workspace.remove()
     }
 })
