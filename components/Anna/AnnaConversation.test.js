@@ -223,6 +223,43 @@ it('returns to the latest messages on request, preserves the draft and resumes f
     expect(log.scrollTop).toBe(1500)
 })
 
+it.each(['mode', 'pane'])('returns to the bottom on every %s activation after reading older messages', activation => {
+    const ref = React.createRef()
+    render({ ref })
+    type('Keep my draft')
+    const log = container.querySelector('[role="log"]')
+    Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1200 })
+    Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
+    for (let cycle = 0; cycle < 3; cycle++) {
+        log.scrollTop = 100
+        act(() => log.dispatchEvent(new Event('scroll', { bubbles: true })))
+        render({ ref, active: activation !== 'mode', visible: false })
+        render({ ref, active: true, visible: true })
+        expect(log.scrollTop).toBe(1200)
+        expect(container.querySelector('textarea').value).toBe('Keep my draft')
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1500 })
+        mockMessages = [{ id: `loaded-${cycle}`, creatorId: 'u1', created: 1, commentText: 'Loaded later' }]
+        render({ ref })
+        expect(log.scrollTop).toBe(1500)
+        Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1200 })
+    }
+})
+
+it('scrolls an async-mounted conversation even when the user has focused the workspace', () => {
+    const workspace = document.createElement('input')
+    document.body.appendChild(workspace)
+    workspace.focus()
+    const height = jest.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200)
+    try {
+        render()
+        expect(container.querySelector('[role="log"]').scrollTop).toBe(1200)
+        expect(document.activeElement).toBe(workspace)
+    } finally {
+        height.mockRestore()
+        workspace.remove()
+    }
+})
+
 it('follows viewport resizing after focus without pulling a reader away from older messages', () => {
     const originalObserver = global.ResizeObserver
     const observers = []
@@ -240,6 +277,9 @@ it('follows viewport resizing after focus without pulling a reader away from old
         const log = container.querySelector('[role="log"]')
         const observer = observers.find(item => item.observe.mock.calls.some(([node]) => node === log))
         expect(observer).toBeDefined()
+        // Observe the content box as well: a late image can grow the content
+        // while the fixed-height message viewport remains exactly the same.
+        expect(observer.observe).toHaveBeenCalledWith(log.firstElementChild)
         Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1200 })
         Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
         act(() => observer.callback())
@@ -254,7 +294,7 @@ it('follows viewport resizing after focus without pulling a reader away from old
         render({ ref, visible: true })
         Object.defineProperty(log, 'clientHeight', { configurable: true, value: 300 })
         act(() => observer.callback())
-        expect(log.scrollTop).toBe(100)
+        expect(log.scrollTop).toBe(1200)
         act(() => ref.current.scrollToLatest())
         Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1500 })
         act(() => observer.callback())

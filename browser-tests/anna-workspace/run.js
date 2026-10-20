@@ -923,13 +923,7 @@ async function checkAssistantOpenFocus(page, width) {
         )
         await open()
         const tap = await page.evaluate(() => window.__assistantOpeningTap)
-        if (mobile) assert.deepEqual(tap, { focused: true, latest: true })
-        else
-            assert.equal(
-                await page.locator('.anna-messages').evaluate(log => log.scrollTop),
-                0,
-                'Desktop must retain the reading position'
-            )
+        assert.deepEqual(tap, { focused: true, latest: true })
         assert.equal(await input.evaluate((node, original) => node === original, chatNode), true)
         assert.equal(await readInput(chatNode), draft)
         assert.equal(
@@ -937,6 +931,65 @@ async function checkAssistantOpenFocus(page, width) {
             'Keep my workspace edit',
             `${width}px ${entry} preserves workspace draft`
         )
+        // Late attachment/image layout must follow too, even though no message
+        // id/text changed and the fixed-height viewport stayed the same size.
+        await page.locator('.anna-messages > div').evaluate(content => {
+            const lateImage = document.createElement('div')
+            lateImage.style.height = '600px'
+            content.appendChild(lateImage)
+        })
+        await page.waitForFunction(() => {
+            const log = document.querySelector('.anna-messages')
+            return log.scrollHeight - log.scrollTop - log.clientHeight < 2
+        })
+        await page.locator('.anna-messages').evaluate(log => {
+            log.scrollTop = 0
+            log.dispatchEvent(new Event('scroll'))
+            const lateImage = document.createElement('div')
+            lateImage.style.height = '300px'
+            log.firstElementChild.appendChild(lateImage)
+        })
+        await page.waitForTimeout(100)
+        assert.equal(await page.locator('.anna-messages').evaluate(log => log.scrollTop), 0)
+        // Repeated deactivation/reactivation on the same mounted conversation.
+        for (let cycle = 0; cycle < 2; cycle++) {
+            await page.locator('.anna-messages').evaluate(log => {
+                log.scrollTop = 0
+                log.dispatchEvent(new Event('scroll'))
+            })
+            await closeChat(page)
+            await open()
+            assert.deepEqual(await page.evaluate(() => window.__assistantOpeningTap), { focused: true, latest: true })
+        }
+        // The global mode switch is used by zoom/URL-based navigation, outside
+        // the shared top-bar/sidebar action. It must also discard old positions.
+        await page.locator('.anna-messages').evaluate(log => {
+            log.scrollTop = 0
+            log.dispatchEvent(new Event('scroll'))
+        })
+        await closeChat(page)
+        await page.evaluate(() => window.zoomAnna(true))
+        await page.waitForFunction(() => {
+            const log = document.querySelector('.anna-messages')
+            return log.scrollHeight - log.scrollTop - log.clientHeight < 2
+        })
+        for (const layout of ['chat', '1']) {
+            await page.locator('.anna-messages').evaluate(log => {
+                log.scrollTop = 0
+                log.dispatchEvent(new Event('scroll'))
+            })
+            await closeChat(page)
+            await page.evaluate(next => {
+                const url = new URL(location.href)
+                url.searchParams.set('assistant', next)
+                history.replaceState(null, '', url)
+                window.dispatchEvent(new PopStateEvent('popstate'))
+            }, layout)
+            await page.waitForFunction(() => {
+                const log = document.querySelector('.anna-messages')
+                return log.clientHeight > 0 && log.scrollHeight - log.scrollTop - log.clientHeight < 2
+            })
+        }
         if (mobile) {
             // Simulate the message viewport shrinking as the keyboard opens.
             // This checks layout/following, not a physical software keyboard.
@@ -961,8 +1014,38 @@ async function checkAssistantOpenFocus(page, width) {
             assert.equal(await page.locator('.anna-messages').evaluate(log => log.scrollTop), 0)
         }
     }
+    // Cold load: neither conversation nor composer exists inside the gesture.
+    // Scroll must still complete if focus has moved to the workspace meanwhile.
+    for (const retainFocus of [true, false]) {
+        await page.evaluate(() => localStorage.removeItem('alldone.annaConversation.v1:demo:p1'))
+        await page.goto(
+            `http://127.0.0.1:${server.address().port}/?assistant=0&assistantFocus=1&slowConversation=1&coldConversation=1`
+        )
+        await page.getByTestId('top-bar-assistant-mode').click()
+        await page.getByText('Loading conversation…', { exact: true }).waitFor({ state: 'visible' })
+        if (!retainFocus) {
+            if (mobile) await showWorkspace(page)
+            await page.getByLabel('Workspace draft').focus()
+        }
+        await page.getByLabel('Message Carl Code Mentor').waitFor({ state: 'attached' })
+        if (retainFocus) {
+            await page.waitForFunction(
+                () => document.querySelector('.anna-rich-composer .ql-editor') === document.activeElement
+            )
+        } else {
+            assert.equal(
+                await page.getByLabel('Workspace draft').evaluate(node => node === document.activeElement),
+                true
+            )
+            if (mobile) await showChat(page)
+        }
+        await page.waitForFunction(() => {
+            const log = document.querySelector('.anna-messages')
+            return log.clientHeight > 0 && log.scrollHeight - log.scrollTop - log.clientHeight < 2
+        })
+    }
     console.info(
-        `PASS ${width}px: assistant entry focus, latest messages, retained drafts and desktop reading position`
+        `PASS ${width}px: every assistant entry/reactivation scrolls to bottom; focus, drafts and late layout follow verified`
     )
 }
 
