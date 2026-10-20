@@ -14,6 +14,10 @@ jest.mock('../Assistant/assistantHelper', () => ({
     buildConversationSafeToolResult: (name, result) => result,
 }))
 jest.mock('./assistantLiveGold', () => ({ reconcileLiveUsage: jest.fn(async () => ({ currentGold: 99 })) }))
+jest.mock('../Utils/HelperFunctionsCloud', () => ({
+    ...jest.requireActual('../Utils/HelperFunctionsCloud'),
+    getBaseUrl: jest.fn(() => 'https://mystaging.alldone.app'),
+}))
 jest.mock('./whatsAppCallTranscript', () => ({
     storeCallTranscriptTurn: jest.fn(async () => ({ stored: true, commentId: 'requested-answer' })),
 }))
@@ -125,6 +129,95 @@ test('returns research to the voice model without posting a chat answer', async 
     const instructions = helper.interactWithChatStream.mock.calls[0][0].map(([, text]) => text).join('\n')
     expect(instructions).toContain('not automatically posted in chat')
     expect(instructions).toContain('Only when the caller explicitly requests a written/chat answer')
+    expect(instructions).toContain('Never include URLs or Markdown links in your spoken result')
+    expect(instructions).toContain('even if older task descriptions')
+})
+
+test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
+    'displays a verified new task in the existing chat on %s without posting the backend answer',
+    async channel => {
+        helper.executeToolNatively.mockResolvedValueOnce({
+            success: true,
+            taskId: 'new-task',
+            projectId: 'destination-project',
+            task: { name: 'Prepare launch' },
+        })
+        helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+            const result = await toolExecutor('create_task', { name: 'Prepare launch' })
+            expect(result.chatDisplay).toEqual({ chatPosted: true, commentId: 'requested-answer' })
+            return { finalResponseText: 'The task was created. Research stays in voice.' }
+        })
+        await expect(runLiveAssistant(request({ session: { ...session, channel } }))).resolves.toBe(
+            'The task was created. Research stays in voice.'
+        )
+        expect(storeCallTranscriptTurn).toHaveBeenCalledTimes(1)
+        expect(storeCallTranscriptTurn).toHaveBeenCalledWith({
+            sessionId: 's',
+            turnId: 'created_task:["destination-project","new-task"]',
+            role: 'assistant',
+            text: 'Prepare launch\nhttps://mystaging.alldone.app/projects/destination-project/tasks/new-task',
+            projectId: 'p',
+            chatId: 'c',
+            userId: 'u',
+            assistantId: 'a',
+            source: `${channel}_task`,
+            isCallTranscript: false,
+        })
+        expect(JSON.parse(savedOperations[0].result).chatDisplay.chatPosted).toBe(true)
+    }
+)
+
+test.each([
+    ['create_task', { success: false, error: 'Creation rejected' }],
+    ['create_task', { success: true, taskId: 't' }],
+    ['create_task', { success: true, projectId: 'p' }],
+    ['create_task', { taskId: 't', projectId: 'p' }],
+    ['get_tasks', { success: true, taskId: 't', projectId: 'p' }],
+])('does not invent a created task entry for %s with %j', async (name, result) => {
+    helper.executeToolNatively.mockResolvedValueOnce(result)
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        await toolExecutor(name, {})
+        return { finalResponseText: 'Verified result' }
+    })
+    await runLiveAssistant(request())
+    expect(storeCallTranscriptTurn).not.toHaveBeenCalled()
+})
+
+test('keeps successful creation distinct from a failed chat display and saves both outcomes', async () => {
+    helper.executeToolNatively.mockResolvedValueOnce({ success: true, taskId: 't', projectId: 'p' })
+    storeCallTranscriptTurn.mockRejectedValueOnce(new Error('Chat permission denied'))
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        const result = await toolExecutor('create_task', { name: 'Prepare launch' })
+        expect(result).toMatchObject({
+            success: true,
+            taskId: 't',
+            chatDisplay: {
+                chatPosted: false,
+                outcome: { status: 'failed', cause: 'Chat permission denied' },
+            },
+        })
+        return { finalResponseText: 'Created the task, but could not display its link.' }
+    })
+    await runLiveAssistant(request())
+    expect(helper.executeToolNatively).toHaveBeenCalledTimes(1)
+    expect(savedOperations[0]).toMatchObject({ status: 'completed', outcome: { status: 'result_received' } })
+    expect(JSON.parse(savedOperations[0].result).chatDisplay.chatPosted).toBe(false)
+})
+
+test('displays every completed task even when new speech supersedes the request during creation', async () => {
+    const assertActive = jest.fn(async () => {})
+    helper.executeToolNatively.mockImplementationOnce(async () => {
+        assertActive.mockRejectedValue(new Error('voice_request_superseded'))
+        return { success: true, taskId: 't', projectId: 'p', task: { name: 'Saved task' } }
+    })
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        await toolExecutor('create_task', { name: 'Saved task' })
+        return { finalResponseText: 'Created' }
+    })
+    await runLiveAssistant(request({ assertActive }))
+    expect(storeCallTranscriptTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ text: expect.stringContaining('Saved task') })
+    )
 })
 
 test.each(['browser_call', 'phone_call', 'whatsapp_call'])(

@@ -19,6 +19,18 @@ test('explains voice-only background answers and requires confirmation before cl
     expect(instructions).not.toContain('say links are in the chat')
 })
 
+test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
+    'keeps task links visual in the existing chat and overrides older speech guidance on %s',
+    channel => {
+        const { instructions } = buildLiveSession({ assistant: { displayName: 'Anna' }, channel })
+        expect(instructions).toContain('Never read URLs aloud, including newly created task links and similar links')
+        expect(instructions).toContain('Links are visual only, even if older task descriptions')
+        expect(instructions).toContain('displayed in the existing chat, not a separate call window')
+        expect(instructions).toContain('this does not mean a research answer was posted')
+        expect(instructions).not.toContain('URLs are silent by default')
+    }
+)
+
 test('preserves original whitespace, overlapping speakers and late fragments without duplicate replay', () => {
     const t = createLiveTranscript()
     const input = (id, delta, start, end) => ({

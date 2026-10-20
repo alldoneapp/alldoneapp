@@ -163,7 +163,7 @@ describe('assistant browser calls', () => {
         expect(initialSession.delegation).toEqual({ type: 'client' })
         expect(initialSession.model).toBe('gpt-live-1')
         expect(initialSession.store).toBe(false)
-        expect(initialSession.instructions).toContain('All task IDs and URLs are silent by default')
+        expect(initialSession.instructions).toContain('Never read URLs aloud, including newly created task links')
         expect(initialSession.instructions).toContain('Start the call in English')
         expect(updateCallSession).toHaveBeenCalledWith(
             expect.stringMatching(/^browser-/),
@@ -219,7 +219,7 @@ describe('assistant browser calls', () => {
             expect.objectContaining({
                 delegation: { type: 'client' },
                 model: 'gpt-live-1',
-                instructions: expect.stringContaining('All task IDs and URLs are silent by default'),
+                instructions: expect.stringContaining('Never read URLs aloud, including newly created task links'),
                 audio: { output: { voice: 'marin' } },
             })
         )

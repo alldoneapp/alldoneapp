@@ -474,8 +474,9 @@ async function runAssistantLiveCall(sessionId) {
                     runProgress.stop()
                     await runRef.update({ status: 'completed', result, completedAt: Date.now() })
                     // Keep the full result in liveDelegations for follow-ups, including
-                    // interrupted requests. Only spoken turns and explicitly requested
-                    // chat output belong in the visible conversation.
+                    // interrupted requests. The backend separately displays created
+                    // tasks and explicitly requested chat answers; spoken turns are
+                    // persisted from transcript events, without mirroring this result.
                     if (ending) {
                         await runRef.update({ deliveryStatus: 'call_ended_before_delivery' })
                         return

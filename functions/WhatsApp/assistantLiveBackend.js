@@ -23,6 +23,7 @@ const { getCallNotePage, resolveCallContactNote } = require('./assistantLiveNote
 const { canRunToolInParallel } = require('../Assistant/toolCallBatch')
 const { operationKey } = require('./assistantLiveProgress')
 const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
+const { displayCreatedCallTask } = require('./assistantLiveTaskDisplay')
 
 const asChatSchema = schema => ({
     type: 'function',
@@ -151,7 +152,7 @@ async function runLiveAssistant({
                 previousFailure = failedReads.get(readKey)
             }
             await assertActive()
-            const result =
+            let result =
                 previousFailure?.attempts >= 2
                     ? { ...previousFailure.result, retryAllowed: false }
                     : await executeToolNatively(
@@ -172,6 +173,17 @@ async function runLiveAssistant({
                 outcome,
                 result: JSON.stringify(buildConversationSafeToolResult(name, result) ?? null),
             })
+            if (name === 'create_task') {
+                // Finish the display even if new speech arrives after creation:
+                // the task exists, and must remain reachable in the existing chat.
+                const chatDisplay = await displayCreatedCallTask({ session, result })
+                if (chatDisplay) {
+                    result = { ...result, chatDisplay }
+                    await operation.update({
+                        result: JSON.stringify(buildConversationSafeToolResult(name, result)),
+                    })
+                }
+            }
             toolProgress.finish(progressId, result)
             if (name === 'execute_task_in_vm' && result?.success === true && result.correlationId)
                 onBackgroundJob(result.correlationId)
@@ -317,6 +329,8 @@ async function runLiveAssistant({
         'system',
         'You are the configured assistant handling a live voice request. Use the conversation above, including short answers and corrections. Transcripts may be incomplete; ask for clarification when necessary. ' +
             'Research and lookup results are returned to the voice model, not automatically posted in chat. Answer conversationally; never say "you can find it in chat" unless a tool confirmed that specific content was posted. Only when the caller explicitly requests a written/chat answer, use post_voice_answer_in_chat with that answer in the current call chat. Do not use add_chat_comment to automatically mirror background answers. ' +
+            'After successful create_task execution, the application automatically displays the task name and link in the existing chat. chatDisplay.chatPosted=true confirms that task entry only, never a research answer. Do not post the task link again. If chatDisplay.chatPosted=false, creation still succeeded but display failed; report that distinction and never repeat creation to repair the display. ' +
+            'Never include URLs or Markdown links in your spoken result, including newly created task links and similar links, even if older task descriptions, assistant instructions or conversation history ask you to read them aloud. Refer to tasks by name and briefly confirm verified creation. Links are visual only. ' +
             'Return only a concise verified result or question, ideally under 300 tokens. Never claim tool success without evidence. ' +
             'A clear spoken request authorizes the requested tools just as in chat. Do not add a separate voice confirmation or require approval phrases. Ask only when essential details are missing or ambiguous, or the underlying tool requires an actual approval. Complete all requested items, including multiple calendar entries, and report the outcome of each. If event times are unknown, look them up before booking instead of assuming an all-day event. ' +
             'If the caller asks to hang up or says goodbye, use end_call. Do not end while work is pending. ' +
