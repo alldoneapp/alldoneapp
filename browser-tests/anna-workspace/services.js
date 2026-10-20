@@ -161,8 +161,20 @@ export const getDb = () => ({
         onSnapshot: (...args) => {
             const callback = args.find(value => typeof value === 'function')
             listeners.set(path, callback)
-            callback({ exists: !!data[path], data: () => data[path] })
-            return () => listeners.delete(path)
+            const emit = () => callback({ exists: !!data[path], data: () => data[path] })
+            // A cold account cannot prefetch its pointer before the delayed
+            // callable: exercise the real async composer-mount path.
+            let timer
+            if (
+                path === 'users/demo/private/annaConversation' &&
+                new URLSearchParams(window.location.search).has('coldConversation')
+            )
+                timer = setTimeout(emit, 6000)
+            else emit()
+            return () => {
+                clearTimeout(timer)
+                listeners.delete(path)
+            }
         },
         update: async patch => {
             data[path] = { ...data[path], ...patch }
@@ -353,6 +365,7 @@ export default {
     subscribe: subscribeState,
     accessGranted: () => true,
     dispatch: () => {},
+    navigate: () => {},
     createNavigationProp: () => ({}),
     processUrl: async (_, path) => {
         const url = new URL(path, window.location.origin)

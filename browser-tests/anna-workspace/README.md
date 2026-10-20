@@ -51,3 +51,36 @@ all three layouts and the pane controls at 1440, 1024, 390 and 320 pixels, and
 checks for runtime errors. On macOS, also verify the installed app by selecting a
 layout, quitting it, and reopening it from the Dock. Preferences are local to the
 installation's browser storage and cannot survive clearing or blocking storage.
+
+For AT-2776, **every activation** of assistant mode on desktop and mobile
+reveals the latest message, regardless of the previous reading position. The
+shared top-bar/sidebar action focuses the composer within the gesture. Mode
+activation through zoom, URL/history restoration, and async conversation mounting
+also resets the bottom-follow state. Workspace and chat drafts stay mounted.
+Viewport and content resizing (including late images/attachments) keep following
+the end until the user deliberately scrolls away. Reopening always resets that choice.
+
+```bash
+npm test -- --runInBand --watch=false components/Anna/AnnaShell.test.js \
+    components/Anna/AnnaConversation.test.js components/Anna/AnnaChatComposer.test.js \
+    components/TopBar/AssistantModeButton.test.js utils/annaMode.test.js
+ASSISTANT_FOCUS_ONLY=1 node browser-tests/anna-workspace/run.js
+```
+
+The browser check uses real shell/buttons/Quill with fixture transport, touch taps
+at 390/320 pixels and mouse clicks at 1440/1024 pixels. It checks focus before the
+opening action returns, first cached opening, repeated deactivate/reactivate,
+hidden mobile chat, global mode activation, late content growth, viewport resizing,
+and retained drafts. It also checks uncached six-second async loading both with
+chat focus retained and after editing in the workspace. Generated screenshots stay
+in `.build/`. Review the [mobile example](../../docs/screenshots/AT-2776-mobile-assistant-focus.png).
+
+On an iPhone, verify top-bar and sidebar opening after scrolling to older messages:
+the latest message should be visible and the keyboard should appear. Repeat from
+the mobile workspace, with an unsent draft, and during a voice call. Headless tests
+do not verify a physical software keyboard. With no cached conversation, the input
+does not exist until the network responds: scrolling still runs after loading;
+focus is handed over only while the chat still owns focus. iOS may require a
+second tap to show its keyboard. The fix renders synchronously for explicit
+opening; see [React's flushSync API](https://react.dev/reference/react-dom/flushSync)
+and [WebKit's user-gesture requirement](https://bugs.webkit.org/show_bug.cgi?id=195884).
