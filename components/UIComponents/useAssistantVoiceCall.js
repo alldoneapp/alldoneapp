@@ -8,6 +8,7 @@ import { createCallPageContextSync, readCallPageContext } from './assistantCallP
 import { createLiveCallConnection } from './assistantLiveConnection'
 import { sanitizeCallDiagnostics } from '../../functions/WhatsApp/assistantCallDiagnostics'
 import { beginMobileCallAudioSession, primeCallAudio } from './assistantCallAudio'
+import { startCallConnectingTone } from './assistantCallConnectingTone'
 import { createCallAudioDevices } from './assistantCallDevices'
 import { acquireVoiceMicrophone, createVoiceMicrophoneSelector } from './assistantVoiceMicrophone'
 import { createInputLevelMonitor } from '../../hooks/rambleMicCapture'
@@ -95,6 +96,7 @@ export default function useAssistantVoiceCall() {
     const releaseMobileAudioSessionRef = useRef(null)
     const mountedRef = useRef(true)
     const releaseWakeLockRef = useRef(null)
+    const connectingToneRef = useRef(null)
     const disconnectTimerRef = useRef(null)
     const micHealthTimerRef = useRef(null)
     const returnMicCheckTimerRef = useRef(null)
@@ -183,7 +185,12 @@ export default function useAssistantVoiceCall() {
         }
     }, [])
 
-    // The provider owns one lease for the connected call. The shared lock also covers dictation
+    const stopConnectingTone = useCallback(() => {
+        connectingToneRef.current?.stop()
+        connectingToneRef.current = null
+    }, [])
+
+    // The provider owns one lease from startup through the connected call. The shared lock also covers dictation
     // when a user starts it during the call, without either feature releasing the other's lock.
     const acquireWakeLock = useCallback(() => {
         if (!releaseWakeLockRef.current) releaseWakeLockRef.current = keepScreenAwake()
@@ -495,6 +502,7 @@ export default function useAssistantVoiceCall() {
             }
             micCheckPendingRef.current = false
             stopMicHealthMonitor()
+            stopConnectingTone()
             releaseWakeLock()
             teardownMediaSession()
             destroySilentAudioKeepalive(silentKeepaliveRef.current)
@@ -536,7 +544,7 @@ export default function useAssistantVoiceCall() {
                 setMicrophoneMuted(false)
             }
         },
-        [clearDisconnectTimer, releaseWakeLock, stopMicHealthMonitor, captureDiagnostics]
+        [clearDisconnectTimer, releaseWakeLock, stopMicHealthMonitor, stopConnectingTone, captureDiagnostics]
     )
     cleanupRef.current = cleanup
     const toggleMicrophoneMuted = useCallback(() => {
@@ -589,6 +597,8 @@ export default function useAssistantVoiceCall() {
                 if (disconnectTimerRef.current) armDisconnectTimer(pc)
                 return
             }
+
+            connectingToneRef.current?.resume()
 
             const keepalive = silentKeepaliveRef.current
             if (keepalive?.audioContext?.state === 'suspended') {
@@ -676,7 +686,9 @@ export default function useAssistantVoiceCall() {
             setStatus(STATUS_CONNECTING)
             let ownSessionId = null
             try {
+                acquireWakeLock()
                 releaseMobileAudioSessionRef.current = beginMobileCallAudioSession()
+                connectingToneRef.current = startCallConnectingTone()
                 const pc = new window.RTCPeerConnection()
                 peerConnectionRef.current = pc
 
@@ -822,6 +834,7 @@ export default function useAssistantVoiceCall() {
                 await microphoneSelectorRef.current?.whenPrepared()
                 if (!mountedRef.current || peerConnectionRef.current !== pc || endingRef.current) return
                 captureDiagnostics('microphone_prepared')
+                stopConnectingTone()
                 callReadyRef.current = true
                 if (transmittedTrackRef.current) transmittedTrackRef.current.enabled = !microphoneMutedRef.current
                 captureDiagnostics('microphone_sent')
@@ -831,7 +844,6 @@ export default function useAssistantVoiceCall() {
                 startingRef.current = false
 
                 // Activate background-keepalive mechanisms.
-                acquireWakeLock()
                 const assistantName = assistant?.displayName
                 setupMediaSession({
                     title: assistantName
@@ -859,6 +871,7 @@ export default function useAssistantVoiceCall() {
             clearDisconnectTimer,
             armDisconnectTimer,
             acquireWakeLock,
+            stopConnectingTone,
             playCallAudio,
             attachTrackListeners,
             startMicHealthMonitor,
