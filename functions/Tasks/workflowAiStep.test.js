@@ -701,7 +701,6 @@ describe('runWorkflowAiStep', () => {
             triggerMessageId: 'popup-comment-1',
             maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
             disableToolSearch: true,
-            onVmJobStarted: expect.any(Function),
         })
         expect(mockPostUserRequestComment).not.toHaveBeenCalled()
     })
@@ -1034,7 +1033,6 @@ describe('runWorkflowAiStep', () => {
             triggerMessageId: 'trigger-comment-1',
             maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
             disableToolSearch: true,
-            onVmJobStarted: expect.any(Function),
         })
     })
 
@@ -1048,7 +1046,6 @@ describe('runWorkflowAiStep', () => {
             triggerMessageId: null,
             maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
             disableToolSearch: true,
-            onVmJobStarted: expect.any(Function),
         })
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
     })
@@ -1347,136 +1344,6 @@ describe('a step whose assistant dispatched VM work', () => {
         expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
         expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).currentReviewerId).toBe(HUMAN_REVIEWER)
     })
-})
-
-describe('VM dispatch hands off before the assistant response finishes (AT-2777)', () => {
-    const RUN_ID = 'hung-prompt-run'
-    const CORRELATION = 'continued-merge-vm'
-    const run = {
-        projectId: PROJECT,
-        taskId: TASK,
-        stepId: AI_STEP,
-        assistantId: ASSISTANT,
-        assigneeUserId: ASSIGNEE,
-        status: 'running',
-        createdAt: Date.now(),
-    }
-    const job = {
-        kind: 'vm_job',
-        projectId: PROJECT,
-        objectType: 'tasks',
-        objectId: TASK,
-        correlationId: CORRELATION,
-        createdAt: Date.now(),
-    }
-
-    beforeEach(() => {
-        seedAssignee()
-        mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep())
-        mockStore.set(`workflowAiRuns/${RUN_ID}`, { ...run })
-        mockGeneratePreConfigTaskResult.mockReset()
-    })
-
-    it.each(['completed', 'failed', 'cancelled', 'interrupted'])(
-        'settles a %s VM while the follow-up assistant response is still pending',
-        async status => {
-            let finishResponse
-            let handoffReady
-            const handoff = new Promise(resolve => {
-                handoffReady = resolve
-            })
-            mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-                mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status: 'initiated' })
-                await args[12].onVmJobStarted(job)
-                handoffReady()
-                return new Promise(resolve => {
-                    finishResponse = resolve
-                })
-            })
-            const prompt = runWorkflowAiStep(RUN_ID, run)
-            await handoff
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`)).toMatchObject({
-                status: 'awaiting_vm',
-                awaitingCorrelationIds: [CORRELATION],
-            })
-            mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status })
-
-            expect(await resolveWorkflowRunsForSettledVmJob({ ...job, status })).toBe(1)
-            const settled = status === 'completed' ? 'completed' : 'failed'
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe(settled)
-            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual(
-                status === 'completed' ? [-1, AI_STEP, NEXT_STEP] : [-1, AI_STEP]
-            )
-
-            // A late response must never re-park a settled run or advance it twice.
-            finishResponse({ success: true })
-            await prompt
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe(settled)
-            expect(await resolveWorkflowRunsForSettledVmJob({ ...job, status })).toBe(0)
-        }
-    )
-
-    it.each(['initiated', 'awaiting_user', 'queued'])(
-        'keeps waiting on a %s interactive/continued VM even if the parent stream fails',
-        async status => {
-            mockStore.set(`vmSessions/${PROJECT}__${TASK}`, { queue: [CORRELATION] })
-            mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-                mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status })
-                await args[12].onVmJobStarted(job)
-                throw new Error('Follow-up stream disconnected')
-            })
-            await runWorkflowAiStep(RUN_ID, run)
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('awaiting_vm')
-            expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP])
-        }
-    )
-
-    it('rechecks an already finished VM when the terminal callback preceded the handoff', async () => {
-        mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-            mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status: 'completed' })
-            expect(await resolveWorkflowRunsForSettledVmJob({ ...job, status: 'completed' })).toBe(0)
-            await args[12].onVmJobStarted(job)
-            throw new Error('Late stream failure')
-        })
-        await runWorkflowAiStep(RUN_ID, run)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, AI_STEP, NEXT_STEP])
-    })
-
-    it('lets the recovery poller settle the handoff when the terminal callback was lost', async () => {
-        mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-            mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status: 'initiated' })
-            await args[12].onVmJobStarted(job)
-            return { success: true }
-        })
-        await runWorkflowAiStep(RUN_ID, run)
-        mockStore.set(`pendingWebhooks/${CORRELATION}`, { ...job, status: 'completed' })
-        expect(await dispatchPendingWorkflowAiRuns()).toBe(0)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).status).toBe('completed')
-    })
-
-    it('preserves a manual workflow move made before handoff', async () => {
-        mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-            mockStore.set(`items/${PROJECT}/tasks/${TASK}`, taskOnAiStep({ stepHistory: [-1, NEXT_STEP] }))
-            await args[12].onVmJobStarted(job)
-            return { success: true }
-        })
-        await runWorkflowAiStep(RUN_ID, run)
-        expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).awaitingCorrelationIds).toBeUndefined()
-        expect(mockStore.get(`items/${PROJECT}/tasks/${TASK}`).stepHistory).toEqual([-1, NEXT_STEP])
-    })
-
-    it.each([{ projectId: 'other-project' }, { objectId: 'other-task' }, { objectType: 'topics' }])(
-        'does not transfer this step to a VM hosted elsewhere: %j',
-        async overrides => {
-            mockGeneratePreConfigTaskResult.mockImplementationOnce(async (...args) => {
-                await args[12].onVmJobStarted({ ...job, ...overrides })
-                return { success: true }
-            })
-            await runWorkflowAiStep(RUN_ID, run)
-            expect(mockStore.get(`workflowAiRuns/${RUN_ID}`).awaitingCorrelationIds).toBeUndefined()
-        }
-    )
 })
 
 describe('the pre-VM assistant/VM completion ordering', () => {
