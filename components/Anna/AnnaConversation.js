@@ -131,14 +131,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
     const keepLatestVisible = useCallback(() => {
         if (follow.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight
     }, [])
-    useEffect(() => {
-        if (!scroll.current || typeof ResizeObserver === 'undefined') return
-        // Opening the mobile keyboard can shrink the message viewport after
-        // focus. Keep following the end, unless the user has scrolled away.
-        const observer = new ResizeObserver(keepLatestVisible)
-        observer.observe(scroll.current)
-        return () => observer.disconnect()
-    }, [keepLatestVisible])
     const seconds = Math.floor(call.voiceSeconds || 0)
     const voiceLabel = translate(
         voiceActive
@@ -312,9 +304,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                 }}
                 onScroll={() => {
                     const el = scroll.current
-                    // Hiding a pane can reset its scroll metrics to zero. That
-                    // is not a user request to resume following new messages.
-                    if (!visible || !el.clientHeight) return
                     follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90
                     if (follow.current) setNewMessages(false)
                 }}
