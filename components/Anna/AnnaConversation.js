@@ -156,7 +156,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         return () => {
             mounted.current = false
             voiceRequest.current++
-            if (preparingVoiceRef.current) call.endCall()
         }
     }, [])
     const toggleVoiceCall = async () => {
@@ -165,7 +164,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
             preparingVoiceRef.current = false
             voiceRequest.current++
             setPreparingVoice(false)
-            call.endCall()
             return
         }
         if (call.status !== 'idle') return call.endCall()
@@ -175,25 +173,19 @@ const AnnaConversation = forwardRef(function AnnaConversation(
         setPreparingVoice(true)
         setError('')
         try {
-            // Enter the provider synchronously in the click: audio activation
-            // and the screen wake lease must precede thread/network awaits.
+            // A cached conversation may belong to yesterday. Voice, like text,
+            // must resolve today's authoritative target before starting work.
+            const thread = resolveConversation ? await resolveConversation() : conversation
+            if (!mounted.current || request !== voiceRequest.current) return
+            if (!thread?.id) throw new Error(translate('Your conversation could not be loaded. Please try again.'))
+            await onBeforeSend?.()
+            if (!mounted.current || request !== voiceRequest.current) return
+            preparingVoiceRef.current = false
+            setPreparingVoice(false)
             await call.startCall({
-                assistant,
-                resolveTarget: async () => {
-                    const thread = resolveConversation ? await resolveConversation() : conversation
-                    if (!mounted.current || request !== voiceRequest.current) return null
-                    if (!thread?.id)
-                        throw new Error(translate('Your conversation could not be loaded. Please try again.'))
-                    await onBeforeSend?.()
-                    if (!mounted.current || request !== voiceRequest.current) return null
-                    preparingVoiceRef.current = false
-                    setPreparingVoice(false)
-                    return {
-                        assistant: { ...assistant, uid: thread.assistantId },
-                        projectId: thread.projectId,
-                        chatId: thread.id,
-                    }
-                },
+                assistant: { ...assistant, uid: thread.assistantId },
+                projectId: thread.projectId,
+                chatId: thread.id,
                 skipNavigationOnThreadCreate: true,
             })
         } catch (failure) {
@@ -487,7 +479,7 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                         />
                                     </button>
                                 )}
-                                {!voiceConnecting && call.needsAudioPlayback && (
+                                {call.needsAudioPlayback && (
                                     <button
                                         type="button"
                                         className="anna-voice-button"
@@ -530,16 +522,6 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                     {voiceConnecting && (
                         <div className="anna-composer-connecting">
                             <VoiceCallConnecting assistantName={assistantName} style={{ flex: 1, borderRadius: 20 }} />
-                            {call.needsAudioPlayback && (
-                                <button
-                                    type="button"
-                                    className="anna-text-button"
-                                    aria-label={translate('Enable call audio')}
-                                    onClick={call.playCallAudio}
-                                >
-                                    {translate('Enable call audio')}
-                                </button>
-                            )}
                             <button
                                 type="button"
                                 className="anna-text-button anna-composer-cancel"

@@ -4234,6 +4234,7 @@ async function addChatCommentFromAssistantTool({
     userId,
     createIfMissing = false,
     gmailContext = null,
+    suppressAssistantReply = false,
 }) {
     const db = admin.firestore()
     const resolvedComment = normalizeChatCommentToolText(comment, 'comment')
@@ -4279,6 +4280,8 @@ async function addChatCommentFromAssistantTool({
         creatorId: assistantId,
         fromAssistant: true,
         source: gmailContext?.origin === 'gmail_label_follow_up' ? 'gmail_label_follow_up' : 'assistant_tool',
+        requestUserId: userId,
+        ...(suppressAssistantReply ? { suppressAssistantReply: true } : {}),
     }
 
     if (gmailContext?.origin === 'gmail_label_follow_up') {
@@ -4725,6 +4728,7 @@ async function executeDelegatedAssistantRequest({
             ? callerToolRuntimeContext.userTimezoneOffset
             : null
     const delegatedToolRuntimeContext = {
+        automaticCommentReply: callerToolRuntimeContext?.automaticCommentReply === true,
         projectId: target.projectId,
         assistantId: target.assistantId,
         requestUserId,
@@ -5839,6 +5843,8 @@ async function executeToolNativelyImpl(
                         taskId: resolvedTaskId,
                         assistantId,
                         comment: creationComment,
+                        requestUserId: creatorId,
+                        suppressAssistantReply: toolRuntimeContext?.automaticCommentReply === true,
                     })
                     if (!taskCommentResult) {
                         throw new Error('Task was created, but its assistant comment could not be added')
@@ -6382,6 +6388,7 @@ async function executeToolNativelyImpl(
                 userId: creatorId,
                 createIfMissing: !!gmailTopicChatTitle || toolArgs.createIfMissing === true,
                 gmailContext: toolRuntimeContext?.gmailContext || null,
+                suppressAssistantReply: toolRuntimeContext?.automaticCommentReply === true,
             })
 
             console.log('💬 ADD_CHAT_COMMENT TOOL: Result', {
@@ -7010,6 +7017,8 @@ async function executeToolNativelyImpl(
                         updateAll: toolArgs.updateAll || false, // Enable bulk update if requested
                         feedUser,
                         commentFromAssistant: !!assistantId,
+                        commentRequestUserId: creatorId,
+                        suppressAssistantReply: toolRuntimeContext?.automaticCommentReply === true,
                         assistantId,
                         assistantRunId: toolRuntimeContext?.runId || toolRuntimeContext?.assistantRunLockId || null,
                         messageId: toolRuntimeContext?.messageId || null,
@@ -14193,7 +14202,9 @@ async function getOptimizedContextMessages(
             const { commentText, fromAssistant } = messageData
 
             if (commentText) {
-                const role = fromAssistant ? 'assistant' : 'user'
+                const isIncomingAssistant =
+                    fromAssistant && assistantId && messageData.creatorId && messageData.creatorId !== assistantId
+                const role = fromAssistant && !isIncomingAssistant ? 'assistant' : 'user'
                 const messageTimestamp = Number(messageData.created || messageData.lastChangeDate || 0)
                 const trimHistoryBeforeMessageId = compactedThreadState?.trimHistoryBeforeMessageId || ''
                 const isBeforeCutoff =
@@ -14206,7 +14217,7 @@ async function getOptimizedContextMessages(
                 if (isBeforeCutoff) {
                     continue
                 }
-                if (!fromAssistant) {
+                if (!fromAssistant || isIncomingAssistant) {
                     const mediaContext = await enrichCommentMediaContext(commentDocs[i].ref, messageData)
                     messages.push([
                         role,

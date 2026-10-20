@@ -92,6 +92,30 @@ describe('TaskUpdateService comments', () => {
         }
     )
 
+    test.each([false, true])(
+        'forwards requester and loop protection to task comments: %s',
+        async suppressAssistantReply => {
+            const service = createService()
+            await service.findAndUpdateTask(
+                'user-1',
+                { taskId: 'task-1' },
+                { comment: 'Review' },
+                {
+                    feedUser: { uid: 'assistant-1' },
+                    commentFromAssistant: true,
+                    commentRequestUserId: 'user-1',
+                    suppressAssistantReply,
+                }
+            )
+            expect(service.taskCommentService.addComment).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    requestUserId: 'user-1',
+                    suppressAssistantReply,
+                })
+            )
+        }
+    )
+
     test('supports a comment-only update without forwarding comment into TaskService', async () => {
         const service = createService()
         const result = await service.findAndUpdateTask(

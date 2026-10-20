@@ -182,6 +182,8 @@ class TaskUpdateService {
                     feedUser,
                     fromAssistant: !!options.commentFromAssistant,
                     silent: !!options.silentComment,
+                    requestUserId: options.commentRequestUserId,
+                    suppressAssistantReply: options.suppressAssistantReply,
                 })
                 updateResult.message = updateResult.changes?.length
                     ? `${updateResult.message}; comment added`
@@ -407,6 +409,8 @@ class TaskUpdateService {
                             feedUser,
                             fromAssistant: !!options.commentFromAssistant,
                             silent: !!options.silentComment,
+                            requestUserId: options.commentRequestUserId,
+                            suppressAssistantReply: options.suppressAssistantReply,
                         })
                     } catch (commentError) {
                         if (!updateResult.changes || updateResult.changes.length === 0) {
@@ -496,7 +500,16 @@ class TaskUpdateService {
         return normalizedFields
     }
 
-    async addTaskComment({ projectId, task, comment, feedUser, fromAssistant, silent }) {
+    async addTaskComment({
+        projectId,
+        task,
+        comment,
+        feedUser,
+        fromAssistant,
+        silent,
+        requestUserId,
+        suppressAssistantReply,
+    }) {
         if (!this.taskCommentService) {
             const { TaskCommentService } = require('./TaskCommentService')
             this.taskCommentService = new TaskCommentService({ database: this.options.database })
@@ -510,6 +523,8 @@ class TaskUpdateService {
             actor: feedUser,
             fromAssistant,
             silent,
+            requestUserId,
+            suppressAssistantReply,
         })
     }
 

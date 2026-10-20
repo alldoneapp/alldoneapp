@@ -54,6 +54,7 @@ const ASSISTANT_RUN_HOSTS = [
     { name: 'runWorkflowAiStepsSecondGen', maxRunWallClockMs: SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     // Deliberately shorter: sized to the Cloud Tasks dispatch ceiling it is delivered through.
     { name: 'runAssistantHeartbeat', maxRunWallClockMs: HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
+    { name: 'runAssistantCommentReply', maxRunWallClockMs: HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS },
 ]
 
 // index.js cannot be require()d here (it registers every function and pulls in the whole runtime), so

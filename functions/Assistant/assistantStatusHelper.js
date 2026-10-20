@@ -53,6 +53,7 @@ async function createInitialStatusMessage(
         created: now,
         originalContent: statusMessage,
         fromAssistant: true,
+        suppressAssistantReply: true,
     }
 
     // Create comment in Firestore

@@ -7,7 +7,7 @@ import { createBotQuickTopic } from '../../utils/assistantHelper'
 import { createCallPageContextSync, readCallPageContext } from './assistantCallPageContext'
 import { createLiveCallConnection } from './assistantLiveConnection'
 import { sanitizeCallDiagnostics } from '../../functions/WhatsApp/assistantCallDiagnostics'
-import { beginMobileCallAudioSession } from './assistantCallAudio'
+import { beginMobileCallAudioSession, primeCallAudio } from './assistantCallAudio'
 import { startCallConnectingTone } from './assistantCallConnectingTone'
 import { createCallAudioDevices } from './assistantCallDevices'
 import { acquireVoiceMicrophone, createVoiceMicrophoneSelector } from './assistantVoiceMicrophone'
@@ -92,7 +92,6 @@ export default function useAssistantVoiceCall() {
     const transmittedTrackRef = useRef(null)
     const firstInputSignalRef = useRef(false)
     const audioElementRef = useRef(null)
-    const remoteStreamRef = useRef(null)
     const audioDevicesRef = useRef(null)
     const releaseMobileAudioSessionRef = useRef(null)
     const mountedRef = useRef(true)
@@ -172,7 +171,6 @@ export default function useAssistantVoiceCall() {
 
     const playCallAudio = useCallback(async () => {
         const audio = audioElementRef.current
-        if (connectingToneRef.current) return connectingToneRef.current.resume()
         if (!audio?.srcObject) return
         try {
             await audio.play()
@@ -530,7 +528,6 @@ export default function useAssistantVoiceCall() {
                 audio.remove()
             }
             audioElementRef.current = null
-            remoteStreamRef.current = null
             releaseMobileAudioSessionRef.current?.()
             releaseMobileAudioSessionRef.current = null
 
@@ -652,7 +649,7 @@ export default function useAssistantVoiceCall() {
     }, [cleanup])
 
     const startCall = useCallback(
-        async ({ assistant, projectId, chatId, resolveTarget, skipNavigationOnThreadCreate = true }) => {
+        async ({ assistant, projectId, chatId, skipNavigationOnThreadCreate = true }) => {
             if (
                 Platform.OS !== 'web' ||
                 typeof window === 'undefined' ||
@@ -691,6 +688,7 @@ export default function useAssistantVoiceCall() {
             try {
                 acquireWakeLock()
                 releaseMobileAudioSessionRef.current = beginMobileCallAudioSession()
+                connectingToneRef.current = startCallConnectingTone()
                 const pc = new window.RTCPeerConnection()
                 peerConnectionRef.current = pc
 
@@ -698,24 +696,18 @@ export default function useAssistantVoiceCall() {
                 audio.onplaying = () => captureDiagnostics('audio_playing')
                 audio.onwaiting = () => captureDiagnostics('audio_waiting')
                 audio.onstalled = () => captureDiagnostics('audio_stalled')
+                primeCallAudio(audio)
                 audio.style.display = 'none'
                 document.body.appendChild(audio)
                 audioElementRef.current = audio
-                connectingToneRef.current = startCallConnectingTone(audio, playing => {
-                    if (mountedRef.current && peerConnectionRef.current === pc && !callReadyRef.current)
-                        setNeedsAudioPlayback(!playing)
-                })
                 audioDevicesRef.current = createCallAudioDevices(audio)
 
                 pc.ontrack = event => {
                     if (peerConnectionRef.current !== pc) return
-                    remoteStreamRef.current = event.streams[0]
+                    audio.srcObject = event.streams[0]
                     outputMonitorRef.current?.close()
                     outputMonitorRef.current = createInputLevelMonitor(event.streams[0])
-                    if (callReadyRef.current) {
-                        audio.srcObject = remoteStreamRef.current
-                        playCallAudio()
-                    }
+                    playCallAudio()
                 }
 
                 // Only 'failed' and 'closed' are terminal on their own. A
@@ -736,17 +728,6 @@ export default function useAssistantVoiceCall() {
                 }
                 pc.oniceconnectionstatechange = () => captureDiagnostics('ice_state')
 
-                // Resolve the Assistant Mode thread/handback AFTER gesture-bound
-                // playback and the wake lease. Cancellation owns these resources
-                // even while this asynchronous preparation is still pending.
-                if (resolveTarget) {
-                    const target = await resolveTarget()
-                    if (!mountedRef.current || peerConnectionRef.current !== pc)
-                        throw new Error('voice_start_cancelled')
-                    if (!target) throw new Error('voice_start_cancelled')
-                    ;({ assistant, projectId, chatId } = target)
-                }
-
                 // On the iOS shell the host app's audio session has to be a voice
                 // chat BEFORE the web view opens the mic; the plugin also tells us
                 // whether this build can carry the call in the background at all.
@@ -755,7 +736,6 @@ export default function useAssistantVoiceCall() {
                     if (nativeSession) await endNativeCallAudioSession()
                     throw new Error('voice_start_cancelled')
                 }
-                connectingToneRef.current?.resume()
                 nativeAudioSessionRef.current = !!nativeSession
                 if (nativeSession && nativeSession.backgroundAudio === false) {
                     console.warn(
@@ -777,7 +757,6 @@ export default function useAssistantVoiceCall() {
                     attachTrackListeners(track)
                 })
                 startMicrophoneSelectionRef.current?.(localStream, capture.raw)
-                connectingToneRef.current?.resume()
                 captureDiagnostics('microphone_acquired')
                 const channel = pc.createDataChannel('oai-events')
                 const connection = createLiveCallConnection(channel, {
@@ -856,8 +835,6 @@ export default function useAssistantVoiceCall() {
                 if (!mountedRef.current || peerConnectionRef.current !== pc || endingRef.current) return
                 captureDiagnostics('microphone_prepared')
                 stopConnectingTone()
-                setNeedsAudioPlayback(false)
-                audio.srcObject = remoteStreamRef.current
                 callReadyRef.current = true
                 if (transmittedTrackRef.current) transmittedTrackRef.current.enabled = !microphoneMutedRef.current
                 captureDiagnostics('microphone_sent')
