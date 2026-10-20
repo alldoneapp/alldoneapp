@@ -4461,30 +4461,37 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
     }
 )
 
-exports.onCreateTaskCommentSecondGen = onDocumentCreated(
+exports.onCreateObjectCommentSecondGen = onDocumentCreated(
     {
-        document: 'chatComments/{projectId}/tasks/{taskId}/comments/{commentId}',
+        document: 'chatComments/{projectId}/{objectType}/{objectId}/comments/{commentId}',
+        retry: true,
         timeoutSeconds: 120,
         memory: '256MB',
         region: 'europe-west1',
     },
     async event => {
-        const { captureTaskPriorityCommentFeedback } = require('./Assistant/taskPriorityLearning')
-        const { projectId, taskId, commentId } = event.params
-        try {
-            await captureTaskPriorityCommentFeedback({
-                projectId,
-                taskId,
-                commentId,
-                commentData: event.data.data() || {},
-            })
-        } catch (error) {
-            console.warn('Task priority learning comment feedback capture failed', {
-                projectId,
-                taskId,
-                commentId,
-                error: error.message,
-            })
+        const { projectId, objectType, objectId, commentId } = event.params
+        if (objectType === 'tasks') {
+            const { captureTaskPriorityCommentFeedback } = require('./Assistant/taskPriorityLearning')
+            try {
+                await captureTaskPriorityCommentFeedback({
+                    projectId,
+                    taskId: objectId,
+                    commentId,
+                    commentData: event.data.data() || {},
+                })
+            } catch (error) {
+                console.warn('Task priority learning comment feedback capture failed', {
+                    projectId,
+                    taskId: objectId,
+                    commentId,
+                    error: error.message,
+                })
+            }
+        }
+        const { isReplyCandidate, enqueueAssistantCommentReply } = require('./Assistant/assistantCommentReply')
+        if (isReplyCandidate(event.data.data())) {
+            await enqueueAssistantCommentReply({ projectId, objectType, objectId, commentId })
         }
     }
 )
@@ -5586,6 +5593,22 @@ exports.checkAssistantHeartbeats = onSchedule(
     async event => {
         const { dispatchDueHeartbeats } = require('./Assistant/assistantHeartbeatDispatcher')
         await dispatchDueHeartbeats()
+    }
+)
+
+// Comment creation only dispatches work; the existing reply pipeline runs within the
+// same 25-minute budget as heartbeats, below Cloud Tasks' 30-minute deadline.
+exports.runAssistantCommentReply = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        retryConfig: { maxAttempts: 1 },
+        rateLimits: { maxConcurrentDispatches: 5, maxDispatchesPerSecond: 2 },
+    },
+    async req => {
+        const { runAssistantCommentReply } = require('./Assistant/assistantCommentReply')
+        return await runAssistantCommentReply(req.data || {})
     }
 )
 

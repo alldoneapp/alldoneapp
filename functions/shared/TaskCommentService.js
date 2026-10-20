@@ -39,6 +39,8 @@ class TaskCommentService {
         actor,
         fromAssistant = false,
         silent = false,
+        requestUserId = null,
+        suppressAssistantReply = false,
         commentId: suppliedCommentId = null,
         gmailData = null,
         linkEmail = false,
@@ -134,6 +136,8 @@ class TaskCommentService {
                 created: now,
                 originalContent: commentText,
                 fromAssistant: !!fromAssistant,
+                ...(fromAssistant && requestUserId ? { requestUserId } : {}),
+                ...(fromAssistant && suppressAssistantReply ? { suppressAssistantReply: true } : {}),
                 ...(gmailData ? { gmailData } : {}),
             }
 
@@ -199,7 +203,7 @@ class TaskCommentService {
                 },
             }
             if (fromAssistant) {
-                nextChatData.assistantId = actorId
+                nextChatData.assistantId = taskData.assistantId || chatData.assistantId || actorId
                 nextChatData.lastAssistantComment = now
             }
 

@@ -2102,6 +2102,35 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
+    test.each([false, true])(
+        'stamps topic comments with requester and automatic reply provenance: %s',
+        async automaticCommentReply => {
+            ProjectService.mockImplementationOnce(() => ({
+                initialize: jest.fn().mockResolvedValue(),
+                getUserProjects: jest.fn().mockResolvedValue([{ id: 'project-1', name: 'Inbox' }]),
+            }))
+            mockCollectionGet.mockResolvedValueOnce({ docs: [] })
+            await executeToolNatively(
+                'add_chat_comment',
+                {
+                    chatTitle: 'Review',
+                    comment: 'Please review',
+                    createIfMissing: true,
+                },
+                'project-1',
+                'assistant-1',
+                'user-1',
+                null,
+                { automaticCommentReply }
+            )
+            const writtenComment = mockDocSet.mock.calls
+                .map(([data]) => data)
+                .find(data => data.commentText === 'Please review')
+            expect(writtenComment).toMatchObject({ requestUserId: 'user-1', fromAssistant: true })
+            expect(writtenComment.suppressAssistantReply === true).toBe(automaticCommentReply)
+        }
+    )
+
     test('adds a comment to a newly created topic chat', async () => {
         ProjectService.mockImplementationOnce(() => ({
             initialize: jest.fn().mockResolvedValue(undefined),
@@ -4141,6 +4170,8 @@ describe('assistant create_task project routing comments', () => {
         })
         expect(result).toMatchObject({ taskOrigin: 'user_request', suggested: false, commentId: 'task-comment-1' })
         expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            requestUserId: 'user-1',
+            suppressAssistantReply: false,
             projectId: 'project-client',
             taskId: 'task-1',
             assistantId: 'assistant-1',
@@ -4211,6 +4242,8 @@ describe('assistant create_task project routing comments', () => {
             expect.objectContaining({ userId: 'user-1', projectId: 'project-client' })
         )
         expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            requestUserId: 'user-1',
+            suppressAssistantReply: false,
             projectId: 'project-client',
             taskId: 'task-suggested',
             assistantId: 'assistant-1',
@@ -4422,6 +4455,8 @@ describe('assistant create_task project routing comments', () => {
             commentId: 'task-comment-1',
         })
         expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            requestUserId: 'user-1',
+            suppressAssistantReply: false,
             projectId: 'project-jtl',
             taskId: 'task-jtl',
             assistantId: 'assistant-1',
@@ -4506,6 +4541,8 @@ describe('assistant task assignment and attribution', () => {
         })
         expect(addAssistantTaskComment).toHaveBeenCalledTimes(1)
         expect(addAssistantTaskComment).toHaveBeenCalledWith({
+            requestUserId: 'user-1',
+            suppressAssistantReply: false,
             projectId: 'project-1',
             taskId: 'task-new',
             assistantId: 'assistant-1',
@@ -6482,6 +6519,53 @@ describe('assistant thread compaction tool', () => {
                 }
             )
         ).rejects.toThrow('summary is required for compact_thread_context.')
+    })
+
+    test('treats another assistant comment as incoming context while retaining own output as assistant history', async () => {
+        mockDocGet.mockResolvedValue({ exists: false, data: () => ({}) })
+        mockCollectionGet.mockResolvedValue({
+            docs: [
+                {
+                    id: 'incoming',
+                    ref: { path: 'incoming' },
+                    data: () => ({
+                        commentText: 'Please review this result',
+                        creatorId: 'other-assistant',
+                        fromAssistant: true,
+                        created: 200,
+                    }),
+                },
+                {
+                    id: 'own',
+                    ref: { path: 'own' },
+                    data: () => ({
+                        commentText: 'My earlier response',
+                        creatorId: 'assistant-1',
+                        fromAssistant: true,
+                        created: 100,
+                    }),
+                },
+            ],
+        })
+        const messages = await getOptimizedContextMessages(
+            'incoming',
+            'project-1',
+            'topics',
+            'chat-1',
+            'en',
+            'Bot',
+            '',
+            [],
+            0,
+            null,
+            'assistant-1'
+        )
+        expect(
+            messages.find(([, text]) => typeof text === 'string' && text.includes('Please review this result'))?.[0]
+        ).toBe('user')
+        expect(messages.find(([, text]) => typeof text === 'string' && text.includes('My earlier response'))?.[0]).toBe(
+            'assistant'
+        )
     })
 
     test('excludes only the current live call display copy when its transcript is supplied directly', async () => {

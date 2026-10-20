@@ -55,7 +55,8 @@ async function askToOpenAIBotOptimized(
     assistantId,
     followerIds,
     functionEntryTime = null, // Optional entry time from HTTP function entry point
-    assistantRunLockId = null
+    assistantRunLockId = null,
+    runOptions = {}
 ) {
     const functionStartTime = Date.now()
     // Use entry time if provided, otherwise use function start time
@@ -142,7 +143,8 @@ async function askToOpenAIBotOptimized(
             messageId,
             userTimezoneOffset,
             language,
-            maxRunWallClockMs: INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
+            maxRunWallClockMs: runOptions.maxRunWallClockMs || INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
+            automaticCommentReply: runOptions.automaticCommentReply === true,
         }
         const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('./annaWorkspace')
         const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext, { includeActivity: true })

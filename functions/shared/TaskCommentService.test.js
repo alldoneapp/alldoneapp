@@ -197,6 +197,7 @@ describe('TaskCommentService', () => {
         const refs = new Map()
         const taskData = {
             id: 'task-1',
+            assistantId: 'configured-assistant',
             name: 'Launch',
             extendedName: 'Launch',
             userId: 'user-1',
@@ -234,12 +235,24 @@ describe('TaskCommentService', () => {
             actor: { uid: 'assistant-1', displayName: 'Anna' },
             fromAssistant: true,
             silent: true,
+            requestUserId: 'user-1',
+            suppressAssistantReply: true,
         })
 
         // The comment itself (the feed/chat entry) is still written inside the transaction.
         expect(transaction.set).toHaveBeenCalledWith(
             expect.objectContaining({ path: 'chatComments/project-1/tasks/task-1/comments/comment-1' }),
-            expect.objectContaining({ commentText: 'This blocks the launch.', fromAssistant: true })
+            expect.objectContaining({
+                commentText: 'This blocks the launch.',
+                fromAssistant: true,
+                requestUserId: 'user-1',
+                suppressAssistantReply: true,
+            })
+        )
+        expect(transaction.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'chatObjects/project-1/chats/task-1' }),
+            expect.objectContaining({ assistantId: 'configured-assistant' }),
+            { merge: true }
         )
         // But no unread markers / push / email are created.
         expect(database.batch).not.toHaveBeenCalled()
