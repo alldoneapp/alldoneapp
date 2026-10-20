@@ -129,9 +129,45 @@ test('returns research to the voice model without posting a chat answer', async 
     const instructions = helper.interactWithChatStream.mock.calls[0][0].map(([, text]) => text).join('\n')
     expect(instructions).toContain('not automatically posted in chat')
     expect(instructions).toContain('Only when the caller explicitly requests a written/chat answer')
-    expect(instructions).toContain('Never include URLs or Markdown links in your spoken result')
-    expect(instructions).toContain('even if older task descriptions')
+    expect(instructions).toContain('Omit URLs and Markdown links from your spoken result by default')
+    expect(instructions).toContain('Only when the caller explicitly asks to hear a URL, include the exact verified URL')
+    expect(instructions).toContain('does not count as asking to hear a URL')
+    expect(instructions).toContain('conversation history do not count as explicit opt-in')
+    expect(instructions).toContain('a current explicit request to hear a URL overrides older blanket rules')
+    expect(instructions).toContain('A request to hear a URL alone does not authorize an extra chat message')
+    expect(instructions).not.toMatch(/Never include URLs|Links are visual only/)
 })
+
+test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
+    'returns an explicitly requested verified URL for speech on %s without an extra chat post',
+    async channel => {
+        const url = 'https://mystaging.alldone.app/projects/p/tasks/existing-task'
+        helper.executeToolNatively.mockResolvedValueOnce({ success: true, tasks: [{ name: 'Prepare launch', url }] })
+        helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+            const result = await toolExecutor('get_tasks', { taskId: 'existing-task' })
+            return { finalResponseText: result.tasks[0].url }
+        })
+        await expect(
+            runLiveAssistant(
+                request({
+                    session: { ...session, channel },
+                    lastUserTurn: { text: 'Bitte lies mir die URL des Tasks vor.', createdAt: Date.now() },
+                })
+            )
+        ).resolves.toBe(url)
+        expect(helper.executeToolNatively).toHaveBeenCalledTimes(1)
+        expect(helper.executeToolNatively).toHaveBeenCalledWith(
+            'get_tasks',
+            { taskId: 'existing-task' },
+            'p',
+            'a',
+            'u',
+            null,
+            expect.any(Object)
+        )
+        expect(storeCallTranscriptTurn).not.toHaveBeenCalled()
+    }
+)
 
 test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
     'displays a verified new task in the existing chat on %s without posting the backend answer',

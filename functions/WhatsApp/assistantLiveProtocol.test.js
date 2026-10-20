@@ -20,14 +20,20 @@ test('explains voice-only background answers and requires confirmation before cl
 })
 
 test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
-    'keeps task links visual in the existing chat and overrides older speech guidance on %s',
+    'keeps task links visual by default and allows explicit URL speech opt-in on %s',
     channel => {
         const { instructions } = buildLiveSession({ assistant: { displayName: 'Anna' }, channel })
-        expect(instructions).toContain('Never read URLs aloud, including newly created task links and similar links')
-        expect(instructions).toContain('Links are visual only, even if older task descriptions')
+        expect(instructions).toContain(
+            'URLs, including newly created task links and similar links, are silent by default'
+        )
+        expect(instructions).toContain('Read a URL aloud only when the caller explicitly asks to hear that URL')
+        expect(instructions).toContain('use the exact verified URL without Markdown formatting')
+        expect(instructions).toContain('does not count as asking to hear a URL')
+        expect(instructions).toContain('conversation history do not count as explicit opt-in')
+        expect(instructions).toContain('a current explicit request to hear a URL overrides older blanket rules')
         expect(instructions).toContain('displayed in the existing chat, not a separate call window')
         expect(instructions).toContain('this does not mean a research answer was posted')
-        expect(instructions).not.toContain('URLs are silent by default')
+        expect(instructions).not.toMatch(/Never read (?:a URL|URLs) aloud|Links are visual only/)
     }
 )
 
