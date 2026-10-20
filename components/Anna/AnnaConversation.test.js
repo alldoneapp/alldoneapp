@@ -8,6 +8,10 @@ import { setAnnaWorkspaceContext } from '../../utils/annaWorkspaceContext'
 import { publishAnnaActivityContext } from './annaActivityContext'
 import { updateNewAttachmentsData } from '../Feeds/Utils/HelperFunctions'
 import { insertAttachmentInsideEditor } from '../Feeds/CommentsTextInput/textInputHelper'
+jest.mock('../UIComponents/Ghosts/ghostAnimation', () => ({
+    ...jest.requireActual('../UIComponents/Ghosts/ghostAnimation'),
+    useReducedMotion: () => true,
+}))
 jest.mock('./annaActivityContent', () => ({ loadAnnaActivityContent: jest.fn().mockResolvedValue(null) }))
 jest.mock('../../utils/connectionState', () => ({ isBrowserOffline: () => false }))
 let mockActivityState
