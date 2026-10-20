@@ -32,6 +32,7 @@ test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
         expect(instructions).toContain('conversation history do not count as explicit opt-in')
         expect(instructions).toContain('a current explicit request to hear a URL overrides older blanket rules')
         expect(instructions).toContain('displayed in the existing chat, not a separate call window')
+        expect(instructions).toContain('Newly created notes likewise appear by name and link in the existing chat')
         expect(instructions).toContain('this does not mean a research answer was posted')
         expect(instructions).not.toMatch(/Never read (?:a URL|URLs) aloud|Links are visual only/)
     }

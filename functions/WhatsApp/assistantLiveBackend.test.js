@@ -204,12 +204,16 @@ test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
 )
 
 test.each([
+    ['create_note', { success: false, noteId: 'n', projectId: 'p' }],
+    ['create_note', { success: true, noteId: 'n' }],
+    ['create_note', { success: true, projectId: 'p' }],
+    ['get_notes', { success: true, noteId: 'n', projectId: 'p' }],
     ['create_task', { success: false, error: 'Creation rejected' }],
     ['create_task', { success: true, taskId: 't' }],
     ['create_task', { success: true, projectId: 'p' }],
     ['create_task', { taskId: 't', projectId: 'p' }],
     ['get_tasks', { success: true, taskId: 't', projectId: 'p' }],
-])('does not invent a created task entry for %s with %j', async (name, result) => {
+])('does not invent a created entry for %s with %j', async (name, result) => {
     helper.executeToolNatively.mockResolvedValueOnce(result)
     helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
         await toolExecutor(name, {})
@@ -217,6 +221,48 @@ test.each([
     })
     await runLiveAssistant(request())
     expect(storeCallTranscriptTurn).not.toHaveBeenCalled()
+})
+
+test.each(['browser_call', 'phone_call', 'whatsapp_call'])(
+    'displays a created note in the existing chat on %s without mirroring its content',
+    async channel => {
+        helper.executeToolNatively.mockResolvedValueOnce({
+            success: true,
+            noteId: 'new-note',
+            note: { projectId: 'destination', title: 'Research notes', content: 'Private research details' },
+        })
+        helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+            const result = await toolExecutor('create_note', { title: 'Research notes' })
+            expect(result.chatDisplay.chatPosted).toBe(true)
+            return { finalResponseText: 'Created Research notes.' }
+        })
+        await runLiveAssistant(request({ session: { ...session, channel } }))
+        expect(storeCallTranscriptTurn).toHaveBeenCalledTimes(1)
+        expect(storeCallTranscriptTurn).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: 'p',
+                chatId: 'c',
+                turnId: 'created_note:["destination","new-note"]',
+                text: 'Research notes\nhttps://mystaging.alldone.app/projects/destination/notes/new-note/editor',
+                source: `${channel}_note`,
+                isCallTranscript: false,
+            })
+        )
+        expect(JSON.parse(savedOperations[0].result).chatDisplay.chatPosted).toBe(true)
+    }
+)
+
+test('preserves note creation success when displaying its link fails', async () => {
+    helper.executeToolNatively.mockResolvedValueOnce({ success: true, noteId: 'n', projectId: 'p' })
+    storeCallTranscriptTurn.mockRejectedValueOnce(new Error('Chat write failed'))
+    helper.collectAssistantTextWithToolCalls.mockImplementationOnce(async ({ toolExecutor }) => {
+        const result = await toolExecutor('create_note', { title: 'Notes' })
+        expect(result).toMatchObject({ success: true, chatDisplay: { chatPosted: false } })
+        return { finalResponseText: 'Created the note, but could not display its link.' }
+    })
+    await runLiveAssistant(request())
+    expect(helper.executeToolNatively).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(savedOperations[0].result).chatDisplay.chatPosted).toBe(false)
 })
 
 test('keeps successful creation distinct from a failed chat display and saves both outcomes', async () => {
