@@ -12,6 +12,7 @@ import ContactListByProject from './ContactListByProject'
  * page while it mounts, and disarms the button until the rows are in.
  */
 
+jest.mock('../MyDayView/AssistantLine/ProjectAssistantLine', () => 'ProjectAssistantLine')
 jest.mock('./ContactsListSkeleton', () => 'ContactsListSkeleton')
 jest.mock('./ContactItem', () => 'ContactItem')
 jest.mock('./EditContact', () => 'EditContact')
@@ -118,6 +119,15 @@ const flushFrames = frames =>
         queued.forEach(callback => callback())
     })
 
+it('keeps the assistant above the filters when the selected contact list is empty', () => {
+    const tree = render(0)
+    expect(tree.root.findByType('ProjectAssistantLine').props.project.id).toBe('project-1')
+    const nodes = tree.root.findAll(node => typeof node.type === 'string').map(node => node.type)
+    expect(nodes.indexOf('ProjectAssistantLine')).toBeLessThan(nodes.indexOf('ContactsHeader'))
+    expect(nodes.indexOf('ProjectAssistantLine')).toBeLessThan(nodes.indexOf('ContactStatusFiltersView'))
+    act(() => tree.unmount())
+})
+
 describe('ContactListByProject "Show more" ghosts (AT-2385)', () => {
     let frames
     let originalRaf
@@ -153,6 +163,7 @@ describe('ContactListByProject "Show more" ghosts (AT-2385)', () => {
 
         expect(header.props.customRight.type).toBe('ContactMoreButton')
         expect(header.props.customRight.props.projectId).toBe('project-1')
+        expect(tree.root.findAllByType('ProjectAssistantLine')).toHaveLength(0)
     })
 
     it('shows ghosts for the incoming page and dims the button while it is in flight', () => {

@@ -11,6 +11,7 @@ import { setLastAddNewContact } from '../../redux/actions'
 import { dismissAllPopups, isInputsFocused } from '../../utils/HelperFunctions'
 import ShowMoreButton from '../UIControls/ShowMoreButton'
 import ProjectHeader from '../TaskListView/Header/ProjectHeader'
+import ProjectAssistantLine from '../MyDayView/AssistantLine/ProjectAssistantLine'
 import ContactsHelper, { isSomeContactEditOpen } from './Utils/ContactsHelper'
 import { useDispatch, useSelector } from 'react-redux'
 import useSelectorHashtagFilters from '../HashtagFilters/UseSelectorHashtagFilters'
@@ -141,6 +142,7 @@ function ContactListByProject({
                 showRootSectionNavigation={inSelectedProject}
             />
             <ProjectSectionBody>
+                {inSelectedProject && <ProjectAssistantLine project={project} />}
                 {inSelectedProject && <ContactsHeader contactAmount={contactsList.length} />}
                 {inSelectedProject && <ContactStatusFiltersView projectContacts={projectContacts} />}
 

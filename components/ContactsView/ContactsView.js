@@ -15,6 +15,7 @@ import NothingToShow from '../UIComponents/NothingToShow'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import ContactStatusFiltersView from '../ContactStatusFilters/ContactStatusFiltersView'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
+import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import { watchFollowedPeople } from '../../utils/backends/Contacts/followedPeopleFirestore'
 import { createFollowedPeopleBatcher } from './followedPeopleBatcher'
 import { buildContactsViewData } from './contactsViewData'
@@ -452,7 +453,8 @@ export default function ContactsView() {
                 smallScreenNavigation ? localStyles.containerMobile : isMiddleScreen && localStyles.containerTablet,
             ]}
         >
-            {inAllProjects && <AllProjectsLine showActions={false} />}
+            {inAllProjects && <AllProjectsLine showActions={false} bottomSpacing={8} />}
+            {inAllProjects && <AllProjectsAssistantLine />}
             {inAllProjects && (
                 <ContactsHeader
                     contactAmount={contactsActiveTab === FOLLOWED_TAB ? followedContactsAmount : contactsAmount}
@@ -497,7 +499,7 @@ export default function ContactsView() {
                         </DeferredContactsProject>
                     )
                 })
-            ) : displayedContactsAmount > 0 ? (
+            ) : (
                 <ContactListByProject
                     projectIndex={selectedProjectIndex}
                     members={renderedProjectsUsers[project.id]}
@@ -506,9 +508,8 @@ export default function ContactsView() {
                     maxContactsToRender={10}
                     requestProjectData={false}
                 />
-            ) : selectedProjectReady ? (
-                <NothingToShow />
-            ) : null}
+            )}
+            {!inAllProjects && selectedProjectReady && displayedContactsAmount === 0 && <NothingToShow />}
             {inAllProjects && complete && followedProjectsComplete && displayedContactsAmount === 0 && (
                 <NothingToShow />
             )}

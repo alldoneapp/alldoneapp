@@ -12,6 +12,7 @@ import useGetChats from '../../hooks/Chats/useGetChats'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 
 const mockDispatch = jest.fn()
+jest.mock('../MyDayView/AssistantLine/ProjectAssistantLine', () => 'ProjectAssistantLine')
 jest.mock('react-redux', () => ({ useDispatch: () => mockDispatch, useSelector: jest.fn() }))
 
 jest.mock('../../utils/backends/Chats/chatNumbers', () => ({
@@ -80,6 +81,15 @@ describe('ChatsByProject chats-amount watcher', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         useGetChats.mockReturnValue({})
+    })
+
+    it('shows the selected project assistant even with no chats, without duplicating it in All Projects', () => {
+        const selected = renderView(buildState(undefined, 0), { isInAllProjects: false })
+        expect(selected.root.findByType('ProjectAssistantLine').props.project).toBe(PROJECT)
+        act(() => selected.unmount())
+        const all = renderView(buildState(3))
+        expect(all.root.findAllByType('ProjectAssistantLine')).toHaveLength(0)
+        act(() => all.unmount())
     })
 
     it('caps the amount query at the number of chats it renders in All Projects', () => {

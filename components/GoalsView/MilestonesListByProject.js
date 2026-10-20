@@ -30,6 +30,7 @@ import { BACKLOG_DATE_NUMERIC } from '../TaskListView/Utils/TasksHelper'
 import AddGoals from './AddGoals'
 import { allGoals } from '../AllSections/allSectionHelper'
 import { getPreviousOpenMilestoneDate } from './GoalsBoardMilestonesHelper'
+import ProjectAssistantLine from '../MyDayView/AssistantLine/ProjectAssistantLine'
 
 const EMPTY_MILESTONES = []
 
@@ -168,6 +169,7 @@ function MilestonesListByProject({
                 showRootSectionNavigation={!inAllProjects}
             />
             <ProjectSectionBody style={inAllProjects && { paddingTop: 26 }}>
+                {!inAllProjects && <ProjectAssistantLine project={project} />}
                 {loggedUserCanUpdateObject && inOpenTab && !isAnonymous && milestones.length === 0 && (
                     <AddGoals
                         projectId={projectId}
