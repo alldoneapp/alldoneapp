@@ -64,6 +64,14 @@ describe('WhatsApp call prompt', () => {
         )
     })
 
+    test('never speaks task URLs or claims unconfirmed link delivery', () => {
+        const instructions = buildCallBootstrapInstructions(assistant)
+        expect(instructions).toContain('Never read a URL aloud, including newly created task links and similar links')
+        expect(instructions).toContain('even if older instructions or conversation history ask you to')
+        expect(instructions).toContain('only after a tool confirms that specific entry was posted')
+        expect(instructions).not.toContain('Say that the link is available in Alldone or WhatsApp instead')
+    })
+
     test('omits the language directive from bootstrap instructions when no language is provided', () => {
         expect(buildCallBootstrapInstructions(assistant)).not.toContain('Start the call in')
     })

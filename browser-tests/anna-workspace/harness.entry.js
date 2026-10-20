@@ -4,8 +4,6 @@ import { useSelector } from 'react-redux'
 import { createRoot } from 'react-dom/client'
 import AnnaShell from '../../components/Anna/AnnaShell'
 import AssistantModeButton from '../../components/TopBar/AssistantModeButton'
-import DefaultAssistantButton from '../../components/SidebarMenu/DefaultAssistantButton'
-import AnnaChatNavigationContext from '../../components/Anna/AnnaChatNavigationContext'
 import AnnaWorkspaceNavigationContext from '../../components/Anna/AnnaWorkspaceNavigationContext'
 import { restoreAnnaLayout, setAnnaMode } from '../../utils/annaMode'
 import { GlobalOverlayFixture, OverlayLaunchers } from './overlay-fixture'
@@ -164,37 +162,6 @@ function WorkspaceNavigationFixture() {
     }, [showWorkspace])
     return null
 }
-function AssistantEntryFixture() {
-    const openChat = useContext(AnnaChatNavigationContext)
-    const trackFocus = new URLSearchParams(window.location.search).has('assistantFocus')
-    const buttons = (
-        <>
-            <AssistantModeButton inline />
-            {trackFocus && (
-                <div data-testid="sidebar-assistant-entry">
-                    <DefaultAssistantButton />
-                </div>
-            )}
-        </>
-    )
-    if (!trackFocus) return buttons
-    return (
-        <AnnaChatNavigationContext.Provider
-            value={() => {
-                openChat()
-                const log = document.querySelector('.anna-messages')
-                // Inspect the real action before returning to either button's tap
-                // handler. Native event listeners can run microtasks between phases.
-                window.__assistantOpeningTap = {
-                    focused: !!document.activeElement?.matches('.anna-rich-composer .ql-editor'),
-                    latest: !!log?.clientHeight && log.scrollHeight - log.scrollTop - log.clientHeight < 2,
-                }
-            }}
-        >
-            {buttons}
-        </AnnaChatNavigationContext.Provider>
-    )
-}
 function Fixture() {
     const [dialog, setDialog] = useState(false)
     const [notifications, setNotifications] = useState(false)
@@ -213,7 +180,7 @@ function Fixture() {
             <AnnaShell routeId="fixture-note">
                 <WorkspaceNavigationFixture />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', background: 'white' }}>
-                    <AssistantEntryFixture />
+                    <AssistantModeButton inline />
                 </div>
                 <ScrollView
                     testID="workspace-scroll"
