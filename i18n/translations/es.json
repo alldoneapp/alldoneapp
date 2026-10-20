@@ -3369,5 +3369,19 @@
     "The browser used by %{assistantName} will appear here when browsing.": "El navegador de %{assistantName} aparecerá aquí cuando se use.",
     "Assistant views": "Vistas del asistente",
     "Description saved": "Guardado",
-    "Description autosave failed": "No se pudo guardar. Tu borrador se conserva en esta sesión. Inténtalo de nuevo."
+    "Description autosave failed": "No se pudo guardar. Tu borrador se conserva en esta sesión. Inténtalo de nuevo.",
+    "Call audio controls": "Controles de audio de la llamada",
+    "Audio input": "Entrada de audio",
+    "Audio output": "Salida de audio",
+    "Automatic microphone": "Micrófono automático",
+    "System default audio output": "Salida de audio predeterminada del sistema",
+    "Choose another audio output…": "Elegir otra salida de audio…",
+    "System audio device": "Dispositivo de audio del sistema",
+    "Audio output level": "Nivel de salida de audio",
+    "Audio level unavailable": "Nivel de audio no disponible",
+    "Choose audio devices in your browser or system settings": "Elige los dispositivos de audio en los ajustes del navegador o del sistema",
+    "Could not change microphone": "No se pudo cambiar el micrófono",
+    "Could not change audio output": "No se pudo cambiar la salida de audio",
+    "Audio device list unavailable": "Lista de dispositivos de audio no disponible",
+    "Audio output disconnected. Using system default.": "Salida de audio desconectada. Se usa la predeterminada del sistema."
 }
