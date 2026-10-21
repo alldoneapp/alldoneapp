@@ -13,19 +13,20 @@ jest.mock('../utils/meetingQueue', () => ({
 }))
 jest.mock('../utils/backends/firestore', () => ({ runHttpsCallableFunction: jest.fn() }))
 
-let current, view, options, rows, persist, held, queue
+let current, view, options, rows, persist, held, queue, getInsertionTarget
 const flush = async () => {
     for (let i = 0; i < 80; i++) await Promise.resolve()
 }
 const offline = () => Object.assign(new Error('offline'), { code: 'offline' })
 const Harness = ({ enabled = true, noteId = 'n' }) => {
-    current = useMeetingRecorder({ userId: 'u', noteId, projectId: 'p', enabled, persist })
+    current = useMeetingRecorder({ userId: 'u', noteId, projectId: 'p', enabled, persist, getInsertionTarget })
     return null
 }
 beforeEach(() => {
     jest.useFakeTimers()
     jest.clearAllMocks()
     options = null
+    getInsertionTarget = undefined
     rows = new Map()
     held = new Set()
     Object.defineProperty(navigator, 'locks', {
@@ -93,6 +94,43 @@ const start = async () =>
         await flush()
     })
 
+test('captures one insertion target before microphone acquisition and stores it with every queued chunk', async () => {
+    let currentTarget = { tname: 'quill', item: { client: 123, clock: 5 }, assoc: 0 }
+    getInsertionTarget = jest.fn(() => currentTarget)
+    let permit
+    createMeetingCapture.mockImplementation(callbacks => {
+        options = callbacks
+        return {
+            start: () =>
+                new Promise(resolve => {
+                    permit = resolve
+                }),
+            stop: async () => callbacks.onStopped(),
+        }
+    })
+    await mount()
+    await start()
+    expect(getInsertionTarget).toHaveBeenCalledTimes(1)
+    const startingTarget = currentTarget
+    currentTarget = { tname: 'quill', item: { client: 123, clock: 99 }, assoc: 0 }
+    await act(async () => {
+        permit('Test mic')
+        await flush()
+        runHttpsCallableFunction.mockRejectedValue(offline())
+        options.onChunk(new Blob(['first']))
+        options.onChunk(new Blob(['second']))
+        await flush()
+    })
+    expect([...rows.values()].map(chunk => chunk.insertionTarget)).toEqual([startingTarget, startingTarget])
+    expect(getInsertionTarget).toHaveBeenCalledTimes(1)
+    runHttpsCallableFunction.mockResolvedValue({ text: 'recovered' })
+    await act(async () => {
+        await current.retry()
+        await flush()
+    })
+    expect(persist.mock.calls.map(([chunk]) => chunk.insertionTarget)).toEqual([startingTarget, startingTarget])
+})
+
 test('offline capture continues buffering; retry drains in order; stop persists final chunk and releases lock', async () => {
     await mount()
     await start()
@@ -118,6 +156,8 @@ test('offline capture continues buffering; retry drains in order; stop persists 
 })
 
 test('reopening a note recovers stored chunks without requesting microphone access', async () => {
+    const insertionTarget = { tname: 'quill', item: { client: 123, clock: 5 }, assoc: 0 }
+    getInsertionTarget = jest.fn()
     rows.set('old:0', {
         id: 'old:0',
         owner: 'u:n',
@@ -125,11 +165,14 @@ test('reopening a note recovers stored chunks without requesting microphone acce
         sequence: 0,
         createdAt: 1,
         blob: new Blob(['stored']),
+        insertionTarget,
     })
     rows.set('other:0', { id: 'other:0', owner: 'other-user:n', sequence: 0, createdAt: 1 })
     await mount()
     expect(createMeetingCapture).not.toHaveBeenCalled()
     expect(persist).toHaveBeenCalledTimes(1)
+    expect(persist).toHaveBeenCalledWith(expect.objectContaining({ insertionTarget }))
+    expect(getInsertionTarget).not.toHaveBeenCalled()
     expect(rows.size).toBe(1)
     expect(rows.has('other:0')).toBe(true)
 })
