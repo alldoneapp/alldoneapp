@@ -24,6 +24,11 @@ async function main() {
         { cwd: root, stdio: 'inherit' }
     )
     const server = http.createServer((req, res) => {
+        if (req.url === '/icons.ttf') {
+            res.setHeader('Content-Type', 'font/ttf')
+            res.end(fs.readFileSync(path.join(root, 'assets/fonts/alldone.ttf')))
+            return
+        }
         if (req.url === '/review-font.ttf') {
             res.setHeader('Content-Type', 'font/ttf')
             res.end(fs.readFileSync(path.join(root, 'assets/fonts/Roboto-Regular.ttf')))
@@ -47,6 +52,11 @@ async function main() {
         page.on('pageerror', error => console.error(error))
         await page.goto(`http://127.0.0.1:${server.address().port}`)
         await page.getByRole('status').first().waitFor()
+        await page.getByRole('button', { name: 'Aufnehmen', exact: true }).click()
+        await page.getByRole('button', { name: 'Bildschirm-/Tab-Audio', exact: true }).click()
+        assert.equal(await page.evaluate(() => window.microphoneClicks), 1)
+        assert.equal(await page.evaluate(() => window.screenClicks), 1)
+        assert.equal(await page.getByRole('button', { name: 'Diktieren', exact: true }).count(), 0)
         assert.equal(await page.getByRole('status').count(), 4)
         assert((await page.getByRole('status').nth(1).textContent()).includes('automatisch'))
         await page.getByRole('status').first().getByRole('button').click()
@@ -56,7 +66,9 @@ async function main() {
         await page.evaluate(() => document.fonts.ready)
         fs.mkdirSync(path.join(root, 'docs/images'), { recursive: true })
         await page.screenshot({ path: path.join(root, 'docs/images/meeting-microphone-status.png'), fullPage: true })
-        console.log('PASS real status component: German states, Stop, Retry; isolated-component screenshot saved')
+        console.log(
+            'PASS real recording controls and status: one mic action, screen/tab action, German states, Stop, Retry; isolated-component screenshot saved'
+        )
     } finally {
         await browser?.close()
         await new Promise(resolve => server.close(resolve))

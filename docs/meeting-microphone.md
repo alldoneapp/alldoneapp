@@ -1,10 +1,25 @@
-# AT-2791: Meeting per Gerätemikrofon
+# AT-2791: Einheitliche Mikrofonaufnahme in Notizen
 
-Zusätzlicher Knopf **Meeting per Mikrofon** im Notizeditor. Ziel: Desktop Chrome/Edge,
-geöffnete Notiz, wacher Rechner, maximal 60 Minuten pro Aufnahme. Der bestehende
-**Transcribe**-Modus mit Bildschirm-/Tab-Audio und Screenshots bleibt erhalten.
+Ein Mikrofon-Button **Aufnehmen** im Notizeditor startet direkt das Gerätemikrofon,
+ohne Auswahl zwischen Diktat und Meeting. Nach Mikrofonfreigabe sprechen, mit **Stop**
+beenden; Text erscheint abschnittsweise in der Notiz. Kurze Diktate und lange Aufnahmen
+nutzen denselben dauerhaften Recorder aus MR !685. Es gibt keinen zeitgesteuerten
+Aufnahmestopp: weder das alte Fünf-Minuten-Diktatlimit noch das frühere 60-Minuten-Limit.
+Ziel: Desktop Chrome/Edge, geöffnete Notiz, wacher Rechner. **Bildschirm-/Tab-Audio**
+bleibt als zusätzliche Option einschließlich Screenshots erhalten. Während einer
+laufenden Aufnahme kann der andere Audioweg nicht gestartet werden.
 Das rohe Transkript wird abschnittsweise ans Notizende angehängt, ohne Zusammenfassung
-oder Sprecherzuordnung. Mikrofon, Laufzeit, Signal und ausstehende Verarbeitung sind sichtbar.
+oder Sprecherzuordnung. Mikrofon, Laufzeit, Signal und ausstehende Verarbeitung sind sichtbar. Starten und
+Beenden haben eigene Statusanzeigen. Übertragungs-/Netzwerkfehler zeigen an, dass Audio
+lokal gesichert bleibt und automatisch erneut versucht wird; **Erneut versuchen** ist
+auch manuell möglich. Ein Doppelklick während der Freigabe startet keine zweite Aufnahme.
+
+Die Notiz-Toolbar verwendet `useRambleController`/`useRambleRecorder` nicht mehr. Deren
+andere Nutzer (Chat-/Aufgaben-/Assistenteneingaben, Push-to-talk, Submit-/Fokuslogik)
+bleiben unverändert, einschließlich ihrer bisherigen Grenzen. Die gemeinsame
+Mikrofonwahl und Kompatibilitätsprüfung in `rambleMicCapture` bleibt erhalten.
+Das Notiz-Diktat verwendet jetzt das rohe, geordnete Transkript am Notizende; die alte
+einmalige Assistentenbereinigung und Ersetzung an der Cursorposition entfallen.
 
 ## Aufnahme und Wiederherstellung
 
@@ -46,9 +61,9 @@ Datenlöschung einbezogen werden.
 
 ## Lokal starten und prüfen
 
-![Isolierte Statuskomponente mit Beispieldaten](images/meeting-microphone-status.png)
+![Isolierte Aufnahme- und Statuskomponenten mit Beispieldaten](images/meeting-microphone-status.png)
 
-Die Abbildung zeigt die echte Statuskomponente im Browser mit Beispieldaten, keinen
+Die Abbildung zeigt die echten Aufnahme- und Statuskomponenten im Browser mit Beispieldaten, keinen
 vollständigen App- oder Mikrofontest. Reproduzierbar mit `node browser-tests/at2791/ui.run.js`
 (gleiche Playwright-Voraussetzungen wie unten).
 
@@ -59,11 +74,10 @@ Node 22 / npm 10; vorhandene Abhängigkeiten nutzen. Fehlende Abhängigkeiten be
 npm run dev
 ```
 
-Notiz mit Schreibrechten öffnen, **Meeting per Mikrofon** starten, sprechen, Stop drücken.
+Notiz mit Schreibrechten öffnen, **Aufnehmen** klicken, sprechen, **Stop** drücken.
 Das Dev-Skript startet die Emulatoren. Eine echte Servertranskription benötigt die vorhandene
 Deepgram-Konfiguration im lokalen Functions-Emulator; Browserprüfung und Unit-Tests benötigen
-weder Schlüssel noch Produktionszugriff. Geänderte Frontend- und Function-Version gehören
-zusammen. Keine neuen Umgebungsvariablen oder IAM-Rollen. Kein Deployment für diesen MR.
+weder Schlüssel noch Produktionszugriff. Die Functions aus MR !685 müssen vorhanden sein; diese Zusammenführung ändert keine Serverfunktion. Keine neuen Umgebungsvariablen oder IAM-Rollen. Kein Deployment für diesen MR.
 
 Gezielte Tests:
 
@@ -83,7 +97,7 @@ NODE_PATH=/tmp/at2791-browser/node_modules node browser-tests/at2791/run.js
 Dieser ca. 22-Sekunden-Test erzeugt ein Tonsignal und prüft echten AudioWorklet,
 separates Dekodieren jedes WAV-Blocks, Schlussblock, wiederholten Stop, Track-Freigabe,
 IndexedDB nach Reload und Reihenfolge bei simuliertem Offline-Fehler. Das ist **kein**
-Geräte- oder Deepgram-Test. Unit-Tests mit 360 synthetischen Blöcken sind **kein**
+Geräte- oder Deepgram-Test. Unit-Tests mit mehr als 360 synthetischen Blöcken sind **kein**
 einstündiger Dauertest. Die vorherige `meeting-buffer-probe.mjs` ist ein unabhängiger,
 erneut ausführbarer Dateispeicher-/Zeit-Simulator und kein Nachweis für Anwendungscode.
 
@@ -106,12 +120,14 @@ erneut ausführbarer Dateispeicher-/Zeit-Simulator und kein Nachweis für Anwend
       gespeicherte Blöcke bleiben erhalten. Korrektes Gerät bei erneutem Start prüfen.
 - [ ] Aufnahme kurz nach einer Blockgrenze stoppen und Stop wiederholt klicken:
       Schlusswort erscheint genau einmal, Mikrofonanzeige erlischt, Pending endet bei null.
-- [ ] Auf 60-Minuten-Limit warten: automatischer Stop sichert Schlussblock und gibt Ressourcen frei.
+- [ ] Über fünf Minuten und über 60 Minuten hinaus aufnehmen: kein automatischer Zeitstopp.
+      Danach bewusst stoppen und Schlussblock sowie Ressourcenfreigabe prüfen.
 - [ ] Speicherfehler, fehlendes Gold, zweiter Tab und Kontowechsel prüfen:
       nachvollziehbarer Zustand, keine fremde Queue und kein automatischer Mikrofonneustart.
-- [ ] Bestehenden Bildschirm-/Tab-Audio-Modus einschließlich Screenshot und Kurz-Diktat prüfen.
+- [ ] Kurzes Diktat (auch unter zehn Sekunden) und Doppelklick auf **Aufnehmen** prüfen.
+- [ ] Bildschirm-/Tab-Audio einschließlich Screenshot, Stop und Start nach Mikrofonaufnahme prüfen.
 
-## Ausgeführt am 21.10.2026
+## Frühere Prüfung von MR !685 (21.10.2026)
 
 - 174 Client-Tests in 14 Suites und 65 Server-Tests in 4 Suites bestanden, einschließlich
   bestehendem Diktat, Mikrofonwahl, Wake Lock, Notizspeicherung, Deepgram-SDK-Wireformat und Gold.
@@ -127,3 +143,26 @@ erneut ausführbarer Dateispeicher-/Zeit-Simulator und kein Nachweis für Anwend
 
 **Keine realen Mikrofon-, Provider-, Akku- oder 60-Minuten-Tests durchgeführt.** Die
 Deepgram-Suite verwendet den echten SDK mit simuliertem Netzwerk. Kein Produktionsdeployment.
+
+## Prüfung der Zusammenführung (21.10.2026)
+
+- 166 Client-Tests in 13 Suites bestanden: gemeinsamer Recorder, Sichtbarkeit/Bedienung
+  der Toolbar, Start/Stop, schneller Doppelstart während Freigabe, letzter kurzer Block,
+  simulierte Aufnahme über fünf Minuten und über eine Stunde ohne automatischen Stopp,
+  Offline/Online-Retry, Reload-Recovery ohne Mikrofonneustart, echte Quill/Yjs-Deduplizierung,
+  Mikrofonwahl und Wake Lock. Auch die unveränderten Rambler-Diktattests bestehen.
+- 65 Server-Tests in 4 Suites bestanden: Transkriptions-Cache, Deepgram-Wireformat und
+  idempotente Gold-Abrechnung. Die Serverimplementierung bleibt unverändert.
+- Chromium mit erzeugtem Audio: vollständige WAV-Blöcke plus kurzer Schlussblock,
+  echtes IndexedDB, Reload/Offline/Reihenfolge und Track-Cleanup bestanden.
+- Echte Aufnahme- und Statuskomponenten im Chromium: ein direkter Mikrofon-Button,
+  separater Bildschirm-/Tab-Button, deutsche Zustände, Stop und Retry geprüft;
+  aktualisierter Screenshot oben. Die Komponentenansicht wurde mit Webpack kompiliert.
+- Lokaler vollständiger Produktionsbuild (`npm run build-web-webpack`) wurde in dieser
+  2-GiB-VM mit Exit 143 beendet; kein erfolgreicher lokaler App-Build. CI separat prüfen.
+
+Noch offen: echter Geräte-/Provider-Dauertest über mindestens 60 Minuten, reale
+Bildschirm-/Tab-Freigabe und Screenshots im vollständigen Editor, Ressourcen-/Akkuwerte.
+Die automatisierten Tests ersetzen diese Abnahme nicht. Keine Zusicherung für mobile
+Hintergrundaufnahme. Keine neuen Umgebungsvariablen, Migrationen oder Serveränderungen.
+Dieser MR wird weder automatisch gemergt noch deployed.

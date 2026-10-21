@@ -15,6 +15,12 @@ const ERROR_KEYS = {
 export default function MeetingMicrophoneStatus({ recorder, elapsedLabel }) {
     const active = ['starting', 'recording', 'stopping'].includes(recorder.phase)
     const error = recorder.captureError || recorder.error
+    const statusKey =
+        {
+            starting: 'Microphone recording starting',
+            recording: 'Meeting microphone active',
+            stopping: 'Microphone recording stopping',
+        }[recorder.phase] || 'Meeting microphone pending'
     if (!active && !recorder.pending && !error) return null
     return (
         <div
@@ -23,11 +29,11 @@ export default function MeetingMicrophoneStatus({ recorder, elapsedLabel }) {
         >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <strong>
-                    {translate(active ? 'Meeting microphone active' : 'Meeting microphone pending')} · {elapsedLabel} ·{' '}
-                    {recorder.pending} {translate('Meeting microphone chunks pending')}
+                    {translate(statusKey)} · {elapsedLabel} · {recorder.pending}{' '}
+                    {translate('Meeting microphone chunks pending')}
                 </strong>
                 {active && (
-                    <button type="button" onClick={recorder.stop}>
+                    <button type="button" onClick={recorder.stop} disabled={recorder.phase === 'stopping'}>
                         {translate('Stop')}
                     </button>
                 )}

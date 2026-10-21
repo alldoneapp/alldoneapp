@@ -78,14 +78,20 @@ test('partial final WAV is delivered before resources close; repeated stop is id
     expect(callbacks.onStopped).toHaveBeenCalledTimes(1)
 })
 
-test('simulated 60 minutes of samples stop at exactly 360 full blocks, releasing resources', async () => {
+test('capture continues beyond five minutes and one hour until explicit stop, retaining the final short block', async () => {
     const callbacks = options()
     const capture = createMeetingCapture(callbacks)
     await capture.start()
     const pcm = new Int16Array(160000)
     for (let i = 0; i < 361; i++) node.port.onmessage({ data: { pcm } })
+    frames(1600)
+    expect(callbacks.onChunk).toHaveBeenCalledTimes(361)
+    expect(callbacks.onStopped).not.toHaveBeenCalled()
+    expect(track.stop).not.toHaveBeenCalled()
+    expect(release).not.toHaveBeenCalled()
     await capture.stop()
-    expect(callbacks.onChunk).toHaveBeenCalledTimes(360)
+    expect(callbacks.onChunk).toHaveBeenCalledTimes(362)
+    expect(callbacks.onChunk.mock.calls[361][0].size).toBe(3244)
     expect(track.stop).toHaveBeenCalledTimes(1)
     expect(release).toHaveBeenCalledTimes(1)
 })

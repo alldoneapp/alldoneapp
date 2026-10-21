@@ -3,30 +3,30 @@ import path from 'path'
 
 import {
     canAutoStartNoteTranscription,
-    isNoteDictationVisible,
+    isNoteMicrophoneVisible,
     isNoteTranscriptionVisible,
 } from './noteRecordingControls'
 
 describe('note recording controls visibility (AT-2384)', () => {
-    describe('dictation ("Dictate") button', () => {
-        it('shows for a member on a browser that supports dictation', () => {
-            expect(isNoteDictationVisible({ accessGranted: true, dictationSupported: true })).toBe(true)
+    describe('unified microphone button', () => {
+        it('shows for a member on a browser that supports durable microphone capture', () => {
+            expect(isNoteMicrophoneVisible({ accessGranted: true, microphoneSupported: true })).toBe(true)
         })
 
-        it('hides in the not-logged-in / read-only view even where dictation is supported', () => {
-            expect(isNoteDictationVisible({ accessGranted: false, dictationSupported: true })).toBe(false)
+        it('hides in the not-logged-in / read-only view even where capture is supported', () => {
+            expect(isNoteMicrophoneVisible({ accessGranted: false, microphoneSupported: true })).toBe(false)
         })
 
-        it('still hides for a member when the browser cannot dictate', () => {
-            expect(isNoteDictationVisible({ accessGranted: true, dictationSupported: false })).toBe(false)
+        it('still hides for a member when the browser cannot buffer microphone audio', () => {
+            expect(isNoteMicrophoneVisible({ accessGranted: true, microphoneSupported: false })).toBe(false)
         })
 
         it('treats a missing access flag as no access', () => {
-            expect(isNoteDictationVisible({ dictationSupported: true })).toBe(false)
+            expect(isNoteMicrophoneVisible({ microphoneSupported: true })).toBe(false)
         })
     })
 
-    describe('meeting recording ("Transcribe") button', () => {
+    describe('screen/tab audio button', () => {
         it('shows for a member', () => {
             expect(isNoteTranscriptionVisible({ accessGranted: true })).toBe(true)
         })
@@ -62,10 +62,9 @@ describe('EditorToolbar wiring', () => {
     const source = fs.readFileSync(path.join(__dirname, 'EditorToolbar.js'), 'utf8')
 
     it('gates the mic button on the shared rule instead of browser support alone', () => {
-        expect(source).toContain(
-            'isNoteDictationVisible({ accessGranted, dictationSupported: isDictationSupported() })'
-        )
-        expect(source).not.toMatch(/\{\s*isDictationSupported\(\)\s*&&/)
+        expect(source).toContain('isNoteMicrophoneVisible({ accessGranted, microphoneSupported: meetingSupported })')
+        expect(source).not.toContain('useRambleController')
+        expect(source).not.toContain('useRambleRecorder')
     })
 
     it('gates the transcription button and its auto-start on the shared rule', () => {

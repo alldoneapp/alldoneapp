@@ -1,6 +1,6 @@
 import { acquireDictationStream, rememberLastUsedInputDevice } from '../hooks/rambleMicCapture'
 import { keepScreenAwake } from './screenWakeLock'
-import { createMeetingChunker, MEETING_SAMPLE_RATE, MEETING_WORKLET } from './meetingAudio'
+import { createMeetingChunker, MEETING_WORKLET } from './meetingAudio'
 
 export function isMeetingCaptureSupported() {
     return (
@@ -18,7 +18,6 @@ export function createMeetingCapture({ onChunk, onError, onStopped, onLevel }) {
     let stream, context, source, node, releaseWakeLock, timer, moduleUrl
     let stopPromise
     let resolveFlush
-    let samples = 0
     let signal = false
     const chunker = createMeetingChunker(onChunk)
     const fail = code => {
@@ -80,12 +79,9 @@ export function createMeetingCapture({ onChunk, onError, onStopped, onLevel }) {
                 node.port.onmessage = ({ data }) => {
                     if (data.stopped) return resolveFlush?.()
                     if (!data.pcm) return
-                    const remaining = MEETING_SAMPLE_RATE * 3600 - samples
-                    const pcm = data.pcm.subarray(0, remaining)
-                    samples += pcm.length
+                    const pcm = data.pcm
                     chunker.push(pcm)
                     signal = signal || pcm.some(value => Math.abs(value) > 100)
-                    if (samples >= MEETING_SAMPLE_RATE * 3600) stop()
                 }
                 node.onprocessorerror = () => fail('capture-interrupted')
                 stream.getAudioTracks().forEach(track => {
