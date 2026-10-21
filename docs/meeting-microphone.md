@@ -8,10 +8,8 @@ Aufnahmestopp: weder das alte Fünf-Minuten-Diktatlimit noch das frühere 60-Min
 Ziel: Desktop Chrome/Edge, geöffnete Notiz, wacher Rechner. **Bildschirm-/Tab-Audio**
 bleibt als zusätzliche Option einschließlich Screenshots erhalten. Während einer
 laufenden Aufnahme kann der andere Audioweg nicht gestartet werden.
-Das rohe Transkript wird an der Cursorposition eingefügt, an der die Aufnahme gestartet wurde,
-ohne Zusammenfassung oder Sprecherzuordnung. Weitere Abschnitte folgen an derselben Stelle,
-auch wenn der Cursor inzwischen verschoben wurde. Solange der Cursor beim Transkript bleibt,
-folgt die Ansicht dem eingefügten Text. Mikrofon, Laufzeit, Signal und ausstehende Verarbeitung sind sichtbar. Starten und
+Das rohe Transkript wird abschnittsweise ans Notizende angehängt, ohne Zusammenfassung
+oder Sprecherzuordnung. Mikrofon, Laufzeit, Signal und ausstehende Verarbeitung sind sichtbar. Starten und
 Beenden haben eigene Statusanzeigen. Übertragungs-/Netzwerkfehler zeigen an, dass Audio
 lokal gesichert bleibt und automatisch erneut versucht wird; **Erneut versuchen** ist
 auch manuell möglich. Ein Doppelklick während der Freigabe startet keine zweite Aufnahme.
@@ -20,8 +18,8 @@ Die Notiz-Toolbar verwendet `useRambleController`/`useRambleRecorder` nicht mehr
 andere Nutzer (Chat-/Aufgaben-/Assistenteneingaben, Push-to-talk, Submit-/Fokuslogik)
 bleiben unverändert, einschließlich ihrer bisherigen Grenzen. Die gemeinsame
 Mikrofonwahl und Kompatibilitätsprüfung in `rambleMicCapture` bleibt erhalten.
-Das Notiz-Diktat verwendet das rohe, geordnete Transkript an der beim Start gewählten Stelle;
-die alte einmalige Assistentenbereinigung entfällt. Bestehender markierter Text wird erhalten.
+Das Notiz-Diktat verwendet jetzt das rohe, geordnete Transkript am Notizende; die alte
+einmalige Assistentenbereinigung und Ersetzung an der Cursorposition entfallen.
 
 ## Aufnahme und Wiederherstellung
 
@@ -36,11 +34,6 @@ die alte einmalige Assistentenbereinigung entfällt. Bestehender markierter Text
   und Transaktions-Lease. Gold nutzt den bestehenden Idempotenzschlüssel. Preis unverändert:
   0,2 Gold/Block, etwa 72 Gold/volle Stunde. Wiederholungen desselben Blocks kosten nicht erneut.
 - Transkript lokal speichern, dann Text und Übernahmemarkierung gemeinsam in Yjs schreiben.
-  Die Startposition wird als relative Yjs-Position mit jedem Audioblock gesichert; der
-  Einfügepunkt für Folgeabschnitte reist gemeinsam mit Text und Übernahmemarkierung im
-  Notiz-Snapshot. Änderungen vor der Position, Wiederholungen und erneutes Öffnen erhalten
-  dadurch die Einfügestelle. Bereits vor dieser Änderung gespeicherte Audioblöcke ohne
-  Positionsinformation behalten ihr bisheriges Verhalten am Notizende.
   Erst nach bestätigtem Upload des Notiz-Snapshots in Firebase Storage wird Audio gelöscht.
   Die initiale Zusammenführung mit der gespeicherten Notiz muss vorher abgeschlossen sein.
 - Erneutes Öffnen **derselben Notiz mit demselben Konto im selben Browserprofil** verarbeitet

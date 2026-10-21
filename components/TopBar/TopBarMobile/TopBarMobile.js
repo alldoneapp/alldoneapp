@@ -12,7 +12,7 @@ import { Themes } from '../Themes'
 import TasksStatisticsArea from '../TasksStatisticsArea'
 import { PLAN_STATUS_PREMIUM } from '../../Premium/PremiumHelper'
 import XpBar, { XP_BAR_MOBILE, barWidth } from '../../XpBar/XpBar'
-import HomeButton from '../HomeButton'
+import HomeButton, { HOME_BUTTON_WIDTH } from '../HomeButton'
 import GoldArea from '../GoldArea'
 
 const SECONDARY_BAR_MOBILE = 36
@@ -128,7 +128,7 @@ const localStyles = StyleSheet.create({
     homeButton: {
         position: 'absolute',
         left: '50%',
-        marginLeft: -14,
+        marginLeft: -HOME_BUTTON_WIDTH / 2,
         top: 14,
     },
     itemsContainerMobile: {

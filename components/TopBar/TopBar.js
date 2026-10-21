@@ -7,7 +7,7 @@ import NotificationArea from './NotificationArea'
 import { getTheme } from '../../Themes/Themes'
 import { Themes } from './Themes'
 import { setTopBarWidth } from '../../redux/actions'
-import HomeButton from './HomeButton'
+import HomeButton, { HOME_BUTTON_WIDTH } from './HomeButton'
 import AssistantModeButton from './AssistantModeButton'
 import ConnectionStatusChip from './ConnectionStatusChip'
 import { showConnectionChipBelowHeader } from './connectionChipPlacement'
@@ -93,7 +93,7 @@ const localStyles = StyleSheet.create({
     homeButton: {
         position: 'absolute',
         left: '50%',
-        marginLeft: -14,
+        marginLeft: -HOME_BUTTON_WIDTH / 2,
         top: 10,
     },
 })

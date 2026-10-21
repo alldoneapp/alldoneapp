@@ -944,7 +944,6 @@ export const EditorToolbar = ({
     onOpenSideChat,
     noteId,
     persistMeetingChunk,
-    getMeetingInsertionTarget,
 }) => {
     const usersInProject = useSelector(state => state.projectUsers[project.id])
     const loggedUser = useSelector(state => state.loggedUser)
@@ -1017,7 +1016,6 @@ export const EditorToolbar = ({
         // Websocket "synced" flips false offline. Capture must keep buffering locally.
         enabled: meetingSupported && accessGranted && !readOnly && !disabled,
         persist: persistMeetingChunk,
-        getInsertionTarget: getMeetingInsertionTarget,
     })
     const microphoneActive = ['starting', 'recording', 'stopping'].includes(microphoneMeeting.phase)
     const showMicrophoneStatus =
