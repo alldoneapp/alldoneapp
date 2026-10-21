@@ -33,10 +33,10 @@ const constraints = (deviceId, raw = false) => ({
 // the user's voice. Phones must keep the system's headset/speaker routing.
 export async function acquireVoiceMicrophone({ isCancelled = () => false, deviceId: requestedDeviceId = '' } = {}) {
     const preference = isMobileVoiceCallDevice() ? {} : readLastMicrophone()
-    const deviceId = isMobileVoiceCallDevice() ? '' : requestedDeviceId || preference.deviceId || ''
+    const deviceId = requestedDeviceId || preference.deviceId || ''
     let raw = preference.raw === true
     if (requestedDeviceId && preference.deviceId !== requestedDeviceId) raw = false
-    let pinned = !!requestedDeviceId && !isMobileVoiceCallDevice()
+    let pinned = !!requestedDeviceId
     let stream
     try {
         stream = await navigator.mediaDevices.getUserMedia(constraints(deviceId, raw))
@@ -68,6 +68,7 @@ export function createVoiceMicrophoneSelector({
     onSample,
     isPaused = () => false,
     selectedDeviceId = '',
+    isUnavailable = () => false,
 }) {
     // Phones route input and output together. Opening a second, explicitly pinned
     // microphone can pull playback off Bluetooth (or onto the earpiece) before
@@ -162,7 +163,8 @@ export function createVoiceMicrophoneSelector({
                 candidates.map(async d => {
                     if (stopped || isPaused()) return
                     const input = await open(d.deviceId)
-                    if (input && !stopped) add(input)
+                    if (input && !stopped && !manualDeviceId) add(input)
+                    else if (input) stopStream(input)
                 })
             )
         } finally {
@@ -307,10 +309,12 @@ export function createVoiceMicrophoneSelector({
     const discoveryInterval = mobile ? null : setInterval(() => discover().catch(() => {}), 5000)
     return {
         getSnapshot,
+        getPreferredDeviceId: () => manualDeviceId,
         whenPrepared: () => warmup,
         async selectDevice(deviceId) {
-            if (stopped || mobile || busy) throw new Error('Microphone selection unavailable')
-            if (!deviceId) {
+            if (stopped || isUnavailable()) throw new Error('Call audio is unavailable')
+            if (busy) throw new Error('Microphone selection unavailable')
+            if (!deviceId && !mobile) {
                 manualDeviceId = ''
                 captures.forEach(c => {
                     c.levels = []
@@ -326,6 +330,10 @@ export function createVoiceMicrophoneSelector({
                 if (!candidate) {
                     const input = await open(deviceId)
                     if (!input || stopped) throw new Error('Microphone unavailable')
+                    if (isUnavailable()) {
+                        stopStream(input)
+                        throw new Error('Call audio is unavailable')
+                    }
                     candidate = add(input)
                     added = true
                 }
@@ -333,6 +341,14 @@ export function createVoiceMicrophoneSelector({
                 manualDeviceId = deviceId
                 silentWindows = 0
                 compatibilityTried = candidate.raw
+                if (mobile) {
+                    for (const capture of [...captures]) {
+                        if (capture === selected) continue
+                        capture.monitor?.close()
+                        stopStream(capture.stream)
+                        captures.splice(captures.indexOf(capture), 1)
+                    }
+                }
             } catch (error) {
                 if (added && candidate !== selected) {
                     candidate.monitor?.close()

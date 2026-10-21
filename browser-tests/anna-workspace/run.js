@@ -1149,6 +1149,17 @@ async function checkCallAudioControls(page, width) {
         )
         assert.equal(await outputMeter.getAttribute('aria-valuenow'), '80')
         await page.getByLabel('Unmute assistant call', { exact: true }).click()
+        await page.getByLabel('Mute assistant call', { exact: true }).focus()
+        await page.keyboard.press('Space')
+        assert.equal(
+            await page.getByLabel('Unmute assistant call', { exact: true }).getAttribute('aria-pressed'),
+            'true'
+        )
+        await page.keyboard.press('Enter')
+        assert.equal(
+            await page.getByLabel('Mute assistant call', { exact: true }).getAttribute('aria-pressed'),
+            'false'
+        )
         await page.evaluate(() => window.__annaVoiceLevels({ input: { level: 0 }, output: { level: 0 } }))
         await page.waitForFunction(() =>
             Array.from(document.querySelectorAll('.anna-call-meter')).every(

@@ -6,6 +6,7 @@ import { translate } from '../../i18n/TranslationService'
 import Button from '../UIControls/Button'
 import VoiceCallConnecting from './VoiceCallConnecting'
 import VoiceMicrophoneStatus from './VoiceMicrophoneStatus'
+import VoiceCallDevices from './VoiceCallDevices'
 import styles, { colors } from '../styles/global'
 
 export default function FloatingCallControls({ call }) {
@@ -54,7 +55,9 @@ export default function FloatingCallControls({ call }) {
                                     </Text>
                                 )
                             )}
-                            <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} />
+                            {(connecting || !call.audioDevices) && (
+                                <VoiceMicrophoneStatus read={call.getMicrophoneSnapshot} />
+                            )}
                         </View>
                         {call.needsAudioPlayback && (
                             <Button
@@ -92,6 +95,7 @@ export default function FloatingCallControls({ call }) {
                     </>
                 )}
             </View>
+            {call.status === 'connected' && <VoiceCallDevices call={call} />}
             {showForegroundHint && (
                 <Text style={localStyles.foregroundHint}>
                     {translate(

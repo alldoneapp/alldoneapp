@@ -499,6 +499,13 @@ const AnnaConversation = forwardRef(function AnnaConversation(
                                     )}
                                     aria-pressed={!!call.microphoneMuted}
                                     onClick={call.toggleMicrophoneMuted}
+                                    onKeyDown={event => {
+                                        if (event.key !== 'Enter') return
+                                        // The shared editor cancels Enter at document level.
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        if (!event.repeat) event.currentTarget.click()
+                                    }}
                                 >
                                     <Icon
                                         name={call.microphoneMuted ? 'mic-off' : 'mic'}

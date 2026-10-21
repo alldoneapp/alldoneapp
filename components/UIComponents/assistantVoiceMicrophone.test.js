@@ -74,6 +74,44 @@ test('starts immediately without enumerating or asking the user to speak', async
     expect(listAudioInputDevices).not.toHaveBeenCalled()
     expect(createInputLevelMonitor).not.toHaveBeenCalled()
 })
+test('a mobile route selection replaces only the chosen input and keeps a later manual choice', async () => {
+    const agent = jest.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Android')
+    try {
+        const change = await start()
+        await selector.selectDevice('usb')
+        expect(change).toHaveBeenLastCalledWith(inputs.usb)
+        expect(inputs.builtin.getTracks()[0].stop).toHaveBeenCalledTimes(1)
+        expect(selector.getPreferredDeviceId()).toBe('usb')
+        expect(selector.getSnapshot().deviceId).toBe('usb')
+        await jest.advanceTimersByTimeAsync(6000)
+        expect(change).toHaveBeenCalledTimes(1)
+        expect(listAudioInputDevices).not.toHaveBeenCalled()
+    } finally {
+        agent.mockRestore()
+    }
+})
+test('a failed manual switch leaves the previous microphone and stops the failed candidate', async () => {
+    const agent = jest.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone')
+    try {
+        await start({
+            onSwitch: async () => {
+                throw new Error('replaceTrack failed')
+            },
+        })
+        await expect(selector.selectDevice('usb')).rejects.toThrow('replaceTrack failed')
+        expect(selector.getSnapshot().deviceId).toBe('builtin')
+        expect(inputs.builtin.getTracks()[0].stop).not.toHaveBeenCalled()
+        expect(inputs.usb.getTracks()[0].stop).toHaveBeenCalledTimes(1)
+    } finally {
+        agent.mockRestore()
+    }
+})
+test('manual selection never opens a microphone while the page is hidden', async () => {
+    await start({ isUnavailable: () => true })
+    const requests = navigator.mediaDevices.getUserMedia.mock.calls.length
+    await expect(selector.selectDevice('usb')).rejects.toThrow('Call audio is unavailable')
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(requests)
+})
 test.each(['iPhone', 'Android'])('retains the system headset/speaker route on %s', async userAgent => {
     const agent = jest.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent)
     try {

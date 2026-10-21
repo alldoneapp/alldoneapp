@@ -102,6 +102,11 @@ export default function AnnaCallAudioControls({ call, seconds = 0, children }) {
                                     onChange={id => change('output', id)}
                                 />
                             </div>
+                            {snapshot.outputFollowsInput && (
+                                <span className="anna-call-hint">
+                                    {translate('Your device links the headset microphone and audio output.')}
+                                </span>
+                            )}
                             {(!snapshot.supportsInputSelection || !snapshot.supportsOutputSelection) && (
                                 <span className="anna-call-hint">
                                     {translate('Choose audio devices in your browser or system settings')}
@@ -194,7 +199,9 @@ function AudioDevice({ kind, snapshot, devices, supported, prompt, value, disabl
                         </option>
                         {options.map((device, index) => (
                             <option key={device.deviceId} value={device.deviceId}>
-                                {device.label || `${label} ${index + 1}`}
+                                {device.label ||
+                                    (device.labelKey && translate(device.labelKey)) ||
+                                    `${label} ${index + 1}`}
                             </option>
                         ))}
                         {prompt && <option value="choose">{translate('Choose another audio output…')}</option>}
