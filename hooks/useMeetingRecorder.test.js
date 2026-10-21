@@ -211,3 +211,73 @@ test('losing edit rights stops capture and clears the old recording display', as
     expect(current.device).toBe('')
     expect(held.size).toBe(0)
 })
+
+test('rapid double start during permission acquisition opens only one capture', async () => {
+    let permit
+    createMeetingCapture.mockImplementation(callbacks => ({
+        start: () =>
+            new Promise(resolve => {
+                permit = resolve
+            }),
+        stop: async () => callbacks.onStopped(),
+    }))
+    await mount()
+    await act(async () => {
+        current.start()
+        current.start()
+        await flush()
+    })
+    expect(current.phase).toBe('starting')
+    expect(createMeetingCapture).toHaveBeenCalledTimes(1)
+    await act(async () => {
+        permit('Test mic')
+        await flush()
+        await current.stop()
+        await current.stop()
+        await flush()
+    })
+    expect(current.phase).toBe('idle')
+    expect(held.size).toBe(0)
+})
+
+test('elapsed duration exceeds five minutes and one hour without an automatic stop', async () => {
+    await mount()
+    await start()
+    await act(async () => {
+        jest.advanceTimersByTime(3601000)
+        await flush()
+    })
+    expect(current.phase).toBe('recording')
+    expect(current.elapsed).toBe(3601)
+    await act(async () => {
+        await current.stop()
+        await flush()
+    })
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(current.phase).toBe('idle')
+})
+
+test('online event recovers an offline backlog in order without restarting the mic', async () => {
+    await mount()
+    await start()
+    runHttpsCallableFunction.mockRejectedValue(offline())
+    await act(async () => {
+        options.onChunk(new Blob(['first']))
+        options.onChunk(new Blob(['second']))
+        await flush()
+        await current.stop()
+        await flush()
+    })
+    expect(current.error).toBe('offline')
+    expect(current.pending).toBe(3)
+    runHttpsCallableFunction.mockResolvedValue({ text: 'online' })
+    await act(async () => {
+        window.dispatchEvent(new Event('online'))
+        await flush()
+    })
+    expect(persist.mock.calls.map(([chunk]) => chunk.sequence)).toEqual([0, 1, 2])
+    expect(current.pending).toBe(0)
+    expect(current.error).toBe('')
+    expect(current.phase).toBe('idle')
+    expect(createMeetingCapture).toHaveBeenCalledTimes(1)
+})

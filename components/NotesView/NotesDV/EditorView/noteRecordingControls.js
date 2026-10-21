@@ -1,31 +1,17 @@
 /**
- * Visibility rules for the two recording controls in the note editor toolbar (AT-2384).
- *
- * Both of them WRITE into the note: "Dictate" transcribes a one-shot mic recording and inserts it
- * at the caret, and "Transcribe" live-appends a meeting transcription (and its screenshots). They
- * therefore only make sense for someone who may actually edit the note.
- *
- * The public / not-logged-in view of a note renders the same toolbar with `accessGranted === false`
- * and `readOnly === true`. Every other writing control there (headings, formatting, Date, Task,
- * link, image, lists, the more-popup) is already hidden behind `accessGranted`; the two recording
- * buttons were not, so an anonymous visitor saw a microphone and a record button that were inert
- * (`pointerEvents: 'none'`) and — worse — advertised a feature that needs an account and spends
- * Gold. They now follow the same rule as the rest of the bar.
- *
- * `accessGranted` (project member, `SharedHelper.accessGranted`) is deliberately the gate rather
- * than "is not anonymous": a logged-in non-member viewing a public note is in exactly the same
- * read-only situation as an anonymous visitor, and the neighbouring buttons already treat the two
- * the same way. Nothing about the layout changes for a member.
+ * Both note recording controls write text and spend Gold, so only project members
+ * may see them. The microphone uses the durable recorder for every duration;
+ * screen/tab audio keeps its existing capture path and route auto-start.
  */
 
 /**
- * The microphone ("Dictate") button. `dictationSupported` stays a separate input so the caller
- * keeps owning the browser-capability question (`isDictationSupported()`); this module only adds
- * the access rule on top of it.
+ * The unified microphone button requires AudioWorklet, IndexedDB and Web Locks.
+ * Unsupported browsers must not fall back to the old five-minute dictation path.
  */
-export const isNoteDictationVisible = ({ accessGranted, dictationSupported }) => !!accessGranted && !!dictationSupported
+export const isNoteMicrophoneVisible = ({ accessGranted, microphoneSupported }) =>
+    !!accessGranted && !!microphoneSupported
 
-/** The meeting recording ("Transcribe") button. */
+/** The screen/tab audio button. */
 export const isNoteTranscriptionVisible = ({ accessGranted }) => !!accessGranted
 
 /**

@@ -1,20 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
 import EditorToolbarButton from './EditorToolbarButton'
-import {
-    useRambleController,
-    formatRambleElapsed,
-    RAMBLE_PHASE_RECORDING,
-    RAMBLE_PHASE_PROCESSING,
-} from '../../../UIControls/RambleButton'
-import { isDictationSupported } from '../../../../hooks/useRambleRecorder'
+import NoteRecordingButtons, { formatNoteRecordingElapsed } from './NoteRecordingButtons'
 import { keepScreenAwake } from '../../../../utils/screenWakeLock'
 import useMeetingRecorder from '../../../../hooks/useMeetingRecorder'
 import { isMeetingCaptureSupported } from '../../../../utils/meetingCapture'
 import MeetingMicrophoneStatus from './MeetingMicrophoneStatus'
 import {
     canAutoStartNoteTranscription,
-    isNoteDictationVisible,
+    isNoteMicrophoneVisible,
     isNoteTranscriptionVisible,
 } from './noteRecordingControls'
 import { TOOLBAR_STAGE_FULL, TOOLBAR_STAGE_LINK, useNotesToolbarOverflow } from './notesToolbarOverflow'
@@ -58,7 +52,6 @@ import {
     LOADING_MODE,
     beforeUndoRedo,
     NOT_USER_MENTIONED,
-    placeDictationCaret,
 } from '../../../Feeds/CommentsTextInput/textInputHelper'
 import store from '../../../../redux/store'
 import { setQuotedNoteText, storeOpenModal, setShowLimitedFeatureModal } from '../../../../redux/actions'
@@ -961,7 +954,8 @@ export const EditorToolbar = ({
     const shortcutAlt = useSelector(state => state.showNoteAltShortcuts)
     const isMobile = loggedUser.sidebarExpanded ? tablet : mobile || mobileCollapsed
 
-    const dictationVisible = isNoteDictationVisible({ accessGranted, dictationSupported: isDictationSupported() })
+    const meetingSupported = isMeetingCaptureSupported()
+    const microphoneVisible = isNoteMicrophoneVisible({ accessGranted, microphoneSupported: meetingSupported })
     const transcriptionVisible = isNoteTranscriptionVisible({ accessGranted })
 
     // AT-2427: the bar folds its trailing actions away when it runs out of room, measured rather
@@ -983,7 +977,7 @@ export const EditorToolbar = ({
             tablet,
             mobile,
             isMobile,
-            dictationVisible,
+            microphoneVisible,
             transcriptionVisible,
             uniqBy(editors, 'id').length,
         ].join('|'),
@@ -1011,38 +1005,10 @@ export const EditorToolbar = ({
     // Every control that lives after Link and folds into the "more" menu together (AT-2427).
     const collapsibleActionClass = `ql-toolbar-item ql-formats-actions ${collapseActions ? 'ql-hide' : ''}`
 
-    // DICTATION (rambler): one-shot mic recording cleaned up by the project assistant, inserted at
-    // the caret. Separate from the meeting Transcribe flow below, which live-appends raw chunks.
-    const insertDictatedNoteText = text => {
-        const trimmed = typeof text === 'string' ? text.trim() : ''
-        if (!trimmed) return
-        const editor = exportRef.getEditor()
-        if (!editor) return
-        // String source 'user': a LOCAL change for the y-quill binding (isRemoteEditorChange), so it
-        // lands in Yjs, syncs to collaborators, and runs the normal dirty-editor save path.
-        const range = editor.getSelection(true) || { index: editor.getLength(), length: 0 }
-        if (range.length > 0) editor.deleteText(range.index, range.length, 'user')
-        editor.insertText(range.index, trimmed + ' ', 'user')
-        placeDictationCaret(editor, range.index + trimmed.length + 1, () => exportRef.getEditor?.() === editor)
-    }
-    const {
-        phase: ramblePhase,
-        elapsedSeconds: rambleElapsedSeconds,
-        toggle: toggleRamble,
-    } = useRambleController({
-        // The projectId prop arrived misspelled ('ptojectId') for years; keep the belt-and-braces
-        // fallback to the project doc so dictation cannot lose its project again.
-        projectId: projectId || project?.id,
-        targetKind: 'note',
-        getCurrentText: () => {
-            const editor = exportRef.getEditor?.()
-            return editor ? editor.getText(0, 2000) : ''
-        },
-        onTextReady: insertDictatedNoteText,
-    })
-
     const [isRecording, setIsRecording] = useState(false)
-    const meetingSupported = isMeetingCaptureSupported()
+    const [screenStarting, setScreenStarting] = useState(false)
+    // Claim synchronously before either permission prompt; React state updates arrive later.
+    const recordingSourceRef = useRef(null)
     const microphoneMeeting = useMeetingRecorder({
         userId: loggedUser.uid,
         noteId,
@@ -1054,6 +1020,17 @@ export const EditorToolbar = ({
     const microphoneActive = ['starting', 'recording', 'stopping'].includes(microphoneMeeting.phase)
     const showMicrophoneStatus =
         microphoneActive || microphoneMeeting.pending > 0 || microphoneMeeting.error || microphoneMeeting.captureError
+    const toggleMicrophone = async () => {
+        if (!microphoneVisible || readOnly || disabled || screenStarting || isRecording) return
+        if (microphoneMeeting.phase === 'recording') return microphoneMeeting.stop()
+        if (microphoneMeeting.phase !== 'idle' || recordingSourceRef.current) return
+        recordingSourceRef.current = 'microphone'
+        try {
+            await microphoneMeeting.start()
+        } finally {
+            if (recordingSourceRef.current === 'microphone') recordingSourceRef.current = null
+        }
+    }
     const mediaRecorderRef = useRef(null)
     const streamsRef = useRef([]) // Store all streams to stop them
     const audioContextRef = useRef(null)
@@ -1063,6 +1040,8 @@ export const EditorToolbar = ({
     const transcriptionSessionRef = useRef(0)
 
     const stopRecording = (updateState = true) => {
+        if (recordingSourceRef.current === 'screen') recordingSourceRef.current = null
+        if (updateState) setScreenStarting(false)
         transcriptionSessionRef.current += 1
         releaseTranscriptionWakeLockRef.current?.()
         releaseTranscriptionWakeLockRef.current = null
@@ -1104,6 +1083,9 @@ export const EditorToolbar = ({
             stopRecording()
             return
         }
+        if (!transcriptionVisible || readOnly || disabled || recordingSourceRef.current) return
+        recordingSourceRef.current = 'screen'
+        setScreenStarting(true)
         const session = ++transcriptionSessionRef.current
         let acquiredSystemStream
         let acquiredMicStream
@@ -1161,6 +1143,7 @@ export const EditorToolbar = ({
 
             const audioTracks = systemStream.getAudioTracks()
             if (audioTracks.length === 0) {
+                stopRecording()
                 alert(translate('Please ensure you share audio when selecting the screen/tab.'))
                 systemStream.getTracks().forEach(track => track.stop())
                 if (micStream) micStream.getTracks().forEach(track => track.stop())
@@ -1294,6 +1277,8 @@ export const EditorToolbar = ({
             if (err.name !== 'NotAllowedError') {
                 alert(translate('Could not start recording: ') + err.message)
             }
+        } finally {
+            setScreenStarting(false)
         }
     }
 
@@ -1378,7 +1363,7 @@ export const EditorToolbar = ({
         >
             <MeetingMicrophoneStatus
                 recorder={microphoneMeeting}
-                elapsedLabel={formatRambleElapsed(microphoneMeeting.elapsed)}
+                elapsedLabel={formatNoteRecordingElapsed(microphoneMeeting.elapsed)}
             />
             {isRecording && (
                 <div
@@ -1535,94 +1520,17 @@ export const EditorToolbar = ({
                         </EditorToolbarButton>
                     </span>
 
-                    {dictationVisible && (
-                        <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
-                            <EditorToolbarButton
-                                disabled={microphoneActive}
-                                onClick={toggleRamble}
-                                style={{ paddingLeft: 6, paddingRight: 6 }}
-                            >
-                                <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
-                                    {ramblePhase === RAMBLE_PHASE_PROCESSING ? (
-                                        <ActivityIndicator size={12} color={colors.Text03} />
-                                    ) : (
-                                        <Icon
-                                            name={'mic'}
-                                            size={18}
-                                            color={
-                                                ramblePhase === RAMBLE_PHASE_RECORDING ? colors.Red200 : colors.Text03
-                                            }
-                                        />
-                                    )}
-                                </View>
-                                {!tablet && (
-                                    <Text
-                                        style={[
-                                            styles.caption1,
-                                            localStyles.barIconText,
-                                            ramblePhase === RAMBLE_PHASE_RECORDING ? { color: colors.Red200 } : {},
-                                        ]}
-                                    >
-                                        {ramblePhase === RAMBLE_PHASE_RECORDING
-                                            ? formatRambleElapsed(rambleElapsedSeconds)
-                                            : translate('Dictate')}
-                                    </Text>
-                                )}
-                            </EditorToolbarButton>
-                        </span>
-                    )}
-
-                    {transcriptionVisible && (
-                        <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
-                            <EditorToolbarButton
-                                onClick={toggleTranscription}
-                                disabled={microphoneActive}
-                                style={{ paddingLeft: 6, paddingRight: 6 }}
-                            >
-                                <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
-                                    {/* Meeting transcription records a screen-shared meeting, so it
-                                        carries the video-meeting glyph; the plain mic now means
-                                        Dictate, matching the mic overlay in every other input. */}
-                                    <Icon
-                                        name={'video-meeting'}
-                                        size={18}
-                                        color={isRecording ? colors.Red200 : colors.Text03}
-                                    />
-                                </View>
-                                {!tablet && (
-                                    <Text
-                                        style={[
-                                            styles.caption1,
-                                            localStyles.barIconText,
-                                            isRecording ? { color: colors.Red200 } : {},
-                                        ]}
-                                    >
-                                        {isRecording ? translate('Stop') : translate('Transcribe')}
-                                    </Text>
-                                )}
-                            </EditorToolbarButton>
-                        </span>
-                    )}
-                    {transcriptionVisible && meetingSupported && !mobile && (
-                        <span className="ql-toolbar-item" style={{ pointerEvents: barPointerEvents }}>
-                            <EditorToolbarButton
-                                title={translate('Meeting microphone keep open')}
-                                disabled={
-                                    isRecording ||
-                                    ramblePhase === RAMBLE_PHASE_RECORDING ||
-                                    disabled ||
-                                    microphoneMeeting.phase === 'unavailable'
-                                }
-                                onClick={microphoneActive ? microphoneMeeting.stop : microphoneMeeting.start}
-                                style={{ paddingLeft: 6, paddingRight: 6 }}
-                            >
-                                <Icon name="mic" size={18} color={microphoneActive ? colors.Red200 : colors.Text03} />
-                                <Text style={[styles.caption1, localStyles.barIconText]}>
-                                    {translate('Meeting microphone')}
-                                </Text>
-                            </EditorToolbarButton>
-                        </span>
-                    )}
+                    <NoteRecordingButtons
+                        microphoneVisible={microphoneVisible}
+                        screenVisible={transcriptionVisible}
+                        recorder={microphoneMeeting}
+                        screenRecording={isRecording}
+                        screenStarting={screenStarting}
+                        disabled={readOnly || disabled}
+                        compact={tablet}
+                        onMicrophone={toggleMicrophone}
+                        onScreen={toggleTranscription}
+                    />
                 </span>
 
                 {accessGranted && <div style={localStyles.separator} />}
