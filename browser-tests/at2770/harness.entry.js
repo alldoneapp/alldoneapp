@@ -1,13 +1,14 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { Provider, useSelector } from 'react-redux'
+import { Provider } from 'react-redux'
 import WorkspaceOverlayLayer from '../../components/UIComponents/WorkspaceOverlayLayer'
 import EndDayStatisticsModal from '../../components/UIComponents/FloatModals/EndDayStatisticsModal'
-import ConfirmPopup, {
+import {
     CONFIRM_POPUP_MANDATORY_NOTIFICATION,
     CONFIRM_POPUP_TRIGGER_INFO,
+    CONFIRM_POPUP_TIMEOUT,
 } from '../../components/UIComponents/ConfirmPopup'
-import NotificationModalOptional from '../../components/UIComponents/FloatModals/NotificationModalOptional'
+import GlobalModalsContainerApp from '../../components/UIComponents/GlobalModalsContainerApp'
 import { setAnnaLayout } from '../../utils/annaMode'
 import { setWorkspaceViewport } from '../../utils/workspaceViewport'
 import { store } from './dependencies'
@@ -42,17 +43,22 @@ window.dialog = name => {
         type: 'fixture',
         patch: {
             showNewVersionMandtoryNotifcation: name !== 'new-day',
+            showOptionalVersionNotification: name === 'optional',
             showConfirmPopupData: {
-                visible: name === 'mandatory' || name === 'confirmation',
-                trigger: name === 'mandatory' ? CONFIRM_POPUP_MANDATORY_NOTIFICATION : CONFIRM_POPUP_TRIGGER_INFO,
+                visible: ['mandatory', 'timeout', 'confirmation'].includes(name),
+                trigger:
+                    name === 'mandatory'
+                        ? CONFIRM_POPUP_MANDATORY_NOTIFICATION
+                        : name === 'timeout'
+                          ? CONFIRM_POPUP_TIMEOUT
+                          : CONFIRM_POPUP_TRIGGER_INFO,
                 object: { headerText: 'Confirm browser check' },
             },
         },
     })
-    root.render(<Harness dialog={name} />)
 }
 
-function Harness({ dialog = 'new-day' }) {
+function Harness() {
     return (
         <Provider store={store}>
             <div style={{ position: 'fixed', inset: 0, background: '#edf2fa' }}>
@@ -60,18 +66,12 @@ function Harness({ dialog = 'new-day' }) {
                     Assistant sidebar
                 </aside>
             </div>
+            <GlobalModalsContainerApp />
             <WorkspaceOverlayLayer>
                 <EndDayStatisticsModal />
-                <Confirmation />
-                {dialog === 'optional' && <NotificationModalOptional />}
             </WorkspaceOverlayLayer>
         </Provider>
     )
-}
-
-function Confirmation() {
-    const visible = useSelector(state => state.showConfirmPopupData.visible)
-    return visible ? <ConfirmPopup /> : null
 }
 
 const root = createRoot(document.getElementById('root'))
