@@ -1359,7 +1359,11 @@ export const EditorToolbar = ({
         <div
             id="toolbar-container"
             className={`ql-toolbar-container ${!mobile && mobileCollapsed ? 'ql-toolbar-container-collapsed' : ''}`}
-            style={{ height: (clicked ? 184 : 76) + (isRecording ? 32 : 0) + (showMicrophoneStatus ? 64 : 0) }}
+            style={{
+                height: showMicrophoneStatus ? 'auto' : (clicked ? 184 : 76) + (isRecording ? 32 : 0),
+                minHeight: (clicked ? 184 : 76) + (isRecording ? 32 : 0),
+                paddingBottom: showMicrophoneStatus ? 12 : 0,
+            }}
         >
             <MeetingMicrophoneStatus
                 recorder={microphoneMeeting}

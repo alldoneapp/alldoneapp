@@ -10,7 +10,7 @@ jest.mock('firebase-functions/v2/https', () => ({
 jest.mock('../envFunctionsHelper', () => ({ getEnvFunctions: () => ({ DEEPGRAM_API_KEY: 'test-key' }) }))
 jest.mock('./deepgramTranscribe', () => ({ transcribeAudioBase64: jest.fn() }))
 jest.mock('../Gold/goldHelper', () => ({ deductGold: jest.fn() }))
-jest.mock('../firebaseConfig', () => {
+jest.mock('firebase-admin', () => {
     const docs = new Map()
     let tail = Promise.resolve()
     const firestore = () => ({
@@ -29,13 +29,13 @@ jest.mock('../firebaseConfig', () => {
             return run
         },
     })
-    return { admin: { firestore }, docs }
+    return { firestore, docs }
 })
 
 const { transcribeMeetingAudio: call } = require('./transcribeMeeting')
 const { transcribeAudioBase64 } = require('./deepgramTranscribe')
 const { deductGold } = require('../Gold/goldHelper')
-const { docs } = require('../firebaseConfig')
+const { docs } = require('firebase-admin')
 const data = {
     sessionId: 'session-1',
     chunkIndex: 0,
@@ -77,7 +77,8 @@ test('concurrent requests cannot start a second provider call', async () => {
             })
     )
     const first = invoke()
-    while (!finish) await Promise.resolve()
+    for (let i = 0; i < 20 && !finish; i++) await Promise.resolve()
+    expect(finish).toEqual(expect.any(Function))
     await expect(invoke()).rejects.toMatchObject({ code: 'aborted' })
     finish({ transcript: 'first' })
     expect(await first).toEqual({ text: 'first' })
