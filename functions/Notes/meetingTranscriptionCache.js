@@ -1,6 +1,6 @@
 const crypto = require('crypto')
 const { HttpsError } = require('firebase-functions/v2/https')
-const { admin } = require('../firebaseConfig')
+const admin = require('firebase-admin')
 
 // Server-only collection (default-denied by Firestore rules). A lease prevents concurrent
 // provider calls; a content hash refuses reuse of a chunk ID with different audio.

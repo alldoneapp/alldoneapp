@@ -83,7 +83,7 @@ test('offline and recovery status exposes retry while keeping microphone off', (
         <MeetingMicrophoneStatus recorder={{ ...idle, pending: 2, error: 'offline', retry }} elapsedLabel="0:03" />
     )
     expect(screen.getByRole('status').textContent).toContain('Meeting microphone pending')
-    expect(screen.getByRole('status').textContent).toContain('Meeting microphone retry error')
+    expect(screen.getByRole('status').textContent).toContain('Meeting microphone offline error')
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(retry).toHaveBeenCalledTimes(1)
@@ -91,6 +91,27 @@ test('offline and recovery status exposes retry while keeping microphone off', (
     expect(screen.getByRole('status').textContent).toContain('Meeting microphone recovery hint')
     rerender(<MeetingMicrophoneStatus recorder={idle} elapsedLabel="0:00" />)
     expect(screen.queryByRole('status')).toBeNull()
+})
+
+test('a server failure is distinguished from a network failure and keeps the retry action available', () => {
+    const retry = jest.fn()
+    render(<MeetingMicrophoneStatus recorder={{ ...idle, pending: 2, error: 'internal', retry }} elapsedLabel="0:16" />)
+    expect(screen.getByRole('status').textContent).toContain('Meeting microphone service error')
+    expect(screen.getByRole('status').textContent).not.toContain('Meeting microphone offline error')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+})
+
+test('a failed microphone start does not claim transcription is pending when no audio was captured', () => {
+    render(
+        <MeetingMicrophoneStatus
+            recorder={{ ...idle, captureError: 'permission-denied', retry: jest.fn() }}
+            elapsedLabel="0:00"
+        />
+    )
+    expect(screen.getByRole('status').textContent).toContain('Microphone recording stopped')
+    expect(screen.getByRole('status').textContent).not.toContain('Meeting microphone pending')
+    expect(screen.getByRole('status').textContent).not.toContain('Meeting microphone chunks pending')
 })
 
 test.each([
