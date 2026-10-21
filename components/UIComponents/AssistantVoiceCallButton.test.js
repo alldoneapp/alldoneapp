@@ -402,6 +402,84 @@ describe('AssistantVoiceCallButton — background survival (AT-2496)', () => {
         expect(navigator.mediaSession.setMicrophoneActive).toHaveBeenLastCalledWith(true)
     })
 
+    it('switches the chosen phone microphone without reconnecting or unmuting the sender', async () => {
+        jest.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Android')
+        navigator.mediaDevices.enumerateDevices = jest.fn(async () => [
+            { kind: 'audioinput', deviceId: 'builtin', label: 'Built-in microphone' },
+            { kind: 'audioinput', deviceId: 'pods', label: 'AirPods Pro' },
+        ])
+        getUserMedia.mockImplementation(async ({ audio }) => {
+            const track = makeTrack()
+            const deviceId = audio.deviceId?.exact || 'builtin'
+            track.label = deviceId === 'pods' ? 'AirPods Pro' : 'Built-in microphone'
+            track.getSettings = () => ({ deviceId })
+            tracks.push(track)
+            return makeStream(track)
+        })
+        const tree = render()
+        const pc = await startCall(tree)
+        act(() => findMuteButton(tree).props.onPress())
+        const previousSender = pc.senders[0].track
+        await act(async () => {
+            await tree.root
+                .findByProps({ 'aria-label': 'Call microphone' })
+                .props.onChange({ target: { value: 'pods' } })
+        })
+        expect(FakePeerConnection.instances).toHaveLength(1)
+        expect(pc.closed).toBe(false)
+        expect(pc.senders[0].track.label).toBe('AirPods Pro')
+        expect(pc.senders[0].track.enabled).toBe(false)
+        expect(previousSender.readyState).toBe('ended')
+        expect(tracks[0].readyState).toBe('ended')
+        expect(tree.root.findByProps({ 'aria-label': 'Call microphone' }).props.value).toBe('pods')
+        expect(findMuteButton(tree).props.accessibilityLabel).toBe('Unmute assistant call')
+        act(() => findMuteButton(tree).props.onPress())
+        expect(pc.senders[0].track.enabled).toBe(true)
+    })
+
+    it('selects iOS headset routes through the native session while keeping the call muted', async () => {
+        jest.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone')
+        installShell()
+        nativePlugin.begin.mockResolvedValue({ backgroundAudio: true, audioRouting: true })
+        let route = {
+            inputs: [
+                { deviceId: 'builtin', label: 'iPhone microphone' },
+                { deviceId: 'pods', label: 'AirPods Pro' },
+            ],
+            outputs: [
+                { deviceId: 'speaker', labelKey: 'Speakerphone' },
+                { deviceId: 'input:pods', label: 'AirPods Pro' },
+            ],
+            inputId: 'builtin',
+            inputLabel: 'iPhone microphone',
+            outputId: 'speaker',
+        }
+        const remove = jest.fn()
+        nativePlugin.getAudioDevices = jest.fn(async () => route)
+        nativePlugin.addListener = jest.fn(async () => ({ remove }))
+        nativePlugin.setInput = jest.fn(async () => {
+            route = { ...route, inputId: 'pods', inputLabel: 'AirPods Pro', outputId: 'input:pods' }
+            return route
+        })
+        const tree = render()
+        const pc = await startCall(tree)
+        act(() => findMuteButton(tree).props.onPress())
+        const requests = getUserMedia.mock.calls.length
+        await act(async () => {
+            await tree.root
+                .findByProps({ 'aria-label': 'Call microphone' })
+                .props.onChange({ target: { value: 'pods' } })
+        })
+        expect(nativePlugin.setInput).toHaveBeenCalledWith({ deviceId: 'pods' })
+        expect(getUserMedia).toHaveBeenCalledTimes(requests)
+        expect(pc.senders[0].track.enabled).toBe(false)
+        expect(pc.closed).toBe(false)
+        expect(tree.root.findByProps({ 'aria-label': 'Call microphone' }).props.value).toBe('pods')
+        expect(tree.root.findByProps({ 'aria-label': 'Call audio output' }).props.value).toBe('input:pods')
+        act(() => tree.unmount())
+        expect(remove).toHaveBeenCalled()
+    })
+
     it('does not treat an intentional mute as a stalled microphone', async () => {
         const tree = render()
         const pc = await startCall(tree)

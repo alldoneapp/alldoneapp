@@ -131,6 +131,31 @@ cannot add a background mode. Verify on a device, not the simulator: start a
 call, press Home, keep talking for a minute, lock the screen, return — the
 transcript in the call topic must show the turns spoken while backgrounded.
 
+### Audio devices during calls
+
+Assistant mode's audio settings and the floating call controls expose microphone
+and audio-output selectors while connected. The selected input's meter remains live; changing
+devices replaces the WebRTC sender track without restarting or unmuting the call.
+Device changes and a foreground-only inventory refresh detect newly connected
+headsets and fall back to the system route after unplugging. Phones never open
+unused microphones for level comparison.
+
+The iOS plugin advertises `audioRouting` in `begin()`, provides `getAudioDevices`,
+`setInput` and `setOutput`, and emits `audioDevicesChanged` for AVAudioSession route
+changes. It exposes the speaker, the iPhone earpiece and available headset routes.
+Bluetooth HFP ties input and output together; selectors reflect the current native
+route. Connecting a new headset clears a prior speaker override and prefers that
+headset. These plugin methods need a new TestFlight / App Store binary; an older
+binary continues using browser routing.
+
+Browsers use `setSinkId` / `selectAudioOutput` when available. Android may expose
+Speakerphone and Headset earpiece as communication inputs instead. Safari and other
+browsers that do not expose output routing show a system-audio hint rather than
+inventing selectable routes. Test iPhone native, Safari and Android with real
+headphones: speaker -> earpiece -> AirPods, attach/detach during a muted call,
+denied device access, and background/return. Mocked and simulator checks cannot
+prove Bluetooth audibility or microphone capture on physical hardware.
+
 ## Roadmap (in order)
 
 1. **Push notifications** — `@capacitor/push-notifications` via APNs/FCM,
