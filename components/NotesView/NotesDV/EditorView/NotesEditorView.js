@@ -16,7 +16,7 @@ import { QuillBinding } from 'y-quill'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 
-import { insertMeetingTranscript } from './meetingNotePersistence'
+import { createMeetingInsertionTarget, insertMeetingTranscript } from './meetingNotePersistence'
 import EditorToolbar, {
     BoldIcon,
     CleanFormat,
@@ -431,6 +431,9 @@ const NotesEditorView = ({
 
     const autosave = () => saveSchedulerRef.current?.flush()
 
+    const getMeetingInsertionTarget = () =>
+        createMeetingInsertionTarget({ document: ydoc.current, editor: quillRef.current })
+
     const persistMeetingChunk = async chunk => {
         if (chunk.owner !== `${loggedUser.uid}:${note.id}`) return false
         if (
@@ -445,7 +448,7 @@ const NotesEditorView = ({
         // Merge the canonical note before testing its dedup map. A stale local snapshot
         // may otherwise insert a chunk whose earlier upload succeeded before a crash.
         if (storageRefreshPendingRef.current || catchUpUnverifiedRef.current) return false
-        insertMeetingTranscript({ document: ydoc.current, chunk })
+        insertMeetingTranscript({ document: ydoc.current, chunk, editor: quillRef.current })
         // A queued WAV survives failed/offline saves. Only a confirmed canonical Storage
         // upload acknowledges it; the marker makes every subsequent attempt harmless.
         const upload = captureSave(true)
@@ -1447,6 +1450,7 @@ const NotesEditorView = ({
             <EditorToolbar
                 noteId={note.id}
                 persistMeetingChunk={persistMeetingChunk}
+                getMeetingInsertionTarget={getMeetingInsertionTarget}
                 getEditor={() => quillRef.current}
                 renderTask={renderTask}
                 renderTimestamp={renderTimestamp}
