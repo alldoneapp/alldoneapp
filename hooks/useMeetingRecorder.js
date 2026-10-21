@@ -7,7 +7,7 @@ import { runHttpsCallableFunction } from '../utils/backends/firestore'
 
 // Scoped to the authenticated user AND note. Opening that note resumes stored chunks,
 // never microphone access. Web Locks serialize recovery across tabs on this origin.
-export default function useMeetingRecorder({ userId, noteId, projectId, enabled, persist }) {
+export default function useMeetingRecorder({ userId, noteId, projectId, enabled, persist, getInsertionTarget }) {
     const [state, setState] = useState({
         phase: 'idle',
         pending: 0,
@@ -20,6 +20,8 @@ export default function useMeetingRecorder({ userId, noteId, projectId, enabled,
     const controller = useRef(null)
     const persistRef = useRef(persist)
     persistRef.current = persist
+    const getInsertionTargetRef = useRef(getInsertionTarget)
+    getInsertionTargetRef.current = getInsertionTarget
 
     useEffect(() => {
         if (!enabled || !userId || !noteId) {
@@ -115,6 +117,8 @@ export default function useMeetingRecorder({ userId, noteId, projectId, enabled,
             phase = 'starting'
             update({ phase, captureError: '', elapsed: 0 })
             try {
+                // Capture before awaiting storage, locks or a microphone permission prompt.
+                const insertionTarget = getInsertionTargetRef.current?.()
                 await ready
                 if (!active || phase !== 'starting' || generation !== token) return
                 if (!queue || unsaved.size) throw new Error('storage')
@@ -137,6 +141,7 @@ export default function useMeetingRecorder({ userId, noteId, projectId, enabled,
                                 sequence: sequence++,
                                 createdAt,
                                 blob,
+                                ...(insertionTarget ? { insertionTarget } : {}),
                             }
                             unsaved.set(chunk.id, chunk)
                             writeChain = writeChain.then(async () => {
