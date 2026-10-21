@@ -453,8 +453,8 @@ export default function AppContent() {
                 <>
                     {loggedIn && processedInitialURL && (
                         <>
-                            <GlobalModalsContainerApp />
                             <WorkspaceOverlayLayer>
+                                <GlobalModalsContainerApp />
                                 <UndoActionBar />
                                 {/* Keep the day lifecycle mounted across assistant layout changes. */}
                                 <EndDayStatisticsModal />

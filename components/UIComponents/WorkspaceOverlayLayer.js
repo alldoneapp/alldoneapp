@@ -5,11 +5,8 @@ import useWorkspaceViewport from '../../hooks/useWorkspaceViewport'
 // Global dialogs live outside the route tree. Give fixed and absolute children
 // the same containing block as overlays rendered inside Alldone itself. Keep
 // the wrapper mounted across zoom changes so open forms retain their state.
-export default function WorkspaceOverlayLayer({ children, visibleWhenWorkspaceHidden = false }) {
-    const workspace = useWorkspaceViewport()
-    // Reload prompts concern the whole app, including a chat-only or mobile
-    // assistant surface. Use the browser when the Alldone pane is hidden.
-    const viewport = workspace.hidden && visibleWhenWorkspaceHidden ? { active: false } : workspace
+export default function WorkspaceOverlayLayer({ children }) {
+    const viewport = useWorkspaceViewport()
     return (
         <View
             testID="workspace-overlay-layer"

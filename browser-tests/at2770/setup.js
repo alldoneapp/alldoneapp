@@ -9,7 +9,7 @@ module.exports = (config, webpack) => ({
             path.join(__dirname, 'dependencies.js')
         ),
         new webpack.NormalModuleReplacementPlugin(
-            /(?:lottie-react|GoalProgress|ProjectDayActivity|ProjectHappinessRatingList|KickUserConfirmPopup|RevisionHistoryConfirmationModal|PushNotificationsModalMandatory|LimitModal|FreePlanWarning|LimitedFeatureModal|LimitModalPremium|LevelUpModal|ChangeContactInfoModalContainerForNewGuideUsers|BotWarningModal|RecordVideo|NotAvailableScreenRecording|ScreenRecording|TaskSuggestedComment|GlobalSearchModal|AccessDeniedPopup|CheatSheetModal|EndCopyProjectNotification|IframeModal|GlobalPreConfigTaskModal|ConnectionStateToast)$/,
+            /(?:lottie-react|GoalProgress|ProjectDayActivity|ProjectHappinessRatingList|KickUserConfirmPopup|NotificationTimeout|RevisionHistoryConfirmationModal|PushNotificationsModalMandatory)$/,
             path.join(__dirname, 'empty.js')
         ),
     ],

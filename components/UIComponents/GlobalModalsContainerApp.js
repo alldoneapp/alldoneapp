@@ -15,8 +15,7 @@ import ScreenRecording from '../MediaBar/ScreenRecording/ScreenRecording'
 import TaskSuggestedComment from '../Suggeted/TaskSuggestedComment'
 import GlobalSearchModal from '../GlobalSearchAlgolia/GlobalSearchModal'
 import AccessDeniedPopup from './AccessDeniedPopup'
-import ConfirmPopup, { CONFIRM_POPUP_MANDATORY_NOTIFICATION, CONFIRM_POPUP_TIMEOUT } from './ConfirmPopup'
-import WorkspaceOverlayLayer from './WorkspaceOverlayLayer'
+import ConfirmPopup from './ConfirmPopup'
 import CheatSheetModal from './ShortcutCheatSheet/CheatSheetModal'
 import EndCopyProjectNotification from '../ProjectDetailedView/ProjectProperties/CopyProject/EndCopyProjectNotification'
 import NotificationModalOptional from './FloatModals/NotificationModalOptional'
@@ -41,9 +40,6 @@ export default function GlobalModalsContainerApp() {
     const showGlobalSearchPopup = useSelector(state => state.showGlobalSearchPopup)
     const showAccessDeniedPopup = useSelector(state => state.showAccessDeniedPopup)
     const confirmPopupDataVisible = useSelector(state => state.showConfirmPopupData.visible)
-    const confirmPopupTrigger = useSelector(state => state.showConfirmPopupData.trigger)
-    const isReloadConfirmation =
-        confirmPopupTrigger === CONFIRM_POPUP_MANDATORY_NOTIFICATION || confirmPopupTrigger === CONFIRM_POPUP_TIMEOUT
     const showCheatSheet = useSelector(state => state.showCheatSheet)
     const showEndCopyProjectPopupData = useSelector(state => state.endCopyProjectPopupData.visible)
     const showOptionalVersionNotification = useSelector(state => state.showOptionalVersionNotification)
@@ -55,59 +51,52 @@ export default function GlobalModalsContainerApp() {
 
     return (
         <>
-            {/* Reload prompts must remain reachable when the assistant hides the workspace. */}
-            <WorkspaceOverlayLayer visibleWhenWorkspaceHidden>
-                {showOptionalVersionNotification && <NotificationModalOptional />}
-            </WorkspaceOverlayLayer>
-            <WorkspaceOverlayLayer visibleWhenWorkspaceHidden={isReloadConfirmation}>
-                {confirmPopupDataVisible && <ConfirmPopup />}
-            </WorkspaceOverlayLayer>
-            <WorkspaceOverlayLayer>
-                {showEndCopyProjectPopupData && <EndCopyProjectNotification />}
-                {showCheatSheet && !smallScreenNavigation && <CheatSheetModal />}
-                {showAccessDeniedPopup && <AccessDeniedPopup />}
-                {showGlobalSearchPopup && <GlobalSearchModal />}
-                {taskSuggestedCommentModalData.visible && (
-                    <TaskSuggestedComment
-                        projectId={taskSuggestedCommentModalData.projectId}
-                        task={taskSuggestedCommentModalData.task}
-                        taskName={taskSuggestedCommentModalData.taskName}
-                    />
-                )}
-                {recordVideoModalData.visible && (
-                    <RecordVideo
-                        projectId={recordVideoModalData.projectId}
-                        closeModal={() => {
-                            dispatch(updateRecordVideoModalData(false, ''))
-                        }}
-                    />
-                )}
-                {screenRecordingModalData.visible === true && (
-                    <ScreenRecording
-                        projectId={screenRecordingModalData.projectId}
-                        closeModal={() => {
-                            dispatch(updateScreenRecordingModalData(false, ''))
-                        }}
-                    />
-                )}
-                {screenRecordingModalData.visible === 'NotAvailable' && (
-                    <NotAvailableScreenRecording
-                        onPress={() => {
-                            dispatch(updateScreenRecordingModalData(false, ''))
-                        }}
-                    />
-                )}
-                {showNotificationAboutTheBotBehavior && <BotWarningModal />}
-                {showUserInfoModalWhenUserJoinsToGuide && <ChangeContactInfoModalContainerForNewGuideUsers />}
-                {showLimitPremiumQuotaModal && <LimitModalPremium />}
-                {showLimitQuotaModal && <LimitModal />}
-                {loggedUserId && !isAnonymous && <FreePlanWarning />}
-                {showLimitedFeatureModal && <LimitedFeatureModal />}
-                {showLevelUpModal && !isAnonymous && <LevelUpModal setShowLevelUpModal={setShowLevelUpModal} />}
-                <IframeModal />
-                <GlobalPreConfigTaskModal />
-                <ConnectionStateToast />
-            </WorkspaceOverlayLayer>
+            {showOptionalVersionNotification && <NotificationModalOptional />}
+            {showEndCopyProjectPopupData && <EndCopyProjectNotification />}
+            {showCheatSheet && !smallScreenNavigation && <CheatSheetModal />}
+            {confirmPopupDataVisible && <ConfirmPopup />}
+            {showAccessDeniedPopup && <AccessDeniedPopup />}
+            {showGlobalSearchPopup && <GlobalSearchModal />}
+            {taskSuggestedCommentModalData.visible && (
+                <TaskSuggestedComment
+                    projectId={taskSuggestedCommentModalData.projectId}
+                    task={taskSuggestedCommentModalData.task}
+                    taskName={taskSuggestedCommentModalData.taskName}
+                />
+            )}
+            {recordVideoModalData.visible && (
+                <RecordVideo
+                    projectId={recordVideoModalData.projectId}
+                    closeModal={() => {
+                        dispatch(updateRecordVideoModalData(false, ''))
+                    }}
+                />
+            )}
+            {screenRecordingModalData.visible === true && (
+                <ScreenRecording
+                    projectId={screenRecordingModalData.projectId}
+                    closeModal={() => {
+                        dispatch(updateScreenRecordingModalData(false, ''))
+                    }}
+                />
+            )}
+            {screenRecordingModalData.visible === 'NotAvailable' && (
+                <NotAvailableScreenRecording
+                    onPress={() => {
+                        dispatch(updateScreenRecordingModalData(false, ''))
+                    }}
+                />
+            )}
+            {showNotificationAboutTheBotBehavior && <BotWarningModal />}
+            {showUserInfoModalWhenUserJoinsToGuide && <ChangeContactInfoModalContainerForNewGuideUsers />}
+            {showLimitPremiumQuotaModal && <LimitModalPremium />}
+            {showLimitQuotaModal && <LimitModal />}
+            {loggedUserId && !isAnonymous && <FreePlanWarning />}
+            {showLimitedFeatureModal && <LimitedFeatureModal />}
+            {showLevelUpModal && !isAnonymous && <LevelUpModal setShowLevelUpModal={setShowLevelUpModal} />}
+            <IframeModal />
+            <GlobalPreConfigTaskModal />
+            <ConnectionStateToast />
         </>
     )
 }
