@@ -75,10 +75,10 @@ const localStyles = StyleSheet.create({
         height: 28,
         width: HOME_BUTTON_WIDTH,
         borderRadius: 50,
-        backgroundColor: colors.UtilityBlue100,
+        backgroundColor: colors.UtilityBlue112,
     },
     hovered: {
-        backgroundColor: colors.UtilityBlue112,
+        backgroundColor: colors.UtilityBlue125,
     },
     badge: {
         position: 'absolute',
