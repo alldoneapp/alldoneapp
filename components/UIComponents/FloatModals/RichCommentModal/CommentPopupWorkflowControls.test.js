@@ -98,7 +98,7 @@ describe('CommentPopupWorkflowControls', () => {
         expect(buttons.props.forwardStepName).toBe('Done')
     })
 
-    it('keeps long step names usable in a narrow mobile layout', async () => {
+    it('keeps mobile task-detail actions horizontal and long step names usable in the selector', async () => {
         const longStepName = 'Legal, compliance and executive stakeholder approval before publication'
         const longWorkflow = {
             [longStepName]: { description: longStepName },
@@ -122,7 +122,7 @@ describe('CommentPopupWorkflowControls', () => {
             height: 'auto',
             minHeight: 44,
         })
-        expect(tree.root.findByType('MainButtons').props.narrow).toBe(true)
+        expect(tree.root.findByType('MainButtons').props.narrow).toBe(false)
 
         await act(async () => Promise.resolve())
         act(() => selector.props.onPress())

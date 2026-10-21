@@ -45,10 +45,12 @@ describe('MainButtons layout', () => {
         })
         expect(StyleSheet.flatten(backwardButton.props.buttonStyle)).toMatchObject({
             flex: 1,
+            minWidth: 0,
             marginRight: 8,
         })
         expect(StyleSheet.flatten(forwardButton.props.buttonStyle)).toMatchObject({
             flex: 1,
+            minWidth: 0,
         })
     })
 
