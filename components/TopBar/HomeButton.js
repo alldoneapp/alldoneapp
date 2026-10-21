@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -12,8 +12,12 @@ import store from '../../redux/store'
 import AmountTag from '../Feeds/FollowSwitchableTag/AmountTag'
 import getAllProjectsOpenTasksAmount from '../../utils/Tasks/getAllProjectsOpenTasksAmount'
 import { colors } from '../styles/global'
+import { translate } from '../../i18n/TranslationService'
+
+export const HOME_BUTTON_WIDTH = 40
 
 export default function HomeButton({ color, style, expandSecondaryBar }) {
+    const [hovered, setHovered] = useState(false)
     const dispatch = useDispatch()
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const archivedProjectIds = useSelector(state => state.loggedUser.archivedProjectIds)
@@ -41,7 +45,14 @@ export default function HomeButton({ color, style, expandSecondaryBar }) {
     }
 
     return (
-        <TouchableOpacity style={[localStyles.button, style]} onPress={onPress} accessible={false}>
+        <TouchableOpacity
+            style={[localStyles.button, hovered && localStyles.hovered, style]}
+            onPress={onPress}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            accessibilityRole="button"
+            accessibilityLabel={translate('Go to home')}
+        >
             <Icon size={24} name={'home'} color={color} />
             {openTasksAmount > 0 && (
                 <View style={localStyles.badge} testID="home-open-tasks-badge">
@@ -62,12 +73,17 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         height: 28,
-        width: 28,
+        width: HOME_BUTTON_WIDTH,
+        borderRadius: 50,
+        backgroundColor: colors.UtilityBlue100,
+    },
+    hovered: {
+        backgroundColor: colors.UtilityBlue112,
     },
     badge: {
         position: 'absolute',
         top: 0,
-        left: 14,
+        left: HOME_BUTTON_WIDTH / 2,
     },
     badgeTag: {
         backgroundColor: colors.Primary100,
