@@ -2,6 +2,7 @@ const admin = require('firebase-admin')
 const moment = require('moment')
 const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { FieldValue, Timestamp } = require('firebase-admin/firestore')
+const { buildAssistantCommentPointer } = require('./assistantCommentPointer')
 
 /**
  * Creates an initial status message from the assistant with proper notifications and updates
@@ -230,6 +231,12 @@ async function updateLastAssistantCommentData(projectId, objectType, objectId, f
                 followerIds: followerIds || [],
                 assistantId: assistantId,
             })
+        const pointer = buildAssistantCommentPointer(projectId, objectType, objectId, assistantId)
+        await Promise.all(
+            [...new Set(followerIds || [])]
+                .filter(id => id && id !== assistantId)
+                .map(id => admin.firestore().doc(`users/${id}`).set(pointer, { merge: true }))
+        )
     } catch (error) {
         console.error('Error updating last assistant comment data:', error)
     }
