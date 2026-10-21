@@ -11,12 +11,8 @@ const {
 } = require('./vmWorkflowHold')
 const { buildVmChatPath, summarizeVmObjectiveForSession } = require('./vmHostTaskHelper')
 const { DEFAULT_APPROVAL_POLICY_LEVEL } = require('./vmAgentApprovalPolicy')
-const {
-    ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY,
-    FEED_PUBLIC_FOR_ALL,
-    STAYWARD_COMMENT,
-    getBaseUrl,
-} = require('../Utils/HelperFunctionsCloud')
+const { buildAssistantCommentPointer } = require('./assistantCommentPointer')
+const { FEED_PUBLIC_FOR_ALL, STAYWARD_COMMENT, getBaseUrl } = require('../Utils/HelperFunctionsCloud')
 const {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     cleanTextMetaData,
@@ -746,10 +742,12 @@ async function applyVmCompletionMetadata(
                 lastAssistantComment: now,
                 assistantId,
                 followerIds,
-                [`commentsData.lastCommentOwnerId`]: assistantId,
-                [`commentsData.lastComment`]: lastComment,
-                [`commentsData.lastCommentType`]: STAYWARD_COMMENT,
-                [`commentsData.amount`]: FieldValue.increment(1),
+                commentsData: {
+                    lastCommentOwnerId: assistantId,
+                    lastComment,
+                    lastCommentType: STAYWARD_COMMENT,
+                    amount: FieldValue.increment(1),
+                },
             },
             { merge: true }
         )
@@ -769,30 +767,9 @@ async function applyVmCompletionMetadata(
             })
         }
 
-        const updateDate = {
-            objectType,
-            objectId,
-            creatorId: assistantId,
-            creatorType: 'assistant',
-            date: now,
-        }
+        const pointer = buildAssistantCommentPointer(projectId, objectType, objectId, assistantId, now)
         followerIds.forEach(followerId => {
-            transaction.set(
-                db.doc(`users/${followerId}`),
-                {
-                    [`lastAssistantCommentData.${projectId}`]: updateDate,
-                    [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                        ...updateDate,
-                        projectId,
-                    },
-                    [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateDate,
-                    [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                        ...updateDate,
-                        projectId,
-                    },
-                },
-                { merge: true }
-            )
+            transaction.set(db.doc(`users/${followerId}`), pointer, { merge: true })
         })
 
         notificationUsers.forEach(userId => {
@@ -849,6 +826,7 @@ async function syncVmStatusCommentPreview(pendingWebhook, text) {
 
     const db = admin.firestore()
     const lastComment = cleanTextMetaData(removeFormatTagsFromText(text), true)
+    const followerIds = await resolveVmCompletionFollowers(pendingWebhook)
     const previewUpdates = [
         db.doc(`chatObjects/${projectId}/chats/${objectId}`).update({
             lastEditionDate: Date.now(),
@@ -867,6 +845,14 @@ async function syncVmStatusCommentPreview(pendingWebhook, text) {
             })
         )
     }
+
+    // Progress edits must also select this thread in the assistant line. Updating
+    // only chat/task commentsData leaves it subscribed to an older conversation.
+    // Keep this separate from completion metadata: no unread/push/email or counts.
+    const pointer = buildAssistantCommentPointer(projectId, objectType, objectId, assistantId)
+    followerIds.forEach(followerId => {
+        previewUpdates.push(db.doc(`users/${followerId}`).set(pointer, { merge: true }))
+    })
 
     await Promise.all(previewUpdates)
 }
