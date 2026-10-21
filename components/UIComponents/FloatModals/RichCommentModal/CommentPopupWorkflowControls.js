@@ -314,7 +314,8 @@ export default function CommentPopupWorkflowControls({
                 disabled={controlsDisabled}
                 shortcutsEnabled={false}
                 compact
-                narrow={narrow}
+                // Keep task-detail actions side by side while the selector retains its narrow layout.
+                narrow={narrow && !chatAppearance}
                 backwardStepName={backwardStepName}
                 forwardStepName={forwardStepName}
                 hideForwardButton={targets.forwardStepId == null}

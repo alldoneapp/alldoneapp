@@ -92,12 +92,14 @@ const localStyles = StyleSheet.create({
     compactButton: {
         alignSelf: 'stretch',
         flex: 1,
+        minWidth: 0,
         paddingLeft: 8,
         paddingRight: 8,
     },
     compactBackwardButton: {
         alignSelf: 'stretch',
         flex: 1,
+        minWidth: 0,
         marginRight: 8,
         paddingLeft: 8,
         paddingRight: 8,
