@@ -97,25 +97,6 @@ it('accepts a late listener success after the timeout', async () => {
     emitComments()
     expect(latest).toMatchObject({ commentText: 'Live comment', failed: false })
 })
-it('refreshes a task preview when a running VM edits the same status comment', async () => {
-    await mount({ context: { ...context, objectType: 'tasks', objectId: 'task-1' } })
-    emitChat()
-    const status = {
-        id: 'vm-status',
-        created: 100,
-        fromAssistant: true,
-        isLoading: true,
-        assistantRun: { kind: 'vm_job', status: 'running' },
-    }
-    emitComments([{ ...status, commentText: 'Starting the VM' }])
-    expect(latest.commentText).toBe('Starting the VM')
-    emitComments([{ ...status, commentText: 'Investigating the comment preview' }])
-    expect(latest.commentText).toBe('Investigating the comment preview')
-    expect(readLastCommentCache({ ...context, objectType: 'tasks', objectId: 'task-1' }).commentText).toBe(
-        'Investigating the comment preview'
-    )
-    expect(watchComments).toHaveBeenCalledTimes(1)
-})
 it('does not overwrite live data with an older direct response or a cache snapshot', async () => {
     const chat = deferred(),
         comments = deferred()

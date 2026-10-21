@@ -124,3 +124,11 @@ it.each([
     expect(screen.queryByLabelText('Global dialog draft')).toBeNull()
     expect(mockNewDayMounted).not.toHaveBeenCalled()
 })
+
+// The reload host chooses its own pane/browser scope. An outer workspace host
+// would hide it again in chat-only mode, regardless of its own visibility.
+it('does not nest the global dialog host inside the hidden workspace layer', () => {
+    setWorkspaceViewport(pane, false)
+    render(<Harness />)
+    expect(screen.getByLabelText('Global dialog draft').closest('[data-testid="workspace-overlay-layer"]')).toBeNull()
+})

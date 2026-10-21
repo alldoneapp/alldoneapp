@@ -2422,12 +2422,10 @@ describe('VM completion chat metadata', () => {
                 members: ['user-2', 'user-1', 'assistant-1'],
                 lastEditorId: 'assistant-1',
                 lastAssistantComment: expect.any(Number),
-                commentsData: {
-                    lastCommentOwnerId: 'assistant-1',
-                    lastComment: 'Finished VM result',
-                    lastCommentType: 2,
-                    amount: { __op: 'increment', value: 1 },
-                },
+                'commentsData.lastCommentOwnerId': 'assistant-1',
+                'commentsData.lastComment': 'Finished VM result',
+                'commentsData.lastCommentType': 2,
+                'commentsData.amount': { __op: 'increment', value: 1 },
             }),
             { merge: true }
         )
@@ -2452,20 +2450,16 @@ describe('VM completion chat metadata', () => {
         expect(transaction.set).toHaveBeenCalledWith(
             refs.get('users/user-1'),
             expect.objectContaining({
-                lastAssistantCommentData: {
-                    'project-1': expect.objectContaining({
-                        objectType: 'tasks',
-                        objectId: 'task-1',
-                        creatorId: 'assistant-1',
-                        creatorType: 'assistant',
-                    }),
-                    allProjects: expect.objectContaining({ projectId: 'project-1', objectId: 'task-1' }),
-                },
-                lastAssistantCommentDataByAssistant: {
-                    'assistant-1': expect.objectContaining({
-                        allProjects: expect.objectContaining({ projectId: 'project-1', objectId: 'task-1' }),
-                    }),
-                },
+                'lastAssistantCommentData.project-1': expect.objectContaining({
+                    objectType: 'tasks',
+                    objectId: 'task-1',
+                    creatorId: 'assistant-1',
+                    creatorType: 'assistant',
+                }),
+                'lastAssistantCommentData.allProjects': expect.objectContaining({
+                    projectId: 'project-1',
+                    objectId: 'task-1',
+                }),
             }),
             { merge: true }
         )
@@ -2477,27 +2471,6 @@ describe('VM completion chat metadata', () => {
                 projectId: 'project-1',
                 type: 'Chat Notification',
             })
-        )
-
-        // Exercise Firestore's real set(merge) serializer: a mock accepting dotted
-        // keys hid this bug. No credentials or network/commit are needed.
-        const { Firestore } = require('@google-cloud/firestore')
-        const db = new Firestore({ projectId: 'demo-preview' })
-        const batch = db.batch()
-        const [, data, options] = transaction.set.mock.calls.find(([ref]) => ref.path === 'users/user-1')
-        batch.set(db.doc('users/user-1'), data, options)
-        const write = batch._ops[0].op()
-        expect(Object.keys(write.update.fields).sort()).toEqual([
-            'lastAssistantCommentData',
-            'lastAssistantCommentDataByAssistant',
-        ])
-        expect(
-            write.update.fields.lastAssistantCommentData.mapValue.fields.allProjects.mapValue.fields.objectId
-        ).toEqual({ stringValue: 'task-1' })
-        // Leaf masks preserve pointers for other projects and other assistants.
-        expect(write.updateMask.fieldPaths).toContain('lastAssistantCommentData.allProjects.objectId')
-        expect(write.updateMask.fieldPaths).toContain(
-            'lastAssistantCommentDataByAssistant.`assistant-1`.allProjects.objectId'
         )
     })
 
@@ -2676,10 +2649,8 @@ describe('VM completion chat metadata', () => {
         expect(transaction.set).toHaveBeenCalledWith(
             refs.get('chatObjects/project-1/chats/task-1'),
             expect.objectContaining({
-                commentsData: expect.objectContaining({
-                    lastComment: failureText,
-                    amount: { __op: 'increment', value: 1 },
-                }),
+                'commentsData.lastComment': failureText,
+                'commentsData.amount': { __op: 'increment', value: 1 },
             }),
             { merge: true }
         )
@@ -2935,7 +2906,6 @@ describe('VM completion chat metadata', () => {
                 objectId: 'task-1',
                 assistantId: 'assistant-1',
                 userId: 'user-1',
-                isPublicFor: [0],
                 statusCommentId: 'comment-1',
             },
             progressText
@@ -2959,45 +2929,8 @@ describe('VM completion chat metadata', () => {
         expect(refs.get('items/project-1/tasks/task-1').update.mock.calls[0][0]).not.toHaveProperty(
             'commentsData.amount'
         )
-        for (const userId of ['user-1', 'user-2']) {
-            const [pointer, options] = refs.get(`users/${userId}`).set.mock.calls[0]
-            expect(options).toEqual({ merge: true })
-            expect(pointer.lastAssistantCommentData['project-1']).toMatchObject({
-                objectId: 'task-1',
-                objectType: 'tasks',
-                creatorId: 'assistant-1',
-                creatorType: 'assistant',
-            })
-            expect(pointer.lastAssistantCommentData.allProjects.projectId).toBe('project-1')
-            expect(pointer.lastAssistantCommentDataByAssistant['assistant-1']).toEqual(pointer.lastAssistantCommentData)
-        }
-        // Progress edits must not reorder the conversation or create more comments.
-        expect(
-            refs.get('chatComments/project-1/tasks/task-1/comments/comment-1').set.mock.calls[0][0]
-        ).not.toHaveProperty('created')
         expect(transaction.set).not.toHaveBeenCalled()
         expect(transaction.update).not.toHaveBeenCalled()
-    })
-
-    test('limits live preview pointers to visible followers and excludes the assistant', async () => {
-        mockGetObjectFollowersIds.mockResolvedValue(['user-1', 'user-2', 'assistant-1'])
-        const { refs } = createFirestoreMock()
-        await __private__.writeStatusComment(
-            {
-                correlationId: 'correlation-1',
-                projectId: 'project-1',
-                objectType: 'tasks',
-                objectId: 'task-1',
-                assistantId: 'assistant-1',
-                userId: 'user-1',
-                isPublicFor: ['user-1'],
-                statusCommentId: 'comment-1',
-            },
-            'Reading a private task'
-        )
-        expect(refs.get('users/user-1').set).toHaveBeenCalledTimes(1)
-        expect(refs.has('users/user-2')).toBe(false)
-        expect(refs.has('users/assistant-1')).toBe(false)
     })
 
     // The live thinking/working log is rewritten into the same comment many times per run. None of

@@ -49,6 +49,7 @@ async function main() {
         browser = await chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
         for (const width of [390, 1440]) {
             const page = await browser.newPage({ viewport: { width, height: 900 } })
+            page.setDefaultTimeout(10000)
             const errors = []
             page.on('pageerror', error => {
                 errors.push(error.message)
@@ -63,8 +64,11 @@ async function main() {
                 if (layout === 'chat') {
                     await page.waitForFunction(
                         () =>
-                            getComputedStyle(document.querySelector('[data-testid="workspace-overlay-layer"]'))
-                                .visibility === 'hidden'
+                            getComputedStyle(
+                                document
+                                    .querySelector('[data-testid="startNewDayButton"]')
+                                    .closest('[data-testid="workspace-overlay-layer"]')
+                            ).visibility === 'hidden'
                     )
                     assert.equal(await start.isVisible(), false)
                 } else {
@@ -83,23 +87,45 @@ async function main() {
             await page.screenshot({ path: path.join(output, `new-day-${width}.png`) })
             await start.click()
             await start.waitFor({ state: 'detached' })
-            for (const dialog of ['mandatory', 'optional']) {
+            // AT-2789: drive the real global host in every layout. Browser
+            // clicks also verify that no hidden workspace/scrim intercepts them.
+            let clicks = 0
+            for (const dialog of ['mandatory', 'optional', 'timeout']) {
                 await page.evaluate(name => window.dialog(name), dialog)
                 const reload =
                     dialog === 'mandatory'
                         ? page.getByTestId('refreshMandatory')
                         : page.getByText('Reload', { exact: true })
+                await reload.waitFor({ state: 'attached' })
                 await reload.waitFor()
-                await reload.click()
+                const originalReload = await reload.elementHandle()
+                for (const layout of ['split', 'chat', 'alldone', 'chat']) {
+                    await page.evaluate(layout => window.layout(layout), layout)
+                    await reload.waitFor({ state: 'visible' })
+                    assert.equal(await reload.count(), 1)
+                    assert(await originalReload.evaluate(node => node.isConnected))
+                    const box = await reload.boundingBox()
+                    assert(box.x >= 0 && box.x + box.width <= width + 1)
+                    assert(box.y >= 0 && box.y + box.height <= 901)
+                    await reload.click()
+                    assert.equal(await page.evaluate(() => window.reloadClicks), ++clicks)
+                }
+                if (dialog === 'optional') {
+                    await page.screenshot({ path: path.join(output, `chat-reload-${width}.png`) })
+                    await reload.locator('..').locator('..').locator('[tabindex="0"]').last().click()
+                    await reload.waitFor({ state: 'detached' })
+                    await page.evaluate(() => window.layout('alldone'))
+                    assert.equal(await reload.count(), 0)
+                }
             }
-            assert.equal(await page.evaluate(() => window.reloadClicks), 2)
+            await page.evaluate(() => window.layout('split'))
             await page.evaluate(() => window.dialog('confirmation'))
             await page.getByText('Confirm browser check', { exact: true }).waitFor()
             await page.getByText('Ok', { exact: true }).click()
             await page.getByText('Confirm browser check', { exact: true }).waitFor({ state: 'detached' })
             assert.deepEqual(errors, [])
             console.log(
-                `PASS ${width}px: one persistent New Day instance, pane visibility and bounds, Start new day, mandatory/optional reload clicks, confirmation dismissal; no runtime errors`
+                `PASS ${width}px: one persistent New Day instance, New Day pane scope, Start new day, mandatory/optional/timeout reload in split/chat/normal layouts, optional dismissal, confirmation dismissal; no runtime errors`
             )
             await page.close()
         }
