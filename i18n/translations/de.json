@@ -3002,5 +3002,20 @@
     "Could not change microphone": "Mikrofon konnte nicht gewechselt werden",
     "Could not change audio output": "Audioausgang konnte nicht gewechselt werden",
     "Audio device list unavailable": "Liste der Audiogeräte nicht verfügbar",
-    "Audio output disconnected. Using system default.": "Audioausgang getrennt. Der Systemstandard wird verwendet."
+    "Audio output disconnected. Using system default.": "Audioausgang getrennt. Der Systemstandard wird verwendet.",
+    "Meeting microphone": "Meeting per Mikrofon",
+    "Meeting microphone active": "Mikrofon-Mitschrift",
+    "Meeting microphone pending": "Mikrofonaufnahme beendet",
+    "Meeting microphone chunks pending": "Audioblöcke ausstehend",
+    "Meeting microphone keep open": "Bis 60 Min. · Diese Notiz geöffnet und den Rechner wach halten",
+    "Meeting microphone recovery hint": "Gespeichertes Audio wird beim erneuten Öffnen dieser Notiz weiterverarbeitet. Das Mikrofon bleibt aus.",
+    "Meeting microphone storage error": "Audio konnte lokal nicht gesichert werden. Aufnahme gestoppt. Speicher freigeben und vor dem Schließen erneut versuchen.",
+    "Meeting microphone permission error": "Mikrofon- oder Kontozugriff fehlt. Berechtigungen und Anmeldung prüfen.",
+    "Meeting microphone another tab": "Diese Notiz nimmt bereits in einem anderen Tab auf.",
+    "Meeting microphone interrupted": "Mikrofonaufnahme unterbrochen. Gesicherte Blöcke bleiben erhalten. Gerät prüfen und erneut starten.",
+    "Meeting microphone gold error": "Nicht genug Gold. Aufnahme gestoppt; gesichertes Audio bleibt erhalten. Gold aufladen und erneut versuchen.",
+    "Meeting microphone note pending": "Warte auf das Speichern der Notiz. Audio bleibt lokal gesichert.",
+    "Meeting microphone retry error": "Mitschrift ausstehend. Gesichertes Audio wird automatisch erneut versucht; du kannst es auch jetzt versuchen.",
+    "Meeting microphone signal": "Audiosignal erkannt",
+    "Meeting microphone no signal": "Kein Audiosignal – Mikrofon prüfen"
 }

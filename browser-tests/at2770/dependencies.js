@@ -13,11 +13,6 @@ const initialState = {
         statisticsModalDate: Date.now() - 86400000,
     },
     loggedUserProjects: [],
-    limitQuotaModalData: {},
-    recordVideoModalData: {},
-    screenRecordingModalData: {},
-    taskSuggestedCommentModalData: {},
-    endCopyProjectPopupData: {},
     showNewDayNotification: false,
     showNewVersionMandtoryNotifcation: false,
     connectionState: 'online',
@@ -67,10 +62,7 @@ export const showNewVersionMandtoryNotifcation = () => ({
     type: 'fixture',
     patch: { showNewVersionMandtoryNotifcation: true },
 })
-export const setShowOptionalVersionNotification = value => ({
-    type: 'fixture',
-    patch: { showOptionalVersionNotification: value },
-})
+export const setShowOptionalVersionNotification = () => ({ type: 'noop' })
 export default {
     ...store,
     getUserStatistics: noop,

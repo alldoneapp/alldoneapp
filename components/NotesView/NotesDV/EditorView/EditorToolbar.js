@@ -9,6 +9,9 @@ import {
 } from '../../../UIControls/RambleButton'
 import { isDictationSupported } from '../../../../hooks/useRambleRecorder'
 import { keepScreenAwake } from '../../../../utils/screenWakeLock'
+import useMeetingRecorder from '../../../../hooks/useMeetingRecorder'
+import { isMeetingCaptureSupported } from '../../../../utils/meetingCapture'
+import MeetingMicrophoneStatus from './MeetingMicrophoneStatus'
 import {
     canAutoStartNoteTranscription,
     isNoteDictationVisible,
@@ -946,6 +949,8 @@ export const EditorToolbar = ({
     getEditor,
     autoStartTranscription,
     onOpenSideChat,
+    noteId,
+    persistMeetingChunk,
 }) => {
     const usersInProject = useSelector(state => state.projectUsers[project.id])
     const loggedUser = useSelector(state => state.loggedUser)
@@ -1037,6 +1042,18 @@ export const EditorToolbar = ({
     })
 
     const [isRecording, setIsRecording] = useState(false)
+    const meetingSupported = isMeetingCaptureSupported()
+    const microphoneMeeting = useMeetingRecorder({
+        userId: loggedUser.uid,
+        noteId,
+        projectId: projectId || project?.id,
+        // Websocket "synced" flips false offline. Capture must keep buffering locally.
+        enabled: meetingSupported && accessGranted && !readOnly && !disabled,
+        persist: persistMeetingChunk,
+    })
+    const microphoneActive = ['starting', 'recording', 'stopping'].includes(microphoneMeeting.phase)
+    const showMicrophoneStatus =
+        microphoneActive || microphoneMeeting.pending > 0 || microphoneMeeting.error || microphoneMeeting.captureError
     const mediaRecorderRef = useRef(null)
     const streamsRef = useRef([]) // Store all streams to stop them
     const audioContextRef = useRef(null)
@@ -1082,6 +1099,7 @@ export const EditorToolbar = ({
     useEffect(() => () => stopRecording(false), [])
 
     const toggleTranscription = async () => {
+        if (microphoneActive) return
         if (isRecording) {
             stopRecording()
             return
@@ -1356,8 +1374,12 @@ export const EditorToolbar = ({
         <div
             id="toolbar-container"
             className={`ql-toolbar-container ${!mobile && mobileCollapsed ? 'ql-toolbar-container-collapsed' : ''}`}
-            style={{ height: (clicked ? 184 : 76) + (isRecording ? 32 : 0) }}
+            style={{ height: (clicked ? 184 : 76) + (isRecording ? 32 : 0) + (showMicrophoneStatus ? 64 : 0) }}
         >
+            <MeetingMicrophoneStatus
+                recorder={microphoneMeeting}
+                elapsedLabel={formatRambleElapsed(microphoneMeeting.elapsed)}
+            />
             {isRecording && (
                 <div
                     style={{
@@ -1515,7 +1537,11 @@ export const EditorToolbar = ({
 
                     {dictationVisible && (
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
-                            <EditorToolbarButton onClick={toggleRamble} style={{ paddingLeft: 6, paddingRight: 6 }}>
+                            <EditorToolbarButton
+                                disabled={microphoneActive}
+                                onClick={toggleRamble}
+                                style={{ paddingLeft: 6, paddingRight: 6 }}
+                            >
                                 <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
                                     {ramblePhase === RAMBLE_PHASE_PROCESSING ? (
                                         <ActivityIndicator size={12} color={colors.Text03} />
@@ -1550,6 +1576,7 @@ export const EditorToolbar = ({
                         <span className={'ql-toolbar-item'} style={{ pointerEvents: barPointerEvents }}>
                             <EditorToolbarButton
                                 onClick={toggleTranscription}
+                                disabled={microphoneActive}
                                 style={{ paddingLeft: 6, paddingRight: 6 }}
                             >
                                 <View style={{ width: 20, alignItems: 'center', justifyContent: 'center' }}>
@@ -1573,6 +1600,26 @@ export const EditorToolbar = ({
                                         {isRecording ? translate('Stop') : translate('Transcribe')}
                                     </Text>
                                 )}
+                            </EditorToolbarButton>
+                        </span>
+                    )}
+                    {transcriptionVisible && meetingSupported && !mobile && (
+                        <span className="ql-toolbar-item" style={{ pointerEvents: barPointerEvents }}>
+                            <EditorToolbarButton
+                                title={translate('Meeting microphone keep open')}
+                                disabled={
+                                    isRecording ||
+                                    ramblePhase === RAMBLE_PHASE_RECORDING ||
+                                    disabled ||
+                                    microphoneMeeting.phase === 'unavailable'
+                                }
+                                onClick={microphoneActive ? microphoneMeeting.stop : microphoneMeeting.start}
+                                style={{ paddingLeft: 6, paddingRight: 6 }}
+                            >
+                                <Icon name="mic" size={18} color={microphoneActive ? colors.Red200 : colors.Text03} />
+                                <Text style={[styles.caption1, localStyles.barIconText]}>
+                                    {translate('Meeting microphone')}
+                                </Text>
                             </EditorToolbarButton>
                         </span>
                     )}
