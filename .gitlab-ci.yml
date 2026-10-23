@@ -345,6 +345,10 @@ test:functions:deployment:
     needs:
         - job: deploy_scope
           optional: true
+        # Explicit needs bypass stage ordering. Wait for this pipeline's patched
+        # dependency image instead of pulling the previous build_base:latest.
+        - job: modules_cache
+          optional: true
     before_script:
         - ln -s /app/node_modules node_modules
         - cp -R -f replacement_node_modules/* node_modules/
@@ -380,6 +384,8 @@ test:firestore:rules:
         APP_IMAGE_TAG: latest
     needs:
         - job: deploy_scope
+          optional: true
+        - job: modules_cache
           optional: true
     before_script:
         - ln -s /app/node_modules node_modules

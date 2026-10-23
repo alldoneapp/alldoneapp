@@ -68,6 +68,18 @@ const OLDER = 'b'.repeat(40)
 // No API fallback configured, so the fake git is the only probe the guard can use.
 const baseEnv = { CI_COMMIT_BRANCH: 'master', CI_COMMIT_SHA: OLDER }
 
+describe('dependency images used by jobs with explicit needs', () => {
+    // A needs list bypasses stage ordering. Without the producer edge, these jobs
+    // pulled Node 22.23.3 while the patched build_base image was still building.
+    const consumers = jobEntries().filter(
+        ([, job]) => typeof job.image === 'string' && job.image.includes('/build_base:') && Array.isArray(job.needs)
+    )
+
+    it.each(consumers)('%s waits for its optional dependency-image rebuild', (name, job) => {
+        expect(job.needs).toEqual(expect.arrayContaining([{ job: 'modules_cache', optional: true }]))
+    })
+})
+
 describe('production deploy jobs are protected against out-of-order pipelines', () => {
     // The 2026-08-10 incident: a stale master pipeline ran `firebase deploy --only functions
     // --force` after a newer one, deleting two just-shipped callables and reverting a third.
