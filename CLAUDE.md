@@ -2994,6 +2994,22 @@ result was two near-identical WhatsApp messages per reminder the moment the togg
 constant shared with the producer via `reminderChannels.js` so the two cannot drift on a string
 literal.
 
+### WhatsApp replies must finish or report failure before their worker expires
+
+`WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS` in `assistantRunLimits.js` bounds the whole queue drain
+to four minutes; its derived transport timeout is 540 seconds. `whatsAppRunGuard` races context
+assembly and response collection against that shared deadline and aborts the provider request.
+Check the guard before tools and response writes, including delegated calls: merely racing a
+Promise does not stop its continuation. A timeout marks the queue batch failed and sends a localized
+WhatsApp error. Do not retry the entire assistant after a tool has started, even for a transient error.
+
+`recoverWhatsAppInboundQueues` scans every two minutes, rotates a bounded user cursor and uses
+`listDocuments()` because historical queue parents have subcollections without a parent document.
+The existing per-user lock serializes recovery with normal processing. Pending requests resume;
+processing requests older than the full worker timeout plus two minutes are marked failed and
+reported without replaying their possibly completed actions. Keep this schedule in the assistant
+run-host timeout tests. No new Firestore indexes are needed.
+
 ### An assistant result sent over WhatsApp must also land in the Daily WhatsApp Topic (AT-2387)
 
 **A WhatsApp follow-up is answered out of exactly one thread**, the daily topic

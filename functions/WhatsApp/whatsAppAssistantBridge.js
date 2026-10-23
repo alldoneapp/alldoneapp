@@ -57,6 +57,8 @@ async function processWhatsAppAssistantMessage(
     options = {}
 ) {
     const requestStart = Date.now()
+    const runGuard = options.runGuard
+    runGuard?.assertActive()
     const markStage = createStageTimer('WhatsApp Assistant [TIMING]', {
         userId,
         projectId,
@@ -70,6 +72,7 @@ async function processWhatsAppAssistantMessage(
         getUserData(userId),
         getAssistantForChat(projectId, assistantId, userId),
     ])
+    runGuard?.assertActive()
     markStage('loadUserAndAssistant', loadRuntimeStart, {
         hasUser: !!user,
         resolvedAssistantId: assistant?.uid || assistantId || null,
@@ -99,6 +102,7 @@ async function processWhatsAppAssistantMessage(
         messageId: typeof options?.messageId === 'string' ? options.messageId.trim() : '',
         sourceChannel: 'whatsapp',
         whatsappFromNumber,
+        ...(runGuard ? { abortSignal: runGuard.signal, whatsAppRunGuard: runGuard } : {}),
     }
 
     // Extract user timezone
@@ -202,6 +206,7 @@ async function processWhatsAppAssistantMessage(
     })
 
     // Call the AI
+    runGuard?.assertActive()
     const streamInitStart = Date.now()
     const stream = await interactWithChatStream(messages, model, temperature, allowedTools, toolRuntimeContext)
     markStage('interactWithChatStream', streamInitStart)
@@ -222,8 +227,10 @@ async function processWhatsAppAssistantMessage(
     markStage('collectStreamWithToolCalls', collectStart, { responseLength: responseText.length })
 
     // Store AI response in topic and update lastAssistantCommentData for AssistantLine
+    runGuard?.assertActive()
     const storeAssistantStart = Date.now()
     await storeAssistantMessageInTopic(projectId, chatId, assistant.uid || assistantId, responseText, userId)
+    runGuard?.assertActive()
     markStage('storeAssistantMessageInTopic', storeAssistantStart)
 
     if (responseText) {
@@ -236,6 +243,7 @@ async function processWhatsAppAssistantMessage(
     }
 
     // Deduct gold
+    runGuard?.assertActive()
     try {
         const reduceGoldStart = Date.now()
         const { Tiktoken } = require('@dqbd/tiktoken/lite')
@@ -303,6 +311,8 @@ async function collectStreamWithToolCalls(
     requestUserId,
     toolRuntimeContext = null
 ) {
+    const runGuard = toolRuntimeContext?.whatsAppRunGuard
+    runGuard?.assertActive()
     let responseText = ''
     let currentConversation = conversationHistory
     let pendingAttachmentPayload = null
@@ -322,6 +332,7 @@ async function collectStreamWithToolCalls(
     }
 
     for await (const chunk of stream) {
+        runGuard?.assertActive()
         // Handle tool calls
         if (chunk.additional_kwargs?.tool_calls && Array.isArray(chunk.additional_kwargs.tool_calls)) {
             let currentToolCalls = chunk.additional_kwargs.tool_calls
@@ -372,6 +383,7 @@ async function collectStreamWithToolCalls(
                 // Execute tool
                 let toolResult
                 try {
+                    runGuard?.markToolStarted()
                     const normalizedToolArgs = normalizeWhatsAppToolArgs(toolName, toolArgs, projectId)
                     toolResult = await executeToolNatively(
                         toolName,
@@ -382,6 +394,7 @@ async function collectStreamWithToolCalls(
                         toolUserContext,
                         toolRuntimeContext
                     )
+                    runGuard?.assertActive()
 
                     if (toolName === 'create_task') {
                         const taskId = toolResult?.taskId || toolResult?.taskid || null
@@ -398,6 +411,7 @@ async function collectStreamWithToolCalls(
                         }
                     }
                 } catch (error) {
+                    runGuard?.assertActive()
                     console.error('WhatsApp: Tool execution failed:', error.message)
                     responseText += `\n\nError executing ${toolName}: ${error.message}`
                     return getUserFacingToolErrorMessage(toolName, error)
@@ -453,6 +467,7 @@ async function collectStreamWithToolCalls(
                 currentConversation = updatedConversation
 
                 // Get new stream with tool results
+                runGuard?.assertActive()
                 const newStream = await interactWithChatStream(
                     updatedConversation,
                     modelKey,
@@ -464,6 +479,7 @@ async function collectStreamWithToolCalls(
                 // Process the resumed stream
                 let nextToolCalls = null
                 for await (const newChunk of newStream) {
+                    runGuard?.assertActive()
                     if (newChunk.additional_kwargs?.tool_calls) {
                         nextToolCalls = newChunk.additional_kwargs.tool_calls
                     } else if (newChunk.content) {

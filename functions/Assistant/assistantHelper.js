@@ -2819,6 +2819,7 @@ async function interactWithChatStream(
     allowedTools = [],
     toolRuntimeContext = null
 ) {
+    toolRuntimeContext?.whatsAppRunGuard?.assertActive()
     const streamStartTime = Date.now()
     const researchRequest = prepareResearchRequest(formattedPrompt)
     formattedPrompt = researchRequest.messages
@@ -2921,6 +2922,7 @@ async function interactWithChatStream(
                     toolRuntimeContext?.objectType ||
                     'assistant',
             },
+            ...(toolRuntimeContext?.abortSignal ? { signal: toolRuntimeContext.abortSignal } : {}),
         })
     }
 
@@ -2949,7 +2951,9 @@ async function interactWithChatStream(
 
             const client = new PerplexityClient(PERPLEXITY_API_KEY, model)
             console.log('PerplexityClient created successfully')
-            return await client.stream(formattedMessages)
+            return await (toolRuntimeContext?.abortSignal
+                ? client.stream(formattedMessages, { signal: toolRuntimeContext.abortSignal })
+                : client.stream(formattedMessages))
         } catch (error) {
             console.error('Error creating PerplexityClient:', error)
             throw error
@@ -3191,6 +3195,11 @@ async function interactWithChatStream(
         const apiCallStart = Date.now()
         console.log('📞 [TIMING] Calling OpenAI API...')
         let activeRequestParams = requestParams
+        const requestOptions = toolRuntimeContext?.abortSignal ? { signal: toolRuntimeContext.abortSignal } : null
+        const dispatchResponsesRequest = () =>
+            requestOptions
+                ? openai.responses.create(activeRequestParams, requestOptions)
+                : openai.responses.create(activeRequestParams)
         const createResponsesStream = async () => {
             try {
                 enforceOpenAiInputTokenPreflight(activeRequestParams, {
@@ -3201,7 +3210,7 @@ async function interactWithChatStream(
                         'assistant',
                     model,
                 })
-                return await openai.responses.create(activeRequestParams)
+                return await dispatchResponsesRequest()
             } catch (error) {
                 if (!responsesToolConfig?.toolSearchEnabled || !shouldRetryWithoutToolSearch(error)) throw error
 
@@ -3226,7 +3235,7 @@ async function interactWithChatStream(
                         'assistant',
                     model,
                 })
-                return openai.responses.create(activeRequestParams)
+                return dispatchResponsesRequest()
             }
         }
         let stream
@@ -3333,6 +3342,14 @@ async function* convertResponsesStream(stream, usageContext = {}) {
     for await (const chunk of stream) {
         chunkCount++
         const logData = { chunkNumber: chunkCount, eventType: chunk.type }
+
+        if (chunk.type === 'response.created') {
+            console.log('📊 OPENAI RESPONSE: Stream started', {
+                responseId: chunk.response?.id || null,
+                route: usageContext.route || 'assistant',
+                model: chunk.response?.model || usageContext.model || null,
+            })
+        }
 
         if (ENABLE_DETAILED_LOGGING) {
             console.log(`🔧 STREAM CONVERTER: Chunk #${chunkCount}:`, logData)
@@ -4735,6 +4752,12 @@ async function executeDelegatedAssistantRequest({
         openAiReasoningEffort: targetReasoningEffort,
         sourceChannel: callerToolRuntimeContext?.sourceChannel || '',
         whatsappFromNumber: callerToolRuntimeContext?.whatsappFromNumber || '',
+        ...(callerToolRuntimeContext?.whatsAppRunGuard
+            ? {
+                  abortSignal: callerToolRuntimeContext.abortSignal,
+                  whatsAppRunGuard: callerToolRuntimeContext.whatsAppRunGuard,
+              }
+            : {}),
         language: delegatedLanguage,
         userTimezoneOffset: delegatedTimezoneOffset,
         // Origin conversation (where the user is actually talking) for async-result continuity.
@@ -4780,6 +4803,9 @@ async function executeDelegatedAssistantRequest({
         allowedTools: targetAllowedTools,
         toolRuntimeContext: delegatedToolRuntimeContext,
         userContext: delegatedUserContext,
+        assertActive: callerToolRuntimeContext?.whatsAppRunGuard
+            ? () => callerToolRuntimeContext.whatsAppRunGuard.assertActive()
+            : null,
     })
     const assistantResponse = delegationRun?.assistantResponse || ''
     const executedToolCallsCount = Number(delegationRun?.executedToolCallsCount) || 0
@@ -5294,6 +5320,7 @@ async function executeToolNatively(
     userContext,
     toolRuntimeContext = null
 ) {
+    toolRuntimeContext?.whatsAppRunGuard?.assertActive()
     const result = await executeToolNativelyImpl(
         toolName,
         toolArgs,

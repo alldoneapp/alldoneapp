@@ -112,6 +112,7 @@ const assistantHelper = require('../Assistant/assistantHelper')
 const { getUserData } = require('../Users/usersFirestore')
 const { getConversationHistory, storeAssistantMessageInTopic } = require('./whatsAppDailyTopic')
 const { processWhatsAppAssistantMessage, collectStreamWithToolCalls } = require('./whatsAppAssistantBridge')
+const { createWhatsAppRunGuard, WHATSAPP_TIMEOUT_CODE } = require('./whatsAppRunGuard')
 
 function createAsyncStream(items) {
     return {
@@ -132,6 +133,52 @@ describe('WhatsApp assistant attachment handoff', () => {
         assistantHelper.loadAssistantThreadState.mockReset().mockResolvedValue(null)
         loadWhatsAppHistoryContext.mockReset().mockResolvedValue('')
         loadAssistantActivityContext.mockReset().mockResolvedValue('')
+    })
+
+    test('never executes a tool that arrives after the response deadline', async () => {
+        jest.useFakeTimers()
+        let nextChunk
+        const stream = {
+            [Symbol.asyncIterator]: () => ({
+                next: () =>
+                    new Promise(resolve => {
+                        nextChunk = resolve
+                    }),
+            }),
+        }
+        const guard = createWhatsAppRunGuard(Date.now() + 1000)
+        const processing = guard.run(() =>
+            collectStreamWithToolCalls(
+                stream,
+                [['user', 'Create a task']],
+                'MODEL_GPT4O',
+                'TEMPERATURE_NORMAL',
+                ['create_task'],
+                'p1',
+                'a1',
+                'u1',
+                { whatsAppRunGuard: guard }
+            )
+        )
+        const result = expect(processing).rejects.toMatchObject({ code: WHATSAPP_TIMEOUT_CODE })
+        try {
+            await jest.advanceTimersByTimeAsync(1000)
+            await result
+            nextChunk({
+                done: false,
+                value: {
+                    additional_kwargs: {
+                        tool_calls: [{ id: 'late', function: { name: 'create_task', arguments: '{}' } }],
+                    },
+                },
+            })
+            await jest.advanceTimersByTimeAsync(0)
+            expect(guard.signal.aborted).toBe(true)
+            expect(assistantHelper.executeToolNatively).not.toHaveBeenCalled()
+            expect(assistantHelper.interactWithChatStream).not.toHaveBeenCalled()
+        } finally {
+            jest.useRealTimers()
+        }
     })
 
     function prepareMessage() {
