@@ -69,6 +69,7 @@ import {
 } from './taskColdStartCache'
 import { primeSecondaryViewCache } from './secondaryViewCache'
 import { markNamedPerformanceTrace } from '../performance/performanceLogger'
+import { startRecentCompletionsPrefetchOnBoot } from '../backends/Tasks/recentCompletionsPrefetch'
 
 // A valid local user snapshot is enough to construct the project list. Give an
 // authoritative read a small chance to win (preserving the zero-staleness fast
@@ -385,6 +386,14 @@ async function loadInitialData() {
             ),
         })
     }
+
+    // Fire-and-forget, before any task listener attaches: tasks completed on another device since
+    // this one last had a board are written into the Firestore cache, so the listeners about to
+    // start no longer see them as open. The cold-start snapshot's age says when that was.
+    startRecentCompletionsPrefetchOnBoot({
+        projectIds: taskBoardProjectIds,
+        lastSyncedAt: restorableTaskSnapshot?.savedAt ?? null,
+    })
 
     watchLoggedUserData(loggedUser)
 

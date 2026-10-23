@@ -45,7 +45,9 @@ import { sortTasksByPriority } from '../TaskPriority'
 import { buildWorkflowTaskGroups } from './workflowTaskOrdering'
 import { batchDispatch, runInDispatchBatch } from '../redux/dispatchBatch'
 import { createFirstSnapshotPerformance } from '../performance/firestoreSnapshotPerformance'
+import { registerOpenTasksServerSyncListener } from '../performance/openTasksServerSync'
 import { enqueueOpenTasksBackgroundHydration } from './openTasksBackgroundQueue'
+import { getRecentlyCompletedTasks, subscribeToRecentCompletions } from './Tasks/recentCompletionsPrefetch'
 import { scheduleTaskColdStartCachePersist } from '../InitialLoad/taskColdStartCache'
 
 export const TODAY_DATE = '0'
@@ -156,6 +158,48 @@ export const reconcileInitialSnapshotChanges = (
     }
 
     return changes
+}
+
+/**
+ * Retained rows a watcher removed because `recentCompletionsPrefetch` reported the task completed,
+ * keyed `${projectId}${userId}`. Firestore still sends its own `removed` for such a task once the
+ * listener's view catches up, and `deleteTask` is not idempotent (it decrements the per-day count
+ * and estimation every time), so that echo has to be dropped. An `added`/`modified` for the id
+ * clears the entry: the task is back (reopened), and its next removal is a real one.
+ */
+const completionPrefetchRemovedIds = {}
+
+/**
+ * Removal changes for retained top-level tasks of this assigned-task watcher that the prefetch
+ * reported completed. Ids in `excludedIds` are skipped: a snapshot that still contains the task is
+ * reconciled by Firestore itself once the prefetched documents reach its view.
+ */
+export const buildCompletedElsewhereRemovals = (completedTasks, knownTasksById, excludedIds = null) => {
+    const changes = []
+    ;(completedTasks || []).forEach(({ id, data }) => {
+        if (excludedIds && excludedIds.has(id)) return
+        const retainedTask = knownTasksById?.[id]
+        if (!retainedTask || retainedTask.parentId || data?.inDone !== true) return
+        changes.push({ type: 'removed', doc: cachedItemAsSnapshotDocument(retainedTask) })
+    })
+    return changes
+}
+
+/**
+ * Drops Firestore's own `removed` for tasks a watcher already removed through the prefetch (see
+ * `completionPrefetchRemovedIds`), unless the task was re-added in between and is known again.
+ */
+export const dropEchoedCompletionRemovals = (changes, removedIds, knownTasksById) => {
+    if (!removedIds || removedIds.size === 0) return changes
+    return changes.filter(change => {
+        const id = change.doc.id
+        if (!removedIds.has(id)) return true
+        if (change.type !== 'removed') {
+            removedIds.delete(id)
+            return true
+        }
+        return !!knownTasksById?.[id]
+    })
 }
 
 const activeMilestoneEmptyGoals = {}
@@ -737,6 +781,25 @@ const watchUserOpenTasks = (
         },
         { sampleRate: 0.02 }
     )
+    const serverSync = registerOpenTasksServerSyncListener()
+    const completionRemovalKey = `${projectId}${currentUserId}`
+    // Only the assigned-task stream filters on `inDone`; an observed task stays in its query when
+    // it is completed, so the prefetch has nothing to say to that stream.
+    const removeTasksCompletedElsewhere = (excludedIds = null) => {
+        if (areObservedTasks) return []
+        const changes = buildCompletedElsewhereRemovals(
+            getRecentlyCompletedTasks(projectId, currentUserId),
+            tasksMap.userTasksById,
+            excludedIds
+        )
+        if (changes.length > 0) {
+            if (!completionPrefetchRemovedIds[completionRemovalKey]) {
+                completionPrefetchRemovedIds[completionRemovalKey] = new Set()
+            }
+            changes.forEach(change => completionPrefetchRemovedIds[completionRemovalKey].add(change.doc.id))
+        }
+        return changes
+    }
     function handleOpenTasksSnapshot(querySnapshot) {
         const liveChanges = querySnapshot
             .docChanges()
@@ -746,6 +809,7 @@ const watchUserOpenTasks = (
 
         const buffered = gate.shouldBuffer(querySnapshot)
         snapshotPerformance.observe(querySnapshot, buffered)
+        if (!querySnapshot.metadata?.fromCache) serverSync.serverReady()
         if (buffered) {
             cacheChanges = [...cacheChanges, ...liveChanges]
         } else {
@@ -764,23 +828,32 @@ const watchUserOpenTasks = (
             const isInitialSnapshot = !initialSnapshotDelivered
             const taskItems = areObservedTasks ? tasksMap.observedTasksById : tasksMap.userTasksById
             const subtaskItems = areObservedTasks ? subtasksMap.observedSubtasksById : subtasksMap.userSubtasksById
+            const authoritativeInitialSnapshot = !Number.isInteger(queryLimit) || queryLimit <= 0
             const changes = isInitialSnapshot
-                ? reconcileInitialSnapshotChanges(
-                      querySnapshot.docs,
-                      { ...taskItems, ...subtaskItems },
-                      {
-                          // A limited foreground window can refresh documents it contains, but only the
-                          // subsequent complete listener may remove retained documents absent from it.
-                          authoritative: !Number.isInteger(queryLimit) || queryLimit <= 0,
-                          includeDocument: doc =>
-                              taskBelongsInOpenBoard(
-                                  doc.data(),
-                                  assistantOwner,
-                                  areObservedTasks,
-                                  assistantProfileMode
-                              ),
-                      }
-                  )
+                ? [
+                      ...reconcileInitialSnapshotChanges(
+                          querySnapshot.docs,
+                          { ...taskItems, ...subtaskItems },
+                          {
+                              // A limited foreground window can refresh documents it contains, but only the
+                              // subsequent complete listener may remove retained documents absent from it.
+                              authoritative: authoritativeInitialSnapshot,
+                              includeDocument: doc =>
+                                  taskBelongsInOpenBoard(
+                                      doc.data(),
+                                      assistantOwner,
+                                      areObservedTasks,
+                                      assistantProfileMode
+                                  ),
+                          }
+                      ),
+                      // ...except for rows the completion prefetch has already proven done: those
+                      // can leave now instead of waiting for the complete listener's queue slot.
+                      // An authoritative snapshot has removed every absent row on its own.
+                      ...(authoritativeInitialSnapshot
+                          ? []
+                          : removeTasksCompletedElsewhere(new Set((querySnapshot.docs || []).map(doc => doc.id)))),
+                  ]
                 : liveChanges
             if (isInitialSnapshot) cacheChanges = []
             deliverOpenTasksChanges(changes)
@@ -804,7 +877,13 @@ const watchUserOpenTasks = (
         // account). Collect them into a single array dispatch instead - same
         // actions, same order, same resulting state, one subscriber pass.
         runInDispatchBatch(() => {
-            const mergedChanges = optimistic ? changes : [...cacheChanges, ...changes]
+            const mergedChanges = optimistic
+                ? changes
+                : dropEchoedCompletionRemovals(
+                      [...cacheChanges, ...changes],
+                      areObservedTasks ? null : completionPrefetchRemovedIds[completionRemovalKey],
+                      tasksMap.userTasksById
+                  )
 
             let subtasks = { ...subtasksByParentId }
 
@@ -963,12 +1042,22 @@ const watchUserOpenTasks = (
     }
 
     const unsubOptimistic = subscribeToOptimisticTaskCreates(projectId, handleOptimisticTaskChange)
+    // A prefetch that lands before the first delivery is applied by that delivery itself.
+    const unsubCompletions = areObservedTasks
+        ? () => {}
+        : subscribeToRecentCompletions(projectId, () => {
+              if (!initialSnapshotDelivered) return
+              const changes = removeTasksCompletedElsewhere()
+              if (changes.length > 0) deliverOpenTasksChanges(changes, { optimistic: true })
+          })
 
     let unsub
     try {
         unsub = gate.subscribe(query)
     } catch (error) {
         unsubOptimistic()
+        unsubCompletions()
+        serverSync.dispose()
         throw error
     }
     let unsubscribed = false
@@ -976,6 +1065,8 @@ const watchUserOpenTasks = (
         if (unsubscribed) return
         unsubscribed = true
         unsubOptimistic()
+        unsubCompletions()
+        serverSync.dispose()
         snapshotPerformance.cancel()
         unsub()
     }

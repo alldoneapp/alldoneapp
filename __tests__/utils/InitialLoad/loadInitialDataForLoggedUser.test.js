@@ -158,6 +158,10 @@ jest.mock('../../../utils/backends/Premium/stripePremiumFirestore', () => ({
     checkUserPremiumStatusStripe: jest.fn(() => Promise.resolve()),
 }))
 jest.mock('../../../utils/analytics/analytics', () => ({ trackEvent: jest.fn() }))
+const mockStartRecentCompletionsPrefetchOnBoot = jest.fn(() => Promise.resolve(null))
+jest.mock('../../../utils/backends/Tasks/recentCompletionsPrefetch', () => ({
+    startRecentCompletionsPrefetchOnBoot: (...args) => mockStartRecentCompletionsPrefetchOnBoot(...args),
+}))
 
 const {
     CACHED_PROJECT_REFRESH_SETTLE_MS,
@@ -308,6 +312,25 @@ describe('loadInitialDataForLoggedUser', () => {
                 expect.objectContaining({ type: 'SET_OKRS', projectId: 'p1' }),
             ])
         )
+    })
+
+    it('starts the completion prefetch for the task-board projects, from the cached board age', async () => {
+        mockGetProjectData.mockImplementation(id => Promise.resolve(project(id)))
+        mockReadTaskColdStartCache.mockResolvedValue({ userId: 'user-1' })
+        mockGetRestorableTaskColdStartSnapshot.mockReturnValue({
+            savedAt: 1234,
+            emptyToday: null,
+            projects: { p1: { openTasks: [] } },
+        })
+        mockStartRecentCompletionsPrefetchOnBoot.mockClear()
+
+        await loadInitialDataForLoggedUser(mockState.loggedUser)
+
+        expect(mockStartRecentCompletionsPrefetchOnBoot).toHaveBeenCalledTimes(1)
+        expect(mockStartRecentCompletionsPrefetchOnBoot).toHaveBeenCalledWith({
+            projectIds: ['p1', 'p2'],
+            lastSyncedAt: 1234,
+        })
     })
 
     it('keeps post-login Firestore maintenance out of the first task render', async () => {
