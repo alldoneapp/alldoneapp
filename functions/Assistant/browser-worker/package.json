@@ -9,7 +9,7 @@
         "test": "echo 'Run from the repo root: npx jest --config ci/jest.functions.config.js functions/Assistant/browser-worker'"
     },
     "engines": {
-        "node": ">=22"
+        "node": ">=22.23.4 <23"
     },
     "dependencies": {
         "express": "4.21.2",

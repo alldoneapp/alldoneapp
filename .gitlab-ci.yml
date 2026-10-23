@@ -1,6 +1,6 @@
 # Fallback only — every real job pins its own image. Kept on the repo's Node
 # major (see .nvmrc) so an unpinned job doesn't silently run on ancient Node.
-image: node:22-alpine
+image: node:22.23.4-alpine
 
 workflow:
     auto_cancel:
