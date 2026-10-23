@@ -16,11 +16,14 @@ never accepted by either the performance logger or the analytics allowlist.
 - `open_tasks_server_sync`: one record per boot or resume (absence of 5+ minutes): time until every
   open-task listener attached in that window had its first server snapshot, i.e. until tasks
   finished on another device have left the board. `watcher_count` is the number of listeners that
-  synced; `timeout` after three minutes reports the ones still waiting in `count`. Sampled at 25%.
+  synced; `timeout` after three minutes reports the ones still waiting in `count`. Not started
+  while the browser reports offline, where it could only time out. Sampled at 25%.
   This is the number to read for "the board took a minute to catch up"; the per-listener
   `firestore_first_server_snapshot` is sampled independently and cannot answer it.
 - `completed_tasks_prefetch`: the boot/resume query for tasks completed since this device last
-  synced (`utils/backends/Tasks/recentCompletionsPrefetch.js`), with project, task and error counts.
+  synced (`utils/backends/Tasks/recentCompletionsPrefetch.js`), with project, task and error counts;
+  `count` is the number of projects whose query hit the 20-second slot limit (their answers are
+  still applied if they arrive later).
 - `project_data_first_snapshot`: users, contacts, workstreams and assistants loaded on demand.
 - `notes_offline_prefetch` and `notes_offline_catch_up`: listing/download/IndexedDB totals, bytes,
   counts and failures.
