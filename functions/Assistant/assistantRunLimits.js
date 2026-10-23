@@ -31,6 +31,10 @@ const WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS = 3 * 60 * 1000
 const WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS =
     WRITING_ROUTING_MAX_RUN_WALL_CLOCK_MS + WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS
 
+// WhatsApp replies run inline in an Eventarc worker. Stop the entire drain before the transport
+// expires so it can mark failures and deliver a useful error instead of silently losing the reply.
+const WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS = 4 * 60 * 1000
+
 // Context assembly happens before the run and result posting after it, so the transport has to
 // outlive the run itself.
 const TRANSPORT_HEADROOM_MS = 5 * 60 * 1000
@@ -38,6 +42,7 @@ const TRANSPORT_HEADROOM_MS = 5 * 60 * 1000
 const transportTimeoutSecondsFor = maxRunWallClockMs => (maxRunWallClockMs + TRANSPORT_HEADROOM_MS) / 1000
 
 const WRITING_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS)
+const WHATSAPP_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS)
 
 // 3600s — the ceiling for HTTP-invoked functions (onCall/onRequest) only. Event-triggered functions
 // cap at 540s and so cannot host a full assistant run at all.
@@ -59,6 +64,8 @@ const HEARTBEAT_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(HEARTBEAT_
 const SCHEDULED_FUNCTION_TIMEOUT_SECONDS = transportTimeoutSecondsFor(SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS)
 
 module.exports = {
+    WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+    WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
     WRITING_ROUTING_MAX_RUN_WALL_CLOCK_MS,
     WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS,

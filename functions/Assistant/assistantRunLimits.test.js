@@ -6,6 +6,8 @@ const {
     WRITING_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS,
     WRITING_FUNCTION_TIMEOUT_SECONDS,
+    WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+    WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
     ASSISTANT_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS,
     SCHEDULED_PROMPT_MAX_RUN_WALL_CLOCK_MS,
@@ -39,6 +41,12 @@ const SCHEDULE_TRIGGER_MAX_TIMEOUT_SECONDS = 1800
 // there. Add a function here when it starts executing prompts; the assertions below then hold it to
 // a transport that can actually carry that run.
 const ASSISTANT_RUN_HOSTS = [
+    {
+        name: 'processWhatsAppInboundQueueItemSecondGen',
+        maxRunWallClockMs: WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+        boundedEventTrigger: true,
+    },
+    { name: 'recoverWhatsAppInboundQueues', maxRunWallClockMs: WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS },
     {
         name: 'processMenubarWritingRunSecondGen',
         maxRunWallClockMs: WRITING_WORKER_MAX_RUN_WALL_CLOCK_MS,
@@ -74,6 +82,7 @@ const readFunctionRegistrations = () => {
 }
 
 const RESOLVED_TIMEOUTS = {
+    WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
     WRITING_FUNCTION_TIMEOUT_SECONDS,
     ASSISTANT_PROMPT_FUNCTION_TIMEOUT_SECONDS,
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,

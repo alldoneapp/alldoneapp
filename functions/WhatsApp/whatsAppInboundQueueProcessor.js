@@ -5,6 +5,11 @@ const TwilioWhatsAppService = require('../Services/TwilioWhatsAppService')
 const { getOrCreateWhatsAppDailyTopic, storeUserMessageInTopic } = require('./whatsAppDailyTopic')
 const { processWhatsAppAssistantMessage } = require('./whatsAppAssistantBridge')
 const { FieldValue } = require('firebase-admin/firestore')
+const {
+    WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS,
+    WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
+} = require('../Assistant/assistantRunLimits')
+const { createWhatsAppRunGuard, WHATSAPP_TIMEOUT_CODE, getWhatsAppTimeoutMessage } = require('./whatsAppRunGuard')
 
 const QUEUE_STATUS_PENDING = 'pending'
 const QUEUE_STATUS_PROCESSING = 'processing'
@@ -15,9 +20,14 @@ const MERGE_WINDOW_MS = 3000
 const MAX_MERGED_MESSAGES = 5
 const MAX_LOOP_ITERATIONS = 20
 const ASSISTANT_TRANSIENT_RETRY_DELAYS_MS = [1000, 5000]
+// Only recover work older than the entire transport plus a grace period, under the user lock.
+// Its tools may have completed before the worker died, so recovery reports failure instead of
+// replaying actions whose outcome is unknown.
+const STALLED_PROCESSING_TIMEOUT_MS = (WHATSAPP_FUNCTION_TIMEOUT_SECONDS + 120) * 1000
 
-async function processWhatsAppInboundQueueItem(event) {
+async function processWhatsAppInboundQueueItem(event, options = {}) {
     const processorStart = Date.now()
+    const deadlineAt = options.deadlineAt || processorStart + WHATSAPP_PROMPT_MAX_RUN_WALL_CLOCK_MS
     const userId = event?.params?.userId
     if (!userId) {
         console.warn('WhatsApp Queue: Missing userId in trigger params')
@@ -35,7 +45,13 @@ async function processWhatsAppInboundQueueItem(event) {
     }
 
     try {
+        await runWithUserQueueLockHeartbeat(userId, ownerId, markStage, () =>
+            recoverStalledProcessingItems(userId, ownerId, deadlineAt)
+        )
         for (let i = 0; i < MAX_LOOP_ITERATIONS; i++) {
+            // Leave fresh work for its trigger or the recovery schedule when this worker's budget
+            // is nearly spent. The deadline is shared by every batch and transient retry.
+            if (Date.now() + 10000 >= deadlineAt) break
             const refreshStart = Date.now()
             await refreshUserQueueLock(userId, ownerId)
             markStage('refreshUserQueueLock', refreshStart, { iteration: i + 1 })
@@ -49,7 +65,9 @@ async function processWhatsAppInboundQueueItem(event) {
             if (batch.length === 0) break
 
             const processBatchStart = Date.now()
-            await runWithUserQueueLockHeartbeat(userId, ownerId, markStage, () => processBatchForUser(userId, batch))
+            await runWithUserQueueLockHeartbeat(userId, ownerId, markStage, () =>
+                processBatchForUser(userId, batch, { deadlineAt })
+            )
             markStage('processBatchForUser', processBatchStart, {
                 iteration: i + 1,
                 batchSize: batch.length,
@@ -63,7 +81,7 @@ async function processWhatsAppInboundQueueItem(event) {
     }
 }
 
-async function processBatchForUser(userId, batch) {
+async function processBatchForUser(userId, batch, options = {}) {
     const batchStart = Date.now()
     const sortedBatch = [...batch].sort((a, b) => (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0))
     const first = sortedBatch[0]
@@ -78,61 +96,69 @@ async function processBatchForUser(userId, batch) {
         batchSize: sortedBatch.length,
         messageSids,
     })
+    const runGuard = createWhatsAppRunGuard(options.deadlineAt)
 
     try {
-        const topicStart = Date.now()
-        const { chatId } = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId)
-        markBatchStage('getOrCreateWhatsAppDailyTopic', topicStart, { chatId })
+        const { chatId, aiResponse } = await runGuard.run(async () => {
+            const topicStart = Date.now()
+            const { chatId } = await getOrCreateWhatsAppDailyTopic(userId, projectId, assistantId)
+            runGuard.assertActive()
+            markBatchStage('getOrCreateWhatsAppDailyTopic', topicStart, { chatId })
 
-        const storeUserMessagesStart = Date.now()
-        let triggeringMessageId = ''
-        for (const item of sortedBatch) {
-            const textToStore = item.isVoice ? item.messageText : item.storedMessageText || item.messageText || ''
-            const processedMedia = Array.isArray(item.processedMedia) ? item.processedMedia : []
-            triggeringMessageId = await storeUserMessageInTopic(
+            const storeUserMessagesStart = Date.now()
+            let triggeringMessageId = ''
+            for (const item of sortedBatch) {
+                runGuard.assertActive()
+                const textToStore = item.isVoice ? item.messageText : item.storedMessageText || item.messageText || ''
+                const processedMedia = Array.isArray(item.processedMedia) ? item.processedMedia : []
+                triggeringMessageId = await storeUserMessageInTopic(
+                    projectId,
+                    chatId,
+                    userId,
+                    textToStore,
+                    !!item.isVoice,
+                    {
+                        imageCount: Number(item.processedImageCount) || 0,
+                        mediaCount: processedMedia.length,
+                        mediaKinds: [...new Set(processedMedia.map(media => media.kind).filter(Boolean))],
+                        fileUnderstandingSummary: buildFileUnderstandingSummary(processedMedia),
+                        processedMedia,
+                        replyContext: item.replyContext || null,
+                    }
+                )
+            }
+            markBatchStage('storeUserMessagesInTopic', storeUserMessagesStart, {
+                triggeringMessageId: triggeringMessageId || null,
+            })
+
+            const mergedMessageText = sortedBatch
+                .map(item => String(item.messageText || '').trim())
+                .filter(Boolean)
+                .join('\n\n')
+
+            const aiStart = Date.now()
+            const aiResponse = await processWhatsAppAssistantMessageWithRetry(
+                userId,
                 projectId,
                 chatId,
-                userId,
-                textToStore,
-                !!item.isVoice,
+                mergedMessageText,
+                assistantId,
+                triggeringMessageId,
                 {
-                    imageCount: Number(item.processedImageCount) || 0,
-                    mediaCount: processedMedia.length,
-                    mediaKinds: [...new Set(processedMedia.map(media => media.kind).filter(Boolean))],
-                    fileUnderstandingSummary: buildFileUnderstandingSummary(processedMedia),
-                    processedMedia,
-                    replyContext: item.replyContext || null,
+                    userId,
+                    projectId,
+                    assistantId,
+                    chatId,
+                    messageSids,
+                    whatsappFromNumber: fromNumber,
+                    runGuard,
                 }
             )
-        }
-        markBatchStage('storeUserMessagesInTopic', storeUserMessagesStart, {
-            triggeringMessageId: triggeringMessageId || null,
-        })
-
-        const mergedMessageText = sortedBatch
-            .map(item => String(item.messageText || '').trim())
-            .filter(Boolean)
-            .join('\n\n')
-
-        const aiStart = Date.now()
-        const aiResponse = await processWhatsAppAssistantMessageWithRetry(
-            userId,
-            projectId,
-            chatId,
-            mergedMessageText,
-            assistantId,
-            triggeringMessageId,
-            {
-                userId,
-                projectId,
-                assistantId,
-                chatId,
-                messageSids,
-                whatsappFromNumber: fromNumber,
-            }
-        )
-        markBatchStage('processWhatsAppAssistantMessage', aiStart, {
-            aiResponseLength: (aiResponse || '').length,
+            markBatchStage('processWhatsAppAssistantMessage', aiStart, {
+                aiResponseLength: (aiResponse || '').length,
+            })
+            runGuard.assertActive()
+            return { chatId, aiResponse }
         })
 
         const mediaOutcomeNotice = buildMediaOutcomeNotice(sortedBatch)
@@ -165,14 +191,23 @@ async function processBatchForUser(userId, batch) {
     } catch (error) {
         console.error('WhatsApp Queue: Batch processing failed', {
             userId,
+            projectId,
+            messageSids,
+            toolStarted: runGuard.toolStarted,
             batchSize: sortedBatch.length,
             error: error.message,
+            code: error.code || null,
         })
         await markQueueItemsFailed(sortedBatch, error)
         if (fromNumber) {
             try {
                 const service = new TwilioWhatsAppService()
-                await service.sendWhatsAppMessage(fromNumber, 'Sorry, I encountered an error. Please try again later.')
+                await service.sendWhatsAppMessage(
+                    fromNumber,
+                    error.code === WHATSAPP_TIMEOUT_CODE
+                        ? getWhatsAppTimeoutMessage(first.language)
+                        : 'Sorry, I encountered an error. Please try again later.'
+                )
             } catch (sendError) {
                 console.error('WhatsApp Queue: Failed to send fallback message', {
                     userId,
@@ -239,6 +274,7 @@ async function processWhatsAppAssistantMessageWithRetry(
 
     while (true) {
         try {
+            logContext.runGuard?.assertActive()
             return await processWhatsAppAssistantMessage(
                 userId,
                 projectId,
@@ -250,11 +286,13 @@ async function processWhatsAppAssistantMessageWithRetry(
                     skipCurrentMessageAppend: true,
                     messageId: triggeringMessageId,
                     whatsappFromNumber: logContext.whatsappFromNumber || logContext.fromNumber || '',
+                    ...(logContext.runGuard ? { runGuard: logContext.runGuard } : {}),
                 }
             )
         } catch (error) {
+            logContext.runGuard?.assertActive()
             const retryDelayMs = ASSISTANT_TRANSIENT_RETRY_DELAYS_MS[attempt]
-            if (!isTransientAssistantError(error) || retryDelayMs === undefined) {
+            if (logContext.runGuard?.toolStarted || !isTransientAssistantError(error) || retryDelayMs === undefined) {
                 throw error
             }
 
@@ -272,6 +310,7 @@ async function processWhatsAppAssistantMessageWithRetry(
 }
 
 function isTransientAssistantError(error) {
+    if (error?.code === WHATSAPP_TIMEOUT_CODE) return false
     const message = String(error?.message || '')
     const code = String(error?.code || error?.errno || '').toLowerCase()
     const status = Number(error?.status || error?.statusCode || error?.response?.status || 0)
@@ -282,6 +321,54 @@ function isTransientAssistantError(error) {
     return /(?:^|\s)(?:502|503|504)(?:\s|$)|upstream connect error|disconnect\/reset|connection termination|socket hang up|network timeout|fetch failed/i.test(
         message
     )
+}
+
+async function recoverStalledProcessingItems(userId, ownerId, deadlineAt = Infinity) {
+    const db = admin.firestore()
+    const cutoff = Date.now() - STALLED_PROCESSING_TIMEOUT_MS
+    const snapshot = await db
+        .collection(`whatsAppInboundQueue/${userId}/items`)
+        .where('status', '==', QUEUE_STATUS_PROCESSING)
+        .limit(50)
+        .get()
+    for (const doc of snapshot.docs) {
+        if (Date.now() + 10000 >= deadlineAt) break
+        const observed = doc.data() || {}
+        if (Number(observed.processingStartedAt || observed.updatedAt) > cutoff) continue
+        const recovered = await db.runTransaction(async transaction => {
+            const [lock, fresh] = await transaction.getAll(db.doc(`whatsAppInboundLocks/${userId}`), doc.ref)
+            const data = fresh.exists ? fresh.data() || {} : {}
+            if (
+                lock.data()?.ownerId !== ownerId ||
+                data.status !== QUEUE_STATUS_PROCESSING ||
+                Number(data.processingStartedAt || data.updatedAt) > cutoff
+            )
+                return null
+            transaction.update(doc.ref, {
+                status: QUEUE_STATUS_FAILED,
+                lastError: 'WhatsApp worker stopped before completing the request',
+                lastErrorCode: WHATSAPP_TIMEOUT_CODE,
+                recoveredAt: Date.now(),
+                updatedAt: Date.now(),
+            })
+            return data
+        })
+        if (!recovered) continue
+        console.warn('WhatsApp Queue: Recovered interrupted request without replaying tools', {
+            userId,
+            messageSid: doc.id,
+        })
+        if (recovered.fromNumber) {
+            try {
+                await new TwilioWhatsAppService().sendWhatsAppMessage(
+                    recovered.fromNumber,
+                    getWhatsAppTimeoutMessage(recovered.language, true)
+                )
+            } catch (error) {
+                console.error('WhatsApp Queue: Failed to notify interrupted request', { userId, error: error.message })
+            }
+        }
+    }
 }
 
 async function claimNextBatchForUser(userId, ownerId) {
@@ -422,6 +509,7 @@ async function markQueueItemsFailed(items, error) {
         batch.update(item.ref, {
             status: QUEUE_STATUS_FAILED,
             lastError: errorMessage,
+            lastErrorCode: error?.code || null,
             updatedAt: now,
         })
     })
@@ -523,4 +611,6 @@ module.exports = {
     processWhatsAppAssistantMessageWithRetry,
     buildFileUnderstandingSummary,
     buildMediaOutcomeNotice,
+    recoverStalledProcessingItems,
+    STALLED_PROCESSING_TIMEOUT_MS,
 }

@@ -30,6 +30,7 @@ const {
     HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
     SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
     WRITING_FUNCTION_TIMEOUT_SECONDS,
+    WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
 } = require('./Assistant/assistantRunLimits')
 const { Timestamp } = require('firebase-admin/firestore')
 const { completeOnDemandAssistantTaskAfterRun } = require('./Assistant/generatedAssistantTaskCompletion')
@@ -7126,13 +7127,26 @@ exports.cleanupStaleWhatsAppCalls = onSchedule(
 exports.processWhatsAppInboundQueueItemSecondGen = onDocumentCreated(
     {
         document: 'whatsAppInboundQueue/{userId}/items/{messageSid}',
-        timeoutSeconds: 540,
+        timeoutSeconds: WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
         memory: '1GiB',
         region: 'europe-west1',
     },
     async event => {
         const { processWhatsAppInboundQueueItem } = require('./WhatsApp/whatsAppInboundQueueProcessor')
         await processWhatsAppInboundQueueItem(event)
+    }
+)
+
+exports.recoverWhatsAppInboundQueues = onSchedule(
+    {
+        schedule: 'every 2 minutes',
+        timeoutSeconds: WHATSAPP_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { recoverWhatsAppInboundQueues } = require('./WhatsApp/whatsAppQueueRecovery')
+        return await recoverWhatsAppInboundQueues()
     }
 )
 

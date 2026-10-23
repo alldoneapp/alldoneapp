@@ -309,6 +309,7 @@ async function handleIncomingWhatsAppMessage(req, res) {
             userId,
             projectId,
             assistantId: assistantId || null,
+            language: user.language || 'en',
             messageText,
             storedMessageText: isVoice ? messageText : storedMessageText || messageText,
             userMessageContent: Array.isArray(userMessageContent) ? userMessageContent : null,

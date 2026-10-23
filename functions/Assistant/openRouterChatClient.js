@@ -286,6 +286,7 @@ async function streamOpenRouterChat({
     temperature = null,
     supportsImages = false,
     usageContext = {},
+    signal,
 } = {}) {
     if (!model) throw new Error('Model name is required')
 
@@ -321,7 +322,9 @@ async function streamOpenRouterChat({
         route: usageContext.route || 'assistant',
     })
 
-    const stream = await client.chat.completions.create(requestParams)
+    const stream = await (signal
+        ? client.chat.completions.create(requestParams, { signal })
+        : client.chat.completions.create(requestParams))
     return convertChatCompletionsStream(stream, { ...usageContext, model })
 }
 

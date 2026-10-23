@@ -596,6 +596,18 @@ describe('Responses API compatibility helpers', () => {
         mockResponsesCreate.mockReset()
     })
 
+    test('passes the WhatsApp deadline signal to the SDK for cancellation of the active HTTP stream', async () => {
+        const controller = new AbortController()
+        mockResponsesCreate.mockResolvedValue([])
+        await interactWithChatStream([['user', 'Hello']], 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', [], {
+            sourceChannel: 'whatsapp',
+            abortSignal: controller.signal,
+        })
+        expect(mockResponsesCreate).toHaveBeenCalledWith(expect.objectContaining({ stream: true }), {
+            signal: controller.signal,
+        })
+    })
+
     test('sends assistant generation through the stateless Responses endpoint', async () => {
         mockResponsesCreate.mockResolvedValue([
             { type: 'response.output_text.delta', delta: 'Hello' },
