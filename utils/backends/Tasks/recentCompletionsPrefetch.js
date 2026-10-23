@@ -34,6 +34,13 @@ import { beginOpenTasksServerSyncCycle } from '../../performance/openTasksServer
 export const RECENT_COMPLETIONS_MAX_LOOKBACK_MS = 48 * 60 * 60 * 1000
 export const RECENT_COMPLETIONS_PROJECT_CONCURRENCY = 4
 export const RECENT_COMPLETIONS_PER_PROJECT_LIMIT = 500
+/**
+ * How long one project's query may hold a concurrency slot. The SDK cannot cancel a server get,
+ * so a query on a connection that is open but stalled (never failing, never answering) would
+ * otherwise block every project queued behind it. Past this the slot is released and the query
+ * counts as an error, but its answer is still published if it arrives later.
+ */
+export const RECENT_COMPLETIONS_QUERY_TIMEOUT_MS = 20 * 1000
 /** Published results older than this are ignored by listeners that attach later. */
 export const RECENT_COMPLETIONS_RESULT_TTL_MS = 10 * 60 * 1000
 /** A resume shorter than this keeps its Firestore delta and needs no prefetch. */
@@ -106,9 +113,9 @@ const fetchProjectCompletions = (projectId, userId, readerId, since) =>
 export const prefetchRecentCompletions = async ({ projectIds, userId, readerId, since, reason = 'manual' }) => {
     const ids = Array.isArray(projectIds) ? projectIds.filter(Boolean) : []
     if (!userId || !readerId || ids.length === 0 || !Number.isFinite(since)) {
-        return { skipped: 'no_scope', projectCount: 0, taskCount: 0, errorCount: 0 }
+        return { skipped: 'no_scope', projectCount: 0, taskCount: 0, errorCount: 0, timeoutCount: 0 }
     }
-    if (isBrowserOffline()) return { skipped: 'offline', projectCount: 0, taskCount: 0, errorCount: 0 }
+    if (isBrowserOffline()) return { skipped: 'offline', projectCount: 0, taskCount: 0, errorCount: 0, timeoutCount: 0 }
 
     const generation = ++runGeneration
     // Results of an earlier run describe an earlier moment; a listener attaching while this run is
@@ -117,17 +124,44 @@ export const prefetchRecentCompletions = async ({ projectIds, userId, readerId, 
     const trace = startPerformanceTrace('completed_tasks_prefetch', { source: reason })
     let taskCount = 0
     let errorCount = 0
+    let timeoutCount = 0
     let nextIndex = 0
+
+    // Publishing hangs off the query itself rather than off the slot, so an answer that arrives
+    // after its slot timed out still removes the finished rows (unless a newer run replaced it).
+    const fetchAndPublish = projectId =>
+        // The executor runs synchronously (the query starts now) and turns a synchronous throw from
+        // the SDK into a rejection.
+        new Promise(resolve => resolve(fetchProjectCompletions(projectId, userId, readerId, since))).then(snapshot => {
+            if (generation !== runGeneration) return 0
+            const tasks = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }))
+            publish(projectId, { userId, fetchedAt: Date.now(), tasks })
+            return tasks.length
+        })
+
+    const TIMED_OUT = {}
+    const withinTimeLimit = promise => {
+        let timer
+        const timeout = new Promise(resolve => {
+            timer = setTimeout(() => resolve(TIMED_OUT), RECENT_COMPLETIONS_QUERY_TIMEOUT_MS)
+        })
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+    }
 
     const worker = async () => {
         while (nextIndex < ids.length) {
             const projectId = ids[nextIndex++]
             try {
-                const snapshot = await fetchProjectCompletions(projectId, userId, readerId, since)
+                // `Promise.race` subscribes to the query, so one that fails after its slot timed
+                // out is already handled and never surfaces as an unhandled rejection.
+                const outcome = await withinTimeLimit(fetchAndPublish(projectId))
                 if (generation !== runGeneration) return
-                const tasks = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }))
-                taskCount += tasks.length
-                publish(projectId, { userId, fetchedAt: Date.now(), tasks })
+                if (outcome === TIMED_OUT) {
+                    timeoutCount += 1
+                    errorCount += 1
+                } else {
+                    taskCount += outcome
+                }
             } catch (error) {
                 errorCount += 1
             }
@@ -137,7 +171,7 @@ export const prefetchRecentCompletions = async ({ projectIds, userId, readerId, 
     const workerCount = Math.min(RECENT_COMPLETIONS_PROJECT_CONCURRENCY, ids.length)
     await Promise.all(Array.from({ length: workerCount }, worker))
 
-    const summary = { projectCount: ids.length, taskCount, errorCount }
+    const summary = { projectCount: ids.length, taskCount, errorCount, timeoutCount }
     if (generation !== runGeneration) {
         trace.end('superseded', { outcome: 'cancelled', project_count: ids.length })
         return { ...summary, skipped: 'superseded' }
@@ -148,8 +182,17 @@ export const prefetchRecentCompletions = async ({ projectIds, userId, readerId, 
         project_count: ids.length,
         task_count: taskCount,
         error_count: errorCount,
+        count: timeoutCount,
     })
     return summary
+}
+
+/**
+ * Offline no listener can reach the server, so a cycle opened now could only end in a three-minute
+ * timeout record that says nothing about sync speed.
+ */
+const beginSyncMeasurement = source => {
+    if (!isBrowserOffline()) beginOpenTasksServerSyncCycle(source)
 }
 
 // Never throws: both callers sit on paths (login, resume) that must not fail because an
@@ -177,7 +220,7 @@ const prefetchForLoggedUser = ({ reason, lastSyncedAt, projectIds = null }) => {
  * device is known to have had a current board), when there is one.
  */
 export const startRecentCompletionsPrefetchOnBoot = ({ projectIds = null, lastSyncedAt = null } = {}) => {
-    beginOpenTasksServerSyncCycle('boot')
+    beginSyncMeasurement('boot')
     installRecentCompletionsResumePrefetch()
     return prefetchForLoggedUser({ reason: 'boot', lastSyncedAt, projectIds })
 }
@@ -196,7 +239,7 @@ export const installRecentCompletionsResumePrefetch = () => {
         const absenceMs = Number.isFinite(hiddenMs) ? hiddenMs : visibleAt - lastVisibleAt
         lastVisibleAt = visibleAt
         if (absenceMs < RECENT_COMPLETIONS_RESUME_AFTER_MS) return
-        beginOpenTasksServerSyncCycle('resume')
+        beginSyncMeasurement('resume')
         prefetchForLoggedUser({ reason: 'resume', lastSyncedAt: visibleAt - absenceMs })
     })
     return resumeUnsubscribe

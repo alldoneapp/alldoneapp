@@ -62,6 +62,7 @@ import moment from 'moment'
 import {
     RECENT_COMPLETIONS_MAX_LOOKBACK_MS,
     RECENT_COMPLETIONS_PROJECT_CONCURRENCY,
+    RECENT_COMPLETIONS_QUERY_TIMEOUT_MS,
     RECENT_COMPLETIONS_RESULT_TTL_MS,
     __resetRecentCompletionsPrefetchForTests,
     getRecentCompletionsSince,
@@ -145,7 +146,7 @@ describe('prefetchRecentCompletions', () => {
 
         const summary = await run()
 
-        expect(summary).toEqual({ projectCount: 2, taskCount: 2, errorCount: 0 })
+        expect(summary).toEqual({ projectCount: 2, taskCount: 2, errorCount: 0, timeoutCount: 0 })
         expect(p1Listener.mock.calls[0][0].map(task => task.id)).toEqual(['t1', 't2'])
         expect(p2Listener).toHaveBeenCalledWith([])
         expect(getRecentlyCompletedTasks('p1', 'user-1').map(task => task.id)).toEqual(['t1', 't2'])
@@ -165,7 +166,7 @@ describe('prefetchRecentCompletions', () => {
             return docsFor(['t9'])
         }
 
-        await expect(run()).resolves.toEqual({ projectCount: 2, taskCount: 1, errorCount: 1 })
+        await expect(run()).resolves.toEqual({ projectCount: 2, taskCount: 1, errorCount: 1, timeoutCount: 0 })
         expect(getRecentlyCompletedTasks('p2', 'user-1').map(task => task.id)).toEqual(['t9'])
     })
 
@@ -215,12 +216,112 @@ describe('prefetchRecentCompletions', () => {
     })
 })
 
+describe('per-project time limit', () => {
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => jest.useRealTimers())
+
+    const run = projectIds =>
+        prefetchRecentCompletions({ projectIds, userId: 'user-1', readerId: 'user-1', since: 1000, reason: 'test' })
+
+    // A stalled server get: never fails, never answers - until the test says so.
+    const stallProject = stalledPath => {
+        const releases = {}
+        mockGetImpl = ({ path }) =>
+            path === stalledPath
+                ? new Promise(resolve => {
+                      releases[path] = () => resolve(docsFor(['late']))
+                  })
+                : Promise.resolve(docsFor([]))
+        return releases
+    }
+
+    it('releases the slot of a stalled query so the projects behind it still run', async () => {
+        stallProject('items/p0/tasks')
+        const ids = Array.from({ length: RECENT_COMPLETIONS_PROJECT_CONCURRENCY + 2 }, (_, index) => `p${index}`)
+        let settled = null
+        run(ids).then(summary => {
+            settled = summary
+        })
+
+        await jest.advanceTimersByTimeAsync(RECENT_COMPLETIONS_QUERY_TIMEOUT_MS - 1)
+        expect(settled).toBeNull()
+
+        await jest.advanceTimersByTimeAsync(1)
+        expect(settled).toEqual({ projectCount: ids.length, taskCount: 0, errorCount: 1, timeoutCount: 1 })
+        expect(mockQueries).toHaveLength(ids.length)
+    })
+
+    it('still publishes an answer that arrives after its slot timed out', async () => {
+        const releases = stallProject('items/p1/tasks')
+        const listener = jest.fn()
+        subscribeToRecentCompletions('p1', listener)
+        const summary = run(['p1'])
+        await jest.advanceTimersByTimeAsync(RECENT_COMPLETIONS_QUERY_TIMEOUT_MS)
+        await expect(summary).resolves.toMatchObject({ timeoutCount: 1 })
+
+        releases['items/p1/tasks']()
+        await jest.advanceTimersByTimeAsync(0)
+
+        expect(listener).toHaveBeenCalledTimes(1)
+        expect(getRecentlyCompletedTasks('p1', 'user-1').map(task => task.id)).toEqual(['late'])
+    })
+
+    it('drops a late answer once a newer run has replaced it', async () => {
+        const releases = stallProject('items/p1/tasks')
+        const listener = jest.fn()
+        subscribeToRecentCompletions('p1', listener)
+        run(['p1'])
+        await jest.advanceTimersByTimeAsync(RECENT_COMPLETIONS_QUERY_TIMEOUT_MS)
+
+        mockGetImpl = async () => docsFor(['fresh'])
+        await run(['p1'])
+        releases['items/p1/tasks']()
+        await jest.advanceTimersByTimeAsync(0)
+
+        expect(listener).toHaveBeenCalledTimes(1)
+        expect(getRecentlyCompletedTasks('p1', 'user-1').map(task => task.id)).toEqual(['fresh'])
+    })
+
+    it('does not leave a stalled query that later fails as an unhandled rejection', async () => {
+        let rejectStalled
+        mockGetImpl = () =>
+            new Promise((resolve, reject) => {
+                rejectStalled = reject
+            })
+        const unhandled = jest.fn()
+        process.on('unhandledRejection', unhandled)
+        try {
+            run(['p1'])
+            await jest.advanceTimersByTimeAsync(RECENT_COMPLETIONS_QUERY_TIMEOUT_MS)
+            rejectStalled(Object.assign(new Error('unavailable'), { code: 'unavailable' }))
+            await jest.advanceTimersByTimeAsync(0)
+            jest.useRealTimers()
+            await flush()
+            expect(unhandled).not.toHaveBeenCalled()
+        } finally {
+            process.off('unhandledRejection', unhandled)
+        }
+    })
+})
+
 describe('boot and resume triggers', () => {
     it('opens a boot sync cycle and prefetches the active, non-guide projects', async () => {
         await startRecentCompletionsPrefetchOnBoot()
 
         expect(mockBeginCycle).toHaveBeenCalledWith('boot')
         expect(mockQueries.map(query => query.path)).toEqual(['items/p1/tasks', 'items/p2/tasks'])
+    })
+
+    it('does not open a sync measurement while offline', async () => {
+        mockOffline = true
+        installRecentCompletionsResumePrefetch()
+
+        await startRecentCompletionsPrefetchOnBoot()
+        mockPageVisible({ hiddenMs: 3 * 60 * 60 * 1000 })
+        await flush()
+
+        expect(mockBeginCycle).not.toHaveBeenCalled()
+        expect(mockQueries).toHaveLength(0)
     })
 
     it('skips anonymous users', async () => {
