@@ -7,5 +7,21 @@ steps:
           - --tag
           - ${_IMAGE}
           - .
+    - name: gcr.io/cloud-builders/docker
+      args:
+          - run
+          - --rm
+          - --entrypoint
+          - node
+          - ${_IMAGE}
+          - -e
+          - |
+              const assert = require('node:assert/strict');
+              assert.equal(process.versions.node.split('.')[0], '22');
+              assert.equal(require('node:zlib').constants.BROTLI_DECODER_ERROR_FORMAT_BLOCK_SWITCH, -17);
+              require('firebase-admin');
+              require('stripe');
+              require('@dqbd/tiktoken');
+              console.log('Patched runner Node', process.version, 'dependencies loaded');
 images:
     - ${_IMAGE}

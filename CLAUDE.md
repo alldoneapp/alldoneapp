@@ -30,7 +30,11 @@ npm run build-web-webpack    # Build for web production (webpack 5 — see web-b
 npm run format-code          # Format with Prettier
 ```
 
-**Required versions**: Node 22 (repo-wide, `.nvmrc`), npm 10, firebase-tools 13.29.3.
+**Required versions**: Node 22.23.4 or newer within Node 22 (repo-wide, `.nvmrc`), npm 10, firebase-tools 13.29.3.
+The minimum includes the October 2026 security fixes, including CVE-2026-111497.
+Keep local pins and CI/runner Docker images on a patched Node 22 release. Firebase's
+`nodejs22` runtime is managed separately; verify the actual base-image version in
+Cloud Run logs instead of treating the major-version setting as proof of patching.
 `npm run dev` and `npm run emulators` run `ci/prepare-local-emulators.js` before
 startup. It adds an SDK-version guard to the pinned CLI's local Functions runtime:
 SDK 7 removed `functions.config()`, which CLI 13 otherwise calls before every
@@ -69,7 +73,7 @@ zero console errors — write `const Name = (...); export default Name` instead.
 components were fixed for this during Stage 0; grep before assuming a blank page is a
 bundler problem.
 
-**Cloudflare worker exception**: `cloudflare/email-worker/` pins Node 20 for Wrangler via its own `.nvmrc`; use `nvm use 20` inside that directory, then `nvm use` (Node 22 from the root `.nvmrc`) back at the repo root.
+**Cloudflare worker tooling**: `cloudflare/email-worker/` uses the same patched Node 22 release as the repository via its own `.nvmrc`. The former Node 20 exception is retired; the deployed Worker itself runs on Cloudflare's managed Workers runtime.
 
 ## Architecture Overview
 
@@ -3208,7 +3212,7 @@ browser before trusting a bigger change.
 - `envs/env.develop`, `envs/env.master` - Environment-specific configs
 - `env_functions.json`, `env_functions_dev.json`, `env_functions_master.json` - Function configs
 - Service accounts: `serviceAccountKey.json`, `serv_account_key_develop.json`, `serv_account_key_master.json`
-- Cloudflare worker deployment should be run from `cloudflare/email-worker/` under Node 20, not from the repo-wide Node 14 environment
+- Cloudflare worker deployment should be run from `cloudflare/email-worker/` under the patched Node 22 release selected by `nvm use`.
 
 ### CI/CD & Deployment
 

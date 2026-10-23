@@ -25,7 +25,7 @@
         "prepare": "husky"
     },
     "engines": {
-        "node": ">=22"
+        "node": ">=22.23.4 <23"
     },
     "jest": {
         "testEnvironment": "jsdom",

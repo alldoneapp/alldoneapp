@@ -8,7 +8,7 @@
 
 Use the repo-wide Node.js 22 runtime from `.nvmrc` with npm 10. Install dependencies with `nvm use && npm ci`. Start the webpack development server with `npm run dev` and create the production web bundle with `npm run build-web-webpack`. The React Native/Expo-era scripts still present in `package.json` (`start`, `web`, `android`, `ios`, `build-web`, and `start-clean`) are retired and should not be used. Apply repository formatting before commits through `npm run format-code`.
 
-For additional repo-specific development guidance, including the Node 20 exception for `cloudflare/email-worker/`, refer to `CLAUDE.md`.
+Use Node 22.23.4 or newer within Node 22, including `cloudflare/email-worker/`. For additional repo-specific development guidance, refer to `CLAUDE.md`.
 
 ## Coding Style & Naming Conventions
 

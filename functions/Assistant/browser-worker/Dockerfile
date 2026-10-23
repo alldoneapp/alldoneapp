@@ -6,7 +6,12 @@
 # The image tag and the `playwright` dependency in package.json MUST be bumped together — the
 # Playwright image ships the browser binaries for exactly its own version, and a mismatch fails at
 # launch with "Executable doesn't exist".
+FROM node:22.23.4-bookworm-slim AS node-runtime
 FROM mcr.microsoft.com/playwright:v1.49.1-jammy
+
+# Keep the matching Playwright browsers while replacing the image's older Node binary.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+ENV NODE_VERSION=22.23.4
 
 WORKDIR /app
 
