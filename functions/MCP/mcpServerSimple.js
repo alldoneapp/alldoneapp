@@ -189,6 +189,59 @@ class RateLimiter {
     }
 
     /**
+     * Read the current window of one rate limit without counting this request.
+     * @param {{key: string, limit: number, windowMs: number, operation?: string}} check
+     * @returns {Promise<{allowed: boolean, remaining: number, resetTime: Date, current: number, docId: string, exists: boolean, firstRequest: Date}>}
+     */
+    async readWindow({ key, limit, windowMs, operation = 'request' }) {
+        const now = new Date()
+        const docId = `${key}:${Math.floor(now.getTime() / windowMs)}`
+
+        console.log(`🚦 Rate limit check: ${operation} for ${key} (limit: ${limit}/${windowMs}ms)`)
+
+        const doc = await this.db.collection(this.collection).doc(docId).get()
+        const data = doc.exists ? doc.data() : {}
+        const currentCount = data.count || 0
+        const firstRequest = data.firstRequest?.toDate() || now
+        const resetTime = new Date(firstRequest.getTime() + windowMs)
+
+        if (currentCount >= limit) {
+            console.log(`❌ Rate limit exceeded: ${key} (${currentCount}/${limit} requests)`)
+        }
+
+        return {
+            allowed: currentCount < limit,
+            remaining: Math.max(0, limit - currentCount - 1),
+            resetTime,
+            current: currentCount,
+            docId,
+            exists: doc.exists,
+            firstRequest,
+        }
+    }
+
+    /**
+     * Count one request against a window previously read with readWindow.
+     */
+    async recordRequest({ key, operation = 'request' }, window) {
+        await this.db
+            .collection(this.collection)
+            .doc(window.docId)
+            .set(
+                {
+                    key: key,
+                    count: window.current + 1,
+                    firstRequest: window.exists ? Timestamp.fromDate(window.firstRequest) : Timestamp.now(),
+                    lastRequest: Timestamp.now(),
+                    operation: operation,
+                    expiresAt: Timestamp.fromDate(window.resetTime),
+                },
+                { merge: true }
+            )
+        console.log(`✅ Rate limit OK: ${key} (${window.current + 1} requests, ${window.remaining} remaining)`)
+    }
+
+    /**
      * Check if request is within rate limit
      * @param {string} key - Rate limit key (e.g., "client:clientId" or "user:userId")
      * @param {number} limit - Maximum requests allowed
@@ -197,90 +250,61 @@ class RateLimiter {
      * @returns {Promise<{allowed: boolean, remaining: number, resetTime: Date}>}
      */
     async checkLimit(key, limit, windowMs, operation = 'request') {
-        const now = new Date()
-        const windowStart = new Date(now.getTime() - windowMs)
-        const docId = `${key}:${Math.floor(now.getTime() / windowMs)}`
-
-        console.log(`🚦 Rate limit check: ${operation} for ${key} (limit: ${limit}/${windowMs}ms)`)
-
-        try {
-            const doc = await this.db.collection(this.collection).doc(docId).get()
-
-            let currentCount = 0
-            let firstRequest = now
-
-            if (doc.exists) {
-                const data = doc.data()
-                currentCount = data.count || 0
-                firstRequest = data.firstRequest?.toDate() || now
-            }
-
-            const remaining = Math.max(0, limit - currentCount - 1)
-            const resetTime = new Date(firstRequest.getTime() + windowMs)
-
-            if (currentCount >= limit) {
-                console.log(`❌ Rate limit exceeded: ${key} (${currentCount}/${limit} requests)`)
-                return {
-                    allowed: false,
-                    remaining: 0,
-                    resetTime: resetTime,
-                    current: currentCount,
-                }
-            }
-
-            // Increment counter
-            await this.db
-                .collection(this.collection)
-                .doc(docId)
-                .set(
-                    {
-                        key: key,
-                        count: currentCount + 1,
-                        firstRequest: doc.exists ? Timestamp.fromDate(firstRequest) : Timestamp.now(),
-                        lastRequest: Timestamp.now(),
-                        operation: operation,
-                        expiresAt: Timestamp.fromDate(resetTime),
-                    },
-                    { merge: true }
-                )
-
-            console.log(`✅ Rate limit OK: ${key} (${currentCount + 1}/${limit} requests, ${remaining} remaining)`)
-
-            return {
-                allowed: true,
-                remaining: remaining,
-                resetTime: resetTime,
-                current: currentCount + 1,
-            }
-        } catch (error) {
-            console.error(`❌ Rate limit check failed for ${key}:`, error.message)
-            // Fail open - allow request if rate limiting fails
-            return {
+        const result = await this.checkMultipleLimits([{ key, limit, windowMs, operation }])
+        // An empty result means the check itself failed and failed open.
+        return (
+            result.details[0] || {
                 allowed: true,
                 remaining: limit - 1,
-                resetTime: new Date(now.getTime() + windowMs),
+                resetTime: new Date(Date.now() + windowMs),
                 current: 0,
             }
-        }
+        )
     }
 
     /**
      * Check multiple rate limits (e.g., per-client and per-user)
+     *
+     * All windows are read first and the request is counted only if every one of them allows
+     * it. Counting a refused request against the windows that did allow it used to burn the
+     * hourly budget on retries: a client blocked by the one-minute window that kept retrying
+     * would exhaust its ten-minute and hourly windows without a single request being served.
+     *
      * @param {Array} checks - Array of {key, limit, windowMs, operation} objects
      * @returns {Promise<{allowed: boolean, details: Array}>}
      */
     async checkMultipleLimits(checks) {
-        const results = await Promise.all(
-            checks.map(check => this.checkLimit(check.key, check.limit, check.windowMs, check.operation))
-        )
+        let windows
+        try {
+            windows = await Promise.all(checks.map(check => this.readWindow(check)))
+        } catch (error) {
+            console.error('❌ Rate limit check failed:', error.message)
+            // Fail open - allow request if rate limiting fails
+            return { allowed: true, details: [], blockedBy: null }
+        }
 
-        const allowed = results.every(result => result.allowed)
-        const blockedBy = results.find(result => !result.allowed)
+        const blockedBy = windows.find(window => !window.allowed) || null
+        if (!blockedBy) {
+            await Promise.all(
+                checks.map((check, index) =>
+                    this.recordRequest(check, windows[index]).catch(error =>
+                        console.error(`❌ Rate limit update failed for ${check.key}:`, error.message)
+                    )
+                )
+            )
+        }
+
+        const details = windows.map(({ allowed, remaining, resetTime, current }) => ({
+            allowed,
+            remaining,
+            resetTime,
+            current: allowed && !blockedBy ? current + 1 : current,
+        }))
 
         return {
-            allowed,
-            details: results,
-            blockedBy: blockedBy ? blockedBy : null,
+            allowed: !blockedBy,
+            details,
+            blockedBy: blockedBy ? details[windows.indexOf(blockedBy)] : null,
         }
     }
 
@@ -321,10 +345,13 @@ const RATE_LIMITS = {
     CLIENT_AUTHORIZE: { limit: 100, windowMs: 60 * 60 * 1000 }, // 100 auth attempts per hour
     CLIENT_TOKEN: { limit: 200, windowMs: 60 * 60 * 1000 }, // 200 token requests per hour
 
-    // MCP operations
-    TOOL_CALLS: { limit: 100, windowMs: 60 * 60 * 1000 }, // 100 tool calls per hour
-    TOOL_CALLS_10MIN: { limit: 10, windowMs: 10 * 60 * 1000 }, // 10 tool calls per 10 minutes
-    TOOL_CALLS_MINUTE: { limit: 5, windowMs: 60 * 1000 }, // 5 tool calls per minute
+    // MCP operations, per access token. Agent clients work in bursts: one ordinary request
+    // ("look up the project, check for duplicates, create five tasks") is seven calls inside a
+    // minute, and the previous 5/minute and 10/10 minutes refused exactly that. The per-user
+    // limits below remain the abuse bound.
+    TOOL_CALLS: { limit: 1000, windowMs: 60 * 60 * 1000 }, // 1000 tool calls per hour
+    TOOL_CALLS_10MIN: { limit: 300, windowMs: 10 * 60 * 1000 }, // 300 tool calls per 10 minutes
+    TOOL_CALLS_MINUTE: { limit: 60, windowMs: 60 * 1000 }, // 60 tool calls per minute
 
     // User-specific limits (when authenticated)
     USER_OPERATIONS: { limit: 2000, windowMs: 60 * 60 * 1000 }, // 2000 operations per hour per user
@@ -481,13 +508,18 @@ class AlldoneSimpleMCPServer {
             })
         }
 
-        // IP-based rate limiting (fallback)
-        checks.push({
-            key: `ip:${ip}`,
-            limit: config.limit * 2, // More lenient for IP-based limiting
-            windowMs: config.windowMs,
-            operation: `${operation}:ip`,
-        })
+        // IP-based rate limiting (fallback for requests nobody is signed in to). An authenticated
+        // tool call is bounded per token and per user instead: hosted MCP clients (claude.ai,
+        // ChatGPT) call from shared egress addresses, so an IP window would make every one of
+        // their users share a single budget.
+        if (!(operation === 'TOOL_CALLS' && userId)) {
+            checks.push({
+                key: `ip:${ip}`,
+                limit: config.limit * 2, // More lenient for IP-based limiting
+                windowMs: config.windowMs,
+                operation: `${operation}:ip`,
+            })
+        }
 
         // User-based rate limiting (if authenticated)
         if (userId) {
@@ -3468,4 +3500,4 @@ class AlldoneSimpleMCPServer {
 }
 
 // Export factory function for Cloud Functions
-module.exports = { AlldoneSimpleMCPServer }
+module.exports = { AlldoneSimpleMCPServer, RateLimiter, RATE_LIMITS }
