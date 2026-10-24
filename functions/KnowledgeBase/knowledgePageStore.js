@@ -1,8 +1,8 @@
 'use strict'
 
-// Reading and writing wiki pages. Every write of a page goes through writeKnowledgePage, whoever
-// asked for it (an ingest run, a rebuild, later a correction), so the rules a page must satisfy are
-// enforced in one place and never taken on trust from the model:
+// Reading and writing wiki pages. Every write of a page goes through this module, whoever asked
+// for it (an ingest run, a rebuild, a member's correction or its undo), so the rules a page must
+// satisfy are enforced in one place and never taken on trust from the model:
 //
 //   - a page cites only sources it may cite: those of the current run, the ones it already had, and
 //     corrections. Anything else, including a key the model invented, is removed from the body;
@@ -84,10 +84,13 @@ function failure(error) {
 
 /**
  * @param {object} args
- * @param {'ingest'|'rebuild'} args.mode  a rebuild replaces the page's sources instead of adding to
- *        them and is the only write allowed on a page waiting for a rebuild
+ * @param {'ingest'|'rebuild'|'correction'} args.mode  a rebuild replaces the page's sources instead
+ *        of adding to them and is the only write allowed on a page waiting for a rebuild; a
+ *        correction only ever changes a page that exists and is visible
  * @param {Set<string>} args.allowedSourceKeys  sources of the current run (and corrections)
  * @param {number|null} args.expectedRevision  revision the writer read; 0 for a page it creates
+ * @param {function} [args.onWrite]  (transaction, { revision, previousRevision }) => void, called
+ *        inside the transaction once the write is certain, for records that must land with it
  */
 async function writeKnowledgePage({
     db,
@@ -109,6 +112,7 @@ async function writeKnowledgePage({
     now = Date.now(),
     activePageCount = 0,
     fieldValue = FieldValue,
+    onWrite = null,
 }) {
     const slug = normalizeKnowledgePageSlug(requestedSlug || requestedTitle)
     if (!slug) return failure('A page needs a slug or a title.')
@@ -129,6 +133,9 @@ async function writeKnowledgePage({
         const current = snapshot.exists ? snapshot.data() || {} : null
         const currentRevision = Number(current?.revision) || 0
 
+        if (mode === 'correction' && (!current || current.archived === true)) {
+            return failure(`There is no page "${slug}" to correct.`)
+        }
         if (current && current.archived !== true) {
             if (expectedRevision === null || expectedRevision === undefined) {
                 return failure(`The page "${slug}" exists. Read it with read_page before replacing it.`)
@@ -201,6 +208,7 @@ async function writeKnowledgePage({
             reason: clip(reason, 500),
             createdAt: now,
         })
+        if (onWrite) onWrite(transaction, { revision, previousRevision: currentRevision })
 
         return {
             success: true,
@@ -216,6 +224,89 @@ async function writeKnowledgePage({
                 historicalSourceKeys: undefined,
             },
         }
+    })
+}
+
+/**
+ * Puts a page back to the text of one of its earlier revisions, as a new revision: the undo of a
+ * correction. Only while nobody changed the page since (`expectedRevision`), and never from a
+ * revision whose text was removed because a source it used was withdrawn (`redacted`) — restoring
+ * that would bring back exactly what the withdrawal took out.
+ */
+async function restoreKnowledgePageRevision({
+    db,
+    projectId,
+    slug: requestedSlug,
+    expectedRevision,
+    targetRevision,
+    mode = 'undo',
+    author,
+    reason = '',
+    now = Date.now(),
+    fieldValue = FieldValue,
+    onWrite = null,
+}) {
+    const slug = normalizeKnowledgePageSlug(requestedSlug)
+    if (!slug) return failure('A page needs a slug.')
+    const pageRef = db.doc(getKnowledgePagePath(projectId, slug))
+    const targetRef = db.doc(`${getKnowledgePageRevisionsPath(projectId, slug)}/${revisionId(targetRevision)}`)
+
+    return db.runTransaction(async transaction => {
+        const pageSnapshot = await transaction.get(pageRef)
+        const targetSnapshot = await transaction.get(targetRef)
+        const current = pageSnapshot.exists ? pageSnapshot.data() || {} : null
+        if (!current || !isKnowledgePageVisible(current)) return failure(`The page "${slug}" cannot be changed now.`)
+        const currentRevision = Number(current.revision) || 0
+        if (currentRevision !== Number(expectedRevision)) {
+            return failure(
+                `The page "${slug}" changed after this correction (it is at revision ${currentRevision} now), so it cannot simply be undone. Make a new correction instead.`
+            )
+        }
+        const target = targetSnapshot.exists ? targetSnapshot.data() || {} : null
+        if (!target || target.redacted === true || target.archived === true || typeof target.body !== 'string') {
+            return failure(`The earlier text of "${slug}" is no longer available, so the correction cannot be undone.`)
+        }
+
+        const body = target.body
+        const sourceKeys = (Array.isArray(target.sourceKeys) ? target.sourceKeys : []).filter(isKnowledgeSourceKey)
+        const sourceLabels = {}
+        sourceKeys.forEach(key => {
+            const label = current.sourceLabels?.[key]
+            if (typeof label === 'string' && label.trim()) sourceLabels[key] = label
+        })
+        const revision = currentRevision + 1
+        const page = {
+            title: target.title || current.title || slug,
+            summary: target.summary || '',
+            body,
+            sourceKeys,
+            sourceLabels,
+            links: extractKnowledgeTokens(body).pageLinks.filter(link => link !== slug),
+            revision,
+            updatedAt: now,
+            updatedBy: author?.type === 'user' ? author.userId : 'wiki',
+            lastRunId: null,
+        }
+        if (sourceKeys.length) page.historicalSourceKeys = fieldValue.arrayUnion(...sourceKeys)
+
+        transaction.set(pageRef, page, { merge: true })
+        transaction.set(db.doc(`${getKnowledgePageRevisionsPath(projectId, slug)}/${revisionId(revision)}`), {
+            revision,
+            title: page.title,
+            summary: page.summary,
+            body,
+            sourceKeys,
+            archived: false,
+            mode,
+            author,
+            runId: null,
+            reason: clip(reason, 500),
+            restoredRevision: Number(targetRevision),
+            createdAt: now,
+        })
+        if (onWrite) onWrite(transaction, { revision, previousRevision: currentRevision })
+
+        return { success: true, slug, revision }
     })
 }
 
@@ -285,5 +376,6 @@ module.exports = {
     countActivePages,
     buildKnowledgeIndex,
     writeKnowledgePage,
+    restoreKnowledgePageRevision,
     archiveKnowledgePage,
 }

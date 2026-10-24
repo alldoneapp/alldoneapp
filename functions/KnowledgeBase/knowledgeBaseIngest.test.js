@@ -251,6 +251,25 @@ describe('runKnowledgeBaseIngest', () => {
         expect(JSON.stringify(calls[0].results)).not.toContain('GEHEIM-42')
     })
 
+    it('no longer tells the model about a correction that was undone', async () => {
+        const db = createDb({
+            [taskPath('t1')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+            [`${KB_PATH}/corrections/k1`]: { text: 'Acme bleibt Kunde.', authorName: 'Karsten', createdAt: NOW - DAY },
+            [`${KB_PATH}/corrections/k2`]: {
+                text: 'Acme hat gekündigt.',
+                authorName: 'Karsten',
+                status: 'reverted',
+                createdAt: NOW - DAY,
+            },
+        })
+        const { runConversation, calls } = scriptedModel()
+
+        await run(db, { runConversation })
+
+        expect(calls[0].system).toContain('Acme bleibt Kunde.')
+        expect(calls[0].system).not.toContain('Acme hat gekündigt.')
+    })
+
     it('keeps a rebuild from touching any other page', async () => {
         const db = createDb({
             [taskPath('t1')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - 30 * DAY },

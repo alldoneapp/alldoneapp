@@ -101,3 +101,8 @@ export function saveKnowledgeBaseSettings(projectId, settings) {
 export function requestKnowledgeBaseRefresh(projectId) {
     return runHttpsCallableFunction('requestKnowledgeBaseRefresh', { projectId })
 }
+
+// Takes a correction back. The same function backs the assistant's undo_knowledge_correction tool.
+export function undoKnowledgeCorrection(projectId, correctionId) {
+    return runHttpsCallableFunction('undoKnowledgeCorrection', { projectId, correctionId })
+}

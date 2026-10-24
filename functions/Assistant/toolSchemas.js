@@ -5,6 +5,7 @@
 
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 const { BROWSER_TOOL_KEY, BROWSER_TOOL_NAMES } = require('./browser/browserToolContract')
+const { KNOWLEDGE_BASE_TOOL_SCHEMAS } = require('../KnowledgeBase/knowledgeBaseToolSchemas')
 
 /**
  * Model enums are derived from the shared selector rather than hand-listed, so a model added to the
@@ -1437,6 +1438,11 @@ const toolSchemas = {
             },
         },
     },
+
+    // The project wiki (read_knowledge_page, correct_knowledge_page, undo_knowledge_correction).
+    // Like load_skill they have no Tools Access toggle; KnowledgeBase/knowledgeBaseAssistant.js
+    // decides per run whether they are offered.
+    ...KNOWLEDGE_BASE_TOOL_SCHEMAS,
 
     fetch_url: {
         type: 'function',

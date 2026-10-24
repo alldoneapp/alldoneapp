@@ -392,4 +392,14 @@ describe('loadKnowledgeSourcesByKeys', () => {
             '[[correction:c1]] Correction by Karsten (2026-10-23) on page [[kunden]]: Acme hat gekündigt.'
         )
     })
+
+    it('drops a correction that was undone', async () => {
+        const db = new KnowledgeFirestoreDouble({
+            [`knowledgeBases/${PROJECT_ID}/corrections/c1`]: { text: 'Acme hat gekündigt.', status: 'reverted' },
+        })
+
+        const sources = await loadKnowledgeSourcesByKeys({ db, projectId: PROJECT_ID, keys: ['correction:c1'] })
+
+        expect(sources).toEqual([])
+    })
 })

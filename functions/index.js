@@ -1564,6 +1564,30 @@ exports.requestKnowledgeBaseRefresh = onCall(
     }
 )
 
+// Undo of a wiki correction from the page history. The assistant's undo_knowledge_correction tool
+// runs the same function; see KnowledgeBase/knowledgeBaseAssistant.js.
+exports.undoKnowledgeCorrection = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { undoKnowledgeCorrection } = require('./KnowledgeBase/knowledgeBaseAssistant')
+        const result = await undoKnowledgeCorrection({
+            db: admin.firestore(),
+            projectId: data && data.projectId,
+            userId: auth.uid,
+            correctionId: data && data.correctionId,
+        })
+        if (!result.success) throw new HttpsError('failed-precondition', result.error)
+        return result
+    }
+)
+
 exports.connectGcpProject = onCall(
     {
         timeoutSeconds: 60,
