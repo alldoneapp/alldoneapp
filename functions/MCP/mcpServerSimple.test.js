@@ -453,3 +453,119 @@ describe('AlldoneSimpleMCPServer per-user MCP access', () => {
         expect(mockExecuteToolNatively).toHaveBeenCalledTimes(1)
     })
 })
+
+describe('MCP rate limits', () => {
+    // Enough of Firestore for the limiter: one collection of counter documents.
+    function createCounterStore() {
+        const documents = new Map()
+        return {
+            documents,
+            collection: () => ({
+                doc: id => ({
+                    get: async () => ({ exists: documents.has(id), data: () => documents.get(id) }),
+                    set: async data => {
+                        documents.set(id, { ...(documents.get(id) || {}), ...data })
+                    },
+                }),
+            }),
+        }
+    }
+
+    function countOf(store, keyPrefix) {
+        return [...store.documents.entries()]
+            .filter(
+                ([id]) => id.startsWith(`${keyPrefix}:`) && id.split(':').length === keyPrefix.split(':').length + 1
+            )
+            .reduce((sum, [, data]) => sum + (data.count || 0), 0)
+    }
+
+    function buildRateLimitedServer(store) {
+        const { AlldoneSimpleMCPServer, RateLimiter } = require('./mcpServerSimple')
+        const server = Object.create(AlldoneSimpleMCPServer.prototype)
+        server.rateLimiter = new RateLimiter(store)
+        server.triggerPeriodicCleanup = jest.fn()
+        return server
+    }
+
+    const toolRequest = { ip: '160.79.104.10', headers: { authorization: 'Bearer token-of-one-claude-connection' } }
+
+    beforeEach(() => {
+        jest.spyOn(console, 'log').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        jest.restoreAllMocks()
+    })
+
+    test('lets an agent burst through an ordinary multi-step request', async () => {
+        const server = buildRateLimitedServer(createCounterStore())
+
+        // Look up the projects, search for duplicates, create five tasks: seven calls in a minute.
+        for (let call = 0; call < 7; call++) {
+            await expect(server.checkRateLimits(toolRequest, 'TOOL_CALLS', 'user-1')).resolves.toEqual({
+                allowed: true,
+            })
+        }
+    })
+
+    test('still refuses a token past its per-minute budget', async () => {
+        const { RATE_LIMITS } = require('./mcpServerSimple')
+        const server = buildRateLimitedServer(createCounterStore())
+
+        for (let call = 0; call < RATE_LIMITS.TOOL_CALLS_MINUTE.limit; call++) {
+            await server.checkRateLimits(toolRequest, 'TOOL_CALLS', 'user-1')
+        }
+        const refused = await server.checkRateLimits(toolRequest, 'TOOL_CALLS', 'user-1')
+
+        expect(refused.allowed).toBe(false)
+        expect(refused.errorResponse.error.message).toBe('Rate limit exceeded')
+    })
+
+    test('does not count a refused request against the windows that allowed it', async () => {
+        const { RateLimiter } = require('./mcpServerSimple')
+        const store = createCounterStore()
+        const limiter = new RateLimiter(store)
+        const checks = [
+            { key: 'client:t:minute', limit: 1, windowMs: 60 * 1000 },
+            { key: 'client:t:10min', limit: 100, windowMs: 10 * 60 * 1000 },
+        ]
+
+        await limiter.checkMultipleLimits(checks)
+        const retries = []
+        for (let retry = 0; retry < 5; retry++) retries.push(await limiter.checkMultipleLimits(checks))
+
+        expect(retries.every(result => result.allowed === false)).toBe(true)
+        expect(countOf(store, 'client:t:minute')).toBe(1)
+        expect(countOf(store, 'client:t:10min')).toBe(1)
+    })
+
+    test('does not make signed-in tool calls share one budget per egress address', async () => {
+        const store = createCounterStore()
+        const server = buildRateLimitedServer(store)
+
+        await server.checkRateLimits(toolRequest, 'TOOL_CALLS', 'user-1')
+        expect(countOf(store, `ip:${toolRequest.ip}`)).toBe(0)
+
+        await server.checkRateLimits(toolRequest, 'TOOL_CALLS', null)
+        expect(countOf(store, `ip:${toolRequest.ip}`)).toBe(1)
+    })
+
+    test('fails open when the counters cannot be read', async () => {
+        const { RateLimiter } = require('./mcpServerSimple')
+        const limiter = new RateLimiter({
+            collection: () => ({
+                doc: () => ({
+                    get: async () => {
+                        throw new Error('firestore unavailable')
+                    },
+                }),
+            }),
+        })
+        jest.spyOn(console, 'error').mockImplementation(() => {})
+
+        await expect(limiter.checkMultipleLimits([{ key: 'k', limit: 1, windowMs: 1000 }])).resolves.toMatchObject({
+            allowed: true,
+        })
+        await expect(limiter.checkLimit('k', 1, 1000)).resolves.toMatchObject({ allowed: true })
+    })
+})
