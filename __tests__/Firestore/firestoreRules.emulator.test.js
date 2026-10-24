@@ -2003,3 +2003,43 @@ describe('private writing sessions', () => {
         await assertFails(setDoc(doc(ownerDb, path), { userId: MEMBER_ID, status: 'pending' }))
     })
 })
+
+describe('project wiki', () => {
+    const paths = [
+        `knowledgeBases/${PROJECT_ID}`,
+        `knowledgeBases/${PROJECT_ID}/pages/overview`,
+        `knowledgeBases/${PROJECT_ID}/pages/overview/revisions/revision-1`,
+        `knowledgeBases/${PROJECT_ID}/corrections/correction-1`,
+        `knowledgeBases/${PROJECT_ID}/runs/run-1`,
+    ]
+
+    beforeEach(async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            for (const documentPath of paths) {
+                await setDoc(doc(context.firestore(), documentPath), { value: documentPath })
+            }
+        })
+    })
+
+    it.each(paths)('lets every project member read %s', async documentPath => {
+        await assertSucceeds(getDoc(doc(testEnv.authenticatedContext(MEMBER_ID).firestore(), documentPath)))
+        await assertSucceeds(getDoc(doc(testEnv.authenticatedContext(TEAMMATE_ID).firestore(), documentPath)))
+    })
+
+    it.each(paths)('keeps %s from outsiders', async documentPath => {
+        await assertFails(getDoc(doc(testEnv.authenticatedContext(OUTSIDER_ID).firestore(), documentPath)))
+    })
+
+    it.each(paths)('lets no client write %s, members included', async documentPath => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertFails(setDoc(doc(memberDb, documentPath), { value: 'forged' }))
+        await assertFails(updateDoc(doc(memberDb, documentPath), { value: 'forged' }))
+        await assertFails(deleteDoc(doc(memberDb, documentPath)))
+    })
+
+    it('lists a project wiki for members only', async () => {
+        const pages = `knowledgeBases/${PROJECT_ID}/pages`
+        await assertSucceeds(getDocs(collection(testEnv.authenticatedContext(MEMBER_ID).firestore(), pages)))
+        await assertFails(getDocs(collection(testEnv.authenticatedContext(OUTSIDER_ID).firestore(), pages)))
+    })
+})

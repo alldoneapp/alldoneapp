@@ -774,6 +774,15 @@ service cloud.firestore {
       allow read, write: if canReadUserScopedProjectData(projectId, userId);
     }
 
+    // Project wiki: pages, their revisions, corrections and run logs under one project. It is
+    // compiled server-side only from objects every member may read, so the whole tree has a
+    // single audience, the project's members. Only Cloud Functions write it; settings go through
+    // the setKnowledgeBaseSettings callable.
+    match /knowledgeBases/{projectId}/{document=**} {
+      allow read: if isProjectMember(projectId);
+      allow write: if false;
+    }
+
     match /statistics/{projectId}/{userId}/{dayId} {
       allow read: if isProjectMember(projectId);
       allow write: if canReadUserScopedProjectData(projectId, userId);
