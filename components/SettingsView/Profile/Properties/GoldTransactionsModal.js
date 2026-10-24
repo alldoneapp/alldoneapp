@@ -62,6 +62,7 @@ function getTransactionLabel(source) {
         vm_execution: 'VM task',
         vm_execution_refund: 'VM task refund',
         mcp_tool_call: 'MCP tool call',
+        knowledge_base_ingest: 'Project wiki update',
         browser_automation: 'Website visit',
         whatsapp_voice: 'WhatsApp voice message',
         whatsapp_call: 'WhatsApp assistant call',

@@ -5,6 +5,12 @@ const PROJECT_ID = 'project-a'
 const KB_PATH = `knowledgeBases/${PROJECT_ID}`
 const NOW = 1_800_000_000_000
 
+let enqueue
+
+beforeEach(() => {
+    enqueue = jest.fn(async () => 'enqueued')
+})
+
 function createDb(knowledgeBase, userIds = ['owner', 'teammate']) {
     const documents = { [`projects/${PROJECT_ID}`]: { userIds } }
     if (knowledgeBase) documents[KB_PATH] = knowledgeBase
@@ -16,6 +22,7 @@ describe('setKnowledgeBaseSettings', () => {
         const db = createDb(null)
 
         const view = await setKnowledgeBaseSettings({
+            enqueue,
             db,
             now: NOW,
             userId: 'owner',
@@ -24,6 +31,8 @@ describe('setKnowledgeBaseSettings', () => {
         })
 
         expect(view).toMatchObject({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW, monthlyGoldCap: 500 })
+        expect(view).not.toHaveProperty('justEnabled')
+        expect(enqueue).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: NOW, trigger: 'enabled' })
         expect(db.read(KB_PATH)).toMatchObject({
             enabled: true,
             ownerUserId: 'owner',
@@ -37,6 +46,7 @@ describe('setKnowledgeBaseSettings', () => {
     it('refuses anybody outside the project', async () => {
         await expect(
             setKnowledgeBaseSettings({
+                enqueue,
                 db: createDb(null),
                 userId: 'outsider',
                 projectId: PROJECT_ID,
@@ -48,7 +58,13 @@ describe('setKnowledgeBaseSettings', () => {
     it('reports invalid input as invalid-argument before touching anything', async () => {
         const db = createDb(null)
         await expect(
-            setKnowledgeBaseSettings({ db, userId: 'owner', projectId: PROJECT_ID, settings: { monthlyGoldCap: 1 } })
+            setKnowledgeBaseSettings({
+                enqueue,
+                db,
+                userId: 'owner',
+                projectId: PROJECT_ID,
+                settings: { monthlyGoldCap: 1 },
+            })
         ).rejects.toMatchObject({ code: 'invalid-argument' })
         expect(db.read(KB_PATH)).toBeUndefined()
     })
@@ -57,6 +73,7 @@ describe('setKnowledgeBaseSettings', () => {
         const db = createDb({ enabled: true, ownerUserId: 'owner', monthlyGoldCap: 500 })
         await expect(
             setKnowledgeBaseSettings({
+                enqueue,
                 db,
                 userId: 'teammate',
                 projectId: PROJECT_ID,
@@ -70,6 +87,7 @@ describe('setKnowledgeBaseSettings', () => {
         const db = createDb({ enabled: true, ownerUserId: 'departed', monthlyGoldCap: 500 })
 
         const view = await setKnowledgeBaseSettings({
+            enqueue,
             db,
             now: NOW,
             userId: 'teammate',
@@ -84,6 +102,7 @@ describe('setKnowledgeBaseSettings', () => {
         const db = createDb({ enabled: false, ownerUserId: 'owner', instructions: 'alt' })
 
         await setKnowledgeBaseSettings({
+            enqueue,
             db,
             now: NOW,
             userId: 'teammate',
@@ -98,6 +117,7 @@ describe('setKnowledgeBaseSettings', () => {
         const db = createDb({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW + 1000, instructions: 'Regeln' })
 
         await setKnowledgeBaseSettings({
+            enqueue,
             db,
             now: NOW,
             userId: 'owner',
@@ -117,6 +137,7 @@ describe('setKnowledgeBaseSettings', () => {
         const db = createDb({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW + 5000, enabledAt: 1 })
 
         await setKnowledgeBaseSettings({
+            enqueue,
             db,
             now: NOW,
             userId: 'owner',
@@ -125,23 +146,31 @@ describe('setKnowledgeBaseSettings', () => {
         })
 
         expect(db.read(KB_PATH)).toMatchObject({ nextRunAt: NOW + 5000, enabledAt: 1 })
+        expect(enqueue).not.toHaveBeenCalled()
     })
 })
 
 describe('requestKnowledgeBaseRefresh', () => {
     it('needs the wiki to be switched on', async () => {
         await expect(
-            requestKnowledgeBaseRefresh({ db: createDb(null), userId: 'owner', projectId: PROJECT_ID })
+            requestKnowledgeBaseRefresh({ enqueue, db: createDb(null), userId: 'owner', projectId: PROJECT_ID })
         ).rejects.toMatchObject({ code: 'failed-precondition' })
     })
 
     it('lets any member ask for a run now', async () => {
         const db = createDb({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW + 3_600_000 })
 
-        const result = await requestKnowledgeBaseRefresh({ db, now: NOW, userId: 'teammate', projectId: PROJECT_ID })
+        const result = await requestKnowledgeBaseRefresh({
+            enqueue,
+            db,
+            now: NOW,
+            userId: 'teammate',
+            projectId: PROJECT_ID,
+        })
 
         expect(result).toEqual({ success: true, alreadyRequested: false, nextRunAt: NOW })
         expect(db.read(KB_PATH)).toMatchObject({ nextRunAt: NOW, refreshRequestedBy: 'teammate' })
+        expect(enqueue).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: NOW, trigger: 'manual' })
     })
 
     it('coalesces repeated presses inside the cooldown', async () => {
@@ -152,19 +181,48 @@ describe('requestKnowledgeBaseRefresh', () => {
             nextRunAt: NOW - 60_000,
         })
 
-        const result = await requestKnowledgeBaseRefresh({ db, now: NOW, userId: 'owner', projectId: PROJECT_ID })
+        const result = await requestKnowledgeBaseRefresh({
+            enqueue,
+            db,
+            now: NOW,
+            userId: 'owner',
+            projectId: PROJECT_ID,
+        })
 
         expect(result).toEqual({ success: true, alreadyRequested: true, nextRunAt: NOW - 60_000 })
         expect(db.read(KB_PATH).refreshRequestedAt).toBe(NOW - 60_000)
+        expect(enqueue).not.toHaveBeenCalled()
     })
 
     it('refuses anybody outside the project', async () => {
         await expect(
             requestKnowledgeBaseRefresh({
+                enqueue,
                 db: createDb({ enabled: true, ownerUserId: 'owner' }),
                 userId: 'outsider',
                 projectId: PROJECT_ID,
             })
         ).rejects.toMatchObject({ code: 'permission-denied' })
+    })
+})
+
+describe('immediate runs', () => {
+    it('keeps a saved setting when the immediate enqueue fails, since the scheduler is the backstop', async () => {
+        const db = createDb(null)
+        enqueue.mockRejectedValueOnce(new Error('queue unavailable'))
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+        const view = await setKnowledgeBaseSettings({
+            enqueue,
+            db,
+            now: NOW,
+            userId: 'owner',
+            projectId: PROJECT_ID,
+            settings: { enabled: true },
+        })
+
+        expect(view.enabled).toBe(true)
+        expect(db.read(KB_PATH)).toMatchObject({ enabled: true, nextRunAt: NOW })
+        warn.mockRestore()
     })
 })

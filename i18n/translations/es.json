@@ -205,6 +205,7 @@
     "OAuth authorization failed.": "Error en la autorización de OAuth.",
     "disabled": "deshabilitado",
     "MCP tool call": "Llamada a herramienta MCP",
+    "Project wiki update": "Actualización de la wiki del proyecto",
     "Use connected MCP servers": "Usar servidores MCP conectados",
     "All projects": "Todos los proyectos",
     "All archived": "Todos los archivados",
