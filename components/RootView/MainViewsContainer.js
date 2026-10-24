@@ -14,8 +14,10 @@ import {
     DV_TAB_ROOT_TASKS,
     DV_TAB_ROOT_UPDATES,
     DV_TAB_ROOT_CHATS,
+    DV_TAB_ROOT_WIKI,
 } from '../../utils/TabNavigationConstants'
 import ChatsView from '../ChatsView/ChatsView'
+import WikiView from '../WikiView/WikiView'
 import CustomScrollView from '../UIControls/CustomScrollView'
 import useCollapsibleSidebar from '../SidebarMenu/Collapsible/UseCollapsibleSidebar'
 import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
@@ -64,6 +66,8 @@ export default function MainViewsContainer() {
                             return <ChatsView />
                         case DV_TAB_ROOT_UPDATES:
                             return <RootViewFeedsGlobalProject />
+                        case DV_TAB_ROOT_WIKI:
+                            return <WikiView />
                     }
                 })()}
             </View>

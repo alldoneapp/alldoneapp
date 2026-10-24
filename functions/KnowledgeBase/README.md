@@ -4,12 +4,16 @@ A Karpathy-style wiki per project: markdown pages an LLM compiles from the proje
 goals, notes and contacts, kept current by ingest runs and read by the project's assistants.
 The design notes live in the module headers; this file is the operational checklist.
 
+The web client reads the wiki straight from Firestore (`utils/backends/KnowledgeBase/`) and
+renders it in `components/WikiView/` (the `ROOT_WIKI` root tab, `/projects/{id}/wiki[/slug]`);
+its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-settings`).
+
 | Module                           | Role                                                                         |
 | -------------------------------- | ---------------------------------------------------------------------------- |
 | `knowledgeBaseModel.js`          | Paths, limits, slugs, `[[slug]]` / `[[task:ID]]` tokens, settings validation |
 | `knowledgeBaseSettings.js`       | `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh` callables          |
 | `collectKnowledgeSources.js`     | Delta of objects visible to the whole project, as source cards               |
-| `knowledgeSourceInvalidation.js` | Hides pages citing an object that turned private or was deleted              |
+| `knowledgeSourceInvalidation.js` | Hides and empties pages citing a withdrawn object, redacts their revisions   |
 | `knowledgePageStore.js`          | The one place a page is written: citation, revision and concurrency checks   |
 | `knowledgeBaseIngest.js`         | One ingest run (rebuilds, then delta), billed as `knowledge_base_ingest`     |
 | `knowledgeBaseDispatcher.js`     | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue        |

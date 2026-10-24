@@ -16,6 +16,7 @@ import URLsTasks, { URL_ALL_PROJECTS_TASKS_OPEN } from './Tasks/URLsTasks'
 import URLsNotesTrigger from './Notes/URLsNotesTrigger'
 import SharedHelper from '../utils/SharedHelper'
 import URLsChatsTrigger from './Chats/URLsChatsTrigger'
+import URLsWikiTrigger from './Wiki/URLsWikiTrigger'
 import { withoutAnnaMode } from '../utils/annaMode'
 
 export const MIN_URLS_IN_HISTORY = 2
@@ -36,6 +37,7 @@ class URLTrigger {
             URLsSkillsTrigger,
             URLsAssistantsTrigger,
             URLsBookingTrigger,
+            URLsWikiTrigger,
         ]
     }
 

@@ -24,6 +24,7 @@ import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelp
 import NavigationService from '../../../../../utils/NavigationService'
 import { DV_TAB_PROJECT_OKRS } from '../../../../../utils/TabNavigationConstants'
 import PrioritizeTasksModalItem from './PrioritizeTasksModalItem'
+import { openProjectWiki } from '../../../../WikiView/wikiLinks'
 import RunOutOfGoldAssistantModal from '../../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 
 export default function TaskHeaderMoreButton({
@@ -260,6 +261,24 @@ export default function TaskHeaderMoreButton({
                         text={'Add OKR'}
                         shortcut={shortcut}
                         onPress={openAddOKR}
+                    />
+                )
+            })
+        }
+
+        // The wiki is for members only (SharedHelper.isMember); a guest of a shared project has no way in.
+        if (inSelectedProject && !loggedUser.isAnonymous && (loggedUser.projectIds || []).includes(projectId)) {
+            list.push(shortcut => {
+                return (
+                    <ModalItem
+                        key={'gmbtn-project-wiki'}
+                        icon={'book-open'}
+                        text={'Project wiki'}
+                        shortcut={shortcut}
+                        onPress={() => {
+                            dismissModal()
+                            openProjectWiki(projectId)
+                        }}
                     />
                 )
             })

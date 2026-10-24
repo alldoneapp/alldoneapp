@@ -12,6 +12,7 @@ import {
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_UPDATES,
     DV_TAB_ROOT_CHATS,
+    DV_TAB_ROOT_WIKI,
 } from '../../../utils/TabNavigationConstants'
 import store from '../../../redux/store'
 import ProjectAndUserData from './ProjectAndUserData'
@@ -51,7 +52,8 @@ export default function ProjectHeader({
         selectedTab === DV_TAB_ROOT_CONTACTS ||
         selectedTab === DV_TAB_ROOT_NOTES ||
         selectedTab === DV_TAB_ROOT_CHATS ||
-        selectedTab === DV_TAB_ROOT_UPDATES
+        selectedTab === DV_TAB_ROOT_UPDATES ||
+        selectedTab === DV_TAB_ROOT_WIKI
             ? loggedUser
             : currentUser
 

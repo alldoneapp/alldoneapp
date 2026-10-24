@@ -35,6 +35,7 @@ const {
 const {
     getKnowledgeBasePath,
     getKnowledgeCorrectionsPath,
+    getKnowledgePagePath,
     getKnowledgeRunsPath,
     isKnowledgePageVisible,
     normalizeKnowledgePageSlug,
@@ -223,6 +224,7 @@ function createWikiTools({
     mode,
     targetSlug = null,
     allowedSourceKeys,
+    sourceLabels = {},
     now,
     fieldValue,
     onChange,
@@ -235,11 +237,16 @@ function createWikiTools({
     return {
         read_page: {
             schema: schemas.read_page,
+            // Read fresh rather than from the copy loaded when the run started: a source may have
+            // been withdrawn since, and a page that lost one must never be read back — not even by
+            // the run rebuilding it, whose prompt promises that its previous text is withheld.
             execute: async ({ slug } = {}) => {
                 const key = normalizeKnowledgePageSlug(slug)
-                const page = pages.get(key)
+                const snapshot = key ? await db.doc(getKnowledgePagePath(projectId, key)).get() : null
+                const page = snapshot?.exists ? { ...(snapshot.data() || {}), slug: key } : null
+                if (page) pages.set(key, page)
                 if (!page || page.archived === true) return { success: false, error: `There is no page "${key}".` }
-                if (mode !== 'rebuild' && !isKnowledgePageVisible(page)) {
+                if (!isKnowledgePageVisible(page)) {
                     return { success: false, error: `The page "${key}" is being rebuilt and cannot be read now.` }
                 }
                 readRevisions.set(key, Number(page.revision) || 0)
@@ -269,6 +276,7 @@ function createWikiTools({
                     body: args.body,
                     sourceKeys: args.sourceKeys,
                     allowedSourceKeys,
+                    sourceLabels,
                     expectedRevision:
                         mode === 'rebuild'
                             ? Number(existing?.revision) || 0
@@ -461,6 +469,10 @@ async function runKnowledgeBaseIngest({
         const pages = await loadKnowledgePages(db, projectId)
         const corrections = await loadRecentCorrections(db, projectId)
         const correctionKeys = corrections.map(({ id }) => `correction:${id}`)
+        const correctionLabels = Object.fromEntries(
+            corrections.map(({ id, data }) => [`correction:${id}`, buildCorrectionCard(id, data).title])
+        )
+        const labelsOf = sources => Object.fromEntries(sources.map(source => [source.key, source.title]))
         const sourceOptions = {
             ...(readNoteContent ? { readNoteContent } : {}),
             ...(resolveUserNames ? { resolveUserNames } : {}),
@@ -482,7 +494,7 @@ async function runKnowledgeBaseIngest({
                         instructions: knowledgeBase.instructions,
                         index: buildKnowledgeIndex(pages),
                         corrections,
-                        task: `Rebuild the page [[${page.slug}]] "${page.title}" from scratch, using ONLY the source cards in the next message. Its previous text is withheld on purpose: a source it relied on is no longer available, and nothing that source said may come back. Keep the slug "${page.slug}". If the remaining sources do not support a useful page, call archive_page.`,
+                        task: `Rebuild the page [[${page.slug}]] from scratch, using ONLY the source cards in the next message. Its previous text is withheld on purpose: a source it relied on is no longer available, and nothing that source said may come back. Keep the slug "${page.slug}". If the remaining sources do not support a useful page, call archive_page.`,
                     }),
                     userPrompt: `Source cards for [[${page.slug}]]:\n\n${sources.map(source => source.text).join('\n\n')}`,
                     tools: createWikiTools({
@@ -493,6 +505,7 @@ async function runKnowledgeBaseIngest({
                         mode: 'rebuild',
                         targetSlug: page.slug,
                         allowedSourceKeys: new Set([...sources.map(source => source.key), ...correctionKeys]),
+                        sourceLabels: { ...correctionLabels, ...labelsOf(sources) },
                         now: clock,
                         fieldValue,
                         onChange,
@@ -545,6 +558,7 @@ async function runKnowledgeBaseIngest({
                         runId: leaseId,
                         mode: 'ingest',
                         allowedSourceKeys: new Set([...chunk.map(source => source.key), ...correctionKeys]),
+                        sourceLabels: { ...correctionLabels, ...labelsOf(chunk) },
                         now: clock,
                         fieldValue,
                         onChange,

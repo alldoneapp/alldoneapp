@@ -107,6 +107,34 @@ describe('writeKnowledgePage', () => {
         expect(db.read(pagePath('kunden')).sourceKeys).toEqual(['task:t1', 'task:t2'])
     })
 
+    // A withdrawn source has to be found in old revisions too, even once the page stopped citing it.
+    it('remembers every source any revision cited', async () => {
+        const db = new KnowledgeFirestoreDouble({
+            [pagePath('kunden')]: {
+                slug: 'kunden',
+                title: 'Kunden',
+                body: 'Acme [[task:t1]]',
+                revision: 1,
+                sourceKeys: ['task:t1'],
+                historicalSourceKeys: ['task:t1', 'note:old'],
+            },
+        })
+
+        const result = await write(db, {
+            slug: 'kunden',
+            title: 'Kunden',
+            summary: 's',
+            body: 'Acme [[task:t1]]. Beta [[task:t2]].',
+            sourceKeys: ['task:t2'],
+            allowedSourceKeys: new Set(['task:t2']),
+            expectedRevision: 1,
+        })
+
+        expect(db.read(pagePath('kunden')).historicalSourceKeys).toEqual(['task:t1', 'note:old', 'task:t2'])
+        // The returned copy is what the ingest keeps in memory; a sentinel has no business there.
+        expect(result.page.historicalSourceKeys).toBeUndefined()
+    })
+
     it('leaves a page waiting for a rebuild alone, except for the rebuild itself', async () => {
         const db = new KnowledgeFirestoreDouble({
             [pagePath('kunden')]: {
@@ -136,6 +164,34 @@ describe('writeKnowledgePage', () => {
         expect(page).not.toHaveProperty('removedSourceKeys')
         expect(page).not.toHaveProperty('needsRebuildReason')
         expect(page).not.toHaveProperty('needsRebuildSince')
+    })
+
+    it('labels the sources the page keeps and drops labels of sources it lost', async () => {
+        const db = new KnowledgeFirestoreDouble({
+            [pagePath('kunden')]: {
+                slug: 'kunden',
+                title: 'Kunden',
+                body: 'Acme [[task:t1]]',
+                revision: 1,
+                sourceKeys: ['task:t1'],
+                sourceLabels: { 'task:t1': 'Acme Pilot', 'task:gone': 'Alt' },
+            },
+        })
+
+        await write(db, {
+            slug: 'kunden',
+            title: 'Kunden',
+            summary: 's',
+            body: 'Acme [[task:t1]], Beta [[task:t2]]',
+            allowedSourceKeys: new Set(['task:t2']),
+            sourceLabels: { 'task:t2': 'Beta gewinnen', 'task:unused': 'Nicht zitiert' },
+            expectedRevision: 1,
+        })
+
+        expect(db.read(pagePath('kunden')).sourceLabels).toEqual({
+            'task:t1': 'Acme Pilot',
+            'task:t2': 'Beta gewinnen',
+        })
     })
 
     it('refuses a body over the limit instead of truncating it', async () => {
@@ -187,6 +243,28 @@ describe('archiveKnowledgePage', () => {
         await expect(archive(4)).resolves.toMatchObject({ success: true, revision: 5 })
         expect(db.read(pagePath('alt'))).toMatchObject({ archived: true, revision: 5 })
         expect(db.read(revisionPath('alt', 5))).toMatchObject({ archived: true })
+    })
+
+    it('takes the text off the page document and leaves it to the earlier revisions', async () => {
+        const db = new KnowledgeFirestoreDouble({
+            [pagePath('alt')]: { slug: 'alt', title: 'Alt', summary: 'Old', body: 'Old text', revision: 1 },
+            [revisionPath('alt', 1)]: { revision: 1, title: 'Alt', summary: 'Old', body: 'Old text' },
+        })
+
+        await archiveKnowledgePage({
+            db,
+            projectId: PROJECT_ID,
+            slug: 'alt',
+            expectedRevision: 1,
+            now: NOW,
+            fieldValue,
+        })
+
+        const page = db.read(pagePath('alt'))
+        expect(page).toMatchObject({ archived: true, title: 'Alt' })
+        expect(page).not.toHaveProperty('body')
+        expect(page).not.toHaveProperty('summary')
+        expect(db.read(revisionPath('alt', 1)).body).toBe('Old text')
     })
 })
 
