@@ -279,8 +279,14 @@ describe('WhatsApp assistant attachment handoff', () => {
                 messageId: 'comment-123',
                 sourceChannel: 'whatsapp',
                 whatsappFromNumber: 'whatsapp:+123',
+                // The sender is the number WhatsApp verified, so they may correct the project wiki.
+                allowKnowledgeCorrections: true,
             })
         )
+        expect(assistantHelper.addBaseInstructions.mock.calls[0][6]).toMatchObject({
+            requestUserId: 'user-1',
+            allowKnowledgeCorrections: true,
+        })
         expect(storeAssistantMessageInTopic).toHaveBeenCalled()
     })
 

@@ -580,9 +580,12 @@ tools and the execution gate:
 - **nothing** without an assistant and a requesting user who is a member of the project, nothing on
   the email channel (action-only, may reply outside the project) and nothing to Gmail labeling;
 - **reading** everywhere else, and in writing mode;
-- **correcting only when `allowKnowledgeCorrections` is set**, which only the in-app chat
-  (`assistantNormalTalk_optimized`) does. A heartbeat, recurring task, delegated assistant or
-  WhatsApp run is not a member saying "this is wrong".
+- **correcting only when `allowKnowledgeCorrections` is set**, by the runs that answer a member
+  whom the channel itself verified: the in-app chat (`assistantNormalTalk_optimized`), WhatsApp
+  messages (`whatsAppAssistantBridge`) and in-app or WhatsApp voice calls (`assistantLiveBackend`,
+  via `canCorrectKnowledgeBaseOnChannel`). A phone call over the public network is matched to an
+  account by caller ID alone, which can be forged, so it only reads. A heartbeat, recurring task
+  or delegated assistant is not a member saying "this is wrong".
 
 A correction is stored in `knowledgeBases/{id}/corrections/{id}` in the SAME transaction as the
 page revision it produced (`writeKnowledgePage`'s `onWrite`), is cited as `[[correction:ID]]`
