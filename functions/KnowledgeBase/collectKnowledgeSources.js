@@ -28,7 +28,7 @@
 
 const { cleanTextMetaData } = require('../Utils/parseTextUtils')
 const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
-const { buildKnowledgeSourceKey, estimateTextTokens } = require('./knowledgeBaseModel')
+const { buildKnowledgeSourceKey, estimateTextTokens, parseKnowledgeSourceKey } = require('./knowledgeBaseModel')
 
 const FEED_PUBLIC_FOR_ALL = 0
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -346,7 +346,17 @@ async function collectKnowledgeSources({
         if (position) nextCursor[spec.cursorKey] = position
     }
 
-    const entries = [...candidates.values()]
+    const sources = (
+        await buildSourceCards({ projectId, entries: [...candidates.values()], readNoteContent, resolveUserNames })
+    ).sort((left, right) => left.updatedAt - right.updatedAt || (left.key < right.key ? -1 : 1))
+
+    stats.included = sources.length
+    return { sources, nextCursor, exhausted: results.every(result => result.exhausted), stats }
+}
+
+// Turns visible, non-excluded documents into cards: resolves the user names the cards mention and
+// downloads note bodies, a few at a time.
+async function buildSourceCards({ projectId, entries, readNoteContent, resolveUserNames }) {
     const userIds = []
     entries.forEach(entry => {
         if (entry.type === 'task') userIds.push(entry.data.userId)
@@ -369,31 +379,84 @@ async function collectKnowledgeSources({
         }
     })
 
-    const sources = entries
-        .map(entry => {
-            const card =
-                entry.type === 'task'
-                    ? buildTaskCard(entry.id, entry.data, userNames)
-                    : entry.type === 'goal'
-                      ? buildGoalCard(entry.id, entry.data, userNames)
-                      : entry.type === 'note'
-                        ? buildNoteCard(entry.id, entry.data, noteContents.get(entry.id))
-                        : buildContactCard(entry.id, entry.data)
-            return {
-                key: entry.key,
-                type: entry.type,
-                id: entry.id,
-                title: card.title,
-                text: card.text,
-                tokens: estimateTextTokens(card.text),
-                updatedAt: entry.updatedAt,
-                positions: entry.positions,
-            }
-        })
-        .sort((left, right) => left.updatedAt - right.updatedAt || (left.key < right.key ? -1 : 1))
+    return entries.map(entry => {
+        const card =
+            entry.type === 'task'
+                ? buildTaskCard(entry.id, entry.data, userNames)
+                : entry.type === 'goal'
+                  ? buildGoalCard(entry.id, entry.data, userNames)
+                  : entry.type === 'note'
+                    ? buildNoteCard(entry.id, entry.data, noteContents.get(entry.id))
+                    : entry.type === 'correction'
+                      ? buildCorrectionCard(entry.id, entry.data)
+                      : buildContactCard(entry.id, entry.data)
+        return {
+            key: entry.key,
+            type: entry.type,
+            id: entry.id,
+            title: card.title,
+            text: card.text,
+            tokens: estimateTextTokens(card.text),
+            updatedAt: entry.updatedAt,
+            positions: entry.positions || [],
+        }
+    })
+}
 
-    stats.included = sources.length
-    return { sources, nextCursor, exhausted: results.every(result => result.exhausted), stats }
+// A correction a project member made through an assistant. It is a source of its own so that the
+// next ingest cannot bring back what it corrected from the older objects it contradicts.
+function buildCorrectionCard(id, data) {
+    const author = cleanText(data.authorName, 200) || 'a project member'
+    const createdOn = formatDate(toMillis(data.createdAt))
+    const page = data.pageSlug ? ` on page [[${data.pageSlug}]]` : ''
+    const title = `Correction by ${author}`
+    const text = `[[correction:${id}]] ${title}${createdOn ? ` (${createdOn})` : ''}${page}: ${cleanText(
+        data.text,
+        2000
+    )}`
+    return { title, text }
+}
+
+const SOURCE_DOC_PATHS = {
+    task: (projectId, id) => `items/${projectId}/tasks/${id}`,
+    goal: (projectId, id) => `goals/${projectId}/items/${id}`,
+    note: (projectId, id) => `noteItems/${projectId}/notes/${id}`,
+    contact: (projectId, id) => `projectsContacts/${projectId}/contacts/${id}`,
+    correction: (projectId, id) => `knowledgeBases/${projectId}/corrections/${id}`,
+}
+
+/**
+ * Cards for a known set of source keys, as a page rebuild needs them. Every object is read again
+ * and goes through the same visibility filter as the delta: a key on a page is a hint, never
+ * proof that the object is still visible to the whole project. Missing objects are dropped.
+ */
+async function loadKnowledgeSourcesByKeys({
+    db,
+    projectId,
+    keys,
+    readNoteContent = createDefaultNoteContentReader(),
+    resolveUserNames = userIds => resolveUserNamesFromFirestore(db, userIds),
+}) {
+    const parsed = [...new Set(keys || [])].map(parseKnowledgeSourceKey).filter(Boolean)
+    if (!parsed.length) return []
+
+    const snapshots = await db.getAll(...parsed.map(({ type, id }) => db.doc(SOURCE_DOC_PATHS[type](projectId, id))))
+    const entries = []
+    snapshots.forEach((snapshot, index) => {
+        const { type, id } = parsed[index]
+        if (!snapshot.exists) return
+        const data = snapshot.data() || {}
+        // Corrections live inside the wiki itself and share its audience by construction.
+        if (type !== 'correction' && (!isVisibleToWholeProject(data, type) || getExclusionReason(data, type))) return
+        entries.push({
+            key: `${type}:${id}`,
+            type,
+            id,
+            data,
+            updatedAt: toMillis(data.lastEditionDate) || toMillis(data.createdAt) || 0,
+        })
+    })
+    return buildSourceCards({ projectId, entries, readNoteContent, resolveUserNames })
 }
 
 /**
@@ -443,6 +506,8 @@ module.exports = {
     isVisibleToWholeProject,
     getExclusionReason,
     collectKnowledgeSources,
+    loadKnowledgeSourcesByKeys,
+    buildCorrectionCard,
     advanceKnowledgeCursor,
     chunkKnowledgeSources,
 }

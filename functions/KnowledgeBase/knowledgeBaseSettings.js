@@ -40,7 +40,33 @@ function canManageKnowledgeBase(current, userId, projectUserIds) {
     return !projectUserIds.includes(current.ownerUserId)
 }
 
-async function setKnowledgeBaseSettings({ userId, projectId, settings, db = admin.firestore(), now = Date.now() }) {
+// The scheduler picks every due run up within 15 minutes anyway; this only saves that wait, so a
+// failure to enqueue is logged and swallowed rather than failing a save that already happened.
+async function enqueueSoon(enqueue, projectId, dueAt, trigger) {
+    try {
+        await enqueue({ projectId, dueAt, trigger })
+    } catch (error) {
+        console.warn('[knowledge base] Could not enqueue an immediate run; the scheduler will pick it up', {
+            projectId,
+            trigger,
+            error: error.message,
+        })
+    }
+}
+
+function defaultEnqueue(args) {
+    const { enqueueKnowledgeBaseIngest } = require('./knowledgeBaseDispatcher')
+    return enqueueKnowledgeBaseIngest(args)
+}
+
+async function setKnowledgeBaseSettings({
+    userId,
+    projectId,
+    settings,
+    db = admin.firestore(),
+    now = Date.now(),
+    enqueue = defaultEnqueue,
+}) {
     validateCaller(userId, projectId)
 
     let patch
@@ -55,7 +81,7 @@ async function setKnowledgeBaseSettings({ userId, projectId, settings, db = admi
     const projectUserIds = Array.isArray(project.userIds) ? project.userIds : []
     const knowledgeBaseRef = db.doc(getKnowledgeBasePath(projectId))
 
-    return db.runTransaction(async transaction => {
+    const view = await db.runTransaction(async transaction => {
         const snapshot = await transaction.get(knowledgeBaseRef)
         const current = snapshot.exists ? snapshot.data() || {} : null
 
@@ -102,19 +128,32 @@ async function setKnowledgeBaseSettings({ userId, projectId, settings, db = admi
         }
 
         transaction.set(knowledgeBaseRef, next, { merge: true })
-        return toKnowledgeBaseSettingsView(projectId, { ...(current || {}), ...next })
+        return {
+            ...toKnowledgeBaseSettingsView(projectId, { ...(current || {}), ...next }),
+            justEnabled: enabled && !wasEnabled,
+        }
     })
+
+    const { justEnabled, ...settingsView } = view
+    if (justEnabled) await enqueueSoon(enqueue, projectId, now, 'enabled')
+    return settingsView
 }
 
 // Asks for a run as soon as the scheduler next looks. Any member may ask (the wiki is theirs as
 // much as the owner's, and the monthly cap protects the payer); a cooldown keeps a double click or
 // an impatient retry from queueing a run per press.
-async function requestKnowledgeBaseRefresh({ userId, projectId, db = admin.firestore(), now = Date.now() }) {
+async function requestKnowledgeBaseRefresh({
+    userId,
+    projectId,
+    db = admin.firestore(),
+    now = Date.now(),
+    enqueue = defaultEnqueue,
+}) {
     validateCaller(userId, projectId)
     await assertProjectMember(db, projectId, userId)
     const knowledgeBaseRef = db.doc(getKnowledgeBasePath(projectId))
 
-    return db.runTransaction(async transaction => {
+    const result = await db.runTransaction(async transaction => {
         const snapshot = await transaction.get(knowledgeBaseRef)
         const current = snapshot.exists ? snapshot.data() || {} : null
         if (!current || current.enabled !== true) {
@@ -137,6 +176,9 @@ async function requestKnowledgeBaseRefresh({ userId, projectId, db = admin.fires
         })
         return { success: true, alreadyRequested: false, nextRunAt: now }
     })
+
+    if (!result.alreadyRequested) await enqueueSoon(enqueue, projectId, now, 'manual')
+    return result
 }
 
 module.exports = {

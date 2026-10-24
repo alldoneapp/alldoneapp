@@ -363,3 +363,33 @@ describe('chunkKnowledgeSources', () => {
         expect(item.text.endsWith('[…]')).toBe(true)
     })
 })
+
+describe('loadKnowledgeSourcesByKeys', () => {
+    const { loadKnowledgeSourcesByKeys } = require('./collectKnowledgeSources')
+
+    it('reads the objects behind a page again and drops any that are no longer visible to everyone', async () => {
+        const db = new KnowledgeFirestoreDouble({
+            [taskPath('still-public')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+            [taskPath('now-private')]: { name: 'Gehalt', isPublicFor: ['owner'], lastEditionDate: NOW - DAY },
+            [`knowledgeBases/${PROJECT_ID}/corrections/c1`]: {
+                text: 'Acme hat gekündigt.',
+                authorName: 'Karsten',
+                pageSlug: 'kunden',
+                createdAt: NOW - DAY,
+            },
+        })
+
+        const sources = await loadKnowledgeSourcesByKeys({
+            db,
+            projectId: PROJECT_ID,
+            keys: ['task:still-public', 'task:now-private', 'task:deleted', 'correction:c1', 'not a key'],
+            readNoteContent: async () => '',
+            resolveUserNames: async () => ({}),
+        })
+
+        expect(sources.map(source => source.key)).toEqual(['task:still-public', 'correction:c1'])
+        expect(sources[1].text).toBe(
+            '[[correction:c1]] Correction by Karsten (2026-10-23) on page [[kunden]]: Acme hat gekündigt.'
+        )
+    })
+})

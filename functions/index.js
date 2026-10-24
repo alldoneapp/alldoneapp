@@ -5714,6 +5714,38 @@ exports.runAssistantHeartbeat = onTaskDispatched(
     }
 )
 
+// PROJECT WIKI
+// One ingest run per project wiki: rebuilds pages that lost a source, then folds in what changed.
+// Delivered through Cloud Tasks, so it shares the heartbeat's 25-minute budget.
+exports.runKnowledgeBaseIngest = onTaskDispatched(
+    {
+        region: 'europe-west1',
+        timeoutSeconds: HEARTBEAT_FUNCTION_TIMEOUT_SECONDS,
+        memory: '1GiB',
+        retryConfig: { maxAttempts: 1 },
+        rateLimits: { maxConcurrentDispatches: 3, maxDispatchesPerSecond: 1 },
+    },
+    async req => {
+        const { runKnowledgeBaseIngest } = require('./KnowledgeBase/knowledgeBaseIngest')
+        const data = req.data || {}
+        return await runKnowledgeBaseIngest({ projectId: data.projectId, trigger: data.trigger })
+    }
+)
+
+// Only enqueues due wiki runs; the run itself lives in runKnowledgeBaseIngest.
+exports.dispatchKnowledgeBaseIngests = onSchedule(
+    {
+        schedule: '*/15 * * * *',
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { dispatchDueKnowledgeBaseIngests } = require('./KnowledgeBase/knowledgeBaseDispatcher')
+        await dispatchDueKnowledgeBaseIngests()
+    }
+)
+
 exports.reconcileAssistantHeartbeatSchedules = onSchedule(
     {
         schedule: '17 2 * * *',
