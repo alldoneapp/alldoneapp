@@ -106,7 +106,7 @@ const toolSchemas = {
                     comment: {
                         type: 'string',
                         description:
-                            'Visible comment to add directly to the new task thread, authored by the assistant. Include it for every assistant-created task. Required and non-empty when taskOrigin is assistant_suggestion. Give a concise, context-specific reason why the task is worth doing; do not merely restate the title or use a generic reason. The server adds the assistant name and states that the task was added for the user.',
+                            "Visible comment to add directly to the new task thread, authored by the assistant. Include it for every assistant-created task. Required and non-empty when taskOrigin is assistant_suggestion. Give a concise, context-specific reason why the task is worth doing; do not merely restate the title or use a generic reason. The server adds the assistant name and states that the task was added for the user. A caller without an Alldone assistant (an MCP client) has the comment posted in the signed-in user's name.",
                     },
                     images: {
                         type: 'array',

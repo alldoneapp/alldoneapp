@@ -5538,9 +5538,10 @@ async function executeToolNativelyImpl(
                     : '')
             const isAssistantSuggestion = taskOrigin === 'assistant_suggestion'
 
-            if (taskComment && !assistantId) {
-                throw new Error('Assistant task comments require an assistant identity')
-            }
+            // Without an Alldone assistant (the MCP surface calls in with assistantId === null) the
+            // comment is posted in the requesting user's name, exactly as update_task already does
+            // over MCP. It used to be refused outright, so an MCP client following this tool's own
+            // instruction to explain every task it adds could not create a task at all.
             if (isAssistantSuggestion && !taskComment) {
                 throw new Error('Assistant-inferred tasks require a comment explaining why they were added')
             }
@@ -5697,7 +5698,9 @@ async function executeToolNativelyImpl(
                         ...parentGoalFields,
                         feedUser,
                         gmailData: gmailTaskData,
-                        creatorId: isAssistantSuggestion ? assistantId : creatorId,
+                        // A suggestion is credited to the assistant that made it; with no
+                        // assistant (MCP) the requesting user stays the creator.
+                        creatorId: isAssistantSuggestion && assistantId ? assistantId : creatorId,
                         suggestedBy: null,
                         assistantId: trackAssistantWork ? assistantId : '',
                         taskMetadata: trackAssistantWork
@@ -5864,7 +5867,7 @@ async function executeToolNativelyImpl(
                 }
 
                 let taskCommentResult = null
-                if (creationComment) {
+                if (creationComment && assistantId) {
                     taskCommentResult = await addAssistantTaskComment({
                         projectId: resolvedProjectId,
                         taskId: resolvedTaskId,
@@ -5876,6 +5879,16 @@ async function executeToolNativelyImpl(
                     if (!taskCommentResult) {
                         throw new Error('Task was created, but its assistant comment could not be added')
                     }
+                } else if (creationComment) {
+                    const { TaskCommentService } = require('../shared/TaskCommentService')
+                    taskCommentResult = await new TaskCommentService({ database: db }).addComment({
+                        projectId: resolvedProjectId,
+                        taskId: resolvedTaskId,
+                        task: result.task,
+                        comment: creationComment,
+                        actor: feedUser,
+                        fromAssistant: false,
+                    })
                 }
 
                 return {

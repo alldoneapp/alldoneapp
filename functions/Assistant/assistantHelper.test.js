@@ -4269,6 +4269,109 @@ describe('assistant create_task project routing comments', () => {
         })
     })
 
+    describe('called without an Alldone assistant (MCP)', () => {
+        function mockCreatedTask(taskId) {
+            const getUserProjects = jest.fn().mockResolvedValue([{ id: 'project-client', name: 'Client Work' }])
+            ProjectService.mockImplementation(() => ({
+                initialize: jest.fn().mockResolvedValue(undefined),
+                getUserProjects,
+            }))
+            const userDoc = {
+                exists: true,
+                data: () => ({
+                    defaultProjectId: 'project-client',
+                    projectIds: ['project-client'],
+                    timezone: 'UTC+02:00',
+                }),
+            }
+            mockDocGet.mockResolvedValue(userDoc)
+            mockCreateAndPersistTask.mockResolvedValueOnce({
+                success: true,
+                taskId,
+                projectId: 'project-client',
+                message: 'Task created',
+                task: { id: taskId, name: 'Projekt-Wiki Paket 1', userId: 'user-1', commentsData: { amount: 0 } },
+            })
+            const { TaskCommentService } = require('../shared/TaskCommentService')
+            return jest
+                .spyOn(TaskCommentService.prototype, 'addComment')
+                .mockResolvedValue({ success: true, commentId: 'user-comment-1' })
+        }
+
+        afterEach(() => {
+            mockDocGet.mockReset()
+            jest.restoreAllMocks()
+        })
+
+        test("posts the comment in the signed-in user's name instead of refusing the task", async () => {
+            const addComment = mockCreatedTask('task-mcp')
+
+            const result = await executeToolNatively(
+                'create_task',
+                {
+                    name: 'Projekt-Wiki Paket 1',
+                    taskOrigin: 'user_request',
+                    comment: 'Erstes von fünf MVP-Paketen für das Projekt-Wiki.',
+                    projectName: 'Client Work',
+                },
+                'project-client',
+                null,
+                'user-1',
+                null
+            )
+
+            expect(addComment).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    projectId: 'project-client',
+                    taskId: 'task-mcp',
+                    comment: 'Erstes von fünf MVP-Paketen für das Projekt-Wiki.',
+                    actor: expect.objectContaining({ uid: 'user-1' }),
+                    fromAssistant: false,
+                })
+            )
+            expect(addAssistantTaskComment).not.toHaveBeenCalled()
+            expect(result).toMatchObject({ success: true, taskId: 'task-mcp', commentId: 'user-comment-1' })
+        })
+
+        test('keeps the requesting user as creator of a suggested task', async () => {
+            mockCreatedTask('task-mcp-suggested')
+
+            const result = await executeToolNatively(
+                'create_task',
+                {
+                    name: 'Projekt-Wiki Paket 1',
+                    taskOrigin: 'assistant_suggestion',
+                    comment: 'Folgt aus dem Konzeptgespräch.',
+                    projectName: 'Client Work',
+                },
+                'project-client',
+                null,
+                'user-1',
+                null
+            )
+
+            expect(mockCreateAndPersistTask).toHaveBeenCalledWith(
+                expect.objectContaining({ creatorId: 'user-1', userId: 'user-1' }),
+                expect.anything()
+            )
+            expect(result).toMatchObject({ taskOrigin: 'assistant_suggestion' })
+        })
+
+        test('still requires a reason for a suggested task', async () => {
+            await expect(
+                executeToolNatively(
+                    'create_task',
+                    { name: 'Irgendwas', taskOrigin: 'assistant_suggestion' },
+                    'project-client',
+                    null,
+                    'user-1',
+                    null
+                )
+            ).rejects.toThrow('require a comment explaining why')
+            expect(mockCreateAndPersistTask).not.toHaveBeenCalled()
+        })
+    })
+
     test('rejects proactive task creation without an explanatory comment before creating anything', async () => {
         await expect(
             executeToolNatively(
