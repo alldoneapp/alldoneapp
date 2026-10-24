@@ -11,8 +11,10 @@
 //   - the email channel is action-only and can reply to people outside the project, and Gmail
 //     labeling runs on untrusted mail without anyone asking; neither may read project knowledge;
 //   - writing is reserved for runs that answer a member directly (`allowKnowledgeCorrections`,
-//     set by the in-app chat). A heartbeat, a recurring task, a delegated assistant or a reply
-//     drafted from an email is not a member saying "this is wrong", and writing mode never writes.
+//     set by the in-app chat, the WhatsApp bridge and the voice calls that pass
+//     canCorrectKnowledgeBaseOnChannel). A heartbeat, a recurring task, a delegated assistant or a
+//     reply drafted from an email is not a member saying "this is wrong", and writing mode never
+//     writes.
 //
 // A correction is a source of its own (knowledgeBases/{projectId}/corrections/{id}): it is stored
 // together with the page revision it produced, the ingest treats it as overriding older sources,
@@ -62,6 +64,17 @@ function resolveKnowledgeBaseAccess(context) {
     // Writing mode executes read tools only (assistantWritingTools.js).
     if (context.writingDraft) return ACCESS_READ
     return context.allowKnowledgeCorrections === true ? ACCESS_CORRECT : ACCESS_READ
+}
+
+// Channels on which the person talking is the account holder as the channel itself verified them:
+// a call from inside the app, and WhatsApp messages and calls (the number WhatsApp verified). A phone
+// call over the public network is matched to an account by its caller ID alone, which can be
+// forged, so it may read the wiki but never change what the whole project sees. The in-app chat
+// sets the flag itself.
+const KNOWLEDGE_CORRECTION_CHANNELS = ['browser_call', 'whatsapp', 'whatsapp_call']
+
+function canCorrectKnowledgeBaseOnChannel(channel) {
+    return KNOWLEDGE_CORRECTION_CHANNELS.includes(channel)
 }
 
 function failure(error) {
@@ -375,6 +388,7 @@ async function executeKnowledgeBaseTool({
 
 module.exports = {
     resolveKnowledgeBaseAccess,
+    canCorrectKnowledgeBaseOnChannel,
     buildKnowledgeBaseContextMessage,
     getKnowledgeBaseContextMessage,
     getKnowledgeBaseToolNamesForRun,

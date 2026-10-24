@@ -1,6 +1,7 @@
 const { KnowledgeFirestoreDouble, fieldValue } = require('./__fixtures__/knowledgeFirestoreDouble')
 const {
     _resetKnowledgeBaseAvailabilityCacheForTests,
+    canCorrectKnowledgeBaseOnChannel,
     executeKnowledgeBaseTool,
     getKnowledgeBaseContextMessage,
     getKnowledgeBaseToolNamesForRun,
@@ -98,6 +99,15 @@ describe('resolveKnowledgeBaseAccess', () => {
         expect(resolveKnowledgeBaseAccess(chatRun({ gmailContext: { messageId: 'm1' } }))).toBe('none')
         // The writing router is a bare model call without an assistant, and so without tools.
         expect(resolveKnowledgeBaseAccess(chatRun({ assistantId: undefined, writingDraft: true }))).toBe('none')
+    })
+
+    it('lets the app and WhatsApp correct, but not a phone call known only by its caller ID', () => {
+        expect(canCorrectKnowledgeBaseOnChannel('browser_call')).toBe(true)
+        expect(canCorrectKnowledgeBaseOnChannel('whatsapp')).toBe(true)
+        expect(canCorrectKnowledgeBaseOnChannel('whatsapp_call')).toBe(true)
+        expect(canCorrectKnowledgeBaseOnChannel('phone_call')).toBe(false)
+        expect(canCorrectKnowledgeBaseOnChannel('email')).toBe(false)
+        expect(canCorrectKnowledgeBaseOnChannel(undefined)).toBe(false)
     })
 
     it('lets writing mode read but never write', () => {

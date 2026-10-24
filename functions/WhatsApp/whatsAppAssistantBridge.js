@@ -102,6 +102,8 @@ async function processWhatsAppAssistantMessage(
         messageId: typeof options?.messageId === 'string' ? options.messageId.trim() : '',
         sourceChannel: 'whatsapp',
         whatsappFromNumber,
+        // The user is writing from the number WhatsApp verified, so they may correct the project wiki.
+        allowKnowledgeCorrections: true,
         ...(runGuard ? { abortSignal: runGuard.signal, whatsAppRunGuard: runGuard } : {}),
     }
 
@@ -152,6 +154,7 @@ async function processWhatsAppAssistantMessage(
         requestUserId: userId,
         objectType: 'topics',
         objectId: chatId,
+        allowKnowledgeCorrections: toolRuntimeContext.allowKnowledgeCorrections,
     })
 
     if (allowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)) {

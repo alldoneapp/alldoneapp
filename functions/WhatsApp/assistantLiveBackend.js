@@ -24,6 +24,7 @@ const { canRunToolInParallel } = require('../Assistant/toolCallBatch')
 const { operationKey } = require('./assistantLiveProgress')
 const { storeCallTranscriptTurn } = require('./whatsAppCallTranscript')
 const { displayCreatedCallEntity } = require('./assistantLiveChatDisplay')
+const { canCorrectKnowledgeBaseOnChannel } = require('../KnowledgeBase/knowledgeBaseAssistant')
 
 const asChatSchema = schema => ({
     type: 'function',
@@ -65,6 +66,9 @@ async function runLiveAssistant({
         openAiReasoningEffort: assistant.reasoningEffort || null,
         userRequestText: lastUserTurn?.text || '',
     }
+    // In-app and WhatsApp calls may correct the project wiki; a phone call, known only by its caller
+    // ID, may not (KnowledgeBase/knowledgeBaseAssistant.js).
+    runtime.allowKnowledgeCorrections = canCorrectKnowledgeBaseOnChannel(runtime.sourceChannel)
     const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('../Assistant/annaWorkspace')
     const annaContext = await loadAnnaContext(db, runtime, { includeActivity: true })
     if (annaContext) {
@@ -295,7 +299,11 @@ async function runLiveAssistant({
         resolveUserTimezoneOffset(user),
         session.userId,
         session.assistantId,
-        { includeAllRecent: true, excludeCallSessionId: session.id }
+        {
+            includeAllRecent: true,
+            excludeCallSessionId: session.id,
+            allowKnowledgeCorrections: runtime.allowKnowledgeCorrections,
+        }
     )
     const previousActions = await sessionRef.collection('liveToolResults').orderBy('createdAt', 'desc').limit(12).get()
     if (annaContext) messages.push(['system', annaInstructions(annaContext)])

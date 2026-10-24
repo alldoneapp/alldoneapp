@@ -524,10 +524,23 @@ test.each(['MODEL_GPT6_SOL', 'MODEL_GPT5_6_TERRA', 'MODEL_DEEPSEEK_V4_FLASH'])(
             null,
             'u',
             'a',
-            { includeAllRecent: true, excludeCallSessionId: 's' }
+            { includeAllRecent: true, excludeCallSessionId: 's', allowKnowledgeCorrections: true }
         )
     }
 )
+// A wiki correction changes what the whole project reads, so it needs a caller the channel itself
+// verified: the app or WhatsApp, not a phone number's caller ID.
+test.each([
+    ['browser_call', true],
+    ['whatsapp_call', true],
+    ['phone_call', false],
+])('a %s may correct the project wiki: %s', async (channel, allowed) => {
+    helper.getAssistantForChat.mockResolvedValue({ model: 'MODEL_GPT6_SOL', allowedTools: [] })
+    await expect(runLiveAssistant(request({ session: { ...session, channel } }))).resolves.toBe('Done')
+    const runtime = helper.interactWithChatStream.mock.calls[0][4]
+    expect(runtime).toMatchObject({ sourceChannel: channel, allowKnowledgeCorrections: allowed })
+    expect(helper.getOptimizedContextMessages.mock.calls[0][11]).toMatchObject({ allowKnowledgeCorrections: allowed })
+})
 test('never falls back to a free unpriced model', async () => {
     helper.getAssistantForChat.mockResolvedValue({ model: 'UNKNOWN' })
     await expect(runLiveAssistant(request())).rejects.toThrow('Gold rate')
