@@ -168,6 +168,50 @@ function reconcileFeedPrivacy(event, objectType) {
     )
 }
 
+// A project wiki page compiled from an object that has since been made private or deleted must not
+// keep showing what it learned from it: the pages citing it are hidden until a rebuild has run.
+// Never fails the trigger, for the same reason as reconcileFeedPrivacy above.
+function invalidateKnowledgeSourcesOnUpdate(event, objectType) {
+    const { invalidateKnowledgeSourcesOnUpdate: invalidate } = require('./KnowledgeBase/knowledgeSourceInvalidation')
+    const { projectId } = event.params
+    const objectId = event.data.after.id
+    return invalidate({
+        db: admin.firestore(),
+        projectId,
+        objectType,
+        objectId,
+        before: event.data.before.data() || {},
+        after: event.data.after.data() || {},
+    }).catch(error =>
+        console.error('[knowledge base] Could not invalidate wiki pages of a re-privatised object', {
+            projectId,
+            objectType,
+            objectId,
+            error: error.message,
+        })
+    )
+}
+
+function invalidateKnowledgeSourcesOnDelete(event, objectType) {
+    const { invalidateKnowledgeSourcesOnDelete: invalidate } = require('./KnowledgeBase/knowledgeSourceInvalidation')
+    const { projectId } = event.params
+    const objectId = event.data.id
+    return invalidate({
+        db: admin.firestore(),
+        projectId,
+        objectType,
+        objectId,
+        data: event.data.data() || {},
+    }).catch(error =>
+        console.error('[knowledge base] Could not invalidate wiki pages of a deleted object', {
+            projectId,
+            objectType,
+            objectId,
+            error: error.message,
+        })
+    )
+}
+
 const ACCESS_PROJECTION_JOBS_COLLECTION = 'firestoreAccessProjectionJobs'
 const ACCESS_PROJECTION_JOB_LEASE_MS = 6 * 60 * 1000
 const ACCESS_PROJECTION_SCHEMA_MIGRATIONS_COLLECTION = 'firestoreAccessProjectionMigrations'
@@ -1475,6 +1519,45 @@ exports.rebuildProjectVmGolden = onCall(
         if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
         const { rebuildProjectVmGolden } = require('./Assistant/vmGoldenRebuild')
         return await rebuildProjectVmGolden({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+        })
+    }
+)
+
+// Project wiki settings (on/off, instructions, model, monthly Gold cap). The tree is server-written
+// only, so this is the one way a client changes it. See KnowledgeBase/knowledgeBaseModel.js.
+exports.setKnowledgeBaseSettings = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setKnowledgeBaseSettings } = require('./KnowledgeBase/knowledgeBaseSettings')
+        return await setKnowledgeBaseSettings({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            settings: data && data.settings,
+        })
+    }
+)
+
+exports.requestKnowledgeBaseRefresh = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { requestKnowledgeBaseRefresh } = require('./KnowledgeBase/knowledgeBaseSettings')
+        return await requestKnowledgeBaseRefresh({
             userId: auth.uid,
             projectId: data && data.projectId,
         })
@@ -4458,6 +4541,7 @@ exports.onUpdateTaskSecondGen = onDocumentUpdated(
             synchronizeAccessProjection(event, 'observersIds', null, true),
             captureCalendarGoalRoutingFeedbackIfChanged(event),
             reconcileFeedPrivacy(event, 'tasks'),
+            invalidateKnowledgeSourcesOnUpdate(event, 'tasks'),
         ])
     }
 )
@@ -4508,7 +4592,7 @@ exports.onDeleteTaskSecondGen = onDocumentDeleted(
         const { onDeleteTask } = require('./Tasks/onDeleteTaskFunctions')
         const { projectId, taskId } = event.params
         const task = { ...event.data.data(), id: taskId }
-        await onDeleteTask(projectId, task)
+        await Promise.all([onDeleteTask(projectId, task), invalidateKnowledgeSourcesOnDelete(event, 'tasks')])
     }
 )
 
@@ -4725,6 +4809,7 @@ exports.onUpdateContactSecondGen = onDocumentUpdated(
             onUpdateContact(projectId, contactId, event.data),
             synchronizeAccessProjection(event),
             reconcileFeedPrivacy(event, 'contacts'),
+            invalidateKnowledgeSourcesOnUpdate(event, 'contacts'),
         ])
     }
 )
@@ -4740,7 +4825,7 @@ exports.onDeleteContactSecondGen = onDocumentDeleted(
         const { onDeleteContact } = require('./Contacts/onDeleteContactFunctions')
         const { projectId, contactId } = event.params
         const contact = { ...event.data.data(), uid: contactId }
-        await onDeleteContact(projectId, contact)
+        await Promise.all([onDeleteContact(projectId, contact), invalidateKnowledgeSourcesOnDelete(event, 'contacts')])
     }
 )
 
@@ -4776,6 +4861,7 @@ exports.onUpdateGoalSecondGen = onDocumentUpdated(
             onUpdateGoal(projectId, goalId, event.data),
             synchronizeAccessProjection(event, 'assigneesIds'),
             reconcileFeedPrivacy(event, 'goals'),
+            invalidateKnowledgeSourcesOnUpdate(event, 'goals'),
         ])
     }
 )
@@ -4791,7 +4877,7 @@ exports.onDeleteGoalSecondGen = onDocumentDeleted(
         const { onDeleteGoal } = require('./Goals/onDeleteGoalFunctions')
         const { projectId, goalId } = event.params
         const goal = { ...event.data.data(), id: goalId }
-        await onDeleteGoal(projectId, goal)
+        await Promise.all([onDeleteGoal(projectId, goal), invalidateKnowledgeSourcesOnDelete(event, 'goals')])
     }
 )
 
@@ -4997,6 +5083,7 @@ exports.onUpdateNoteSecondGen = onDocumentUpdated(
             onUpdateNote(projectId, noteId, event.data),
             synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
             reconcileFeedPrivacy(event, 'notes'),
+            invalidateKnowledgeSourcesOnUpdate(event, 'notes'),
         ])
     }
 )
@@ -5012,7 +5099,7 @@ exports.onDeleteNoteSecondGen = onDocumentDeleted(
         const { onDeleteNote } = require('./Notes/onDeleteNoteFunctions')
         const { projectId, noteId } = event.params
         const note = { ...event.data.data(), id: noteId }
-        await onDeleteNote(projectId, note)
+        await Promise.all([onDeleteNote(projectId, note), invalidateKnowledgeSourcesOnDelete(event, 'notes')])
     }
 )
 
