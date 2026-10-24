@@ -1,16 +1,31 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import styles, { colors } from '../styles/global'
 import { translate } from '../../i18n/TranslationService'
-import { getKnowledgePageRevisions } from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
+import {
+    getKnowledgePageRevisions,
+    undoKnowledgeCorrection,
+} from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
 import { formatWikiDate } from './useKnowledgeBase'
 
-// The last revisions of one page, read once when the history is opened: it changes at most a few
-// times a day, so a live listener would cost more than it shows.
-export default function WikiPageHistory({ projectId, slug }) {
+function describeRevision(revision) {
+    if (revision.redacted) return translate('Revision redacted')
+    if (revision.archived) return translate('Page archived')
+    const name = revision.author?.name || ''
+    if (revision.mode === 'correction') return `${translate('Correction by', { name })}: ${revision.reason || ''}`
+    if (revision.mode === 'undo') return translate('Correction undone by', { name })
+    return revision.reason || translate(revision.mode === 'rebuild' ? 'Page rebuilt' : 'Page updated')
+}
+
+// The last revisions of one page, read when the history is opened and again whenever the page gets a
+// new revision: it changes at most a few times a day, so a live listener would cost more than it
+// shows. A correction can be undone from here while it is still the page's latest revision — the
+// same rule the assistant's undo tool follows.
+export default function WikiPageHistory({ projectId, slug, currentRevision }) {
     const [revisions, setRevisions] = useState(null)
     const [failed, setFailed] = useState(false)
+    const [undo, setUndo] = useState({ correctionId: null, error: '' })
 
     useEffect(() => {
         let cancelled = false
@@ -22,29 +37,49 @@ export default function WikiPageHistory({ projectId, slug }) {
         return () => {
             cancelled = true
         }
-    }, [projectId, slug])
+    }, [projectId, slug, currentRevision])
+
+    const undoCorrection = async correctionId => {
+        setUndo({ correctionId, error: '' })
+        try {
+            await undoKnowledgeCorrection(projectId, correctionId)
+            setUndo({ correctionId: null, error: '' })
+        } catch (error) {
+            setUndo({ correctionId: null, error: error?.message || translate('Could not undo the correction') })
+        }
+    }
 
     if (failed) return <Text style={localStyles.text}>{translate('Could not load the history')}</Text>
     if (!revisions) return <Text style={localStyles.text}>{translate('Loading history')}</Text>
 
     return (
         <View testID="wiki-history" style={localStyles.container}>
-            {revisions.map(revision => (
-                <View key={revision.id} style={localStyles.row}>
-                    <Text style={localStyles.meta}>
-                        {`${translate('Revision')} ${revision.revision} · ${formatWikiDate(revision.createdAt)}`}
-                    </Text>
-                    <Text style={localStyles.text}>
-                        {revision.redacted
-                            ? translate('Revision redacted')
-                            : revision.archived
-                              ? translate('Page archived')
-                              : revision.reason ||
-                                translate(revision.mode === 'rebuild' ? 'Page rebuilt' : 'Page updated')}
-                        {revision.author?.type === 'user' ? ` · ${translate('Correction')}` : ''}
-                    </Text>
-                </View>
-            ))}
+            {!!undo.error && <Text style={localStyles.error}>{undo.error}</Text>}
+            {revisions.map(revision => {
+                const correctionId = revision.author?.correctionId
+                const canUndo =
+                    revision.mode === 'correction' && !!correctionId && revision.revision === currentRevision
+                return (
+                    <View key={revision.id} style={localStyles.row}>
+                        <Text style={localStyles.meta}>
+                            {`${translate('Revision')} ${revision.revision} · ${formatWikiDate(revision.createdAt)}`}
+                        </Text>
+                        <Text style={localStyles.text}>{describeRevision(revision)}</Text>
+                        {canUndo && (
+                            <TouchableOpacity
+                                testID={`wiki-undo-${correctionId}`}
+                                disabled={!!undo.correctionId}
+                                onPress={() => undoCorrection(correctionId)}
+                                accessible={false}
+                            >
+                                <Text style={localStyles.action}>
+                                    {translate(undo.correctionId === correctionId ? 'Undoing' : 'Undo correction')}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                )
+            })}
         </View>
     )
 }
@@ -66,5 +101,15 @@ const localStyles = StyleSheet.create({
     text: {
         ...styles.body2,
         color: colors.Text02,
+    },
+    action: {
+        ...styles.caption2,
+        color: colors.Primary100,
+        marginTop: 2,
+    },
+    error: {
+        ...styles.caption2,
+        color: colors.UtilityRed200,
+        marginBottom: 8,
     },
 })

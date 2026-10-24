@@ -14,6 +14,7 @@ import { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/Project
 import URLsWiki, { URL_PROJECT_WIKI, URL_PROJECT_WIKI_PAGE } from '../../URLSystem/Wiki/URLsWiki'
 import WikiMarkdown, { getWikiSourceLabel } from './WikiMarkdown'
 import WikiPageHistory from './WikiPageHistory'
+import WikiCorrectionForm from './WikiCorrectionForm'
 import { formatWikiDate, isKnowledgeBaseRunning, useKnowledgeBaseDoc, useKnowledgePages } from './useKnowledgeBase'
 import { useWikiSelectedSlug } from './wikiNavigationState'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
@@ -92,8 +93,12 @@ function WikiIndex({ pages, selectedSlug, onSelect }) {
 
 function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
     const [showHistory, setShowHistory] = useState(false)
+    const [correcting, setCorrecting] = useState(false)
 
-    useEffect(() => setShowHistory(false), [page.slug])
+    useEffect(() => {
+        setShowHistory(false)
+        setCorrecting(false)
+    }, [page.slug])
 
     const sources = page.sourceKeys
         .map(key => {
@@ -150,13 +155,31 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                         date: formatWikiDate(page.updatedAt),
                     })}
                 </Text>
-                <TouchableOpacity onPress={() => setShowHistory(!showHistory)} accessible={false}>
-                    <Text style={localStyles.historyToggle}>
-                        {translate(showHistory ? 'Hide history' : 'Show history')}
-                    </Text>
-                </TouchableOpacity>
+                <View style={localStyles.footerActions}>
+                    {!correcting && (
+                        <TouchableOpacity
+                            testID="wiki-suggest-correction"
+                            onPress={() => setCorrecting(true)}
+                            accessible={false}
+                        >
+                            <Text style={localStyles.historyToggle}>{translate('Suggest a correction')}</Text>
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                        onPress={() => setShowHistory(!showHistory)}
+                        accessible={false}
+                        style={localStyles.footerAction}
+                    >
+                        <Text style={localStyles.historyToggle}>
+                            {translate(showHistory ? 'Hide history' : 'Show history')}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
             </View>
-            {showHistory && <WikiPageHistory projectId={projectId} slug={page.slug} />}
+            {correcting && (
+                <WikiCorrectionForm projectId={projectId} page={page} onClose={() => setCorrecting(false)} />
+            )}
+            {showHistory && <WikiPageHistory projectId={projectId} slug={page.slug} currentRevision={page.revision} />}
         </View>
     )
 }
@@ -416,5 +439,12 @@ const localStyles = StyleSheet.create({
     historyToggle: {
         ...styles.caption2,
         color: colors.Primary100,
+    },
+    footerActions: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+    },
+    footerAction: {
+        marginLeft: 16,
     },
 })

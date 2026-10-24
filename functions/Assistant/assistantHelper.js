@@ -254,6 +254,7 @@ const MCP_TOOL_PREFIX = 'mcp_'
 // Browsing. One Tools Access key (`browser_automation`) fans out to the six `browser_*` tool names;
 // the names, the policy and the audit trail all live under ./browser.
 const { BROWSER_TOOL_KEY, BROWSER_TOOL_PREFIX, isBrowserToolName } = require('./browser/browserToolContract')
+const { KNOWLEDGE_BASE_TOOL_NAMES } = require('../KnowledgeBase/knowledgeBaseToolSchemas')
 const MAX_MCP_TOOLS = 60
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 // How many projects to scan in parallel when discovering delegation targets. The scan used to
@@ -2384,6 +2385,11 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     if (toolName === COMPACT_THREAD_CONTEXT_TOOL_KEY) {
         return assistantAllowedTools.includes(toolName) && hasValidCompactThreadRuntimeContext(toolRuntimeContext)
     }
+    // The wiki tools have no per-assistant toggle either: the project's wiki and the run decide.
+    if (KNOWLEDGE_BASE_TOOL_NAMES.includes(toolName)) {
+        const { isKnowledgeBaseToolAllowed } = require('../KnowledgeBase/knowledgeBaseAssistant')
+        return isKnowledgeBaseToolAllowed({ db: admin.firestore(), toolName, toolRuntimeContext })
+    }
     // load_skill has no per-assistant toggle — it is allowed exactly when the
     // assistant has chat-usable skills enabled (mirrors interactWithChatStream).
     if (toolName === 'load_skill') {
@@ -2842,6 +2848,15 @@ async function interactWithChatStream(
         } catch (error) {
             console.warn('🧩 SKILLS: load_skill availability check failed', { error: error.message })
         }
+    }
+    // The project wiki's tools, offered to members of a project that has a wiki (see
+    // KnowledgeBase/knowledgeBaseAssistant.js for which runs may read and which may correct).
+    try {
+        const { getKnowledgeBaseToolNamesForRun } = require('../KnowledgeBase/knowledgeBaseAssistant')
+        const wikiToolNames = await getKnowledgeBaseToolNamesForRun({ db: admin.firestore(), toolRuntimeContext })
+        wikiToolNames.forEach(toolName => !runtimeAllowedTools.includes(toolName) && runtimeAllowedTools.push(toolName))
+    } catch (error) {
+        console.warn('[knowledge base] Wiki tool availability check failed', { error: error.message })
     }
     console.log('🌊 [TIMING] interactWithChatStream START', {
         timestamp: new Date().toISOString(),
@@ -5367,6 +5382,17 @@ async function executeToolNativelyImpl(
     // Keep the requesting user for access/search context, but use the assistant as actor
     // for tool-generated feeds so the feed reflects who performed the tool action.
     const creatorId = requestUserId || assistantId
+
+    if (KNOWLEDGE_BASE_TOOL_NAMES.includes(toolName)) {
+        const { executeKnowledgeBaseTool } = require('../KnowledgeBase/knowledgeBaseAssistant')
+        return executeKnowledgeBaseTool({
+            db: admin.firestore(),
+            toolName,
+            args: toolArgs,
+            assistantId,
+            toolRuntimeContext: { projectId, requestUserId, assistantId, ...(toolRuntimeContext || {}) },
+        })
+    }
 
     if (toolName === 'highlight_workspace') {
         const { requestAnnaHighlight } = require('./annaHighlight')
@@ -12586,6 +12612,26 @@ async function addBaseInstructions(
         }
     }
 
+    // The project wiki's index, right after the manual briefing it complements. Kept in the stable
+    // prefix: it changes about once a day.
+    if (assistantContext?.projectId && assistantContext?.requestUserId) {
+        try {
+            const { getKnowledgeBaseContextMessage } = require('../KnowledgeBase/knowledgeBaseAssistant')
+            const knowledgeBaseContextMessage = await getKnowledgeBaseContextMessage({
+                db: admin.firestore(),
+                context: assistantContext,
+            })
+            if (knowledgeBaseContextMessage) {
+                messages.push(['system', parseTextForUseLiKePrompt(knowledgeBaseContextMessage)])
+            }
+        } catch (error) {
+            console.warn('ASSISTANT CONTEXT: Failed to load project wiki context', {
+                projectId: assistantContext.projectId,
+                error: error.message,
+            })
+        }
+    }
+
     // Add emphasis on immediate action for tool-enabled assistants
     if (Array.isArray(allowedTools) && allowedTools.length > 0) {
         messages.push([
@@ -14296,6 +14342,8 @@ async function getOptimizedContextMessages(
         projectId,
         assistantId,
         requestUserId: userId,
+        // Only a run answering a member directly may correct the project wiki.
+        allowKnowledgeCorrections: options.allowKnowledgeCorrections === true,
     })
 
     const compactedThreadContextMessage = compactedThreadState

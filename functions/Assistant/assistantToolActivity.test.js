@@ -184,6 +184,8 @@ describe('whitelist safety against the real tool schemas', () => {
         get_route_info: ['destination'],
         get_local_recommendations: ['query'],
         load_skill: ['name'],
+        read_knowledge_page: ['slug'],
+        correct_knowledge_page: ['slug'],
         execute_task_in_vm: ['objective'],
     }
 

@@ -192,6 +192,21 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_load_skill',
         plainKey: 'assistant_activity_load_skill_plain',
     },
+    read_knowledge_page: {
+        params: ['slug'],
+        subjectKey: 'assistant_activity_read_wiki_page',
+        plainKey: 'assistant_activity_read_wiki_page_plain',
+    },
+    correct_knowledge_page: {
+        params: ['slug'],
+        subjectKey: 'assistant_activity_correct_wiki_page',
+        plainKey: 'assistant_activity_correct_wiki_page_plain',
+    },
+    undo_knowledge_correction: {
+        params: [],
+        subjectKey: 'assistant_activity_undo_wiki_correction',
+        plainKey: 'assistant_activity_undo_wiki_correction',
+    },
 
     // --- Handing work off ------------------------------------------------------
     execute_task_in_vm: {

@@ -151,37 +151,44 @@ class KnowledgeFirestoreDouble {
 }
 
 class KnowledgeQueryDouble {
-    constructor(store, collectionPath, filters = [], orders = [], limitValue = null) {
+    constructor(store, collectionPath, filters = [], orders = [], limitValue = null, selectFields = null) {
         this.store = store
         this.collectionPath = collectionPath
         this.filters = filters
         this.orders = orders
         this.limitValue = limitValue
+        this.selectFields = selectFields
+    }
+
+    with(changes) {
+        const next = { ...this, ...changes }
+        return new KnowledgeQueryDouble(
+            this.store,
+            next.collectionPath,
+            next.filters,
+            next.orders,
+            next.limitValue,
+            next.selectFields
+        )
     }
 
     where(field, operator, value) {
         if (!OPERATORS[operator]) throw new Error(`KnowledgeFirestoreDouble does not support ${operator}`)
-        return new KnowledgeQueryDouble(
-            this.store,
-            this.collectionPath,
-            [...this.filters, { field, operator, value }],
-            this.orders,
-            this.limitValue
-        )
+        return this.with({ filters: [...this.filters, { field, operator, value }] })
     }
 
     orderBy(field, direction = 'asc') {
-        return new KnowledgeQueryDouble(
-            this.store,
-            this.collectionPath,
-            this.filters,
-            [...this.orders, { field, direction }],
-            this.limitValue
-        )
+        return this.with({ orders: [...this.orders, { field, direction }] })
     }
 
     limit(count) {
-        return new KnowledgeQueryDouble(this.store, this.collectionPath, this.filters, this.orders, count)
+        return this.with({ limitValue: count })
+    }
+
+    // Like Firestore's field mask: documents come back with the selected fields only, so a suite
+    // can tell a reader that needs the index from one that downloads every page body.
+    select(...fields) {
+        return this.with({ selectFields: fields })
     }
 
     async get() {
@@ -190,6 +197,7 @@ class KnowledgeQueryDouble {
             filters: this.filters,
             orders: this.orders,
             limit: this.limitValue,
+            select: this.selectFields,
         })
         const prefix = `${this.collectionPath}/`
         let matches = [...this.store.documents.entries()]
@@ -213,7 +221,13 @@ class KnowledgeQueryDouble {
         })
         if (this.limitValue !== null) matches = matches.slice(0, this.limitValue)
 
-        const docs = matches.map(([path, data]) => snapshotFor(path, data))
+        const project = data =>
+            this.selectFields
+                ? Object.fromEntries(
+                      this.selectFields.filter(field => field in data).map(field => [field, data[field]])
+                  )
+                : data
+        const docs = matches.map(([path, data]) => snapshotFor(path, project(data)))
         return { size: docs.length, empty: docs.length === 0, docs, forEach: callback => docs.forEach(callback) }
     }
 }

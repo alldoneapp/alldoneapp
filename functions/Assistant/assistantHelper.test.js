@@ -276,6 +276,15 @@ jest.mock('../WhatsApp/whatsAppFileExtraction', () => ({
     })),
 }))
 
+// The project wiki's own rules live in KnowledgeBase/knowledgeBaseAssistant.test.js; here only how
+// this module hands runs to it. By default no project has a wiki.
+const mockKnowledgeBase = {
+    getKnowledgeBaseContextMessage: jest.fn(async () => ''),
+    getKnowledgeBaseToolNamesForRun: jest.fn(async () => []),
+    isKnowledgeBaseToolAllowed: jest.fn(async () => false),
+    executeKnowledgeBaseTool: jest.fn(async () => ({ success: true })),
+}
+jest.mock('../KnowledgeBase/knowledgeBaseAssistant', () => mockKnowledgeBase)
 jest.mock('openai', () =>
     jest.fn().mockImplementation(() => ({
         responses: {
@@ -588,6 +597,109 @@ describe('persisted dynamic tool cache', () => {
             mockDocGet.mockReset()
             mockDocSet.mockReset().mockResolvedValue(undefined)
         }
+    })
+})
+
+describe('project wiki wiring', () => {
+    beforeEach(() => {
+        mockResponsesCreate.mockReset()
+        Object.values(mockKnowledgeBase).forEach(mock => mock.mockClear())
+    })
+
+    test('offers the wiki tools the run may use on top of the assistant’s own', async () => {
+        mockResponsesCreate.mockResolvedValue([])
+        mockKnowledgeBase.getKnowledgeBaseToolNamesForRun.mockResolvedValueOnce([
+            'read_knowledge_page',
+            'correct_knowledge_page',
+        ])
+        const runtime = { projectId: 'p1', requestUserId: 'u1', allowKnowledgeCorrections: true }
+
+        await interactWithChatStream([['user', 'Stimmt das?']], 'MODEL_GPT6_SOL', 'TEMPERATURE_NORMAL', ['get_tasks'], {
+            ...runtime,
+            disableToolSearch: true,
+        })
+
+        expect(mockKnowledgeBase.getKnowledgeBaseToolNamesForRun).toHaveBeenCalledWith(
+            expect.objectContaining({ toolRuntimeContext: expect.objectContaining(runtime) })
+        )
+        const toolNames = mockResponsesCreate.mock.calls[0][0].tools.map(tool => tool.name)
+        expect(toolNames).toEqual(
+            expect.arrayContaining(['get_tasks', 'read_knowledge_page', 'correct_knowledge_page'])
+        )
+    })
+
+    test('lets the wiki decide whether a wiki tool call runs, whatever the assistant’s toggles say', async () => {
+        const runtime = { projectId: 'p1', requestUserId: 'u1' }
+        mockKnowledgeBase.isKnowledgeBaseToolAllowed.mockResolvedValueOnce(true)
+
+        await expect(isToolAllowedForExecution([], 'read_knowledge_page', runtime)).resolves.toBe(true)
+        await expect(
+            isToolAllowedForExecution(['correct_knowledge_page'], 'correct_knowledge_page', runtime)
+        ).resolves.toBe(false)
+        expect(mockKnowledgeBase.isKnowledgeBaseToolAllowed).toHaveBeenLastCalledWith(
+            expect.objectContaining({ toolName: 'correct_knowledge_page', toolRuntimeContext: runtime })
+        )
+    })
+
+    test('runs a wiki tool with the run’s project and person', async () => {
+        await executeToolNatively(
+            'correct_knowledge_page',
+            { slug: 'kunden', revision: 2 },
+            'p1',
+            'anna',
+            'u1',
+            {},
+            { allowKnowledgeCorrections: true, objectType: 'topics', objectId: 'c1' }
+        )
+
+        expect(mockKnowledgeBase.executeKnowledgeBaseTool).toHaveBeenCalledWith(
+            expect.objectContaining({
+                toolName: 'correct_knowledge_page',
+                args: { slug: 'kunden', revision: 2 },
+                assistantId: 'anna',
+                toolRuntimeContext: expect.objectContaining({
+                    projectId: 'p1',
+                    requestUserId: 'u1',
+                    allowKnowledgeCorrections: true,
+                }),
+            })
+        )
+    })
+
+    test('puts the wiki index right after the project description, and only for a person', async () => {
+        mockKnowledgeBase.getKnowledgeBaseContextMessage.mockResolvedValue(
+            'Project wiki of "Alldone":\nPages:\n- [[kunden]] Kunden'
+        )
+        const previousDocGet = mockDocGet.getMockImplementation()
+        mockDocGet.mockImplementation(async () => ({
+            exists: true,
+            data: () => ({ name: 'Alldone', description: 'Manual briefing.' }),
+        }))
+        const messages = []
+
+        try {
+            await addBaseInstructions(messages, 'Anna', 'en', 'Be helpful.', ['get_tasks'], null, {
+                projectId: 'p1',
+                assistantId: 'anna',
+                requestUserId: 'u1',
+                allowKnowledgeCorrections: true,
+            })
+        } finally {
+            mockDocGet.mockImplementation(previousDocGet)
+        }
+
+        const texts = messages.map(([, text]) => text)
+        const descriptionIndex = texts.findIndex(text => text.startsWith('Project description'))
+        expect(descriptionIndex).toBeGreaterThanOrEqual(0)
+        expect(texts[descriptionIndex + 1]).toMatch(/^Project wiki of "Alldone"/)
+        expect(mockKnowledgeBase.getKnowledgeBaseContextMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ context: expect.objectContaining({ allowKnowledgeCorrections: true }) })
+        )
+
+        mockKnowledgeBase.getKnowledgeBaseContextMessage.mockClear()
+        await addBaseInstructions([], 'Anna', 'en', 'Be helpful.', [], null, { projectId: 'p1', assistantId: 'anna' })
+        expect(mockKnowledgeBase.getKnowledgeBaseContextMessage).not.toHaveBeenCalled()
+        mockKnowledgeBase.getKnowledgeBaseContextMessage.mockResolvedValue('')
     })
 })
 

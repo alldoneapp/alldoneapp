@@ -570,6 +570,31 @@ even to the run rebuilding it. Only the page id (its slug) survives. Pinned by
 `knowledgeSourceInvalidation.test.js` (the `removing what a withdrawn source contributed` block) and
 the read_page cases in `knowledgeBaseIngest.test.js`.
 
+**Assistants read it, and a member corrects it through them** (`knowledgeBaseAssistant.js`). The
+index of visible pages goes into the system prompt right after the project description, and three
+tools have no Tools Access toggle, like `load_skill` — the wiki itself is the access control:
+`read_knowledge_page`, `correct_knowledge_page`, `undo_knowledge_correction`.
+`resolveKnowledgeBaseAccess` decides per run, and the same answer drives the prompt, the offered
+tools and the execution gate:
+
+- **nothing** without an assistant and a requesting user who is a member of the project, nothing on
+  the email channel (action-only, may reply outside the project) and nothing to Gmail labeling;
+- **reading** everywhere else, and in writing mode;
+- **correcting only when `allowKnowledgeCorrections` is set**, which only the in-app chat
+  (`assistantNormalTalk_optimized`) does. A heartbeat, recurring task, delegated assistant or
+  WhatsApp run is not a member saying "this is wrong".
+
+A correction is stored in `knowledgeBases/{id}/corrections/{id}` in the SAME transaction as the
+page revision it produced (`writeKnowledgePage`'s `onWrite`), is cited as `[[correction:ID]]`
+(the model writes `[[correction:new]]`), and overrides older sources in every later ingest prompt.
+Undo (tool, or the wiki history's button through the `undoKnowledgeCorrection` callable) restores
+the revision before it via `restoreKnowledgePageRevision` — only while the page is still at the
+correction's revision, never from a `redacted` revision — and marks it `reverted`, after which
+neither the ingest prompts nor `loadKnowledgeSourcesByKeys` use it. The "Suggest a correction"
+button on a page only opens a chat with the project's assistant (`createBotQuickTopic`); it never
+writes the wiki itself. Pinned by `knowledgeBaseAssistant.test.js` and the `project wiki wiring`
+block in `assistantHelper.test.js`.
+
 Keep the parser `components/WikiView/wikiMarkdownParser.js` and the renderer `WikiMarkdown.js`
 under different names: a `wikiMarkdown.js` next to `WikiMarkdown.js` collides on macOS's
 case-insensitive filesystem. The renderer is deliberately self-written (no Markdown dependency, no

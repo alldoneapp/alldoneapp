@@ -145,6 +145,8 @@ async function askToOpenAIBotOptimized(
             language,
             maxRunWallClockMs: runOptions.maxRunWallClockMs || INTERACTIVE_ASSISTANT_MAX_RUN_WALL_CLOCK_MS,
             automaticCommentReply: runOptions.automaticCommentReply === true,
+            // A member is talking to the assistant, so it may correct the project wiki for them.
+            allowKnowledgeCorrections: true,
         }
         const { loadAnnaContext, loadAnnaHistoryContext, annaInstructions } = require('./annaWorkspace')
         const annaContext = await loadAnnaContext(admin.firestore(), baseToolRuntimeContext, { includeActivity: true })
@@ -186,7 +188,8 @@ async function askToOpenAIBotOptimized(
                 allowedTools,
                 userTimezoneOffset,
                 userId,
-                runtimeAssistantId
+                runtimeAssistantId,
+                { allowKnowledgeCorrections: true }
             ),
             // Pre-fetch common data needed for storeBotAnswerStream
             getCommonDataOptimized(projectId, objectType, objectId),

@@ -25,6 +25,7 @@ jest.mock('../../utils/backends/KnowledgeBase/knowledgeBaseFirestore', () => ({
     }),
     watchKnowledgeRuns: jest.fn(() => () => {}),
     getKnowledgePageRevisions: jest.fn(),
+    undoKnowledgeCorrection: jest.fn(),
 }))
 jest.mock('../TaskListView/ProjectSection', () => {
     const passThrough = ({ children }) => children
@@ -52,6 +53,10 @@ jest.mock('../../URLSystem/Wiki/URLsWiki', () => ({
     URL_PROJECT_WIKI_PAGE: 'PROJECT_WIKI_PAGE',
 }))
 jest.mock('./wikiLinks', () => ({ openProjectWikiSettings: jest.fn(), openWikiSource: jest.fn() }))
+jest.mock('./WikiCorrectionForm', () => {
+    const { Text: MockText } = require('react-native')
+    return ({ page }) => <MockText testID="wiki-correction-form">{`correcting ${page.slug}`}</MockText>
+})
 jest.mock('../SettingsView/ProjectsSettings/ProjectHelper', () => ({ checkIfSelectedProject: index => index >= 0 }))
 jest.mock('../../redux/actions', () => ({ setNavigationRoute: route => ({ type: 'setNavigationRoute', route }) }))
 jest.mock('../UIComponents/FloatModals/DateFormatPickerModal', () => ({
@@ -70,7 +75,10 @@ jest.mock('../../i18n/TranslationService', () => {
 })
 
 import URLsWiki from '../../URLSystem/Wiki/URLsWiki'
-import { getKnowledgePageRevisions } from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
+import {
+    getKnowledgePageRevisions,
+    undoKnowledgeCorrection,
+} from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
 import WikiView from './WikiView'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
 import { setWikiSelectedSlug } from './wikiNavigationState'
@@ -247,5 +255,67 @@ describe('WikiView', () => {
         const history = textOf(component.root.findByProps({ testID: 'wiki-history' }).children)
         expect(history).toContain('Neuer Kunde')
         expect(history).toContain('Text removed: a source it used became private or was deleted')
+    })
+    it('opens the correction form for the page on display', () => {
+        const component = mount()
+        deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
+
+        press(component, 'wiki-suggest-correction')
+
+        expect(textOf(component.root.findByProps({ testID: 'wiki-correction-form' }).children)).toBe(
+            'correcting entscheidungen'
+        )
+        expect(component.root.findAllByProps({ testID: 'wiki-suggest-correction' })).toHaveLength(0)
+    })
+
+    it('offers to undo a correction only while it is the page’s latest revision', async () => {
+        getKnowledgePageRevisions.mockResolvedValue([
+            {
+                id: '000003',
+                revision: 3,
+                mode: 'correction',
+                reason: 'Frau Brandt, nicht Frau Berg.',
+                author: { type: 'user', name: 'Karsten', correctionId: 'k1' },
+            },
+            {
+                id: '000002',
+                revision: 2,
+                mode: 'correction',
+                reason: 'Älter.',
+                author: { type: 'user', name: 'Ulla', correctionId: 'k0' },
+            },
+        ])
+        undoKnowledgeCorrection.mockResolvedValue({ success: true })
+        const component = mount()
+        deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
+
+        await act(async () => {
+            pressText(component, 'Show history')
+        })
+
+        expect(textOf(component.root.findByProps({ testID: 'wiki-history' }).children)).toContain(
+            'Correction by Karsten: Frau Brandt, nicht Frau Berg.'
+        )
+        expect(component.root.findAllByProps({ testID: 'wiki-undo-k0' })).toHaveLength(0)
+        await act(async () => component.root.findByProps({ testID: 'wiki-undo-k1' }).props.onPress())
+        expect(undoKnowledgeCorrection).toHaveBeenCalledWith('p1', 'k1')
+    })
+
+    it('says why an undo failed', async () => {
+        getKnowledgePageRevisions.mockResolvedValue([
+            { id: '000003', revision: 3, mode: 'correction', author: { correctionId: 'k1', name: 'Karsten' } },
+        ])
+        undoKnowledgeCorrection.mockRejectedValue(new Error('The page changed after this correction.'))
+        const component = mount()
+        deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
+        await act(async () => {
+            pressText(component, 'Show history')
+        })
+
+        await act(async () => component.root.findByProps({ testID: 'wiki-undo-k1' }).props.onPress())
+
+        expect(textOf(component.root.findByProps({ testID: 'wiki-history' }).children)).toContain(
+            'The page changed after this correction.'
+        )
     })
 })

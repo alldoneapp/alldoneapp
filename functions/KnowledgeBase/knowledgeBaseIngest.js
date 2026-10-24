@@ -133,7 +133,10 @@ async function loadRecentCorrections(db, projectId) {
             .orderBy('createdAt', 'desc')
             .limit(MAX_CORRECTIONS_IN_PROMPT)
             .get()
-        return snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() || {} }))
+        // An undone correction no longer speaks for the project; the page already went back.
+        return snapshot.docs
+            .map(doc => ({ id: doc.id, data: doc.data() || {} }))
+            .filter(({ data }) => data.status !== 'reverted')
     } catch (error) {
         console.warn('[knowledge base] Could not read corrections', { projectId, error: error.message })
         return []

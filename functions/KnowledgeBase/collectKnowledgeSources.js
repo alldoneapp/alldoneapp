@@ -446,8 +446,10 @@ async function loadKnowledgeSourcesByKeys({
         const { type, id } = parsed[index]
         if (!snapshot.exists) return
         const data = snapshot.data() || {}
-        // Corrections live inside the wiki itself and share its audience by construction.
-        if (type !== 'correction' && (!isVisibleToWholeProject(data, type) || getExclusionReason(data, type))) return
+        // Corrections live inside the wiki itself and share its audience by construction; one that
+        // was undone is no source any more.
+        if (type === 'correction' ? data.status === 'reverted' : !isVisibleToWholeProject(data, type)) return
+        if (type !== 'correction' && getExclusionReason(data, type)) return
         entries.push({
             key: `${type}:${id}`,
             type,
