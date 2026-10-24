@@ -98,6 +98,9 @@ async function writeKnowledgePage({
     body: requestedBody,
     sourceKeys: declaredSourceKeys = [],
     allowedSourceKeys = new Set(),
+    // Display titles of the run's sources ({ 'task:abc': 'Release planen' }), so the page can label
+    // its source chips without one read per chip. Only sources the page keeps are stored.
+    sourceLabels: runSourceLabels = {},
     expectedRevision = null,
     mode = 'ingest',
     author = { type: 'ingest' },
@@ -153,6 +156,12 @@ async function writeKnowledgePage({
             key => typeof key === 'string' && allowedSourceKeys.has(key)
         )
         const sourceKeys = [...new Set([...existingSourceKeys, ...citedSourceKeys, ...declared])]
+        const previousLabels = mode === 'rebuild' ? {} : current?.sourceLabels || {}
+        const sourceLabels = {}
+        sourceKeys.forEach(key => {
+            const label = runSourceLabels[key] || previousLabels[key]
+            if (typeof label === 'string' && label.trim()) sourceLabels[key] = clip(label, 120)
+        })
         const revision = currentRevision + 1
 
         const page = {
@@ -161,6 +170,7 @@ async function writeKnowledgePage({
             summary,
             body,
             sourceKeys,
+            sourceLabels,
             links: pageLinks.filter(link => link !== slug),
             revision,
             createdAt: current?.createdAt || now,
@@ -173,6 +183,9 @@ async function writeKnowledgePage({
             needsRebuildReason: fieldValue.delete(),
         }
         if (mode === 'rebuild') page.removedSourceKeys = fieldValue.delete()
+        // Every source any revision ever cited, so that a later withdrawal finds the revisions that
+        // repeat it even after the page stopped citing it (knowledgeSourceInvalidation).
+        if (sourceKeys.length) page.historicalSourceKeys = fieldValue.arrayUnion(...sourceKeys)
 
         transaction.set(pageRef, page, { merge: true })
         transaction.set(db.doc(`${getKnowledgePageRevisionsPath(projectId, slug)}/${revisionId(revision)}`), {
@@ -200,6 +213,7 @@ async function writeKnowledgePage({
                 needsRebuildSince: undefined,
                 needsRebuildReason: undefined,
                 removedSourceKeys: undefined,
+                historicalSourceKeys: undefined,
             },
         }
     })
@@ -234,10 +248,14 @@ async function archiveKnowledgePage({
         }
 
         const revision = currentRevision + 1
+        // The text leaves the page document: an archived page is shown nowhere, and its earlier
+        // revisions keep the text for an undo.
         transaction.set(
             pageRef,
             {
                 archived: true,
+                summary: fieldValue.delete(),
+                body: fieldValue.delete(),
                 revision,
                 updatedAt: now,
                 updatedBy: author.type === 'user' ? author.userId : 'wiki',

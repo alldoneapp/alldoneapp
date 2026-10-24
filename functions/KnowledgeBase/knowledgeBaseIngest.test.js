@@ -126,6 +126,7 @@ describe('runKnowledgeBaseIngest', () => {
         expect(db.read(pagePath('kunden'))).toMatchObject({
             body: 'Acme wird Pilotkunde [[task:t1]]. Angeblich auch .',
             sourceKeys: ['task:t1'],
+            sourceLabels: { 'task:t1': 'Acme als Pilotkunde gewinnen' },
             revision: 1,
             lastRunId: 'run-1',
         })
@@ -202,6 +203,52 @@ describe('runKnowledgeBaseIngest', () => {
         expect(page).toMatchObject({ needsRebuild: false, body: 'Acme ist Pilotkunde [[task:t1]].', revision: 3 })
         expect(page).not.toHaveProperty('removedSourceKeys')
         expect(result.rebuilt).toBe(1)
+    })
+
+    it('does not hand the page it is rebuilding back through read_page', async () => {
+        const db = createDb({
+            [taskPath('t1')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - 30 * DAY },
+            [pagePath('kunden')]: {
+                slug: 'kunden',
+                title: 'Kunden',
+                body: 'Acme [[task:t1]]. Der Rabatt ist GEHEIM-42 [[note:n1]].',
+                revision: 2,
+                sourceKeys: ['task:t1'],
+                removedSourceKeys: ['note:n1'],
+                needsRebuild: true,
+            },
+        })
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.read_page({ slug: 'kunden' })
+        })
+
+        await run(db, { runConversation })
+
+        expect(calls[0].results[0].result).toMatchObject({ success: false, error: expect.stringMatching(/rebuilt/) })
+        expect(JSON.stringify(calls)).not.toContain('GEHEIM-42')
+    })
+
+    it('reads a page as it is now, not as it was when the run started', async () => {
+        const db = createDb({
+            [taskPath('t1')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+            [pagePath('kunden')]: {
+                slug: 'kunden',
+                title: 'Kunden',
+                body: 'Der Rabatt ist GEHEIM-42 [[note:n1]].',
+                revision: 1,
+                sourceKeys: ['note:n1'],
+            },
+        })
+        const { runConversation, calls } = scriptedModel(async tools => {
+            // The note is made private while the run is working (knowledgeSourceInvalidation).
+            db.update(pagePath('kunden'), { needsRebuild: true, body: fieldValue.delete(), sourceKeys: [] })
+            await tools.read_page({ slug: 'kunden' })
+        })
+
+        await run(db, { runConversation })
+
+        expect(calls[0].results[0].result).toMatchObject({ success: false })
+        expect(JSON.stringify(calls[0].results)).not.toContain('GEHEIM-42')
     })
 
     it('keeps a rebuild from touching any other page', async () => {

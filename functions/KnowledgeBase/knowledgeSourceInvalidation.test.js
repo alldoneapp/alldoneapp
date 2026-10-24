@@ -35,7 +35,7 @@ describe('invalidateKnowledgeSourcesOnUpdate', () => {
             after: { isPublicFor: ['owner'] },
         })
 
-        expect(result).toEqual({ pages: 2 })
+        expect(result).toEqual({ pages: 2, redactedRevisions: 0 })
         const kunden = db.read(pagePath('kunden'))
         expect(kunden).toMatchObject({
             needsRebuild: true,
@@ -69,7 +69,7 @@ describe('invalidateKnowledgeSourcesOnUpdate', () => {
                     objectId: 't1',
                     ...change,
                 })
-            ).resolves.toEqual({ pages: 0 })
+            ).resolves.toEqual({ pages: 0, redactedRevisions: 0 })
         }
         expect(db.queries).toHaveLength(0)
     })
@@ -88,7 +88,7 @@ describe('invalidateKnowledgeSourcesOnUpdate', () => {
             after: { isPublicFor: [0], isPrivate: true },
         })
 
-        expect(result).toEqual({ pages: 1 })
+        expect(result).toEqual({ pages: 1, redactedRevisions: 0 })
     })
 
     it('ignores object types the wiki does not compile', async () => {
@@ -103,7 +103,7 @@ describe('invalidateKnowledgeSourcesOnUpdate', () => {
                 before: { isPublicFor: [0] },
                 after: { isPublicFor: ['owner'] },
             })
-        ).resolves.toEqual({ pages: 0 })
+        ).resolves.toEqual({ pages: 0, redactedRevisions: 0 })
     })
 })
 
@@ -121,7 +121,7 @@ describe('invalidateKnowledgeSourcesOnDelete', () => {
             data: { isPublicFor: [0, 'owner'] },
         })
 
-        expect(result).toEqual({ pages: 1 })
+        expect(result).toEqual({ pages: 1, redactedRevisions: 0 })
         expect(db.read(pagePath('glossar'))).toMatchObject({
             needsRebuild: true,
             needsRebuildReason: 'deleted',
@@ -157,8 +157,147 @@ describe('invalidateKnowledgeSourcesOnDelete', () => {
             data: {},
         })
 
-        expect(result).toEqual({ pages: 0 })
+        expect(result).toEqual({ pages: 0, redactedRevisions: 0 })
         expect(db.commits).toBe(0)
+        expect(db.read(KB_PATH).nextRunAt).toBe(NOW + 3_600_000)
+    })
+})
+
+// Hiding is a property of the views, and members may read the whole wiki tree from Firestore, so a
+// withdrawn source must also leave the stored text: the page, its label, and every revision.
+describe('removing what a withdrawn source contributed', () => {
+    const revisionPath = (slug, revision) => `${pagePath(slug)}/revisions/${String(revision).padStart(6, '0')}`
+    const PRIVATE_LINE = 'Acme pays 120 EUR per hour'
+
+    function createDbWithHistory() {
+        return new KnowledgeFirestoreDouble({
+            [KB_PATH]: { enabled: true, nextRunAt: NOW + 3_600_000 },
+            [pagePath('kunden')]: {
+                title: 'Kunden und Preise',
+                summary: 'Who pays what',
+                body: `${PRIVATE_LINE} [[task:t1]]. Beta is new [[contact:c1]].`,
+                revision: 2,
+                sourceKeys: ['task:t1', 'contact:c1'],
+                historicalSourceKeys: ['task:t1', 'contact:c1'],
+                sourceLabels: { 'task:t1': 'Acme rate', 'contact:c1': 'Beta GmbH' },
+            },
+            [revisionPath('kunden', 1)]: {
+                revision: 1,
+                title: 'Kunden',
+                body: `${PRIVATE_LINE} [[task:t1]].`,
+                reason: 'Added the Acme rate',
+                sourceKeys: ['task:t1'],
+            },
+            [revisionPath('kunden', 2)]: {
+                revision: 2,
+                title: 'Kunden und Preise',
+                body: `${PRIVATE_LINE} [[task:t1]]. Beta is new [[contact:c1]].`,
+                reason: 'Added Beta',
+                sourceKeys: ['task:t1', 'contact:c1'],
+            },
+            // Stopped citing the task in revision 2, but revision 1 still repeats it.
+            [pagePath('preise')]: {
+                title: 'Preise',
+                body: 'Rates are agreed per customer [[note:n1]].',
+                revision: 2,
+                sourceKeys: ['note:n1'],
+                historicalSourceKeys: ['task:t1', 'note:n1'],
+            },
+            [revisionPath('preise', 1)]: {
+                revision: 1,
+                title: 'Preise',
+                body: `${PRIVATE_LINE} [[task:t1]].`,
+                sourceKeys: ['task:t1'],
+            },
+            [revisionPath('preise', 2)]: {
+                revision: 2,
+                title: 'Preise',
+                body: 'Rates are agreed per customer [[note:n1]].',
+                sourceKeys: ['note:n1'],
+            },
+        })
+    }
+
+    const makePrivate = db =>
+        invalidateKnowledgeSourcesOnUpdate({
+            db,
+            fieldValue,
+            now: NOW,
+            projectId: PROJECT_ID,
+            objectType: 'tasks',
+            objectId: 't1',
+            before: { isPublicFor: [0, 'owner'] },
+            after: { isPublicFor: ['owner'] },
+        })
+
+    const storedText = db =>
+        JSON.stringify([...db.documents.entries()].filter(([path]) => path.startsWith(`${KB_PATH}/`)))
+
+    it('leaves nothing of the source in any page or revision', async () => {
+        const db = createDbWithHistory()
+        expect(storedText(db)).toContain(PRIVATE_LINE)
+
+        const result = await makePrivate(db)
+
+        expect(result).toEqual({ pages: 1, redactedRevisions: 3 })
+        expect(storedText(db)).not.toContain(PRIVATE_LINE)
+        expect(storedText(db)).not.toContain('Acme rate')
+    })
+
+    it('empties the page that cites the source and keeps the labels of the sources it still has', async () => {
+        const db = createDbWithHistory()
+
+        await makePrivate(db)
+
+        const page = db.read(pagePath('kunden'))
+        expect(page.title).toBeUndefined()
+        expect(page.summary).toBeUndefined()
+        expect(page.body).toBeUndefined()
+        expect(page).toMatchObject({
+            needsRebuild: true,
+            sourceKeys: ['contact:c1'],
+            historicalSourceKeys: ['contact:c1'],
+            sourceLabels: { 'contact:c1': 'Beta GmbH' },
+        })
+        expect(db.read(revisionPath('kunden', 2))).toEqual({
+            revision: 2,
+            sourceKeys: ['task:t1', 'contact:c1'],
+            redacted: true,
+            redactedAt: NOW,
+            redactedReason: 'privacy',
+        })
+    })
+
+    it('redacts old revisions of a page that no longer cites the source without hiding the page', async () => {
+        const db = createDbWithHistory()
+
+        await makePrivate(db)
+
+        const page = db.read(pagePath('preise'))
+        expect(isKnowledgePageVisible(page)).toBe(true)
+        expect(page.body).toBe('Rates are agreed per customer [[note:n1]].')
+        expect(page.historicalSourceKeys).toEqual(['note:n1'])
+        expect(db.read(revisionPath('preise', 1))).toMatchObject({ redacted: true })
+        expect(db.read(revisionPath('preise', 1)).body).toBeUndefined()
+        expect(db.read(revisionPath('preise', 2)).redacted).toBeUndefined()
+    })
+
+    it('removes the text of an archived page without scheduling a rebuild for it', async () => {
+        const db = new KnowledgeFirestoreDouble({
+            [KB_PATH]: { enabled: true, nextRunAt: NOW + 3_600_000 },
+            [pagePath('alt')]: {
+                title: 'Alt',
+                body: `${PRIVATE_LINE} [[task:t1]].`,
+                archived: true,
+                sourceKeys: ['task:t1'],
+            },
+        })
+
+        const result = await makePrivate(db)
+
+        expect(result).toEqual({ pages: 0, redactedRevisions: 0 })
+        expect(storedText(db)).not.toContain(PRIVATE_LINE)
+        expect(db.read(pagePath('alt')).needsRebuild).toBeUndefined()
         expect(db.read(KB_PATH).nextRunAt).toBe(NOW + 3_600_000)
     })
 })

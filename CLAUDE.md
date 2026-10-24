@@ -543,6 +543,38 @@ never badge — that would be one read per visible task. `threadAssistantModelSt
 cache the row, the picker and the badge share; it is deliberately not redux, since a slice keyed by
 object id re-renders every subscriber on every write (AT-2336) for state that concerns one thread.
 
+### The project wiki is compiled only from what the whole project can see
+
+`knowledgeBases/{projectId}` holds a Karpathy-style wiki per project: Markdown pages a model compiles
+from the project's tasks, goals, notes and contacts (`functions/KnowledgeBase/`, read UI in
+`components/WikiView/`). Members may read the whole tree straight from Firestore and nobody may
+write it; every write is a callable or the `runKnowledgeBaseIngest` worker. The member who switches
+it on pays (`knowledge_base_ingest` Gold, monthly cap, default model DeepSeek V4 Flash).
+
+**The ingest runs through the Admin SDK, so the visibility filter is the ONLY protection.**
+`isVisibleToWholeProject` in `collectKnowledgeSources.js` admits an object only when `isPublicFor`
+names `0` and it is not `isPrivate` (goals without `isPublicFor` count as public, matching
+`mapGoalData`); emails, generated day-rate tasks and user-memory notes are excluded outright, and
+contact email addresses and phone numbers never reach a source card. `loadSourcesByKeys` re-applies
+the same filter, because a key stored on a page is not proof the object is still public.
+
+**A withdrawn source must leave the stored data, not just the views.** When a cited object turns
+private or is deleted, the object's existing update/delete trigger calls
+`knowledgeSourceInvalidation.js`, which marks the citing pages `needsRebuild` (hidden from people
+and assistants) AND deletes their title, summary, body and the source's label, and strips the text
+from every revision that cited it (`redacted: true`) — found through `historicalSourceKeys`, since a
+page can stop citing a source after an older revision repeated it. Hiding alone would leave the text
+one Firestore read away. The rebuild then recompiles the page from its REMAINING sources without
+ever showing the model the old text; `read_page` reads fresh and never returns a hidden page, not
+even to the run rebuilding it. Only the page id (its slug) survives. Pinned by
+`knowledgeSourceInvalidation.test.js` (the `removing what a withdrawn source contributed` block) and
+the read_page cases in `knowledgeBaseIngest.test.js`.
+
+Keep the parser `components/WikiView/wikiMarkdownParser.js` and the renderer `WikiMarkdown.js`
+under different names: a `wikiMarkdown.js` next to `WikiMarkdown.js` collides on macOS's
+case-insensitive filesystem. The renderer is deliberately self-written (no Markdown dependency, no
+HTML): page links, source chips and http(s) links are the only interactive output.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:

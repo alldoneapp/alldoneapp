@@ -10,6 +10,7 @@ import { clearUserOKRsHiddenInAllProjectsToday } from '../../../../../utils/back
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../../../utils/NavigationService'
 import { setSelectedNavItem } from '../../../../../redux/actions'
+import { openProjectWiki } from '../../../../WikiView/wikiLinks'
 
 let mockState
 const mockDispatch = jest.fn()
@@ -75,6 +76,7 @@ jest.mock('../../../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 jest.mock('../../../../../utils/NavigationService', () => ({
     navigate: jest.fn(),
 }))
+jest.mock('../../../../WikiView/wikiLinks', () => ({ openProjectWiki: jest.fn() }))
 
 const projectId = 'project-1'
 const okrs = [{ id: 'okr-1' }, { id: 'okr-2' }]
@@ -100,6 +102,35 @@ const renderMenu = hiddenTodayById => {
 }
 
 const findItems = tree => tree.root.findAll(node => typeof node.props.text === 'string')
+
+describe('TaskHeaderMoreButton project wiki', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('opens the wiki of the selected project for a member', () => {
+        mockState = createState()
+        mockState.loggedUser.projectIds = [projectId]
+        const tree = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
+        const wikiItem = findItems(tree).find(node => node.props.text === 'Project wiki')
+
+        wikiItem.props.onPress()
+
+        expect(openProjectWiki).toHaveBeenCalledWith(projectId)
+    })
+
+    it('offers no wiki to a guest of a shared project, nor in All Projects', () => {
+        mockState = createState()
+        mockState.loggedUser.projectIds = ['another-project']
+        const guest = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
+        expect(findItems(guest).map(node => node.props.text)).not.toContain('Project wiki')
+
+        mockState = createState({}, -1)
+        mockState.loggedUser.projectIds = [projectId]
+        const allProjects = renderer.create(<TaskHeaderMoreButton userId="user-1" />)
+        expect(findItems(allProjects).map(node => node.props.text)).not.toContain('Project wiki')
+    })
+})
 
 describe('TaskHeaderMoreButton project navigation', () => {
     beforeEach(() => {

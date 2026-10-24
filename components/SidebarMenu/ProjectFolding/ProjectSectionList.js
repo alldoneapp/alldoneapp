@@ -13,11 +13,13 @@ import {
     DV_TAB_ROOT_NOTES,
     DV_TAB_ROOT_TASKS,
     ROOT_ROUTES,
+    DV_TAB_ROOT_WIKI,
 } from '../../../utils/TabNavigationConstants'
 import MediaBar from '../../MediaBar/MediaBar'
 import Chats from './SectionItems/Chats'
 import { PROJECT_COLOR_DEFAULT } from '../../../Themes/Modern/ProjectColors'
 import Goals from './SectionItems/Goals'
+import Wiki from './SectionItems/Wiki'
 import NavigationService from '../../../utils/NavigationService'
 import TasksBoards from './SectionItems/TasksBoards'
 import { isSimpleSidebarNavigation } from '../../../utils/SidebarNavigationModes'
@@ -95,6 +97,13 @@ export default function ProjectSectionList({ projectData, projectType, isShared,
                 projectId={projectData?.id}
                 inAllProjects={inAllProjects}
             />
+            {projectData && !isShared && (
+                <Wiki
+                    projectId={projectData.id}
+                    projectColor={projectColor}
+                    selected={selectedSidebarTab === DV_TAB_ROOT_WIKI && route !== 'ProjectDetailedView'}
+                />
+            )}
             {(selectedSidebarTab === DV_TAB_ROOT_CHATS || route === 'ChatDetailedView') && !isShared && projectData && (
                 <MediaBar projectColor={projectColor} projectId={projectData.id} />
             )}
