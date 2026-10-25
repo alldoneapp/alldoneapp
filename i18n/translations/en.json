@@ -3684,5 +3684,8 @@
     "Open upload source": "Open source",
     "Some uploads could not be loaded": "Some uploads could not be loaded. Reopen Artifacts to retry.",
     "Show in artifacts": "Show in artifacts",
+    "Artifact upload in": "In %{title}",
+    "Previous file": "Previous file",
+    "Next file": "Next file",
     "File": "File"
 }

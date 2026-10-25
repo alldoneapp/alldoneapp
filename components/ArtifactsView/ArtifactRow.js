@@ -4,13 +4,24 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import { translate } from '../../i18n/TranslationService'
-import { formatArtifactDate, formatArtifactSize, getArtifactKindIcon } from './artifactPresentation'
+import { formatArtifactDate, formatArtifactSize, getArtifactThumbnail } from './artifactPresentation'
 import { ARTIFACT_SOURCES } from '../../functions/Artifacts/artifactModel'
+import ArtifactThumbnail from './ArtifactThumbnail'
 
 const SOURCE_ICONS = { [ARTIFACT_SOURCES.ASSISTANT]: 'cpu', [ARTIFACT_SOURCES.VM]: 'terminal' }
 
+// A full artifact's image is read through serveArtifact like its preview. Required on use: only an
+// image row in a known project needs it, and the backend module reaches much of the app.
+function getServeUrl(projectId) {
+    if (!projectId) return null
+    return artifact => require('../../utils/backends/Artifacts/artifactsFirestore').getArtifactUrl(projectId, artifact)
+}
+
 // `inCommentPopup` draws the row on the comment popup's dark header instead of the light list.
-export default function ArtifactRow({ artifact, onPress, inCommentPopup = false }) {
+// `projectId` lets an image show itself; `onOpenSource` turns a linked upload's link badge into the
+// way to its source, now that pressing the row shows the file.
+export default function ArtifactRow({ artifact, onPress, onOpenSource, projectId, inCommentPopup = false }) {
+    const thumbnail = getArtifactThumbnail(artifact, getServeUrl(projectId))
     return (
         <TouchableOpacity
             testID={`artifact-row-${artifact.id}`}
@@ -18,11 +29,12 @@ export default function ArtifactRow({ artifact, onPress, inCommentPopup = false 
             onPress={() => onPress(artifact)}
             accessible={false}
         >
-            <View style={[localStyles.icon, inCommentPopup && localStyles.iconOnDark]}>
-                <Icon
-                    name={getArtifactKindIcon(artifact.kind)}
-                    size={20}
-                    color={inCommentPopup ? colors.Grey400 : colors.Text02}
+            <View style={localStyles.icon}>
+                <ArtifactThumbnail
+                    artifact={artifact}
+                    thumbnail={thumbnail}
+                    size={inCommentPopup ? 32 : 44}
+                    onDark={inCommentPopup}
                 />
             </View>
             <View style={localStyles.texts}>
@@ -33,7 +45,9 @@ export default function ArtifactRow({ artifact, onPress, inCommentPopup = false 
                     {translate('Artifact edited at', { date: formatArtifactDate(artifact.lastEditionDate) })}
                     {' · '}
                     {artifact.linkedUpload
-                        ? `${translate('Open upload source')}: ${artifact.linkedSources[0].title || translate('File')}`
+                        ? translate('Artifact upload in', {
+                              title: artifact.linkedSources[0].title || translate('File'),
+                          })
                         : formatArtifactSize(artifact.sizeBytes)}
                     {artifact.versionCount > 1
                         ? ` · ${translate('Artifact version', { number: artifact.versionCount })}`
@@ -43,9 +57,20 @@ export default function ArtifactRow({ artifact, onPress, inCommentPopup = false 
             {/* What an artifact is besides its file: who made it, whether it reads live data, whether
                 people are talking about it. Small and quiet, the title stays the thing to read. */}
             <View style={localStyles.badges}>
-                {artifact.linkedUpload && (
-                    <Icon name="link" size={14} color={badgeColor(inCommentPopup)} style={localStyles.badge} />
-                )}
+                {artifact.linkedUpload &&
+                    (onOpenSource ? (
+                        <TouchableOpacity
+                            testID={`artifact-open-source-${artifact.id}`}
+                            onPress={() => onOpenSource(artifact)}
+                            accessibilityRole="button"
+                            accessibilityLabel={translate('Open upload source')}
+                            style={localStyles.sourceButton}
+                        >
+                            <Icon name="link" size={16} color={badgeColor(inCommentPopup)} />
+                        </TouchableOpacity>
+                    ) : (
+                        <Icon name="link" size={14} color={badgeColor(inCommentPopup)} style={localStyles.badge} />
+                    ))}
                 {!!SOURCE_ICONS[artifact.source] && (
                     <Icon
                         name={SOURCE_ICONS[artifact.source]}
@@ -100,16 +125,15 @@ const localStyles = StyleSheet.create({
         borderRadius: 4,
     },
     icon: {
-        width: 32,
-        height: 32,
-        borderRadius: 4,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.Grey200,
         marginRight: 12,
     },
-    iconOnDark: {
-        backgroundColor: colors.Secondary300,
+    // A 28px target around the 16px icon, without moving the badges next to it.
+    sourceButton: {
+        padding: 6,
+        marginVertical: -6,
+        marginRight: -6,
+        marginLeft: 2,
+        borderRadius: 4,
     },
     texts: {
         flex: 1,

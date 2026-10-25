@@ -3242,5 +3242,8 @@
     "Open upload source": "Quelle öffnen",
     "Some uploads could not be loaded": "Einige Uploads konnten nicht geladen werden. Öffne Artefakte erneut, um es noch einmal zu versuchen.",
     "Show in artifacts": "Unter Artefakte anzeigen",
+    "Artifact upload in": "In %{title}",
+    "Previous file": "Vorherige Datei",
+    "Next file": "Nächste Datei",
     "File": "Datei"
 }
