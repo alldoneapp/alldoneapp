@@ -43,6 +43,18 @@ describe('ArtifactHistory', () => {
         expect(describeArtifactHistoryEvent({ type: 'unknown' }, users)).toBe('')
     })
 
+    it('says when the person acted through an MCP client', () => {
+        expect(
+            describeArtifactHistoryEvent(
+                { type: 'version', actorId: 'owner', versionNumber: 2, via: 'mcp', viaClient: 'Claude' },
+                users
+            )
+        ).toBe('Karsten (via Claude) saved version 2')
+        expect(
+            describeArtifactHistoryEvent({ type: 'renamed', actorId: 'owner', from: 'A', to: 'B', via: 'mcp' }, users)
+        ).toBe('Karsten (via MCP) renamed it from “A” to “B”')
+    })
+
     it('lists the history newest first as delivered, with an empty state', () => {
         let tree
         act(() => {

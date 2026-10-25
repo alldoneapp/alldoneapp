@@ -15,6 +15,12 @@ const WRITING_READ_TOOLS = new Set([
     'get_notes',
     'get_chat_attachment',
     'load_skill',
+    // Reads the user's connected mailboxes (Gmail and Outlook) so a reply can follow the thread on
+    // screen. Attachment bytes, drafts and label changes stay out of writing mode.
+    'search_gmail',
+    // Offered by the wiki itself, not by the assistant's toggles (knowledgeBaseAssistant.js gives
+    // writing runs read access). Without it here the run is offered the tool and then refused it.
+    'read_knowledge_page',
 ])
 
 function writingReadTools(tools) {

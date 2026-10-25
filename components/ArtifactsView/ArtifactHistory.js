@@ -8,6 +8,7 @@ import { translate } from '../../i18n/TranslationService'
 import { watchArtifactHistory } from '../../utils/backends/Artifacts/artifactsFirestore'
 import { ARTIFACT_HISTORY_TYPES } from '../../functions/Artifacts/artifactHistory'
 import { formatArtifactDate } from './artifactPresentation'
+import { withMcpActorLabel } from '../../utils/mcpActorLabel'
 
 const ICONS = {
     [ARTIFACT_HISTORY_TYPES.CREATED]: 'plus-circle',
@@ -48,10 +49,10 @@ function getAssistantName(assistantId) {
 }
 
 // Who did it, as a reader of the timeline would say it: "Anna for Karsten" when an assistant
-// acted for someone, otherwise the person.
+// acted for someone, "Karsten (via Claude)" when their MCP client did, otherwise the person.
 export function describeArtifactHistoryActor(event, users = []) {
     const user = users.find(candidate => candidate?.uid === event.actorId)
-    const userName = user?.displayName || (event.actorId ? translate('Someone') : '')
+    const userName = withMcpActorLabel(user?.displayName || (event.actorId ? translate('Someone') : ''), event)
     const assistantName = getAssistantName(event.assistantId)
     if (assistantName && userName)
         return translate('Artifact history actor for', { assistant: assistantName, user: userName })
