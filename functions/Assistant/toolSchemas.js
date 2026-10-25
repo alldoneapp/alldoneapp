@@ -202,7 +202,7 @@ const toolSchemas = {
         function: {
             name: 'create_note',
             description:
-                'Creates a new note in the current project. Supports markdown formatting. The successful result includes the canonical note URL; include that exact URL in the user-facing response. Never call create_note again merely to provide the link to a note that was already created.',
+                'Creates a new note in the current project, or in the project named by projectId or projectName. Supports markdown formatting. The successful result includes the canonical note URL; include that exact URL in the user-facing response. Never call create_note again merely to provide the link to a note that was already created.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -213,6 +213,16 @@ const toolSchemas = {
                     content: {
                         type: 'string',
                         description: 'The content of the note in markdown format',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: the project ID where the note should be created. If neither projectId nor projectName is given, the note is created in the current project.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            "Optional: the project name where the note should be created. IMPORTANT: Use the exact project name as shown in the user's project list - do not translate or modify it. If both projectId and projectName are provided, they must name the same project.",
                     },
                 },
                 required: ['title', 'content'],
@@ -1191,14 +1201,14 @@ const toolSchemas = {
         function: {
             name: 'update_project_description',
             description:
-                'Updates a project description for the current project by default, or another accessible project when projectId or projectName is provided. The project description is added as shared context to chats and threads in that project, so treat the current project description as the base text, preserve useful existing content unless the user clearly wants a rewrite, and when targeting another project by name prefer get_user_projects first so you can inspect the exact project name and its current description before writing.',
+                "Updates the description of the current project by default, or of another accessible project when projectId or projectName is provided. The description is the project's stable profile: what the project is, what belongs in it and what does not, who is involved in which role, and standing rules for assistants. It is added as shared context to every chat and thread in that project, and it is what routing reads to place tasks, calendar events and emails in a project, so keep it short and durable. Leave current status, recent activity, dated progress and weekly summaries out of it unless the user explicitly asks for them: the project's tasks, notes and wiki hold the current state. Treat the current description as the base text and revise it rather than replacing it, unless the user clearly wants a rewrite. To update another project by name, call get_user_projects first to see its exact name and current description.",
             parameters: {
                 type: 'object',
                 properties: {
                     description: {
                         type: 'string',
                         description:
-                            'The full revised project description to persist. This shared project context is added to chats and threads in that project, so treat the current project description as the base text and revise it instead of casually replacing it.',
+                            'The full revised description to persist: a short, stable profile of the project, usually a few sentences. Revise the current description instead of replacing it, and keep status and recent activity out of it unless the user explicitly asks to include them.',
                     },
                     projectId: {
                         type: 'string',

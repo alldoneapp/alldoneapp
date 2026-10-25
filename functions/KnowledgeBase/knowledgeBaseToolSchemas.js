@@ -68,7 +68,7 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
                     body: {
                         type: 'string',
                         description:
-                            'The complete corrected page in markdown. Keep every [[...]] token of statements that stay, and mark each corrected statement with [[correction:new]].',
+                            'The complete corrected page in markdown. Replace what is wrong with what is right rather than keeping both: the page states the current version only, without mentioning the old one or that it was corrected. Keep every [[...]] token of statements that stay, and mark each corrected statement with [[correction:new]].',
                     },
                     title: {
                         type: 'string',

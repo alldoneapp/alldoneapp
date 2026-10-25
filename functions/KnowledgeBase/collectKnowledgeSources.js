@@ -603,4 +603,5 @@ module.exports = {
     splitDocumentText,
     advanceKnowledgeCursor,
     chunkKnowledgeSources,
+    cleanText,
 }

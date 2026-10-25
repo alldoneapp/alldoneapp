@@ -586,6 +586,17 @@ tools and the execution gate:
   via `canCorrectKnowledgeBaseOnChannel`). A phone call over the public network is matched to an
   account by caller ID alone, which can be forged, so it only reads. A heartbeat, recurring task
   or delegated assistant is not a member saying "this is wrong".
+- **MCP clients read and correct too** (Claude, Codex, any agent signed in to the Alldone MCP
+  server through OAuth). They are the one caller with no assistant, so `resolveKnowledgeBaseAccess`
+  answers them by `sourceChannel === 'mcp'`, which only the MCP server's own runtime context sets,
+  and membership is still checked per call. The three tools are separate switches under Settings →
+  MCP (`mcpDisabledTools`), so correcting can be switched off while reading stays on. Over MCP
+  there is no page index in a prompt and no conversation project: `read_knowledge_page` without a
+  slug lists the pages, `projectId` defaults to the user's default project, and
+  `adaptToolSchemaForMcp` in `mcpServerSimple.js` rewrites exactly those parts of the shared
+  descriptions. A correction made this way records `sourceChannel: 'mcp'` and `assistantId: null`.
+  `__tests__/SettingsView/MCPSettingsToolParity.test.js` fails the build when the server serves a
+  tool that Settings → MCP cannot switch off (the six `browser_*` tools are a known exception).
 
 A correction is stored in `knowledgeBases/{id}/corrections/{id}` in the SAME transaction as the
 page revision it produced (`writeKnowledgePage`'s `onWrite`), is cited as `[[correction:ID]]`
@@ -598,6 +609,66 @@ button on a page only opens a chat with the project's assistant (`createBotQuick
 writes the wiki itself. Pinned by `knowledgeBaseAssistant.test.js` and the `project wiki wiring`
 block in `assistantHelper.test.js`.
 
+**A page is the current state, never its history.** The revisions already keep every past version
+of a page, so `WIKI_RULES` in `knowledgeBaseIngest.js` forbids narrating how the project got there
+(meeting chronology, "first …, then …"), tells the model to replace a superseded statement and its
+citation instead of adding the new one beside it, and allows alternatives only while a question is
+still undecided: once decided, the decision and its reason stay and the rejected options go. Both
+ingest modes list source cards oldest first, so a later card wins a disagreement; the rebuild path
+sorts them itself because `loadKnowledgeSourcesByKeys` returns them in page order. The
+`correct_knowledge_page` body follows the same rule. Pinned by the `current state` case in
+`knowledgeBaseIngest.test.js`.
+
+An ingest run only rewrites a page when one of its sources changes, so pages written before these
+rules keep their history until a **one-time current-state pass** reaches them
+(`knowledgeCurrentStateRewrite.js`, requested by `migration/rewriteKnowledgeBasesToCurrentState.js`
+after `runKnowledgeBaseIngest` is deployed; dry run by default). The request is only a list of slugs
+on the wiki document (`currentStateRewrite.pendingSlugs`) plus making the wiki due; the run works
+through it after its rebuilds and before the delta, at most `MAX_CURRENT_STATE_REWRITES_PER_RUN`
+conversations per run, each from the page's own text plus the cards of the sources it cites, billed
+to the owner and stopped by the monthly cap like any other run. Three details: the store sees the
+rewrite as an ordinary `ingest` edit (it read the page first and keeps its `sourceKeys`; only a
+rebuild replaces them), so neither the store nor the Updates feed needs a new mode (the feed lists
+it as an update that badges nobody, like any change the wiki makes itself); a page this run has
+just rebuilt is skipped (`lastRunId`), and a page that is archived, hidden or has no readable source
+leaves the list without a model call; and a run stopped mid-conversation leaves that slug
+pending, so the page is rewritten by the next run rather than skipped. Pinned by
+`knowledgeCurrentStateRewrite.test.js` and the `one-time current-state pass` block of
+`knowledgeBaseIngest.test.js`.
+
+**Every page revision is a line in the Updates feed, and the line carries no page text.**
+`onCreateKnowledgePageRevisionSecondGen` (`KnowledgeBase/knowledgeWikiFeed.js`) turns each new
+revision — ingest, rebuild, archive, correction, undo — into one feed entry under ONE feed object
+per project and day (objectId and type `wiki`, never the project id: `projectsFeeds` is keyed by
+object id alone and the project's own object lives there). The entry stores `wikiSlug`,
+`wikiRevision` and `wikiChange` and nothing else of the page — no title, summary or reason —
+because a withdrawn source is removed from the page and its revisions by
+`knowledgeSourceInvalidation.js`, and nothing would remove a copy from `feedsStore`, the followed
+stores, `feedsCount`, `projectsFeeds` and the activity summary. The client reads the title of that
+revision for the line (`useWikiFeedPageTitle`, falling back to the slug) and the diff from the
+revisions themselves. Only a change a member made (correction, undo) badges the other members;
+the wiki's own nightly changes are listed but badge nobody, which is what kept the wiki out of the
+feed in the first place. Ids are derived from slug + revision, so a redelivered trigger rewrites
+the same documents. A line opens `/projects/{id}/wiki/{slug}/changes/{revision}`
+(`WikiPageChange`, diff in `wikiDiff.js`: LCS over lines, word highlights inside an edited line,
+folded context), which also works for archived and hidden pages because it reads revisions, not
+the visible page list, and shows a redacted revision as removed and nothing more. Revisions record
+`created` so a new page reads "created", not "updated". Pinned by
+`knowledgeWikiFeed.test.js` (including that no page text reaches any feed document),
+`components/WikiView/wikiDiff.test.js`, the `what a revision changed` block of `WikiView.test.js`
+and `components/Feeds/FeedsObjects/WikiObject.test.js`.
+
+**The project description frames the wiki and is never one of its sources.** The two have
+separate jobs. The description (`projects/{id}.description`) is a short, stable profile written by
+people: what the project is, what belongs in it, standing rules. Task, calendar and Gmail routing,
+the email channel, VM jobs and projects without a wiki depend on it. The wiki holds everything that
+changes. Every ingest conversation therefore gets the description, capped at
+`PROJECT_DESCRIPTION_MAX_CHARS`, to judge scope and framing. It may never
+be cited or copied onto a page. It is free text written without a visibility filter and has no
+source key, so `knowledgeSourceInvalidation.js` could never take a copied statement back out.
+`update_project_description` and its base instruction steer assistants the same way: status
+and recent activity stay out of the description unless the user explicitly asks for them.
+
 **A member can hand the wiki a document: "put this deck into the wiki" (AT-2816).** The runs that
 may correct also get `add_knowledge_document` and `remove_knowledge_document`
 (`knowledgeDocuments.js`), offered as soon as the wiki is switched ON, not only once it has a page,
@@ -605,15 +676,17 @@ because a deck is often the first thing a new wiki gets. The model passes no con
 reads the uploaded file of THIS conversation (`readChatAttachmentFile`, the same resolution as
 `get_chat_attachment`), extracts up to 120,000 characters and stores them at
 `knowledgeBases/{id}/documents/{id}`, then pulls `nextRunAt` to now and enqueues a run. The ingest
-reads documents as a fifth source type, cited `[[document:ID]]`, with a rule to work the document
+reads documents as a source type of their own, cited `[[document:ID]]`, with a rule to work the document
 into the pages it concerns rather than write a summary page next to them. Four things are
 load-bearing. A long document is split into parts of at most `DOCUMENT_PART_MAX_TOKENS` (10,000)
 because `chunkKnowledgeSources` CUTS an oversized card instead of splitting it — a deck would
 otherwise lose everything after its first ~55,000 characters, silently. Only the LAST part carries
 the cursor position, so a run that stops after part 2 of 4 reads the whole document again rather
 than never seeing parts 3 and 4. A document is not a note on purpose: it lives inside the wiki tree,
-shares its audience by construction (like a correction), and never shows up in notes lists, feeds
-or follower notifications. And removal runs the same `invalidateKnowledgeSource` as an object that
+shares its audience by construction (like a correction), and never shows up in notes lists or
+follower notifications; only the page revisions it causes reach the Updates feed, like any other
+wiki change. The current-state pass and rebuilds load all its parts through
+`loadKnowledgeSourcesByKeys`. And removal runs the same `invalidateKnowledgeSource` as an object that
 turned private — pages emptied, hidden and rebuilt, revisions redacted — after deleting the stored
 text, because members can read the whole tree. The same text hash already active answers
 `alreadyAdded` instead of feeding the document twice.

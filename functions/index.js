@@ -5990,6 +5990,26 @@ exports.runKnowledgeBaseIngest = onTaskDispatched(
     }
 )
 
+// Every new page revision, whoever wrote it, becomes one line in the project's Updates feed. The
+// entry carries no page text; see KnowledgeBase/knowledgeWikiFeedModel.js.
+exports.onCreateKnowledgePageRevisionSecondGen = onDocumentCreated(
+    {
+        document: 'knowledgeBases/{projectId}/pages/{pageId}/revisions/{revisionId}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { onKnowledgePageRevisionCreated } = require('./KnowledgeBase/knowledgeWikiFeed')
+        await onKnowledgePageRevisionCreated({
+            db: admin.firestore(),
+            projectId: event.params.projectId,
+            slug: event.params.pageId,
+            revision: event.data?.data() || {},
+        })
+    }
+)
+
 // Only enqueues due wiki runs; the run itself lives in runKnowledgeBaseIngest.
 exports.dispatchKnowledgeBaseIngests = onSchedule(
     {

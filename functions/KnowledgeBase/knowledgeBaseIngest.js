@@ -1,9 +1,10 @@
 'use strict'
 
-// One ingest run of a project wiki: rebuild the pages that lost a source, then work through what
-// changed since the last run, a prompt-sized chunk at a time, and let the model fold it into the
-// pages with three tools of its own (read_page, write_page, archive_page). Runs unattended from the
-// runKnowledgeBaseIngest Cloud Tasks worker.
+// One ingest run of a project wiki: rebuild the pages that lost a source, rewrite the pages a
+// one-time current-state pass is still waiting for (knowledgeCurrentStateRewrite.js), then work
+// through what changed since the last run, a prompt-sized chunk at a time, and let the model fold
+// it into the pages with three tools of its own (read_page, write_page, archive_page). Runs
+// unattended from the runKnowledgeBaseIngest Cloud Tasks worker.
 //
 // Order matters: rebuilds come first so that the ingest prompts never see a page that still repeats
 // a withdrawn source, not even in the index.
@@ -29,6 +30,7 @@ const {
     advanceKnowledgeCursor,
     buildCorrectionCard,
     chunkKnowledgeSources,
+    cleanText,
     collectKnowledgeSources,
     loadKnowledgeSourcesByKeys,
 } = require('./collectKnowledgeSources')
@@ -49,6 +51,7 @@ const {
     loadKnowledgePages,
     writeKnowledgePage,
 } = require('./knowledgePageStore')
+const { readPendingRewriteSlugs } = require('./knowledgeCurrentStateRewrite')
 
 // The run shares the heartbeat's budget for the same reason: it is delivered through Cloud Tasks,
 // whose dispatch deadline tops out at 30 minutes.
@@ -59,8 +62,11 @@ const MIN_CONVERSATION_TIME_MS = 3 * 60 * 1000
 const CHUNK_MAX_TOKENS = 16000
 const MAX_COLLECT_ROUNDS = 4
 const MAX_REBUILDS_PER_RUN = 10
+const MAX_CURRENT_STATE_REWRITES_PER_RUN = 10
 const MAX_TOOL_ROUNDS_PER_CONVERSATION = 40
 const MAX_CORRECTIONS_IN_PROMPT = 30
+// The project description rides in every conversation of a run, so it is capped like a source card.
+const PROJECT_DESCRIPTION_MAX_CHARS = 4000
 const CONTINUE_DELAY_MS = 60 * 1000
 const NIGHTLY_HOUR = 3
 const INGEST_TEMPERATURE = 'TEMPERATURE_LOW'
@@ -143,11 +149,17 @@ async function loadRecentCorrections(db, projectId) {
     }
 }
 
+// The wiki is the project's current state, not its history: the revisions already keep every past
+// version of a page, so a page that also narrates how it got there only buries what is true now.
+// Alternatives are the one exception, and only while nothing has been decided.
 const WIKI_RULES = [
     'Rules:',
+    '- Every page describes the current state of its subject: what is true today. It is a reference, not minutes or a changelog, and the wiki keeps older versions of each page on its own. Do not narrate how the project got here ("in the meeting on …", "first …, then …", "was discussed", "originally planned"). A finished task or a past meeting counts for what it changed or decided, not as an event.',
     '- Integrate what is durable and useful for the people working on the project: who is who, customers and partners, decisions and their reasons, terms, how things are done, open questions and risks, milestones. Skip trivia and routine status noise.',
+    '- Options belong on a page only while the decision is still open; then the open question and the options still on the table are the current state. Once something is decided, state the decision and its reason and drop the alternatives that were not chosen.',
+    '- When a source changes or settles something a page already says, rewrite that statement to the new state and remove the outdated one together with its citation, instead of adding the new version next to the old. Source cards are listed oldest first; a later card describes a more recent state than an earlier one and than what the pages say about the same object.',
     '- Prefer extending an existing page over creating a new one. Keep each page focused on one subject; split a page that grows past about 1500 words and link the parts.',
-    '- Read a page with read_page before you replace it. write_page replaces the whole body, so keep what is still true.',
+    '- Read a page with read_page before you replace it. write_page replaces the whole body: keep what is still true, leave out what no longer is, and bring any older passage that still narrates history up to the current state.',
     '- Cite every statement with the token of the source it came from, exactly as given: [[task:ID]], [[goal:ID]], [[note:ID]], [[contact:ID]], [[correction:ID]], [[document:ID]]. List every source you used in sourceKeys.',
     '- A document (a [[document:ID]] card) was added by a project member so that the wiki takes it in: work its substance into the pages it concerns and update what it supersedes, rather than writing a page that only summarizes the document; create a new page only for a subject no page covers yet. When the member said what to take from it, follow that. A long document arrives in parts; each part is a card of its own.',
     '- Link other wiki pages with [[slug]] or [[slug|label]].',
@@ -158,9 +170,24 @@ const WIKI_RULES = [
     '- When you are done, answer with one short line describing what you changed (or that nothing was worth adding).',
 ].join('\n')
 
-function buildSystemPrompt({ projectName, instructions, index, corrections, task }) {
+// The project description frames the wiki but is never one of its sources. It is free text that any
+// member, or an assistant acting for one, writes without a visibility filter, and it has no source
+// key: a statement copied from it could not be cited, and knowledgeSourceInvalidation.js, which
+// finds text only through the sources a page cites, could never take it back out of a page.
+const PROJECT_DESCRIPTION_RULE =
+    'Use it to judge what belongs in this wiki and how to frame its pages. It is not a source: never cite it and never copy a statement from it into a page; everything on a page comes from a source card or a correction. It can be out of date, so where it disagrees with a source card or a correction, those win.'
+
+function buildSystemPrompt({ projectName, projectDescription, instructions, index, corrections, task }) {
     return [
         `You maintain the wiki of the project "${projectName}" in Alldone: a small set of markdown pages that capture what the project knows. Project members read it, and the project's assistants use it as context.`,
+        ...(projectDescription
+            ? [
+                  '',
+                  'Project description, as the project members wrote it:',
+                  projectDescription,
+                  PROJECT_DESCRIPTION_RULE,
+              ]
+            : []),
         '',
         task,
         '',
@@ -236,7 +263,12 @@ function createWikiTools({
     const readRevisions = new Map()
     const schemas = buildWikiToolSchemas()
     const outOfScope = slug =>
-        mode === 'rebuild' && slug !== targetSlug ? `Only the page "${targetSlug}" may be changed in this run.` : null
+        (mode === 'rebuild' || mode === 'rewrite') && slug !== targetSlug
+            ? `Only the page "${targetSlug}" may be changed in this run.`
+            : null
+    // A current-state rewrite is an ordinary edit as far as the store is concerned: the page was
+    // read first and keeps the sources it had. Only a rebuild replaces them.
+    const storeMode = mode === 'rewrite' ? 'ingest' : mode
 
     return {
         read_page: {
@@ -289,7 +321,7 @@ function createWikiTools({
                               : existing && existing.archived !== true
                                 ? null
                                 : Number(existing?.revision) || 0,
-                    mode,
+                    mode: storeMode,
                     runId,
                     reason: args.reason,
                     now: now(),
@@ -319,7 +351,7 @@ function createWikiTools({
                     projectId,
                     slug: key,
                     expectedRevision: readRevisions.has(key) ? readRevisions.get(key) : null,
-                    mode,
+                    mode: storeMode,
                     runId,
                     reason,
                     now: now(),
@@ -405,7 +437,16 @@ async function runKnowledgeBaseIngest({
     const deadline = startedAt + maxRunWallClockMs
     const runRef = db.doc(`${getKnowledgeRunsPath(projectId)}/${leaseId}`)
     const changes = []
-    const stats = { sources: 0, chunks: 0, rebuilt: 0, rebuildArchived: 0, goldSpent: 0, truncated: [] }
+    const stats = {
+        sources: 0,
+        chunks: 0,
+        rebuilt: 0,
+        rebuildArchived: 0,
+        rewritten: 0,
+        rewriteUnchanged: 0,
+        goldSpent: 0,
+        truncated: [],
+    }
     let cursor = knowledgeBase.cursor || {}
     let stopReason = null
     let moreWork = false
@@ -469,7 +510,12 @@ async function runKnowledgeBaseIngest({
         if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop('monthly_cap')
 
         const projectSnapshot = await db.doc(`projects/${projectId}`).get()
-        const projectName = (projectSnapshot.exists && projectSnapshot.data()?.name) || projectId
+        const projectData = (projectSnapshot.exists && projectSnapshot.data()) || {}
+        const projectName = projectData.name || projectId
+        const projectDescription =
+            typeof projectData.description === 'string'
+                ? cleanText(projectData.description, PROJECT_DESCRIPTION_MAX_CHARS)
+                : ''
         const pages = await loadKnowledgePages(db, projectId)
         const corrections = await loadRecentCorrections(db, projectId)
         const correctionKeys = corrections.map(({ id }) => `correction:${id}`)
@@ -489,18 +535,22 @@ async function runKnowledgeBaseIngest({
             const remainingKeys = (Array.isArray(page.sourceKeys) ? page.sourceKeys : []).filter(
                 key => !(page.removedSourceKeys || []).includes(key)
             )
-            const sources = await loadSourcesByKeys({ db, projectId, keys: remainingKeys, ...sourceOptions })
+            // Oldest first, like the delta: when two sources disagree, the later one is the current state.
+            const sources = (await loadSourcesByKeys({ db, projectId, keys: remainingKeys, ...sourceOptions })).sort(
+                (left, right) => left.updatedAt - right.updatedAt || (left.key < right.key ? -1 : 1)
+            )
             if (sources.length) {
                 await conversation({
                     label: `rebuild-${page.slug}`,
                     systemPrompt: buildSystemPrompt({
                         projectName,
+                        projectDescription,
                         instructions: knowledgeBase.instructions,
                         index: buildKnowledgeIndex(pages),
                         corrections,
                         task: `Rebuild the page [[${page.slug}]] from scratch, using ONLY the source cards in the next message. Its previous text is withheld on purpose: a source it relied on is no longer available, and nothing that source said may come back. Keep the slug "${page.slug}". If the remaining sources do not support a useful page, call archive_page.`,
                     }),
-                    userPrompt: `Source cards for [[${page.slug}]]:\n\n${sources.map(source => source.text).join('\n\n')}`,
+                    userPrompt: `Source cards for [[${page.slug}]], oldest first:\n\n${sources.map(source => source.text).join('\n\n')}`,
                     tools: createWikiTools({
                         db,
                         projectId,
@@ -539,7 +589,69 @@ async function runKnowledgeBaseIngest({
         }
         if (pendingRebuilds.length > MAX_REBUILDS_PER_RUN) moreWork = true
 
-        // 2. Fold in what changed since the last run.
+        // 2. The one-time current-state pass (knowledgeCurrentStateRewrite.js), before the delta so
+        //    that new sources land on pages that no longer narrate history. A slug leaves the list
+        //    once its conversation is over, or straight away when there is nothing to rewrite (the
+        //    page is gone, hidden or being rebuilt, or none of its sources is readable any more); a
+        //    run that stops mid-conversation leaves it for the next one.
+        let pendingRewrites = readPendingRewriteSlugs(knowledgeBase.currentStateRewrite)
+        if (pendingRewrites) {
+            let conversations = 0
+            while (pendingRewrites.length && conversations < MAX_CURRENT_STATE_REWRITES_PER_RUN) {
+                const slug = pendingRewrites[0]
+                const page = pages.get(slug)
+                // A page this run has already written (a rebuild) follows the current rules already.
+                const sources =
+                    isKnowledgePageVisible(page) && page.lastRunId !== leaseId
+                        ? (
+                              await loadSourcesByKeys({ db, projectId, keys: page.sourceKeys || [], ...sourceOptions })
+                          ).sort((left, right) => left.updatedAt - right.updatedAt || (left.key < right.key ? -1 : 1))
+                        : []
+                if (sources.length) {
+                    const revisionBefore = Number(page.revision) || 0
+                    conversations += 1
+                    await conversation({
+                        label: `rewrite-${slug}`,
+                        systemPrompt: buildSystemPrompt({
+                            projectName,
+                            projectDescription,
+                            instructions: knowledgeBase.instructions,
+                            index: buildKnowledgeIndex(pages),
+                            corrections,
+                            task: `Bring the page [[${slug}]] up to the current state. It was written before the rules below and may still narrate history, keep superseded statements next to newer ones, or list options that a decision has since settled. Read it with read_page first, then replace it with write_page. The next message holds the source cards of everything it cites, oldest first; where they show a newer state than the page, the page follows them. Keep the slug "${slug}", its subject and every statement that is still true: the cards may be shortened, so a statement they do not contradict stays. Add nothing the cards and corrections do not support. If the page already describes only the current state, do not write it and answer that nothing needed to change; if nothing on it is still true, call archive_page.`,
+                        }),
+                        userPrompt: `Source cards for [[${slug}]], oldest first:\n\n${sources.map(source => source.text).join('\n\n')}`,
+                        tools: createWikiTools({
+                            db,
+                            projectId,
+                            pages,
+                            runId: leaseId,
+                            mode: 'rewrite',
+                            targetSlug: slug,
+                            allowedSourceKeys: new Set([...sources.map(source => source.key), ...correctionKeys]),
+                            sourceLabels: { ...correctionLabels, ...labelsOf(sources) },
+                            now: clock,
+                            fieldValue,
+                            onChange,
+                        }),
+                    })
+                    const after = pages.get(slug)
+                    if (after?.archived !== true) {
+                        if ((Number(after?.revision) || 0) > revisionBefore) stats.rewritten += 1
+                        else stats.rewriteUnchanged += 1
+                    }
+                }
+                pendingRewrites = pendingRewrites.slice(1)
+                await db.doc(getKnowledgeBasePath(projectId)).update({
+                    currentStateRewrite: pendingRewrites.length
+                        ? { ...knowledgeBase.currentStateRewrite, pendingSlugs: pendingRewrites }
+                        : fieldValue.delete(),
+                })
+            }
+            if (pendingRewrites.length) moreWork = true
+        }
+
+        // 3. Fold in what changed since the last run.
         for (let round = 0; round < MAX_COLLECT_ROUNDS; round++) {
             const collected = await collectSources({ db, projectId, cursor, now: clock(), ...sourceOptions })
             stats.truncated.push(...collected.stats.truncated)
@@ -549,6 +661,7 @@ async function runKnowledgeBaseIngest({
                     label: `ingest-${round}-${chunkIndex}`,
                     systemPrompt: buildSystemPrompt({
                         projectName,
+                        projectDescription,
                         instructions: knowledgeBase.instructions,
                         index: buildKnowledgeIndex(pages),
                         corrections,
@@ -643,6 +756,7 @@ module.exports = {
     INGEST_LEASE_MS,
     CHUNK_MAX_TOKENS,
     MAX_REBUILDS_PER_RUN,
+    MAX_CURRENT_STATE_REWRITES_PER_RUN,
     CONTINUE_DELAY_MS,
     GOLD_SOURCE,
     nextNightlyRunAt,
