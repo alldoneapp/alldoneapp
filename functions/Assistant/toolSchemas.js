@@ -1201,14 +1201,14 @@ const toolSchemas = {
         function: {
             name: 'update_project_description',
             description:
-                'Updates a project description for the current project by default, or another accessible project when projectId or projectName is provided. The project description is added as shared context to chats and threads in that project, so treat the current project description as the base text, preserve useful existing content unless the user clearly wants a rewrite, and when targeting another project by name prefer get_user_projects first so you can inspect the exact project name and its current description before writing.',
+                "Updates the description of the current project by default, or of another accessible project when projectId or projectName is provided. The description is the project's stable profile: what the project is, what belongs in it and what does not, who is involved in which role, and standing rules for assistants. It is added as shared context to every chat and thread in that project, and it is what routing reads to place tasks, calendar events and emails in a project, so keep it short and durable. Leave current status, recent activity, dated progress and weekly summaries out of it unless the user explicitly asks for them: the project's tasks, notes and wiki hold the current state. Treat the current description as the base text and revise it rather than replacing it, unless the user clearly wants a rewrite. To update another project by name, call get_user_projects first to see its exact name and current description.",
             parameters: {
                 type: 'object',
                 properties: {
                     description: {
                         type: 'string',
                         description:
-                            'The full revised project description to persist. This shared project context is added to chats and threads in that project, so treat the current project description as the base text and revise it instead of casually replacing it.',
+                            'The full revised description to persist: a short, stable profile of the project, usually a few sentences. Revise the current description instead of replacing it, and keep status and recent activity out of it unless the user explicitly asks to include them.',
                     },
                     projectId: {
                         type: 'string',

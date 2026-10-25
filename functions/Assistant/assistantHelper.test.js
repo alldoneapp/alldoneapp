@@ -7762,6 +7762,10 @@ describe('assistant project description tool', () => {
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Current project description text.')
         expect(systemMessages).toContain('Treat the current project description as the base text')
+        expect(systemMessages).toContain("The project description is the project's stable profile")
+        expect(systemMessages).toContain(
+            'Keep current status, recent activity and dated progress out of it unless the user explicitly asks for them'
+        )
         expect(systemMessages).toContain('call get_user_projects first')
     })
 

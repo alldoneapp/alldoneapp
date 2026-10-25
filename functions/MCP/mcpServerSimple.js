@@ -40,6 +40,11 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'read_artifact',
     'create_artifact',
     'update_artifact',
+    // Project wiki. In the app these come with the assistant rather than Tools Access; over MCP each
+    // one is a separate switch under Settings → MCP, so correcting can be turned off on its own.
+    'read_knowledge_page',
+    'correct_knowledge_page',
+    'undo_knowledge_correction',
     // Contacts
     'update_contact',
     'get_contacts',
@@ -87,6 +92,36 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
 ]
 
 const MCP_DELEGATED_ASSISTANT_TOOL_SET = new Set(MCP_DELEGATED_ASSISTANT_TOOLS)
+
+const MCP_KNOWLEDGE_BASE_TOOL_SET = new Set([
+    'read_knowledge_page',
+    'correct_knowledge_page',
+    'undo_knowledge_correction',
+])
+
+// The wiki schemas are written for an assistant, which has the page index in its prompt and a
+// conversation whose project is the default. An MCP client has neither, so these are the parts of
+// their descriptions that say otherwise.
+const MCP_KNOWLEDGE_BASE_TOOL_DESCRIPTIONS = {
+    read_knowledge_page:
+        "Read a page of a project's wiki: what the project knows, compiled from its shared tasks, goals, notes and contacts. Call it without a slug first to list the pages of the project, then pass a page's slug to read it. Use get_user_projects to find the projectId.",
+}
+const MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION =
+    "The ID of the project whose wiki to use (see get_user_projects). Defaults to the user's default project."
+
+function adaptToolSchemaForMcp(schema) {
+    const { name, description, parameters } = schema.function
+    if (!MCP_KNOWLEDGE_BASE_TOOL_SET.has(name)) return { name, description, inputSchema: parameters }
+    const properties = { ...(parameters.properties || {}) }
+    if (properties.projectId) {
+        properties.projectId = { ...properties.projectId, description: MCP_KNOWLEDGE_BASE_PROJECT_ID_DESCRIPTION }
+    }
+    return {
+        name,
+        description: MCP_KNOWLEDGE_BASE_TOOL_DESCRIPTIONS[name] || description,
+        inputSchema: { ...parameters, properties },
+    }
+}
 
 // MCP-only tools that have no internal-assistant equivalent. These keep their
 // dedicated handlers on the server class and are appended to tools/list.
@@ -969,6 +1004,12 @@ class AlldoneSimpleMCPServer {
             !this.hasNonEmptyString(toolArgs.projectName)
         ) {
             toolArgs.projectId = contextProjectId
+        }
+
+        if (MCP_KNOWLEDGE_BASE_TOOL_SET.has(name) && !contextProjectId) {
+            throw new Error(
+                'Pass the projectId of the project whose wiki you want to use; get_user_projects lists your projects.'
+            )
         }
 
         const runtimeContext = await this.buildDelegatedToolRuntimeContext(userId)
@@ -1986,11 +2027,7 @@ class AlldoneSimpleMCPServer {
                 // surfaces can never drift. MCP-only tools are appended afterwards.
                 const delegatedTools = getToolSchemas(MCP_DELEGATED_ASSISTANT_TOOLS)
                     .filter(schema => !disabled.has(schema.function.name))
-                    .map(schema => ({
-                        name: schema.function.name,
-                        description: schema.function.description,
-                        inputSchema: schema.function.parameters,
-                    }))
+                    .map(adaptToolSchemaForMcp)
 
                 const tools = {
                     tools: [...delegatedTools, ...MCP_NATIVE_ONLY_TOOL_SCHEMAS],
