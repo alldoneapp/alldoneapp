@@ -84,6 +84,45 @@ describe('WhatsApp call Gold reconciliation', () => {
         expect(transactions[0][1]).toEqual(expect.objectContaining({ source: 'browser_call', channel: 'browser_call' }))
     })
 
+    // AT-2487. A realtime call is token-priced (totalTokens / 100), so it is model-backed
+    // spend and its Gold total means nothing across a model change without the dimension.
+    test('attributes call spend to the realtime model frozen on the session', async () => {
+        admin.__mock.set('users/user-1', { gold: 10 })
+        admin.__mock.set('whatsAppCallSessions/call-1', {
+            userId: 'user-1',
+            projectId: 'project-1',
+            chatId: 'chat-1',
+            channel: 'browser_call',
+            realtimeModel: 'gpt-realtime-2026-08-01',
+            totalTokens: 0,
+            billedGold: 0,
+        })
+
+        await reconcileCallUsage({ sessionId: 'call-1', eventId: 'response-1', totalTokens: 120 })
+
+        const [, entry] = admin.__mock.list('users/user-1/goldTransactions/')[0]
+        expect(entry).toEqual(expect.objectContaining({ model: 'gpt-realtime-2026-08-01' }))
+    })
+
+    // A session created before this shipped has no realtimeModel. Writing an empty string
+    // would land it in the rollup's `unknown` bucket and imply we know something we do not.
+    test('omits the model entirely for a session that predates the field', async () => {
+        admin.__mock.set('users/user-1', { gold: 10 })
+        admin.__mock.set('whatsAppCallSessions/call-1', {
+            userId: 'user-1',
+            projectId: 'project-1',
+            chatId: 'chat-1',
+            channel: 'browser_call',
+            totalTokens: 0,
+            billedGold: 0,
+        })
+
+        await reconcileCallUsage({ sessionId: 'call-1', eventId: 'response-1', totalTokens: 120 })
+
+        const [, entry] = admin.__mock.list('users/user-1/goldTransactions/')[0]
+        expect(entry).not.toHaveProperty('model')
+    })
+
     test('deducts the remaining Gold and reports exhaustion', async () => {
         admin.__mock.set('users/user-1', { gold: 1 })
         admin.__mock.set('whatsAppCallSessions/call-1', {

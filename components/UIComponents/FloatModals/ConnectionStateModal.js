@@ -37,7 +37,7 @@ export default function ConnectionStateModal({ connectionState, closeModal }) {
                 {translate(
                     isOnline
                         ? 'Alldone is online again, all functionalities are available'
-                        : 'Edition in notes will be disabled till Alldone goes back online again'
+                        : 'You can keep working with the data available on this device. Your changes will sync when Alldone is back online.'
                 )}
             </Text>
             <CloseButton style={localstyles.closeButton} close={closeModal} />
@@ -46,20 +46,19 @@ export default function ConnectionStateModal({ connectionState, closeModal }) {
 }
 
 const localstyles = StyleSheet.create({
+    // Pure card: ConnectionStateToast (the single mount) owns the on-screen
+    // position; fixed height is gone so longer translations don't clip.
     container: {
-        zIndex: 100000,
-        position: 'absolute',
-        right: 56,
-        bottom: 56,
         borderRadius: 4,
         paddingVertical: 16,
         paddingLeft: 16,
         paddingRight: 8,
-        width: 256,
-        height: 102,
+        width: '100%',
+        maxWidth: 320,
+        minHeight: 88,
         ...Platform.select({
             web: {
-                boxShadow: `${0}px ${16}px ${24}px rgba(0,0,0,0.04), ${0}px ${8}px ${16}px rgba(0, 0, 0, 0.04)`,
+                boxShadow: `${0}px ${16}px ${24}px rgba(0,0,0,0.08), ${0}px ${8}px ${16}px rgba(0, 0, 0, 0.08)`,
             },
         }),
     },

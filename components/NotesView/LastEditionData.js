@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import moment from 'moment'
+import { translate } from '../../i18n/TranslationService'
 
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import { getUserPresentationDataInProject } from '../ContactsView/Utils/ContactsHelper'
@@ -12,8 +13,11 @@ export default function LastEditionData({ note, projectId, inCommentPopup }) {
     const { lastEditionDate, views, lastEditorId } = note
 
     const parseDate = date => {
-        if (Date.now() - date < 60) return 'Just now'
-        return `Edited: ${moment(date).format(`${getTimeFormat(true)} of ${getDateFormat()}`)}`
+        if (Date.now() - date < 60000) return translate('Just now')
+        return translate('Edited: Time on Date', {
+            time: moment(date).format(getTimeFormat(true)),
+            date: moment(date).format(getDateFormat()),
+        })
     }
 
     useEffect(() => {
@@ -24,7 +28,7 @@ export default function LastEditionData({ note, projectId, inCommentPopup }) {
     return (
         <View style={localStyles.dateAndSubHint}>
             <Text style={[styles.caption2, localStyles.subHintText, inCommentPopup && localStyles.textInCommentPopup]}>
-                {`${parseDate(lastEditionDate)} • ${editorName} • ${views} views`}
+                {`${parseDate(lastEditionDate)} • ${editorName} • ${views === 1 ? translate('1 view') : translate('Amount views', { amount: views })}`}
             </Text>
         </View>
     )

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -14,9 +14,9 @@ import {
     MODEL_GPT4O,
     MODEL_GPT5_1,
     MODEL_GPT5_5,
-    MODEL_GPT5_6_SOL,
+    MODEL_GPT6_SOL,
     MODEL_GPT5_6_TERRA,
-    MODEL_GPT5_6_LUNA,
+    MODEL_GPT6_LUNA,
     MODEL_GPT5_2,
     MODEL_SONAR,
     MODEL_SONAR_PRO,
@@ -66,9 +66,9 @@ export default function ModelWrapper({ disabled, projectId, assistant }) {
         if (model === MODEL_GPT4O) return 'GPT 4o'
         if (model === MODEL_GPT5_1) return 'GPT 5_1'
         if (model === MODEL_GPT5_5) return 'GPT 5_5'
-        if (model === MODEL_GPT5_6_SOL) return 'GPT 5_6 Sol'
+        if (model === MODEL_GPT6_SOL || model === 'MODEL_GPT5_6_SOL') return 'GPT 6.1 Sol'
         if (model === MODEL_GPT5_6_TERRA) return 'GPT 5_6 Terra'
-        if (model === MODEL_GPT5_6_LUNA) return 'GPT 5_6 Luna'
+        if (model === MODEL_GPT6_LUNA || model === 'MODEL_GPT5_6_LUNA') return 'GPT 6 Luna'
         if (model === MODEL_GPT5_2) return 'GPT 5_2'
         if (model === MODEL_SONAR) return 'Sonar'
         if (model === MODEL_SONAR_PRO) return 'Sonar Pro'
@@ -80,7 +80,7 @@ export default function ModelWrapper({ disabled, projectId, assistant }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={<AssistantModelModal updateModel={updateModel} closeModal={closeModal} model={model} />}
             align={'start'}
             position={['bottom']}
@@ -104,6 +104,6 @@ export default function ModelWrapper({ disabled, projectId, assistant }) {
                     title={translate(getModelText())}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

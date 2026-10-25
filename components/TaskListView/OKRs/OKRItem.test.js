@@ -83,6 +83,7 @@ const findDoneForTodayButtons = tree =>
 describe('OKRItem', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+        setUserOKRHiddenInAllProjectsToday.mockResolvedValue(true)
         mockState = createState()
     })
 

@@ -13,6 +13,12 @@ jest.mock('../Followers/followerHelper', () => ({
     tryAddFollower: jest.fn().mockResolvedValue(undefined),
 }))
 
+const mockLoadFeedsGlobalState = jest.fn()
+jest.mock('firebase-admin', () => ({ __esModule: false, name: 'admin-double' }))
+jest.mock('../GlobalState/globalState', () => ({
+    loadFeedsGlobalState: (...args) => mockLoadFeedsGlobalState(...args),
+}))
+
 jest.mock('../Email/emailChannelHelpers', () => ({
     normalizeEmailAddress: value =>
         String(value || '')
@@ -56,6 +62,44 @@ describe('contactUpdateHelper', () => {
         expect(result.changes).toEqual(['email to "jane@example.com"'])
         expect(createContactEmailChangedFeed).toHaveBeenCalled()
         expect(tryAddFollower).toHaveBeenCalled()
+    })
+
+    test("loads the feed helpers' global state from the project before adding the follower", async () => {
+        // Production failure: update_contact on a cold instance died in tryAddFollower because
+        // nothing had loaded `appAdmin` into the feeds global state.
+        const order = []
+        mockLoadFeedsGlobalState.mockImplementation(() => order.push('state'))
+        tryAddFollower.mockImplementation(async () => order.push('follower'))
+        const db = {
+            doc(path) {
+                if (path === 'projects/project-1') {
+                    return {
+                        path,
+                        get: async () => ({ exists: true, data: () => ({ name: 'Sales', userIds: ['user-1'] }) }),
+                    }
+                }
+                return { path }
+            },
+        }
+
+        await updateContactFields({
+            db,
+            projectId: 'project-1',
+            contact: { uid: 'contact-1', displayName: 'Jane Doe', company: '' },
+            userId: 'user-1',
+            feedUser: { uid: 'user-1', displayName: 'User 1' },
+            updates: { company: 'Example' },
+        })
+
+        expect(mockLoadFeedsGlobalState).toHaveBeenCalledWith(
+            expect.objectContaining({ name: 'admin-double' }),
+            expect.objectContaining({ name: 'admin-double' }),
+            { uid: 'user-1', displayName: 'User 1' },
+            { name: 'Sales', userIds: ['user-1'], id: 'project-1' },
+            [],
+            null
+        )
+        expect(order).toEqual(['state', 'follower'])
     })
 
     test('returns no-op when update does not change the contact', async () => {

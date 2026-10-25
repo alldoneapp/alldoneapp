@@ -17,7 +17,7 @@ const { THREAD_CONTEXT_MESSAGE_LIMIT } = require('../Assistant/contextLimits')
 const { resolveUserTimezoneOffset } = require('../Assistant/contextTimestampHelper')
 const { getConversationHistory } = require('./whatsAppDailyTopic')
 const { getWhatsAppCallConfig, normalizeRealtimeVoice } = require('./whatsAppCallConfig')
-const { reconcileCallUsage } = require('./whatsAppCallGold')
+const { TOKENS_PER_GOLD, reconcileCallUsage } = require('./whatsAppCallGold')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
 const { EMPTY_CALL_RECAP, generateCallRecap } = require('./whatsAppCallRecap')
 const {
@@ -284,7 +284,19 @@ async function sendCallRecap(sessionId) {
     if (!recap) {
         try {
             recap = await generateCallRecap(config, session, await getCallTranscript(session))
-            if (recap.tokens > 0) {
+            if (recap.tokens > 0 && session.voiceProvider === 'gpt-live') {
+                // A Live session's billedGold already holds voice minutes, which the
+                // token-based reconciler would treat as prepaid recap tokens.
+                await require('./assistantLiveGold').reconcileLiveUsage({
+                    sessionId,
+                    backend: {
+                        id: `recap:${sessionId}`,
+                        model: config.realtimeModel,
+                        tokensPerGold: TOKENS_PER_GOLD,
+                        tokens: recap.tokens,
+                    },
+                })
+            } else if (recap.tokens > 0) {
                 await reconcileCallUsage({
                     sessionId,
                     eventId: `recap:${sessionId}`,
@@ -341,8 +353,20 @@ async function runAssistantRealtimeCall(sessionId) {
     const config = getWhatsAppCallConfig()
     const session = await getCallSession(sessionId)
     if (!session) return
+    if (session.voiceProvider === 'gpt-live') {
+        return require('./assistantLiveController').runAssistantLiveCall(sessionId)
+    }
     if (FINAL_STATUSES.has(session.status)) {
         await sendCallRecap(sessionId)
+        return
+    }
+    // Only already accepted legacy calls may drain. Missing/unknown provider
+    // metadata on a new queued job must never select the old voice controller.
+    if (session.voiceProvider || !session.acceptCompletedAt) {
+        console.error('Live Call: Refusing legacy controller fallback', { sessionId, code: 'gpt_live_required' })
+        await updateCallSession(sessionId, { lastError: 'gpt_live_required' })
+        if (session.openAiCallId) await hangUpOpenAICall(config, session.openAiCallId).catch(() => {})
+        await finalizeControllerCall(sessionId, 'gpt_live_required', 'failed')
         return
     }
     if (!session.openAiCallId) return
@@ -783,6 +807,13 @@ async function cleanupStaleWhatsAppCalls() {
     const config = getWhatsAppCallConfig()
     for (const sessionId of sessionIds) {
         const session = await getCallSession(sessionId)
+        if (session?.voiceProvider === 'gpt-live') {
+            const liveController = require('./assistantLiveController')
+            const closed = await liveController.closeLiveSession(config, session).catch(() => false)
+            if (!closed && session.channel !== 'browser_call')
+                await liveController.hangUpLiveSession(config, session.openAiSessionId).catch(() => {})
+            continue
+        }
         if (session?.openAiCallId) {
             await hangUpOpenAICall(config, session.openAiCallId).catch(() => {})
         }

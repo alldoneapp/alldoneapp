@@ -1,0 +1,569 @@
+import React from 'react'
+import renderer, { act } from 'react-test-renderer'
+import moment from 'moment'
+import { useDispatch, useSelector } from 'react-redux'
+
+import OpenTasksViewAllProjects, {
+    getProjectTaskStreamReadyState,
+    getViewportPriorityProjectState,
+} from './OpenTasksViewAllProjects'
+import { getProjectIdsForAllProjectsTasks } from './openTasksViewProjectScope'
+import useNearViewportMount from '../../../hooks/useNearViewportMount'
+import useRateLimitedProjectMountQueue from '../../../hooks/useRateLimitedProjectMountQueue'
+import TaskListSkeleton from '../TaskListSkeleton'
+import { getTaskColdStartDayKey } from '../../../utils/InitialLoad/taskColdStartCache'
+import { resetEmptyInboxCelebrationSessionMarkers } from '../../SettingsView/Profile/Achievements/emptyInboxCelebrationMarker'
+
+jest.mock('react-redux', () => ({
+    useDispatch: jest.fn(),
+    useSelector: jest.fn(),
+}))
+jest.mock('./OpenTasksByProject', () => 'OpenTasksByProject')
+jest.mock('./AllProjectsEmptyInbox', () => 'AllProjectsEmptyInbox')
+jest.mock('./AllProjectsShowMoreButtonContainer', () => 'AllProjectsShowMoreButtonContainer')
+jest.mock('./AllProjectsShowMoreAvailability', () => 'AllProjectsShowMoreAvailability')
+jest.mock('../Header/AllProjectsLine/AllProjectsLine', () => 'AllProjectsLine')
+jest.mock('../PriorityFilters/TaskFiltersLine', () => 'TaskFiltersLine')
+jest.mock('../EmailLine/EmailLine', () => 'EmailLine')
+jest.mock('../EmailLine/emailLineFeature', () => ({ EMAIL_LINE_ENABLED: true }))
+jest.mock('../../MyDayView/AssistantLine/AllProjectsAssistantLine', () => 'AllProjectsAssistantLine')
+jest.mock('../../../hooks/useNearViewportMount', () => jest.fn())
+jest.mock('../../../hooks/useRateLimitedProjectMountQueue', () => jest.fn())
+jest.mock('../TaskListSkeleton', () => 'TaskListSkeleton')
+jest.mock('./openTasksViewProjectScope', () => ({
+    getProjectIdsForAllProjectsTasks: jest.fn(() => ['project-1', 'project-2']),
+}))
+jest.mock('../../../redux/actions', () => ({
+    resetLoadingData: jest.fn(() => ({ type: 'Reset loading data' })),
+    setLaterTasksExpandState: jest.fn(state => ({ type: 'Set later tasks expand state', state })),
+}))
+
+const buildState = ({ openTasksAmount, todayEmptyGoalsTotal, openTasksAmountLoaded = true }) => ({
+    smallScreenNavigation: false,
+    isMiddleScreen: false,
+    openTasksAmount,
+    openTasksAmountLoaded,
+    taskColdStartEmptyToday: null,
+    todayEmptyGoalsTotalAmountInOpenTasksView: { total: todayEmptyGoalsTotal },
+    loggedUserProjectsMap: {},
+    currentUser: { uid: 'user-1' },
+    openTasksStore: {},
+    filteredOpenTasksStore: {},
+    initialLoadingEndOpenTasks: {},
+    initialLoadingEndObservedTasks: {},
+    loggedUser: {
+        uid: 'user-1',
+        projectIds: ['project-1'],
+        guideProjectIds: [],
+        archivedProjectIds: [],
+        templateProjectIds: [],
+        inFocusTaskProjectId: null,
+    },
+})
+
+const renderView = state => {
+    useSelector.mockImplementation(selector => selector(state))
+    return renderer.create(<OpenTasksViewAllProjects />)
+}
+
+// react-native-web renders the container View as a host div, so read the
+// rendered order off the AllProjectsLine's parent instead of a 'View' lookup.
+const renderedChildTypes = tree => {
+    const types = []
+    const visit = node => {
+        if (!node || typeof node !== 'object') return
+        types.push(node.type)
+        node.children.forEach(visit)
+    }
+    tree.root.findByType('AllProjectsLine').parent.children.forEach(visit)
+    return types
+}
+
+describe('getViewportPriorityProjectState', () => {
+    it('returns visible unloaded projects plus the next adjacent placeholder', () => {
+        const projectNodes = new Map([
+            [11, { getBoundingClientRect: () => ({ top: -400, bottom: -40 }) }],
+            [12, { getBoundingClientRect: () => ({ top: 80, bottom: 440 }) }],
+            [13, { getBoundingClientRect: () => ({ top: 440, bottom: 800 }) }],
+            [14, { getBoundingClientRect: () => ({ top: 900, bottom: 1260 }) }],
+        ])
+
+        expect(
+            getViewportPriorityProjectState({
+                projectNodes,
+                mountedProjectIndexes: [0, 12],
+                projectCount: 15,
+                viewportBottom: 841,
+            })
+        ).toEqual({ projectIndexes: [13, 14], hasVisibleProject: true })
+    })
+
+    it('keeps preloading the adjacent project when the visible project is already mounted', () => {
+        const projectNodes = new Map([
+            [12, { getBoundingClientRect: () => ({ top: 80, bottom: 800 }) }],
+            [13, { getBoundingClientRect: () => ({ top: 900, bottom: 1260 }) }],
+        ])
+
+        expect(
+            getViewportPriorityProjectState({
+                projectNodes,
+                mountedProjectIndexes: [0, 12],
+                projectCount: 15,
+                viewportBottom: 841,
+            })
+        ).toEqual({ projectIndexes: [13], hasVisibleProject: true })
+    })
+})
+
+describe('getProjectTaskStreamReadyState', () => {
+    it('allows a project ghost to retire after either independent stream publishes', () => {
+        const state = buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 })
+        state.initialLoadingEndOpenTasks['project-1user-1'] = true
+
+        expect(getProjectTaskStreamReadyState(state, 'project-1', 'user-1')).toBe(true)
+        expect(getProjectTaskStreamReadyState(state, 'project-2', 'user-1')).toBe(false)
+    })
+})
+
+// AT-2506: the celebration marker is module state plus localStorage by design, so a claim made by
+// one render of this suite would silently answer for the next one.
+const todayKey = () => moment().format('YYYY-MM-DD')
+
+describe('OpenTasksViewAllProjects', () => {
+    beforeEach(() => {
+        jest.clearAllMocks()
+        resetEmptyInboxCelebrationSessionMarkers()
+        localStorage.clear()
+        getProjectIdsForAllProjectsTasks.mockReturnValue(['project-1', 'project-2'])
+        useDispatch.mockReturnValue(jest.fn())
+        useNearViewportMount.mockImplementation(() => ({
+            placeholderRef: { current: null },
+            isNearViewport: true,
+            hasPassedViewport: false,
+        }))
+        useRateLimitedProjectMountQueue.mockReturnValue({
+            mountedProjectCount: 2,
+            mountedProjectIndexes: [0, 1],
+            preloadingProjectIndex: null,
+            preloadingProjectIndexes: [],
+            preloadingProjectSkipped: false,
+            nextProjectIndex: null,
+            markProjectNearViewport: jest.fn(),
+        })
+    })
+
+    it('AT-2262: puts the empty-inbox congrats right under the assistant line', () => {
+        const tree = renderView(buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0 }))
+        const childTypes = renderedChildTypes(tree)
+
+        // The assistant line (which also renders the latest comment) keeps the top of the
+        // page, immediately under the All Projects line...
+        expect(childTypes.indexOf('AllProjectsAssistantLine')).toBe(childTypes.indexOf('AllProjectsLine') + 1)
+        // ...and the congrats is its immediate sibling below it — never above it.
+        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBe(childTypes.indexOf('AllProjectsAssistantLine') + 1)
+        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBeGreaterThan(childTypes.indexOf('AllProjectsLine'))
+        // Still high on the page: above the email line, the filters and the task list.
+        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBeLessThan(childTypes.indexOf('EmailLine'))
+        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBeLessThan(childTypes.indexOf('TaskFiltersLine'))
+        expect(childTypes.indexOf('AllProjectsEmptyInbox')).toBeLessThan(childTypes.indexOf('OpenTasksByProject'))
+    })
+
+    it('keeps the assistant, email and filter lines in their usual order', () => {
+        const tree = renderView(buildState({ openTasksAmount: 3, todayEmptyGoalsTotal: 0 }))
+        const childTypes = renderedChildTypes(tree)
+
+        expect(childTypes).not.toContain('AllProjectsEmptyInbox')
+        expect(childTypes.indexOf('AllProjectsAssistantLine')).toBeLessThan(childTypes.indexOf('EmailLine'))
+        expect(childTypes.indexOf('EmailLine')).toBeLessThan(childTypes.indexOf('TaskFiltersLine'))
+        expect(childTypes.indexOf('TaskFiltersLine')).toBeLessThan(childTypes.indexOf('OpenTasksByProject'))
+    })
+
+    it('only shows the congrats when there are neither open tasks nor empty goals today', () => {
+        expect(
+            renderedChildTypes(renderView(buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 2 })))
+        ).not.toContain('AllProjectsEmptyInbox')
+        expect(
+            renderedChildTypes(renderView(buildState({ openTasksAmount: 5, todayEmptyGoalsTotal: 0 })))
+        ).not.toContain('AllProjectsEmptyInbox')
+    })
+
+    /**
+     * AT-2445 — the reason the empty-inbox celebration never reached anyone.
+     *
+     * `openTasksAmount` is a running total accumulated across one Firestore listener per project,
+     * it starts at 0, and `unwatchOpenTasksAmount` forces it back to 0 every time those listeners
+     * are rebuilt — which happens on every mount of this board (`TasksAmountContainers` registers
+     * an empty project list for one pass first) and again on every Later/Someday toggle. So a bare
+     * `!openTasksAmount` was true for the whole loading window of every visit.
+     *
+     * That is not just a congrats flashing during load: the flash mounts
+     * `EmptyInboxOverview celebrateNewDay`, which claims the once-per-day celebration marker in a
+     * `useLayoutEffect`. The day was therefore spent by a frame nobody saw, and the real
+     * empty-inbox moment later that day animated nothing.
+     *
+     * My Day has always had this guard (`tasksLoaded && …`); this board was the outlier.
+     */
+    it('AT-2445: does not claim an empty inbox before the counts have loaded', () => {
+        expect(
+            renderedChildTypes(
+                renderView(buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: false }))
+            )
+        ).not.toContain('AllProjectsEmptyInbox')
+
+        // ...and shows it as soon as they have, with the same zero counts.
+        expect(
+            renderedChildTypes(
+                renderView(buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: true }))
+            )
+        ).toContain('AllProjectsEmptyInbox')
+    })
+
+    it('does not claim an empty inbox while retained task rows are visible and the live count is still zero', () => {
+        const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: true })
+        state.filteredOpenTasksStore['project-1user-1'] = [['TODAY', 3]]
+
+        expect(renderedChildTypes(renderView(state))).not.toContain('AllProjectsEmptyInbox')
+    })
+
+    // AT-2506: the board decides the run and hands it down, so the AT-2445 rule this pins — a
+    // same-day cached zero may paint the block but may never spend the day — is now expressed as
+    // "the block is rendered with no run", which is the same statement about the same marker.
+    it('paints a same-day cached empty inbox immediately without spending the celebration marker', () => {
+        const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: false })
+        state.loggedUser.emptyInboxDays = [todayKey()]
+        state.taskColdStartEmptyToday = {
+            userId: 'user-1',
+            dayKey: getTaskColdStartDayKey(),
+            projectIds: ['project-1', 'project-2'],
+        }
+
+        const tree = renderView(state)
+        const emptyInbox = tree.root.findByType('AllProjectsEmptyInbox')
+
+        expect(emptyInbox.props.showEmptyInboxOverview).toBe(true)
+        expect(emptyInbox.props.celebrationRunId).toBe(0)
+        // The block's own fallback hook must stay disabled too, or it would spend the day from
+        // inside the very render this test says may not.
+        expect(emptyInbox.props.celebrateNewDay).toBeFalsy()
+    })
+
+    it('ignores an incomplete cached empty scope and lets the live result take over', () => {
+        const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0, openTasksAmountLoaded: false })
+        state.loggedUser.emptyInboxDays = [todayKey()]
+        state.taskColdStartEmptyToday = {
+            userId: 'user-1',
+            dayKey: getTaskColdStartDayKey(),
+            projectIds: ['project-1'],
+        }
+
+        expect(renderedChildTypes(renderView(state))).not.toContain('AllProjectsEmptyInbox')
+
+        state.openTasksAmountLoaded = true
+        const liveTree = renderView(state)
+        expect(liveTree.root.findByType('AllProjectsEmptyInbox').props.celebrationRunId).toBe(1)
+    })
+
+    // AT-2337 / AT-2335 - "All projects" means ACTIVE projects. The board no longer
+    // appends guideProjectIds; it delegates the scope to the shared helper, which is
+    // built on the same ProjectHelper.getActiveProjects2 the Contacts view adopted.
+    it('scopes the board through the active-project helper with the slices it selects', () => {
+        const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+        state.loggedUser.projectIds = ['project-1', 'guide-project']
+        state.loggedUser.guideProjectIds = ['guide-project']
+        state.loggedUserProjectsMap = { 'project-1': { id: 'project-1' } }
+
+        renderView(state)
+
+        expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledWith({
+            projectIds: ['project-1', 'guide-project'],
+            guideProjectIds: ['guide-project'],
+            archivedProjectIds: [],
+            templateProjectIds: [],
+            loggedUserProjectsMap: state.loggedUserProjectsMap,
+            loggedUserId: 'user-1',
+            inFocusTaskProjectId: null,
+        })
+    })
+
+    // AT-2337 - "All projects -> Tasks" is slow.
+    //
+    // This board renders one OpenTasksByProject per project (78 on a heavy
+    // dogfooding account) and re-renders whenever ANY of the store slices it
+    // watches change - including once per project as each project's first-day
+    // task count arrives. The project list must therefore be memoised: it is an
+    // O(projects) sort recomputed on every render, and - more importantly - a
+    // fresh array identity on every render is a changed prop for all 78
+    // children, which defeats React.memo on them.
+    describe('project list memoisation', () => {
+        it('does not recompute the sorted project list on a re-render with unchanged inputs', () => {
+            const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+            useSelector.mockImplementation(selector => selector(state))
+            const tree = renderer.create(<OpenTasksViewAllProjects />)
+
+            expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(1)
+
+            renderer.act(() => {
+                tree.update(<OpenTasksViewAllProjects />)
+            })
+
+            expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(1)
+        })
+
+        it('hands every project block the SAME array instance across re-renders', () => {
+            const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+            useSelector.mockImplementation(selector => selector(state))
+            const tree = renderer.create(<OpenTasksViewAllProjects />)
+
+            const idsBefore = tree.root.findAllByType('OpenTasksByProject')[0].props.sortedLoggedUserProjectIds
+
+            renderer.act(() => {
+                tree.update(<OpenTasksViewAllProjects />)
+            })
+
+            const idsAfter = tree.root.findAllByType('OpenTasksByProject')[0].props.sortedLoggedUserProjectIds
+
+            // Referential equality, not deep equality - that is what React.memo compares.
+            expect(idsAfter).toBe(idsBefore)
+        })
+
+        it('recomputes when the project inputs actually change', () => {
+            const state = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+            useSelector.mockImplementation(selector => selector(state))
+            const tree = renderer.create(<OpenTasksViewAllProjects />)
+            expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(1)
+
+            const nextState = buildState({ openTasksAmount: 1, todayEmptyGoalsTotal: 0 })
+            nextState.loggedUser.projectIds = ['project-1', 'project-2']
+            useSelector.mockImplementation(selector => selector(nextState))
+
+            renderer.act(() => {
+                tree.update(<OpenTasksViewAllProjects />)
+            })
+
+            expect(getProjectIdsForAllProjectsTasks).toHaveBeenCalledTimes(2)
+        })
+    })
+
+    describe('viewport-gated project mounting', () => {
+        it('keeps offscreen project watchers dormant while mounting the first project eagerly', () => {
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
+                preloadingProjectIndex: null,
+                preloadingProjectIndexes: [],
+                preloadingProjectSkipped: false,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+            useNearViewportMount.mockImplementation(({ eager }) => ({
+                placeholderRef: { current: null },
+                isNearViewport: eager,
+                hasPassedViewport: false,
+            }))
+
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+            const projectBlocks = tree.root.findAllByType('OpenTasksByProject')
+
+            expect(projectBlocks).toHaveLength(1)
+            expect(projectBlocks[0].props.projectId).toBe('project-1')
+            expect(useNearViewportMount).toHaveBeenNthCalledWith(1, {
+                eager: true,
+                enabled: false,
+                rootMargin: '720px 0px',
+                trackVisibility: true,
+                activateWhenPassed: true,
+            })
+            expect(useNearViewportMount).toHaveBeenNthCalledWith(2, {
+                eager: false,
+                enabled: true,
+                rootMargin: '720px 0px',
+                trackVisibility: true,
+                activateWhenPassed: true,
+            })
+            expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
+            expect(tree.root.findByType('TaskListSkeleton').props).toEqual(
+                expect.objectContaining({ rowCount: 6, showDateHeader: true, showProjectHeader: true })
+            )
+        })
+
+        it('mounts one upcoming project behind the ghost as soon as preloading starts', () => {
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
+                preloadingProjectIndex: 1,
+                preloadingProjectIndexes: [1],
+                preloadingProjectSkipped: false,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+            const projectBlocks = tree.root.findAllByType('OpenTasksByProject')
+
+            expect(projectBlocks.map(block => block.props.projectId)).toEqual(['project-1', 'project-2'])
+            expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(1)
+        })
+
+        it('preloads two upcoming projects behind separate ghosts', () => {
+            getProjectIdsForAllProjectsTasks.mockReturnValue(['project-1', 'project-2', 'project-3'])
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
+                preloadingProjectIndex: 1,
+                preloadingProjectIndexes: [1, 2],
+                preloadingProjectSkipped: false,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+
+            expect(tree.root.findAllByType('OpenTasksByProject').map(block => block.props.projectId)).toEqual([
+                'project-1',
+                'project-2',
+                'project-3',
+            ])
+            expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(2)
+        })
+
+        it('shows a stable viewport ghost while skipped projects catch up', () => {
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
+                preloadingProjectIndex: 1,
+                preloadingProjectIndexes: [1],
+                preloadingProjectSkipped: true,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+
+            expect(tree.root.findAllByProps({ testID: 'task-list-skipped-project-skeleton' })).toHaveLength(1)
+            expect(tree.root.findAllByType('TaskListSkeleton')).toHaveLength(2)
+        })
+
+        it('keeps the catch-up ghost through the short gap before the next skipped project starts', () => {
+            jest.useFakeTimers()
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
+                preloadingProjectIndex: 1,
+                preloadingProjectIndexes: [1],
+                preloadingProjectSkipped: true,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+            const state = buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 })
+            const tree = renderView(state)
+
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 2,
+                mountedProjectIndexes: [0, 1],
+                preloadingProjectIndex: null,
+                preloadingProjectIndexes: [],
+                preloadingProjectSkipped: false,
+                nextProjectIndex: null,
+                markProjectNearViewport: jest.fn(),
+            })
+            act(() => tree.update(<OpenTasksViewAllProjects />))
+
+            expect(tree.root.findAllByProps({ testID: 'task-list-skipped-project-skeleton' })).toHaveLength(1)
+            act(() => jest.advanceTimersByTime(119))
+            expect(tree.root.findAllByProps({ testID: 'task-list-skipped-project-skeleton' })).toHaveLength(1)
+            act(() => jest.advanceTimersByTime(1))
+            expect(tree.root.findAllByProps({ testID: 'task-list-skipped-project-skeleton' })).toHaveLength(0)
+
+            tree.unmount()
+            jest.useRealTimers()
+        })
+
+        it('mounts projects admitted by the viewport gate and keeps global show-more controls available', () => {
+            const tree = renderView(buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 }))
+
+            expect(tree.root.findAllByType('OpenTasksByProject')).toHaveLength(2)
+            expect(tree.root.findAllByType('AllProjectsShowMoreAvailability')).toHaveLength(1)
+            expect(tree.root.findAllByType('AllProjectsShowMoreButtonContainer')).toHaveLength(1)
+        })
+
+        it('feeds task-stream readiness into the central mount queue', () => {
+            const state = buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 })
+            state.initialLoadingEndOpenTasks['project-1user-1'] = true
+            state.initialLoadingEndObservedTasks['project-1user-1'] = true
+
+            renderView(state)
+
+            expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
+                projectIds: ['project-1', 'project-2'],
+                projectReadyStates: [true, false],
+                preloadPriorityProjectIndexes: [],
+                minIntervalMs: 200,
+                preloadConcurrency: 20,
+            })
+        })
+
+        it('renders retained rows immediately while reconnecting task-bearing projects first', () => {
+            useRateLimitedProjectMountQueue.mockReturnValue({
+                mountedProjectCount: 1,
+                mountedProjectIndexes: [0],
+                preloadingProjectIndex: null,
+                preloadingProjectIndexes: [],
+                preloadingProjectSkipped: false,
+                nextProjectIndex: 1,
+                markProjectNearViewport: jest.fn(),
+            })
+            const state = buildState({ openTasksAmount: 2, todayEmptyGoalsTotal: 0 })
+            state.openTasksStore = {
+                'project-1user-1': [],
+                'project-2user-1': [['0', 2]],
+            }
+
+            const tree = renderView(state)
+            const projectBlocks = tree.root.findAllByType('OpenTasksByProject')
+
+            expect(projectBlocks.map(block => block.props.projectId)).toEqual(['project-1', 'project-2'])
+            expect(projectBlocks.map(block => block.props.taskWatchersEnabled)).toEqual([true, false])
+            expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
+                projectIds: ['project-1', 'project-2'],
+                projectReadyStates: [false, false],
+                preloadPriorityProjectIndexes: [1],
+                minIntervalMs: 200,
+                preloadConcurrency: 3,
+            })
+        })
+
+        it('keeps broad discovery when the retained projection has no task-bearing hint', () => {
+            const state = buildState({ openTasksAmount: 0, todayEmptyGoalsTotal: 0 })
+            state.openTasksStore = {
+                'project-1user-1': [],
+                'project-2user-1': [],
+            }
+
+            renderView(state)
+
+            expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith(
+                expect.objectContaining({ preloadPriorityProjectIndexes: [], preloadConcurrency: 20 })
+            )
+        })
+
+        it('covers a fourteen-project morning in one foreground discovery wave', () => {
+            const projectIds = Array.from({ length: 14 }, (_, index) => `project-${index}`)
+            getProjectIdsForAllProjectsTasks.mockReturnValue(projectIds)
+            const state = buildState({ openTasksAmount: 100, todayEmptyGoalsTotal: 0 })
+            state.loggedUser.projectIds = projectIds
+            projectIds.forEach(projectId => {
+                state.initialLoadingEndOpenTasks[`${projectId}user-1`] = true
+            })
+
+            renderView(state)
+
+            expect(useRateLimitedProjectMountQueue).toHaveBeenCalledWith({
+                projectIds,
+                projectReadyStates: Array(14).fill(true),
+                preloadPriorityProjectIndexes: [],
+                minIntervalMs: 200,
+                preloadConcurrency: 20,
+            })
+        })
+    })
+})

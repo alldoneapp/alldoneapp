@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../ModalHeader'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import AssigneeItem from './AssigneeItem'
 import Button from '../../../UIControls/Button'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
@@ -19,6 +19,12 @@ import TabsHeader, { TEAM_MEMBERS_TAB } from './TabsHeader'
 import SearchForm from '../AssigneeAndObserversModal/Form/SearchForm'
 import { filterUserShapesByText } from '../AssigneeAndObserversModal/AssigneeAndObserversModal'
 import EmptyResults from '../EmptyResults'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
+import useProjectData from '../../../../hooks/useProjectData'
+
+// AT-2386: shared identity so a not-yet-loaded slice does not hand `useSelector` a fresh
+// array on every render.
+const EMPTY_LIST = []
 
 export default function GoalAssigneesModal({
     projectId,
@@ -31,9 +37,12 @@ export default function GoalAssigneesModal({
     const [width, height] = useWindowSize()
     const [filterText, setFilterText] = useState('')
     const loggedUser = useSelector(state => state.loggedUser)
-    const workstreams = useSelector(state => state.projectWorkstreams[projectId])
-    const users = useSelector(state => state.projectUsers[projectId])
-    const contacts = useSelector(state => state.projectContacts[projectId])
+    // AT-2386: lists everyone in the project, so it asks for the data rather than assuming
+    // login fetched it, and reads defensively while it arrives.
+    useProjectData(projectId)
+    const workstreams = useSelector(state => state.projectWorkstreams[projectId]) || EMPTY_LIST
+    const users = useSelector(state => state.projectUsers[projectId]) || EMPTY_LIST
+    const contacts = useSelector(state => state.projectContacts[projectId]) || EMPTY_LIST
     const [showCapacityModalForAssigneeId, setShowCapacityModalForAssigneeId] = useState('')
     const [selectedAssigeesIds, setSelectedAssigeesIds] = useState(initialSelectedAssigeesIds)
     const [selectedAssigeesCapacity, setSelectedAssigeesCapacity] = useState(initialSelectedAssigeesCapacity)
@@ -120,7 +129,7 @@ export default function GoalAssigneesModal({
     const title = 'Goal assignees & capacity'
     const description = 'Select the users who will take care of this goal and their capacities'
 
-    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeight(height)
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     return showCapacityModalForAssigneeId !== '' ? (

@@ -54,6 +54,7 @@ const localStyles = StyleSheet.create({
         borderRadius: 12,
         borderWidth: 1,
         borderColor: colors.Text03,
+        backgroundColor: colors.Grey300,
         flexDirection: 'row',
         alignItems: 'center',
         flexShrink: 1,
@@ -63,6 +64,8 @@ const localStyles = StyleSheet.create({
     chip: {
         borderWidth: 0,
         borderRadius: 0,
+        // The shared outer pill owns the opaque surface and its rounded corners.
+        backgroundColor: 'transparent',
         flexShrink: 1,
         minWidth: 0,
         marginLeft: 0,

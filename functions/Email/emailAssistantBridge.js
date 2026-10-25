@@ -6,6 +6,7 @@ const {
     buildConversationSafeToolResult,
     buildPendingAttachmentPayload,
     executeToolNatively,
+    getExternalIntegrationToolName,
     getAssistantForChat,
     getMessageTextForTokenCounting,
     injectPendingAttachmentIntoToolArgs,
@@ -46,7 +47,9 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             subject: options.subject || '',
             messageId: options.messageId || '',
         })
-        return responseText
+        return buildEmailAssistantResult(responseText, options, {
+            guestMeetingContext: null,
+        })
     }
 
     const allowedTools = getEmailSafeAllowedTools(assistant.allowedTools)
@@ -70,10 +73,27 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         // creation merely because the bookkeeping integration was deferred behind tool search.
         disableToolSearch: true,
         initialPendingAttachmentPayload: options.initialPendingAttachmentPayload || null,
+        autoAttachInvoice: options.autoAttachInvoice === true,
         currentEmailParticipants,
         latestSafeActionContext: null,
         userTimezoneName,
         calendarOwnerName,
+        // Meeting options proposed over email must follow the same availability policy as
+        // the account owner's public meeting link. The calendar tool uses this server-only
+        // flag to load and enforce those saved settings before returning any options.
+        respectPublicMeetingLinkSettings: true,
+    }
+    // Invoice delivery has its own lifetime: a draft or another integration may also
+    // use the file, but that does not settle the bookkeeping action.
+    if (toolRuntimeContext.autoAttachInvoice && toolRuntimeContext.initialPendingAttachmentPayload?.fileBase64) {
+        toolRuntimeContext.invoiceAttachmentPayload = toolRuntimeContext.initialPendingAttachmentPayload
+        toolRuntimeContext.invoiceToolName = await getExternalIntegrationToolName({
+            projectId,
+            assistantId: toolRuntimeContext.assistantId,
+            requestUserId: userId,
+            integrationId: 'bookkeeping_assistant',
+            toolKey: 'attach_invoice',
+        })
     }
 
     await addBaseInstructions(
@@ -91,13 +111,28 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         'Email channel rules:\n' +
             '- This channel is action-only. Do not reveal private account, project, or message history data.\n' +
             '- Calendar availability tools may return free meeting options only. Never reveal event titles, participants, descriptions, locations, or other calendar details.\n' +
-            '- Your reply may be sent to the sender and every original To/CC recipient. Treat all recipients as potentially external.\n' +
+            "- Meeting options automatically follow the account owner's saved public meeting-link availability settings. Only pass different working hours, weekend behavior, minimum free time, or allowSameDayBooking=true when the current email explicitly requests that override. A request for today or a same-day meeting may override the saved no-same-day setting.\n" +
+            (options.replyToSenderOnly
+                ? "- Anna received this email as a blind copy (BCC). Your final reply will be sent only to the sender. Do not address the original To/CC recipients as readers of your reply or disclose Anna's involvement to them.\n"
+                : '- Your reply may be sent to the sender and every original To/CC recipient. Treat all recipients as potentially external.\n') +
+            "- Always write the outgoing reply as Anna, the assistant. Never impersonate another participant or sign their name. Use first person only for your own actions as the assistant; attribute other people's preferences, decisions, commitments, and resources to them.\n" +
+            "- Identify which requests are addressed to you and which statements are communication between other participants. Use existing answers and quoted messages as context for the current request. Do not answer already-resolved questions again or repeat another participant's statements as your own.\n" +
+            '- Carry out the requested work without adding unrequested actions or commitments. Limit your reply to the confirmed outcome of your work and any necessary clarification, limitation, or failure. Include only details needed to understand that outcome.\n' +
             '- Only use the available tools. If a request needs any other tool or data retrieval, explain that it is not available by email.\n' +
             '- Keep the email reply concise and outcome-focused.\n' +
-            '- For create_task, use taskOrigin=user_request only when the sender explicitly asks to create that specific task. If you infer a useful task from the email without that explicit request, use taskOrigin=assistant_suggestion and include a concise visible comment with the concrete reason.\n' +
+            '- For create_task, use taskOrigin=user_request only when the sender explicitly asks to create that specific task. If you infer a useful task from the email without that explicit request, use taskOrigin=assistant_suggestion. In both cases, include a concise visible comment with the concrete reason. The task is assigned directly to the user, with the assistant identified in the comment.\n' +
             '- Do not claim that a task or external action succeeded unless the tool result confirms success.\n' +
-            '- If an invoice or other attachment was included in the email, the first external tool call can receive that file automatically.',
+            '- Incoming email attachments are already downloaded by the server. Their binary bytes are deliberately omitted from model context and injected into the appropriate tool call; omitted base64 does not mean the file is unavailable. Supply the exact attachment fileName and leave fileBase64 empty; never invent binary content.\n' +
+            '- Process recognised invoice attachments with the bookkeeping tool before considering a follow-up task. A forwarded invoice is sufficient for automatic bookkeeping unless the sender opts out. A task or Gmail draft does not complete bookkeeping.\n' +
+            '- This channel sends your final reply automatically. Create a Gmail draft only when the sender explicitly asks for a draft; receiving or forwarding an email is not a draft request. Do not replace an available bookkeeping action with a suggested task based on an assumed missing file. Report an upload failure only when the tool result confirms it.',
     ])
+    if (toolRuntimeContext.invoiceToolName) {
+        messages.push([
+            'system',
+            `Current invoice attachment: ${JSON.stringify(toolRuntimeContext.invoiceAttachmentPayload.fileName)}. ` +
+                `Use ${toolRuntimeContext.invoiceToolName} once to attach it to bookkeeping before unrelated actions, unless a tool result already records that attempt. The server supplies its original bytes even if another tool also uses the file. Do not ask the sender to upload it again.`,
+        ])
+    }
     messages.push(['system', buildCalendarOwnershipSystemMessage(calendarOwnerName)])
     messages.push(['system', buildCurrentEmailParticipantsSystemMessage(currentEmailParticipants)])
     const shouldRestrictPriorHistory = options.hasAdditionalRecipients && options.isParticipantScopedTopic !== true
@@ -136,6 +171,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         toolRuntimeContext
     )
     let responseText
+    let assistantRunSucceeded = true
     try {
         responseText = await collectStreamWithToolCalls(
             stream,
@@ -149,6 +185,7 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
             toolRuntimeContext
         )
     } catch (error) {
+        assistantRunSucceeded = false
         console.error('Email Channel: Assistant response processing failed', {
             error: error.message,
             userId,
@@ -180,7 +217,30 @@ async function processAnnaEmailAssistantMessage(userId, projectId, chatId, messa
         console.error('Email Channel: Failed deducting gold', { error: error.message })
     }
 
-    return responseText
+    const calendarEventCalled = toolRuntimeContext.emailToolEvidence?.calendarEvent?.called === true
+    const calendarAvailabilitySucceeded = toolRuntimeContext.emailToolEvidence?.calendarAvailability?.succeeded === true
+    const guestMeetingContext =
+        assistantRunSucceeded &&
+        calendarAvailabilitySucceeded &&
+        !calendarEventCalled &&
+        toolRuntimeContext.emailToolFailed !== true
+            ? normalizeSafeEmailActionContext(toolRuntimeContext.latestSafeActionContext)
+            : null
+
+    return buildEmailAssistantResult(responseText, options, {
+        guestMeetingContext,
+        canCreateCalendarEvent: allowedTools.includes('create_calendar_event'),
+        calendarOwnerName,
+        language: user.language || '',
+    })
+}
+
+function buildEmailAssistantResult(responseText, options = {}, metadata = {}) {
+    if (options.returnExecutionMetadata !== true) return responseText
+    return {
+        responseText,
+        ...metadata,
+    }
 }
 
 function resolveInboundEmailModel(assistant = {}) {
@@ -201,6 +261,8 @@ async function collectStreamWithToolCalls(
     let responseText = ''
     let currentConversation = conversationHistory
     let pendingAttachmentPayload = toolRuntimeContext?.initialPendingAttachmentPayload || null
+    const invoiceAttachmentPayload = toolRuntimeContext?.invoiceAttachmentPayload || null
+    const executedToolNames = new Set()
     const toolEvidence = {
         createTask: {
             called: false,
@@ -209,6 +271,10 @@ async function collectStreamWithToolCalls(
             projectId: null,
         },
         calendarAvailability: {
+            called: false,
+            succeeded: false,
+        },
+        calendarEvent: {
             called: false,
             succeeded: false,
         },
@@ -224,6 +290,7 @@ async function collectStreamWithToolCalls(
                 const toolCall = currentToolCalls[0]
                 const toolName = toolCall.function.name
                 const toolCallId = toolCall.id
+                executedToolNames.add(toolName)
 
                 let toolArgs = {}
                 try {
@@ -235,15 +302,21 @@ async function collectStreamWithToolCalls(
                 const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
                     toolName,
                     toolArgs,
-                    pendingAttachmentPayload
+                    toolName === toolRuntimeContext?.invoiceToolName
+                        ? invoiceAttachmentPayload || pendingAttachmentPayload
+                        : pendingAttachmentPayload
                 )
                 toolArgs = normalizeEmailToolArgs(toolName, enrichedToolArgs.toolArgs, projectId)
                 if (enrichedToolArgs.usedPendingAttachment) pendingAttachmentPayload = null
+                toolRuntimeContext.initialPendingAttachmentPayload = pendingAttachmentPayload
 
                 const allowed = await isToolAllowedForExecution(allowedTools, toolName, toolRuntimeContext)
                 if (!allowed) {
                     throw new Error(`Tool not permitted: ${toolName}`)
                 }
+
+                if (toolName === 'create_calendar_event') toolEvidence.calendarEvent.called = true
+                if (toolName === toolRuntimeContext.invoiceToolName) toolRuntimeContext.invoiceToolAttempted = true
 
                 let toolResult
                 try {
@@ -262,14 +335,21 @@ async function collectStreamWithToolCalls(
                     )
                     pendingAttachmentPayload =
                         buildPendingAttachmentPayload(toolName, toolResult) || pendingAttachmentPayload
+                    toolRuntimeContext.initialPendingAttachmentPayload = pendingAttachmentPayload
                     toolRuntimeContext.latestSafeActionContext =
                         buildSafeActionContextFromToolResult(toolName, toolResult) ||
                         toolRuntimeContext.latestSafeActionContext
+                    if (toolResult?.success === false) toolRuntimeContext.emailToolFailed = true
 
                     if (toolName === 'find_calendar_availability') {
                         toolEvidence.calendarAvailability.called = true
                         toolEvidence.calendarAvailability.succeeded =
                             toolEvidence.calendarAvailability.succeeded || toolResult?.success === true
+                    }
+
+                    if (toolName === 'create_calendar_event') {
+                        toolEvidence.calendarEvent.succeeded =
+                            toolEvidence.calendarEvent.succeeded || toolResult?.success === true
                     }
 
                     if (toolName === 'create_task') {
@@ -287,10 +367,16 @@ async function collectStreamWithToolCalls(
                         }
                     }
                 } catch (error) {
-                    return getUserFacingToolErrorMessage(toolName, error)
+                    if (toolRuntimeContext) {
+                        toolRuntimeContext.emailToolEvidence = toolEvidence
+                        toolRuntimeContext.emailToolFailed = true
+                    }
+                    responseText = getUserFacingToolErrorMessage(toolName, error)
+                    currentConversation = [...currentConversation, { role: 'assistant', content: responseText }]
+                    break
                 }
 
-                const followUpInstruction = buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext)
+                const followUpInstruction = buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext, toolResult)
                 const conversationSafeToolArgs = buildConversationSafeToolArgs(toolName, toolArgs, null)
 
                 currentConversation = [
@@ -349,18 +435,180 @@ async function collectStreamWithToolCalls(
         if (chunk.content) responseText += chunk.content
     }
 
+    if (invoiceAttachmentPayload && toolRuntimeContext?.autoAttachInvoice === true) {
+        const invoiceToolName = toolRuntimeContext.invoiceToolName
+        if (invoiceToolName && !executedToolNames.has(invoiceToolName)) {
+            responseText = await attachPendingInvoiceWithFollowUp({
+                invoiceToolName,
+                pendingAttachmentPayload: invoiceAttachmentPayload,
+                conversationHistory: currentConversation,
+                modelKey,
+                temperatureKey,
+                allowedTools,
+                projectId,
+                assistantId,
+                requestUserId,
+                toolRuntimeContext,
+            })
+        } else if (!invoiceToolName) {
+            console.warn('Email Channel: Invoice auto-attach skipped because bookkeeping tool is unavailable', {
+                projectId,
+                assistantId,
+                messageId: invoiceAttachmentPayload.messageId || '',
+            })
+        }
+    }
+
+    if (toolRuntimeContext) toolRuntimeContext.emailToolEvidence = toolEvidence
     const safeResponseText = enforceSafeTaskResponse(String(responseText || '').trim(), toolEvidence)
     return toolEvidence.calendarAvailability.succeeded
         ? enforceCalendarOwnershipResponse(safeResponseText, toolRuntimeContext?.calendarOwnerName)
         : safeResponseText
 }
 
-function buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext = {}) {
+async function attachPendingInvoiceWithFollowUp({
+    invoiceToolName,
+    pendingAttachmentPayload,
+    conversationHistory,
+    modelKey,
+    temperatureKey,
+    allowedTools,
+    projectId,
+    assistantId,
+    requestUserId,
+    toolRuntimeContext,
+}) {
+    const enrichedToolArgs = injectPendingAttachmentIntoToolArgs(
+        invoiceToolName,
+        {
+            fileName: pendingAttachmentPayload.fileName || '',
+            mimeType: pendingAttachmentPayload.fileMimeType || '',
+        },
+        pendingAttachmentPayload
+    )
+    const toolArgs = enrichedToolArgs.toolArgs
+    const allowed = await isToolAllowedForExecution(allowedTools, invoiceToolName, toolRuntimeContext)
+    if (!allowed) return getUserFacingToolErrorMessage(invoiceToolName, new Error('Tool not permitted'))
+
+    console.warn('Email Channel: Auto-attaching invoice after assistant skipped bookkeeping tool', {
+        projectId,
+        assistantId,
+        fileName: pendingAttachmentPayload.fileName || '',
+        messageId: pendingAttachmentPayload.messageId || '',
+    })
+
+    const triggeringUserMessage = conversationHistory.find(entry =>
+        Array.isArray(entry) ? entry[0] === 'user' : entry?.role === 'user'
+    )
+    let toolResult
+    try {
+        toolRuntimeContext.invoiceToolAttempted = true
+        toolResult = await executeToolNatively(
+            invoiceToolName,
+            toolArgs,
+            projectId,
+            assistantId,
+            requestUserId,
+            {
+                message: getMessageTextForTokenCounting(
+                    Array.isArray(triggeringUserMessage)
+                        ? triggeringUserMessage[1]
+                        : triggeringUserMessage?.content || ''
+                ),
+            },
+            toolRuntimeContext
+        )
+        if (toolResult?.success === false) toolRuntimeContext.emailToolFailed = true
+    } catch (error) {
+        toolRuntimeContext.emailToolFailed = true
+        return getUserFacingToolErrorMessage(invoiceToolName, error)
+    }
+
+    const toolCallId = `call_email_invoice_${Date.now()}`
+    const followUpConversation = [
+        ...conversationHistory,
+        {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+                {
+                    id: toolCallId,
+                    type: 'function',
+                    function: {
+                        name: invoiceToolName,
+                        arguments: JSON.stringify(
+                            buildConversationSafeToolArgs(invoiceToolName, toolArgs, pendingAttachmentPayload)
+                        ),
+                    },
+                },
+            ],
+        },
+        {
+            role: 'tool',
+            content: JSON.stringify(buildConversationSafeToolResult(invoiceToolName, toolResult)),
+            tool_call_id: toolCallId,
+        },
+        {
+            role: 'user',
+            content: buildEmailToolResultFollowUpPrompt(invoiceToolName, toolRuntimeContext, toolResult),
+        },
+    ]
+
+    toolRuntimeContext.autoAttachInvoice = false
+    toolRuntimeContext.initialPendingAttachmentPayload = null
+    toolRuntimeContext.invoiceAttachmentPayload = null
+    const followUpStream = await interactWithChatStream(
+        followUpConversation,
+        modelKey,
+        temperatureKey,
+        allowedTools,
+        toolRuntimeContext
+    )
+    return collectStreamWithToolCalls(
+        followUpStream,
+        followUpConversation,
+        modelKey,
+        temperatureKey,
+        allowedTools,
+        projectId,
+        assistantId,
+        requestUserId,
+        toolRuntimeContext
+    )
+}
+
+function buildEmailToolResultFollowUpPrompt(toolName, toolRuntimeContext = {}, toolResult = null) {
     const basePrompt = getToolResultFollowUpPrompt({
         finalReply: true,
         toolPhrase: 'other available tools',
         usePlural: false,
     })
+    if (toolName === toolRuntimeContext.invoiceToolName) {
+        return (
+            `${basePrompt} The bookkeeping tool has already been called for the current invoice. ` +
+            'Describe its actual result, including any pending match or failure; do not upload the same invoice again. ' +
+            'Do not create a Gmail draft or a follow-up task merely to acknowledge this result. Only perform further actions explicitly requested by the sender.'
+        )
+    }
+    if (
+        ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'].includes(toolName) &&
+        toolResult?.success === false
+    ) {
+        const failureCode = String(toolResult.code || 'calendar_write_failed')
+        const failureMessage = String(toolResult.message || '')
+        const connectionFailure =
+            ['calendar_not_connected', 'calendar_auth_required'].includes(failureCode) ||
+            /\b(?:invalid_grant|oauth|authentication|authorization|credentials?|access token|refresh token)\b|token has been expired or revoked|reconnect required/i.test(
+                failureMessage
+            )
+        return (
+            `${basePrompt} The calendar write failed with code "${failureCode}". Report that failure accurately. ` +
+            (connectionFailure
+                ? 'Connection guidance is appropriate because the result explicitly reports a calendar connection or authentication problem.'
+                : 'Do not tell the sender to connect or reconnect Calendar: this result does not report a connection or authentication problem. Do not retry by treating internal account or project identifiers as calendar IDs. If a calendar choice is still required, ask the sender to choose from the labelled calendar email targets in the tool result.')
+        )
+    }
+
     if (toolName !== 'find_calendar_availability') return basePrompt
 
     const ownerName = toolRuntimeContext?.calendarOwnerName || 'the account owner'

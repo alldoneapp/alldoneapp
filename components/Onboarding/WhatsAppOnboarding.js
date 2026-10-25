@@ -13,7 +13,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux'
 import firebase from 'firebase/compat/app'
 
-import styles from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
 import Colors from '../../Themes/Colors'
 import { translate } from '../../i18n/TranslationService'
 import { validatePhoneNumber } from '../../utils/phoneValidation'
@@ -27,6 +27,7 @@ import { requestNotificationPermission, logEvent } from '../../utils/backends/fi
 import { setUserReceivePushNotifications } from '../../utils/backends/Users/usersFirestore'
 import { updateAssistantHeartbeatSettings } from '../../utils/backends/Assistants/assistantsFirestore'
 import { COUNTRY_CODES, DEFAULT_COUNTRY } from '../../utils/CountryCodes'
+import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
 
 const DEFAULT_POST_ONBOARDING_URL = '/projects/tasks/open'
 
@@ -75,6 +76,7 @@ const ProgressBar = ({ current, total }) => {
 }
 
 export default function WhatsAppOnboarding({ navigation }) {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const [phone, setPhone] = useState('')
     const [selectedCountry, setSelectedCountry] = useState(DEFAULT_COUNTRY || COUNTRY_CODES[0])
     const [showCountryPicker, setShowCountryPicker] = useState(false)
@@ -111,12 +113,12 @@ export default function WhatsAppOnboarding({ navigation }) {
                 Animated.timing(blinkAnim, {
                     toValue: 0.5,
                     duration: 500,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 Animated.timing(blinkAnim, {
                     toValue: 1,
                     duration: 500,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ])
         ).start()
@@ -372,7 +374,7 @@ export default function WhatsAppOnboarding({ navigation }) {
         if (!showCountryPicker) return null
 
         return (
-            <View style={localStyles.modalOverlay}>
+            <View style={[localStyles.modalOverlay, safeAreaOverlayPadding]}>
                 <View style={localStyles.modalContent}>
                     <View style={localStyles.modalHeader}>
                         <Text style={localStyles.modalTitle}>{translate('Select Country')}</Text>
@@ -778,7 +780,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,

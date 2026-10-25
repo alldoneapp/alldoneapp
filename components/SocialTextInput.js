@@ -42,6 +42,7 @@ class SocialTextInput extends Component {
             linkedParentGoalsUrl: [],
             linkedParentSkillsUrl: [],
             linkedParentAssistantsUrl: [],
+            linkedParentArtifactsUrl: [],
             unsubscribe: store.subscribe(this.updateState),
         }
 
@@ -164,7 +165,8 @@ class SocialTextInput extends Component {
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         const { titleType } = this.props
         if (text !== '' && (titleType === TITLE_NOTE || titleType === TITLE_TASK)) {
@@ -176,6 +178,7 @@ class SocialTextInput extends Component {
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             })
         }
         this.setState({ text: text })
@@ -192,6 +195,7 @@ class SocialTextInput extends Component {
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             } = this.state
             const { projectId, titleType, objectId, object } = this.props
 
@@ -206,6 +210,7 @@ class SocialTextInput extends Component {
                         linkedParentGoalsUrl,
                         linkedParentSkillsUrl,
                         linkedParentAssistantsUrl,
+                        linkedParentArtifactsUrl,
                     },
                     titleType === TITLE_NOTE
                         ? {
@@ -243,6 +248,7 @@ class SocialTextInput extends Component {
             titleType,
             disabled,
             disabledMentions,
+            leftCustomElement,
         } = this.props
         const initialState = text.length === 0 && !inputFocus && !task.genericData
         const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
@@ -316,6 +322,7 @@ class SocialTextInput extends Component {
                 projectId={projectId}
                 wrapText={true}
                 numberOfLines={numberOfLines}
+                leftCustomElement={leftCustomElement}
             >
                 {text}
             </SocialText>

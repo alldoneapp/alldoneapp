@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Button from '../../../UIControls/Button'
@@ -49,7 +49,7 @@ export default function PromptHistoryWrapper({
     }, [])
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <AssistantPromptHistoryModal
                     projectId={projectId}
@@ -74,6 +74,6 @@ export default function PromptHistoryWrapper({
                 onPress={openModal}
                 disabled={isOpen || disabled}
             />
-        </Popover>
+        </AppPopover>
     )
 }

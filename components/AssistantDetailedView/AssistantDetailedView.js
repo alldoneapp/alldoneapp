@@ -14,7 +14,6 @@ import {
     setSelectedNavItem,
     setSelectedSidebarTab,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
 } from '../../redux/actions'
 import CustomScrollView from '../UIControls/CustomScrollView'
@@ -56,7 +55,6 @@ export default function AssistantDetailedView({ navigation }) {
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
     const loggedUser = useSelector(state => state.loggedUser)
     const administratorUserId = useSelector(state => state.administratorUser.uid)
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const [assistant, setAssistant] = useState(null)
     const [projectOriginId, setProjectOriginId] = useState('')
     const [isFullscreen, setFullscreen] = useState(false)
@@ -91,7 +89,7 @@ export default function AssistantDetailedView({ navigation }) {
 
             navigation.navigate('Root')
             if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+                dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             } else {
                 dispatch([resetFloatPopup(), setShowAccessDeniedPopup(true), navigateToAllProjectsTasks()])
             }
@@ -141,10 +139,6 @@ export default function AssistantDetailedView({ navigation }) {
         }
     }, [accessGranted])
 
-    useEffect(() => {
-        setFullscreen(assistantEnabled)
-    }, [assistantEnabled])
-
     const linkedParentObject = {
         type: LINKED_OBJECT_TYPE_ASSISTANT,
         id: assistantId,
@@ -163,7 +157,7 @@ export default function AssistantDetailedView({ navigation }) {
             {!smallScreenNavigation ? <CustomSideMenu navigation={navigation} isWeb /> : null}
             {!!assistant && !!projectOriginId && (
                 <View style={{ flex: 1 }}>
-                    {!isMiddleScreen && <BackButton assistant={assistant} />}
+                    {!smallScreenNavigation && !isMiddleScreen && <BackButton assistant={assistant} />}
 
                     <CustomView
                         ref={scrollRef}
@@ -188,14 +182,16 @@ export default function AssistantDetailedView({ navigation }) {
                                 />
                             )}
                             <View style={{ flex: 1 }}>
-                                <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
-                                    <NavigationBar
-                                        taskDetail
-                                        isSecondary
-                                        tabs={navigationTabs}
-                                        style={{ height: 56 }}
-                                    />
-                                </View>
+                                {!isFullscreen && (
+                                    <View style={smallScreenNavigation ? localStyles.navigationBar : undefined}>
+                                        <NavigationBar
+                                            taskDetail
+                                            isSecondary
+                                            tabs={navigationTabs}
+                                            style={{ height: 56 }}
+                                        />
+                                    </View>
+                                )}
 
                                 {(() => {
                                     switch (selectedNavItem) {
@@ -251,6 +247,8 @@ export default function AssistantDetailedView({ navigation }) {
                                                     chatTitle={assistant.displayName}
                                                     assistantId={assistant.uid}
                                                     objectType={'assistants'}
+                                                    isFullscreen={isFullscreen}
+                                                    setFullscreen={setFullscreen}
                                                 />
                                             )
                                         case DV_TAB_ASSISTANT_UPDATES:

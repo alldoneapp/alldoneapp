@@ -2,12 +2,15 @@ import React from 'react'
 import { StyleSheet, View, TouchableOpacity, TouchableWithoutFeedback } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
+import { colors, hexColorToRGBa } from '../../../styles/global'
 import { setPreConfigTaskModalData } from '../../../../redux/actions'
 import PreConfigTaskGeneratorModal from './PreConfigTaskGeneratorModal'
 import RunOutOfGoldAssistantModal from '../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
+import useSafeAreaOverlayPadding from '../../../../hooks/useSafeAreaOverlayPadding'
 
 export default function GlobalPreConfigTaskModal() {
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const dispatch = useDispatch()
     const preConfigTaskModalData = useSelector(state => state.preConfigTaskModalData)
     const gold = useSelector(state => state.loggedUser.gold)
@@ -24,7 +27,7 @@ export default function GlobalPreConfigTaskModal() {
     }
 
     return (
-        <View style={localStyles.overlay}>
+        <View style={[localStyles.overlay, safeAreaOverlayPadding]}>
             <TouchableWithoutFeedback onPress={closeModal}>
                 <View style={localStyles.backdrop} />
             </TouchableWithoutFeedback>
@@ -51,7 +54,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        zIndex: 9999,
+        zIndex: 10000,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -61,7 +64,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
     },
     modalContainer: {
         zIndex: 10000,

@@ -5,40 +5,60 @@
  * have created."
  *
  * `searchFilters.test.js` pins the filter STRINGS. This suite pins the WIRING
- * that produces them: that the option offered in the scope modal reaches
- * `algoliaIndex.search` for every index, that toggling it re-runs the query,
- * and — most importantly — that it stays off until the user asks for it, so
- * ordinary searching is untouched.
+ * that produces them: that the option reaches `algoliaIndex.search` for every
+ * index, that toggling it re-runs the query, and — most importantly — that it
+ * stays off until the user asks for it, so ordinary searching is untouched.
+ *
+ * It also pins WHERE the option lives. It first shipped inside the "Select
+ * search scope" modal and was immediately reported as missing ("I don't see any
+ * new filters in the search popup"), so `renders the option in the popup itself`
+ * below is a regression test for discoverability, not a rendering detail: the
+ * toggle must be reachable without opening any other modal.
  */
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
 import { Provider } from 'react-redux'
 
+jest.mock('react-native-gesture-handler', () => require('react-native'))
+jest.mock('react-native-gesture-handler/Swipeable', () => ({
+    __esModule: true,
+    default: ({ children }) => children,
+}))
+jest.mock('../UIComponents/Spinner', () => () => null)
+
 import store from '../../redux/store'
 import { overrideStore, showGlobalSearchPopup } from '../../redux/actions'
 import GlobalSearchModal from './GlobalSearchModal'
 import SearchForm from './Form/SearchForm'
-import ProjectFilter from './Filter/ProjectFilter'
-import CreatedByMeTag from './Filter/CreatedByMeTag'
+import { ScopeChip, ToggleChip, CREATED_BY_ME_CHIP_LABEL, OPEN_TASKS_CHIP_LABEL } from './Filter/SearchFilterChips'
+import { translate } from '../../i18n/TranslationService'
 import SelectProjectModalInSearch from '../UIComponents/FloatModals/SelectProjectModal/SelectProjectModalInSearch'
+import ResultLists from './ResultLists/ResultLists'
+import { MENTION_MODAL_GOALS_TAB, MENTION_MODAL_TASKS_TAB } from '../Feeds/CommentsTextInput/textInputHelper'
+import { DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
 
 const searchCalls = []
 
-jest.mock('algoliasearch', () => () => ({
-    initIndex: indexName => ({
-        search: async (text, options) => {
-            searchCalls.push({ indexName, text, filters: options?.filters })
-            return { hits: [] }
-        },
-    }),
+// The search batches the five original tabs into one multi_search call and searches
+// artifacts in a second one; capturing each entry separately keeps the assertions per-index.
+jest.mock('../../utils/typesenseSearch', () => ({
+    warmTypesenseSearchCredentials: jest.fn(async () => true),
+    multiSearchTypesense: async searches => {
+        searches.forEach(({ collection, query, filterBy }) => {
+            searchCalls.push({ indexName: collection, text: query, filters: filterBy })
+        })
+        return searches.map(() => ({ hits: [] }))
+    },
 }))
+
+const projectConjunct = projectId => `projectId:=[\`${projectId}\`]`
+const creatorConjunct = (attribute, uid) => `${attribute}:=\`${uid}\``
+const assistantExclusionConjunct = 'isAssistant:=false'
 
 const PROJECT = { id: 'project-1', name: 'Alldone Product', color: 'sky', sortIndexByUser: { 'user-1': 0 } }
 
 jest.mock('../../utils/backends/firestore', () => {
-    const actual = jest.requireActual('../../utils/backends/firestore')
     return {
-        ...actual,
         getAllUserProjects: jest.fn(async () => [
             { id: 'project-1', name: 'Alldone Product', color: 'sky', sortIndexByUser: { 'user-1': 0 } },
         ]),
@@ -71,17 +91,26 @@ const loggedUser = {
 
 const CREATOR_ATTRIBUTE_BY_INDEX = {
     dev_tasks: 'userId',
-    dev_goals: 'ownerId',
+    dev_goals: 'creatorId',
     dev_notes: 'userId',
     dev_contacts: 'recorderUserId',
     dev_updates: 'creatorId',
+    dev_artifacts: 'userId',
 }
 
 describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
     let component
 
-    const mount = async () => {
-        store.dispatch(overrideStore({ ...store.getState(), loggedUser, loggedUserProjects: [PROJECT] }))
+    const mount = async (storeOverrides = {}) => {
+        store.dispatch(
+            overrideStore({
+                ...store.getState(),
+                loggedUser,
+                loggedUserProjects: [PROJECT],
+                route: DV_TAB_ROOT_TASKS,
+                ...storeOverrides,
+            })
+        )
         store.dispatch(showGlobalSearchPopup(false))
         await act(async () => {
             component = renderer.create(
@@ -107,16 +136,20 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await act(async () => component.root.findByType(SearchForm).props.onPressButton())
     }
 
-    const openScopeModal = async () =>
-        act(async () => component.root.findByType(ProjectFilter).props.setShowSelectProjectModal())
+    const openScopeModal = async () => act(async () => component.root.findByType(ScopeChip).props.onPress())
 
-    const setCreatedByMe = async value =>
-        act(async () => component.root.findByType(SelectProjectModalInSearch).props.setCreatedByMeOnly(value))
+    const createdByMeChip = () =>
+        component.root.findAllByType(ToggleChip).find(chip => chip.props.testID === 'search-filter-created-by-me')
 
-    // The scope modal REPLACES the search popup's body while it is open, so the
-    // popup (and its tags) only exists again once it is closed.
-    const closeScopeModal = async () =>
-        act(async () => component.root.findByType(SelectProjectModalInSearch).props.closePopover())
+    const openTasksChip = () =>
+        component.root.findAllByType(ToggleChip).find(chip => chip.props.testID === 'search-filter-open-tasks')
+
+    // Presses the chip the way the user does, rather than calling a state setter,
+    // so the assertion covers the wiring and not just the reducer.
+    const setCreatedByMe = async value => {
+        if (createdByMeChip().props.selected === value) return
+        await act(async () => createdByMeChip().props.onPress())
+    }
 
     beforeEach(() => {
         searchCalls.length = 0
@@ -130,20 +163,46 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await mount()
         await search('invoice')
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
-            expect(call.filters).toContain('projectId:"project-1"')
-            expect(call.filters).not.toContain(`${CREATOR_ATTRIBUTE_BY_INDEX[call.indexName]}:"user-1"`)
+            expect(call.filters).toContain(projectConjunct('project-1'))
+            expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
         })
     })
 
-    it('offers the option in the scope modal, off by default', async () => {
+    it('renders the chip in the popup itself, off by default', async () => {
+        await mount()
+
+        // No scope modal opened first: this is the whole point of the follow-up.
+        expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
+        expect(createdByMeChip().props.selected).toBe(false)
+        expect(typeof createdByMeChip().props.onPress).toBe('function')
+    })
+
+    it('renders the row into the MOBILE popup output, where it was reported missing', async () => {
+        // The two reports on this task were both screenshots of the phone popup,
+        // and the popup takes a different width branch (`POPOVER_MOBILE_WIDTH`)
+        // there. Finding the component by type — as the test above does — would
+        // still pass if the row were width-gated or pushed out of the rendered
+        // tree, so this one asserts the translated LABEL reaches rendered output
+        // with `smallScreenNavigation` on, without opening any other modal.
+        await mount({ smallScreenNavigation: true })
+
+        expect(component.root.findAllByType(SelectProjectModalInSearch)).toHaveLength(0)
+        expect(JSON.stringify(component.toJSON())).toContain(translate(CREATED_BY_ME_CHIP_LABEL))
+    })
+
+    it('keeps the scope modal free of the creator filter', async () => {
+        // The scope modal REPLACES the popup body while open. Leaving a second
+        // copy of the toggle in there would mean two controls for one piece of
+        // state, only one of which is ever visible.
         await mount()
         await openScopeModal()
 
         const modal = component.root.findByType(SelectProjectModalInSearch)
-        expect(modal.props.createdByMeOnly).toBe(false)
-        expect(typeof modal.props.setCreatedByMeOnly).toBe('function')
+        expect(modal.props.createdByMeOnly).toBeUndefined()
+        expect(modal.props.setCreatedByMeOnly).toBeUndefined()
+        expect(component.root.findAllByType(ToggleChip)).toHaveLength(0)
     })
 
     it('re-runs the search filtered to the logged user, on every index', async () => {
@@ -151,16 +210,15 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await search('invoice')
         searchCalls.length = 0
 
-        await openScopeModal()
         await setCreatedByMe(true)
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         expect(Object.keys(CREATOR_ATTRIBUTE_BY_INDEX).sort()).toEqual(searchCalls.map(c => c.indexName).sort())
         searchCalls.forEach(call => {
             expect(call.text).toBe('invoice')
-            expect(call.filters).toContain(`${CREATOR_ATTRIBUTE_BY_INDEX[call.indexName]}:"user-1"`)
+            expect(call.filters).toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
             // The pre-existing access scoping must survive alongside it.
-            expect(call.filters).toContain('projectId:"project-1"')
+            expect(call.filters).toContain(projectConjunct('project-1'))
             expect(call.filters).toContain('isPublicFor:')
         })
     })
@@ -170,49 +228,86 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await search('invoice')
         searchCalls.length = 0
 
-        await openScopeModal()
         await setCreatedByMe(true)
 
         const contacts = searchCalls.find(call => call.indexName === 'dev_contacts')
-        expect(contacts.filters).toContain('isAssistant:false')
+        expect(contacts.filters).toContain(assistantExclusionConjunct)
     })
 
     it('does not fire a search when toggled with an empty search box', async () => {
         await mount()
-        await openScopeModal()
         await setCreatedByMe(true)
 
         expect(searchCalls).toHaveLength(0)
     })
 
-    it('surfaces the active filter as a tag, and removes it when turned back off', async () => {
+    it('shows the active state on the chip, and clears it when turned back off', async () => {
         await mount()
-        expect(component.root.findAllByType(CreatedByMeTag)).toHaveLength(0)
+        expect(createdByMeChip().props.selected).toBe(false)
 
-        await openScopeModal()
         await setCreatedByMe(true)
-        await closeScopeModal()
-        expect(component.root.findByType(ProjectFilter).props.createdByMeOnly).toBe(true)
-        expect(component.root.findAllByType(CreatedByMeTag)).toHaveLength(1)
+        expect(createdByMeChip().props.selected).toBe(true)
 
-        await openScopeModal()
         await setCreatedByMe(false)
-        await closeScopeModal()
-        expect(component.root.findAllByType(CreatedByMeTag)).toHaveLength(0)
+        expect(createdByMeChip().props.selected).toBe(false)
     })
 
     it('reverts to unfiltered results when the option is turned back off', async () => {
         await mount()
         await search('invoice')
-        await openScopeModal()
         await setCreatedByMe(true)
         searchCalls.length = 0
 
         await setCreatedByMe(false)
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
-            expect(call.filters).not.toContain(`${CREATOR_ATTRIBUTE_BY_INDEX[call.indexName]}:"user-1"`)
+            expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
         })
+    })
+
+    it('shows the open-tasks chip only on Tasks and keeps its state across tab switches', async () => {
+        await mount()
+
+        expect(openTasksChip().props.selected).toBe(false)
+        expect(JSON.stringify(component.toJSON())).toContain(translate(OPEN_TASKS_CHIP_LABEL))
+
+        await act(async () => openTasksChip().props.onPress())
+        expect(openTasksChip().props.selected).toBe(true)
+
+        await act(async () => component.root.findByType(ResultLists).props.setActiveTab(MENTION_MODAL_GOALS_TAB))
+        expect(openTasksChip()).toBeUndefined()
+
+        await act(async () => component.root.findByType(ResultLists).props.setActiveTab(MENTION_MODAL_TASKS_TAB))
+        expect(openTasksChip().props.selected).toBe(true)
+    })
+
+    it('immediately re-runs the current search with done=false only on the task index', async () => {
+        await mount()
+        await search('invoice')
+        searchCalls.length = 0
+
+        await act(async () => openTasksChip().props.onPress())
+
+        expect(searchCalls).toHaveLength(6)
+        searchCalls.forEach(call => {
+            expect(call.text).toBe('invoice')
+            if (call.indexName === 'dev_tasks') {
+                expect(call.filters).toContain('done:=false')
+            } else {
+                expect(call.filters).not.toContain('done:=false')
+            }
+        })
+    })
+
+    it('resets the open-tasks filter when the search popup is opened again', async () => {
+        await mount()
+        await act(async () => openTasksChip().props.onPress())
+        expect(openTasksChip().props.selected).toBe(true)
+
+        act(() => component.unmount())
+        await mount()
+
+        expect(openTasksChip().props.selected).toBe(false)
     })
 })

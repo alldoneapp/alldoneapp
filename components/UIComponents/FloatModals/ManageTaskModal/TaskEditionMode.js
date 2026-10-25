@@ -4,7 +4,7 @@ import v4 from 'uuid/v4'
 import ReactQuill from 'react-quill-new'
 import { cloneDeep, isEqual } from 'lodash'
 import Hotkeys from 'react-hot-keys'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 
 import { colors } from '../../../styles/global'
 import TasksHelper, { OPEN_STEP, TASK_ASSIGNEE_ASSISTANT_TYPE } from '../../../TaskListView/Utils/TasksHelper'
@@ -27,7 +27,8 @@ import Button from '../../../UIControls/Button'
 import NavigationService from '../../../../utils/NavigationService'
 import URLTrigger from '../../../../URLSystem/URLTrigger'
 import EstimationWrapper from './EstimationWrapper'
-import ConfirmationModal from './ConfirmationModal'
+import ConfirmDialog from '../../ConfirmDialog'
+import { popoverToCenter } from '../../../../utils/HelperFunctions'
 import AssigneeWrapper from './AssigneeWrapper'
 import DueDateWrapper from './DueDateWrapper'
 import CommentWrapper from './CommentWrapper'
@@ -110,6 +111,7 @@ export default class TaskEditionMode extends Component {
             linkedParentGoalsUrl: [],
             linkedParentSkillsUrl: [],
             linkedParentAssistantsUrl: [],
+            linkedParentArtifactsUrl: [],
             editorId,
             initialOps,
         }
@@ -224,7 +226,8 @@ export default class TaskEditionMode extends Component {
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         const { tempTask } = this.state
         const { editing } = this.props
@@ -241,6 +244,7 @@ export default class TaskEditionMode extends Component {
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             })
         }
         if (!editing) {
@@ -504,6 +508,7 @@ export default class TaskEditionMode extends Component {
             linkedParentGoalsUrl,
             linkedParentSkillsUrl,
             linkedParentAssistantsUrl,
+            linkedParentArtifactsUrl,
         } = this.state
         const { projectId } = this.props
         Backend.setLinkedParentObjects(
@@ -516,6 +521,7 @@ export default class TaskEditionMode extends Component {
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             { type: 'task', id: task.id }
         )
@@ -755,17 +761,22 @@ export default class TaskEditionMode extends Component {
                         forceShowShortcut={true}
                     />
                 </View>
-                <Popover
+                <AppPopover
                     content={
-                        <ConfirmationModal closeModal={this.closeConfirmationModal} deleteTask={this.deleteTask} />
+                        <ConfirmDialog
+                            closeModal={this.closeConfirmationModal}
+                            onProceed={this.deleteTask}
+                            title={'Be careful with this action'}
+                            description={'Do you really want to perform this action?'}
+                        />
                     }
                     align={'start'}
                     position={['bottom']}
-                    contentLocation={{ top: 0, left: 0 }}
+                    contentLocation={popoverToCenter}
                     isOpen={showConfirmationModal}
                 >
                     <View />
-                </Popover>
+                </AppPopover>
             </View>
         )
     }

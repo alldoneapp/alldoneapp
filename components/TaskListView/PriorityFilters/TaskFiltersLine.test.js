@@ -6,6 +6,7 @@ import React from 'react'
 import { Text, View } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
+import { removeModal, storeModal } from '../../ModalsManager/modalsManager'
 
 const mockCollectTaskPriorityCounts = jest.fn()
 const mockCollectTaskVmSessionRefs = jest.fn()
@@ -109,9 +110,26 @@ describe('TaskFiltersLine', () => {
         expect(component.root.findByProps({ testID: 'task-filter-vm-state-group' })).toBeTruthy()
         expect(component.root.findAll(node => node.props.children === 'Priority')).toHaveLength(0)
         expect(component.root.findAll(node => node.props.children === 'VM States')).toHaveLength(0)
-        expect(component.root.findByProps({ testID: 'task-filter-active-count' }).findByType(Text).props.children).toBe(
-            2
-        )
+    })
+
+    // AT-2264: the header used to carry a badge with the number of selected filters. It read
+    // like an item count next to the per-chip counts, so it is gone -- the highlighted chips
+    // already say what is selected. The per-chip counts stay: those are item counts.
+    test('does not show how many filters are selected', () => {
+        mockCollectTaskPriorityCounts.mockReturnValue({ counts: { must_do: 2, none: 1 }, total: 3, prioritized: 2 })
+        mockCollectTaskVmStateCounts.mockReturnValue({ counts: { paused: 1, failed: 1 }, total: 3, available: 2 })
+        setState({ taskPriorityFilters: ['must_do'], taskVmStateFilters: ['paused'] })
+
+        let component
+        act(() => {
+            component = renderer.create(<TaskFiltersLine projectId="project-1" />)
+        })
+
+        expect(component.root.findAll(node => node.props.testID === 'task-filter-active-count')).toHaveLength(0)
+        expect(
+            component.root.findByProps({ testID: 'task-priority-filter-must_do' }).findAllByType(Text).slice(-1)[0]
+                .props.children
+        ).toBe(2)
     })
 
     test('keeps all available filter options in one horizontally scrollable line', () => {
@@ -244,5 +262,48 @@ describe('TaskFiltersLine', () => {
         expect(mockWatchVmSessionStatus).toHaveBeenCalledWith('project-1', 'task-1', expect.any(Function))
         act(() => component.unmount())
         expect(unsubscribe).toHaveBeenCalledTimes(1)
+    })
+
+    test('acquires the Auto-postpone popup once and releases it on unmount', () => {
+        mockCollectTaskPriorityCounts.mockReturnValue({ counts: { must_do: 1 }, total: 1, prioritized: 1 })
+        setState()
+        let component
+
+        act(() => {
+            component = renderer.create(<TaskFiltersLine projectId="project-1" />)
+        })
+        const button = component.root.findByProps({ testID: 'task-filter-auto-postpone' })
+
+        act(() => {
+            button.props.onPress()
+            button.props.onPress()
+        })
+
+        expect(storeModal).toHaveBeenCalledTimes(1)
+        expect(dispatch.mock.calls.filter(([action]) => action.type === 'Show float popup')).toHaveLength(1)
+
+        act(() => component.unmount())
+
+        expect(removeModal).toHaveBeenCalledWith('auto-postpone-modal-id')
+        expect(dispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
+    })
+
+    test('releases Auto-postpone when the filter line disappears while it is open', () => {
+        mockCollectTaskPriorityCounts.mockReturnValue({ counts: { must_do: 1 }, total: 1, prioritized: 1 })
+        setState()
+        let component
+
+        act(() => {
+            component = renderer.create(<TaskFiltersLine projectId="project-1" />)
+        })
+        act(() => component.root.findByProps({ testID: 'task-filter-auto-postpone' }).props.onPress())
+
+        mockCollectTaskPriorityCounts.mockReturnValue({ counts: {}, total: 0, prioritized: 0 })
+        setState({ openTasksStore: { refreshed: true } })
+        act(() => component.update(<TaskFiltersLine projectId="project-1" />))
+
+        expect(component.toJSON()).toBeNull()
+        expect(removeModal).toHaveBeenCalledWith('auto-postpone-modal-id')
+        expect(dispatch.mock.calls.filter(([action]) => action.type === 'Hide float popup')).toHaveLength(1)
     })
 })

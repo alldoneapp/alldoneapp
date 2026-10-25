@@ -7,6 +7,7 @@ const {
     findCalendarAvailabilityForAssistantRequest,
     __private__: { getConnectedCalendarAccounts },
 } = require('../GoogleCalendar/assistantCalendarTools')
+const { DEFAULT_MIN_FREE_HOURS_PER_DAY, normalizeMinFreeHoursPerDay } = require('../Calendar/dailyFreeTime')
 const { FieldValue } = require('firebase-admin/firestore')
 
 const DEFAULT_BOOKING_SETTINGS = {
@@ -18,8 +19,15 @@ const DEFAULT_BOOKING_SETTINGS = {
     workingHoursStart: '09:00',
     workingHoursEnd: '17:00',
     includeWeekends: false,
+    // Same-day bookings are off by default: a link handed out publicly should not let a
+    // stranger drop a meeting into the host's day that already started. Hosts opt in.
+    allowSameDayBooking: false,
     bufferBeforeMinutes: 0,
     bufferAfterMinutes: 0,
+    // AT-2278 — how much of the working day must stay unbooked. Shared with Anna's
+    // find_calendar_availability tool, so this one number governs both the assistant's
+    // suggestions and what visitors of the public booking link can take.
+    minFreeHoursPerDay: DEFAULT_MIN_FREE_HOURS_PER_DAY,
     additionalGuestEmails: [],
 }
 
@@ -112,6 +120,21 @@ function resolveUserIanaTimeZone(userData = {}) {
     return 'UTC'
 }
 
+// Keeps at least MIN_BOOKABLE_MINUTES_PER_DAY of the working window bookable, so the
+// minimum can never make a day structurally impossible to book.
+const MIN_BOOKABLE_MINUTES_PER_DAY = 30
+
+function workingHoursSpanHours(startClock, endClock) {
+    const [startHour, startMinute] = startClock.split(':').map(Number)
+    const [endHour, endMinute] = endClock.split(':').map(Number)
+    return (endHour * 60 + endMinute - (startHour * 60 + startMinute)) / 60
+}
+
+function clampMinFreeHoursToWorkingHours(hours, startClock, endClock) {
+    const maxHours = Math.max(workingHoursSpanHours(startClock, endClock) - MIN_BOOKABLE_MINUTES_PER_DAY / 60, 0)
+    return normalizeMinFreeHoursPerDay(Math.min(hours, maxHours), 0)
+}
+
 function normalizeBookingSettings(input = {}, userData = {}) {
     const defaults = {
         ...DEFAULT_BOOKING_SETTINGS,
@@ -122,6 +145,7 @@ function normalizeBookingSettings(input = {}, userData = {}) {
     const workingHoursEnd = normalizeClockTime(input.workingHoursEnd, defaults.workingHoursEnd)
     const availableDurations = normalizeAvailableDurations(input.availableDurations)
     const durationMinutes = normalizeBoundedInteger(input.durationMinutes, defaults.durationMinutes, 5, 480)
+    const resolvedWorkingHoursEnd = workingHoursEnd > workingHoursStart ? workingHoursEnd : defaults.workingHoursEnd
 
     return {
         enabled: input.enabled === true,
@@ -130,10 +154,25 @@ function normalizeBookingSettings(input = {}, userData = {}) {
         availableDurations,
         slotIntervalMinutes: normalizeBoundedInteger(input.slotIntervalMinutes, defaults.slotIntervalMinutes, 5, 120),
         workingHoursStart,
-        workingHoursEnd: workingHoursEnd > workingHoursStart ? workingHoursEnd : defaults.workingHoursEnd,
+        workingHoursEnd: resolvedWorkingHoursEnd,
         includeWeekends: input.includeWeekends === true,
+        // Strict `=== true` is what makes backward compatibility work: booking links saved
+        // before this setting existed carry no field at all, so they read as false and keep
+        // the no-same-day rule without any data migration.
+        allowSameDayBooking: input.allowSameDayBooking === true,
         bufferBeforeMinutes: normalizeBoundedInteger(input.bufferBeforeMinutes, defaults.bufferBeforeMinutes, 0, 240),
         bufferAfterMinutes: normalizeBoundedInteger(input.bufferAfterMinutes, defaults.bufferAfterMinutes, 0, 240),
+        // A settings doc written before this field existed carries no value, so it reads as
+        // the 4h default — the backward-compatible path, no migration needed. Clamped, not
+        // rejected: a minimum that swallows the whole working window would make every day
+        // fail the check, which the soft fallback then silently undoes — the setting would
+        // look active while doing nothing. Clamping also means a host whose window is
+        // shorter than the 4h default (e.g. 09:00-12:00) can still save their settings.
+        minFreeHoursPerDay: clampMinFreeHoursToWorkingHours(
+            normalizeMinFreeHoursPerDay(input.minFreeHoursPerDay, defaults.minFreeHoursPerDay),
+            workingHoursStart,
+            resolvedWorkingHoursEnd
+        ),
         additionalGuestEmails: normalizeGuestEmails(input.additionalGuestEmails),
         timeZone: moment.tz.zone(safeTrim(input.timeZone))
             ? safeTrim(input.timeZone)
@@ -173,8 +212,13 @@ function buildPublicBookingPage(userId, userData, settings) {
             workingHoursStart: settings.workingHoursStart,
             workingHoursEnd: settings.workingHoursEnd,
             includeWeekends: settings.includeWeekends,
+            allowSameDayBooking: settings.allowSameDayBooking === true,
             bufferBeforeMinutes: settings.bufferBeforeMinutes,
             bufferAfterMinutes: settings.bufferAfterMinutes,
+            // Host-private, like additionalGuestEmails: findPublicBookingSlots reads it
+            // server-side to drop days that are already full. handleGetPage does not expose
+            // it, so a visitor never learns how loaded the host's calendar is.
+            minFreeHoursPerDay: settings.minFreeHoursPerDay,
             // Host-private: consumed server-side in handleBook to add fixed guests to the
             // event. Never returned to visitors (handleGetPage whitelists the fields it exposes).
             additionalGuestEmails: normalizeGuestEmails(settings.additionalGuestEmails),
@@ -285,14 +329,61 @@ function resolvePublicDuration(settings = {}, durationMinutes) {
     return availableDurations.includes(settings.durationMinutes) ? settings.durationMinutes : availableDurations[0]
 }
 
+// "Today" is the HOST's calendar day, not the visitor's. The host timezone already drives
+// working hours and day boundaries everywhere else in this flow, and the rule expresses the
+// host's intent ("nobody drops a meeting into the day I already planned"), so a visitor in a
+// different timezone must not be able to shift it.
+function resolveSameDayBoundaryTimeZone(settings = {}, requestedTimeZone) {
+    const hostTimeZone = safeTrim(settings.timeZone)
+    if (hostTimeZone && moment.tz.zone(hostTimeZone)) return hostTimeZone
+    const requested = safeTrim(requestedTimeZone)
+    if (requested && moment.tz.zone(requested)) return requested
+    return 'UTC'
+}
+
+// Returns the first instant an external visitor may book, or null when there is no
+// restriction. A missing/false allowSameDayBooking means midnight tomorrow in the host's
+// timezone — so existing booking links (no such field) keep the no-same-day rule.
+function resolveEarliestBookableStart(settings = {}, requestedTimeZone, now = undefined) {
+    if (settings.allowSameDayBooking === true) return null
+    const zone = resolveSameDayBoundaryTimeZone(settings, requestedTimeZone)
+    return (now ? moment(now) : moment()).tz(zone).startOf('day').add(1, 'day')
+}
+
 async function findPublicBookingSlots(page, { start, end, timeZone, durationMinutes }) {
     const settings = page.settings || {}
     const resolvedDurationMinutes = resolvePublicDuration(settings, durationMinutes)
+    const resolvedTimeZone = timeZone || settings.timeZone || 'UTC'
+
+    // Single funnel: both GET /slots and the re-check inside POST /book come through here,
+    // so clamping the search window is all the enforcement the same-day rule needs.
+    let effectiveStart = start
+    const earliestBookableStart = resolveEarliestBookableStart(settings, timeZone)
+    if (earliestBookableStart) {
+        const requestedEnd = moment.parseZone(end)
+        if (requestedEnd.isValid() && !requestedEnd.isAfter(earliestBookableStart)) {
+            // The whole requested window is today or earlier — nothing is bookable. Answer
+            // with an empty success rather than an error: no availability is the truth here,
+            // and a failure would surface to the visitor as a broken calendar.
+            return {
+                success: true,
+                timeZone: resolvedTimeZone,
+                durationMinutes: resolvedDurationMinutes,
+                options: [],
+                message: 'Same-day bookings are not available for this link.',
+            }
+        }
+        const requestedStart = moment.parseZone(start)
+        if (requestedStart.isValid() && requestedStart.isBefore(earliestBookableStart)) {
+            effectiveStart = earliestBookableStart.format()
+        }
+    }
+
     const result = await findCalendarAvailabilityForAssistantRequest({
         userId: page.userId,
-        timeMin: start,
+        timeMin: effectiveStart,
         timeMax: end,
-        timeZone: timeZone || settings.timeZone || 'UTC',
+        timeZone: resolvedTimeZone,
         durationMinutes: resolvedDurationMinutes,
         maxOptions: MAX_PUBLIC_SLOT_OPTIONS,
         // Start times are spaced by the meeting length so slots line up cleanly and
@@ -303,12 +394,14 @@ async function findPublicBookingSlots(page, { start, end, timeZone, durationMinu
         includeWeekends: settings.includeWeekends,
         bufferBeforeMinutes: settings.bufferBeforeMinutes,
         bufferAfterMinutes: settings.bufferAfterMinutes,
+        minFreeHoursPerDay: settings.minFreeHoursPerDay,
     })
     return { ...result, durationMinutes: resolvedDurationMinutes }
 }
 
 module.exports = {
     DEFAULT_BOOKING_SETTINGS,
+    clampMinFreeHoursToWorkingHours,
     MAX_BOOKING_RANGE_DAYS,
     ALLOWED_BOOKING_DURATIONS,
     buildDefaultSlug,
@@ -318,7 +411,9 @@ module.exports = {
     getHostingUrl,
     getPublicBookingPage,
     normalizeBookingSettings,
+    resolveEarliestBookableStart,
     resolvePublicDuration,
+    resolveSameDayBoundaryTimeZone,
     saveBookingSettings,
     slugify,
     validateBookingSettings,

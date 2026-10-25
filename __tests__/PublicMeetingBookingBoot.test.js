@@ -1,0 +1,190 @@
+/**
+ * @jest-environment jsdom
+ */
+
+// AT-2276: an unregistered visitor opening https://my.alldone.app/meet/<slug> must land on the
+// booking page directly. Before the fix the boot path mounted the login ("you are not registered")
+// screen first, which also rewrote the address bar to /login and started an anonymous sign-in.
+//
+// AppNavigator is stubbed with a container that records every route it renders, so "the login
+// screen was never mounted" is an assertion instead of a guess.
+//
+// Every test here boots the WHOLE app, which does not fit jest's default 5s per-test budget: the
+// suite already takes ~4.8s on a developer machine and 33-35s on a CI runner, so the first test —
+// which also carries the module-loading cost — blew the default and failed `test:web:changed` on
+// every branch whose diff reached the app-boot import graph, regardless of what that branch changed.
+//
+// The first raise of this budget set it to 30s while its own commit message recorded the CI cost as
+// "33-35s", i.e. the budget was pinned BELOW the number it was derived from and had no headroom at
+// all. What that leaves is a suite that passes only when it happens to run first in the in-band
+// worker: measured on a CI runner it takes 18.9s as the first suite of the job and 36.3s as the
+// third, and the branch that trips the difference is simply whichever one adds a couple of suites
+// ahead of it — again regardless of what that branch changed (AT-2385 added three Contacts suites
+// and turned it red twice in a row; boot itself is unchanged, 29.3s on this branch vs 30.6s on
+// master for the same cold-cache run).
+//
+// So the budget is now derived from the worst observed CI cost with real headroom rather than from
+// the best one. Nothing else changes: the assertions, the mocks and the boot path are untouched, the
+// suite still runs in full, and the CI job's own timeout remains the outer bound.
+jest.setTimeout(120000)
+
+jest.mock('../utils/backends/firestore', () => ({
+    ...jest.createMockFromModule('../utils/backends/firestore'),
+    getNotesCollaborationServerData: () => ({ NOTES_COLLABORATION_SERVER: 'ws://localhost:1234' }),
+}))
+
+jest.mock('../AppNavigator', () => {
+    const ReactModule = require('react')
+    const NavigationService = require('../utils/NavigationService').default
+
+    class AppContainer extends ReactModule.Component {
+        constructor(props) {
+            super(props)
+            this.state = NavigationService.getCurrentState()
+        }
+
+        componentDidMount() {
+            this.unsubscribe = NavigationService.subscribe(navState => this.setState(navState))
+        }
+
+        componentWillUnmount() {
+            if (this.unsubscribe) this.unsubscribe()
+        }
+
+        render() {
+            global.__renderedRoutes.push(this.state.routeName)
+            return null
+        }
+    }
+
+    return { __esModule: true, AppContainer }
+})
+
+jest.mock('../components/LoadingScreen', () => ({
+    __esModule: true,
+    default: () => {
+        global.__loadingScreenRendered = true
+        return null
+    },
+}))
+
+jest.mock('../components/ProgressiveLoadingScreen', () => ({
+    __esModule: true,
+    default: () => {
+        global.__loadingScreenRendered = true
+        return null
+    },
+}))
+
+jest.mock('../components/Analytics/AnalyticsConsentManager', () => ({ __esModule: true, default: () => null }))
+
+// Only mounted for a logged-in user; stubbed because lottie-web needs a real canvas.
+jest.mock('../components/UIComponents/FloatModals/EndDayStatisticsModal', () => ({
+    __esModule: true,
+    default: () => null,
+}))
+
+jest.mock('../utils/Geolocation/GeolocationHelper', () => ({
+    initIpRegistry: () => {
+        global.__ipRegistryInitCalls += 1
+    },
+}))
+
+jest.mock('../utils/BackendBridge', () => ({
+    __esModule: true,
+    default: {
+        initFirebase: callback => {
+            global.__firebaseInitCalls += 1
+            global.__firebaseAuthCallback = callback
+        },
+        logout: resolve => resolve && resolve(),
+    },
+}))
+
+// Each case boots the app from scratch (one module registry per boot, so redux starts with
+// `loggedIn: null` - auth not answered yet, which is the state the regression lives in). React and
+// react-redux are required from that same fresh registry, or the app would render against a second
+// React copy with no hook dispatcher.
+let act
+
+const bootApp = async pathname => {
+    window.history.replaceState({}, '', pathname)
+    global.__renderedRoutes = []
+    global.__loadingScreenRendered = false
+    global.__firebaseAuthCallback = null
+    global.__firebaseInitCalls = 0
+    global.__ipRegistryInitCalls = 0
+
+    jest.resetModules()
+    const React = require('react')
+    const renderer = require('react-test-renderer')
+    const { Provider } = require('react-redux')
+    act = renderer.act
+
+    const modules = {
+        AppContent: require('../AppContent').default,
+        store: require('../redux/store').default,
+        NavigationService: require('../utils/NavigationService').default,
+    }
+
+    await act(async () => {
+        modules.tree = renderer.create(
+            React.createElement(Provider, { store: modules.store }, React.createElement(modules.AppContent))
+        )
+    })
+
+    return modules
+}
+
+const answerAuthWithNoSession = async () => {
+    await act(async () => {
+        await global.__firebaseAuthCallback(null)
+    })
+}
+
+describe('Public meeting link boot path (AT-2276)', () => {
+    it('renders the booking page immediately, without waiting for Firebase auth', async () => {
+        const { NavigationService } = await bootApp('/meet/karsten-wysk')
+
+        expect(global.__renderedRoutes).toEqual(['MeetingBooking'])
+        expect(NavigationService.getCurrentState().params).toEqual({ slug: 'karsten-wysk' })
+        // No "connecting" spinner in front of a page that needs no account and no app data.
+        expect(global.__loadingScreenRendered).toBe(false)
+        expect(global.__firebaseInitCalls).toBe(0)
+        expect(global.__firebaseAuthCallback).toBeNull()
+        expect(global.__ipRegistryInitCalls).toBe(0)
+    })
+
+    it('never mounts the login screen and keeps the booking URL in the address bar', async () => {
+        const { NavigationService, store } = await bootApp('/meet/karsten-wysk')
+
+        expect(global.__renderedRoutes).not.toContain('LoginScreen')
+        expect(NavigationService.getCurrentState().routeName).toBe('MeetingBooking')
+        expect(window.location.pathname).toBe('/meet/karsten-wysk')
+        expect(store.getState().loggedIn).toBeNull()
+        expect(store.getState().initialUrl).toBe('/meet/karsten-wysk')
+        expect(global.__firebaseInitCalls).toBe(0)
+    })
+
+    it('keeps a query string on the booking link', async () => {
+        const { store } = await bootApp('/meet/karsten-wysk?utm_source=signature')
+
+        expect(global.__renderedRoutes).not.toContain('LoginScreen')
+        expect(store.getState().initialUrl).toBe('/meet/karsten-wysk?utm_source=signature')
+        expect(global.__firebaseInitCalls).toBe(0)
+    })
+
+    it('still sends a logged-out visitor of a normal app URL to the login screen', async () => {
+        const { NavigationService } = await bootApp('/projects/tasks/open')
+
+        // Auth has not answered yet: the app shell stays behind the loading screen as before.
+        expect(global.__loadingScreenRendered).toBe(true)
+        expect(global.__renderedRoutes).toEqual([])
+        expect(global.__firebaseInitCalls).toBe(1)
+
+        await answerAuthWithNoSession()
+
+        expect(NavigationService.getCurrentState().routeName).toBe('LoginScreen')
+        expect(global.__renderedRoutes).toEqual(['LoginScreen'])
+    })
+})

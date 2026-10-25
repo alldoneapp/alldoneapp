@@ -1,0 +1,204 @@
+{
+    "environment": "Headless Chromium 141, synthetic isolated editor, local VM",
+    "deferred": {
+        "total": 100,
+        "pendingBefore": 87,
+        "rootsBefore": 13,
+        "afterScroll": 26,
+        "beforeHeight": 24,
+        "afterHeight": 24,
+        "beforeWidth": 480,
+        "afterWidth": 480,
+        "pendingAfterFind": 0,
+        "deltaUnchanged": true,
+        "selectionUnchanged": true,
+        "rootsAfterClose": 0
+    },
+    "opening": {
+        "readyMs": 16.800000000279397,
+        "text": "Remote Cached Original Local\n",
+        "cachedShown": true
+    },
+    "profile": [
+        {
+            "size": 10000,
+            "shape": "plain",
+            "before": {
+                "openMs": 10.299999999813735,
+                "typingMedianMs": 1,
+                "htmlMedianMs": 0.2999999998137355,
+                "mentionsMedianMs": 0,
+                "encodeMedianMs": 0.19999999972060323,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 29.899999999906868,
+                "typingMedianMs": 0.5,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 0,
+                "encodeMedianMs": 0.19999999972060323,
+                "htmlCalls": 0
+            }
+        },
+        {
+            "size": 10000,
+            "shape": "formatted",
+            "before": {
+                "openMs": 230.60000000009313,
+                "typingMedianMs": 7,
+                "htmlMedianMs": 4.399999999906868,
+                "mentionsMedianMs": 0.20000000018626451,
+                "encodeMedianMs": 3.8999999999068677,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 198,
+                "typingMedianMs": 2.3000000002793968,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 0.2999999998137355,
+                "encodeMedianMs": 3.7000000001862645,
+                "htmlCalls": 0
+            }
+        },
+        {
+            "size": 10000,
+            "shape": "embeds",
+            "before": {
+                "openMs": 50.5,
+                "typingMedianMs": 1.5,
+                "htmlMedianMs": 0.6999999997206032,
+                "mentionsMedianMs": 0,
+                "encodeMedianMs": 0.2999999998137355,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 30.100000000093132,
+                "typingMedianMs": 0.6999999997206032,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 0,
+                "encodeMedianMs": 0.20000000018626451,
+                "htmlCalls": 0
+            }
+        },
+        {
+            "size": 50000,
+            "shape": "plain",
+            "before": {
+                "openMs": 54.60000000009313,
+                "typingMedianMs": 3.7999999998137355,
+                "htmlMedianMs": 2,
+                "mentionsMedianMs": 0,
+                "encodeMedianMs": 0.19999999972060323,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 48,
+                "typingMedianMs": 1,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 0,
+                "encodeMedianMs": 0.2999999998137355,
+                "htmlCalls": 0
+            }
+        },
+        {
+            "size": 50000,
+            "shape": "formatted",
+            "before": {
+                "openMs": 962.8999999999069,
+                "typingMedianMs": 41.8000000002794,
+                "htmlMedianMs": 22.200000000186265,
+                "mentionsMedianMs": 1.8999999999068677,
+                "encodeMedianMs": 21.899999999906868,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 960.2000000001863,
+                "typingMedianMs": 13.899999999906868,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 0.8999999999068677,
+                "encodeMedianMs": 14,
+                "htmlCalls": 0
+            }
+        },
+        {
+            "size": 50000,
+            "shape": "embeds",
+            "before": {
+                "openMs": 119.10000000009313,
+                "typingMedianMs": 5.5,
+                "htmlMedianMs": 3.6999999997206032,
+                "mentionsMedianMs": 0.10000000009313226,
+                "encodeMedianMs": 0.6000000000931323,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 81.70000000018626,
+                "typingMedianMs": 1.7999999998137355,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 0.09999999962747097,
+                "encodeMedianMs": 0.599999999627471,
+                "htmlCalls": 0
+            }
+        },
+        {
+            "size": 100000,
+            "shape": "plain",
+            "before": {
+                "openMs": 80.8000000002794,
+                "typingMedianMs": 6,
+                "htmlMedianMs": 3.7000000001862645,
+                "mentionsMedianMs": 0,
+                "encodeMedianMs": 0.40000000037252903,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 86.5,
+                "typingMedianMs": 1.6000000000931323,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 0,
+                "encodeMedianMs": 0.3000000002793968,
+                "htmlCalls": 0
+            }
+        },
+        {
+            "size": 100000,
+            "shape": "formatted",
+            "before": {
+                "openMs": 2000.8999999999069,
+                "typingMedianMs": 128.39999999990687,
+                "htmlMedianMs": 56.89999999990687,
+                "mentionsMedianMs": 5.699999999720603,
+                "encodeMedianMs": 45.700000000186265,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 2002.5,
+                "typingMedianMs": 93.8000000002794,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 2.5,
+                "encodeMedianMs": 31.5,
+                "htmlCalls": 0
+            }
+        },
+        {
+            "size": 100000,
+            "shape": "embeds",
+            "before": {
+                "openMs": 299.70000000018626,
+                "typingMedianMs": 9.599999999627471,
+                "htmlMedianMs": 6.600000000093132,
+                "mentionsMedianMs": 0.20000000018626451,
+                "encodeMedianMs": 1,
+                "htmlCalls": 9
+            },
+            "after": {
+                "openMs": 155.5,
+                "typingMedianMs": 2.7000000001862645,
+                "htmlMedianMs": 0,
+                "mentionsMedianMs": 0.10000000009313226,
+                "encodeMedianMs": 1,
+                "htmlCalls": 0
+            }
+        }
+    ]
+}

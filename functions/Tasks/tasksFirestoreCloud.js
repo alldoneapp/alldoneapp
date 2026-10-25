@@ -32,6 +32,7 @@ const deleteTasksFromAssignee = async (projectId, assigneeId, admin) => {
 async function uploadTask(appAdmin, projectId, task) {
     const taskCopy = { ...task }
     delete taskCopy.id
+    taskCopy.projectId = projectId
     taskCopy.priority = ['must_do', 'should_do', 'could_do', 'do_later', 'none'].includes(taskCopy.priority)
         ? taskCopy.priority
         : 'none'

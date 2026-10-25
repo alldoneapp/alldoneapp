@@ -1,0 +1,397 @@
+/**
+ * ModalShell / BottomSheet browser-level test (MODAL_IMPROVEMENT_PLAN.md,
+ * Phase 2). See harness.entry.js for why this needs a real browser.
+ *
+ * Asserted in real Chromium:
+ *   Mobile (390x664, touch):
+ *   1. Tapping the trigger opens a full-width bottom sheet and locks the
+ *      document scroller.
+ *   2. AT-2236 mount grace: a backdrop tap right after opening does NOT close
+ *      the sheet; a tap after the grace window does.
+ *   3. AT-2257 composition: Escape closes the sheet while the sheet's own
+ *      TextInput has focus (react-native-web swallows the keydown mid-tree;
+ *      the capture-phase escape stack must still see it).
+ *   4. Nesting: a tap INSIDE a nested sheet never dismisses the outer one
+ *      (the EmailLabelChip bug class), and Escape pops LIFO — nested first,
+ *      outer second.
+ *   5. Closing unlocks the document scroller.
+ *   Desktop (1280x900):
+ *   6. The same trigger renders an anchored react-tiny-popover, no sheet, no
+ *      scroll lock.
+ *   Responsive handoff:
+ *   7. Rotating an open form from portrait to landscape and back switches
+ *      shells without remounting the form or losing its local draft state.
+ *
+ * Requirements (this does NOT run in CI's Jest jobs):
+ *   nvm use 22
+ *   (cd web-bundler && npm install)
+ *   cp -R -f replacement_node_modules/* node_modules/
+ *   npx playwright install chromium
+ * Usage:
+ *   node browser-tests/modalsheet/run.js
+ */
+const path = require('path')
+const http = require('http')
+const fs = require('fs')
+const { execFileSync } = require('child_process')
+
+const ROOT = path.resolve(__dirname, '..', '..')
+const BUILD_DIR = path.join(__dirname, '.build')
+const ENTRY = path.join(__dirname, 'harness.entry.js')
+
+const HTML = `<!doctype html>
+<html><head><meta charset="utf-8"><title>modalsheet</title>
+<style>
+  html, body, #root { margin:0; padding:0; height:100%; box-sizing:border-box; }
+  body { overflow-y:auto; }
+</style></head>
+<body><div id="root"></div><script src="/harness.js"></script></body></html>`
+
+function build() {
+    const webpackBin = path.join(ROOT, 'web-bundler', 'node_modules', '.bin', 'webpack')
+    if (!fs.existsSync(webpackBin)) {
+        throw new Error('web-bundler dependencies are missing. Run: (cd web-bundler && npm install)')
+    }
+    execFileSync(
+        webpackBin,
+        [
+            '--config',
+            path.join(ROOT, 'browser-tests', 'webpack.harness.js'),
+            '--mode',
+            'development',
+            '--env',
+            `harnessEntry=${ENTRY}`,
+            '--env',
+            `harnessOut=${BUILD_DIR}`,
+        ],
+        { cwd: path.join(ROOT, 'web-bundler'), stdio: 'inherit' }
+    )
+    fs.writeFileSync(path.join(BUILD_DIR, 'index.html'), HTML)
+}
+
+function serve() {
+    const server = http.createServer((req, res) => {
+        const url = req.url.split('?')[0]
+        const file = path.join(BUILD_DIR, url === '/' ? 'index.html' : url)
+        if (!file.startsWith(BUILD_DIR) || !fs.existsSync(file)) {
+            res.writeHead(404)
+            res.end('not found')
+            return
+        }
+        res.writeHead(200, { 'Content-Type': file.endsWith('.html') ? 'text/html' : 'application/javascript' })
+        res.end(fs.readFileSync(file))
+    })
+    return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server)))
+}
+
+function requirePlaywright() {
+    try {
+        return require('playwright')
+    } catch (error) {
+        const fallback = path.join(process.env.PLAYWRIGHT_HOME || '/home/user/repro', 'node_modules', 'playwright')
+        return require(fallback)
+    }
+}
+
+const failures = []
+const check = (name, ok, detail) => {
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `  — ${detail}`}`)
+    if (!ok) failures.push(name)
+}
+
+const SETTLE_MS = 250
+const HANDOFF_SETTLE_MS = 500
+// popupDismissGuard's touch grace is 750ms; stay well past it.
+const PAST_GRACE_MS = 1000
+
+const state = page => page.evaluate(() => window.__state())
+
+async function runMobile(server, chromium) {
+    const browser = await chromium.launch()
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true })
+    const page = await context.newPage()
+    const cdp = await context.newCDPSession(page)
+    const pageErrors = []
+    page.on('pageerror', error => pageErrors.push(error.message))
+    await page.goto(`http://127.0.0.1:${server.address().port}/`)
+    await page.waitForFunction(() => window.__ready === true)
+
+    // --- 1. open: full width + scroll lock ---------------------------------
+    await page.tap('[data-testid="open-outer"]')
+    await page.waitForTimeout(SETTLE_MS)
+    let s = await state(page)
+    check('mobile: tapping the trigger opens the bottom sheet', s.outerOpen && s.sheets === 1, JSON.stringify(s))
+    check(
+        'mobile: the sheet is full width',
+        s.sheetRect && s.sheetRect.width === 390 && s.sheetRect.left === 0,
+        JSON.stringify(s.sheetRect)
+    )
+    check('mobile: the document scroller is locked while open', s.bodyOverflowY === 'hidden', s.bodyOverflowY)
+
+    // --- 1b. responsive handoff preserves the live content tree ------------
+    await page.fill('[data-testid="sheet-input"]', 'orientation draft')
+    const initialContentMountCount = (await state(page)).outerContentMountCount
+    await page.setViewportSize({ width: 844, height: 390 })
+    await page.waitForTimeout(HANDOFF_SETTLE_MS)
+    s = await state(page)
+    check(
+        'responsive: landscape switches the open sheet to a popover',
+        s.outerOpen && s.sheets === 0 && s.popoverContainers === 1,
+        JSON.stringify(s)
+    )
+    check(
+        'responsive: landscape preserves the local form draft and component instance',
+        s.inputValue === 'orientation draft' && s.outerContentMountCount === initialContentMountCount,
+        JSON.stringify(s)
+    )
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.waitForTimeout(HANDOFF_SETTLE_MS)
+    s = await state(page)
+    check(
+        'responsive: portrait switches the open popover back to a sheet',
+        s.outerOpen && s.sheets === 1 && s.popoverContainers === 0,
+        JSON.stringify(s)
+    )
+    check(
+        'responsive: portrait still preserves the local form draft and component instance',
+        s.inputValue === 'orientation draft' && s.outerContentMountCount === initialContentMountCount,
+        JSON.stringify(s)
+    )
+
+    // --- 2. AT-2236 mount grace --------------------------------------------
+    // Tap the backdrop area (top of the screen, above the sheet) immediately:
+    // must be swallowed as a repeat of the opening tap.
+    await page.touchscreen.tap(195, 40)
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: a backdrop tap within the mount grace does not close (AT-2236)', s.outerOpen, JSON.stringify(s))
+
+    await page.waitForTimeout(PAST_GRACE_MS)
+    await page.touchscreen.tap(195, 40)
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: a backdrop tap after the grace closes the sheet', !s.outerOpen && s.sheets === 0, JSON.stringify(s))
+    check('mobile: closing unlocks the document scroller', s.bodyOverflowY !== 'hidden', s.bodyOverflowY)
+
+    // --- 3. Escape with the sheet's input focused (AT-2257 composition) ----
+    await page.evaluate(() => window.__openOuter())
+    await page.waitForTimeout(PAST_GRACE_MS)
+    await page.tap('[data-testid="sheet-input"]')
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: the sheet input has focus', s.focusedTag === 'INPUT', s.focusedTag)
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: Escape closes the sheet while its input has focus', !s.outerOpen, JSON.stringify(s))
+
+    // --- 3b. handle follows bounded drags; deliberate swipe dismisses ------
+    await page.evaluate(() => window.__openOuter())
+    await page.waitForTimeout(PAST_GRACE_MS)
+    const dragHandle = async distance => {
+        const box = await page.locator('[data-testid="bottom-sheet-handle"]').boundingBox()
+        const startX = box.x + box.width / 2
+        const startY = box.y + box.height / 2
+        const touchPoint = y => ({ x: startX, y, id: 1, radiusX: 8, radiusY: 8, force: 1 })
+        await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [touchPoint(startY)],
+        })
+        for (let step = 1; step <= 6; step++) {
+            await cdp.send('Input.dispatchTouchEvent', {
+                type: 'touchMove',
+                touchPoints: [touchPoint(startY + (distance * step) / 6)],
+            })
+            await page.waitForTimeout(16)
+        }
+        const whileDragging = await state(page)
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+        return whileDragging
+    }
+    const beforeDrag = await state(page)
+    const whileDraggingUp = await dragHandle(-120)
+    check(
+        'mobile: upward handle movement is bounded',
+        Math.abs(whileDraggingUp.sheetRect.bottom - (beforeDrag.sheetRect.bottom - 48)) <= 1,
+        JSON.stringify({ before: beforeDrag.sheetRect, during: whileDraggingUp.sheetRect })
+    )
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check(
+        'mobile: an upward drag springs back and does not close',
+        s.outerOpen && Math.abs(s.sheetRect.bottom - beforeDrag.sheetRect.bottom) <= 1,
+        JSON.stringify(s)
+    )
+
+    const whileDraggingDown = await dragHandle(30)
+    check(
+        'mobile: the sheet follows a downward handle drag',
+        Math.abs(whileDraggingDown.sheetRect.bottom - (s.sheetRect.bottom + 30)) <= 1,
+        JSON.stringify({ before: s.sheetRect, during: whileDraggingDown.sheetRect })
+    )
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check(
+        'mobile: a short handle drag springs back and does not close',
+        s.outerOpen && Math.abs(s.sheetRect.bottom - beforeDrag.sheetRect.bottom) <= 1,
+        JSON.stringify(s)
+    )
+
+    await dragHandle(160)
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: swiping the handle down dismisses the sheet', !s.outerOpen && s.sheets === 0, JSON.stringify(s))
+
+    // --- 4. nesting: inner taps never dismiss the outer sheet, Escape pops LIFO
+    await page.evaluate(() => window.__openOuter())
+    await page.waitForTimeout(PAST_GRACE_MS)
+    await page.tap('[data-testid="open-nested"]')
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: the nested sheet opens over the outer one', s.nestedOpen && s.sheets === 2, JSON.stringify(s))
+
+    await page.waitForTimeout(PAST_GRACE_MS)
+    await page.tap('[data-testid="nested-action"]')
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check(
+        'mobile: a tap inside the nested sheet dismisses neither sheet',
+        s.outerOpen && s.nestedOpen && s.nestedActionCount === 1,
+        JSON.stringify(s)
+    )
+
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: first Escape closes only the nested sheet', s.outerOpen && !s.nestedOpen, JSON.stringify(s))
+
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(SETTLE_MS)
+    s = await state(page)
+    check('mobile: second Escape closes the outer sheet', !s.outerOpen && s.sheets === 0, JSON.stringify(s))
+
+    if (pageErrors.length) console.log(`  (mobile page errors: ${JSON.stringify(pageErrors.slice(0, 3))})`)
+    check('mobile: no page errors', pageErrors.length === 0)
+    await browser.close()
+}
+
+async function runDesktop(server, chromium) {
+    const browser = await chromium.launch()
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+    const page = await context.newPage()
+    const pageErrors = []
+    page.on('pageerror', error => pageErrors.push(error.message))
+    await page.goto(`http://127.0.0.1:${server.address().port}/`)
+    await page.waitForFunction(() => window.__ready === true)
+
+    await page.click('[data-testid="open-outer"]')
+    await page.waitForTimeout(SETTLE_MS)
+    const s = await state(page)
+    check(
+        'desktop: the trigger opens an anchored popover, not a sheet',
+        s.outerOpen && s.sheets === 0 && s.popoverContainers >= 1,
+        JSON.stringify(s)
+    )
+    check('desktop: no scroll lock', s.bodyOverflowY !== 'hidden', s.bodyOverflowY)
+
+    if (pageErrors.length) console.log(`  (desktop page errors: ${JSON.stringify(pageErrors.slice(0, 3))})`)
+    check('desktop: no page errors', pageErrors.length === 0)
+    await browser.close()
+}
+
+// Device-width matrix (Phase 5 QA): every width below MODAL_SHEET_BREAKPOINT
+// gets an edge-to-edge sheet, every width at/above it gets the anchored
+// popover. Catches breakpoint regressions and width caps (a maxWidth left on
+// a card shows up here as sheetRect.width < viewport).
+async function runWidthMatrix(server, chromium) {
+    const browser = await chromium.launch()
+    for (const width of [360, 375, 414, 639]) {
+        const context = await browser.newContext({ viewport: { width, height: 700 }, hasTouch: true })
+        const page = await context.newPage()
+        await page.goto(`http://127.0.0.1:${server.address().port}/`)
+        await page.waitForFunction(() => window.__ready === true)
+        await page.tap('[data-testid="open-outer"]')
+        await page.waitForTimeout(SETTLE_MS)
+        const s = await state(page)
+        check(
+            `matrix ${width}px: full-width sheet`,
+            s.sheets === 1 && s.sheetRect && s.sheetRect.width === width && s.sheetRect.left === 0,
+            JSON.stringify(s.sheetRect)
+        )
+        await context.close()
+    }
+    for (const width of [640, 768, 1052, 1440]) {
+        const context = await browser.newContext({ viewport: { width, height: 800 } })
+        const page = await context.newPage()
+        await page.goto(`http://127.0.0.1:${server.address().port}/`)
+        await page.waitForFunction(() => window.__ready === true)
+        await page.click('[data-testid="open-outer"]')
+        await page.waitForTimeout(SETTLE_MS)
+        const s = await state(page)
+        check(
+            `matrix ${width}px: anchored popover, no sheet`,
+            s.sheets === 0 && s.popoverContainers >= 1,
+            JSON.stringify(s)
+        )
+        await context.close()
+    }
+    await browser.close()
+}
+
+async function runRotation(server, chromium) {
+    const browser = await chromium.launch()
+    try {
+        const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true })
+        await page.goto(`http://127.0.0.1:${server.address().port}/`)
+        await page.waitForFunction(() => window.__ready === true)
+        await page.evaluate(() => {
+            window.__rotationTrigger = document.querySelector('[data-testid="open-outer"]')
+        })
+        for (const isOpen of [false, true]) {
+            if (isOpen) await page.tap('[data-testid="open-outer"]')
+            for (const [width, height] of [
+                [844, 390],
+                [390, 844],
+            ]) {
+                await page.setViewportSize({ width, height })
+                await page.waitForTimeout(SETTLE_MS)
+                check(
+                    `rotation ${width}px (open=${isOpen}): original trigger survives`,
+                    await page.evaluate(
+                        () => document.querySelector('[data-testid="open-outer"]') === window.__rotationTrigger
+                    )
+                )
+                const s = await state(page)
+                check(
+                    `rotation ${width}px (open=${isOpen}): correct popup presentation`,
+                    s.outerOpen === isOpen && s.sheets === (isOpen && width < 640 ? 1 : 0)
+                )
+            }
+        }
+    } finally {
+        await browser.close()
+    }
+}
+
+async function main() {
+    build()
+    const server = await serve()
+    const { chromium } = requirePlaywright()
+    await runMobile(server, chromium)
+    await runDesktop(server, chromium)
+    await runWidthMatrix(server, chromium)
+    await runRotation(server, chromium)
+    server.close()
+
+    console.log('')
+    if (failures.length) {
+        console.error(`${failures.length} case(s) failed:\n  - ${failures.join('\n  - ')}`)
+        process.exit(1)
+    }
+    console.log('modalsheet: all cases passed.')
+}
+
+main().catch(error => {
+    console.error(error)
+    process.exit(1)
+})

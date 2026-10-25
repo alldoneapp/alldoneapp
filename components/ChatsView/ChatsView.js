@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { checkIfSelectedAllProjects, checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { useDispatch, useSelector } from 'react-redux'
@@ -16,10 +16,34 @@ import { sortBy } from 'lodash'
 import HashtagFiltersView from '../HashtagFilters/HashtagFiltersView'
 import NothingToShowOnChats from '../UIComponents/NothingToShowOnChats'
 import AllProjectsLine from '../TaskListView/Header/AllProjectsLine/AllProjectsLine'
+import AllProjectsAssistantLine from '../MyDayView/AssistantLine/AllProjectsAssistantLine'
 import MarkAsRead from './MarkAsRead'
 import ChatFiltersLine from './ChatFiltersLine'
 import ArchiveUnreadEmailsButton from './ArchiveUnreadEmailsButton'
 import { UnreadEmailArchiveProvider } from './unreadEmailArchiveContext'
+import ChatsEmailConnectionStatus from './ChatsEmailConnectionStatus'
+import {
+    buildSecondaryViewCacheKey,
+    getSecondaryViewCacheEntry,
+    getSecondaryViewCacheEntrySync,
+    SECONDARY_VIEW_CHATS,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
+
+export const getChatsPresenceCacheKey = ({
+    activeTab,
+    inAllProjects,
+    selectedProjectId,
+    unreadOnly = false,
+    filtersKey = '[]',
+}) =>
+    buildSecondaryViewCacheKey(
+        'presence',
+        activeTab,
+        unreadOnly,
+        filtersKey,
+        inAllProjects ? 'all-projects' : selectedProjectId
+    )
 
 function ChatsView() {
     const dispatch = useDispatch()
@@ -32,6 +56,7 @@ function ChatsView() {
     const unreadOnly = useSelector(state => state.chatsUnreadOnly)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
+    const hashtagFilters = useSelector(state => state.hashtagFilters)
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
@@ -76,12 +101,70 @@ function ChatsView() {
     const sortedProjectIds = useMemo(() => sortedProjects.map(project => project.id), [sortedProjects])
 
     const selectedProjectId = inSelectedProject ? loggedUserProjects[selectedProjectIndex].id : null
+    const filtersKey = JSON.stringify(hashtagFilters ? Array.from(hashtagFilters.keys()) : [])
     const filteredProjectIds = useMemo(
         () => (inSelectedProject ? [selectedProjectId] : sortedProjectIds),
         [inSelectedProject, selectedProjectId, sortedProjectIds]
     )
+    const presenceCacheKey = getChatsPresenceCacheKey({
+        activeTab: chatsActiveTab,
+        inAllProjects,
+        selectedProjectId,
+        unreadOnly,
+        filtersKey,
+    })
+    const initialPresence = getSecondaryViewCacheEntrySync(loggedUserId, SECONDARY_VIEW_CHATS, presenceCacheKey)
+    const [chatPresenceState, setChatPresenceState] = useState(() => ({
+        key: presenceCacheKey,
+        projects: initialPresence?.projects || {},
+    }))
+    const areThereChats = chatPresenceState.key === presenceCacheKey ? chatPresenceState.projects : {}
+    const setAreThereChats = useCallback(
+        update => {
+            setChatPresenceState(current => {
+                const projects = current.key === presenceCacheKey ? current.projects : {}
+                return {
+                    key: presenceCacheKey,
+                    projects: typeof update === 'function' ? update(projects) : update,
+                }
+            })
+        },
+        [presenceCacheKey]
+    )
 
-    const [areThereChats, setAreThereChats] = useState({})
+    useEffect(() => {
+        let active = true
+        const sessionSnapshot = getSecondaryViewCacheEntrySync(loggedUserId, SECONDARY_VIEW_CHATS, presenceCacheKey)
+        setChatPresenceState({ key: presenceCacheKey, projects: sessionSnapshot?.projects || {} })
+        if (!sessionSnapshot) {
+            getSecondaryViewCacheEntry(loggedUserId, SECONDARY_VIEW_CHATS, presenceCacheKey).then(snapshot => {
+                if (active && snapshot?.cacheKey === presenceCacheKey) {
+                    setChatPresenceState({ key: presenceCacheKey, projects: snapshot.projects || {} })
+                }
+            })
+        }
+        return () => {
+            active = false
+        }
+    }, [loggedUserId, presenceCacheKey])
+
+    const presenceComplete = filteredProjectIds.every(projectId =>
+        Object.prototype.hasOwnProperty.call(areThereChats, projectId)
+    )
+    useEffect(() => {
+        if (Object.keys(areThereChats).length === 0) return
+        const projects = {}
+        filteredProjectIds.forEach(projectId => {
+            if (Object.prototype.hasOwnProperty.call(areThereChats, projectId)) {
+                projects[projectId] = !!areThereChats[projectId]
+            }
+        })
+        setSecondaryViewCacheEntry(loggedUserId, SECONDARY_VIEW_CHATS, presenceCacheKey, {
+            cacheKey: presenceCacheKey,
+            projects,
+        })
+    }, [areThereChats, filteredProjectIds, loggedUserId, presenceCacheKey])
+
     const setUnreadOnly = value => dispatch(setChatsUnreadOnly(value))
 
     useEffect(() => () => dispatch(setChatsUnreadOnly(false)), [])
@@ -128,6 +211,7 @@ function ChatsView() {
                 {inAllProjects && (
                     <AllProjectsLine
                         showActions={false}
+                        bottomSpacing={8}
                         customRight={
                             <View style={localStyles.allProjectsActions}>
                                 {/* Archives the emails behind every project's previewed unread
@@ -139,7 +223,10 @@ function ChatsView() {
                     />
                 )}
 
+                {inAllProjects && <AllProjectsAssistantLine />}
                 <HashtagFiltersView />
+
+                <ChatsEmailConnectionStatus />
 
                 <ChatFiltersLine
                     projectIds={filteredProjectIds}
@@ -155,7 +242,9 @@ function ChatsView() {
                     />
                 ) : (
                     <>
-                        {!Object.values(areThereChats).includes(true) && <NothingToShowOnChats isInChats />}
+                        {presenceComplete && !Object.values(areThereChats).includes(true) && (
+                            <NothingToShowOnChats isInChats />
+                        )}
                         {sortedProjects.map(project => (
                             <ChatsByProject
                                 key={project.id}
@@ -188,6 +277,9 @@ const localStyles = StyleSheet.create({
     allProjectsActions: {
         flexDirection: 'row',
         alignItems: 'center',
+        // The actions keep their intrinsic width; the "All projects" title on the left is the
+        // flexible side, so it truncates instead of the buttons overlapping it (AT-2263).
+        flexShrink: 0,
     },
     archiveEmailsInline: {
         marginRight: 8,

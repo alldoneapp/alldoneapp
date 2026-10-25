@@ -1,8 +1,7 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
-import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
 import PreConfigTaskButton from './PreConfigTaskButton'
 import PreConfigTaskGeneratorModal from '../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
 import { dismissAllPopups } from '../../../../utils/HelperFunctions'
@@ -14,6 +13,7 @@ import {
     TASK_TYPE_IFRAME,
 } from '../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { isModalOpen, MENTION_MODAL_ID } from '../../../ModalsManager/modalsManager'
+import useFloatPopupLock from '../../../../hooks/useFloatPopupLock'
 
 export default function PreConfigTaskGeneratorWrapper({
     projectId,
@@ -27,6 +27,7 @@ export default function PreConfigTaskGeneratorWrapper({
     const gold = useSelector(state => state.loggedUser.gold)
     const isExecuting = useSelector(state => state.preConfigTaskExecuting)
     const [isOpen, setIsOpen] = useState(false)
+    const popupLock = useFloatPopupLock()
 
     const {
         prompt,
@@ -42,15 +43,17 @@ export default function PreConfigTaskGeneratorWrapper({
     } = task
 
     const openModal = () => {
+        if (popupLock.isAcquired()) return
+
         dismissAllPopups()
         setIsOpen(true)
-        dispatch(showFloatPopup())
+        popupLock.acquire()
     }
 
     const closeModal = () => {
         if (isModalOpen(MENTION_MODAL_ID)) return
         setIsOpen(false)
-        dispatch(hideFloatPopup())
+        popupLock.release()
     }
 
     const addTask = async () => {
@@ -116,7 +119,7 @@ export default function PreConfigTaskGeneratorWrapper({
     }
 
     return (
-        <Popover
+        <AppPopover
             key={!isOpen}
             content={
                 gold > 0 ? (
@@ -146,6 +149,6 @@ export default function PreConfigTaskGeneratorWrapper({
                     disabled={executionDisabled}
                 />
             )}
-        </Popover>
+        </AppPopover>
     )
 }

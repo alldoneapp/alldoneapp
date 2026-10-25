@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useDispatch } from 'react-redux'
 
-import { MODAL_MAX_HEIGHT_GAP, applyPopoverWidth } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
 import { colors } from '../../../../styles/global'
 import useWindowSize from '../../../../../utils/useWindowSize'
 import { translate } from '../../../../../i18n/TranslationService'
@@ -22,6 +22,10 @@ import { setSelectedNote, setTaskInDetailView } from '../../../../../redux/actio
 import { setObjectAssistantEnabled } from '../../../../../utils/assistantHelper'
 import Backend from '../../../../../utils/BackendBridge'
 import { normalizeAssistantObjectType, setAssistantForObject } from './objectAssistantHelper'
+import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
+import SelectModelOption from './SelectModelOption'
+import ThreadAssistantModelModal from './ThreadAssistantModelModal'
+import { useThreadAssistantModel } from './threadAssistantModelState'
 
 export default function BotOptionsModal({
     objectType,
@@ -39,9 +43,15 @@ export default function BotOptionsModal({
     const dispatch = useDispatch()
     const [selectedTask, setSelectedTask] = useState(null)
     const [showAssistants, setShowAssistants] = useState(false)
+    const [showModels, setShowModels] = useState(false)
     const [linkedNoteTitle, setLinkedNoteTitle] = useState(null)
     const [width, height] = useWindowSize()
     const normalizedObjectType = normalizeAssistantObjectType(objectType)
+    const {
+        model: threadModel,
+        isSupported: canPinThreadModel,
+        updateModel: updateThreadModel,
+    } = useThreadAssistantModel(projectId, objectId, normalizedObjectType)
 
     const linkedNoteId = parentObject?.noteId
     useEffect(() => {
@@ -141,7 +151,7 @@ export default function BotOptionsModal({
     }, [])
 
     return (
-        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, applyPopoverWidth(), { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             {showAssistants ? (
                 <AssistantModal
                     closeModal={() => {
@@ -150,6 +160,15 @@ export default function BotOptionsModal({
                     projectId={projectId}
                     updateAssistant={updateAssistant}
                     currentAssistantId={assistantId || assistant?.uid}
+                />
+            ) : showModels ? (
+                <ThreadAssistantModelModal
+                    closeModal={() => {
+                        setShowModels(false)
+                    }}
+                    selectedModel={threadModel}
+                    assistantModel={assistant?.model}
+                    updateModel={updateThreadModel}
                 />
             ) : selectedTask ? (
                 <PreConfigTaskGeneratorModal
@@ -204,6 +223,16 @@ export default function BotOptionsModal({
                     {normalizedObjectType !== 'assistants' && (
                         <>
                             <SelectAssistantsOption setShowAssistants={setShowAssistants} />
+                            <Line style={{ marginVertical: 4 }} />
+                        </>
+                    )}
+                    {canPinThreadModel && (
+                        <>
+                            <SelectModelOption
+                                threadModel={threadModel}
+                                assistantModel={assistant?.model}
+                                onPress={() => setShowModels(true)}
+                            />
                             <Line style={{ marginVertical: 4 }} />
                         </>
                     )}

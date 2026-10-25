@@ -1,10 +1,17 @@
 import React from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import Icon from '../../../Icon'
+import ProjectRowStatusIcon from './ProjectRowStatusIcon'
 import ColoredCircleSmall from '../../../SidebarMenu/ProjectFolding/ProjectItem/ColoredCircleSmall'
 import styles, { colors, hexColorToRGBa } from '../../../styles/global'
 
-export default function ProjectModalItem({ selectedProjectId, project, newProject, onProjectSelect, active = false }) {
+export default function ProjectModalItem({
+    selectedProjectId,
+    project,
+    newProject,
+    onProjectSelect,
+    active = false,
+    busy = false,
+}) {
     const onPress = e => {
         onProjectSelect(e, project, newProject)
     }
@@ -33,12 +40,7 @@ export default function ProjectModalItem({ selectedProjectId, project, newProjec
                             {newProject.name}
                         </Text>
                     </View>
-
-                    {projectId === newProject.id && (
-                        <View style={[localStyles.checkContainer]}>
-                            <Icon name="check" size={24} color="white" />
-                        </View>
-                    )}
+                    <ProjectRowStatusIcon busy={busy} checked={projectId === newProject.id} />
                 </View>
             </TouchableOpacity>
         </View>
@@ -62,9 +64,6 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         paddingLeft: 4,
         paddingVertical: 16,
-    },
-    checkContainer: {
-        marginLeft: 'auto',
     },
     projectName: {
         color: '#ffffff',

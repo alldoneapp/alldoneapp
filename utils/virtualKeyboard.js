@@ -48,6 +48,7 @@ export const KEYBOARD_OPEN_MIN_INSET_PX = 120
 
 export const KEYBOARD_INSET_CSS_VAR = '--app-keyboard-inset'
 export const KEYBOARD_OPEN_CLASS = 'app-keyboard-open'
+export const KEYBOARD_REVEAL_TARGET_ATTRIBUTE = 'data-keyboard-reveal-target'
 
 // The keyboard animates in over ~250ms and the visual viewport reports its size
 // repeatedly while it does, so a single measurement lands mid-animation. Re-run
@@ -179,15 +180,29 @@ export const getCaretRect = element => {
 }
 
 /**
+ * The focused field may opt into revealing a larger ancestor. Task editors use
+ * this to keep their action bar on screen alongside the Quill input (AT-2286).
+ * The target is only useful in a scroller that contains it: Quill can have its
+ * own nested scroller, and that inner one must keep following the field/caret.
+ */
+export const getKeyboardRevealTarget = (element, scroller) => {
+    if (!element || typeof element.closest !== 'function') return element
+
+    const target = element.closest(`[${KEYBOARD_REVEAL_TARGET_ATTRIBUTE}]`)
+    return target && scroller && scroller.contains(target) ? target : element
+}
+
+/**
  * What actually has to be on screen.
  *
- * A field that fits in the visible area is revealed whole — showing only the
- * caret of a two-line task input would leave its action bar hidden, which is the
- * AT-2220 complaint in miniature. Only when the editor is taller than the space
- * the keyboard left does it fall back to following the caret.
+ * A field — or its opted-in reveal target — that fits in the visible area is
+ * revealed whole. Task inputs opt their enclosing editor in so the action bar
+ * below the focused Quill node remains visible too. Only when that rectangle is
+ * taller than the space the keyboard left does this fall back to the caret.
  */
 export const resolveRevealRect = (element, scroller, margin = KEYBOARD_REVEAL_MARGIN_PX) => {
-    const elementRect = element.getBoundingClientRect()
+    const revealTarget = getKeyboardRevealTarget(element, scroller)
+    const elementRect = revealTarget.getBoundingClientRect()
     const visibleHeight = (scroller ? scroller.clientHeight : 0) - margin * 2
     if (visibleHeight > 0 && elementRect.height <= visibleHeight) return elementRect
 

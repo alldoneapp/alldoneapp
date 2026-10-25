@@ -7,7 +7,12 @@ const { findUserByPhone, getDefaultAssistantId, normalizePhoneNumber } = require
 const { createRoutingToken } = require('./whatsAppCallSecurity')
 const { getSafeCallErrorDetails } = require('./whatsAppCallPrivacy')
 const { createCallSessionWithLease, finalizeCallSession, updateCallSession } = require('./whatsAppCallSessions')
+const { LIVE_SIP_SETUP, getLiveConfigurationError } = require('./assistantLiveConfig')
 const { getWhatsAppCallConfig } = require('./whatsAppCallConfig')
+const { LIVE_INITIALIZATION_SECONDS, calculateLiveVoiceGold } = require('./assistantLivePricing')
+
+// Every call is a GPT-Live session, which charges a minimum on accept.
+const MIN_CALL_GOLD = calculateLiveVoiceGold(LIVE_INITIALIZATION_SECONDS)
 
 const TERMINAL_TWILIO_STATUSES = new Set(['completed', 'busy', 'failed', 'no-answer', 'canceled'])
 
@@ -15,7 +20,7 @@ function getCallEligibilityReason({ config, user }) {
     if (!config.enabled) return 'disabled'
     if (!user) return 'unlinked'
     if (user?.premium?.status !== PLAN_STATUS_PREMIUM) return 'premium_required'
-    if ((Number(user.gold) || 0) <= 0) return 'gold_required'
+    if ((Number(user.gold) || 0) <= MIN_CALL_GOLD) return 'gold_required'
     if (!user.defaultProjectId) return 'missing_project'
     return null
 }
@@ -26,11 +31,12 @@ function getRejectionMessage(reason) {
         unlinked:
             'This number is not linked to an Alldone account. Add your WhatsApp number in Alldone settings first.',
         premium_required: 'WhatsApp assistant calls are available to premium Alldone users.',
-        gold_required: 'You need a positive Gold balance before starting a WhatsApp assistant call.',
+        gold_required: `You need more than ${MIN_CALL_GOLD} Gold before starting a WhatsApp assistant call.`,
         missing_project: 'Set a default project in Alldone before calling the assistant.',
         missing_assistant: 'No default assistant is available for your WhatsApp call.',
         active_call: 'You already have an active assistant call. End it before starting another one.',
-        configuration: 'WhatsApp assistant calls are temporarily unavailable because setup is incomplete.',
+        configuration:
+            'GPT-Live calls are unavailable. Please ask Alldone support to check the OpenAI key, project and Live SIP webhook setup.',
     }
     return messages[reason] || 'The assistant could not accept this WhatsApp call. Please try again later.'
 }
@@ -40,11 +46,12 @@ function getPhoneRejectionMessage(reason) {
         disabled: 'Assistant phone calls are not available right now.',
         unlinked: 'This phone number is not linked to an Alldone account. Please add it in Alldone settings first.',
         premium_required: 'Assistant phone calls are available to premium Alldone users.',
-        gold_required: 'You need a positive Gold balance before starting an assistant call.',
+        gold_required: `You need more than ${MIN_CALL_GOLD} Gold before starting an assistant call.`,
         missing_project: 'Please set a default project in Alldone before calling the assistant.',
         missing_assistant: 'No default assistant is available for your call.',
         active_call: 'You already have an active assistant call. Please end it before starting another one.',
-        configuration: 'Assistant phone calls are temporarily unavailable because setup is incomplete.',
+        configuration:
+            'GPT-Live calls are unavailable. Please ask Alldone support to check the OpenAI key, project and Live SIP webhook setup.',
     }
     return messages[reason] || 'The assistant could not accept this call. Please try again later.'
 }
@@ -118,7 +125,12 @@ async function handleIncomingWhatsAppCall(req, res) {
     const eligibilityReason = getCallEligibilityReason({ config, user })
     if (eligibilityReason) return rejectCall(res, fromNumber, eligibilityReason)
 
-    if (!config.openAiApiKey || !config.openAiProjectId || !config.routingTokenSecret || !config.openAiWebhookSecret) {
+    const configurationError = getLiveConfigurationError(config, { sip: true })
+    if (configurationError) {
+        console.error('Live SIP Call: Configuration unavailable', {
+            code: 'gpt_live_configuration',
+            action: configurationError,
+        })
         return rejectCall(res, fromNumber, 'configuration')
     }
 
@@ -186,7 +198,12 @@ async function handleIncomingPhoneCall(req, res) {
     })
     if (eligibilityReason) return rejectVoiceCall(res, eligibilityReason)
 
-    if (!config.openAiApiKey || !config.openAiProjectId || !config.routingTokenSecret || !config.openAiWebhookSecret) {
+    const configurationError = getLiveConfigurationError(config, { sip: true })
+    if (configurationError) {
+        console.error('Live SIP Call: Configuration unavailable', {
+            code: 'gpt_live_configuration',
+            action: configurationError,
+        })
         return rejectVoiceCall(res, 'configuration')
     }
 
@@ -241,7 +258,7 @@ async function handleWhatsAppCallStatus(req, res) {
         return res.status(403).send('Forbidden')
     }
 
-    return handleTwilioCallStatus(req, res)
+    return handleTwilioCallStatus(req, res, 'whatsapp_call')
 }
 
 async function handlePhoneCallStatus(req, res) {
@@ -253,10 +270,10 @@ async function handlePhoneCallStatus(req, res) {
         return res.status(403).send('Forbidden')
     }
 
-    return handleTwilioCallStatus(req, res)
+    return handleTwilioCallStatus(req, res, 'phone_call')
 }
 
-async function handleTwilioCallStatus(req, res) {
+async function handleTwilioCallStatus(req, res, channel) {
     const sessionId = String(req.body?.ParentCallSid || req.body?.CallSid || '').trim()
     const callStatus = String(req.body?.DialCallStatus || req.body?.CallStatus || '').trim()
     const sendAcknowledgement = () => {
@@ -273,6 +290,13 @@ async function handleTwilioCallStatus(req, res) {
         )
     } else {
         await updateCallSession(sessionId, { twilioStatus: callStatus })
+    }
+    // Only the Dial action response is executed on the caller's line. Leg status
+    // notifications must not send repeated messages or try to speak to the caller.
+    if (['failed', 'busy', 'no-answer'].includes(req.body?.DialCallStatus)) {
+        console.error('Live SIP Call: Dial failed', { sessionId, status: callStatus, action: LIVE_SIP_SETUP })
+        if (channel === 'phone_call') return rejectVoiceCall(res, 'configuration')
+        if (req.body?.From) return rejectCall(res, req.body.From, 'configuration')
     }
     return sendAcknowledgement()
 }

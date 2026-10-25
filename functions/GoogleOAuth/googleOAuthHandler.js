@@ -281,6 +281,20 @@ async function handleOAuthCallback(code, state) {
 
     await tokenDocRef.set(tokenData, { merge: true })
 
+    // Google has just told us which mailbox these credentials belong to, which is the one
+    // moment the ownership is actually proven. Record it so the Anna email channel can
+    // trust this connection when it decides who an inbound message belongs to (AT-2483).
+    if (connectionService === CONNECTION_SERVICE_EMAIL) {
+        const { recordEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await recordEmailIdentityAttestation({
+            userId,
+            email: userInfo.email,
+            provider: EMAIL_PROVIDER_GOOGLE,
+            connectionId,
+            source: 'google_oauth_connect',
+        })
+    }
+
     const userRef = admin.firestore().collection('users').doc(userId)
     const userDoc = await userRef.get()
     const userData = userDoc.exists ? userDoc.data() || {} : {}
@@ -306,6 +320,9 @@ async function handleOAuthCallback(code, state) {
             ? existingEntry.isDefaultAccount === true
             : !hasAnyDefaultAccount,
         [`${mapField}.${connectionId}.authInvalid`]: false,
+        // A fresh consent clears the reconnect-required state on the map the client reads,
+        // not only on the token document.
+        [`${mapField}.${connectionId}.authInvalidAt`]: FieldValue.delete(),
         [`${mapField}.${connectionId}.updatedAt`]: now,
     }
     if (!existingEntry) {
@@ -448,9 +465,18 @@ async function markGoogleAuthInvalid(userId, { docRef, connectionId, service, us
     const storedMap = resolvedUserData?.[mapField]
     const hasStoredMap = storedMap && typeof storedMap === 'object' && Object.keys(storedMap).length > 0
 
+    // The connection map is what the client actually renders, so it carries the moment of
+    // the breakage too — Settings > Integrations tells the user how long the account has
+    // been dead, which is the difference between "reconnect whenever" and "you have missed
+    // four days of email" (AT-2491).
+    const invalidAt = Timestamp.now()
+
     let updateData = null
     if (hasStoredMap) {
-        updateData = { [`${mapField}.${connectionId}.authInvalid`]: true }
+        updateData = {
+            [`${mapField}.${connectionId}.authInvalid`]: true,
+            [`${mapField}.${connectionId}.authInvalidAt`]: invalidAt,
+        }
     } else {
         // Pre-migration user: writing a single nested field would create a one-entry map
         // that shadows every connection which only exists in apisConnected (see
@@ -458,6 +484,7 @@ async function markGoogleAuthInvalid(userId, { docRef, connectionId, service, us
         const materialized = materializeConnectionsMap(connectionService, resolvedUserData || {})
         if (materialized[connectionId]) {
             materialized[connectionId].authInvalid = true
+            materialized[connectionId].authInvalidAt = invalidAt
             updateData = { [mapField]: materialized }
         }
     }
@@ -720,6 +747,14 @@ async function revokeConnectionAccess(userId, connectionId) {
     if (tokenDoc.exists) await docRef.delete()
     if (legacyDocRef) await legacyDocRef.delete()
 
+    if (connectionService === CONNECTION_SERVICE_EMAIL) {
+        const { removeEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await removeEmailIdentityAttestation({
+            userId,
+            email: tokenData?.email || connection?.emailAddress || '',
+        })
+    }
+
     const updateData = { [`${mapField}.${connectionId}`]: FieldValue.delete() }
     const resolver =
         connectionService === CONNECTION_SERVICE_CALENDAR ? resolveCalendarConnection : resolveEmailConnection
@@ -832,6 +867,11 @@ async function revokeAccess(userId, projectId, service) {
 
     // Delete stored tokens
     await docRef.delete()
+
+    if (tokenData.email && service !== 'calendar') {
+        const { removeEmailIdentityAttestation } = require('../Email/emailIdentityAttestation')
+        await removeEmailIdentityAttestation({ userId, email: tokenData.email })
+    }
 
     // Update user's apisConnected flags
     const userRef = admin.firestore().collection('users').doc(userId)

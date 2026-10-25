@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 import Hotkeys from 'react-hot-keys'
 
@@ -54,7 +54,7 @@ export default function CreateCommentWrapper({
         }
     }
 
-    const addComment = comment => {
+    const addComment = async comment => {
         if (
             !isQuillTagEditorOpen &&
             !openModals[MENTION_MODAL_ID] &&
@@ -63,18 +63,18 @@ export default function CreateCommentWrapper({
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment.trim()
         ) {
+            await createObjectMessage(projectId, goalId, comment, 'goals', null, null, null)
             if (!assistantEnabled) {
                 setTimeout(() => {
                     updateCurrentChanges()
                 })
             }
-            createObjectMessage(projectId, goalId, comment, 'goals', null, null, null)
         }
     }
 
     return (
         <View>
-            <Popover
+            <AppPopover
                 content={
                     <RichCommentModal
                         projectId={projectId}
@@ -115,7 +115,7 @@ export default function CreateCommentWrapper({
                         disabled={disabled}
                     />
                 </Hotkeys>
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

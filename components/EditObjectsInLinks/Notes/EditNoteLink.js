@@ -1,3 +1,4 @@
+import { runWithLoading } from '../../../utils/redux/loadingOperation'
 import React, { useRef, useState, useEffect } from 'react'
 import NavigationService from '../../../utils/NavigationService'
 import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -14,8 +15,6 @@ import {
     setSelectedNavItem,
     setSelectedNote,
     setSelectedTypeOfProject,
-    startLoadingData,
-    stopLoadingData,
     storeCurrentUser,
     switchProject,
 } from '../../../redux/actions'
@@ -50,6 +49,7 @@ export default function EditNoteLink({ projectId, containerStyle, noteData, clos
     const [linkedParentGoalsUrl, setLinkedParentGoalsUrl] = useState([])
     const [linkedParentSkillsUrl, setLinkedParentSkillsUrl] = useState([])
     const [linkedParentAssistantsUrl, setLinkedParentAssistantsUrl] = useState([])
+    const [linkedParentArtifactsUrl, setLinkedParentArtifactsUrl] = useState([])
 
     const [initialLinkedNotesUrl, setInitialLinkedNotesUrl] = useState([])
     const [initialLinkedTasksUrl, setInitialLinkedTasksUrl] = useState([])
@@ -96,6 +96,7 @@ export default function EditNoteLink({ projectId, containerStyle, noteData, clos
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             {
                 type: 'note',
@@ -123,7 +124,8 @@ export default function EditNoteLink({ projectId, containerStyle, noteData, clos
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         if (extendedTitle !== '') {
             setLinkedParentNotesUrl(linkedParentNotesUrl)
@@ -133,6 +135,7 @@ export default function EditNoteLink({ projectId, containerStyle, noteData, clos
             setLinkedParentGoalsUrl(linkedParentGoalsUrl)
             setLinkedParentSkillsUrl(linkedParentSkillsUrl)
             setLinkedParentAssistantsUrl(linkedParentAssistantsUrl)
+            setLinkedParentArtifactsUrl(linkedParentArtifactsUrl)
         }
         setNote(note => ({ ...note, extendedTitle }))
     }
@@ -158,13 +161,13 @@ export default function EditNoteLink({ projectId, containerStyle, noteData, clos
         updatedNote.title = TasksHelper.getTaskNameWithoutMeta(updatedNote.extendedTitle)
 
         if (updatedNote.extendedTitle.length > 0) {
-            dispatch(startLoadingData())
             setSendingData(true)
 
-            updateNoteMeta(projectId, updatedNote, note)
+            runWithLoading('update_linked_note', () => updateNoteMeta(projectId, updatedNote, note)).catch(error =>
+                console.error('[notes] Could not persist linked-note metadata update', error)
+            )
             trySetLinkedObjects(note)
 
-            dispatch(stopLoadingData())
             setSendingData(false)
 
             if (openDetails) {

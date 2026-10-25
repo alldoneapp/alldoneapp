@@ -1,4 +1,5 @@
 import {
+    BROWSER_TOOL_KEY,
     DEFAULT_ALLOWED_TOOLS,
     OPT_IN_ONLY_TOOLS,
     TOOL_OPTIONS,
@@ -50,6 +51,28 @@ describe('assistant tool options', () => {
         expect(OPT_IN_ONLY_TOOLS.has('correct_email_classification')).toBe(false)
     })
 
+    test('includes the contact research tools in the selectable assistant permissions', () => {
+        // Contact enrichment passes these explicitly for its own run; the registry entries are what
+        // let an owner enable them for ordinary chats, where the follow-up question is answered.
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([
+                { key: 'fetch_url', labelKey: 'Read a web page' },
+                { key: 'find_profile_photo', labelKey: 'Find a profile photo' },
+            ])
+        )
+        expect(DEFAULT_ALLOWED_TOOLS).toContain('fetch_url')
+        expect(DEFAULT_ALLOWED_TOOLS).toContain('find_profile_photo')
+        expect(OPT_IN_ONLY_TOOLS.has('fetch_url')).toBe(false)
+    })
+
+    test('offers the project artifact tools as one permission that is on by default', () => {
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([{ key: 'artifacts', labelKey: 'Create and edit artifacts' }])
+        )
+        expect(DEFAULT_ALLOWED_TOOLS).toContain('artifacts')
+        expect(normalizeAllowedTools(['artifacts'])).toEqual(['artifacts'])
+    })
+
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })
@@ -71,5 +94,25 @@ describe('assistant tool options', () => {
         )
         expect(OPT_IN_ONLY_TOOLS.has('mcp_servers')).toBe(true)
         expect(DEFAULT_ALLOWED_TOOLS).not.toContain('mcp_servers')
+    })
+})
+
+describe('browser_automation', () => {
+    it('is a selectable tool with a label, so it can be switched on at all', () => {
+        expect(TOOL_OPTIONS.some(option => option.key === BROWSER_TOOL_KEY)).toBe(true)
+        expect(TOOL_LABEL_BY_KEY[BROWSER_TOOL_KEY]).toBe('Browse a website')
+    })
+
+    it('is opt-in only, so a new assistant cannot browse by default', () => {
+        expect(OPT_IN_ONLY_TOOLS.has(BROWSER_TOOL_KEY)).toBe(true)
+        expect(DEFAULT_ALLOWED_TOOLS).not.toContain(BROWSER_TOOL_KEY)
+    })
+
+    it('round-trips through the stored list unchanged', () => {
+        // What the checkbox writes is what the server gate reads; a rename or a normalizer that
+        // dropped it would leave the box ticked and the tool unavailable.
+        const stored = normalizeAllowedTools(['get_tasks', BROWSER_TOOL_KEY, 'get_tasks'])
+        expect(stored).toContain(BROWSER_TOOL_KEY)
+        expect(normalizeAllowedTools(stored)).toEqual(stored)
     })
 })

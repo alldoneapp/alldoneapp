@@ -23,6 +23,7 @@ export default function LoggedUserSidebar({ navigation, expanded, containerStyle
 
     return (
         <Animated.View
+            nativeID="app-sidebar"
             style={containerStyle}
             onMouseEnter={!sidebarExpanded && !smallScreenNavigation && !sidebarHovered ? handleMouseEnter : undefined}
             onMouseLeave={!sidebarExpanded && !smallScreenNavigation && sidebarHovered ? handleMouseLeave : undefined}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 import { View, StyleSheet } from 'react-native'
 
@@ -56,7 +56,7 @@ export default function EditAssigneeWrapper({
     return (
         <View style={localStyles.container}>
             {isOpen ? (
-                <Popover
+                <AppPopover
                     content={
                         isAssistant ? (
                             <ObserversModal
@@ -92,7 +92,7 @@ export default function EditAssigneeWrapper({
                         disabled={disabled}
                         showPopover={showPopover}
                     />
-                </Popover>
+                </AppPopover>
             ) : (
                 <AssigneeButton projectId={projectId} task={tmpTask} disabled={disabled} showPopover={showPopover} />
             )}

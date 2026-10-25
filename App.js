@@ -12,9 +12,31 @@ import './assets/css/GlobalStyles.css'
 import store from './redux/store'
 import ErrorBoundary from './utils/ErrorBoundary'
 import AppContent from './AppContent'
+import ConnectedVoiceCallProvider from './components/UIComponents/AssistantVoiceCallProvider'
 import { getSentryVariables, initTimeProvider } from './utils/backends/firestore'
 import HelperFunctions from './utils/HelperFunctions'
 import { startDailyAppReload } from './utils/DailyAppReload'
+import { installBrowserPerformanceObservers, startNamedPerformanceTrace } from './utils/performance/performanceLogger'
+import { installStorePerformanceObserver } from './utils/performance/storePerformanceObserver'
+import { startAppBootConnectionWait } from './utils/performance/userWaitConnection'
+import { installGlobalFirestoreFatalRecovery } from './utils/firestoreFatalRecovery'
+import { initializeResponsiveLayout } from './AppNavigator'
+import { restoreAnnaLayout } from './utils/annaMode'
+
+restoreAnnaLayout()
+// React Native Web reports the real viewport synchronously. Apply it before
+// mounting AppContent so a phone never paints the cached task board with the
+// Redux store's desktop layout defaults.
+initializeResponsiveLayout()
+
+startNamedPerformanceTrace('app_boot', 'app_boot', { source: 'cold_start' })
+startAppBootConnectionWait()
+installStorePerformanceObserver(store)
+installBrowserPerformanceObservers()
+// A ca9/b815 Firestore assertion permanently poisons the SDK AsyncQueue. Install
+// before the app mounts so the first unhandled queue rejection can replace the
+// page instead of leaving every listener and write broken for the whole session.
+installGlobalFirestoreFatalRecovery()
 
 try {
     const sentryDsn = getSentryVariables().SENTRY_DSN
@@ -51,7 +73,9 @@ export default function App() {
         <ErrorBoundary>
             <KeyboardAvoidingView behavior="height" style={{ flex: 1 }}>
                 <Provider store={store}>
-                    <AppContent />
+                    <ConnectedVoiceCallProvider>
+                        <AppContent />
+                    </ConnectedVoiceCallProvider>
                 </Provider>
             </KeyboardAvoidingView>
         </ErrorBoundary>

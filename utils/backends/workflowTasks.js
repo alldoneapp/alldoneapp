@@ -1,8 +1,8 @@
 import moment from 'moment'
 import { getDb, mapTaskData } from './firestore'
+import { createCachedSnapshotGate } from './cachedSnapshotGate'
 
 import store from '../../redux/store'
-import { startLoadingData, stopLoadingData } from '../../redux/actions'
 import { FEED_PUBLIC_FOR_ALL } from '../../components/Feeds/Utils/FeedsConstants'
 import TasksHelper, { OPEN_STEP } from '../../components/TaskListView/Utils/TasksHelper'
 import { chronoEntriesOrder } from '../HelperFunctions'
@@ -112,9 +112,6 @@ const processSubtaskChange = (subtasksByParentId, subtasksById, subtasksListToSo
 }
 
 export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
-    setTimeout(() => {
-        store.dispatch(startLoadingData())
-    })
     const { currentUser, loggedUser } = store.getState()
     const currentUserId = currentUser.uid
     const loggedUserId = loggedUser.uid
@@ -185,13 +182,14 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
         .where('userId', '==', currentUserId)
         .where('inDone', '==', false)
         .where('currentReviewerId', '!=', currentUserId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
-    const unsub = query.onSnapshot({ includeMetadataChanges: true }, querySnapshot => {
+    const gate = createCachedSnapshotGate(() => handleWorkflowTasksSnapshot, { loadingSource: 'workflow_tasks' })
+    function handleWorkflowTasksSnapshot(querySnapshot) {
         const changes = querySnapshot
             .docChanges()
             .filter(change => taskBelongsInWorkflowBoard(change.doc.data(), assistantOwner))
-        if (querySnapshot.metadata.fromCache) {
+        if (gate.shouldBuffer(querySnapshot)) {
             cacheChanges = [...cacheChanges, ...changes]
         } else {
             const mergedChanges = [...cacheChanges, ...changes]
@@ -224,9 +222,9 @@ export function watchTasksInWorkflow(projectId, taskCallback, subtaskCallback) {
 
                 cacheChanges = []
             }
-            store.dispatch(stopLoadingData())
         }
-    })
+    }
+    const unsub = gate.subscribe(query)
 
     userTasksInWorkflow[projectId] = { [currentUserId]: unsub }
 }

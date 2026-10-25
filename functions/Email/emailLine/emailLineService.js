@@ -11,8 +11,11 @@ const { getGmailLabelingConfigRef, getGmailLabelingStateRef } = require('../../G
 const gmailEmailLine = require('./gmailEmailLine')
 const microsoftEmailLine = require('./microsoftEmailLine')
 const { EmailLineAuthError, isAuthError } = require('./emailLineErrors')
-const { composeReply, REPLY_MODEL_KEY } = require('./replyComposer')
-const { summarizeEmailAsTaskName, TASK_SUMMARY_MODEL_KEY } = require('./taskSummarizer')
+const { composeReply } = require('./replyComposer')
+const { summarizeEmailAsTaskName } = require('./taskSummarizer')
+const { getEmailIdentity, matchesEmailAccount } = require('../emailThreadIdentity')
+const { continueEmailThread } = require('../emailThreadContinuation')
+const { getAccessibleProjectIdsFromUserData, canAccessObject } = require('../../shared/privacyAccess')
 
 const GOLD_SOURCE_DRAFT_REPLY = 'email_draft_reply'
 const GOLD_SOURCE_CREATE_TASK = 'email_create_task'
@@ -201,6 +204,7 @@ async function loadTasksByMessageId(userId, connection, userData, projectId, mes
 
     const memberProjectIds = Array.isArray(userData?.projectIds) ? userData.projectIds : []
     const candidateProjectSet = new Set()
+    getAccessibleProjectIdsFromUserData(userData).forEach(id => candidateProjectSet.add(id))
     const connectionProjectId = resolveConnectionProjectId(userData, projectId)
     if (connectionProjectId) candidateProjectSet.add(connectionProjectId)
     Object.values(auditById).forEach(audit => {
@@ -216,34 +220,50 @@ async function loadTasksByMessageId(userId, connection, userData, projectId, mes
     )
     if (!candidateProjects.length) return {}
 
-    const connectionEmail = String(connection?.emailAddress || '')
-        .trim()
-        .toLowerCase()
+    const identity = getEmailIdentity(userId, {
+        provider: connection?.provider,
+        gmailEmail: connection?.emailAddress,
+        messageId: messageIds[0],
+    })
+    if (!identity) return {}
     const byMessageId = {}
+    const ambiguousIds = new Set()
     try {
         const db = admin.firestore()
         for (const candidateProjectId of candidateProjects) {
             for (const chunk of chunkArray(messageIds)) {
-                const snapshot = await db
-                    .collection(`items/${candidateProjectId}/tasks`)
-                    .where('gmailData.messageId', 'in', chunk)
-                    .get()
-                snapshot.forEach(doc => {
-                    const task = doc.data() || {}
-                    const taskMessageId = task?.gmailData?.messageId
-                    if (!taskMessageId || byMessageId[taskMessageId]) return
-                    // A Gmail message id is unique per account; guard against an unrelated
-                    // task in a shared project by matching the connection's account email.
-                    const taskEmail = String(task?.gmailData?.gmailEmail || '')
-                        .trim()
-                        .toLowerCase()
-                    if (connectionEmail && taskEmail && taskEmail !== connectionEmail) return
-                    byMessageId[taskMessageId] = {
-                        taskId: doc.id,
-                        projectId: candidateProjectId,
-                        taskName: task?.name || '',
-                    }
-                })
+                const snapshots = await Promise.all([
+                    db.collection(`items/${candidateProjectId}/tasks`).where('gmailData.messageId', 'in', chunk).get(),
+                    db
+                        .collection(`items/${candidateProjectId}/tasks`)
+                        .where('gmailData.messageIds', 'array-contains-any', chunk)
+                        .get(),
+                ])
+                snapshots.forEach(snapshot =>
+                    snapshot.forEach(doc => {
+                        const task = doc.data() || {}
+                        if (!matchesEmailAccount(task.gmailData, identity) || !canAccessObject(task, userId)) return
+                        const linkedIds = new Set([task.gmailData?.messageId, ...(task.gmailData?.messageIds || [])])
+                        chunk.forEach(id => {
+                            if (!linkedIds.has(id) || ambiguousIds.has(id)) return
+                            if (byMessageId[id]) {
+                                if (
+                                    byMessageId[id].taskId === doc.id &&
+                                    byMessageId[id].projectId === candidateProjectId
+                                )
+                                    return
+                                delete byMessageId[id]
+                                ambiguousIds.add(id)
+                                return
+                            }
+                            byMessageId[id] = {
+                                taskId: doc.id,
+                                projectId: candidateProjectId,
+                                taskName: task?.name || '',
+                            }
+                        })
+                    })
+                )
             }
         }
         return byMessageId
@@ -572,9 +592,10 @@ async function addDraftReplyLinkComment({ userId, userData = {}, sourceProjectId
     }
 }
 
-// Returns { messages, nextPageToken, partialFailure, failedCount }. `partialFailure` means the
-// provider dropped some rows it could not fetch — without it, a page whose fetches all failed is
-// indistinguishable from a genuinely empty label.
+// Returns { messages, nextPageToken, totalCount, partialFailure, failedCount }. `totalCount` is
+// the provider's count for the same label query and lets the client reconcile a stale chip when
+// it opens the actual rows. `partialFailure` means the provider dropped some rows it could not
+// fetch — without it, a page whose fetches all failed is indistinguishable from an empty label.
 async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
     const startedAt = Date.now()
     const { pageToken, userData: providedUserData } = options
@@ -659,6 +680,7 @@ async function listEmailLineMessages(userId, projectId, labelId, options = {}) {
         return {
             messages,
             nextPageToken: result?.nextPageToken || null,
+            totalCount: Number.isFinite(result?.totalCount) ? result.totalCount : null,
             failedCount,
             partialFailure: !!result?.partialFailure,
         }
@@ -691,23 +713,29 @@ async function draftReply({
         throw error
     }
 
+    const { resolveFeatureModelKey } = require('../../Assistant/featureModelPreferences')
     const composed = await composeReply({
         context,
         guidance,
         language: userData?.language || userData?.appLanguage,
         groundingContext: await loadReplyGroundingContext({ userId, userData, projectId }),
         cacheScope: `${userId}:${projectId}`,
+        modelKey: resolveFeatureModelKey('emailDraftReply', userData),
     })
     if (!composed.body) throw new Error('Failed to compose a reply draft')
 
     const { deductGold, refundGold } = require('../../Gold/goldHelper')
     const { calculateGoldCostFromTokens } = require('../../Assistant/assistantHelper')
-    const goldCost = Math.max(1, calculateGoldCostFromTokens(composed.totalTokens, REPLY_MODEL_KEY))
+    // Bill the model that actually ran — composeReply returns its modelKey.
+    const goldCost = Math.max(1, calculateGoldCostFromTokens(composed.totalTokens, composed.modelKey))
     const goldContext = {
         source: GOLD_SOURCE_DRAFT_REPLY,
         projectId: resolveConnectionProjectId(userData, projectId),
         objectId: messageId,
         channel: connection.provider,
+        // Same model the cost was computed from, so goldStats.spendByModel attributes this
+        // line (AT-2487). The refunds below spread this context, so they match by construction.
+        model: composed.modelKey || '',
     }
 
     const goldResult = await deductGold(userId, goldCost, goldContext)
@@ -799,7 +827,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         projectId,
         connection,
         userData,
-        messageIds: candidateMessageIds,
+        messageIds: [selectedMessageId],
         auditById,
     })
     if (existingTask) {
@@ -818,10 +846,36 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         throw error
     }
 
+    const continuationData = {
+        provider: connection.provider,
+        accountUserId: userId,
+        gmailEmail: connection.emailAddress || '',
+        connectionId: projectId,
+        projectId: resolveConnectionProjectId(userData, projectId),
+        messageId: selectedMessageId,
+        threadId: context.threadId || audit?.gmailThreadId || '',
+        webUrl:
+            connection.provider === 'microsoft'
+                ? context.webUrl || ''
+                : gmailEmailLine.buildGmailMessageUrl(connection.emailAddress, selectedMessageId),
+    }
+    const continuationArgs = {
+        database: admin.firestore(),
+        userId,
+        userData,
+        gmailData: continuationData,
+        context,
+        actor: { ...userData, uid: userId },
+    }
+    const continued = await continueEmailThread(continuationArgs)
+    if (continued && !continued.ambiguous) return continued
+
+    const { resolveFeatureModelKey } = require('../../Assistant/featureModelPreferences')
     const summary = await summarizeEmailAsTaskName({
         context,
         language: userData?.language || userData?.appLanguage,
         cacheScope: `${userId}:${projectId}`,
+        modelKey: resolveFeatureModelKey('emailTaskSummary', userData),
     })
 
     const taskName = summary.name || context.subject || 'Follow up on email'
@@ -855,6 +909,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     const gmailData = {
         origin: 'gmail_label_follow_up',
         provider: connection.provider,
+        accountUserId: userId,
         gmailEmail: connection.emailAddress || '',
         projectId: connectionProjectId,
         taskProjectId: targetProjectId,
@@ -862,6 +917,7 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
         messageId: selectedMessageId,
         messageIds: candidateMessageIds,
         threadId: context.threadId || audit?.gmailThreadId || '',
+        receivedAt: Number(context.internalDate) || Date.parse(context.date) || 0,
         webUrl,
         archiveOnComplete: true,
         archiveStatus: null,
@@ -869,12 +925,14 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
 
     const { deductGold, refundGold } = require('../../Gold/goldHelper')
     const { calculateGoldCostFromTokens } = require('../../Assistant/assistantHelper')
-    const goldCost = Math.max(1, calculateGoldCostFromTokens(summary.totalTokens, TASK_SUMMARY_MODEL_KEY))
+    // Bill the model that actually ran — summarizeEmailAsTaskName returns its modelKey.
+    const goldCost = Math.max(1, calculateGoldCostFromTokens(summary.totalTokens, summary.modelKey))
     const goldContext = {
         source: GOLD_SOURCE_CREATE_TASK,
         projectId: targetProjectId,
         objectId: selectedMessageId,
         channel: connection.provider,
+        model: summary.modelKey || '',
     }
 
     const goldResult = await deductGold(userId, goldCost, goldContext)
@@ -899,6 +957,9 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
             {
                 userId,
                 projectId: targetProjectId,
+            },
+            {
+                emailThread: { userId, projectIds: getAccessibleProjectIdsFromUserData(userData) },
             }
         )
     } catch (error) {
@@ -910,6 +971,13 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     if (result?.success === false || !taskId) {
         await refundGold(userId, goldCost, { ...goldContext, note: 'task creation failed' })
         throw new Error(result?.message || 'Failed to create task from email')
+    }
+    if (result.existing) {
+        await refundGold(userId, goldCost, { ...goldContext, note: 'concurrent email task creation reused a task' })
+        const continuedAfterRace = await continueEmailThread(continuationArgs)
+        if (!continuedAfterRace || continuedAfterRace.ambiguous)
+            throw new Error('Email thread selection changed; retry processing')
+        return continuedAfterRace
     }
 
     // Explain the project choice on the task, same as the labeling follow-up flow.
@@ -961,7 +1029,8 @@ async function createTaskFromEmail({ userId, projectId, connection, userData, me
     }
 }
 
-// Handles archive / markRead / archiveAll / markAllRead / draftReply / createTask.
+// Handles archive / markRead / archiveAll / markAllRead / getMessageStates / draftReply /
+// createTask.
 async function performEmailLineAction(userId, projectId, params = {}) {
     const {
         action,
@@ -988,6 +1057,15 @@ async function performEmailLineAction(userId, projectId, params = {}) {
                 return await provider.archiveMessages(userId, projectId, messageIds)
             case 'markRead':
                 return await provider.markMessagesRead(userId, projectId, messageIds)
+            // Read-only: reports each message's CURRENT mailbox state so the client can mark the
+            // Alldone email comments of mails the user already read or archived in Gmail as read
+            // (AT-2376). It mutates nothing, which is why it is safe to run on a schedule/on view.
+            case 'getMessageStates': {
+                const ids = Array.isArray(messageIds) ? messageIds : messageIds ? [messageIds] : []
+                if (ids.length === 0) return { states: [] }
+                if (typeof provider.getMessageStates !== 'function') return { states: [] }
+                return await provider.getMessageStates(userId, projectId, ids)
+            }
             case 'archiveAll':
             case 'markAllRead': {
                 if (!labelId) throw new Error('labelId is required for sweep actions')

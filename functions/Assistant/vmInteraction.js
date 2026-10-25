@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { buildVmGoldBillingDimensions } = require('./vmGoldDimensions')
 
 const { VM_DISPATCH_LEASE_MS, dispatchLeaseOwner } = require('./vmThreadQueue')
 const {
@@ -146,7 +147,7 @@ async function createVmInteractionRequest({
         if (!pendingSnapshot.exists) throw new Error('VM job was not found.')
         const pending = pendingSnapshot.data() || {}
         if (pending.userId !== userId) throw new Error('VM interaction user does not own this job.')
-        if (['completed', 'failed', 'cancelled'].includes(pending.status)) {
+        if (['completed', 'failed', 'cancelled', 'interrupted'].includes(pending.status)) {
             throw new Error('VM job has already settled.')
         }
         const taskRef = getVmInteractionTaskRef(db, pending)
@@ -467,6 +468,7 @@ async function expireVmInteractions(db, now = Date.now()) {
                     projectId: pending.projectId,
                     objectId: pending.objectId,
                     objectType: pending.objectType,
+                    ...buildVmGoldBillingDimensions(pending),
                     note: 'VM task expired while waiting for user input',
                 }).catch(() => {})
             }

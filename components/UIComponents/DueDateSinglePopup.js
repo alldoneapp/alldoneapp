@@ -3,12 +3,16 @@ import { StyleSheet, Text, View } from 'react-native'
 import { useSelector, useDispatch } from 'react-redux'
 
 import DueDateModal from '../UIComponents/FloatModals/DueDateModal/DueDateModal'
-import Popover from 'react-tiny-popover'
+import AppPopover from './ModalShell/AppPopover'
+import useModalSizing from '../../hooks/useModalSizing'
 import { hideFloatPopup, hideSwipeDueDatePopup, setSwipeDueDatePopupData } from '../../redux/actions'
 import Backend from '../../utils/BackendBridge'
 import { setTaskDueDate, setTaskToBacklog } from '../../utils/backends/Tasks/tasksFirestore'
 import { checkIfInMyDayOpenTab } from '../MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksHelper'
 import { popoverToCenter, popoverToTopContainerStyle } from '../../utils/HelperFunctions'
+import { postponeTaskWithMotion } from '../TaskListView/TaskItem/TaskPresentation/taskPostponeMotion'
+import { postponeProjectTasks } from '../../utils/backends/Tasks/projectPostpone'
+import moment from 'moment'
 
 // This popup is mounted from inside a swipe RELEASE handler (Swipeable's
 // onSwipeableRightWillOpen, see TaskPresentation/GoalItemPresentation/
@@ -37,6 +41,7 @@ export default function DueDateSinglePopup() {
     const currentUserId = useSelector(state => state.currentUser.uid)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const data = useSelector(state => state.showSwipeDueDatePopup.data)
+    const { isSheet } = useModalSizing()
     const [visibleCalendar, setVisibleCalendar] = useState(false)
     const openedAtRef = useRef(Date.now())
     const openingDismissConsumedRef = useRef(false)
@@ -49,9 +54,20 @@ export default function DueDateSinglePopup() {
         taskViewToggleIndex
     )
 
-    if (!data || !data.task) return null // Ensure data and task exist before proceeding
+    if (!data || (!data.task && !data.isProjectPostpone)) return null
 
-    const { task, projectId, isObservedTask, isToReviewTask, multipleTasks, goal, parentGoaltasks, inParentGoal } = data
+    const {
+        projectId,
+        isObservedTask,
+        isToReviewTask,
+        multipleTasks,
+        goal,
+        parentGoaltasks,
+        inParentGoal,
+        isProjectPostpone,
+    } = data
+    // The project scope is selected in the cloud. This date-picker placeholder never becomes a task write.
+    const task = data.task || { dueDate: moment().valueOf() }
 
     const hidePopover = () => {
         if (!visibleCalendar) dispatch([hideFloatPopup(), hideSwipeDueDatePopup(), setSwipeDueDatePopupData(null)])
@@ -74,7 +90,10 @@ export default function DueDateSinglePopup() {
     }
 
     const onClickOutside = () => {
-        if (isOpeningGestureReplay()) return
+        // In sheet mode the BottomSheet's own AT-2236 mount grace already
+        // blocks the replayed compatibility click; running this guard on top
+        // would swallow the first GENUINE backdrop tap within the window.
+        if (!isSheet && isOpeningGestureReplay()) return
         delayHidePopover()
     }
 
@@ -90,37 +109,80 @@ export default function DueDateSinglePopup() {
         // AT-2160: hand over the goal we already hold. Without it the backend does a full
         // getGoalData() read before it can write, so every goal postpone from this popup paid for
         // a round trip before the row could move.
-        Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
+        return Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
     }
 
     const handleSaveTaskDate = async (taskToUpdate, dateTimestamp, isObservedTabActive) => {
-        console.log(`[DueDateSinglePopup] handleSaveTaskDate called for task ${taskToUpdate.id}`)
+        if (__DEV__) console.log(`[DueDateSinglePopup] handleSaveTaskDate called for task ${taskToUpdate.id}`)
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        if (moveObservedDateAndDueDate) {
-            await setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, false, null)
-            await setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, true, null)
-        } else {
-            setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, isObservedTabActive, null)
+        const write = async () => {
+            if (moveObservedDateAndDueDate) {
+                await setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, false, null)
+                await setTaskDueDate(projectId, taskToUpdate.id, dateTimestamp, taskToUpdate, true, null)
+            } else {
+                return setTaskDueDate(
+                    projectId,
+                    taskToUpdate.id,
+                    dateTimestamp,
+                    taskToUpdate,
+                    isObservedTabActive,
+                    null
+                )
+            }
         }
+
+        // A goal postpone intentionally updates several rows as one bulk operation. AT-2541 is a
+        // single-row acknowledgement and must not turn that operation into a train of exits.
+        if (multipleTasks || goal) return write()
+
+        return postponeTaskWithMotion(
+            {
+                projectId,
+                task: taskToUpdate,
+                targetDate: dateTimestamp,
+                updatesDueDate: moveObservedDateAndDueDate || !isObservedTabActive,
+                updatesObservedDate: moveObservedDateAndDueDate || isObservedTabActive,
+            },
+            write
+        )
     }
 
     const handleSetTaskToBacklog = async (taskToUpdate, isObservedTabActive) => {
-        console.log(`[DueDateSinglePopup] handleSetTaskToBacklog called for task ${taskToUpdate.id}`)
+        if (__DEV__) console.log(`[DueDateSinglePopup] handleSetTaskToBacklog called for task ${taskToUpdate.id}`)
         const moveObservedDateAndDueDate = isObservedTask && isToReviewTask
 
-        if (moveObservedDateAndDueDate) {
-            await setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, false, null)
-            await setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, true, null)
-        } else {
-            setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, isObservedTabActive, null)
+        const write = async () => {
+            if (moveObservedDateAndDueDate) {
+                await setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, false, null)
+                await setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, true, null)
+            } else {
+                return setTaskToBacklog(projectId, taskToUpdate.id, taskToUpdate, isObservedTabActive, null)
+            }
         }
+
+        if (multipleTasks || goal) return write()
+
+        return postponeTaskWithMotion(
+            {
+                projectId,
+                task: taskToUpdate,
+                targetDate: Number.MAX_SAFE_INTEGER,
+                updatesDueDate: moveObservedDateAndDueDate || !isObservedTabActive,
+                updatesObservedDate: moveObservedDateAndDueDate || isObservedTabActive,
+            },
+            write
+        )
     }
 
     return (
-        <View style={localStyles.container}>
+        // In sheet mode the transparent centering overlay must not intercept
+        // pointer events: it sits ABOVE the sheet's backdrop (10000 vs 9990)
+        // and would eat every backdrop tap. It only exists to center the
+        // zero-size desktop anchor.
+        <View style={[localStyles.container, isSheet && NO_POINTER_EVENTS_STYLE]}>
             <View style={localStyles.popup}>
-                <Popover
+                <AppPopover
                     content={
                         <>
                             <DueDateModal
@@ -144,6 +206,12 @@ export default function DueDateSinglePopup() {
                                 goalCompletionDate={goal ? goal.completionMilestoneDate : undefined}
                                 goalStartingDate={goal ? goal.startingMilestoneDate : undefined}
                                 goal={goal}
+                                animateGoalPostpone={!!goal}
+                                postponeProject={
+                                    isProjectPostpone
+                                        ? (date, mode) => postponeProjectTasks(projectId, date, mode)
+                                        : undefined
+                                }
                             />
                         </>
                     }
@@ -154,11 +222,13 @@ export default function DueDateSinglePopup() {
                     containerStyle={popoverToTopContainerStyle}
                 >
                     <Text />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )
 }
+
+const NO_POINTER_EVENTS_STYLE = { pointerEvents: 'none' }
 
 const localStyles = StyleSheet.create({
     container: {

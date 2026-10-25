@@ -5,7 +5,7 @@ import PropTypes from 'prop-types'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import FileTag from '../../Tags/FileTag'
-import { applyPopoverWidth, getPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../utils/HelperFunctions'
+import { applyPopoverWidth, getPopoverWidth } from '../../../utils/HelperFunctions'
 import * as ImagePicker from '../../../utils/WebShims/ImagePicker'
 import { Platform } from 'react-native-web'
 import Spinner from '../Spinner'
@@ -15,8 +15,9 @@ import Hotkeys from 'react-hot-keys'
 import { withWindowSizeHook } from '../../../utils/useWindowSize'
 import CustomScrollView from '../../UIControls/CustomScrollView'
 import { translate } from '../../../i18n/TranslationService'
+import { getSafeAreaModalMaxHeight } from '../../../utils/modalSafeArea'
 
-class ImagePickerModal extends Component {
+export class ImagePickerModal extends Component {
     constructor(props) {
         super(props)
         const storeState = store.getState()
@@ -31,11 +32,13 @@ class ImagePickerModal extends Component {
         }
 
         this.actionButton = React.createRef()
+        this._isMounted = false
     }
 
     async componentDidMount() {
+        this._isMounted = true
         const { onOpenModal } = this.props
-        this.actionButton.current.focus()
+        this.focusActionButton()
         if (onOpenModal) {
             onOpenModal()
         }
@@ -43,22 +46,29 @@ class ImagePickerModal extends Component {
 
         if (Platform.OS !== 'web') {
             const { status } = await ImagePicker.requestCameraRollPermissionsAsync()
-            if (status !== 'granted') {
+            if (this._isMounted && status !== 'granted') {
                 this.setState({ enabled: false })
             }
         }
 
-        Image.getSize(this.props.picture, (width, height) => {
-            this.setState({
-                pictures: [{ index: 0, file: this.props.picture }],
-                height: height * ((getPopoverWidth() - 34) / width),
+        if (this.props.picture)
+            Image.getSize(this.props.picture, (width, height) => {
+                if (!this._isMounted) return
+                this.setState({
+                    pictures: [{ index: 0, file: this.props.picture }],
+                    height: height * ((getPopoverWidth() - 34) / width),
+                })
             })
-        })
     }
 
     componentWillUnmount() {
+        this._isMounted = false
         document.removeEventListener('keydown', this.onPressSaveButton)
         this.state.unsubscribe()
+    }
+
+    focusActionButton = () => {
+        this.actionButton.current?.focus()
     }
 
     updateState = () => {
@@ -77,17 +87,22 @@ class ImagePickerModal extends Component {
             quality: 1,
         })
 
+        if (!this._isMounted) return
+
         if (!result.cancelled) {
             Image.getSize(result.uri, (width, height) => {
-                this.setState({
-                    pictures: [{ index: 0, file: result.uri }],
-                    height: height * ((getPopoverWidth() - 34) / width),
-                    changed: true,
-                })
-                this.actionButton.current.focus()
+                if (!this._isMounted) return
+                this.setState(
+                    {
+                        pictures: [{ index: 0, file: result.uri }],
+                        height: height * ((getPopoverWidth() - 34) / width),
+                        changed: true,
+                    },
+                    this.focusActionButton
+                )
             })
         } else {
-            this.actionButton.current.focus()
+            this.focusActionButton()
         }
     }
 
@@ -102,7 +117,7 @@ class ImagePickerModal extends Component {
                 style={[
                     localStyles.container,
                     applyPopoverWidth(),
-                    { maxHeight: windowSize[1] - MODAL_MAX_HEIGHT_GAP },
+                    { maxHeight: getSafeAreaModalMaxHeight(windowSize[1]) },
                 ]}
             >
                 <CustomScrollView showsVerticalScrollIndicator={false}>

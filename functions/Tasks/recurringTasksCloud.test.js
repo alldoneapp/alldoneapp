@@ -108,3 +108,92 @@ describe('recurringTasksCloud recurrence base dates', () => {
         expect(nextDate.format('YYYY-MM-DD HH:mm')).toBe('2026-07-01 09:00')
     })
 })
+
+describe('recurringTasksCloud goal privacy on the next occurrence', () => {
+    // The completed task is cloned wholesale into TaskService, which builds the new document
+    // through TaskModelBuilder. That builder used to hardcode `parentGoalIsPublicFor: null`
+    // while letting `parentGoalId` through, so every recurrence copy pointed at its goal but
+    // was filed under "no goal" by the open-task lists (and warned
+    // `[OpenTasks] oldTask.parentGoalIsPublicFor missing/invalid` on its next edit).
+    const persisted = []
+
+    beforeEach(() => {
+        persisted.length = 0
+        jest.resetModules()
+        jest.doMock('firebase-admin', () => ({
+            firestore: () => ({
+                collection: () => ({
+                    doc: () => ({ get: async () => ({ exists: false }) }),
+                }),
+            }),
+        }))
+        jest.doMock('firebase-admin/firestore', () => ({ FieldValue: {} }))
+        jest.doMock('../shared/TaskService', () => {
+            const { createTaskObject } = jest.requireActual('../shared/TaskModelBuilder')
+            class TaskService {
+                async initialize() {}
+                async createAndPersistTask(params) {
+                    const task = createTaskObject({ ...params, taskId: 'next-occurrence' })
+                    persisted.push(task)
+                    return { success: true, taskId: task.id }
+                }
+            }
+            return { TaskService }
+        })
+    })
+
+    const completedTask = overrides => ({
+        id: 'done-occurrence',
+        name: 'check costs again',
+        extendedName: 'Check costs again',
+        userId: 'user-1',
+        creatorId: 'user-1',
+        userIds: ['user-1'],
+        recurrence: 'weekly',
+        created: moment('2026-08-18T06:04:00').valueOf(),
+        startDate: moment('2026-08-18T06:04:00').valueOf(),
+        dueDate: moment('2026-08-25T06:00:00').valueOf(),
+        completed: moment('2026-08-25T06:01:00').valueOf(),
+        parentGoalId: 'goal-1',
+        parentGoalIsPublicFor: [0],
+        lockKey: '',
+        subtaskIds: [],
+        ...overrides,
+    })
+
+    test('carries the completed task’s goal AND its privacy array into the new occurrence', async () => {
+        const { createNewRecurringTask } = require('./recurringTasksCloud')
+
+        const created = await createNewRecurringTask('project-1', completedTask(), moment('2026-09-01T06:00:00'))
+
+        expect(created).toEqual(expect.objectContaining({ id: 'next-occurrence' }))
+        expect(persisted).toHaveLength(1)
+        expect(persisted[0].parentGoalId).toBe('goal-1')
+        expect(persisted[0].parentGoalIsPublicFor).toEqual([0])
+    })
+
+    test('a private goal keeps its member list on the next occurrence', async () => {
+        const { createNewRecurringTask } = require('./recurringTasksCloud')
+
+        await createNewRecurringTask(
+            'project-1',
+            completedTask({ parentGoalIsPublicFor: ['user-1', 'user-9'] }),
+            moment('2026-09-01T06:00:00')
+        )
+
+        expect(persisted[0].parentGoalIsPublicFor).toEqual(['user-1', 'user-9'])
+    })
+
+    test('a task without a goal still gets null', async () => {
+        const { createNewRecurringTask } = require('./recurringTasksCloud')
+
+        await createNewRecurringTask(
+            'project-1',
+            completedTask({ parentGoalId: null, parentGoalIsPublicFor: null }),
+            moment('2026-09-01T06:00:00')
+        )
+
+        expect(persisted[0].parentGoalId).toBeNull()
+        expect(persisted[0].parentGoalIsPublicFor).toBeNull()
+    })
+})

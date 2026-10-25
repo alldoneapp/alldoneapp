@@ -20,6 +20,12 @@ import {
     resetSkillLastCommentData,
 } from '../Skills/skillsFirestore'
 import {
+    getArtifactData,
+    setArtifactAssistant,
+    updateArtifactLastCommentData,
+    resetArtifactLastCommentData,
+} from '../Artifacts/artifactsFirestore'
+import {
     addFollowerWithoutFeeds,
     earnGold,
     getDb,
@@ -33,7 +39,7 @@ import {
     runHttpsCallableFunction,
     tryAddFollower,
 } from '../firestore'
-import { FEED_PUBLIC_FOR_ALL, FOLLOWED_TAB } from '../../../components/Feeds/Utils/FeedsConstants'
+import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import { setNoteAssistant, updateNoteLastCommentData, resetNoteLastCommentData } from '../Notes/notesFirestore'
 import {
     createGenericTaskWhenMention,
@@ -42,6 +48,9 @@ import {
     rebuildTaskLastCommentData,
 } from '../Tasks/tasksFirestore'
 import store from '../../../redux/store'
+import { awaitWriteAck } from '../offlineWriteAck'
+import { commentOutbox } from './commentOutbox'
+import { commitCommentOnce } from './commitCommentOnce'
 import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     cleanTextMetaData,
@@ -51,9 +60,15 @@ import {
 } from '../../../functions/Utils/parseTextUtils'
 import {
     getAssistantInProject,
+    isGlobalAssistant,
     resolveAssistantForProjectObject,
 } from '../../../components/AdminPanel/Assistants/assistantsHelper'
-import { setUserAssistant, updateUserLastCommentData, resetUserLastCommentData } from '../Users/usersFirestore'
+import {
+    resetUserLastCommentData,
+    setUserAssistant,
+    updateUserDataDirectly,
+    updateUserLastCommentData,
+} from '../Users/usersFirestore'
 import {
     setContactAssistant,
     updateContactLastCommentData,
@@ -61,12 +76,14 @@ import {
 } from '../Contacts/contactsFirestore'
 import { getLinkedParentChatUrl } from '../../../components/ChatsView/Utils/ChatHelper'
 import { selectAssistantEnabledFor } from '../../../components/ChatsView/Utils/assistantEnabledScope'
+import { endBotSpinnerWait } from '../../../components/ChatsView/Utils/botSpinnerTrigger'
 import { PROJECT_TYPE_GUIDE } from '../../../components/SettingsView/ProjectsSettings/ProjectsSettings'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import { setProjectLastChatActionDate } from '../Projects/projectsFirestore'
 import { getChatMeta, updateChatAssistant, updateChatData } from './chatsFirestore'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import {
+    FOLLOWER_ARTIFACTS_TYPE,
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
     FOLLOWER_GOALS_TYPE,
@@ -82,6 +99,9 @@ import {
     getChatNotificationWithCommentId,
     getProjectChatLastNotification,
 } from './chatNotificationPriority'
+import { buildCommentNotificationIdentity } from './commentNotificationHelper'
+import { isNewComment, queueObjectActivityFeedUnreadClear } from '../Feeds/activityFeedReadState'
+import { queueSummaryChatNotificationPatch, subscribeActivitySummary } from '../Feeds/activityUnreadSummary'
 
 export { ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY, getProjectChatLastNotification }
 
@@ -94,7 +114,10 @@ const filterActiveProjectUserIds = (projectId, userIds, context) => {
     const validUserIds = uniq((userIds || []).filter(userId => isActiveProjectUserId(projectId, userId)))
     const skippedUserIds = difference(uniq((userIds || []).filter(Boolean)), validUserIds)
 
-    if (skippedUserIds.length > 0) {
+    // A follower who has since left the project is the ordinary case here, not an anomaly:
+    // the metadata is simply saved without them. Worth seeing while developing, noise in
+    // a production console.
+    if (__DEV__ && skippedUserIds.length > 0) {
         console.warn('[TaskComments] Ignoring stale project user ids while saving comment metadata', {
             projectId,
             context,
@@ -105,18 +128,22 @@ const filterActiveProjectUserIds = (projectId, userIds, context) => {
     return validUserIds
 }
 
-export const watchComments = (projectId, chatType, chatId, watcherKey, amountCommentsToGet, callback) => {
+export const watchComments = (projectId, chatType, chatId, watcherKey, amountCommentsToGet, callback, options) => {
     globalWatcherUnsub[watcherKey] = getDb()
         .collection(`chatComments/${projectId}/${chatType}/${chatId}/comments`)
         .orderBy('created', 'desc')
         .limit(amountCommentsToGet)
-        .onSnapshot(snapshot => {
-            const comments = []
-            snapshot.forEach(doc => {
-                comments.push({ ...doc.data(), id: doc.id })
-            })
-            callback(comments)
-        })
+        .onSnapshot(
+            ...(options ? [{ includeMetadataChanges: true }] : []),
+            snapshot => {
+                const comments = []
+                snapshot.forEach(doc => {
+                    comments.push({ ...doc.data(), id: doc.id })
+                })
+                callback(comments, snapshot.metadata)
+            },
+            ...(options?.onError ? [options.onError] : [])
+        )
 }
 
 export async function getChatCommentsWithLinkedEmails(projectId, chatType, chatId) {
@@ -126,15 +153,24 @@ export async function getChatCommentsWithLinkedEmails(projectId, chatType, chatI
 }
 
 export function watchChatNotifications(projectId, userId, watcherKey, callback) {
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`chatNotifications/${projectId}/${userId}`)
-        .onSnapshot(snapshot => {
-            const notifications = []
-            snapshot.forEach(doc => {
-                notifications.push(getChatNotificationWithCommentId(doc))
-            })
-            callback(notifications)
-        })
+    // Served from the user's one activity summary listener when it is live for this project; the
+    // direct per-project listener is the fallback (see Feeds/activityUnreadSummary.js).
+    globalWatcherUnsub[watcherKey] = subscribeActivitySummary({
+        userId,
+        projectId,
+        kind: 'chats',
+        onData: callback,
+        legacySubscribe: deliver =>
+            getDb()
+                .collection(`chatNotifications/${projectId}/${userId}`)
+                .onSnapshot(snapshot => {
+                    const notifications = []
+                    snapshot.forEach(doc => {
+                        notifications.push(getChatNotificationWithCommentId(doc))
+                    })
+                    deliver(notifications)
+                }),
+    })
 }
 
 export const getParentObjectData = async (projectId, objectId, objectType) => {
@@ -214,6 +250,17 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
                 followObjectsType = FOLLOWER_SKILLS_TYPE
             })
             break
+        case 'artifacts':
+            await getArtifactData(projectId, objectId).then(artifact => {
+                if (!artifact) return
+                object = artifact
+                isPublicFor = artifact.isPublicFor
+                assistantId = artifact.assistantId
+                parentObjectCreatorId = artifact.userId || artifact.creatorId
+                title = artifact.title
+                followObjectsType = FOLLOWER_ARTIFACTS_TYPE
+            })
+            break
         case 'assistants':
             const assistant = getAssistantInProject(projectId, objectId)
             if (!assistant) break
@@ -259,6 +306,10 @@ export const getParentObjectName = async (projectId, objectId, objectType) => {
             const skill = await getSkillData(projectId, objectId)
             if (skill) name = skill.extendedName
             break
+        case 'artifacts':
+            const artifact = await getArtifactData(projectId, objectId)
+            if (artifact) name = artifact.title
+            break
         case 'assistants':
             const assistant = getAssistantInProject(projectId, objectId)
             if (assistant) name = assistant.displayName
@@ -299,6 +350,9 @@ const updateParentObjectAssistantIfNeeded = (projectId, assistantId, objectId, o
             case 'skills':
                 setSkillAssistant(projectId, objectId, resolvedAssistantId, needGenerateUpdate)
                 break
+            case 'artifacts':
+                setArtifactAssistant(projectId, objectId, resolvedAssistantId)
+                break
         }
 
         return resolvedAssistantId
@@ -319,23 +373,28 @@ const updateLastAssistantCommentData = async (
 
     activeFollowerIds.forEach(followerId => {
         const updateData = { objectType, objectId, creatorId, creatorType: 'user', date: moment().utc().valueOf() }
-        batch.update(getDb().doc(`users/${followerId}`), {
-            [`lastAssistantCommentData.${projectId}`]: updateData,
-            [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
-                ...updateData,
-                projectId,
+        updateUserDataDirectly(
+            followerId,
+            {
+                [`lastAssistantCommentData.${projectId}`]: updateData,
+                [`lastAssistantCommentData.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]: {
+                    ...updateData,
+                    projectId,
+                },
+                ...(assistantId
+                    ? {
+                          [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateData,
+                          [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]:
+                              {
+                                  ...updateData,
+                                  projectId,
+                              },
+                      }
+                    : {}),
             },
-            ...(assistantId
-                ? {
-                      [`lastAssistantCommentDataByAssistant.${assistantId}.${projectId}`]: updateData,
-                      [`lastAssistantCommentDataByAssistant.${assistantId}.${ASSISTANT_LAST_COMMENT_ALL_PROJECTS_KEY}`]:
-                          {
-                              ...updateData,
-                              projectId,
-                          },
-                  }
-                : {}),
-        })
+            batch,
+            projectId
+        )
     })
 }
 
@@ -352,34 +411,46 @@ const storeComment = async (
     followerIds,
     title,
     chatMembers,
-    assistantId
+    assistantId,
+    sharedBatch = null,
+    created = Date.now()
 ) => {
-    const batch = new BatchWrapper(getDb())
+    const batch = sharedBatch || new BatchWrapper(getDb())
     const mediaContext = extractMediaContextFromText(comment)
-    if (!editingCommentId) {
+    const notificationIdentity = buildCommentNotificationIdentity({
+        projectId,
+        chatType: objectType,
+        objectId,
+        commentId,
+        creatorId,
+    })
+    if (isNewComment(editingCommentId)) {
+        queueObjectActivityFeedUnreadClear(getDb(), batch, {
+            projectId,
+            userId: creatorId,
+            objectType,
+            objectId,
+        })
+
         const followrsMap = {}
         followerIds.forEach(uid => {
             followrsMap[uid] = true
         })
         userIdsToNotify.forEach(userId => {
             batch.set(getDb().doc(`chatNotifications/${projectId}/${userId}/${commentId}`), {
+                ...notificationIdentity,
                 chatId: objectId,
-                chatType: objectType,
                 followed: !!followrsMap[userId],
                 date: moment().utc().valueOf(),
-                creatorId,
                 creatorType: 'user',
             })
         })
 
         generatePushAndEmailNotifcations(
-            projectId,
-            objectType,
-            objectId,
+            notificationIdentity,
             comment,
             followerIds.filter(uid => uid !== creatorId),
             title,
-            commentId,
             batch
         )
 
@@ -393,7 +464,7 @@ const storeComment = async (
                   commentText: comment,
                   mediaContext,
                   lastChangeDate: getFirestoreTime(),
-                  created: moment().valueOf(),
+                  created,
                   creatorId,
                   fromAssistant: false,
                   ...(objectType === 'tasks' && { commentType }),
@@ -401,39 +472,20 @@ const storeComment = async (
         { merge: true }
     )
 
-    await batch.commit()
+    if (!sharedBatch) await batch.commit()
 }
 
-const generatePushAndEmailNotifcations = (
-    projectId,
-    objectType,
-    objectId,
-    comment,
-    followerIds,
-    title,
-    commentId,
-    batch
-) => {
+const generatePushAndEmailNotifcations = (notificationIdentity, comment, followerIds, title, batch) => {
     if (followerIds.length > 0) {
+        const { projectId, chatType: objectType, objectId } = notificationIdentity
         const messageTimestamp = Date.now()
-        sendChatPushNotification(
-            projectId,
-            objectType,
-            objectId,
-            comment,
-            followerIds,
-            title,
-            commentId,
-            messageTimestamp,
-            batch
-        )
+        sendChatPushNotification(notificationIdentity, comment, followerIds, title, messageTimestamp, batch)
         batch.set(
             getDb().doc(`emailNotifications/${objectId}`),
             {
+                ...notificationIdentity,
                 userIds: firebase.firestore.FieldValue.arrayUnion(...followerIds),
-                projectId,
                 objectType: objectType === 'topics' ? 'chats' : objectType,
-                objectId,
                 objectName: TasksHelper.getTaskNameWithoutMeta(title),
                 messageTimestamp,
             },
@@ -480,6 +532,44 @@ const getFollowerLists = async (projectId, objectType, objectId, creatorId, oldC
     return { followerIds, newFollowerIds, newMentionIds: newMentionedUserIdsInComment }
 }
 
+const queueParentCommentPreview = (batch, projectId, type, objectId, preview, commentType, isLatestComment) => {
+    // Global assistants have no writable project-local parent document. Their
+    // per-project conversation metadata lives in the chat document above.
+    if (type === 'assistants' && isGlobalAssistant(objectId)) return
+    const data = {
+        ...(isLatestComment
+            ? {
+                  'commentsData.lastComment': shrinkTagText(preview, LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN),
+                  'commentsData.lastCommentType': commentType,
+              }
+            : {}),
+        'commentsData.amount': firebase.firestore.FieldValue.increment(1),
+    }
+    if ((type === 'contacts' || type === 'users') && TasksHelper.getUserInProject(projectId, objectId)) {
+        const userData = Object.fromEntries(
+            Object.entries(data).map(([key, value]) => [
+                key.replace('commentsData.', `commentsData.${projectId}.`),
+                value,
+            ])
+        )
+        updateUserDataDirectly(objectId, userData, batch, projectId)
+        return
+    }
+    const paths = {
+        tasks: `items/${projectId}/tasks/${objectId}`,
+        goals: `goals/${projectId}/items/${objectId}`,
+        notes: `noteItems/${projectId}/notes/${objectId}`,
+        contacts: `projectsContacts/${projectId}/contacts/${objectId}`,
+        users: `projectsContacts/${projectId}/contacts/${objectId}`,
+        skills: `skills/${projectId}/items/${objectId}`,
+        assistants: `assistants/${projectId}/items/${objectId}`,
+        artifacts: `artifactItems/${projectId}/artifacts/${objectId}`,
+    }
+    if (paths[type]) batch.update(getDb().doc(paths[type]), data)
+}
+
+const pendingAssistantCallbacks = new Map()
+
 export async function createObjectMessage(
     projectId,
     objectId,
@@ -490,12 +580,92 @@ export async function createObjectMessage(
     oldComment,
     skipAssistantTrigger = false,
     explicitAssistantEnabled = null,
-    explicitAssistantId = null
+    explicitAssistantId = null,
+    onAssistantRunSettled = null,
+    submission = null
+) {
+    // Editing an existing message retains the existing edit path. New comments
+    // acquire their permanent ID and disk copy before any preliminary read.
+    if (editingCommentId) {
+        return sendObjectMessage(
+            projectId,
+            objectId,
+            comment,
+            objectType,
+            commentType,
+            editingCommentId,
+            oldComment,
+            skipAssistantTrigger,
+            explicitAssistantEnabled,
+            explicitAssistantId,
+            onAssistantRunSettled
+        )
+    }
+    const userId = store.getState().loggedUser?.uid
+    if (!userId) throw new Error('Sign in before sending a comment.')
+    if (!projectId || !objectId || !objectType || typeof comment !== 'string' || !comment.trim())
+        throw new Error('A comment and its destination are required.')
+    const id = submission?.id || getId()
+    const entry = commentOutbox.enqueue({
+        id,
+        ...(submission?.created && { created: submission.created }),
+        userId,
+        projectId,
+        objectId,
+        comment,
+        objectType,
+        commentType,
+        skipAssistantTrigger,
+        explicitAssistantEnabled,
+        explicitAssistantId,
+    })
+    if (onAssistantRunSettled) pendingAssistantCallbacks.set(id, onAssistantRunSettled)
+    // The return value means locally saved. The regular message list renders
+    // this ID with its pending/failed state until delivery is acknowledged.
+    commentOutbox.flushOne(entry).catch(() => {})
+    return id
+}
+
+export const sendQueuedObjectMessage = (entry, isActive) =>
+    sendObjectMessage(
+        entry.projectId,
+        entry.objectId,
+        entry.comment,
+        entry.objectType,
+        entry.commentType,
+        null,
+        null,
+        entry.skipAssistantTrigger,
+        entry.explicitAssistantEnabled,
+        entry.explicitAssistantId,
+        result => {
+            pendingAssistantCallbacks.get(entry.id)?.(result)
+            pendingAssistantCallbacks.delete(entry.id)
+        },
+        entry,
+        isActive
+    )
+
+async function sendObjectMessage(
+    projectId,
+    objectId,
+    comment,
+    objectType,
+    commentType,
+    editingCommentId,
+    oldComment,
+    skipAssistantTrigger = false,
+    explicitAssistantEnabled = null,
+    explicitAssistantId = null,
+    onAssistantRunSettled = null,
+    queuedEntry = null,
+    isActive = () => true
 ) {
     const promises = []
     promises.push(getParentObjectData(projectId, objectId, objectType))
     promises.push(getChatMeta(projectId, objectId))
     const [parentData, chat] = await Promise.all(promises)
+    if (!isActive()) throw Object.assign(new Error('Account changed'), { code: 'cancelled' })
     let { isPublicFor, assistantId, followObjectsType, object, parentObjectCreatorId, title } = parentData
 
     // The assistant selected when the user submitted the message is authoritative for this run.
@@ -513,18 +683,164 @@ export async function createObjectMessage(
         const assistantEnabled = selectAssistantEnabledFor(store.getState(), projectId, objectId)
 
         const chatIsAlreadyCreated = !!chat
-        const commentId = editingCommentId || getId()
+        const commentId = editingCommentId || queuedEntry?.id || getId()
 
         // Debug logging for webhook task detection
-        console.log('🔍 WEBHOOK DEBUG: Checking if webhook task:', {
-            objectType,
-            objectId,
-            hasObject: !!object,
-            hasTaskMetadata: !!object?.taskMetadata,
-            isWebhookTask: object?.taskMetadata?.isWebhookTask,
-            taskMetadata: object?.taskMetadata,
-            editingCommentId,
-        })
+        if (__DEV__) {
+            console.log('🔍 WEBHOOK DEBUG: Checking if webhook task:', {
+                objectType,
+                objectId,
+                hasObject: !!object,
+                hasTaskMetadata: !!object?.taskMetadata,
+                isWebhookTask: object?.taskMetadata?.isWebhookTask,
+                taskMetadata: object?.taskMetadata,
+                editingCommentId,
+            })
+        }
+
+        const userIdsToNotify = filterActiveProjectUserIds(
+            projectId,
+            generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId),
+            'commentNotifications'
+        )
+
+        const {
+            followerIds: unfilteredFollowerIds,
+            newFollowerIds: unfilteredNewFollowerIds,
+            newMentionIds,
+        } = await getFollowerLists(projectId, objectType, objectId, creatorId, oldComment, comment, isPublicFor)
+        const followerIds = filterActiveProjectUserIds(projectId, unfilteredFollowerIds, 'commentFollowers')
+        const activeFollowerIdsMap = followerIds.reduce((map, userId) => {
+            map[userId] = true
+            return map
+        }, {})
+        const newFollowerIds = unfilteredNewFollowerIds.filter(userId => activeFollowerIdsMap[userId])
+
+        if (!isActive()) throw Object.assign(new Error('Account changed'), { code: 'cancelled' })
+        const originalAssistantId = assistantId
+        assistantId = queuedEntry
+            ? resolveAssistantForProjectObject(projectId, assistantId)?.uid || assistantId
+            : updateParentObjectAssistantIfNeeded(projectId, assistantId, objectId, objectType)
+        const promises = []
+        if (queuedEntry) {
+            const committed = await commitCommentOnce(getDb(), {
+                commentPath: `chatComments/${projectId}/${objectType}/${objectId}/comments/${commentId}`,
+                chatPath: `chatObjects/${projectId}/chats/${objectId}`,
+                isActive,
+                stageWrites: async (batch, currentChat) => {
+                    await storeComment(
+                        projectId,
+                        objectId,
+                        objectType,
+                        commentId,
+                        comment,
+                        commentType,
+                        null,
+                        userIdsToNotify,
+                        creatorId,
+                        followerIds,
+                        title,
+                        currentChat ? uniq([...(currentChat.members || []), creatorId]) : [creatorId],
+                        assistantId,
+                        batch,
+                        queuedEntry.created
+                    )
+                    const preview = cleanTextMetaData(removeFormatTagsFromText(comment), true).trim() || 'Comment'
+                    const isLatestComment = !currentChat || !(currentChat.lastEditionDate > queuedEntry.created)
+                    const commentsData = {
+                        lastCommentOwnerId: creatorId,
+                        lastComment: preview,
+                        lastCommentType: commentType,
+                        amount: firebase.firestore.FieldValue.increment(1),
+                    }
+                    const chatRef = getDb().doc(`chatObjects/${projectId}/chats/${objectId}`)
+                    if (currentChat) {
+                        batch.update(chatRef, {
+                            members: firebase.firestore.FieldValue.arrayUnion(creatorId),
+                            ...(isLatestComment
+                                ? { commentsData, lastEditionDate: queuedEntry.created, lastEditorId: creatorId }
+                                : { 'commentsData.amount': firebase.firestore.FieldValue.increment(1) }),
+                        })
+                    } else {
+                        batch.set(chatRef, {
+                            id: objectId,
+                            title,
+                            type: objectType,
+                            members: [creatorId],
+                            commentsData,
+                            lastEditionDate: queuedEntry.created,
+                            lastEditorId: creatorId,
+                            creatorId: parentObjectCreatorId,
+                            created: queuedEntry.created,
+                            isPublicFor,
+                            hasStar: '#ffffff',
+                            usersFollowing: followerIds,
+                            quickDateId: '',
+                            assistantId,
+                            stickyData: { days: 0, stickyEndDate: 0 },
+                        })
+                    }
+                    batch.update(getDb().doc(`projects/${projectId}`), { lastChatActionDate: Date.now() })
+                    queueParentCommentPreview(
+                        batch,
+                        projectId,
+                        objectType,
+                        objectId,
+                        preview,
+                        commentType,
+                        isLatestComment
+                    )
+                },
+            })
+            if (!committed) {
+                onAssistantRunSettled?.({ status: 'already-saved' })
+                return commentId
+            }
+        } else {
+            promises.push(
+                storeComment(
+                    projectId,
+                    objectId,
+                    objectType,
+                    commentId,
+                    comment,
+                    commentType,
+                    editingCommentId,
+                    userIdsToNotify,
+                    creatorId,
+                    followerIds,
+                    title,
+                    chat ? uniq([...chat.members, creatorId]) : [creatorId],
+                    assistantId
+                )
+            )
+
+            if (chatIsAlreadyCreated) {
+                promises.push(updateChatWhenAddComment(projectId, creatorId, comment, commentType, objectId))
+            } else {
+                promises.push(
+                    createChat(
+                        objectId,
+                        projectId,
+                        creatorId,
+                        comment,
+                        objectType,
+                        title,
+                        isPublicFor,
+                        '#ffffff',
+                        null,
+                        followerIds,
+                        '',
+                        assistantId,
+                        commentType,
+                        parentObjectCreatorId
+                    )
+                )
+            }
+        }
+
+        if (!isActive()) throw Object.assign(new Error('Account changed'), { code: 'cancelled' })
+        if (queuedEntry) updateParentObjectAssistantIfNeeded(projectId, originalAssistantId, objectId, objectType)
 
         // Check if this is a webhook task and trigger webhook with the user's message
         if (!editingCommentId && objectType === 'tasks' && object?.taskMetadata?.isWebhookTask) {
@@ -557,68 +873,6 @@ export async function createObjectMessage(
                 })
         }
 
-        const userIdsToNotify = filterActiveProjectUserIds(
-            projectId,
-            generateUserIdsToNotifyForNewComments(projectId, isPublicFor, creatorId),
-            'commentNotifications'
-        )
-
-        const {
-            followerIds: unfilteredFollowerIds,
-            newFollowerIds: unfilteredNewFollowerIds,
-            newMentionIds,
-        } = await getFollowerLists(projectId, objectType, objectId, creatorId, oldComment, comment, isPublicFor)
-        const followerIds = filterActiveProjectUserIds(projectId, unfilteredFollowerIds, 'commentFollowers')
-        const activeFollowerIdsMap = followerIds.reduce((map, userId) => {
-            map[userId] = true
-            return map
-        }, {})
-        const newFollowerIds = unfilteredNewFollowerIds.filter(userId => activeFollowerIdsMap[userId])
-
-        assistantId = updateParentObjectAssistantIfNeeded(projectId, assistantId, objectId, objectType)
-
-        const promises = []
-        promises.push(
-            storeComment(
-                projectId,
-                objectId,
-                objectType,
-                commentId,
-                comment,
-                commentType,
-                editingCommentId,
-                userIdsToNotify,
-                creatorId,
-                followerIds,
-                title,
-                chat ? uniq([...chat.members, creatorId]) : [creatorId],
-                assistantId
-            )
-        )
-
-        if (chatIsAlreadyCreated) {
-            promises.push(updateChatWhenAddComment(projectId, creatorId, comment, commentType, objectId))
-        } else {
-            promises.push(
-                createChat(
-                    objectId,
-                    projectId,
-                    creatorId,
-                    comment,
-                    objectType,
-                    title,
-                    isPublicFor,
-                    '#ffffff',
-                    null,
-                    followerIds,
-                    '',
-                    assistantId,
-                    commentType,
-                    parentObjectCreatorId
-                )
-            )
-        }
-
         newFollowerIds.forEach(uid => {
             const user = TasksHelper.getUserInProject(projectId, uid)
             if (user) {
@@ -646,8 +900,16 @@ export async function createObjectMessage(
         const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
 
         try {
-            await Promise.all(promises)
-            await updateLastCommentData(projectId, editingCommentId, objectId, objectType, comment, commentType)
+            // Offline these acks never arrive, so awaiting them left the comment
+            // modal open forever on a comment that was in fact already stored
+            // locally and queued for the server. The writes stay durable in the
+            // persisted mutation queue; only the wait is skipped (AT-2340).
+            await awaitWriteAck(Promise.all(promises), 'createObjectMessage comment')
+            if (!queuedEntry)
+                await awaitWriteAck(
+                    updateLastCommentData(projectId, editingCommentId, objectId, objectType, comment, commentType),
+                    'createObjectMessage last-comment preview'
+                )
         } catch (error) {
             console.error('[TaskComments] Failed to persist comment before updating preview metadata', {
                 projectId,
@@ -667,28 +929,32 @@ export async function createObjectMessage(
                   : assistantEnabled
 
         // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
-        console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
-            editingCommentId,
-            isThreadAssistantEnabled,
-            isWebhookTask,
-            skipAssistantTrigger,
-            objectType,
-            hasTaskMetadata: !!object?.taskMetadata,
-        })
+        if (__DEV__) {
+            console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
+                editingCommentId,
+                isThreadAssistantEnabled,
+                isWebhookTask,
+                skipAssistantTrigger,
+                objectType,
+                hasTaskMetadata: !!object?.taskMetadata,
+            })
+        }
         if (!editingCommentId && isThreadAssistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
             const clientSubmissionTime = Date.now()
             const clientSubmissionTimestamp = new Date().toISOString()
-            console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {
-                timestamp: clientSubmissionTimestamp,
-                submissionTime: clientSubmissionTime,
-                submissionTimeISO: clientSubmissionTimestamp,
-                userId: creatorId,
-                messageId: commentId,
-                projectId,
-                objectType,
-                objectId,
-                assistantId,
-            })
+            if (__DEV__) {
+                console.log('⏱️ [TIMING] CLIENT: User message submitted, calling askToBotSecondGen', {
+                    timestamp: clientSubmissionTimestamp,
+                    submissionTime: clientSubmissionTime,
+                    submissionTimeISO: clientSubmissionTimestamp,
+                    userId: creatorId,
+                    messageId: commentId,
+                    projectId,
+                    objectType,
+                    objectId,
+                    assistantId,
+                })
+            }
             const functionCallStartTime = Date.now()
             runHttpsCallableFunction(
                 'askToBotSecondGen',
@@ -709,22 +975,28 @@ export async function createObjectMessage(
                 }
             )
                 .then(result => {
+                    endBotSpinnerWait(projectId, objectId)
+                    onAssistantRunSettled?.({ status: result?.cancelled ? 'cancelled' : 'completed', result })
                     const clientCallCompleteTime = Date.now()
                     const totalClientToServerTime = clientCallCompleteTime - clientSubmissionTime
                     const networkLatency = functionCallStartTime - clientSubmissionTime
-                    console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated successfully', {
-                        timestamp: new Date().toISOString(),
-                        submissionTime: clientSubmissionTime,
-                        submissionTimeISO: clientSubmissionTimestamp,
-                        completionTime: clientCallCompleteTime,
-                        completionTimeISO: new Date().toISOString(),
-                        timeSinceSubmission: `${totalClientToServerTime}ms`,
-                        networkLatency: `${networkLatency}ms`,
-                        backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
-                        result,
-                    })
+                    if (__DEV__) {
+                        console.log('⏱️ [TIMING] CLIENT: askToBotSecondGen call initiated successfully', {
+                            timestamp: new Date().toISOString(),
+                            submissionTime: clientSubmissionTime,
+                            submissionTimeISO: clientSubmissionTimestamp,
+                            completionTime: clientCallCompleteTime,
+                            completionTimeISO: new Date().toISOString(),
+                            timeSinceSubmission: `${totalClientToServerTime}ms`,
+                            networkLatency: `${networkLatency}ms`,
+                            backendProcessingTime: `${totalClientToServerTime - networkLatency}ms`,
+                            result,
+                        })
+                    }
                 })
                 .catch(error => {
+                    endBotSpinnerWait(projectId, objectId)
+                    onAssistantRunSettled?.({ status: 'failed', error })
                     console.error('⏱️ [TIMING] CLIENT: Error calling askToBotSecondGen', {
                         error: error.message,
                         timestamp: new Date().toISOString(),
@@ -733,11 +1005,20 @@ export async function createObjectMessage(
                         timeSinceSubmission: `${Date.now() - clientSubmissionTime}ms`,
                     })
                 })
+        } else {
+            if (isThreadAssistantEnabled) endBotSpinnerWait(projectId, objectId)
+            onAssistantRunSettled?.({ status: 'skipped' })
         }
 
         return commentId
     }
 
+    if (queuedEntry)
+        throw Object.assign(new Error('The object is not available. Your comment remains saved locally.'), {
+            // Redux-backed contacts/assistants may still be loading after resume.
+            // Absence here is not an authoritative server deletion.
+            code: 'unavailable',
+        })
     return null
 }
 
@@ -854,6 +1135,8 @@ const updateLastCommentDataOfChatParentObject = async (projectId, objectId, type
         await updateGoalLastCommentData(projectId, objectId, cleanedComment, commentType)
     } else if (type === 'notes') {
         await updateNoteLastCommentData(projectId, objectId, cleanedComment, commentType)
+    } else if (type === 'artifacts') {
+        await updateArtifactLastCommentData(projectId, objectId, cleanedComment, commentType)
     }
 }
 
@@ -874,32 +1157,32 @@ export const repairChatMetadata = async (projectId, objectId, type) => {
         await resetGoalLastCommentData(projectId, objectId)
     } else if (type === 'notes') {
         await resetNoteLastCommentData(projectId, objectId)
+    } else if (type === 'artifacts') {
+        await resetArtifactLastCommentData(projectId, objectId)
     }
 }
 
 const sendChatPushNotification = async (
-    projectId,
-    objectType,
-    objectId,
+    notificationIdentity,
     message,
     followerIds,
     objectName,
-    commentId,
     messageTimestamp,
     batch
 ) => {
+    const { projectId, chatType: objectType, objectId } = notificationIdentity
     const { displayName: userName } = store.getState().loggedUser
 
     const project = ProjectHelper.getProjectById(projectId)
     const cleanedComment = TasksHelper.getTaskNameWithoutMeta(message)
-    batch.set(getDb().doc(`pushNotifications/${commentId}`), {
+    batch.set(getDb().doc(`pushNotifications/${notificationIdentity.commentId}`), {
+        ...notificationIdentity,
         userIds: followerIds,
         body: `${project.name}\n  ✔ ${objectName}\n ${userName} ${'commented'}: ${cleanedComment}`,
         link: getLinkedParentChatUrl(projectId, objectType, objectId),
         messageTimestamp,
         type: 'Chat Notification',
         chatId: objectId,
-        projectId,
     })
 }
 
@@ -907,14 +1190,16 @@ const addFollowersToChat = async (projectId, chatName, objectType, chatId, follo
     const usersFollowing = followerIds || (await getChatFollowerIds(projectId, chatName, objectType, chatId))
 
     const batch = new BatchWrapper(getDb())
-    console.log('addFollowersToChat parameters:', {
-        projectId,
-        chatName,
-        objectType,
-        chatId,
-        followerIds,
-        usersFollowing,
-    })
+    if (__DEV__) {
+        console.log('addFollowersToChat parameters:', {
+            projectId,
+            chatName,
+            objectType,
+            chatId,
+            followerIds,
+            usersFollowing,
+        })
+    }
     // maybe we wanted to not have feeds because it's a chat and then we dont want updates
     if (objectType === 'topics') {
         usersFollowing.forEach(userId => {
@@ -953,12 +1238,18 @@ const getChatFollowerIds = async (projectId, chatName, objectType, chatId) => {
 }
 
 async function setFollowChatNotifications(projectId, userId, chatId, followed, batch) {
+    // chatNotifications is a private per-user inbox. A client may update its
+    // own existing entries, but adding a mentioned/assigned teammate as a
+    // follower must not query that teammate's inbox from this browser.
+    if (store.getState().loggedUser?.uid !== userId) return
+
     const docs = await getDb()
         .collection(`chatNotifications/${projectId}/${userId}`)
         .where('chatId', '==', chatId)
         .get()
     docs.forEach(doc => {
         batch.update(getDb().doc(`chatNotifications/${projectId}/${userId}/${doc.id}`), { followed })
+        queueSummaryChatNotificationPatch(batch, userId, projectId, doc.id, { followed })
     })
 }
 
@@ -996,30 +1287,10 @@ export async function removeFollowerFromChat(projectId, chatId, userId) {
     }
 }
 
-export const getFollowedAndUnfollowedChatNotificationsAmount = (
-    inAllProjects,
-    selectedProjectId,
-    projectChatNotifications,
-    archivedProjectIds,
-    templateProjectIds
-) => {
-    if (inAllProjects) {
-        let globalTotalFollowed = 0
-        let globalTotalUnfollowed = 0
-        const projectIds = Object.keys(projectChatNotifications)
-        projectIds.forEach(projectId => {
-            const needToCount = !archivedProjectIds.includes(projectId) && !templateProjectIds.includes(projectId)
-            if (needToCount) {
-                const { totalFollowed, totalUnfollowed } = projectChatNotifications[projectId]
-                globalTotalFollowed += totalFollowed
-                globalTotalUnfollowed += totalUnfollowed
-            }
-        })
-        return { totalFollowed: globalTotalFollowed, totalUnfollowed: globalTotalUnfollowed }
-    } else {
-        return projectChatNotifications[selectedProjectId] || { totalFollowed: 0, totalUnfollowed: 0 }
-    }
-}
+export {
+    getFollowedAndUnfollowedChatNotificationsAmount,
+    resetNotificationsWhenUserHasAnActiveChat,
+} from '../../notificationBadges'
 
 export const getNewFollowedAndUnfollowedCommentsAmountInProjectList = (projectChatNotifications, projectIdsList) => {
     let globalTotalFollowed = 0
@@ -1036,139 +1307,4 @@ export const getNewFollowedAndUnfollowedCommentsAmountInProjectList = (projectCh
     return { totalFollowed: globalTotalFollowed, totalUnfollowed: globalTotalUnfollowed }
 }
 
-export const resetNotificationsWhenUserHasAnActiveChat = (projectChatNotifications, activeChatData) => {
-    const { projectId, chatId, chatType } = activeChatData
-
-    if (
-        projectId &&
-        chatId &&
-        chatType &&
-        projectChatNotifications[projectId] &&
-        projectChatNotifications[projectId][chatId]
-    ) {
-        const { totalFollowed, totalUnfollowed } = projectChatNotifications[projectId][chatId]
-        if (totalFollowed || totalUnfollowed) {
-            projectChatNotifications = { ...projectChatNotifications }
-            projectChatNotifications[projectId] = { ...projectChatNotifications[projectId] }
-            projectChatNotifications[projectId].totalFollowed -=
-                projectChatNotifications[projectId][chatId].totalFollowed
-            projectChatNotifications[projectId].totalUnfollowed -=
-                projectChatNotifications[projectId][chatId].totalUnfollowed
-
-            delete projectChatNotifications[projectId][chatId]
-        }
-    }
-    return projectChatNotifications
-}
-
-export async function markMessagesAsRead(projectId, userId, chatsActiveTab) {
-    const { loggedUser } = store.getState()
-
-    let newCommentsRef = getDb().collection(`chatNotifications/${projectId}/${userId}`)
-    if (chatsActiveTab === FOLLOWED_TAB) newCommentsRef = newCommentsRef.where('followed', '==', true)
-
-    const pushNotificationsRef = getDb()
-        .collection(`pushNotifications`)
-        .where('projectId', '==', projectId)
-        .where('userIds', 'array-contains', loggedUser.uid)
-    const emailNotificationsRef = getDb()
-        .collection(`emailNotifications`)
-        .where('projectId', '==', projectId)
-        .where('userIds', 'array-contains', loggedUser.uid)
-
-    const [chatSnapshot, pushSnapshot, emailSnapshot] = await Promise.all([
-        newCommentsRef.get(),
-        pushNotificationsRef.get(),
-        emailNotificationsRef.get(),
-    ])
-
-    await Promise.all([
-        removeAllChatNotifications(projectId, userId, chatSnapshot.docs),
-        removeAllChatPushNotifications(pushSnapshot),
-        removeAllChatEmailNotifications(emailSnapshot),
-    ])
-}
-
-export async function markChatMessagesAsRead(projectId, chatId) {
-    const { loggedUser } = store.getState()
-
-    getDb()
-        .collection(`chatNotifications/${projectId}/${loggedUser.uid}`)
-        .where('chatId', '==', chatId)
-        .get()
-        .then(snapshot => {
-            removeAllChatNotifications(projectId, loggedUser.uid, snapshot.docs)
-        })
-
-    getDb()
-        .doc(`emailNotifications/${chatId}`)
-        .get()
-        .then(doc => {
-            const notification = doc.data()
-            if (notification && notification.userIds.includes(loggedUser.uid)) {
-                notification.userIds.length > 1
-                    ? getDb()
-                          .doc(`emailNotifications/${chatId}`)
-                          .set(
-                              { ...notification, userIds: firebase.firestore.FieldValue.arrayRemove(loggedUser.uid) },
-                              { merge: true }
-                          )
-                    : getDb().doc(`emailNotifications/${chatId}`).delete()
-            }
-        })
-
-    getDb()
-        .collection(`pushNotifications`)
-        .where('chatId', '==', chatId)
-        .where('userIds', 'array-contains', loggedUser.uid)
-        .get()
-        .then(snapshot => {
-            removeAllChatPushNotifications(snapshot)
-        })
-}
-
-async function removeAllChatNotifications(projectId, userId, docs) {
-    const batch = new BatchWrapper(getDb())
-    docs.forEach(doc => {
-        batch.delete(getDb().doc(`chatNotifications/${projectId}/${userId}/${doc.id}`))
-    })
-    await batch.commit()
-}
-
-async function removeAllChatPushNotifications(docs) {
-    const { loggedUser } = store.getState()
-    const batch = new BatchWrapper(getDb())
-    docs.forEach(doc => {
-        const notification = doc.data()
-        notification.userIds.length > 1
-            ? batch.set(
-                  getDb().doc(`pushNotifications/${doc.id}`),
-                  {
-                      ...notification,
-                      userIds: firebase.firestore.FieldValue.arrayRemove(loggedUser.uid),
-                  },
-                  { merge: true }
-              )
-            : batch.delete(getDb().doc(`pushNotifications/${doc.id}`))
-    })
-    await batch.commit()
-}
-
-async function removeAllChatEmailNotifications(docs) {
-    const { loggedUser } = store.getState()
-    const batch = new BatchWrapper(getDb())
-    docs.forEach(doc => {
-        const notification = doc.data()
-        notification.userIds.length > 1
-            ? batch.set(
-                  getDb().doc(`emailNotifications/${doc.id}`),
-                  {
-                      ...notification,
-                      userIds: firebase.firestore.FieldValue.arrayRemove(loggedUser.uid),
-                  },
-                  { merge: true }
-              )
-            : batch.delete(getDb().doc(`emailNotifications/${doc.id}`))
-    })
-    await batch.commit()
-}
+export { markChatMessagesAsRead, markMessagesAsRead } from './chatReadNotifications'

@@ -8,11 +8,15 @@ import styles, { colors } from '../styles/global'
 import { checkIfSelectedAllProjects } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { translate } from '../../i18n/TranslationService'
 import {
+    getAllNotesAmount,
+    getFollowedNotesAmount,
     unwatchNotesAmount,
     watchAllNotesAmount,
     watchFollowedNotesAmount,
 } from '../../utils/backends/Notes/noteNumbers'
 import { FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
+
+const NOTES_AMOUNT_REFRESH_INTERVAL = 30000
 
 export default function NotesHeader() {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
@@ -39,6 +43,36 @@ export default function NotesHeader() {
     }, [loggedUserProjectsAmount, selectedProjectIndex, templateProjectIdsAmount, archivedProjectIdsAmount])
 
     useEffect(() => {
+        if (projectIds.length === 0) {
+            setNotesAmount(0)
+            return
+        }
+
+        if (inAllProjects) {
+            let cancelled = false
+            let refreshTimeout
+
+            const refreshNotesAmount = async () => {
+                try {
+                    const amount =
+                        notesActiveTab === FOLLOWED_TAB
+                            ? await getFollowedNotesAmount(projectIds)
+                            : await getAllNotesAmount(projectIds)
+                    if (!cancelled) setNotesAmount(amount)
+                } catch (error) {
+                    if (error.code !== 'offline') console.warn('Could not count notes for All Projects', error)
+                } finally {
+                    if (!cancelled) refreshTimeout = setTimeout(refreshNotesAmount, NOTES_AMOUNT_REFRESH_INTERVAL)
+                }
+            }
+
+            refreshNotesAmount()
+            return () => {
+                cancelled = true
+                clearTimeout(refreshTimeout)
+            }
+        }
+
         const watcherKeys = projectIds.map(() => v4())
         notesActiveTab === FOLLOWED_TAB
             ? watchFollowedNotesAmount(projectIds, watcherKeys, setNotesAmount)
@@ -46,7 +80,7 @@ export default function NotesHeader() {
         return () => {
             unwatchNotesAmount(watcherKeys)
         }
-    }, [notesActiveTab, projectIds])
+    }, [inAllProjects, notesActiveTab, projectIds])
 
     return (
         <View style={localStyles.container}>

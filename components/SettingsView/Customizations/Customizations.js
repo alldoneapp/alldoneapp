@@ -25,6 +25,9 @@ import SidebarNavigation from './Properties/SidebarNavigation'
 import PublicBookingSettings from './Properties/PublicBookingSettings'
 import ConnectedAppsSection from './Properties/ConnectedAppsSection'
 import AnalyticsConsent from './Properties/AnalyticsConsent'
+import AutoArchiveProjectsAfterDays from './Properties/AutoArchiveProjectsAfterDays'
+import FeatureModelsSection from './Properties/FeatureModelsSection'
+import DictationMicrophone from './Properties/DictationMicrophone'
 
 const Customizations = () => {
     useTranslator()
@@ -66,6 +69,10 @@ const Customizations = () => {
                         userId={loggedUser.uid}
                         autoPostponeAfterDaysOverdue={loggedUser.autoPostponeAfterDaysOverdue}
                     />
+                    <AutoArchiveProjectsAfterDays
+                        userId={loggedUser.uid}
+                        autoArchiveProjectsAfterDays={loggedUser.autoArchiveProjectsAfterDays}
+                    />
                     <SidebarNavigation
                         userId={loggedUser.uid}
                         sidebarNavigationMode={loggedUser.sidebarNavigationMode}
@@ -77,6 +84,7 @@ const Customizations = () => {
                         email={loggedUser.email}
                         notificationEmail={loggedUser.notificationEmail}
                     />
+                    <DictationMicrophone />
                     <AnalyticsConsent />
                     <ServerTime />
                     <UserTimezone />
@@ -84,6 +92,7 @@ const Customizations = () => {
             </View>
 
             <AssistantEmail userId={loggedUser.uid} assistantEmailEnabled={loggedUser.assistantEmailEnabled === true} />
+            <FeatureModelsSection userId={loggedUser.uid} />
             <PublicBookingSettings />
             <ConnectedAppsSection />
         </View>

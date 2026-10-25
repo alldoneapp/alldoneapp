@@ -3,7 +3,7 @@ import { Image, StyleSheet, View } from 'react-native'
 import SelectUserModal from './SelectUserModal'
 import { colors } from '../styles/global'
 import { hideFloatPopup, setWorkflowStep, showFloatPopup } from '../../redux/actions'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import Icon from '../Icon'
 import { useDispatch, useSelector } from 'react-redux'
 import Button from '../UIControls/Button'
@@ -84,7 +84,7 @@ const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue, dis
 
     return (
         <View style={buttonItemStyle}>
-            <Popover
+            <AppPopover
                 content={
                     <SelectUserModal currentUser={currentUser} projectIndex={projectIndex} closePopover={hidePopover} />
                 }
@@ -127,7 +127,7 @@ const SendTo = ({ currentUser, defaultReviewer, projectIndex, onChangeValue, dis
                         />
                     </Hotkeys>
                 }
-            </Popover>
+            </AppPopover>
         </View>
     )
 }

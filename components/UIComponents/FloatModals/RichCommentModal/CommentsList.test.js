@@ -1,14 +1,23 @@
 import React from 'react'
 import renderer, { act } from 'react-test-renderer'
-import { Text, TouchableOpacity } from 'react-native'
+import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native'
 
 import CommentsList from './CommentsList'
-import { respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
+import { cancelAssistantRun, respondToVmInteraction } from '../../../../utils/backends/Assistants/assistantRuns'
 import AssistantProgress from '../../../ChatsView/ChatDV/EditorView/AssistantProgress'
+import { resetStopRequests } from '../../../ChatsView/ChatDV/EditorView/stopAssistantRunRequests'
+import StopAssistantRunButton from '../../../ChatsView/ChatDV/EditorView/StopAssistantRunButton'
 
-jest.mock('../../../Feeds/FeedsModals/ListCommentsComponents/Comment', () => 'Comment')
+jest.mock('react-redux', () => ({
+    useSelector: selector => selector({ loggedUser: { uid: 'user-1' } }),
+}))
+jest.mock('../../../Feeds/FeedsModals/ListCommentsComponents/Comment', () => props => {
+    const React = require('react')
+    return React.createElement('Comment', props, props.contentOverride)
+})
 jest.mock('../../../../utils/backends/Assistants/assistantRuns', () => ({
     respondToVmInteraction: jest.fn(() => Promise.resolve()),
+    cancelAssistantRun: jest.fn(() => Promise.resolve()),
 }))
 
 const baseRun = interaction => ({
@@ -182,5 +191,111 @@ describe('RichCommentModal CommentsList VM interactions', () => {
             startedAt: 123,
         })
         expect(comment.props.contentOverride.props.appearance).toBe('dark')
+    })
+})
+
+describe('RichCommentModal CommentsList stop control', () => {
+    beforeEach(() => {
+        resetStopRequests()
+        cancelAssistantRun.mockClear()
+        cancelAssistantRun.mockImplementation(() => Promise.resolve())
+    })
+
+    const runningRun = overrides => ({ kind: 'chat', status: 'running', runId: 'run-1', ...overrides })
+
+    test('stops a running chat run straight from the popup, without opening the full chat view', async () => {
+        const tree = renderPopupComments(runningRun(), { isLoading: true })
+
+        const stop = findButton(tree, 'Stop')
+        expect(stop).toBeTruthy()
+        const card = tree.root.findByType(AssistantProgress)
+        expect(tree.root.findAllByType(StopAssistantRunButton)).toHaveLength(1)
+        expect(card.findAllByType(StopAssistantRunButton)).toHaveLength(1)
+        expect(card.findByType(ScrollView).findAllByType(StopAssistantRunButton)).toHaveLength(0)
+        expect(card.findByType(StopAssistantRunButton).props.appearance).toBe('dark')
+
+        await act(async () => {
+            await stop.props.onPress()
+        })
+
+        expect(cancelAssistantRun).toHaveBeenCalledWith({
+            projectId: 'project-1',
+            objectType: 'tasks',
+            objectId: 'task-1',
+            commentId: 'comment-1',
+            runKind: 'chat',
+            runId: 'run-1',
+        })
+        expect(findButton(tree, 'Stopping…')).toBeTruthy()
+    })
+
+    test('offers Stop for a running VM job too, which the popup shows no progress card for', () => {
+        const tree = renderPopupComments(runningRun({ kind: 'vm_job' }), { isLoading: true })
+
+        expect(tree.root.findAllByType(AssistantProgress)).toHaveLength(0)
+        expect(findButton(tree, 'Stop')).toBeTruthy()
+    })
+
+    test('hides Stop whenever the run is not stoppable', () => {
+        const cases = [
+            ['settled run', runningRun({ status: 'completed' }), { isLoading: true }],
+            ['already stopping', runningRun({ status: 'cancel_requested' }), { isLoading: true }],
+            ['awaiting the user', baseRun({ kind: 'plan_review', plan: 'p' }), { isLoading: true }],
+            ['another user’s run', runningRun({ requestUserId: 'user-2' }), { isLoading: true }],
+            ['not loading', runningRun(), {}],
+            ['stale spinner', runningRun(), { isLoading: true, lastChangeDate: Date.now() - 6 * 60 * 1000 }],
+        ]
+
+        cases.forEach(([label, assistantRun, overrides]) => {
+            const tree = renderPopupComments(assistantRun, overrides)
+            expect([label, !!findButton(tree, 'Stop')]).toEqual([label, false])
+        })
+    })
+
+    test('retains popup spacing for standalone VM controls and uses the card padding for chat controls', () => {
+        const tree = renderPopupComments(runningRun({ kind: 'vm_job' }), { isLoading: true })
+        const stopStyle = StyleSheet.flatten(findButton(tree, 'Stop').props.style)
+
+        expect(stopStyle.marginBottom).toBe(8)
+
+        const cardTree = renderPopupComments(runningRun(), { isLoading: true })
+        const cardButtonStyle = StyleSheet.flatten(findButton(cardTree, 'Stop').props.style)
+        expect(cardButtonStyle.marginBottom).toBeUndefined()
+        expect(cardButtonStyle.minHeight).toBe(44)
+
+        // The spacing is the popup's own decision: the shared button — rendered the way the
+        // full chat view renders it, with no style override — must not carry it.
+        const chatViewTree = renderer.create(
+            <StopAssistantRunButton
+                projectId="project-1"
+                objectType="tasks"
+                objectId="task-1"
+                commentId="comment-1"
+                assistantRun={runningRun()}
+                isLoading={true}
+            />
+        )
+        const chatViewStyle = StyleSheet.flatten(findButton(chatViewTree, 'Stop').props.style)
+
+        expect(chatViewStyle.marginBottom).toBeUndefined()
+    })
+
+    test('a stop already requested from the full chat view mounts the popup button disabled', async () => {
+        const firstTree = renderPopupComments(runningRun(), { isLoading: true })
+        await act(async () => {
+            await findButton(firstTree, 'Stop').props.onPress()
+        })
+
+        const reopenedPopup = renderPopupComments(runningRun(), { isLoading: true })
+        const pendingButton = findButton(reopenedPopup, 'Stopping…')
+
+        expect(pendingButton).toBeTruthy()
+        expect(pendingButton.props.disabled).toBe(true)
+
+        await act(async () => {
+            await pendingButton.props.onPress()
+        })
+
+        expect(cancelAssistantRun).toHaveBeenCalledTimes(1)
     })
 })

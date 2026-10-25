@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react'
 import { useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import { View } from 'react-native'
 import { setDomAttributes } from '../../../../utils/setDomAttributes'
 
@@ -22,7 +22,7 @@ export default function SubmitButton({ onSubmit, disabled, setShowRunOutGoalModa
     }, [])
 
     return (
-        <Popover
+        <AppPopover
             content={<RunOutOfGoldAssistantModal closeModal={closeModal} showAssistantDisabledText={true} />}
             align={'start'}
             position={['top']}
@@ -45,6 +45,6 @@ export default function SubmitButton({ onSubmit, disabled, setShowRunOutGoalModa
                     disabled={disabled}
                 />
             </View>
-        </Popover>
+        </AppPopover>
     )
 }

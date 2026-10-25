@@ -99,6 +99,25 @@ describe('VM interactions', () => {
         })
     })
 
+    test('does not create a new interaction after an interrupted job has settled', async () => {
+        store['pendingWebhooks/run-1'].status = 'interrupted'
+
+        await expect(
+            createVmInteractionRequest({
+                db: db(),
+                pendingRef: ref('pendingWebhooks/run-1'),
+                sessionRef: ref('vmSessions/project-1__chat-1'),
+                correlationId: 'run-1',
+                requestId: 'request-1',
+                userId: 'user-1',
+                provider: 'claude',
+                kind: 'plan_review',
+                payload: { plan: 'Plan' },
+                now: 1000,
+            })
+        ).rejects.toThrow('VM job has already settled.')
+    })
+
     test('persists a pending request and blocks the reusable thread while no runtime lease is held', async () => {
         const database = db()
         const interaction = await createVmInteractionRequest({

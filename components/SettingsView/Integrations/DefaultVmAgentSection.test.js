@@ -10,13 +10,19 @@ jest.mock('../../styles/global', () => ({
     colors: {
         Text01: '#111',
         Text02: '#222',
+        Text03: '#777',
         Grey300: '#ddd',
+        Gray400: '#ccc',
         Primary100: '#00f',
+        Yellow400: '#a60',
         UtilityBlue100: '#eef',
         UtilityRed200: '#f00',
     },
 }))
-jest.mock('../../../i18n/TranslationService', () => ({ translate: value => value }))
+jest.mock('../../../i18n/TranslationService', () => ({
+    translate: (value, interpolations = {}) =>
+        value.replace(/%\{(\w+)\}/g, (_match, key) => String(interpolations[key] ?? '')),
+}))
 jest.mock('../../../utils/backends/firestore', () => ({
     getVmAgentSettings: jest.fn(),
     setDefaultVmAgent: jest.fn(async () => ({})),
@@ -28,17 +34,18 @@ jest.mock('../../../utils/backends/firestore', () => ({
 const CATALOGS = {
     claude: {
         families: [
-            { id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true },
-            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true },
-            { id: 'haiku', label: 'Haiku', resolvedModel: 'haiku', isAlias: true },
+            { id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true, tokensPerGold: 80 },
+            { id: 'sonnet', label: 'Sonnet', resolvedModel: 'sonnet', isAlias: true, tokensPerGold: 200 },
+            { id: 'haiku', label: 'Haiku', resolvedModel: 'haiku', isAlias: true, tokensPerGold: 400 },
         ],
         source: 'live',
     },
     codex: {
         families: [
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false },
-            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
-            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false },
+            { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false, tokensPerGold: 40 },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.1-sol', isAlias: false, tokensPerGold: 240 },
+            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false, tokensPerGold: 190 },
+            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-6-luna', isAlias: false, tokensPerGold: 4000 },
         ],
         source: 'live',
     },
@@ -92,8 +99,13 @@ describe('DefaultVmAgentSection model family picker', () => {
         const labels = optionLabels(tree)
 
         // Default agent is codex → Codex tiers are offered, Claude tiers are not.
-        expect(labels).toEqual(expect.arrayContaining(['Sol', 'Terra', 'Luna']))
+        expect(labels).toEqual(expect.arrayContaining(['Astra', 'Sol', 'Terra', 'Luna']))
         expect(labels).not.toEqual(expect.arrayContaining(['Opus']))
+        const rendered = JSON.stringify(tree.toJSON())
+        expect(rendered).toContain('1 Gold = 40 tokens')
+        expect(rendered).toContain('1 Gold ≈ 240 tokens')
+        expect(rendered).toContain('1 Gold = 190 tokens')
+        expect(rendered).toContain('1 Gold = 4,000 tokens')
     })
 
     it('swaps the family list when the agent changes', async () => {
@@ -106,7 +118,54 @@ describe('DefaultVmAgentSection model family picker', () => {
         const labels = optionLabels(tree)
         expect(labels).toEqual(expect.arrayContaining(['Opus', 'Sonnet', 'Haiku']))
         expect(labels).not.toEqual(expect.arrayContaining(['Sol']))
+        const rendered = JSON.stringify(tree.toJSON())
+        expect(rendered).toContain('1 Gold = 80 tokens')
+        expect(rendered).toContain('1 Gold = 200 tokens')
+        expect(rendered).toContain('1 Gold = 400 tokens')
         expect(setDefaultVmAgent).toHaveBeenCalledWith('claude')
+    })
+
+    it('renders newly discovered provider families without a frontend allowlist', async () => {
+        getVmAgentSettings.mockResolvedValue(
+            settingsPayload({
+                modelCatalogs: {
+                    ...CATALOGS,
+                    codex: {
+                        ...CATALOGS.codex,
+                        families: [
+                            ...CATALOGS.codex.families,
+                            {
+                                id: 'nova',
+                                label: 'Nova',
+                                resolvedModel: 'gpt-7-nova',
+                                isAlias: false,
+                                tokensPerGold: 40,
+                            },
+                        ],
+                    },
+                    claude: {
+                        ...CATALOGS.claude,
+                        families: [
+                            ...CATALOGS.claude.families,
+                            {
+                                id: 'verse',
+                                label: 'Verse',
+                                resolvedModel: 'claude-verse-6',
+                                isAlias: false,
+                                tokensPerGold: 26,
+                            },
+                        ],
+                    },
+                },
+            })
+        )
+        const tree = await renderSection()
+
+        expect(optionLabels(tree)).toContain('Nova')
+        await act(async () => {
+            await pressOption(tree, 'Claude')()
+        })
+        expect(optionLabels(tree)).toContain('Verse')
     })
 
     it('saves the family against the agent it belongs to', async () => {
@@ -197,7 +256,7 @@ describe('DefaultVmAgentSection model family picker', () => {
         )
         const tree = await renderSection()
 
-        expect(optionLabels(tree)).toEqual(expect.arrayContaining(['Sol', 'Terra', 'Luna']))
+        expect(optionLabels(tree)).toEqual(expect.arrayContaining(['Astra', 'Sol', 'Terra', 'Luna']))
         const rendered = JSON.stringify(tree.toJSON())
         expect(rendered).toContain('Could not reach the model provider')
     })
@@ -221,6 +280,7 @@ const OPENROUTER_CATALOG = {
             vendor: 'deepseek',
             modelId: 'deepseek/deepseek-chat',
             resolvedModel: 'openrouter:deepseek/deepseek-chat',
+            tokensPerGold: 490,
         },
         {
             id: 'openrouter:qwen/qwen3-max',
@@ -228,6 +288,41 @@ const OPENROUTER_CATALOG = {
             vendor: 'qwen',
             modelId: 'qwen/qwen3-max',
             resolvedModel: 'openrouter:qwen/qwen3-max',
+            tokensPerGold: 960,
+        },
+    ],
+    searchModels: [
+        {
+            id: 'openrouter:deepseek/deepseek-chat',
+            label: 'DeepSeek Chat',
+            vendor: 'deepseek',
+            modelId: 'deepseek/deepseek-chat',
+            resolvedModel: 'openrouter:deepseek/deepseek-chat',
+            tokensPerGold: 490,
+        },
+        {
+            id: 'openrouter:qwen/qwen3-max',
+            label: 'Qwen3 Max',
+            vendor: 'qwen',
+            modelId: 'qwen/qwen3-max',
+            resolvedModel: 'openrouter:qwen/qwen3-max',
+            tokensPerGold: 960,
+        },
+        {
+            id: 'openrouter:x-ai/grok-4.6',
+            label: 'SpaceXAI: Grok 4.6',
+            vendor: 'x-ai',
+            modelId: 'x-ai/grok-4.6',
+            resolvedModel: 'openrouter:x-ai/grok-4.6',
+            tokensPerGold: 170,
+        },
+        {
+            id: 'openrouter:someone/niche-model',
+            label: 'Someone: Niche Model',
+            vendor: 'someone',
+            modelId: 'someone/niche-model',
+            resolvedModel: 'openrouter:someone/niche-model',
+            tokensPerGold: 320,
         },
     ],
     source: 'live',
@@ -244,7 +339,7 @@ describe('DefaultVmAgentSection OpenRouter source (AT-2230)', () => {
         const labels = optionLabels(tree)
 
         expect(labels).toEqual(expect.arrayContaining(['OpenAI', 'OpenRouter']))
-        expect(labels).toEqual(expect.arrayContaining(['Sol', 'Terra', 'Luna']))
+        expect(labels).toEqual(expect.arrayContaining(['Astra', 'Sol', 'Terra', 'Luna']))
         expect(labels).not.toEqual(expect.arrayContaining(['DeepSeek Chat']))
     })
 
@@ -260,6 +355,70 @@ describe('DefaultVmAgentSection OpenRouter source (AT-2230)', () => {
         expect(labels).toEqual(expect.arrayContaining(['DeepSeek Chat', 'Qwen3 Max']))
         expect(labels).not.toEqual(expect.arrayContaining(['Sol']))
         expect(setDefaultVmAgentModel).not.toHaveBeenCalled()
+        expect(JSON.stringify(tree.toJSON())).toContain('Featured models')
+        expect(JSON.stringify(tree.toJSON())).toContain('1 Gold = 490 tokens')
+    })
+
+    it('searches every compatible OpenRouter model, not only the featured set', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+
+        await act(async () => {
+            await pressOption(tree, 'OpenRouter')()
+        })
+        expect(optionLabels(tree)).not.toContain('SpaceXAI: Grok 4.6')
+
+        const search = tree.root.findByProps({ testID: 'openrouter-model-search' })
+        await act(async () => {
+            search.props.onChangeText('grok 4.6')
+        })
+
+        expect(optionLabels(tree)).toContain('SpaceXAI: Grok 4.6')
+        expect(optionLabels(tree)).not.toContain('DeepSeek Chat')
+        const rendered = JSON.stringify(tree.toJSON())
+        expect(rendered).toContain('Search results')
+        expect(rendered).toContain('1 Gold = 170 tokens')
+    })
+
+    it('saves a model selected from search', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+
+        await act(async () => {
+            await pressOption(tree, 'OpenRouter')()
+        })
+        await act(async () => {
+            tree.root.findByProps({ testID: 'openrouter-model-search' }).props.onChangeText('grok')
+        })
+        await act(async () => {
+            await pressOption(tree, 'SpaceXAI: Grok 4.6')()
+        })
+
+        expect(setDefaultVmAgentModel).toHaveBeenCalledWith('codex', 'openrouter:x-ai/grok-4.6')
+    })
+
+    it('keeps a saved non-featured model visible beside the featured choices', async () => {
+        getVmAgentSettings.mockResolvedValue(
+            withOpenRouter({ defaultModelFamilies: { claude: null, codex: 'openrouter:someone/niche-model' } })
+        )
+        const tree = await renderSection()
+
+        expect(optionLabels(tree)).toContain('Someone: Niche Model')
+        expect(optionLabels(tree)).toContain('DeepSeek Chat')
+    })
+
+    it('shows an empty state when no compatible model matches', async () => {
+        getVmAgentSettings.mockResolvedValue(withOpenRouter())
+        const tree = await renderSection()
+
+        await act(async () => {
+            await pressOption(tree, 'OpenRouter')()
+        })
+        await act(async () => {
+            tree.root.findByProps({ testID: 'openrouter-model-search' }).props.onChangeText('not-a-real-model')
+        })
+
+        expect(JSON.stringify(tree.toJSON())).toContain('No compatible models match your search.')
     })
 
     it('saves the prefixed selection so the run knows which upstream to use', async () => {

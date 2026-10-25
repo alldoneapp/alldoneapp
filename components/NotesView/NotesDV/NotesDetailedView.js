@@ -4,7 +4,6 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import CustomSideMenu from '../../SidebarMenu/CustomSideMenu'
 import Backend from '../../../utils/BackendBridge'
-import LoadingNoteData from '../../UIComponents/LoadingNoteData'
 import LoadingData from '../../UIComponents/LoadingData'
 
 import {
@@ -13,8 +12,6 @@ import {
     setSelectedNote,
     setShowAccessDeniedPopup,
     showNoteChangedNotification,
-    startLoadingData,
-    stopLoadingData,
     triggerWatchTasks,
     unsetSharedMode,
     storeCurrentUser,
@@ -51,7 +48,7 @@ export default function NotesDetailedView({ navigation }) {
         } else {
             const { selectedTypeOfProject } = store.getState()
             NavigationService.navigate('Root')
-            dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+            dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             if (selectedTypeOfProject !== PROJECT_TYPE_SHARED && showAccessDeniedModal)
                 dispatch(setShowAccessDeniedPopup(true))
         }
@@ -104,7 +101,7 @@ export default function NotesDetailedView({ navigation }) {
         TasksHelper.changeSharedMode(accessGranted)
 
         if (!!currentUser.recorderUserId || !!currentUser.temperature) dispatch(storeCurrentUser(loggedUser))
-        dispatch([setNavigationRoute('NotesDetailedView'), startLoadingData()])
+        dispatch([setNavigationRoute('NotesDetailedView')])
 
         return () => {
             dispatch([triggerWatchTasks(), unsetSharedMode(), setSelectedNote({})])
@@ -114,7 +111,6 @@ export default function NotesDetailedView({ navigation }) {
     return (
         <View style={localStyles.container}>
             <LoadingData />
-            <LoadingNoteData />
 
             {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />

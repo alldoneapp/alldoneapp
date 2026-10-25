@@ -1,5 +1,5 @@
 import React from 'react'
-import { StyleSheet, View } from 'react-native'
+import { StyleSheet, TouchableOpacity } from 'react-native'
 
 import MessageItemHeader from './ChatDV/EditorView/MessageItemHeader'
 import MessageItemBody from './ChatDV/EditorView/MessageItemBody'
@@ -7,6 +7,7 @@ import useGetUserPresentationData from '../ContactsView/Utils/useGetUserPresenta
 import { getTimestampInMilliseconds } from './Utils/ChatHelper'
 import { resolveEffectiveMessageLoading } from './ChatDV/EditorView/messageLoadingState'
 import { getLinkedEmailFromMessage } from './ChatDV/linkedEmailActions'
+import { translate } from '../../i18n/TranslationService'
 
 /**
  * One unread message as previewed under a topic in the chat list (AT-2256).
@@ -22,9 +23,10 @@ import { getLinkedEmailFromMessage } from './ChatDV/linkedEmailActions'
  * supports for shared-resource viewers.
  *
  * The email actions are the exception, and deliberately so: archiving an email, creating its task
- * or unsubscribing acts on the *mailbox*, not on the thread, which is exactly the work a user wants
- * to do straight from the list without opening every topic. They are still read-only towards the
- * chat itself - none of them marks anything as read.
+ * or unsubscribing can be done straight from the list without opening every topic. Archive and
+ * successful task creation leave the mailbox read/unread state alone, but mark the matching
+ * Alldone chat comment as read (AT-2298, AT-2310). Those nested controls keep handling their own
+ * presses; pressing the preview itself opens the thread (AT-2303).
  */
 export default function ChatItemUnreadMessage({
     projectId,
@@ -37,8 +39,10 @@ export default function ChatItemUnreadMessage({
     isArchivingEmail,
     isArchivedEmail,
     onArchiveLinkedEmail,
+    onPress,
+    compact = false,
 }) {
-    const creatorData = useGetUserPresentationData(message.creatorId)
+    const creatorData = useGetUserPresentationData(message.creatorId, { fromAssistant: message.fromAssistant })
 
     // Same staleness rule as the thread, so a preview never shows a spinner the thread has
     // already given up on.
@@ -46,10 +50,15 @@ export default function ChatItemUnreadMessage({
 
     // Same derivation as the thread: null for every message that did not come in from Gmail, which
     // is what keeps the action row off ordinary chat messages.
-    const linkedEmail = getLinkedEmailFromMessage(message)
+    const linkedEmail = getLinkedEmailFromMessage(message, { projectId, chatId: chat?.id })
 
     return (
-        <View style={localStyles.container}>
+        <TouchableOpacity
+            style={localStyles.container}
+            onPress={onPress}
+            activeOpacity={0.7}
+            accessibilityLabel={translate('Open chat')}
+        >
             <MessageItemHeader
                 projectId={projectId}
                 message={message}
@@ -75,9 +84,9 @@ export default function ChatItemUnreadMessage({
                 linkedEmailArchived={!!isArchivedEmail?.(linkedEmail?.key)}
                 onArchiveLinkedEmail={onArchiveLinkedEmail}
                 canArchiveLinkedEmail={accessGranted}
-                containerStyle={localStyles.body}
+                containerStyle={compact ? localStyles.bodyCompact : localStyles.body}
             />
-        </View>
+        </TouchableOpacity>
     )
 }
 
@@ -90,6 +99,15 @@ const localStyles = StyleSheet.create({
         // preview keeps that alignment but sits in a narrower column, so it is set explicitly
         // here rather than inherited, and the row below it gets a little breathing room.
         marginLeft: 36,
+        marginTop: 2,
+    },
+    bodyCompact: {
+        // Phone widths (AT-2361): the body stops hanging under the sender avatar and starts at the
+        // message's own left edge instead. Hierarchy survives because the avatar + name + time line
+        // is still directly above it and the topic's rail still runs down the side - the 36px only
+        // ever bought alignment with an avatar, and on a phone it costs a word or two per line in
+        // the subject and pushes the email action buttons onto an extra row.
+        marginLeft: 0,
         marginTop: 2,
     },
 })

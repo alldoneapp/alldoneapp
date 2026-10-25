@@ -3,6 +3,12 @@
  */
 
 import React from 'react'
+import {
+    beginProjectPostpone,
+    clearProjectPostpone,
+    getProjectPostpone,
+    projectTaskPreview,
+} from '../../utils/backends/Tasks/optimisticProjectPostpone'
 import renderer from 'react-test-renderer'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -234,5 +240,32 @@ describe('ParentTaskContainer component', () => {
 
             expect(mockOpenModal).not.toHaveBeenCalled()
         })
+    })
+})
+
+describe('project postpone preview for mixed task families', () => {
+    it('hides only the parent row and preserves expanded unaffected children, then restores on rollback', () => {
+        useDispatch.mockReturnValue(dispatch)
+        store.getState.mockReturnValue(createStoreState())
+        const ownTask = { ...task, dueDate: 1, currentReviewerId: userId, inDone: false }
+        const tree = renderContainer(createState(), { task: ownTask })
+        renderer.act(() => tree.root.findByType('TaskItem').props.toggleSubTaskList())
+        renderer.act(() =>
+            beginProjectPostpone({
+                projectId,
+                userId,
+                requestId: 'mixed-family',
+                date: Number.MAX_SAFE_INTEGER,
+                mode: 'date',
+                tasks: [ownTask],
+            })
+        )
+        expect(projectTaskPreview(ownTask, getProjectPostpone(projectId, userId)).hidden).toBe(true)
+        expect(tree.root.findAllByType('TaskItem')).toHaveLength(0)
+        expect(tree.root.findAllByType('TaskIndicator')).toHaveLength(0)
+        expect(tree.root.findByType('SubTasksView').props.subtaskList).toBe(subtaskList)
+        renderer.act(() => clearProjectPostpone(projectId, userId, 'mixed-family'))
+        expect(tree.root.findByType('TaskItem').props.task).toBe(ownTask)
+        renderer.act(() => tree.unmount())
     })
 })

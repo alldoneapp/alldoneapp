@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import v4 from 'uuid/v4'
 
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
+import LoadingData from '../UIComponents/LoadingData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import Header from './Header/Header'
 import BackButton from './Header/BackButton'
@@ -15,7 +16,6 @@ import {
     setSelectedSidebarTab,
     setSelectedTypeOfProject,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
     switchProject,
 } from '../../redux/actions'
@@ -60,7 +60,6 @@ export default function GoalDetailedView({ navigation }) {
 
     const dispatch = useDispatch()
     const showSwipeDueDatePopup = useSelector(state => state.showSwipeDueDatePopup.visible)
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const loggedUser = useSelector(state => state.loggedUser)
     const selectedNavItem = useSelector(state => state.selectedNavItem)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
@@ -98,13 +97,9 @@ export default function GoalDetailedView({ navigation }) {
             const { selectedTypeOfProject } = store.getState()
             NavigationService.navigate('Root')
             if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+                dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             } else {
-                const actionsToDispatch = [
-                    resetFloatPopup(),
-                    setSelectedSidebarTab(DV_TAB_ROOT_GOALS),
-                    stopLoadingData(),
-                ]
+                const actionsToDispatch = [resetFloatPopup(), setSelectedSidebarTab(DV_TAB_ROOT_GOALS)]
                 if (showAccessDeniedModal) actionsToDispatch.push(setShowAccessDeniedPopup(true))
                 dispatch(actionsToDispatch)
             }
@@ -137,10 +132,6 @@ export default function GoalDetailedView({ navigation }) {
             dispatch(storeCurrentUser(loggedUser))
         }
     }, [])
-
-    useEffect(() => {
-        setFullscreen(assistantEnabled)
-    }, [assistantEnabled])
 
     useEffect(() => {
         if (goal) {
@@ -191,6 +182,7 @@ export default function GoalDetailedView({ navigation }) {
     const hideCreateNoteSection = isGuide && !loggedUserIsGoalOwner
     return (
         <View style={localStyles.container}>
+            <LoadingData />
             {((!loggedUser.isAnonymous && !smallScreenNavigation) ||
                 (loggedUser.isAnonymous && smallScreenNavigation && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
@@ -198,7 +190,9 @@ export default function GoalDetailedView({ navigation }) {
 
             {goal && (
                 <View style={{ flex: 1 }}>
-                    {!isMiddleScreen && accessGranted && <BackButton projectId={projectId} goal={goal} />}
+                    {!smallScreenNavigation && !isMiddleScreen && accessGranted && (
+                        <BackButton projectId={projectId} goal={goal} />
+                    )}
 
                     <CustomView
                         ref={scrollRef}
@@ -265,6 +259,8 @@ export default function GoalDetailedView({ navigation }) {
                                                     chatTitle={goal.name}
                                                     assistantId={goal.assistantId}
                                                     objectType={'goals'}
+                                                    isFullscreen={isFullscreen}
+                                                    setFullscreen={setFullscreen}
                                                 />
                                             )
                                         case DV_TAB_GOAL_NOTE:

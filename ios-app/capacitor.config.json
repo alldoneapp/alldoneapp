@@ -1,0 +1,20 @@
+{
+    "appId": "app.alldone.ios",
+    "appName": "Alldone",
+    "webDir": "www",
+    "ios": {
+        "contentInset": "never"
+    },
+    "plugins": {
+        "FirebaseAuthentication": {
+            "skipNativeAuth": true,
+            "providers": ["google.com", "apple.com"]
+        },
+        "CapacitorUpdater": {
+            "autoUpdate": false,
+            "autoDeleteFailed": true,
+            "autoDeletePrevious": true,
+            "appReadyTimeout": 60000
+        }
+    }
+}

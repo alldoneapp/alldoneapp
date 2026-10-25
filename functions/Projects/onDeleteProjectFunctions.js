@@ -9,6 +9,8 @@ const {
 
 const removeProjectData = async (projectId, admin) => {
     const basePaths = [
+        // Each artifact's delete trigger removes its versions' bytes from Storage.
+        'artifactItems',
         'assistantTasks',
         'assistants',
         'chatComments',
@@ -64,7 +66,7 @@ const removeProjectData = async (projectId, admin) => {
 const onDeleteProject = async projectId => {
     const promises = []
     promises.push(removeProjectData(projectId, admin))
-    promises.push(removeAlgoliaRecordsInProject(projectId))
+    promises.push(removeAlgoliaRecordsInProject(projectId, { alsoRemoveFromTypesense: true }))
     promises.push(
         safelySyncHeartbeatSchedules(() => deleteHeartbeatSchedulesForProject(projectId), {
             source: 'project_deleted',

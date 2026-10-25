@@ -38,6 +38,27 @@ afterEach(() => {
 })
 
 describe('MarkdownTableFormat under quill 2', () => {
+    it('renders saved newlines and legacy br tags as text breaks, retaining inline formatting', () => {
+        const quill = buildEditor()
+        quill.setContents([
+            {
+                insert: {
+                    markdownTable: {
+                        rows: [
+                            ['Heading', 'Other'],
+                            ['**First\nSecond**', 'One<br>Two<br />Three'],
+                        ],
+                        alignments: [],
+                    },
+                },
+            },
+        ])
+        const cells = quill.root.querySelectorAll('td')
+        expect(cells[0].textContent).toBe('First\nSecond')
+        expect(cells[0].querySelector('span').style.fontWeight).toBe('700')
+        expect(cells[1].textContent).toBe('One\nTwo\nThree')
+    })
+
     it('renders as a block-level line of the editor, not inline content', () => {
         const quill = buildEditor()
         quill.setContents([{ insert: 'above\n' }, { insert: { markdownTable: TABLE_VALUE } }, { insert: 'below\n' }])

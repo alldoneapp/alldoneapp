@@ -1,0 +1,257 @@
+import React from 'react'
+import renderer, { act } from 'react-test-renderer'
+
+import OpenTasksByProject from './OpenTasksByProject'
+import ProjectSection from '../ProjectSection'
+import {
+    publishProjectTaskCompletion,
+    publishProjectTaskPostpone,
+    resetProjectTaskCompletionListeners,
+} from './projectTaskCompletionSignal'
+import { TASK_COMPLETION_PROJECT_EXIT_HOLD_MS } from './useTaskCompletionProjectExit'
+import { setTasksArrowButtonIsExpanded } from '../../../redux/actions'
+
+let mockState
+let mockInSelectedProject
+const mockDispatch = jest.fn()
+
+jest.mock('react-redux', () => ({
+    useDispatch: () => mockDispatch,
+    useSelector: selector => selector(mockState),
+    shallowEqual: jest.fn(),
+}))
+jest.mock('uuid/v4', () => () => 'watcher-key')
+jest.mock('../Header/ProjectHeader', () => 'ProjectHeader')
+jest.mock('./OpenTasksByDate', () => {
+    const React = require('react')
+    const { useTaskHierarchy } = require('../TaskHierarchy')
+    return props => React.createElement('OpenTasksByDate', { ...props, taskHierarchy: useTaskHierarchy() })
+})
+jest.mock('./OpenTasksByProjectHandler', () => 'OpenTasksByProjectHandler')
+jest.mock('./NewTaskSection', () => 'NewTaskSection')
+jest.mock('../../../utils/SharedHelper', () => ({
+    __esModule: true,
+    default: { checkIfUserHasAccessToProject: () => true },
+}))
+jest.mock('./NeedShowMoreOpenTasksButton', () => 'NeedShowMoreOpenTasksButton')
+jest.mock('./BottomShowMoreButtonContainer', () => 'BottomShowMoreButtonContainer')
+jest.mock('../OKRs/OKRSection', () => 'OKRSection')
+jest.mock('../Header/UpcomingMilestoneRow', () => 'UpcomingMilestoneRow')
+jest.mock('../PriorityFilters/TaskFiltersLine', () => 'TaskFiltersLine')
+jest.mock('../TaskListSkeleton', () => 'TaskListSkeleton')
+jest.mock('../../MyDayView/AssistantLine/AssistantLine', () => 'AssistantLine')
+jest.mock('./OpenTaskViewForAssistants/AssistantScheduleTimeline', () => 'AssistantScheduleDateSection')
+jest.mock('../../MyDayView/AssistantLine/useAssistantLineSwitch', () => ({
+    useProjectAssistantLine: () => ({ hasAssistantLine: false, assistantLineProps: {} }),
+}))
+jest.mock('../../../utils/BackendBridge', () => ({ unwatch: jest.fn() }))
+jest.mock('../../../utils/backends/OKRs/okrsFirestore', () => ({ watchProjectOKRs: jest.fn() }))
+jest.mock('../../../utils/assistantSchedule', () => ({
+    buildAssistantProfileTimelineDates: dates =>
+        dates.map((dateKey, dateIndex) => ({ dateKey, dateIndex, occurrences: [] })),
+}))
+jest.mock('../OKRs/okrHelper', () => ({
+    getOkrAllProjectsTodayKey: () => 'today',
+    getOkrUserTimezone: () => 'UTC',
+}))
+jest.mock('../../../redux/actions', () => ({ setTasksArrowButtonIsExpanded: jest.fn() }))
+jest.mock('../../../utils/backends/openTasks', () => ({
+    AMOUNT_TASKS_INDEX: 1,
+    ACTIVE_GOALS_INDEX: 2,
+    DATE_TASK_INDEX: 0,
+    TODAY_DATE: '0',
+    watchAllGoals: jest.fn(),
+    watchAllMilestones: jest.fn(),
+}))
+jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
+    checkIfSelectedProject: () => mockInSelectedProject,
+}))
+jest.mock('../../UIComponents/Ghosts/ghostAnimation', () => ({
+    useReducedMotion: () => false,
+}))
+
+const USER = 'user-1'
+const PROJECT = 'project-a'
+const originalNodeEnv = process.env.NODE_ENV
+
+const countOf = (tree, type) => tree.root.findAllByType(type).length
+
+const buildState = ({
+    todayIsEmpty = false,
+    todayCount = 1,
+    loading = false,
+    priorityFilters = [],
+    expandRequested = false,
+} = {}) => ({
+    loggedUserProjectsMap: { [PROJECT]: { index: 0, id: PROJECT, color: '#2F80ED' } },
+    loggedUserProjects: [{ id: PROJECT }],
+    selectedProjectIndex: 0,
+    currentUser: { uid: USER },
+    loggedUser: { uid: USER, isAnonymous: false, okrsHiddenInAllProjectsTodayByProjectAndOkr: {} },
+    tasksArrowButtonIsExpanded: expandRequested,
+    okrsByProjectInTasks: {},
+    filteredOpenTasksStore: { [PROJECT + USER]: loading ? [] : [['0', todayIsEmpty ? 0 : 3, []]] },
+    taskPriorityFilters: priorityFilters,
+    taskVmStateFilters: [],
+    initialLoadingEndOpenTasks: { [PROJECT + USER]: !loading },
+    initialLoadingEndObservedTasks: { [PROJECT + USER]: !loading },
+    taskListSingleLoading: {},
+    thereAreNotTasksInFirstDay: { [PROJECT + USER]: todayIsEmpty },
+    sidebarNumbers: { [PROJECT]: { [USER]: todayCount } },
+})
+
+describe('open-tasks project rendering (AT-2551, AT-2558)', () => {
+    beforeEach(() => {
+        jest.useFakeTimers()
+        jest.clearAllMocks()
+        resetProjectTaskCompletionListeners()
+        process.env.NODE_ENV = 'development'
+        mockInSelectedProject = false
+    })
+
+    afterEach(() => {
+        jest.useRealTimers()
+        process.env.NODE_ENV = originalNodeEnv
+    })
+
+    const render = state => {
+        mockState = state
+        let tree
+        act(() => {
+            tree = renderer.create(<OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} />)
+        })
+        return tree
+    }
+
+    const update = (tree, state) => {
+        mockState = state
+        act(() => {
+            tree.update(<OpenTasksByProject projectId={PROJECT} sortedLoggedUserProjectIds={[PROJECT]} />)
+        })
+    }
+
+    it('consumes a board-level request to reveal newly added selected-project tasks', () => {
+        mockInSelectedProject = true
+        const tree = render(buildState({ expandRequested: true }))
+
+        expect(tree.root.findByType('OpenTasksByDate').props.pressedShowMoreMainSection).toBe(true)
+        expect(setTasksArrowButtonIsExpanded).toHaveBeenCalledWith(false)
+    })
+
+    it.each([
+        [false, false, true],
+        [true, false, true],
+        [false, true, true],
+    ])(
+        'shares hierarchy across project and assistant boards (selected=%s, assistant=%s)',
+        (selected, assistant, expected) => {
+            mockInSelectedProject = selected
+            mockState = buildState()
+            let tree
+            act(() => {
+                tree = renderer.create(
+                    <OpenTasksByProject
+                        projectId={PROJECT}
+                        sortedLoggedUserProjectIds={[PROJECT]}
+                        assistantProfileMode={assistant}
+                    />
+                )
+            })
+            expect(tree.root.findByType('OpenTasksByDate').props.taskHierarchy).toBe(expected)
+            expect(countOf(tree, 'OKRSection')).toBe(assistant ? 0 : 1)
+            expect(countOf(tree, 'UpcomingMilestoneRow')).toBe(assistant ? 0 : 1)
+            act(() => tree.unmount())
+        }
+    )
+
+    it('removes a cleared project immediately instead of holding it for a page-wide sweep', () => {
+        const tree = render(buildState())
+        expect(countOf(tree, 'ProjectHeader')).toBe(1)
+
+        update(tree, buildState({ todayIsEmpty: true, todayCount: 0 }))
+
+        expect(countOf(tree, 'ProjectHeader')).toBe(0)
+        expect(countOf(tree, ProjectSection)).toBe(0)
+    })
+
+    it('runs only the historic disintegration after completing the last task while its count is stale', () => {
+        const tree = render(buildState({ todayIsEmpty: false, todayCount: 1 }))
+        act(() => {
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-task' })
+        })
+
+        // The open-task listener removes the only row before the independent sidebar count updates.
+        update(tree, buildState({ todayIsEmpty: true, todayCount: 1 }))
+
+        const sectionDuringExit = tree.root.findByType(ProjectSection)
+        expect(countOf(tree, 'ProjectHeader')).toBe(1)
+        expect(sectionDuringExit.props.completedDisintegrationRunId).toBe(1)
+        expect(sectionDuringExit.props.completedDisintegrationLineWillLeave).toBe(true)
+        // AT-2551 stays intact: the broad FILL → SHIMMER → PULSE sweep is not reconnected.
+        expect(sectionDuringExit.props.completedSweepRunId).toBeUndefined()
+        expect(sectionDuringExit.props.completedSweepLineWillLeave).toBeUndefined()
+        expect(sectionDuringExit.props.style).toEqual({ marginBottom: 28 })
+
+        act(() => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
+        expect(countOf(tree, 'ProjectHeader')).toBe(0)
+        expect(countOf(tree, ProjectSection)).toBe(0)
+    })
+
+    it('runs the same disintegration after postponing the last task out of Today', () => {
+        const tree = render(buildState({ todayIsEmpty: false, todayCount: 1 }))
+        act(() => {
+            publishProjectTaskPostpone({ projectId: PROJECT, taskId: 'last-task' })
+        })
+
+        update(tree, buildState({ todayIsEmpty: true, todayCount: 1 }))
+
+        const sectionDuringExit = tree.root.findByType(ProjectSection)
+        expect(sectionDuringExit.props.completedDisintegrationRunId).toBe(1)
+        expect(sectionDuringExit.props.completedDisintegrationLineWillLeave).toBe(true)
+
+        act(() => jest.advanceTimersByTime(TASK_COMPLETION_PROJECT_EXIT_HOLD_MS))
+        expect(countOf(tree, ProjectSection)).toBe(0)
+    })
+
+    it("does not arm completion motion when the completed task was not the project's last", () => {
+        const tree = render(buildState())
+        act(() => {
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'one-of-several-tasks' })
+        })
+        const section = tree.root.findByType(ProjectSection)
+
+        expect(section.props.completedSweepRunId).toBeUndefined()
+        expect(section.props.completedSweepLineWillLeave).toBeUndefined()
+        expect(section.props.completedDisintegrationRunId).toBe(0)
+        expect(section.props.completedDisintegrationLineWillLeave).toBe(false)
+    })
+
+    it('does not hold or animate a project hidden by active filters', () => {
+        const tree = render(buildState({ priorityFilters: ['urgent'] }))
+        act(() => {
+            publishProjectTaskCompletion({ projectId: PROJECT, taskId: 'last-visible-task' })
+        })
+
+        update(tree, buildState({ todayIsEmpty: true, priorityFilters: ['urgent'] }))
+
+        expect(countOf(tree, ProjectSection)).toBe(0)
+    })
+
+    it('keeps the selected-project empty state static and visible', () => {
+        mockInSelectedProject = true
+        const tree = render(buildState({ todayIsEmpty: true, todayCount: 0 }))
+
+        expect(countOf(tree, 'ProjectHeader')).toBe(1)
+        expect(tree.root.findByType(ProjectSection).props.completedSweepRunId).toBeUndefined()
+        expect(tree.root.findByType(ProjectSection).props.completedDisintegrationRunId).toBe(0)
+        expect(tree.root.findByType('OpenTasksByDate').props.projectCelebrationRunId).toBeUndefined()
+    })
+
+    it('still shows the loading skeleton while selected-project task data is pending', () => {
+        mockInSelectedProject = true
+        const tree = render(buildState({ loading: true }))
+
+        expect(countOf(tree, 'ProjectHeader')).toBe(1)
+        expect(countOf(tree, 'TaskListSkeleton')).toBe(1)
+    })
+})

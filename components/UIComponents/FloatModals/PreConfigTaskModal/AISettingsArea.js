@@ -10,16 +10,25 @@ import {
     PRE_CONFIG_TASK_MODEL_OPTIONS,
 } from '../../../../functions/Assistant/preConfigTaskModel'
 import { PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS } from '../../../../functions/Assistant/preConfigTaskReasoningEffort'
+import { normalizeAssistantReasoningEffort } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
+import { getAssistantModelGoldRateText } from '../../AssistantModelGoldRate'
 
-const getModelOptions = () => {
+export const getModelOptions = () => {
     return [
         { label: translate('Use assistant model'), value: INHERIT_ASSISTANT_MODEL },
-        ...PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => ({ ...option, label: translate(option.labelKey) })),
+        ...PRE_CONFIG_TASK_MODEL_OPTIONS.map(option => ({
+            ...option,
+            label: `${translate(option.labelKey)} · ${getAssistantModelGoldRateText({
+                tokensPerGold: option.tokensPerGold,
+            })}`,
+        })),
     ]
 }
 
-export const getReasoningEffortOptions = () =>
-    PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS.map(option => ({
+export const getReasoningEffortOptions = model =>
+    PRE_CONFIG_TASK_REASONING_EFFORT_OPTIONS.filter(
+        option => !['MODEL_GPT6_SOL', 'MODEL_GPT5_6_SOL'].includes(model) || option.value !== 'none'
+    ).map(option => ({
         ...option,
         label: translate(option.labelKey),
     }))
@@ -27,6 +36,7 @@ export const getReasoningEffortOptions = () =>
 export default function AISettingsArea({
     disabled,
     aiModel,
+    assistantModel = 'MODEL_GPT6_SOL',
     setAiModel,
     aiReasoningEffort,
     setAiReasoningEffort,
@@ -36,23 +46,14 @@ export default function AISettingsArea({
     smallScreenNavigation,
 }) {
     const modelOptions = getModelOptions()
-    const reasoningEffortOptions = getReasoningEffortOptions()
-
-    console.log('AISettingsArea render:', {
-        aiModel,
-        aiReasoningEffort,
-        aiSystemMessage,
-        modelOptions: modelOptions.map(opt => opt.value),
-        reasoningEffortOptions: reasoningEffortOptions.map(opt => opt.value),
-    })
+    const effectiveModel = aiModel === INHERIT_ASSISTANT_MODEL ? assistantModel : aiModel
+    const reasoningEffortOptions = getReasoningEffortOptions(effectiveModel)
 
     const handleModelChange = value => {
-        console.log('Model change:', { from: aiModel, to: value })
         setAiModel(value)
     }
 
     const handleReasoningEffortChange = value => {
-        console.log('Reasoning effort change:', { from: aiReasoningEffort, to: value })
         setAiReasoningEffort(value)
     }
 
@@ -77,7 +78,11 @@ export default function AISettingsArea({
 
             <DropDown
                 items={reasoningEffortOptions}
-                value={aiReasoningEffort}
+                value={
+                    aiReasoningEffort === 'none'
+                        ? normalizeAssistantReasoningEffort(aiReasoningEffort, effectiveModel)
+                        : aiReasoningEffort
+                }
                 setValue={handleReasoningEffortChange}
                 placeholder={translate('Reasoning effort')}
                 header={translate('Reasoning effort')}

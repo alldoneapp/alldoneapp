@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import GoalMilestoneRangeModal from '../../UIComponents/FloatModals/GoalMilestoneRangeModal/GoalMilestoneRangeModal'
@@ -33,7 +33,7 @@ export default function ParentMilestonesWrapper({ projectId, goal, parentMilesto
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <GoalMilestoneRangeModal
                     projectId={projectId}
@@ -57,6 +57,6 @@ export default function ParentMilestonesWrapper({ projectId, goal, parentMilesto
                 parentMilestonesData={parentMilestonesData}
                 disabled={disabled}
             />
-        </Popover>
+        </AppPopover>
     )
 }

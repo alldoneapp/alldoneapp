@@ -5,7 +5,7 @@ import { difference } from 'lodash'
 
 import { colors } from '../../../styles/global'
 import ModalHeader from '../../../UIComponents/FloatModals/ModalHeader'
-import { applyPopoverWidth, MODAL_MAX_HEIGHT_GAP } from '../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../utils/HelperFunctions'
 import Button from '../../../UIControls/Button'
 import useWindowSize from '../../../../utils/useWindowSize'
 import { translate } from '../../../../i18n/TranslationService'
@@ -17,6 +17,7 @@ import UsersList from './UsersList'
 import { getSubscriptionStatus, PLAN_STATUS_PREMIUM } from '../../PremiumHelper'
 import PaymentPreviewModal from '../PaymentPreviewModal/PaymentPreviewModal'
 import { getUserData } from '../../../../utils/backends/Users/usersFirestore'
+import { getSafeAreaModalMaxHeight } from '../../../../utils/modalSafeArea'
 
 export default function SelectPremiumUsersModal({
     closeModal,
@@ -111,7 +112,7 @@ export default function SelectPremiumUsersModal({
 
     const filteredUsers = filterUsersByText(projectsUsersArray, filterText)
 
-    const tmpHeight = height - MODAL_MAX_HEIGHT_GAP
+    const tmpHeight = getSafeAreaModalMaxHeight(height)
     const finalHeight = tmpHeight < 548 ? tmpHeight : 548
 
     return showPreviewModal ? (

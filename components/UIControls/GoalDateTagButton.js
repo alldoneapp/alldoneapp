@@ -1,4 +1,4 @@
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import moment from 'moment'
 import { useDispatch, useSelector } from 'react-redux'
 import React, { useState } from 'react'
@@ -42,13 +42,15 @@ export default function GoalDateTagButton({
     }
 
     const updateReminder = date => {
-        Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date)
+        // The goal is already rendered here. Hand it through so the backend can compare the
+        // previous reminder locally instead of doing a server get before it queues the write.
+        return Backend.updateGoalAssigneeReminderDate(projectId, goal.id, currentUserId, date, goal)
     }
 
     const firstTask = isEmptyGoal ? { dueDate: assigneesReminderDate[currentUserId] } : parentGoaltasks[0]
 
     return visiblePopover ? (
-        <Popover
+        <AppPopover
             content={
                 <DueDateModal
                     projectId={projectId}
@@ -77,10 +79,18 @@ export default function GoalDateTagButton({
                 onPress={hidePopover}
                 icon={'calendar'}
                 disabled={disabled}
+                showDateOnMobile={true}
                 style={{ marginLeft: 8 }}
             />
-        </Popover>
+        </AppPopover>
     ) : (
-        <DateTag date={date} onPress={showPopover} icon={'calendar'} disabled={disabled} style={{ marginLeft: 8 }} />
+        <DateTag
+            date={date}
+            onPress={showPopover}
+            icon={'calendar'}
+            disabled={disabled}
+            showDateOnMobile={true}
+            style={{ marginLeft: 8 }}
+        />
     )
 }

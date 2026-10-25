@@ -8,15 +8,19 @@ const { getEnvFunctions } = require('../envFunctionsHelper')
 const {
     parseModelId,
     buildFamilies,
+    buildOpenRouterModels,
     fetchProviderModelIds,
     getModelCatalog,
     resolveFamilyToModel,
     isValidFamilyId,
     normalizeOpenRouterPricing,
     buildOpenRouterPricing,
+    decorateCatalogGoldPricing,
     getOpenRouterUpstreamPrice,
     CATALOG_TTL_MS,
+    CODEX_CATALOG_SCHEMA_VERSION,
 } = require('./vmAgentModelCatalog')
+const { resolveTokensPerGold } = require('./vmTokenPricing')
 
 // Firestore stub: the catalog cache doc.
 function stubCatalogDoc({ exists = false, data = {} } = {}) {
@@ -43,9 +47,10 @@ const ANTHROPIC_LIST = {
 
 const OPENAI_LIST = {
     data: [
-        { id: 'gpt-5.6-sol' },
+        { id: 'gpt-6-astra' },
+        { id: 'gpt-6.1-sol' },
         { id: 'gpt-5.6-terra' },
-        { id: 'gpt-5.6-luna' },
+        { id: 'gpt-6-luna' },
         { id: 'gpt-5.4-mini' },
         { id: 'gpt-5.4-nano' },
         { id: 'gpt-5.5' },
@@ -54,6 +59,17 @@ const OPENAI_LIST = {
         { id: 'whisper-1' },
         { id: 'dall-e-3' },
     ],
+}
+
+function compatibleOpenRouterEntry(id, { created = 0, agenticIndex = null, name = id } = {}) {
+    return {
+        id,
+        name,
+        created,
+        supported_parameters: ['tools'],
+        architecture: { output_modalities: ['text'] },
+        ...(agenticIndex == null ? {} : { benchmarks: { artificial_analysis: { agentic_index: agenticIndex } } }),
+    }
 }
 
 beforeEach(() => {
@@ -87,7 +103,7 @@ describe('parseModelId', () => {
     })
 
     it('parses the OpenAI gpt-<gen>-<tier> scheme', () => {
-        expect(parseModelId('codex', 'gpt-5.6-sol')).toMatchObject({ family: 'sol', major: 5, minor: 6 })
+        expect(parseModelId('codex', 'gpt-6.1-sol')).toMatchObject({ family: 'sol', major: 6, minor: 1 })
         expect(parseModelId('codex', 'gpt-5.4-mini')).toMatchObject({ family: 'mini', major: 5, minor: 4 })
     })
 
@@ -136,12 +152,12 @@ describe('buildFamilies', () => {
         expect(families.find(f => f.id === 'haiku')).toMatchObject({ latestModel: 'claude-haiku-4-5' })
     })
 
-    it('keeps only current-generation Codex tiers, dropping retired ones', () => {
+    it('keeps the active cross-generation Codex lineup while dropping retired tiers', () => {
         const families = buildFamilies(
             'codex',
             OPENAI_LIST.data.map(m => m.id)
         )
-        expect(families.map(f => f.id)).toEqual(['sol', 'terra', 'luna'])
+        expect(families.map(f => f.id)).toEqual(['astra', 'sol', 'terra', 'luna'])
         // mini/nano only exist at the older 5.4 generation — they are retired tiers, not just older.
         expect(families.map(f => f.id)).not.toContain('mini')
         expect(families.map(f => f.id)).not.toContain('nano')
@@ -153,25 +169,145 @@ describe('buildFamilies', () => {
             OPENAI_LIST.data.map(m => m.id)
         )
         expect(families.find(f => f.id === 'sol')).toMatchObject({
-            resolvedModel: 'gpt-5.6-sol',
+            resolvedModel: 'gpt-6.1-sol',
             isAlias: false,
         })
     })
 
     it('picks up a brand-new tier automatically and appends unknown families after known ones', () => {
-        const families = buildFamilies('codex', ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-nova'])
+        const families = buildFamilies('codex', ['gpt-6.1-sol', 'gpt-5.6-terra', 'gpt-5.6-nova'])
         expect(families.map(f => f.id)).toEqual(['sol', 'terra', 'nova'])
         expect(families.find(f => f.id === 'nova').label).toBe('Nova')
     })
 
+    it('never lets a new OpenAI generation erase independently released families', () => {
+        const families = buildFamilies('codex', [
+            'gpt-7-nova',
+            'gpt-6-orbit',
+            'gpt-6-astra',
+            'gpt-6.1-sol',
+            'gpt-5.6-terra',
+            'gpt-6-luna',
+        ])
+
+        expect(families.map(family => family.id)).toEqual(['astra', 'sol', 'terra', 'luna', 'nova', 'orbit'])
+    })
+
+    it('discovers a new Anthropic family without disturbing older active tiers', () => {
+        const families = buildFamilies('claude', [...ANTHROPIC_LIST.data, { id: 'claude-verse-6' }])
+
+        expect(families.map(family => family.id)).toEqual(['opus', 'sonnet', 'haiku', 'fable', 'verse'])
+        expect(families.find(family => family.id === 'verse')).toMatchObject({
+            resolvedModel: 'claude-verse-6',
+            isAlias: false,
+        })
+    })
+
+    it('uses provider lifecycle metadata instead of generation guesses to remove shut-down models', () => {
+        const now = Date.parse('2026-09-10T00:00:00Z')
+        const families = buildFamilies(
+            'codex',
+            [
+                { id: 'gpt-7-retired', shutdown_date: '2026-09-01' },
+                { id: 'gpt-6-active', shutdown_date: '2026-10-01' },
+            ],
+            { now }
+        )
+
+        expect(families.map(family => family.id)).toEqual(['active'])
+    })
+
     it('follows a new generation forward without a code change', () => {
-        const families = buildFamilies('codex', ['gpt-5.6-sol', 'gpt-5.7-sol', 'gpt-5.7-terra'])
-        expect(families.find(f => f.id === 'sol').resolvedModel).toBe('gpt-5.7-sol')
+        const families = buildFamilies('codex', ['gpt-6.1-sol', 'gpt-7-sol', 'gpt-5.7-terra'])
+        expect(families.find(f => f.id === 'sol').resolvedModel).toBe('gpt-7-sol')
     })
 
     it('returns an empty list when nothing parses', () => {
         expect(buildFamilies('codex', ['whisper-1', 'dall-e-3'])).toEqual([])
         expect(buildFamilies('claude', [])).toEqual([])
+    })
+})
+
+describe('buildOpenRouterModels', () => {
+    it('features each major vendor newest and best model without hiding the full searchable catalog', () => {
+        const entries = [
+            compatibleOpenRouterEntry('deepseek/deepseek-v4-pro', { created: 20, agenticIndex: 60 }),
+            compatibleOpenRouterEntry('qwen/qwen-newest', { created: 50 }),
+            compatibleOpenRouterEntry('qwen/qwen-best', { created: 30, agenticIndex: 90 }),
+            compatibleOpenRouterEntry('qwen/qwen-old', { created: 10, agenticIndex: 20 }),
+            // A newer billing variant remains searchable but does not displace the canonical pick.
+            compatibleOpenRouterEntry('qwen/qwen-newest:free', { created: 60, agenticIndex: 95 }),
+            compatibleOpenRouterEntry('x-ai/grok-4.6', {
+                created: 55,
+                agenticIndex: 85,
+                name: 'SpaceXAI: Grok 4.6',
+            }),
+            compatibleOpenRouterEntry('someone/new-vendor-model', { created: 70, agenticIndex: 99 }),
+            { id: 'someone/no-tools', supported_parameters: [], architecture: { output_modalities: ['text'] } },
+        ]
+
+        const catalog = buildOpenRouterModels(entries)
+        const featuredIds = catalog.models.map(model => model.modelId)
+        const searchableIds = catalog.searchModels.map(model => model.modelId)
+
+        expect(featuredIds).toEqual(['deepseek/deepseek-v4-pro', 'qwen/qwen-newest', 'qwen/qwen-best', 'x-ai/grok-4.6'])
+        expect(searchableIds).toEqual(expect.arrayContaining(['qwen/qwen-old', 'qwen/qwen-newest:free']))
+        expect(searchableIds).toContain('someone/new-vendor-model')
+        expect(searchableIds).not.toContain('someone/no-tools')
+        expect(catalog.models.find(model => model.modelId === 'x-ai/grok-4.6').label).toBe('SpaceXAI: Grok 4.6')
+        // Prices stay on the server-only list, not on every client-facing search entry.
+        expect(catalog.searchModels.every(model => model.upstreamPrice === undefined)).toBe(true)
+    })
+})
+
+describe('catalog Gold pricing', () => {
+    it('uses the billing resolver for every Anthropic and OpenAI family', () => {
+        const claude = decorateCatalogGoldPricing('claude', {
+            families: [
+                { id: 'opus', resolvedModel: 'opus' },
+                { id: 'sonnet', resolvedModel: 'sonnet' },
+                { id: 'haiku', resolvedModel: 'haiku' },
+                { id: 'fable', resolvedModel: 'claude-fable-5-1' },
+                { id: 'mythos', resolvedModel: 'claude-mythos-5-1' },
+            ],
+        })
+        const codex = decorateCatalogGoldPricing('codex', {
+            families: [
+                { id: 'astra', resolvedModel: 'gpt-6-astra' },
+                { id: 'sol', resolvedModel: 'gpt-6.1-sol' },
+                { id: 'terra', resolvedModel: 'gpt-5.6-terra' },
+                { id: 'luna', resolvedModel: 'gpt-6-luna' },
+            ],
+        })
+
+        expect(claude.families.map(model => model.tokensPerGold)).toEqual([120, 200, 400, 53, 53])
+        expect(codex.families.map(model => model.tokensPerGold)).toEqual([40, 240, 190, 4000])
+    })
+
+    it('prices a newly released Claude alias from its concrete latest model, not a stale alias rate', () => {
+        const catalog = decorateCatalogGoldPricing('claude', {
+            families: [{ id: 'opus', resolvedModel: 'opus', latestModel: 'claude-opus-6', isAlias: true }],
+        })
+
+        expect(catalog.families[0].tokensPerGold).toBeLessThan(resolveTokensPerGold('opus'))
+    })
+
+    it('uses live OpenRouter prices for both featured choices and the full search index', () => {
+        const grok = {
+            id: 'openrouter:x-ai/grok-4.6',
+            modelId: 'x-ai/grok-4.6',
+            resolvedModel: 'openrouter:x-ai/grok-4.6',
+        }
+        const catalog = decorateCatalogGoldPricing('openrouter', {
+            families: [grok],
+            searchModels: [grok],
+            pricing: [{ id: 'x-ai/grok-4.6', input: 2, cachedInput: 0.5, output: 6 }],
+        })
+
+        expect(catalog.families[0].tokensPerGold).toBe(130)
+        expect(catalog.searchModels[0].tokensPerGold).toBe(130)
+        // The decorator derives a safe display value without consuming the raw server-side source.
+        expect(catalog.pricing).toHaveLength(1)
     })
 })
 
@@ -189,7 +325,7 @@ describe('fetchProviderModelIds', () => {
     it('calls the OpenAI models endpoint with a bearer token', async () => {
         const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(OPENAI_LIST))
         const ids = await fetchProviderModelIds('codex', { fetchImpl })
-        expect(ids).toContain('gpt-5.6-sol')
+        expect(ids).toContain('gpt-6.1-sol')
         const [url, options] = fetchImpl.mock.calls[0]
         expect(url).toContain('api.openai.com/v1/models')
         expect(options.headers.Authorization).toBe('Bearer sk-openai-test')
@@ -207,6 +343,25 @@ describe('fetchProviderModelIds', () => {
 })
 
 describe('getModelCatalog', () => {
+    it('upgrades a current-schema cached Sol 6.0 choice without waiting for discovery', async () => {
+        const now = 1000000
+        stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'sol', label: 'Sol', resolvedModel: 'gpt-6-sol', latestModel: 'gpt-6-sol' }],
+                fetchedAt: now - 1,
+                schemaVersion: CODEX_CATALOG_SCHEMA_VERSION,
+            },
+        })
+        const fetchImpl = jest.fn()
+        const catalog = await getModelCatalog('codex', { now, fetchImpl })
+        expect(catalog.families[0]).toMatchObject({
+            resolvedModel: 'gpt-6.1-sol',
+            latestModel: 'gpt-6.1-sol',
+            tokensPerGold: 240,
+        })
+        expect(fetchImpl).not.toHaveBeenCalled()
+    })
     it('serves a fresh cache without hitting the provider', async () => {
         const now = 1_000_000
         const cached = [{ id: 'opus', label: 'Opus', resolvedModel: 'opus', isAlias: true }]
@@ -216,7 +371,7 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('claude', { fetchImpl, now })
 
         expect(catalog.source).toBe('cache')
-        expect(catalog.families).toEqual(cached)
+        expect(catalog.families).toEqual([{ ...cached[0], tokensPerGold: 120 }])
         expect(fetchImpl).not.toHaveBeenCalled()
     })
 
@@ -237,16 +392,87 @@ describe('getModelCatalog', () => {
         })
     })
 
+    it('refreshes a fresh pre-search OpenRouter cache so search is available immediately after deploy', async () => {
+        const now = 1_000_000
+        const { set } = stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'openrouter:deepseek/deepseek-chat' }],
+                fetchedAt: now - 1000,
+            },
+        })
+        const fetchImpl = jest.fn().mockResolvedValue(
+            jsonResponse({
+                data: [
+                    compatibleOpenRouterEntry('deepseek/deepseek-chat', { created: 10 }),
+                    compatibleOpenRouterEntry('x-ai/grok-4.6', { created: 20, agenticIndex: 80 }),
+                ],
+            })
+        )
+
+        const catalog = await getModelCatalog('openrouter', { fetchImpl, now })
+
+        expect(catalog.source).toBe('live')
+        expect(catalog.searchModels.map(model => model.modelId)).toContain('x-ai/grok-4.6')
+        expect(set).toHaveBeenCalledWith(expect.objectContaining({ searchModels: expect.any(Array) }), { merge: true })
+    })
+
+    it('refreshes the fresh Astra-only cache written by the old Codex family filter', async () => {
+        const now = 1_000_000
+        const { set } = stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra' }],
+                fetchedAt: now - 1000,
+            },
+        })
+        const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(OPENAI_LIST))
+
+        const catalog = await getModelCatalog('codex', { fetchImpl, now })
+
+        expect(catalog.source).toBe('live')
+        expect(catalog.families.map(family => family.id)).toEqual(['astra', 'sol', 'terra', 'luna'])
+        expect(set).toHaveBeenCalledWith(
+            expect.objectContaining({ families: expect.arrayContaining([expect.objectContaining({ id: 'sol' })]) }),
+            { merge: true }
+        )
+    })
+
     it('serves a STALE cache when discovery fails — real-but-old beats hardcoded', async () => {
         const now = 10 * CATALOG_TTL_MS
-        const stale = [{ id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false }]
-        stubCatalogDoc({ exists: true, data: { families: stale, fetchedAt: 1 } })
+        const stale = [
+            { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.1-sol', isAlias: false },
+            { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
+            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-6-luna', isAlias: false },
+        ]
+        stubCatalogDoc({
+            exists: true,
+            data: { families: stale, fetchedAt: 1, schemaVersion: CODEX_CATALOG_SCHEMA_VERSION },
+        })
         const fetchImpl = jest.fn().mockRejectedValue(new Error('network down'))
 
         const catalog = await getModelCatalog('codex', { fetchImpl, now })
 
         expect(catalog.source).toBe('stale')
-        expect(catalog.families).toEqual(stale)
+        expect(catalog.families.map(family => family.tokensPerGold)).toEqual([40, 240, 190, 4000])
+    })
+
+    it('uses the complete fallback when live discovery fails behind an obsolete partial Codex cache', async () => {
+        const now = 1_000_000
+        stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra' }],
+                fetchedAt: now - 1000,
+            },
+        })
+        const fetchImpl = jest.fn().mockRejectedValue(new Error('network down'))
+
+        const catalog = await getModelCatalog('codex', { fetchImpl, now })
+
+        expect(catalog.source).toBe('fallback')
+        expect(catalog.families.map(family => family.id)).toEqual(['astra', 'sol', 'terra', 'luna'])
     })
 
     it('falls back to the static catalog when discovery fails and nothing is cached', async () => {
@@ -256,7 +482,7 @@ describe('getModelCatalog', () => {
         const catalog = await getModelCatalog('codex', { fetchImpl, now: 5 })
 
         expect(catalog.source).toBe('fallback')
-        expect(catalog.families.map(f => f.id)).toEqual(['sol', 'terra', 'luna'])
+        expect(catalog.families.map(f => f.id)).toEqual(['astra', 'sol', 'terra', 'luna'])
     })
 
     it('falls back rather than caching an empty family list', async () => {
@@ -288,6 +514,38 @@ describe('resolveFamilyToModel', () => {
         const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(OPENAI_LIST))
 
         await expect(resolveFamilyToModel('codex', 'terra', { fetchImpl, now: 5 })).resolves.toBe('gpt-5.6-terra')
+    })
+
+    it('resolves a newly discovered family without adding it to an allowlist', async () => {
+        stubCatalogDoc({ exists: false })
+        const fetchImpl = jest.fn().mockResolvedValue(
+            jsonResponse({
+                data: [...OPENAI_LIST.data, { id: 'gpt-7-nova' }],
+            })
+        )
+
+        await expect(resolveFamilyToModel('codex', 'nova', { fetchImpl, now: 5 })).resolves.toBe('gpt-7-nova')
+    })
+
+    it('resolves a searched OpenRouter model that is not in the featured list', async () => {
+        stubCatalogDoc({
+            exists: true,
+            data: {
+                families: [{ id: 'openrouter:deepseek/deepseek-chat' }],
+                searchModels: [
+                    {
+                        id: 'openrouter:x-ai/grok-4.6',
+                        modelId: 'x-ai/grok-4.6',
+                        resolvedModel: 'openrouter:x-ai/grok-4.6',
+                    },
+                ],
+                fetchedAt: 1000,
+            },
+        })
+
+        await expect(resolveFamilyToModel('codex', 'openrouter:x-ai/grok-4.6', { now: 1500 })).resolves.toBe(
+            'openrouter:x-ai/grok-4.6'
+        )
     })
 
     it('resolves an alias family to the alias so the CLI picks the newest release', async () => {
@@ -325,7 +583,7 @@ describe('isValidFamilyId', () => {
         expect(isValidFamilyId('opus')).toBe(true)
         expect(isValidFamilyId('sol')).toBe(true)
         expect(isValidFamilyId('Opus')).toBe(false)
-        expect(isValidFamilyId('gpt-5.6-sol')).toBe(false)
+        expect(isValidFamilyId('gpt-6.1-sol')).toBe(false)
         expect(isValidFamilyId('')).toBe(false)
         expect(isValidFamilyId(null)).toBe(false)
         expect(isValidFamilyId('a'.repeat(40))).toBe(false)
@@ -386,15 +644,15 @@ describe('OpenRouter upstream pricing', () => {
         })
     })
 
-    // The picker is capped at OPENROUTER_MAX_MODELS, but an assistant-supplied agentModel can name any
-    // valid id — so pricing must cover every compatible model, not just the listed slice.
-    it('prices every compatible model, not only the ones the picker shows', () => {
+    // Search and assistant-supplied agentModel values can name non-featured ids, so pricing must
+    // cover every compatible model, not just the compact default list.
+    it('prices every compatible model, not only the featured ones', () => {
         const entries = [
             openRouterEntry('deepseek/deepseek-v4-pro', { prompt: '0.000000435', completion: '0.00000087' }),
             openRouterEntry('qwen/qwen3-coder', { prompt: '0.0000003', completion: '0.000001' }),
             // Excluded from the picker AND from pricing: it cannot drive Codex at all.
             { id: 'someone/no-tools', supported_parameters: [], pricing: { prompt: '0.1', completion: '0.2' } },
-            openRouterEntry('openai/gpt-5.6-sol', { prompt: '0.000005', completion: '0.00003' }),
+            openRouterEntry('openai/gpt-6.1-sol', { prompt: '0.000005', completion: '0.00003' }),
         ]
 
         const pricing = buildOpenRouterPricing(entries)
@@ -404,7 +662,7 @@ describe('OpenRouter upstream pricing', () => {
         expect(ids).toContain('qwen/qwen3-coder')
         expect(ids).not.toContain('someone/no-tools')
         // openai/* is offered natively, so it is not an OpenRouter option and needs no price here.
-        expect(ids).not.toContain('openai/gpt-5.6-sol')
+        expect(ids).not.toContain('openai/gpt-6.1-sol')
     })
 
     it('resolves a live price for a model by id, case-insensitively', async () => {
@@ -467,6 +725,7 @@ describe('OpenRouter upstream pricing', () => {
     it('keeps the pricing list server-side unless a caller asks for it', async () => {
         const data = {
             families: [{ id: 'openrouter:deepseek/deepseek-v4-pro', modelId: 'deepseek/deepseek-v4-pro' }],
+            searchModels: [{ id: 'openrouter:x-ai/grok-4.6', modelId: 'x-ai/grok-4.6', label: 'SpaceXAI: Grok 4.6' }],
             fetchedAt: 1000,
             pricing: [{ id: 'deepseek/deepseek-v4-pro', input: 0.435, output: 0.87, cachedInput: null }],
         }
@@ -474,6 +733,7 @@ describe('OpenRouter upstream pricing', () => {
 
         const clientFacing = await getModelCatalog('openrouter', { now: 1500 })
         expect(clientFacing.pricing).toBeUndefined()
+        expect(clientFacing.searchModels).toHaveLength(1)
 
         stubCatalogDoc({ exists: true, data })
         const serverSide = await getModelCatalog('openrouter', { now: 1500, includePricing: true })

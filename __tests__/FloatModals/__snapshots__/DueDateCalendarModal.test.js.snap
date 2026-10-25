@@ -8,6 +8,7 @@ exports[`DueDateCalendarModal component DueDateCalendarModal snapshot test Shoul
   <Calendar
     current="2019-04-22"
     dayComponent={[Function]}
+    firstDay={0}
     markedDates={
       {
         "2019-04-22": {

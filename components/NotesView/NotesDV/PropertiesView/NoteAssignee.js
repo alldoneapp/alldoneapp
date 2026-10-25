@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Image, StyleSheet } from 'react-native'
 import { colors } from '../../../styles/global'
 import Button from '../../../UIControls/Button'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import NoteAssigneePicker from './NoteAssigneePicker'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import { useSelector } from 'react-redux'
@@ -10,9 +10,11 @@ import { translate } from '../../../../i18n/TranslationService'
 import { getUserData } from '../../../../utils/backends/Users/usersFirestore'
 import { setNoteOwner } from '../../../../utils/backends/Notes/notesFirestore'
 import { findNoteOwnerInProject } from '../../NoteFilters/noteOwnerFilterHelper'
+import SharedHelper from '../../../../utils/SharedHelper'
 
 export default function NoteAssignee({ projectId, note, disabled }) {
     const smallScreen = useSelector(state => state.smallScreen)
+    const isAnonymous = useSelector(state => !!state.loggedUser.isAnonymous)
     const [owner, setOwner] = useState(null)
     const [visiblePopover, setVisiblePopover] = useState(false)
 
@@ -27,7 +29,13 @@ export default function NoteAssignee({ projectId, note, disabled }) {
 
     useEffect(() => {
         let cancelled = false
-        getUserData(note.userId, false).then(user => {
+        const ownerRequest = isAnonymous
+            ? Promise.resolve(
+                  findNoteOwnerInProject(projectId, note.userId) ||
+                      SharedHelper.createAnonymousResourceUser(note.userId)
+              )
+            : getUserData(note.userId, false)
+        ownerRequest.then(user => {
             if (cancelled) return
             // An assistant-owned note (AT-2194) has no doc in `users/`, so fall back to the
             // project's assistants/contacts/workstreams before giving up — otherwise the
@@ -37,7 +45,7 @@ export default function NoteAssignee({ projectId, note, disabled }) {
         return () => {
             cancelled = true
         }
-    }, [note.userId, projectId])
+    }, [note.userId, projectId, isAnonymous])
 
     const onSelectUser = user => {
         setNoteOwner(projectId, note.id, user.uid, owner, user, note, true)
@@ -47,7 +55,7 @@ export default function NoteAssignee({ projectId, note, disabled }) {
 
     return (
         owner && (
-            <Popover
+            <AppPopover
                 content={
                     <NoteAssigneePicker
                         note={note}
@@ -71,7 +79,7 @@ export default function NoteAssignee({ projectId, note, disabled }) {
                     onPress={showPopover}
                     disabled={disabled}
                 />
-            </Popover>
+            </AppPopover>
         )
     )
 }

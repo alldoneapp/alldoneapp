@@ -8,7 +8,6 @@ import {
     deleteLinkedGuidesNotesIfProjectIsTemplate,
     deleteNoteFeedsChain,
     getDb,
-    getFirebaseTimestampDirectly,
     getId,
     getMentionedUsersIdsWhenEditText,
     getNoteData,
@@ -28,6 +27,11 @@ import {
 } from '../firestore'
 import { createNoteAssistantChangedFeed } from './noteUpdates'
 import store from '../../../redux/store'
+import { isBrowserOffline } from '../../connectionState'
+import { getServerNow } from '../../serverClock'
+import { queueNoteUpload } from '../../Notes/noteUploadQueue'
+import { clearPendingNoteUpload, registerPendingNoteUpload } from '../../Notes/pendingNoteUploads'
+import { stampCreatorAsFollower } from './noteCreationFollow'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 
 import { createGenericTaskWhenMention, setTaskNote } from '../Tasks/tasksFirestore'
@@ -57,6 +61,7 @@ import {
     switchProject,
 } from '../../../redux/actions'
 import { DV_TAB_NOTE_PROPERTIES, DV_TAB_ROOT_NOTES } from '../../TabNavigationConstants'
+import { CROSS_PROJECT_DESTINATION_WRITE, withoutServerAccessProjection } from '../accessProjection'
 
 export const updateNoteEditionData = async (projectId, noteId, editorId) => {
     await getDb().runTransaction(async transaction => {
@@ -68,7 +73,12 @@ export const updateNoteEditionData = async (projectId, noteId, editorId) => {
 
 const updateEditionData = async data => {
     const { loggedUser } = store.getState()
-    data.lastEditionDate = await getFirebaseTimestampDirectly()
+    // No round trip in either branch since AT-2340: the online path used to
+    // write+read the global `/info/currentTime` singleton on every autosave, and
+    // the offline path could not do it at all (the ack only arrives on
+    // reconnect). Both now read the background-measured server-clock offset,
+    // falling back to the client clock — which is what `created` already uses.
+    data.lastEditionDate = isBrowserOffline() ? Date.now() : getServerNow()
     data.lastEditorId = loggedUser.uid
 }
 
@@ -100,84 +110,138 @@ async function updateNoteData(projectId, noteId, data, batch) {
     batch ? batch.update(ref, data) : await ref.update(data)
 }
 
+/**
+ * AT-2488 — the work a freshly created note still needs, run in the background.
+ *
+ * Every item here is a side effect OF a note that already exists: the note
+ * document has been written (and, online, server-acked) before this runs. None
+ * of them is a precondition for opening the note — feeds/sticky/mention writes
+ * are all about what happens *around* the note, and `logEvent` is analytics.
+ * Awaiting them only made the user wait on a blank screen, and — worse — a
+ * failure in any of them used to reject `uploadNewNote` for a note that had in
+ * fact been created, which the caller then reported as "creation failed".
+ *
+ * So each one is settled independently and reports rather than throws. The
+ * offline branch already worked exactly this way (a server ack cannot arrive
+ * offline, AT-2340), so this makes the online path match a shape that has been
+ * in production for the whole offline-support era.
+ *
+ * The empty Storage seed put is deliberately NOT here — see `uploadNewNote`.
+ */
+const runNewNoteSideEffects = (projectId, noteId, noteDataCopy) => {
+    const settle = (label, work) => {
+        const report = error => console.warn(`[notes] ${label} failed for ${noteId} (the note was created):`, error)
+        try {
+            Promise.resolve(work()).catch(report)
+        } catch (error) {
+            // A side effect that throws synchronously must not take the others down.
+            report(error)
+        }
+    }
+
+    const { stickyEndDate } = noteDataCopy.stickyData || {}
+    if (stickyEndDate > 0) settle('sticky tracking', () => trackStickyNote(projectId, noteId, stickyEndDate))
+
+    settle('feeds chain', () => createNoteFeedsChain(projectId, noteId, noteDataCopy))
+
+    settle('mention tasks', () => {
+        // Resolved here rather than by the caller: a project that is missing from
+        // the store must not fail a note that is already written.
+        const project = ProjectHelper.getProjectById(projectId)
+        const mentionedUserIds = intersection(
+            project ? project.userIds : [],
+            getMentionedUsersIdsWhenEditText(noteDataCopy.extendedTitle, '')
+        )
+
+        return createGenericTaskWhenMention(
+            projectId,
+            noteId,
+            mentionedUserIds,
+            GENERIC_NOTE_TYPE,
+            'notes',
+            noteDataCopy.assistantId
+        )
+    })
+
+    settle('analytics', () => logEvent('new_note', { id: noteId, uid: noteDataCopy.userId }))
+}
+
 export async function uploadNewNote(projectId, noteData) {
     try {
         await updateEditionData(noteData)
 
-        const noteDataCopy = { ...noteData }
+        // Creator-follows-own-note is stamped at creation so the note is
+        // immediately visible in the Followed notes tab — offline, the feeds
+        // chain that normally establishes it only completes on reconnect.
+        const noteDataCopy = stampCreatorAsFollower({ ...noteData })
         const noteId = noteDataCopy.id ? noteDataCopy.id : getId()
 
-        // Create an empty document first to ensure it exists
-        const doc = new Uint8Array()
-        const storageRef = notesStorage.ref()
+        // Offline, every server ack in this function is deferred until reconnect,
+        // so awaiting one would hang note creation forever. Firestore applies the
+        // writes to the local cache instantly (and syncs them later), which is all
+        // the offline editor needs (OFFLINE_SUPPORT_PLAN.md notes follow-ups).
+        const browserIsOffline = isBrowserOffline()
 
-        // Create an array to track all promises that need to complete
-        const promises = []
+        // The empty content object, started HERE so it runs concurrently with the
+        // document write below rather than after it — and awaited once that write
+        // is done. It is the one piece of this function that cannot simply be left
+        // in the background: `setNoteData` overwrites the same Storage path, the
+        // editor autosaves 3s after it opens, and the note opens the moment this
+        // function resolves. A seed put still in flight at that point would land
+        // AFTER the user's first save and blank what they had just typed. Awaiting
+        // it costs nothing in the normal case (it has had the whole document write
+        // to finish) and only costs time exactly when not awaiting would be unsafe.
+        const emptyContentUpload = Promise.resolve()
+            .then(() => notesStorage.ref().child(`notesData/${projectId}/${noteId}`).put(new Uint8Array()))
+            .catch(error =>
+                // Still best-effort: the editor tolerates a missing object through
+                // `allowEmptyOpen` (a brand-new note has no `preview`).
+                console.warn(`[notes] empty content upload failed for ${noteId} (the note was created):`, error)
+            )
 
-        // Add storage operation to promises
-        promises.push(storageRef.child(`notesData/${projectId}/${noteId}`).put(doc))
+        // Set the initial document data with a retry mechanism. This is the ONE
+        // thing the caller has to wait for: it is what makes the note exist.
+        const setNoteDoc = () =>
+            getDb()
+                .collection(`noteItems/${projectId}/notes`)
+                .doc(noteId)
+                .set(sanitizeForFirestore({ ...noteDataCopy, title: noteDataCopy.title.toLowerCase() }))
 
-        // Set the initial document data with a retry mechanism
-        const maxRetries = 3
-        let attempt = 0
-        let noteDocSet = false
+        if (browserIsOffline) {
+            // Fire without awaiting the server ack; the local cache applies it
+            // immediately and the queued write syncs on reconnect.
+            setNoteDoc().catch(error => console.warn(`Offline note doc write failed for ${noteId}:`, error))
+        } else {
+            const maxRetries = 3
+            let attempt = 0
+            let noteDocSet = false
 
-        while (attempt < maxRetries && !noteDocSet) {
-            try {
-                await getDb()
-                    .collection(`noteItems/${projectId}/notes`)
-                    .doc(noteId)
-                    .set(sanitizeForFirestore({ ...noteDataCopy, title: noteDataCopy.title.toLowerCase() }))
-                noteDocSet = true
-            } catch (error) {
-                if (error.code === 'failed-precondition' && attempt < maxRetries - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second before retry
-                    attempt++
-                    continue
+            while (attempt < maxRetries && !noteDocSet) {
+                try {
+                    await setNoteDoc()
+                    noteDocSet = true
+                } catch (error) {
+                    if (error.code === 'failed-precondition' && attempt < maxRetries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1000)) // Wait 1 second before retry
+                        attempt++
+                        continue
+                    }
+                    throw error
                 }
-                throw error
             }
         }
 
-        const { stickyEndDate } = noteDataCopy.stickyData
-        if (stickyEndDate > 0) {
-            promises.push(trackStickyNote(projectId, noteId, stickyEndDate))
-        }
+        // Offline this can never settle (Storage has no offline queue at all), so
+        // awaiting it would hang note creation — the same reason the document write
+        // above is not awaited offline. Nothing is lost: the local y-indexeddb copy
+        // is durable and `NotesOfflineCatchUp` uploads it on reconnect.
+        if (!browserIsOffline) await emptyContentUpload
 
-        // Add feed chain creation to promises
-        promises.push(createNoteFeedsChain(projectId, noteId, noteDataCopy))
-
-        const project = ProjectHelper.getProjectById(projectId)
-        const mentionedUserIds = intersection(
-            project.userIds,
-            getMentionedUsersIdsWhenEditText(noteDataCopy.extendedTitle, '')
-        )
-
-        promises.push(
-            createGenericTaskWhenMention(
-                projectId,
-                noteId,
-                mentionedUserIds,
-                GENERIC_NOTE_TYPE,
-                'notes',
-                noteDataCopy.assistantId
-            )
-        )
-
-        // Wait for all operations to complete
-        await Promise.all(promises)
-
-        // Log event after everything is complete
-        await logEvent('new_note', {
-            id: noteId,
-            uid: noteData.userId,
-        })
-
-        // Verify the note exists in the database before returning
-        const noteExists = await getDb().doc(`noteItems/${projectId}/notes/${noteId}`).get()
-        if (!noteExists.exists) {
-            throw new Error('Note creation verification failed')
-        }
+        // No verification read (AT-2488): online, the awaited `set()` above only
+        // resolves on the server ack, so re-reading the document proved nothing
+        // and cost a full extra round trip on the critical path between the user
+        // pressing Enter and the note opening.
+        runNewNoteSideEffects(projectId, noteId, noteDataCopy)
 
         return { ...noteDataCopy, id: noteId }
     } catch (error) {
@@ -215,21 +279,21 @@ export async function deleteNote(projectId, note, externalBatch) {
 }
 
 export async function updateNoteMeta(projectId, tmpNote, note) {
-    updateNoteData(
+    await updateNoteData(
         projectId,
         note.id,
         { title: tmpNote.title.toLowerCase(), extendedTitle: tmpNote.extendedTitle },
         null
     )
 
-    updateNotesEditedDailyList(projectId, note.id)
+    await updateNotesEditedDailyList(projectId, note.id)
 
     if (tmpNote.stickyData.stickyEndDate !== note.stickyData.stickyEndDate) {
         const { stickyEndDate } = tmpNote.stickyData
-        stickyEndDate > 0 ? trackStickyNote(projectId, note.id, stickyEndDate) : untrackStickyNote(note.id)
+        await (stickyEndDate > 0 ? trackStickyNote(projectId, note.id, stickyEndDate) : untrackStickyNote(note.id))
     }
 
-    createNoteUpdatedFeedsChain(projectId, note.id, tmpNote, note)
+    await createNoteUpdatedFeedsChain(projectId, note.id, tmpNote, note)
     createGenericTaskWhenMentionInTitleEdition(
         projectId,
         note.id,
@@ -315,20 +379,83 @@ export async function updateNoteHighlight(projectId, noteId, hasStar) {
     updateNoteHighlightFeedsChain(projectId, isHighlight, noteId)
 }
 
-export async function setNoteData(objectId, noteId, encodedStateData, preview, firstEditionRef, userCanEditNote) {
+/**
+ * Persist note content.
+ *
+ * `options.contentOnly` uploads the Yjs state and NOTHING else — no preview, no
+ * `lastEditionDate`/`lastEditorId`, no edited-today entry, no started-editing
+ * feed. It exists for content this client merely RECEIVED (a collaborator's
+ * edits arriving over the Yjs binding): persisting the merged document is a
+ * durability safety net, but recording the local user as its last editor is
+ * simply false, and it made every open client pay the full save fan-out for
+ * text somebody else typed (AT-2340).
+ */
+export async function setNoteData(
+    objectId,
+    noteId,
+    encodedStateData,
+    preview,
+    firstEditionRef,
+    userCanEditNote,
+    options = {}
+) {
+    const { contentOnly = false } = options
     const storageRef = notesStorage.ref()
-    storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)
+    // Fire-and-forget on purpose, but an offline failure must not surface as an
+    // unhandled rejection: the content is durable in the editor's local
+    // IndexedDB copy and is re-uploaded on reconnect / next online open.
+    //
+    // Firebase Storage has no offline write queue (unlike Firestore) — a failed
+    // put is simply gone — so the note is recorded for the reconnect catch-up
+    // sweep, which is what makes an offline edit to a note the user then CLOSES
+    // reach the server without waiting for them to open it again (AT-2340).
+    const revision = options.pendingRevision ?? registerPendingNoteUpload(objectId, noteId)
+    const contentUploaded = options.deferContentUpload
+        ? Promise.resolve(false)
+        : queueNoteUpload(objectId, noteId, () =>
+              storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)
+          )
+              .then(() => {
+                  // Metadata is queued before the bytes finish uploading. Publish a distinct
+                  // revision afterwards so the linked-upload view never keeps the older bytes.
+                  // A remote durability save still writes no editor metadata (AT-2340).
+                  if (!contentOnly && userCanEditNote) {
+                      try {
+                          getDb()
+                              .doc(`noteItems/${objectId}/notes/${noteId}`)
+                              .update({ uploadsRevision: getId() })
+                              .catch(error => {
+                                  console.warn('Could not notify linked uploads of saved note content:', error)
+                              })
+                      } catch (error) {
+                          console.warn('Could not notify linked uploads of saved note content:', error)
+                      }
+                  }
+                  clearPendingNoteUpload(noteId, revision)
+                  return true
+              })
+              .catch(error => {
+                  console.warn(`Note content upload failed for ${noteId} (will catch up when back online):`, error)
+                  return false
+              })
 
-    if (userCanEditNote) {
-        updateNoteData(objectId, noteId, { preview }, null)
+    if (!contentOnly) {
+        if (userCanEditNote) {
+            updateNoteData(objectId, noteId, { preview }, null)
+        }
+
+        updateNotesEditedDailyList(objectId, noteId)
+
+        if (firstEditionRef && firstEditionRef.current) {
+            firstEditionRef.current = false
+            userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
+        }
     }
 
-    updateNotesEditedDailyList(objectId, noteId)
-
-    if (firstEditionRef.current) {
-        firstEditionRef.current = false
-        userCanEditNote && startEditNoteFeedsChain(objectId, noteId)
-    }
+    // Resolves to whether the canonical Storage copy actually received the
+    // content. Callers may ignore it (most do); the editor uses it to know a
+    // catch-up is outstanding without guessing from connectivity.
+    return contentUploaded
 }
 
 export const updateNoteLastCommentData = async (projectId, noteId, lastComment, lastCommentType) => {
@@ -418,7 +545,11 @@ export async function setNoteProject(currentProject, newProject, note, oldAssign
     delete noteMeta.state
 
     await updateEditionData(noteMeta)
-    batch.set(getDb().doc(`noteItems/${newProject.id}/notes/${noteId}`), sanitizeForFirestore(noteMeta))
+    batch.set(
+        getDb().doc(`noteItems/${newProject.id}/notes/${noteId}`),
+        withoutServerAccessProjection(sanitizeForFirestore({ ...noteMeta, movingToOtherProjectId: null })),
+        CROSS_PROJECT_DESTINATION_WRITE
+    )
     batch.delete(getDb().doc(`noteItems/${currentProject.id}/notes/${noteId}`))
 
     await getDb()

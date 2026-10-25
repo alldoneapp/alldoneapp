@@ -1,3 +1,4 @@
+import { useTaskHierarchy, useProjectSectionAccent } from '../TaskHierarchy'
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import moment from 'moment'
@@ -12,16 +13,25 @@ import { generateDateHeaderText } from '../../../utils/EstimationHelper'
 import CalendarSyncButton from '../../UIComponents/CalendarSyncButton'
 import {
     AMOUNT_TASKS_INDEX,
+    CALENDAR_TASK_INDEX,
     DATE_TASK_INDEX,
     ESTIMATION_TASKS_INDEX,
     TODAY_DATE,
 } from '../../../utils/backends/openTasks'
 
 export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex, additionalTasksAmount = 0 }) {
+    const taskHierarchy = useTaskHierarchy()
+    const accentColor = useProjectSectionAccent()
     const dateFormated = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][DATE_TASK_INDEX])
     const amountTasks = useSelector(state => state.filteredOpenTasksStore[instanceKey][dateIndex][AMOUNT_TASKS_INDEX])
     const estimation = useSelector(
         state => state.filteredOpenTasksStore[instanceKey][dateIndex][ESTIMATION_TASKS_INDEX]
+    )
+    // AT-2377: the Calendar section carries the re-sync control in its own header again. Showing it
+    // here as well would put two refresh icons on the same day, so this one only stands in when the
+    // day renders no Calendar section - which is exactly the case the section could never cover.
+    const dayHasCalendarSection = useSelector(
+        state => state.filteredOpenTasksStore[instanceKey][dateIndex][CALENDAR_TASK_INDEX].length > 0
     )
     const weekdays = [
         translate('Monday'),
@@ -66,20 +76,33 @@ export default function OpenTasksDateHeader({ instanceKey, projectId, dateIndex,
 
     return (
         <View style={[localStyles.container, isMainDay ? localStyles.containerToday : undefined]}>
-            <View style={[localStyles.innerContainer, inBacklog && localStyles.inBacklogIContainer]}>
+            <View
+                style={[
+                    localStyles.innerContainer,
+                    inBacklog && localStyles.inBacklogIContainer,
+                    accentColor && { backgroundColor: accentColor },
+                ]}
+            >
                 <View style={{ flex: 1, justifyContent: 'flex-start', flexDirection: 'row' }}>
                     {inBacklog && (
                         <View style={localStyles.backlogIcon}>
                             <Icon name={'layers'} size={16} color={colors.Text02} />
                         </View>
                     )}
-                    <Text style={[styles.overline, localStyles.dateText, inBacklog && localStyles.textBacklog]}>
+                    <Text
+                        style={[
+                            styles.overline,
+                            localStyles.dateText,
+                            taskHierarchy && { paddingLeft: 8 },
+                            inBacklog && localStyles.textBacklog,
+                        ]}
+                    >
                         {text}
                     </Text>
                 </View>
-                {/* AT-2252: the calendar re-sync lived in the removed "Google Calendar" section. It is
-                    kept here on today's header, and only when this project has a calendar connected. */}
-                {isMainDay && <CalendarSyncButton projectId={projectId} containerStyle={localStyles.syncButton} />}
+                {isMainDay && !dayHasCalendarSection && (
+                    <CalendarSyncButton projectId={projectId} containerStyle={localStyles.syncButton} />
+                )}
             </View>
         </View>
     )

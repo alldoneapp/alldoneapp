@@ -225,6 +225,20 @@ describe('ContactRetrievalService', () => {
         })
     }
 
+    test('returns the stored Kontaktstatus ID and the name from the contact project', () => {
+        const service = createService()
+        expect(
+            service.mapContact(
+                { contactId: 'c1', contactStatusId: 'lead' },
+                { id: 'p1', contactStatuses: { lead: { name: 'Lead' } } }
+            )
+        ).toMatchObject({ contactStatusId: 'lead', contactStatusName: 'Lead' })
+        expect(service.mapContact({ contactId: 'c1' }, { id: 'p1' })).toMatchObject({
+            contactStatusId: null,
+            contactStatusName: null,
+        })
+    })
+
     test('retrieves contacts across accessible active regular projects by default', async () => {
         const service = createService()
         await service.initialize()

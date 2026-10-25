@@ -22,6 +22,7 @@ import ChatItem from '../../../ChatsView/ChatItem'
 import SkillPresentation from '../../../SettingsView/Profile/Skills/SkillItem/SkillPresentation'
 import AssistantPresentation from '../../../AdminPanel/Assistants/AssistantPresentation'
 import Header from './Header'
+import { getCommentPopupObjectStringKey } from './commentPopupObjectStrings'
 
 const WATCHED_OBJECT_TYPES = {
     tasks: watchTask,
@@ -30,40 +31,71 @@ const WATCHED_OBJECT_TYPES = {
     topics: watchChat,
 }
 
+export const COMMENT_POPUP_OBJECT_LOAD_TIMEOUT_MS = 1500
+
 export default function CommentPopupObjectHeader({
     projectId,
     objectId,
     objectType,
     objectName,
+    initialObject,
     onOpen,
     onWorkflowTransitionSuccess,
 }) {
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const watcherKeyRef = useRef(`comment-popup-object-${v4()}`)
-    const [object, setObject] = useState(null)
-    const [loading, setLoading] = useState(true)
+    const lastKnownObjectRef = useRef(initialObject || null)
+    const [object, setObject] = useState(initialObject || null)
+    const [loading, setLoading] = useState(!initialObject)
+    const [reconnecting, setReconnecting] = useState(false)
 
     useEffect(() => {
         let mounted = true
+        let loadTimeout
         const normalizedObjectType = objectType === 'users' ? 'contacts' : objectType
 
         const updateObject = nextObject => {
             if (mounted) {
-                setObject(nextObject || null)
+                // A transport restart can emit an empty/cache-miss result before the
+                // authoritative snapshot returns. Never replace a valid row object with that
+                // transient absence; the parent list will remove the popup if deletion is later
+                // established by its own authoritative watcher.
+                if (nextObject) {
+                    lastKnownObjectRef.current = nextObject
+                    setObject(nextObject)
+                } else if (!lastKnownObjectRef.current) {
+                    setObject(null)
+                }
                 setLoading(false)
+                setReconnecting(false)
             }
         }
 
+        const showReconnectFallback = () => {
+            if (mounted && !lastKnownObjectRef.current) {
+                setLoading(false)
+                setReconnecting(true)
+            }
+        }
+
+        if (!lastKnownObjectRef.current) {
+            loadTimeout = setTimeout(showReconnectFallback, COMMENT_POPUP_OBJECT_LOAD_TIMEOUT_MS)
+        }
+
         getParentObjectData(projectId, objectId, normalizedObjectType)
-            .then(data => updateObject(data?.object))
+            .then(data => {
+                clearTimeout(loadTimeout)
+                updateObject(data?.object)
+            })
             .catch(error => {
+                clearTimeout(loadTimeout)
                 console.warn('[CommentPopupObjectHeader] Could not load parent object', {
                     projectId,
                     objectId,
                     objectType: normalizedObjectType,
                     error,
                 })
-                updateObject(null)
+                showReconnectFallback()
             })
 
         if (normalizedObjectType === 'notes') {
@@ -75,9 +107,21 @@ export default function CommentPopupObjectHeader({
         } else if (WATCHED_OBJECT_TYPES[normalizedObjectType]) {
             WATCHED_OBJECT_TYPES[normalizedObjectType](projectId, objectId, watcherKeyRef.current, updateObject)
         }
+        // Artifacts use their own listener rather than the shared watcher registry. Required lazily,
+        // like the row below, so the popup does not load the artifact modules for every other type.
+        const unwatchArtifact =
+            normalizedObjectType === 'artifacts'
+                ? require('../../../../utils/backends/Artifacts/artifactsFirestore').watchArtifact(
+                      projectId,
+                      objectId,
+                      updateObject
+                  )
+                : null
 
         return () => {
             mounted = false
+            clearTimeout(loadTimeout)
+            if (unwatchArtifact) unwatchArtifact()
             if (normalizedObjectType === 'notes') {
                 unwatchNote(projectId, objectId)
             } else if (normalizedObjectType === 'contacts' || WATCHED_OBJECT_TYPES[normalizedObjectType]) {
@@ -88,14 +132,21 @@ export default function CommentPopupObjectHeader({
 
     if (loading) {
         return (
-            <View style={localStyles.loadingContainer} accessibilityLabel={translate('Loading object')}>
+            <View
+                style={localStyles.loadingContainer}
+                accessibilityLabel={translate(getCommentPopupObjectStringKey(objectType, 'loading'))}
+            >
                 <ActivityIndicator size="small" color={colors.UtilityBlue125} />
             </View>
         )
     }
 
     if (!object) {
-        return <UnavailableObject objectName={objectName} />
+        return reconnecting ? (
+            <RecoveringObject objectName={objectName} objectType={objectType} />
+        ) : (
+            <UnavailableObject objectName={objectName} objectType={objectType} />
+        )
     }
 
     const project = ProjectHelper.getProjectById(projectId)
@@ -176,19 +227,19 @@ const renderObject = ({
                     onPress={onOpen}
                 />
             ) : (
-                <UnavailableObject objectName={object.displayName} />
+                <UnavailableObject objectName={object.displayName} objectType={objectType} />
             )
         case 'notes':
             return project ? (
                 <NotesItem project={project} note={object} inCommentPopup onPress={onOpen} />
             ) : (
-                <UnavailableObject objectName={object.extendedTitle || object.title} />
+                <UnavailableObject objectName={object.extendedTitle || object.title} objectType={objectType} />
             )
         case 'topics':
             return project ? (
                 <ChatItem project={project} chat={object} inCommentPopup onPress={onOpen} />
             ) : (
-                <UnavailableObject objectName={object.title} />
+                <UnavailableObject objectName={object.title} objectType={objectType} />
             )
         case 'skills':
             return (
@@ -210,15 +261,36 @@ const renderObject = ({
                     inCommentPopup
                 />
             )
+        case 'artifacts': {
+            const ArtifactRow = require('../../../ArtifactsView/ArtifactRow').default
+            return <ArtifactRow artifact={object} onPress={() => onOpen?.()} inCommentPopup />
+        }
         default:
-            return <UnavailableObject />
+            return <UnavailableObject objectType={objectType} />
     }
 }
 
-const UnavailableObject = ({ objectName }) => (
-    <View style={localStyles.unavailableContainer} accessibilityLabel={translate('Object unavailable')}>
+const UnavailableObject = ({ objectName, objectType }) => (
+    <View
+        style={localStyles.unavailableContainer}
+        accessibilityLabel={translate(getCommentPopupObjectStringKey(objectType, 'unavailable'))}
+    >
         <Header title={objectName} />
-        <Text style={localStyles.unavailableText}>{translate('This object is no longer available.')}</Text>
+        <Text style={localStyles.unavailableText}>
+            {translate(getCommentPopupObjectStringKey(objectType, 'unavailable_text'))}
+        </Text>
+    </View>
+)
+
+const RecoveringObject = ({ objectName, objectType }) => (
+    <View
+        style={localStyles.unavailableContainer}
+        accessibilityLabel={translate(getCommentPopupObjectStringKey(objectType, 'reconnecting'))}
+    >
+        <Header title={objectName} />
+        <Text style={localStyles.unavailableText}>
+            {translate(getCommentPopupObjectStringKey(objectType, 'reconnecting_text'))}
+        </Text>
     </View>
 )
 

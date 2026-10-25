@@ -1,0 +1,834 @@
+/**
+ * Rage mode browser-level test: the REAL three.js raid over a stand-in page, in real Chromium.
+ *
+ * What it checks (none of it is observable from jest — no WebGL, no layout):
+ *   1. The raid comes up: canvas, input layer and HUD; Anna takes off and the mission starts.
+ *   2. The page slides away (a transform on #root) while generated ground is drawn above it.
+ *   3. Auto-fire finds the task rows on the page, and the first wave arrives.
+ *   4. NOTHING REACHES THE APP. Clicks over checkboxes and buttons, and key presses, while the raid
+ *      is up must not reach the page's own handlers.
+ *   5. Leaving slides the page back and removes every layer: the DOM is byte-identical to before
+ *      and #root, <html> and <body> carry no leftover style.
+ *   6. No page errors along the way.
+ *   `--touch`  a phone: relative drag steering, the 💣 button, leaving through ✕.
+ *   `--game`   boss → hangar (credits, Gold shop) → mission 2, and a game over → play again.
+ *   `--cast`   every new enemy at once, power-ups and their buffs, and the empty-inbox boss.
+ *   `--bosses` each of the five boss fights, with a screenshot of each in .build/.
+ *   `--progress` delayed profile, failure/retry and loading UI on desktop and phone (AT-2700).
+ *
+ * Requirements (not part of CI's Jest jobs):
+ *   nvm use 22
+ *   (cd web-bundler && npm install)
+ *   cp -R -f replacement_node_modules/* node_modules/
+ *   npx playwright install chromium   (or PLAYWRIGHT_HOME=<dir with playwright installed>)
+ * Usage:
+ *   node browser-tests/rage-mode/run.js [--touch | --game] [--headed]
+ *   node browser-tests/rage-mode/run.js --serve     # build, then serve it to play by hand
+ */
+const path = require('path')
+const http = require('http')
+const fs = require('fs')
+const { execFileSync } = require('child_process')
+
+const ROOT = path.resolve(__dirname, '..', '..')
+const BUILD_DIR = path.join(__dirname, '.build')
+const ENTRY = path.join(__dirname, 'harness.entry.js')
+const args = new Set(process.argv.slice(2))
+
+const HTML = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rage mode</title></head><body><script src="/harness.js"></script></body></html>`
+
+const requirePlaywright = () => {
+    try {
+        return require('playwright')
+    } catch (error) {
+        if (!process.env.PLAYWRIGHT_HOME) throw error
+        return require(path.join(process.env.PLAYWRIGHT_HOME, 'node_modules', 'playwright'))
+    }
+}
+
+function build() {
+    const webpackBin = path.join(ROOT, 'web-bundler', 'node_modules', '.bin', 'webpack')
+    if (!fs.existsSync(webpackBin)) throw new Error('web-bundler deps missing: (cd web-bundler && npm install)')
+    execFileSync(
+        webpackBin,
+        [
+            '--config',
+            path.join(ROOT, 'browser-tests', 'webpack.harness.js'),
+            '--mode',
+            'development',
+            '--env',
+            `harnessEntry=${ENTRY}`,
+            '--env',
+            `harnessOut=${BUILD_DIR}`,
+        ],
+        { cwd: ROOT, stdio: 'inherit', env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=1400' } }
+    )
+    fs.writeFileSync(path.join(BUILD_DIR, 'index.html'), HTML)
+}
+
+function serve(port = 0) {
+    const server = http.createServer((req, res) => {
+        const pathname = req.url.split('?')[0]
+        const file = path.join(BUILD_DIR, pathname === '/' ? '/index.html' : pathname)
+        if (!file.startsWith(BUILD_DIR) || !fs.existsSync(file)) {
+            res.writeHead(404)
+            return res.end('not found')
+        }
+        res.writeHead(200, { 'Content-Type': file.endsWith('.js') ? 'application/javascript' : 'text/html' })
+        res.end(fs.readFileSync(file))
+    })
+    return new Promise(resolve => server.listen(port, () => resolve(server)))
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+const results = []
+const check = (name, ok, detail) => {
+    results.push({ name, ok, detail })
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail !== undefined ? `  — ${detail}` : ''}`)
+}
+
+const hudData = page =>
+    page.evaluate(() => {
+        const hud = document.querySelector('[data-rage-mode-layer="hud"]')
+        return hud ? { ...hud.dataset } : {}
+    })
+const waitForHud = (page, predicate, arg, timeout = 30000) =>
+    page
+        .waitForFunction(
+            ([source, value]) => {
+                const hud = document.querySelector('[data-rage-mode-layer="hud"]')
+                // eslint-disable-next-line no-new-func
+                return !!hud && new Function('data', 'value', `return (${source})(data, value)`)(hud.dataset, value)
+            },
+            [predicate.toString(), arg],
+            { timeout }
+        )
+        .then(() => true)
+        .catch(() => false)
+const openRaid = async (browser, url, query, options = {}) => {
+    const context = await browser.newContext(options.context || { viewport: { width: 1280, height: 800 } })
+    const page = await context.newPage()
+    const errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    page.on('console', message => message.type() === 'error' && errors.push(message.text()))
+    await page.goto(`${url}?${options.keepProgress ? '' : 'fresh=1&'}${query}`)
+    if (options.tap) await page.tap('#rage')
+    else await page.click('#rage')
+    return { context, page, errors }
+}
+const layerCount = page => page.evaluate(() => document.querySelectorAll('[data-rage-mode-layer]').length)
+// Leaving runs on the arena's own clock, which a software-rendered test browser slows down: wait for
+// it to finish rather than guessing how long it takes.
+const waitForArenaGone = page =>
+    page
+        .waitForFunction(() => !document.querySelector('[data-rage-mode-layer]'), null, { timeout: 15000 })
+        .catch(() => {})
+const centreOf = (page, selector) =>
+    page.evaluate(sel => {
+        const r = document.querySelector(sel).getBoundingClientRect()
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, left: r.left, right: r.right, top: r.top }
+    }, selector)
+const pageRestored = page =>
+    page.evaluate(() => ({
+        intact: document.body.innerHTML === window.__rage.pageHtml,
+        rootStyle: document.getElementById('root').getAttribute('style'),
+        htmlStyle: document.documentElement.getAttribute('style'),
+        bodyStyle: document.body.getAttribute('style'),
+    }))
+// The colour the raid canvas draws at a point, read in the same animation frame it was rendered in
+// (a WebGL drawing buffer is cleared once composited).
+const canvasPixel = (page, x, y) =>
+    page.evaluate(
+        ([px, py]) =>
+            new Promise(resolve =>
+                requestAnimationFrame(() => {
+                    const source = document.querySelector('[data-rage-mode-layer="canvas"]')
+                    const probe = document.createElement('canvas')
+                    probe.width = source.width
+                    probe.height = source.height
+                    const context = probe.getContext('2d')
+                    context.drawImage(source, 0, 0)
+                    const scale = source.width / window.innerWidth
+                    resolve(Array.from(context.getImageData(Math.round(px * scale), Math.round(py * scale), 1, 1).data))
+                })
+            ),
+        [x, y]
+    )
+
+async function desktop(browser, url) {
+    const { context, page, errors } = await openRaid(browser, url, 'god=1')
+    check('raid layers are on the page', (await layerCount(page)) >= 5, await layerCount(page))
+    // The run-up: she lands on the page and runs while it starts to move, slowly; nothing fires yet.
+    check('Anna lands on the page and runs', await waitForHud(page, data => data.phase === 'runup'))
+    const runStart = Number((await hudData(page)).pageOffset || 0)
+    await sleep(900)
+    const running = await hudData(page)
+    check(
+        'during the run-up the page moves slowly and she holds fire',
+        running.phase !== 'runup' ||
+            (Number(running.pageOffset) > runStart && Number(running.pageOffset) < 120 && running.shots === '0'),
+        `${runStart} → ${running.pageOffset}, shots ${running.shots}`
+    )
+    check(
+        'Anna takes off and mission 1 starts',
+        await waitForHud(page, data => data.phase === 'flying' && data.mission === '1')
+    )
+    check('the task rows on screen become targets', await waitForHud(page, data => Number(data.pageTargets) >= 4))
+
+    // Taking over the mouse must not make her jump to where the cursor was left (the crosshair).
+    await waitForHud(page, data => data.shipX !== undefined)
+    const beforeX = Number((await hudData(page)).shipX)
+    await page.mouse.move(1240, 20)
+    await sleep(400)
+    const afterX = Number((await hudData(page)).shipX)
+    check(
+        'the first mouse movement does not pull Anna across the screen',
+        Math.abs(afterX - beforeX) < 40,
+        `${beforeX} → ${afterX}`
+    )
+    // Steer under the task list; the main gun fires on its own.
+    const row = await centreOf(page, '#task_body_p_t1_false')
+    await page.mouse.move(row.x, 680)
+    check('the main gun fires on its own', await waitForHud(page, data => Number(data.shots) > 20))
+    check(
+        'shots knock task rows off the page',
+        await waitForHud(page, data => Number(data.pageTargets) < 5, null, 12000)
+    )
+
+    const offset = await page.evaluate(() => document.getElementById('root').style.transform)
+    check('the page slides down under the ground', /translate3d\(0px?, [1-9]\d*/.test(offset), offset)
+    await waitForHud(page, data => Number(data.pageOffset) > 220, null, 20000)
+    const sky = await canvasPixel(page, 40, 70)
+    check('generated ground is drawn above the page', sky[3] === 255 && sky[1] > sky[2], sky.join(','))
+    check('the first wave arrives', await waitForHud(page, data => Number(data.enemies) > 0, null, 12000))
+    await page.screenshot({ path: path.join(BUILD_DIR, 'desktop-flying.png') })
+
+    // Enter: the greeting loop towards the camera, without shooting, then back to work.
+    await page.keyboard.press('Enter')
+    check('Enter starts the greeting', await waitForHud(page, data => !!data.greeting))
+    await page.screenshot({ path: path.join(BUILD_DIR, 'greeting.png') })
+    check('the greeting ends and she flies on', await waitForHud(page, data => !data.greeting, null, 20000))
+
+    // Nothing may reach the app: clicks where checkboxes and buttons are, and keys.
+    const check0 = await centreOf(page, '#check-0')
+    const primary = await centreOf(page, '#primary')
+    await page.mouse.click(check0.x, check0.y)
+    await page.mouse.click(primary.x, primary.y)
+    await page.keyboard.press('x')
+    await page.keyboard.press('Tab')
+    const leaked = await page.evaluate(() => ({ clicks: window.__rage.appClicks, keys: window.__rage.appKeys }))
+    check('no click and no key reaches the app', leaked.clicks === 0 && leaked.keys === 0, JSON.stringify(leaked))
+
+    await page.keyboard.press('Escape')
+    await waitForArenaGone(page)
+    check('every layer is gone after Escape', (await layerCount(page)) === 0, await layerCount(page))
+    const restored = await pageRestored(page)
+    check('the page DOM is byte-identical afterwards', restored.intact)
+    check(
+        '#root, <html> and <body> carry no leftover style',
+        restored.rootStyle === null && restored.htmlStyle === null && restored.bodyStyle === null,
+        JSON.stringify(restored)
+    )
+    check('onExit was called', await page.evaluate(() => window.__rage.exited))
+    await page.click('#primary')
+    check('the app is clickable again', (await page.evaluate(() => window.__rage.appClicks)) === 1)
+    check('no page errors (desktop)', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await context.close()
+}
+
+async function touch(browser, url) {
+    const { context, page, errors } = await openRaid(browser, url, 'god=1', {
+        tap: true,
+        context: { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 },
+    })
+    check('touch: raid layers are on the page', (await layerCount(page)) >= 5, await layerCount(page))
+    check('touch: mission 1 starts', await waitForHud(page, data => data.phase === 'flying'))
+    // A relative drag: wherever the finger starts, Anna moves by as much as it moves.
+    await waitForHud(page, data => data.shipX !== undefined)
+    const before = Number((await hudData(page)).shipX)
+    const cdp = await context.newCDPSession(page)
+    const touchPoint = (x, y) => [{ x, y, id: 1 }]
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touchPoint(300, 600) })
+    for (let i = 1; i <= 8; i++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touchPoint(300 - i * 15, 600) })
+        await sleep(30)
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await sleep(200)
+    const after = Number((await hudData(page)).shipX)
+    check('touch: a drag steers Anna by the drag', after < before - 80, `${before} → ${after}`)
+    await page.tap('[data-rage-mode-layer="bomb"]')
+    check('touch: the 💣 button drops a bomb', await waitForHud(page, data => data.bombs === '1'))
+    await page.screenshot({ path: path.join(BUILD_DIR, 'touch-flying.png') })
+    await page.tap('[data-rage-mode-layer="hud"] button:last-child')
+    await waitForArenaGone(page)
+    check('touch: ✕ removes every layer', (await layerCount(page)) === 0, await layerCount(page))
+    check('touch: the page is back as it was', (await pageRestored(page)).intact)
+    check('touch: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await context.close()
+}
+
+async function game(browser, url) {
+    {
+        const { context, page, errors } = await openRaid(
+            browser,
+            url,
+            'god=1&bossAt=2&noWaves=1&tasks=3&gold=1500&bossHp=40'
+        )
+        check('boss: arrives with today’s open-task count (3)', await waitForHud(page, data => data.boss === '3'))
+        await page.screenshot({ path: path.join(BUILD_DIR, 'boss.png') })
+        await page.keyboard.press('Space')
+        check('boss: a mega bomb finishes it', await waitForHud(page, data => data.boss === '0'))
+        check('boss: the hangar opens after the mission', await waitForHud(page, data => data.phase === 'hangar'))
+        const credits = Number((await hudData(page)).credits)
+        check('hangar: the mission paid credits', credits > 0, credits)
+        await page.click('[data-hangar-item="bomb"] button')
+        check(
+            'hangar: buying a bomb costs credits',
+            await waitForHud(page, (data, value) => data.bombs === '2' && Number(data.credits) === value - 80, credits)
+        )
+        await page.screenshot({ path: path.join(BUILD_DIR, 'hangar.png') })
+        await page.click('[data-rage-mode-layer="hangar"] button:has-text("Special weapons")')
+        check('hangar: the Gold weapon shop opens', await waitForHud(page, data => data.shop === 'open'))
+        await page.click('[data-weapon="rocket"] button')
+        await page.click('[data-weapon="rocket"] button:has-text("Buy for")')
+        check('shop: buying a weapon goes to the server', await waitForHud(page, data => data.weapon === 'rocket'))
+        check(
+            'shop: the purchase was charged once',
+            (await page.evaluate(() => window.__rage.calls.purchase)).join() === 'rocket'
+        )
+        await page.keyboard.press('Escape')
+        check(
+            'shop: Escape closes the shop, not the raid',
+            await waitForHud(page, data => !data.shop && data.phase === 'hangar')
+        )
+        await page.click('[data-launch]')
+        check(
+            'hangar: mission 2 launches',
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2')
+        )
+        await page.mouse.move(640, 650)
+        await sleep(2500)
+        await page.screenshot({ path: path.join(BUILD_DIR, 'mission-2.png') })
+        // The shop mid-mission: B opens it and holds the game still; Escape carries on.
+        await page.keyboard.press('b')
+        check(
+            'shop: B opens it mid-mission and pauses',
+            await waitForHud(page, data => data.shop === 'open' && data.paused === 'true')
+        )
+        const pausedShots = (await hudData(page)).shots
+        await sleep(800)
+        check('shop: nothing moves while it is open', (await hudData(page)).shots === pausedShots)
+        await page.keyboard.press('Escape')
+        check(
+            'shop: Escape closes it and the mission goes on',
+            await waitForHud(page, data => !data.shop && data.phase === 'flying')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        check('mission 2: leaving puts the page back', (await pageRestored(page)).intact)
+        // The completed mission is remembered: the next raid takes off at mission 2.
+        await page.goto(`${url}?god=1&noWaves=1`)
+        await page.click('#rage')
+        check(
+            'progress: the next raid continues at mission 2',
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2' && data.saved === 'true')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        // …on every device: with this browser's copy wiped, the server's copy still says mission 2.
+        await page.goto(`${url}?god=1&noWaves=1&newDevice=1`)
+        await page.click('#rage')
+        check(
+            'progress: another device continues at mission 2 too',
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2' && data.saved === 'true')
+        )
+        await page.click('[data-rage-mode-layer="hud"] [data-start-over]')
+        await page.click('[data-rage-mode-layer="hud"] [data-start-over]')
+        check(
+            'progress: ↺ twice starts over at mission 1',
+            await waitForHud(page, data => data.mission === '1' && data.saved === 'false')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        // Another device: this browser's copy is gone, the server's copy is not.
+        await page.goto(`${url}?god=1&noWaves=1&newDevice=1`)
+        await page.click('#rage')
+        check(
+            'progress: another device starts at mission 1 after a start over',
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '1')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        check('boss/hangar: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+        await context.close()
+    }
+    {
+        const { context, page, errors } = await openRaid(
+            browser,
+            url,
+            'shield=1&bossAt=1&noWaves=1&tasks=3&best=10&bossHp=40'
+        )
+        check(
+            'game over: an empty shield ends the raid',
+            await waitForHud(page, data => data.phase === 'gameover', null, 40000)
+        )
+        await page
+            .waitForSelector('[data-rage-mode-layer="gameover"]', { state: 'visible', timeout: 5000 })
+            .catch(() => {})
+        const calls = await page.evaluate(() => window.__rage.calls.submitScore)
+        check('game over: the score is submitted once', calls.length === 1, JSON.stringify(calls))
+        check(
+            'game over: the leaderboard shows the top five and your rank',
+            await page
+                .waitForFunction(
+                    () => document.querySelectorAll('[data-rage-mode-layer="gameover"] [data-rank]').length >= 5,
+                    null,
+                    { timeout: 15000 }
+                )
+                .then(() => true)
+                .catch(() => false)
+        )
+        await page.screenshot({ path: path.join(BUILD_DIR, 'leaderboard.png') })
+        await page.click('[data-rage-mode-layer="gameover"] [data-rename]')
+        await page.fill('[data-rage-mode-layer="gameover"] [data-rage-name-input]', 'Space Ace')
+        await page.keyboard.press('Enter')
+        check(
+            'leaderboard: a chosen name is saved and shown',
+            await page
+                .waitForFunction(
+                    () =>
+                        /Space Ace/.test(
+                            document.querySelector('[data-rage-mode-layer="gameover"] [data-you]')?.textContent || ''
+                        ),
+                    null,
+                    { timeout: 10000 }
+                )
+                .then(() => true)
+                .catch(() => false)
+        )
+        check(
+            'leaderboard: typing the name did not reach the app',
+            (await page.evaluate(() => window.__rage.appKeys)) === 0
+        )
+        await page.keyboard.press('Enter')
+        check(
+            'game over: Enter plays again from mission 1',
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '1')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        check('game over: leaving still puts the page back', (await pageRestored(page)).intact)
+        check('game over: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+        await context.close()
+    }
+}
+
+async function cast(browser, url) {
+    const { context, page, errors } = await openRaid(browser, url, 'god=1&waves=showcase&pickups=drones,spread')
+    check('cast: power-ups picked up at lift-off', await waitForHud(page, data => data.collected === '2'))
+    check(
+        'cast: the drones and the spread shot are running',
+        await waitForHud(page, data => /drones/.test(data.buffs || '') && /spread/.test(data.buffs || ''))
+    )
+    check('cast: the new enemies fly in', await waitForHud(page, data => Number(data.enemies) >= 8, null, 20000))
+    await page.mouse.move(640, 640)
+    await sleep(2500)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'cast.png') })
+    check(
+        'cast: shooting them builds a combo and scores',
+        await waitForHud(page, data => Number(data.kills) >= 5, null, 25000)
+    )
+    check(
+        'cast: things drop power-ups',
+        await waitForHud(page, data => Number(data.pickups) > 0 || Number(data.collected) > 2, null, 25000)
+    )
+    await sleep(3000)
+    await page.screenshot({ path: path.join(BUILD_DIR, 'cast-later.png') })
+    await page.keyboard.press('Escape')
+    await waitForArenaGone(page)
+    check('cast: leaving puts the page back', (await pageRestored(page)).intact)
+    check('cast: no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
+    await context.close()
+
+    // An empty inbox still has its boss, at full strength, showing 0.
+    const empty = await openRaid(browser, url, 'god=1&bossAt=1&noWaves=1&tasks=0')
+    check(
+        'boss: an empty inbox still gets the boss, showing 0',
+        await waitForHud(empty.page, data => data.boss === '0' && data.phase === 'flying')
+    )
+    await sleep(1500)
+    await empty.page.screenshot({ path: path.join(BUILD_DIR, 'boss-zero.png') })
+    await empty.page.keyboard.press('Escape')
+    await waitForArenaGone(empty.page)
+    check('boss (empty inbox): no page errors', empty.errors.length === 0, empty.errors.slice(0, 3).join(' | '))
+    await empty.context.close()
+}
+
+async function bosses(browser, url) {
+    for (const kind of ['backlog', 'inbox', 'calendar', 'bell', 'clock']) {
+        const { context, page, errors } = await openRaid(
+            browser,
+            url,
+            `god=1&bossAt=1&noWaves=1&tasks=7&bossKind=${kind}`
+        )
+        check(
+            `${kind}: arrives wearing the count`,
+            await waitForHud(page, (data, k) => data.bossKind === k && data.boss === '7', kind)
+        )
+        await page.mouse.move(640, 640)
+        await sleep(5000)
+        await page.screenshot({ path: path.join(BUILD_DIR, `boss-${kind}.png`) })
+        check(`${kind}: no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '))
+        await context.close()
+    }
+}
+
+async function progress(browser, url) {
+    const screenshots = path.join(ROOT, 'browser-tests', 'at2700-run-sync', 'screenshots')
+    fs.mkdirSync(screenshots, { recursive: true })
+    for (const phone of [false, true]) {
+        const device = phone ? 'phone' : 'desktop'
+        const context = await browser.newContext({
+            viewport: phone ? { width: 390, height: 844 } : { width: 1280, height: 800 },
+            isMobile: phone,
+            hasTouch: phone,
+        })
+        // Software WebGL is slow in the VM. Use the arena's maximum 50ms frame step for flights;
+        // loading is still checked against 5.2 seconds of real wall-clock time.
+        await context.addInitScript(() => {
+            const requestFrame = window.requestAnimationFrame.bind(window)
+            let timestamp = 0
+            window.requestAnimationFrame = callback =>
+                requestFrame(() => {
+                    timestamp += 50
+                    callback(timestamp)
+                })
+        })
+        const page = await context.newPage()
+        const errors = []
+        page.on('pageerror', error => errors.push(error.message))
+        const press = selector => (phone ? page.tap(selector) : page.click(selector))
+        for (const failure of [false, true]) {
+            await page.goto(`${url}?fresh=1&lang=de&god=1&noWaves=1&profileManual=1&profileFailures=${failure ? 1 : 0}`)
+            await page.evaluate(() => {
+                localStorage.setItem(
+                    'alldone.rageMode.progress.harness',
+                    JSON.stringify({ checkpoint: { completed: 1 }, savedAt: 100 })
+                )
+                localStorage.setItem(
+                    'harness.server.progress',
+                    JSON.stringify({ checkpoint: { completed: 5, credits: 90, cannonLevel: 3 }, savedAt: 500 })
+                )
+            })
+            await press('#rage')
+            const initialTransform = await page.locator('#root').evaluate(node => node.style.transform)
+            const panel = page.locator('[data-rage-mode-layer="profile"]')
+            if (failure) {
+                await panel.locator('[data-retry-profile]').waitFor({ state: 'visible' })
+                check(`${device}: failed load stays before take-off`, (await hudData(page)).phase === 'profile-error')
+                await page.screenshot({ path: path.join(screenshots, `${device}-error.png`) })
+                // The desktop path verifies native keyboard activation through the capture handler.
+                if (phone) await press('[data-retry-profile]')
+                else {
+                    await page.keyboard.press('Tab')
+                    await page.keyboard.press('Tab')
+                    check(
+                        'desktop: Tab stays inside the loading panel',
+                        await page.locator('[data-retry-profile]').evaluate(node => node === document.activeElement)
+                    )
+                    await page.keyboard.press('Enter')
+                }
+            }
+            await sleep(5200)
+            const waiting = await page.evaluate(() => ({
+                phase: document.querySelector('[data-rage-mode-layer="hud"]').dataset.phase,
+                shots: document.querySelector('[data-rage-mode-layer="hud"]').dataset.shots,
+                transform: document.getElementById('root').style.transform,
+                attempts: window.__rage.calls.loadProfile,
+                writes: window.__rage.calls.saveProgress.length,
+                scores: window.__rage.calls.submitScore.length,
+            }))
+            check(
+                `${device}: ${failure ? 'retry' : 'slow load'} waits beyond 4.6s`,
+                waiting.phase === 'loading' &&
+                    waiting.shots === '0' &&
+                    waiting.transform === initialTransform &&
+                    waiting.writes === 0 &&
+                    waiting.scores === 0,
+                JSON.stringify(waiting)
+            )
+            check(`${device}: profile request is issued once per attempt`, waiting.attempts === (failure ? 2 : 1))
+            const bounds = await panel.locator('[role="dialog"]').boundingBox()
+            check(
+                `${device}: panel fits viewport`,
+                bounds.x >= 0 &&
+                    bounds.x + bounds.width <= (phone ? 390 : 1280) &&
+                    bounds.y >= 0 &&
+                    bounds.y + bounds.height <= (phone ? 844 : 800)
+            )
+            const padding = await panel.locator('[role="dialog"]').evaluate(node => ({
+                left: parseFloat(getComputedStyle(node).paddingLeft),
+                right: parseFloat(getComputedStyle(node).paddingRight),
+            }))
+            check(
+                `${device}: generous inner and outer padding`,
+                padding.left >= 28 &&
+                    padding.right >= 28 &&
+                    bounds.x >= 28 &&
+                    bounds.x + bounds.width <= (phone ? 390 : 1280) - 28,
+                JSON.stringify({ bounds, padding })
+            )
+            if (!failure) await page.screenshot({ path: path.join(screenshots, `${device}-loading.png`) })
+            await page.evaluate(() => window.__rage.resolveProfile())
+            check(
+                `${device}: launches server mission 6`,
+                await waitForHud(page, data => data.phase === 'flying' && data.mission === '6')
+            )
+            check(`${device}: hides loading panel`, !(await panel.isVisible()))
+            await page.keyboard.press('Escape')
+            await waitForArenaGone(page)
+            check(`${device}: exit restores page`, (await pageRestored(page)).intact)
+        }
+        check(`${device}: no page errors`, errors.length === 0, errors)
+        await context.close()
+    }
+}
+
+async function syncTiming(browser, url) {
+    const screenshots = path.join(ROOT, 'browser-tests', 'at2700-run-sync', 'screenshots')
+    fs.mkdirSync(screenshots, { recursive: true })
+    const widths = (process.env.RAGE_TEST_WIDTHS || '320,390,1280').split(',').map(Number)
+    for (const width of widths) {
+        const phone = width < 600
+        const context = await browser.newContext({
+            viewport: { width, height: phone ? 844 : 800 },
+            isMobile: phone,
+            hasTouch: phone,
+        })
+        await context.addInitScript(() => {
+            const requestFrame = window.requestAnimationFrame.bind(window)
+            let timestamp = 0
+            window.requestAnimationFrame = callback =>
+                requestFrame(() => {
+                    timestamp += 50
+                    callback(timestamp)
+                })
+            window.progressWrites = 0
+            const setItem = Storage.prototype.setItem
+            Storage.prototype.setItem = function (key, value) {
+                if (key === 'alldone.rageMode.progress.harness') window.progressWrites += 1
+                return setItem.call(this, key, value)
+            }
+        })
+        const page = await context.newPage()
+        const errors = []
+        page.on('pageerror', error => errors.push(error.message))
+        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&credits=5000&saveManual=1`)
+        await page.click('#rage')
+        check(`${width}px: starts from server before flight`, await waitForHud(page, data => data.phase === 'flying'))
+        await page.evaluate(() => {
+            window.progressWrites = 0
+        })
+        await waitForHud(page, data => data.boss === '3')
+        check(
+            `${width}px: active mission has no progress I/O`,
+            await page.evaluate(
+                () =>
+                    window.__rage.calls.saveProgress.length === 0 &&
+                    window.__rage.calls.loadProfile === 1 &&
+                    window.progressWrites === 0
+            )
+        )
+        await page.keyboard.press('Space')
+        check(`${width}px: reaches hangar`, await waitForHud(page, data => data.phase === 'hangar'))
+        check(
+            `${width}px: mission completion saves immediately`,
+            await page.evaluate(
+                () =>
+                    window.__rage.calls.saveProgress.length === 1 && window.__rage.calls.saveProgress[0].completed === 1
+            )
+        )
+        await page.click('[data-hangar-item="bomb"] button')
+        await waitForHud(page, data => data.bombs === '2')
+        await page.click('[data-hangar-item="bomb"] button')
+        await waitForHud(page, data => data.bombs === '3')
+        const purchased = await hudData(page)
+        await page.click('[data-launch]')
+        for (let i = 0; i < 3; i++) {
+            await page.waitForFunction(count => window.__rage.calls.saveProgress.length === count, i + 1)
+            await sleep(100)
+            check(
+                `${width}px: stays grounded for queued save ${i + 1}`,
+                (await hudData(page)).phase === 'saving' &&
+                    (await page.evaluate(count => window.__rage.calls.saveProgress.length === count, i + 1))
+            )
+            await page.evaluate(() => window.__rage.resolveSave())
+        }
+        check(
+            `${width}px: continues mission 2`,
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2')
+        )
+        await page.evaluate(() => {
+            window.progressWrites = 0
+        })
+        await sleep(500)
+        const active = await page.evaluate(() => ({ ...window.__rage.calls, progressWrites: window.progressWrites }))
+        check(
+            `${width}px: no further cloud progress/score/leaderboard or local saves during flight`,
+            active.saveProgress.length === 3 &&
+                active.loadProfile === 1 &&
+                active.submitScore.length === 0 &&
+                active.loadLeaderboard === 0 &&
+                active.progressWrites === 0,
+            JSON.stringify({
+                saves: active.saveProgress.length,
+                scores: active.submitScore.length,
+                boards: active.loadLeaderboard,
+                local: active.progressWrites,
+            })
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        const final = await page.evaluate(() => window.__rage.calls.saveProgress)
+        check(
+            `${width}px: every purchase saved in order, exit adds no duplicate`,
+            final.length === 3 &&
+                final.every(value => value.completed === 1) &&
+                final.map(value => value.bombs).join(',') === '1,2,3' &&
+                final[2].credits === Number(purchased.credits) &&
+                final[2].bombs === Number(purchased.bombs),
+            JSON.stringify({ final, purchased: { credits: purchased.credits, bombs: purchased.bombs } })
+        )
+        // Reopen in the SAME JS context while a new mission/purchase save queue is in flight.
+        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&saveManual=1`)
+        await page.click('#rage')
+        await waitForHud(page, data => data.phase === 'flying' && data.boss === '3')
+        await page.keyboard.press('Space')
+        await waitForHud(page, data => data.phase === 'hangar')
+        await page.click('[data-hangar-item="bomb"] button')
+        await waitForHud(page, data => data.bombs === '2')
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        await page.click('#rage')
+        await sleep(200)
+        check(
+            `${width}px: reopening waits for the old mission save before fetching`,
+            (await hudData(page)).phase === 'loading' &&
+                (await page.evaluate(() => window.__rage.calls.loadProfile)) === 1
+        )
+        await page.evaluate(() => window.__rage.resolveSave())
+        await page.waitForFunction(() => window.__rage.calls.saveProgress.length === 2)
+        check(
+            `${width}px: reopened arena waits for the queued purchase too`,
+            (await hudData(page)).phase === 'loading' &&
+                (await page.evaluate(() => window.__rage.calls.loadProfile === 1))
+        )
+        await page.evaluate(() => window.__rage.resolveSave())
+        check(
+            `${width}px: latest server mission loads after old save settles`,
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2')
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        check(`${width}px: teardown restores page`, (await pageRestored(page)).intact)
+
+        // Failed boundary save remains local; a reopened preflight offers retry before takeoff.
+        await page.goto(`${url}?fresh=1&lang=de&god=1&bossAt=1&noWaves=1&bossHp=40&saveFailures=3`)
+        await page.click('#rage')
+        await waitForHud(page, data => data.phase === 'flying' && data.boss === '3')
+        await page.keyboard.press('Space')
+        await waitForHud(page, data => data.phase === 'hangar')
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+        await page.click('#rage')
+        check(
+            `${width}px: failed save prevents the next takeoff`,
+            await waitForHud(page, data => data.phase === 'save-error' && data.shots === '0')
+        )
+        await page.screenshot({ path: path.join(screenshots, `${width}-save-error.png`) })
+        await page.click('[data-retry-profile]')
+        check(
+            `${width}px: retry saves and continues mission 2`,
+            await waitForHud(page, data => data.phase === 'flying' && data.mission === '2')
+        )
+        check(
+            `${width}px: failed/retried save preserves identical final checkpoint`,
+            await page.evaluate(() => {
+                const writes = window.__rage.calls.saveProgress
+                return writes.length === 4 && writes.every(value => JSON.stringify(value) === JSON.stringify(writes[0]))
+            })
+        )
+        await page.keyboard.press('Escape')
+        await waitForArenaGone(page)
+
+        // Very narrow and short landscape screens: measured gutters, wrapping and reachable actions.
+        if (phone) {
+            for (const viewport of [
+                { width, height: 844 },
+                { width: 568, height: 320 },
+            ]) {
+                await page.setViewportSize(viewport)
+                await page.goto(`${url}?fresh=1&lang=de&profileManual=1`)
+                await page.click('#rage')
+                const panel = page.locator('[data-rage-mode-layer="profile"] [role="dialog"]')
+                const bounds = await panel.boundingBox()
+                const layout = await panel.evaluate(node => ({
+                    padding: parseFloat(getComputedStyle(node).paddingLeft),
+                    overflow: node.scrollWidth > node.clientWidth,
+                }))
+                check(
+                    `${viewport.width}×${viewport.height}: loading gutters and no horizontal overflow`,
+                    bounds.x >= 28 &&
+                        bounds.x + bounds.width <= viewport.width - 28 &&
+                        layout.padding >= 28 &&
+                        !layout.overflow,
+                    JSON.stringify({ bounds, layout })
+                )
+                await page.screenshot({
+                    path: path.join(screenshots, `${viewport.width}-${viewport.height}-loading.png`),
+                })
+                const exit = panel.locator('button').last()
+                await exit.scrollIntoViewIfNeeded()
+                await exit.click()
+                check(`${viewport.width}×${viewport.height}: loading exit is reachable`, (await layerCount(page)) === 0)
+            }
+        }
+        check(`${width}px: no browser errors`, errors.length === 0, errors)
+        await context.close()
+    }
+}
+
+;(async () => {
+    build()
+    if (args.has('--serve')) {
+        const server = await serve(Number(process.env.PORT) || 5178)
+        console.log(`Rage mode harness: http://localhost:${server.address().port}/`)
+        return
+    }
+    const server = await serve()
+    const url = `http://localhost:${server.address().port}/`
+    const { chromium } = requirePlaywright()
+    const browser = await chromium.launch({
+        headless: !args.has('--headed'),
+        args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    })
+    try {
+        if (args.has('--sync')) await syncTiming(browser, url)
+        else if (args.has('--progress')) await progress(browser, url)
+        else if (args.has('--touch')) await touch(browser, url)
+        else if (args.has('--game')) await game(browser, url)
+        else if (args.has('--cast')) await cast(browser, url)
+        else if (args.has('--bosses')) await bosses(browser, url)
+        else await desktop(browser, url)
+    } catch (error) {
+        check('harness ran to completion', false, error.message)
+    }
+    await browser.close()
+    server.close()
+    const failed = results.filter(r => !r.ok)
+    console.log(`\n${results.length - failed.length}/${results.length} checks passed`)
+    process.exit(failed.length ? 1 : 0)
+})()

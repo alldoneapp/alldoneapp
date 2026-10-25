@@ -1,6 +1,5 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Platform, ScrollView, StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native'
-import { useSelector } from 'react-redux'
 
 import global, { colors } from '../../../styles/global'
 import CommentElementsParser from '../../../Feeds/TextParser/CommentElementsParser'
@@ -9,6 +8,7 @@ import QuotedText from './QuotedText'
 import { divideCodeText } from './codeParserFunctions'
 import CodeText from './CodeText'
 import { getMarkdownTableColumnWidths, parseMarkdownLines, parseInlineFormatting } from './markdownParserFunctions'
+import { hasContentBeforeLine, MARKDOWN_HEADING_TOP_MARGIN } from './markdownLayout'
 import Icon from '../../../Icon'
 import {
     parseFeedComment,
@@ -23,14 +23,16 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
-import { cancelAssistantRun } from '../../../../utils/backends/Assistants/assistantRuns'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import { openUrlInNewTab, resolveUnsubscribeUrl } from '../../../TaskListView/EmailLine/emailLineHelper'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
+import { markAlldoneChatsReadForLinkedEmails } from '../../../../utils/backends/Chats/markChatCommentsAsRead'
 import VmInteractionCard from './VmInteractionCard'
-import { isAwaitingVmInteraction as hasAwaitingVmInteraction } from './messageLoadingState'
+import BrowserApprovalCard from './BrowserApprovalCard'
+import { isAwaitingVmInteraction as hasAwaitingVmInteraction, showsAssistantLiveActivity } from './messageLoadingState'
 import AssistantProgress from './AssistantProgress'
+import StopAssistantRunButton from './StopAssistantRunButton'
 
 // Helper to check if a comment contains block/special elements that cannot be rendered inline
 const containsBlockOrSpecialElements = text => {
@@ -71,9 +73,6 @@ export default function MessageItemBody({
     canArchiveLinkedEmail,
     containerStyle,
 }) {
-    const loggedUserId = useSelector(state => state.loggedUser?.uid)
-    const [cancellingRun, setCancellingRun] = useState(false)
-
     // Surface a one-tap unsubscribe next to the Archive button for incoming
     // informational emails that carry List-Unsubscribe metadata. Null when the
     // email has no safe unsubscribe destination, so the control stays hidden.
@@ -83,36 +82,21 @@ export default function MessageItemBody({
     // even if legacy/stale message-loading logic has already cleared isLoading.
     const isAwaitingVmInteraction = creatorData?.isAssistant && hasAwaitingVmInteraction(assistantRun)
     const isLoadingState = creatorData?.isAssistant && (isLoading || isAwaitingVmInteraction)
-    const showFriendlyAssistantProgress = isLoadingState && !isAwaitingVmInteraction && assistantRun?.kind === 'chat'
+    const showFriendlyAssistantProgress = showsAssistantLiveActivity(creatorData?.isAssistant, isLoading, assistantRun)
+    const stopButton = (
+        <StopAssistantRunButton
+            projectId={projectId}
+            objectType={objectType}
+            objectId={chat?.id}
+            commentId={messageId}
+            assistantRun={assistantRun}
+            isLoading={isLoadingState}
+            variant={showFriendlyAssistantProgress ? 'card' : 'standalone'}
+        />
+    )
     // Strip leading whitespace so a status block appended before any answer text streamed
     // (e.g. a tool that runs immediately) doesn't render with a large blank gap above it.
     const loadingText = typeof commentText === 'string' ? commentText.replace(/^\s+/, '') : commentText
-    const canStopAssistantRun =
-        isLoadingState &&
-        assistantRun?.status === 'running' &&
-        assistantRun?.runId &&
-        assistantRun?.kind &&
-        chat?.id &&
-        (!assistantRun.requestUserId || assistantRun.requestUserId === loggedUserId)
-
-    const stopAssistantRun = async () => {
-        if (!canStopAssistantRun || cancellingRun) return
-        setCancellingRun(true)
-        try {
-            await cancelAssistantRun({
-                projectId,
-                objectType,
-                objectId: chat?.id,
-                commentId: messageId,
-                runKind: assistantRun.kind,
-                runId: assistantRun.runId,
-            })
-        } catch (error) {
-            setCancellingRun(false)
-            console.error('Failed to stop assistant run', error)
-            alert(`Could not stop assistant: ${error.message}`)
-        }
-    }
 
     // Process the content
     const processedContent = divideQuotedText(commentText, 'quote')
@@ -289,10 +273,11 @@ export default function MessageItemBody({
         )
     }
 
-    const renderTextContent = (text, lastItem) => {
+    const renderTextContent = (text, firstItem, lastItem) => {
         const textData = divideCodeText(text)
 
         return textData.map((data, subIndex) => {
+            const firstItemInsideItem = firstItem && subIndex === 0
             const lastItemInsideItem = lastItem && subIndex === textData.length - 1
             if (data.type === 'code') {
                 return <CodeText key={`text-${subIndex}`} lastItem={lastItemInsideItem} text={data.text} />
@@ -313,10 +298,20 @@ export default function MessageItemBody({
                         )
                     } else if (/^h[1-6]$/.test(line.type)) {
                         const headingStyle = localStyles[`header${line.type.substring(1)}`]
+                        const hasPrecedingContent = hasContentBeforeLine(
+                            processedLines,
+                            lineIndex,
+                            !firstItemInsideItem
+                        )
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
-                                style={[headingStyle, !isLastLine && { marginBottom: 16 }]}
+                                testID="markdown-heading"
+                                style={[
+                                    headingStyle,
+                                    hasPrecedingContent && { marginTop: MARKDOWN_HEADING_TOP_MARGIN },
+                                    !isLastLine && { marginBottom: 16 },
+                                ]}
                             >
                                 {renderFormattedText(line.segments, headingStyle)}
                             </Text>
@@ -400,7 +395,13 @@ export default function MessageItemBody({
             {isLoadingState ? (
                 <View style={localStyles.loadingContainer}>
                     {showFriendlyAssistantProgress ? (
-                        <AssistantProgress activity={assistantRun?.activity} />
+                        <AssistantProgress
+                            activity={assistantRun?.activity}
+                            activityHistory={assistantRun?.activityHistory}
+                            runId={assistantRun?.runId}
+                        >
+                            {stopButton}
+                        </AssistantProgress>
                     ) : !containsBlockOrSpecialElements(loadingText) ? (
                         <Text style={[localStyles.loadingText, { marginBottom: 8 }]}>{loadingText}</Text>
                     ) : (
@@ -426,21 +427,12 @@ export default function MessageItemBody({
                             <ActivityIndicator size="small" color={colors.PrimaryBlue} />
                         </View>
                     )}
-                    {canStopAssistantRun && (
-                        <TouchableOpacity
-                            style={[localStyles.stopRunButton, cancellingRun && localStyles.stopRunButtonDisabled]}
-                            onPress={stopAssistantRun}
-                            disabled={cancellingRun}
-                            accessibilityLabel="Stop assistant"
-                        >
-                            <Icon name="x-thicker" size={10} color={colors.UtilityRed200} />
-                            <Text style={localStyles.stopRunButtonText}>{cancellingRun ? 'Stopping...' : 'Stop'}</Text>
-                        </TouchableOpacity>
-                    )}
+                    {!showFriendlyAssistantProgress && stopButton}
                 </View>
             ) : (
                 <>
                     {processedContent.map((contentPart, index) => {
+                        const firstItem = index === 0
                         const lastItem = index === processedContent.length - 1
                         const { type, text } = contentPart
 
@@ -449,7 +441,7 @@ export default function MessageItemBody({
                                 <QuotedText key={index} projectId={projectId} lastItem={lastItem} quotedText={text} />
                             )
                         } else {
-                            return renderTextContent(text, lastItem)
+                            return renderTextContent(text, firstItem, lastItem)
                         }
                     })}
                     {canArchiveLinkedEmail && linkedEmail && (
@@ -464,6 +456,9 @@ export default function MessageItemBody({
                                 messageIds={[linkedEmail.messageId]}
                                 initialTask={linkedEmailGmailData?.taskCreated}
                                 checkExisting
+                                // Creating a task means this email has been handled. Clear only
+                                // its Alldone chat notification; Gmail's read state stays intact.
+                                onTaskCreated={() => markAlldoneChatsReadForLinkedEmails([linkedEmail])}
                                 style={localStyles.linkedEmailTaskButton}
                             />
                             <TouchableOpacity
@@ -472,14 +467,16 @@ export default function MessageItemBody({
                                 disabled={linkedEmailArchiving || linkedEmailArchived}
                                 accessibilityLabel={translate('Archive email')}
                             >
-                                {linkedEmailArchiving ? (
+                                {/* Archived wins over archiving (AT-2424): the archive is
+                                    optimistic, so the check mark is the answer from the press
+                                    onwards and the spinner only covers a state the user never
+                                    normally reaches. */}
+                                {linkedEmailArchived ? (
+                                    <Icon name="check" size={14} color={colors.Text03} />
+                                ) : linkedEmailArchiving ? (
                                     <ActivityIndicator size="small" color={colors.Text03} />
                                 ) : (
-                                    <Icon
-                                        name={linkedEmailArchived ? 'check' : 'archive'}
-                                        size={14}
-                                        color={colors.Text03}
-                                    />
+                                    <Icon name="archive" size={14} color={colors.Text03} />
                                 )}
                                 <Text style={localStyles.linkedEmailButtonText}>
                                     {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
@@ -496,6 +493,12 @@ export default function MessageItemBody({
                                 </TouchableOpacity>
                             )}
                         </View>
+                    )}
+                    {/* A browser action the policy paused. It hangs off the FINISHED comment, not
+                        the loading one: the assistant's turn has already ended by the time it asks,
+                        unlike a VM run, which parks and is still alive. */}
+                    {creatorData?.isAssistant && (
+                        <BrowserApprovalCard projectId={projectId} objectId={chat?.id} commentId={messageId} />
                     )}
                 </>
             )}
@@ -598,25 +601,6 @@ const localStyles = StyleSheet.create({
         marginTop: 8,
         flexDirection: 'row',
         alignItems: 'flex-start',
-    },
-    stopRunButton: {
-        alignSelf: 'flex-start',
-        marginTop: 8,
-        minHeight: 24,
-        paddingHorizontal: 8,
-        borderRadius: 4,
-        borderWidth: 1,
-        borderColor: colors.UtilityRed200,
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    stopRunButtonDisabled: {
-        opacity: 0.6,
-    },
-    stopRunButtonText: {
-        ...global.caption2,
-        color: colors.UtilityRed200,
-        marginLeft: 4,
     },
     inlineElement: {
         marginRight: 6,

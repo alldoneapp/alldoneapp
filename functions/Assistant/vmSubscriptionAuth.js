@@ -74,6 +74,8 @@ function sanitizeStatus(data, apiKeyStatus = {}) {
             connected: !!claude.oauthToken,
             connectedAt: claude.connectedAt || null,
             lastUsedAt: claude.lastUsedAt || null,
+            authInvalid: claude.authInvalid === true,
+            authInvalidAt: claude.authInvalidAt || null,
             apiKey: apiKeyStatus.claude || { connected: false },
             activeMode: data?.credentialModes?.claude || null,
         },
@@ -81,6 +83,8 @@ function sanitizeStatus(data, apiKeyStatus = {}) {
             connected: !!codex.authJson,
             connectedAt: codex.connectedAt || null,
             lastUsedAt: codex.lastUsedAt || null,
+            authInvalid: codex.authInvalid === true,
+            authInvalidAt: codex.authInvalidAt || null,
             apiKey: apiKeyStatus.codex || { connected: false },
             activeMode: data?.credentialModes?.codex || null,
         },
@@ -132,6 +136,8 @@ async function connectVmSubscription({ userId, provider, credential }) {
                 ...value,
                 connectedAt: now,
                 lastUsedAt: null,
+                authInvalid: false,
+                authInvalidAt: null,
             },
             ...(currentMode === 'byok' ? {} : { credentialModes: { [provider]: 'subscription' } }),
             updatedAt: now,
@@ -179,8 +185,44 @@ async function loadVmSubscriptionAuth(userId, provider, { markUsed = true } = {}
         provider,
         credential,
         credentialVersion: getVmSubscriptionCredentialVersion(provider, credential),
+        authInvalid: providerData.authInvalid === true,
+        authInvalidAt: providerData.authInvalidAt || null,
         mode: 'subscription',
     }
+}
+
+/**
+ * Record a credential rejection without letting a stale VM poison a newer login.
+ *
+ * Codex refresh tokens rotate, so two concurrent VMs can briefly hold different
+ * versions of the same subscription login. The version comparison is therefore
+ * part of the write, not a read-before-write hint: if another VM or the user has
+ * already stored a newer credential, the old failure is ignored.
+ */
+async function markVmSubscriptionAuthInvalid(userId, provider, expectedCredentialVersion, { now = Date.now } = {}) {
+    if (!userId || !VALID_PROVIDERS.includes(provider) || !expectedCredentialVersion) return false
+    const ref = getSubscriptionRef(userId)
+    return admin.firestore().runTransaction(async transaction => {
+        const snapshot = await transaction.get(ref)
+        if (!snapshot.exists) return false
+        const providerData = snapshot.data()?.[provider] || {}
+        const credential = provider === 'claude' ? providerData.oauthToken : providerData.authJson
+        if (!credential) return false
+        if (getVmSubscriptionCredentialVersion(provider, credential) !== expectedCredentialVersion) return false
+
+        // Preserve the first observed rejection while this exact credential remains stored.
+        // A two-minute recovery wait may report the same failure again at settlement; resetting
+        // the timestamp there would make the UI understate how long the login has been broken.
+        const observedAt = now()
+        const invalidAt =
+            providerData.authInvalid === true && providerData.authInvalidAt ? providerData.authInvalidAt : observedAt
+        transaction.update(ref, {
+            [`${provider}.authInvalid`]: true,
+            [`${provider}.authInvalidAt`]: invalidAt,
+            updatedAt: observedAt,
+        })
+        return true
+    })
 }
 
 function parseAuthRefreshTime(auth) {
@@ -225,6 +267,8 @@ async function persistRefreshedCodexAuth(userId, rawAuthJson, expectedCredential
         transaction.update(ref, {
             'codex.authJson': nextAuthJson,
             'codex.lastUsedAt': now,
+            'codex.authInvalid': false,
+            'codex.authInvalidAt': null,
             updatedAt: now,
         })
         return true
@@ -237,9 +281,11 @@ module.exports = {
     getVmSubscriptionStatus,
     hasVmSubscription,
     loadVmSubscriptionAuth,
+    markVmSubscriptionAuthInvalid,
     persistRefreshedCodexAuth,
     getVmSubscriptionCredentialVersion,
     normalizeClaudeOauthToken,
     parseCodexAuthJson,
     VM_SUBSCRIPTION_DOC,
+    __private__: { sanitizeStatus },
 }

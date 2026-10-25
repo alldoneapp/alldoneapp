@@ -1,15 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { View } from 'react-native'
+import { Text, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 import firebase from 'firebase/compat/app'
 import moment from 'moment'
 import v4 from 'uuid/v4'
 import Hotkeys from 'react-hot-keys'
 import ReactQuill from 'react-quill-new'
+import NoteQuill from './NoteQuill'
+import { isRemoteEditorChange } from './noteChangeOrigin'
+export { isRemoteEditorChange } from './noteChangeOrigin'
+import { createNoteSaveScheduler } from './noteSaveScheduler'
+import { convertNoteImages } from './noteImageConversion'
+import { noteDeltaWork } from './noteDeltaWork'
 import { QuillBinding } from 'y-quill'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 
+import { createMeetingInsertionTarget, insertMeetingTranscript } from './meetingNotePersistence'
 import EditorToolbar, {
     BoldIcon,
     CleanFormat,
@@ -34,11 +41,12 @@ import EditorToolbar, {
 import './toolbar-styles.css'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
 import Backend from '../../../../utils/BackendBridge'
+import { beginLoadingOperation } from '../../../../utils/redux/loadingOperation'
 import URLsNotes, { URL_NOTE_DETAILS_EDITOR } from '../../../../URLSystem/Notes/URLsNotes'
-import { getRandomCollabColor } from '../../../styles/global'
+import styles, { colors, getRandomCollabColor } from '../../../styles/global'
+import { translate } from '../../../../i18n/TranslationService'
 import CustomScrollView from '../../../UIControls/CustomScrollView'
 import {
-    resetLoadingData,
     setQuillEditorProjectId,
     showConfirmPopup,
     setIsLoadingNoteData,
@@ -49,6 +57,7 @@ import {
 import {
     getDvMainTabLink,
     isValidAssistantLink,
+    isValidArtifactLink,
     isValidContactLink,
     isValidGoalLink,
     isValidNoteLink,
@@ -80,6 +89,7 @@ import {
 } from './mentionsHelper'
 import { getNotePreviewText, getScrollTolerance } from '../../NotesHelper'
 import { markdownToDelta, containsMarkdown } from './markdownToDelta'
+import { hasMarkdownTableClipboardHtml } from './markdownTableClipboard'
 import { updateNewAttachmentsDataInNotes } from '../../../Feeds/Utils/HelperFunctions'
 import { getDateFormat } from '../../../UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKGROUND_COLORS, TEXT_COLORS } from '../../../../utils/ColorConstants'
@@ -90,7 +100,26 @@ import { updateXpByEditingNote } from '../../../../utils/Levels'
 import { getDb, getNotesCollaborationServerData } from '../../../../utils/backends/firestore'
 import { setNoteData } from '../../../../utils/backends/Notes/notesFirestore'
 import { loadNoteContentWithRetry } from './noteContentLoader'
-import { prepareSyncedNoteDocument } from './noteCollaborationRecovery'
+import { createLocalFirstNoteSession } from './noteLocalFirst'
+import { storageIsMissingLocalState } from './noteCollaborationRecovery'
+import { createNoteLocalPersistence } from './noteLocalPersistence'
+import { isBrowserOffline } from '../../../../utils/connectionState'
+import { subscribePageHidden } from '../../../../utils/appResume'
+import {
+    registerPendingNoteUpload,
+    getPendingNoteUploadRevision,
+    clearPendingNoteUpload,
+    hasPendingNoteUpload,
+} from '../../../../utils/Notes/pendingNoteUploads'
+import {
+    applyPastedClipboard,
+    applyPastedDeltaToEditor,
+    noteEditorOwnsPaste,
+    normalizePastedLineEndings,
+} from './notePaste'
+import store from '../../../../redux/store'
+import { enableDeferredNoteEmbeds } from '../../../Feeds/CommentsTextInput/autoformat/formats/noteEmbedVisibility'
+import { unmountEmbedReactRoots } from '../../../Feeds/CommentsTextInput/autoformat/formats/embedReactRoot'
 
 const Delta = ReactQuill.Quill.import('delta')
 
@@ -111,8 +140,25 @@ export let exportRef = null
 export let exportLoadingRef = null
 export let loadedNote = null
 const SAVE_INTERVAL = 3000
+const MAX_SAVE_INTERVAL = 15000
+// Content this client only RECEIVED (a collaborator typing) is persisted far
+// less eagerly than content the local user authored: the author's own client is
+// already saving it, so our upload is a safety net, not the primary write path.
+// See `isRemoteEditorChange` below (AT-2340).
+const REMOTE_SAVE_INTERVAL = 60000
 const NOTE_CONTENT_RETRY_DELAY = 5000
 
+/**
+ * Did this Quill change come from a collaborator rather than from this user?
+ *
+ * y-quill applies remote Yjs updates with `quill.updateContents(delta, this)` —
+ * the QuillBinding instance itself is the change source — while every local
+ * change carries a string source ('user' for typing, 'api' for the editor's own
+ * programmatic edits such as the image-format rewrite, which ARE local and must
+ * still be saved normally). Matching on the binding instance is therefore both
+ * precise and conservative: anything we cannot positively attribute to the
+ * binding is treated as local.
+ */
 const NotesEditorView = ({
     project,
     note,
@@ -140,22 +186,47 @@ const NotesEditorView = ({
     const userName = loggedUser.displayName
     const selectedTab = useSelector(state => state.selectedNavItem)
     const isLoadingData = useSelector(state => state.isLoadingData)
-    const [editorRevision, setEditorRevision] = useState(0)
     const [synced, setSynced] = useState(false)
     const [editors, setEditors] = useState([])
     const [dataLoaded, setDataLoaded] = useState(false)
+    // The note's content could not be loaded AND the browser is offline — shown
+    // as an explanatory message instead of an endless spinner (notes follow-ups).
+    const [contentUnavailableOffline, setContentUnavailableOffline] = useState(false)
     // const [scrollEnabled, setScrollEnabled] = useState(false)
     const firstEditionRef = useRef(true)
+    // "This note holds local state we could not compare against the canonical
+    // Storage copy" — resolved on reconnect, never guessed (AT-2340).
+    const catchUpUnverifiedRef = useRef(false)
     let loadingRef = useRef(true)
     let provider = useRef(null)
     let ydoc = useRef(null)
     let binding = useRef(null)
+    let localPersistence = useRef(null)
     let dirtyEditor = useRef(false)
-    let saveTimeoutHandle = useRef(null)
+    // Content received from a collaborator and not yet persisted by us. Kept
+    // apart from `dirtyEditor` so it can never stamp this user as the editor.
+    const remoteDirtyEditor = useRef(false)
+    const saveSchedulerRef = useRef(null)
+    const captureSaveRef = useRef(null)
+    const closingRef = useRef(false)
+    const storageRefreshPendingRef = useRef(false)
+    const localFirstSessionRef = useRef(null)
+    const verifyStorageRef = useRef(null)
+    const verifyingStorageRef = useRef(false)
+    const [storageRefreshing, setStorageRefreshing] = useState(false)
+    const [storageUnverified, setStorageUnverified] = useState(false)
+    const linksDirtyRef = useRef(false)
+    const textSizeDirtyRef = useRef(false)
     const noteContentRetryTimeoutRef = useRef(null)
     const initialUserMentionsIdsRef = useRef({})
     const color = useRef(getRandomCollabColor())
     const dispatch = useDispatch()
+    // Use the screen's shared floating loader while the cached note is being
+    // compared with Storage. Releasing this owner never hides other loads.
+    useEffect(() => {
+        if (storageRefreshing && !contentUnavailableOffline)
+            return beginLoadingOperation('note_content_sync', { dispatch })
+    }, [storageRefreshing, contentUnavailableOffline, dispatch])
     const isInitialRefs = useRef(true)
     const noteUnmountedRef = useRef(false)
     exportLoadingRef = loadingRef.current
@@ -163,6 +234,13 @@ const NotesEditorView = ({
     const scrollRef = useRef()
     const scrollYPos = useRef(0)
     const accessGranted = SharedHelper.accessGranted(loggedUser, projectId)
+    // `cleanup` is returned from a mount-only effect, so it closes over the first
+    // render's values. It used to hardcode `true` for userCanEditNote where
+    // autosave passes `accessGranted` — meaning a user without write access
+    // still wrote the note's preview and edition data on the way out (AT-2340).
+    const accessGrantedRef = useRef(accessGranted)
+    accessGrantedRef.current = accessGranted
+    const imageConversionTimeoutRef = useRef(null)
     const needReplaceImageFormat = useRef(false)
     const readOnlyRef = useRef(readOnly)
     const timeoutRef = useRef(null)
@@ -170,6 +248,8 @@ const NotesEditorView = ({
     const maxLengthWarningDisplayed = useRef(false)
     const innerTasksIdsRef = useRef([])
     const lastSeenEditionDateRef = useRef(null)
+    const noteCollabUnsubRef = useRef(null)
+    const noteEditorPresenceRegisteredRef = useRef(false)
 
     const lastFullscreenChangeTime = useRef(0)
     const isFullscreenRef = useRef(isFullscreen)
@@ -219,8 +299,7 @@ const NotesEditorView = ({
         }
     }
 
-    const scanLinkedObjects = () => {
-        const ops = quillRef.current.getContents().ops
+    const scanLinkedObjects = ({ forceWrite = false, ops = quillRef.current.getContents().ops } = {}) => {
         const linkedParentNotesUrl = []
         const linkedParentTasksUrl = []
         const linkedParentContactsUrl = []
@@ -228,10 +307,19 @@ const NotesEditorView = ({
         const linkedParentGoalsUrl = []
         const linkedParentSkillsUrl = []
         const linkedParentAssistantsUrl = []
+        const linkedParentArtifactsUrl = []
         for (let op of ops) {
             if (op.insert) {
-                const { url, mention, taskTagFormat } = op.insert
-                if (mention) {
+                const { url, mention, taskTagFormat, artifactEmbed } = op.insert
+                if (artifactEmbed) {
+                    // A preview card links to its artifact exactly as a link chip does.
+                    if (
+                        isValidArtifactLink(artifactEmbed.url, projectId) &&
+                        linkedParentArtifactsUrl.indexOf(artifactEmbed.url) < 0
+                    ) {
+                        linkedParentArtifactsUrl.push(artifactEmbed.url)
+                    }
+                } else if (mention) {
                     if (mention.userId !== NOT_USER_MENTIONED) {
                         const objectType = TasksHelper.getPeopleTypeUsingId(mention.userId, projectId)
                         const contactUrl = `${window.origin}${getDvMainTabLink(projectId, mention.userId, objectType)}`
@@ -259,6 +347,8 @@ const NotesEditorView = ({
                         linkedParentSkillsUrl.push(op.insert.url.url)
                     } else if (isValidAssistantLink(op.insert.url.url, projectId)) {
                         linkedParentAssistantsUrl.push(op.insert.url.url)
+                    } else if (isValidArtifactLink(op.insert.url.url, projectId)) {
+                        linkedParentArtifactsUrl.push(op.insert.url.url)
                     }
                 }
             }
@@ -273,6 +363,7 @@ const NotesEditorView = ({
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             {
                 type: 'note',
@@ -281,12 +372,19 @@ const NotesEditorView = ({
                 notePartEdited: 'content',
                 isUpdatingNotes: true,
             },
-            {}
+            {},
+            // On teardown the backlink write must be issued at once: the
+            // no-op comparison reads the local cache asynchronously, and a page
+            // being unloaded may never run that continuation (AT-2340).
+            { forceWrite }
         )
     }
 
-    const checkMaxLength = () => {
-        const text = quillRef.current.getText()
+    const checkMaxLength = (ops = quillRef.current.getContents().ops) => {
+        const text = ops
+            .filter(op => typeof op.insert === 'string')
+            .map(op => op.insert)
+            .join('')
         const MAX_LENGTH_IN_KB = 100
         const byteSize = str => new Blob([str]).size
         const size = byteSize(text) / 1024
@@ -298,24 +396,76 @@ const NotesEditorView = ({
         }
     }
 
-    const autosave = () => {
-        clearTimeout(saveTimeoutHandle.current)
-        saveTimeoutHandle.current = null
-        if (dirtyEditor.current) {
-            dirtyEditor.current = false
-
-            const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
-            const preview = getNotePreviewText(projectId, quillRef.current)
-            scanLinkedObjects()
-            checkMaxLength()
-            setNoteData(projectId, note.id, stateUpdate, preview, firstEditionRef, accessGranted)
-            // Commenting this by Customer request
-            // Backend.logEvent('ending_editing_note', {
-            //     uid: loggedUser.uid,
-            //     id: note.id,
-            // })
-            AddUserAsFollower()
+    const captureSave = (local, closing = false) => {
+        if (!ydoc.current || loadingRef.current || readOnlyRef.current) return null
+        // Cached content is editable while Storage downloads. Do not upload a
+        // stale snapshot before the first merge unless closing (local durability
+        // and the pending-upload marker preserve it if the tab disappears).
+        if (storageRefreshPendingRef.current && !closing) return null
+        const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
+        const preview = local ? getNotePreviewText(projectId, quillRef.current) : null
+        if (local && (linksDirtyRef.current || textSizeDirtyRef.current)) {
+            const ops = quillRef.current.getContents().ops
+            if (linksDirtyRef.current) scanLinkedObjects({ ops, forceWrite: closing })
+            if (textSizeDirtyRef.current) checkMaxLength(ops)
         }
+        linksDirtyRef.current = textSizeDirtyRef.current = false
+        dirtyEditor.current = remoteDirtyEditor.current = false
+        const pendingRevision = getPendingNoteUploadRevision(note.id)
+        const canEdit = accessGrantedRef.current
+        const deferContentUpload = catchUpUnverifiedRef.current || storageRefreshPendingRef.current
+        // Issue the save at capture time. notesFirestore serializes the bytes;
+        // metadata must enter Firestore's durable queue before a page disappears,
+        // even while an older Storage upload is still running.
+        const upload = setNoteData(projectId, note.id, stateUpdate, preview, local ? firstEditionRef : null, canEdit, {
+            contentOnly: !local,
+            pendingRevision,
+            deferContentUpload,
+        })
+            .catch(error => {
+                console.warn('Note save could not be started; local persistence retains the changes', error)
+                return false
+            })
+            .then(uploaded => {
+                if (!uploaded && !noteUnmountedRef.current && !isBrowserOffline()) {
+                    clearTimeout(noteContentRetryTimeoutRef.current)
+                    noteContentRetryTimeoutRef.current = setTimeout(
+                        () => verifyStorageRef.current?.(),
+                        NOTE_CONTENT_RETRY_DELAY
+                    )
+                }
+                return uploaded
+            })
+        if (local) AddUserAsFollower()
+        return () => upload
+    }
+
+    captureSaveRef.current = captureSave
+
+    const autosave = () => saveSchedulerRef.current?.flush()
+
+    const getMeetingInsertionTarget = () =>
+        createMeetingInsertionTarget({ document: ydoc.current, editor: quillRef.current })
+
+    const persistMeetingChunk = async chunk => {
+        if (chunk.owner !== `${loggedUser.uid}:${note.id}`) return false
+        if (
+            noteUnmountedRef.current ||
+            loadingRef.current ||
+            readOnlyRef.current ||
+            !accessGrantedRef.current ||
+            !ydoc.current ||
+            !quillRef.current
+        )
+            return false
+        // Merge the canonical note before testing its dedup map. A stale local snapshot
+        // may otherwise insert a chunk whose earlier upload succeeded before a crash.
+        if (storageRefreshPendingRef.current || catchUpUnverifiedRef.current) return false
+        insertMeetingTranscript({ document: ydoc.current, chunk, editor: quillRef.current })
+        // A queued WAV survives failed/offline saves. Only a confirmed canonical Storage
+        // upload acknowledges it; the marker makes every subsequent attempt harmless.
+        const upload = captureSave(true)
+        return upload ? (await upload()) === true : false
     }
 
     const checkIfNeedReplaceFormats = changesOps => {
@@ -330,7 +480,7 @@ const NotesEditorView = ({
         }
     }
 
-    const checkForInnerTasksChanges = (changesOps, source) => {
+    const checkForInnerTasksChanges = (changesOps, source, removedTasks = true) => {
         let checkForDeletedTasks = false
         for (let i = 0; i < changesOps.length; i++) {
             const { insert, delete: remove } = changesOps[i]
@@ -346,7 +496,7 @@ const NotesEditorView = ({
             }
             if (remove) checkForDeletedTasks = true
         }
-        if (checkForDeletedTasks && innerTasksIdsRef.current.length > 0) {
+        if (checkForDeletedTasks && removedTasks && innerTasksIdsRef.current.length > 0) {
             const deltaContent = quillRef.current.getContents()
             const currentTasksIds = []
             for (let i = 0; i < deltaContent.ops.length; i++) {
@@ -371,27 +521,48 @@ const NotesEditorView = ({
         }
     }
 
-    const handleChange = (_value, delta, source) => {
-        handleTextChangeForMentions()
+    const handleChange = (_value, delta, source, _editor, previous) => {
+        const work = noteDeltaWork(delta, previous)
+        linksDirtyRef.current ||= work.links
+        textSizeDirtyRef.current ||= work.text
+        handleTextChangeForMentions(delta)
         if (dataLoaded) {
-            dirtyEditor.current = true
-            if (saveTimeoutHandle.current === null) {
-                // Commenting this by Customer request
-                // Backend.logEvent('started_editing_note', {
-                //     uid: loggedUser.uid,
-                //     id: note.id,
-                // })
-                saveTimeoutHandle.current = setTimeout(autosave, SAVE_INTERVAL)
+            // A collaborator's edits must not dirty THIS editor: they are not our
+            // edits, and marking them dirty ran the whole local save fan-out —
+            // lastEditionDate/lastEditorId stamped with our id, the edited-today
+            // list, the started-editing feed, the backlink write and
+            // tryAddFollower — for text we merely received (AT-2340). The merged
+            // document is still persisted, content-only and far more lazily, so
+            // nothing is lost if the collaborator's own upload never lands.
+            if (isRemoteEditorChange(source, binding.current)) {
+                storeInitialUserMentions(delta.ops)
+                if (!readOnlyRef.current) {
+                    if (!remoteDirtyEditor.current && !dirtyEditor.current)
+                        registerPendingNoteUpload(projectId, note.id)
+                    remoteDirtyEditor.current = true
+                    saveSchedulerRef.current?.markRemote()
+                }
+            } else if (!readOnlyRef.current) {
+                if (!dirtyEditor.current) registerPendingNoteUpload(projectId, note.id)
+                dirtyEditor.current = true
+                saveSchedulerRef.current?.markLocal()
             }
         }
-        checkForInnerTasksChanges(delta.ops, source)
+        checkForInnerTasksChanges(delta.ops, source, work.removedTasks)
         checkIfNeedReplaceFormats(delta.ops)
-        setEditorRevision(revision => revision + 1)
+        if (needReplaceImageFormat.current && imageConversionTimeoutRef.current === null) {
+            imageConversionTimeoutRef.current = setTimeout(() => {
+                imageConversionTimeoutRef.current = null
+                if (!noteUnmountedRef.current && needReplaceImageFormat.current)
+                    replaceQuillImagesByCustomImagesFormat()
+            }, 0)
+        }
 
         resetTimeoutCounter()
     }
 
     const resetTimeoutCounter = () => {
+        if (noteUnmountedRef.current) return
         const ONE_HOUR = 10800000
 
         if (timeoutRef.current) {
@@ -426,6 +597,65 @@ const NotesEditorView = ({
         }
     }, [])
 
+    // Saves made offline reach only the local IndexedDB copy (the Firebase
+    // Storage put fails); when connectivity returns while the editor is still
+    // open, upload the current state so the canonical copy catches up
+    // (OFFLINE_SUPPORT_PLAN.md Stage 6).
+    //
+    // This used to force `dirtyEditor` and autosave UNCONDITIONALLY on every
+    // `online` event, so a Wi-Fi switch or a laptop wake re-uploaded the whole
+    // note and re-stamped lastEditionDate/lastEditorId, the edited-today list,
+    // the linked-parent write and the follower — for a note nobody had touched,
+    // which in turn made every other open client re-download it. Now the
+    // decision is measured against the canonical copy first, and a note the
+    // server already has costs one read and no writes (AT-2340).
+    useEffect(() => {
+        const uploadOnReconnect = async () => {
+            if (noteUnmountedRef.current || loadingRef.current || !ydoc.current) return
+            // Only one verification download at a time. Dirty local edits
+            // are kept editable and join the verified union before uploading.
+            if (storageRefreshPendingRef.current || verifyingStorageRef.current) return
+            if (!catchUpUnverifiedRef.current && !hasPendingNoteUpload(note.id)) return
+
+            verifyingStorageRef.current = true
+            try {
+                const pendingRevision = getPendingNoteUploadRevision(note.id)
+                const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id), {
+                    attemptTimeoutMs: 10000,
+                })
+                if (noteUnmountedRef.current || !ydoc.current) return
+                const storageUpdate = data ? new Uint8Array(data) : new Uint8Array(0)
+                catchUpUnverifiedRef.current = false
+                setStorageUnverified(false)
+                const needsUpload = storageIsMissingLocalState(ydoc.current, storageUpdate)
+                if (storageUpdate.length > 0) Y.applyUpdate(ydoc.current, storageUpdate, 'remote-storage-refresh')
+                if (!needsUpload) {
+                    clearPendingNoteUpload(note.id, pendingRevision)
+                    return
+                }
+                // Merge the canonical copy in first so the upload is the CRDT
+                // union — an edit made elsewhere while we were offline must not
+                // be clobbered by our catch-up.
+                if (readOnlyRef.current) return
+                if (!dirtyEditor.current) registerPendingNoteUpload(projectId, note.id)
+                dirtyEditor.current = true
+                saveSchedulerRef.current?.markLocal()
+                autosave()
+            } catch (error) {
+                // Could not read the canonical copy: keep both flags so the next
+                // reconnect (or the next open) retries the comparison.
+                console.warn('Could not verify whether the note needs an offline catch-up upload', error)
+                if (!isBrowserOffline())
+                    noteContentRetryTimeoutRef.current = setTimeout(uploadOnReconnect, NOTE_CONTENT_RETRY_DELAY)
+            } finally {
+                verifyingStorageRef.current = false
+            }
+        }
+        verifyStorageRef.current = uploadOnReconnect
+        window.addEventListener('online', uploadOnReconnect)
+        return () => window.removeEventListener('online', uploadOnReconnect)
+    }, [readOnly])
+
     useEffect(() => {
         dispatch(setQuillTextInputProjectIdsByEditorId(note.id, projectId))
         quillTextInputProjectIds[note.id] = projectId
@@ -451,43 +681,26 @@ const NotesEditorView = ({
 
     const replaceQuillImagesByCustomImagesFormat = () => {
         needReplaceImageFormat.current = false
-        const editor = exportRef.getEditor()
-        const ops = editor.getContents().ops
-        let inputCursorIndex = getSelection().index
-
-        for (let i = 0; i < ops.length; i++) {
-            const { image } = ops[i].insert
-            if (image) {
-                if (checkIsLimitedByTraffic(projectId)) {
-                    delete ops[i]
-                    inputCursorIndex -= 1
-                } else {
-                    const id = v4()
-                    const text = 'image.jpg'
-                    const customImageFormat = {
-                        text,
-                        uri: image,
-                        resizedUri: image,
-                        isNew: NEW_ATTACHMENT,
-                        isLoading: LOADING_MODE,
-                        externalId: id,
-                        editorId: note.id,
-                    }
-
-                    delete ops[i].insert.image
-                    delete ops[i].insert.attributes
-                    ops[i].insert.customImageFormat = customImageFormat
-                    ops.splice(i + 1, 0, { insert: ' ' })
-                    ops.splice(i, 0, { insert: ' ' })
-                    inputCursorIndex += 2
-
-                    updateNewAttachmentsDataInNotes(editor, id, text, image)
+        const editor = quillRef.current
+        const converted = convertNoteImages(
+            editor,
+            image => {
+                if (checkIsLimitedByTraffic(projectId)) return null
+                return {
+                    text: 'image.jpg',
+                    uri: image,
+                    resizedUri: image,
+                    isNew: NEW_ATTACHMENT,
+                    isLoading: LOADING_MODE,
+                    externalId: v4(),
+                    editorId: note.id,
                 }
-            }
+            },
+            getSelection()
+        )
+        for (const image of converted) {
+            updateNewAttachmentsDataInNotes(editor, image.externalId, image.text, image.uri)
         }
-
-        editor.setContents(ops)
-        editor.setSelection(inputCursorIndex, 0)
     }
 
     const writeBrowserURL = () => {
@@ -499,6 +712,10 @@ const NotesEditorView = ({
     }
 
     const cleanup = () => {
+        // A cell draft is not in Yjs until committed. Flush before encoding the
+        // document on navigation/unload, just as a blur would do.
+        quillRef.current.getModule('markdownTableEditing')?.finish(true)
+        if (needReplaceImageFormat.current) replaceQuillImagesByCustomImagesFormat()
         const ops = quillRef.current.getContents().ops
         generateMentionTasks(ops)
         resetMentionsData()
@@ -508,29 +725,26 @@ const NotesEditorView = ({
             uid: loggedUser.uid,
             id: note.id,
         })
-        Backend.removeNoteEditor(note.id, { id: loggedUser.uid, color: color.current })
-        dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
-        clearTimeout(saveTimeoutHandle.current)
-        saveTimeoutHandle.current = null
+        noteCollabUnsubRef.current?.()
+        noteCollabUnsubRef.current = null
+        if (noteEditorPresenceRegisteredRef.current) {
+            noteEditorPresenceRegisteredRef.current = false
+            Backend.removeNoteEditor(projectId, note.id, { id: loggedUser.uid, color: color.current }).catch(error => {
+                console.warn('Failed to remove note collaboration presence', error)
+            })
+        }
+        dispatch([setIsLoadingNoteData(false)])
+        clearTimeout(imageConversionTimeoutRef.current)
         clearTimeout(noteContentRetryTimeoutRef.current)
         noteContentRetryTimeoutRef.current = null
+        closingRef.current = true
+        saveSchedulerRef.current?.close()
+        dirtyEditor.current = remoteDirtyEditor.current = false
 
-        if (!loadingRef.current && dirtyEditor.current) {
-            const stateUpdate = Y.encodeStateAsUpdate(ydoc.current)
-            scanLinkedObjects()
-            setNoteData(projectId, note.id, stateUpdate, quillRef.current.getText(0, 500), firstEditionRef, true)
-        }
-
-        if (provider.current) {
-            //provider.current.disconnect()
-            provider.current.destroy()
-        }
-        if (ydoc.current) {
-            ydoc.current.destroy()
-        }
-        if (binding.current) {
-            binding.current.destroy()
-        }
+        binding.current?.destroy()
+        localFirstSessionRef.current?.dispose()
+        localFirstSessionRef.current = null
+        provider.current = localPersistence.current = ydoc.current = binding.current = null
 
         removeModal(MANAGE_TASK_MODAL_ID)
     }
@@ -542,13 +756,6 @@ const NotesEditorView = ({
     }, [showNewDayNotification, showNewVersionMandtoryNotifcation])
 
     useEffect(() => {
-        if (needReplaceImageFormat.current) {
-            replaceQuillImagesByCustomImagesFormat()
-        }
-    }, [editorRevision])
-
-    useEffect(() => {
-        dispatch(resetLoadingData())
         return () => {
             dispatch(setNoteEditorScrollDimensions(0, 0))
         }
@@ -572,142 +779,96 @@ const NotesEditorView = ({
             onCopy(event, exportRef.getEditor(), projectId, !readOnlyRef.current)
         })
 
-        editorElement.addEventListener('paste', event => {
-            if (!readOnlyRef.current) {
-                const textData = (event.clipboardData || window.clipboardData).getData('text')
-                const htmlData = (event.clipboardData || window.clipboardData).getData('text/html')
-
-                console.log('[NotesEditorView PASTE] ========== START ==========')
-                console.log('[NotesEditorView PASTE] Raw text data:', JSON.stringify(textData))
-                console.log('[NotesEditorView PASTE] Has HTML data:', !!htmlData)
-                console.log('[NotesEditorView PASTE] Contains markdown:', textData ? containsMarkdown(textData) : false)
-
-                // Check if plain text contains markdown - if so, prioritize markdown conversion
-                if (textData && containsMarkdown(textData)) {
-                    console.log('[NotesEditorView PASTE] Processing as markdown...')
-                    const parsedDelta = markdownToDelta(textData, Delta)
-
-                    if (parsedDelta) {
-                        const editor = exportRef.getEditor()
-                        const selection = editor.getSelection(true)
-                        console.log('[NotesEditorView PASTE] Selection:', JSON.stringify(selection))
-
-                        if (selection.length > 0) {
-                            parsedDelta.ops.unshift({ delete: selection.length })
-                        }
-                        if (selection.index > 0) {
-                            parsedDelta.ops.unshift({ retain: selection.index })
-                        }
-
-                        console.log(
-                            '[NotesEditorView PASTE] Final delta to apply:',
-                            JSON.stringify(parsedDelta.ops, null, 2)
-                        )
-
-                        const previousLenght = editor.getLength()
-                        editor.updateContents(parsedDelta, 'user')
-                        const newLenght = editor.getLength()
-                        editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
-
-                        console.log(
-                            '[NotesEditorView PASTE] Applied markdown delta, length changed from',
-                            previousLenght,
-                            'to',
-                            newLenght
-                        )
-                        console.log('[NotesEditorView PASTE] ========== END ==========')
-
-                        event.preventDefault()
-                        return
-                    }
-                }
-
-                // Fall back to HTML processing if available
-                if (htmlData) {
-                    const pastedDelta = exportRef.getEditor().clipboard.convert({ html: htmlData })
-                    const finalDelta = { ops: [] }
-
-                    for (let i = 0; i < pastedDelta.ops.length; i++) {
-                        const op = pastedDelta.ops[i]
-                        const { retain, insert, attributes } = op
-                        if (retain || op.delete) {
-                            finalDelta.ops.push(op)
-                        } else if (insert) {
-                            if (typeof insert === 'string' && insert !== '') {
-                                const delta = processPastedTextWithBreakLines(
-                                    insert,
-                                    Delta,
-                                    projectId,
-                                    note.id,
-                                    null,
-                                    false,
-                                    '',
-                                    exportRef.getEditor(),
-                                    true,
-                                    attributes,
-                                    true
-                                )
-                                finalDelta.ops = [...finalDelta.ops, ...delta.ops]
-                            } else {
-                                finalDelta.ops.push(op)
-                            }
-                        }
-                    }
-
-                    const editor = exportRef.getEditor()
-                    const selection = editor.getSelection(true)
-
-                    if (selection.length > 0) {
-                        finalDelta.ops.unshift({ delete: selection.length })
-                    }
-                    if (selection.index > 0) {
-                        finalDelta.ops.unshift({ retain: selection.index })
-                    }
-
-                    const previousLenght = editor.getLength()
-                    editor.updateContents(finalDelta, 'user')
-                    const newLenght = editor.getLength()
-                    editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
-
-                    event.preventDefault()
-                } else if (textData) {
-                    // Plain text paste without HTML (markdown already handled above)
-                    const parsedDelta = processPastedTextWithBreakLines(
-                        textData,
-                        Delta,
-                        projectId,
-                        note.id,
-                        null,
-                        false,
-                        '',
-                        exportRef.getEditor(),
-                        true,
-                        null,
-                        true
-                    )
-
-                    const editor = exportRef.getEditor()
-                    const selection = editor.getSelection(true)
-
-                    if (selection.length > 0) {
-                        parsedDelta.ops.unshift({ delete: selection.length })
-                    }
-                    if (selection.index > 0) {
-                        parsedDelta.ops.unshift({ retain: selection.index })
-                    }
-
-                    const previousLenght = editor.getLength()
-                    editor.updateContents(parsedDelta, 'user')
-                    const newLenght = editor.getLength()
-                    editor.setSelection(selection.index + newLenght - previousLenght + selection.length, 0, 'user')
-
-                    event.preventDefault()
-                }
+        // The three conversion routes a note paste can take, in priority order. Extracted from the
+        // listener so the listener itself is only about OWNING the event (see AT-2519 below).
+        const convertPastedClipboard = (editor, textData, htmlData) => {
+            // Check if plain text contains markdown - if so, prioritize markdown conversion
+            // Our table HTML preserves surrounding lists/headings/inline formats.
+            // Its plain Markdown fallback is for destinations without rich HTML.
+            if (textData && containsMarkdown(textData) && !hasMarkdownTableClipboardHtml(htmlData)) {
+                const parsedDelta = markdownToDelta(textData, Delta)
+                if (parsedDelta) return parsedDelta
             }
+
+            // Fall back to HTML processing if available
+            if (htmlData) {
+                const pastedDelta = editor.clipboard.convert({ html: htmlData })
+                const finalDelta = { ops: [] }
+
+                for (let i = 0; i < pastedDelta.ops.length; i++) {
+                    const op = pastedDelta.ops[i]
+                    const { retain, insert, attributes } = op
+                    if (retain || op.delete) {
+                        finalDelta.ops.push(op)
+                    } else if (insert) {
+                        if (typeof insert === 'string' && insert !== '') {
+                            const delta = processPastedTextWithBreakLines(
+                                insert,
+                                Delta,
+                                projectId,
+                                note.id,
+                                null,
+                                false,
+                                '',
+                                editor,
+                                true,
+                                attributes,
+                                true
+                            )
+                            finalDelta.ops = [...finalDelta.ops, ...delta.ops]
+                        } else {
+                            finalDelta.ops.push(op)
+                        }
+                    }
+                }
+
+                return finalDelta
+            }
+
+            // Plain text paste without HTML (markdown already handled above)
+            return processPastedTextWithBreakLines(
+                textData,
+                Delta,
+                projectId,
+                note.id,
+                null,
+                false,
+                '',
+                editor,
+                true,
+                null,
+                true
+            )
+        }
+
+        editorElement.addEventListener('paste', event => {
+            const editor = exportRef.getEditor()
+
+            // AT-2519: a Windows clipboard carries CRLF, and both text branches split on '\n'
+            // alone — so every line kept a stray '\r', which `processPastedTextWithBreakLines`
+            // then turns into a trailing space (it splits words on /\s/). The paste therefore
+            // ended on a line that looks empty but is not, with the caret parked on it: the
+            // same symptom a trailing empty block produces. The HTML branch needs no
+            // equivalent — the HTML parser normalizes line endings before quill sees them.
+            const textData = normalizePastedLineEndings((event.clipboardData || window.clipboardData).getData('text'))
+            const htmlData = (event.clipboardData || window.clipboardData).getData('text/html')
+
+            if (!noteEditorOwnsPaste({ readOnly: readOnlyRef.current, editor, textData, htmlData })) return
+
+            // AT-2519: claim the event BEFORE doing the work, not after — see applyPastedClipboard.
+            event.preventDefault()
+            applyPastedClipboard(editor, { textData, htmlData }, convertPastedClipboard, Delta)
         })
     }, [])
 
     useEffect(() => {
+        closingRef.current = false
+        saveSchedulerRef.current = createNoteSaveScheduler({
+            capture: local => captureSaveRef.current(local, closingRef.current),
+            debounceMs: SAVE_INTERVAL,
+            maxWaitMs: MAX_SAVE_INTERVAL,
+            remoteWaitMs: REMOTE_SAVE_INTERVAL,
+        })
         dispatch([setIsLoadingNoteData(true)])
         quillRef.current.blur()
 
@@ -716,38 +877,88 @@ const NotesEditorView = ({
         writeBrowserURL()
 
         document.addEventListener('keydown', onKeyDownInMentionsModal)
-        window.onbeforeunload = () => {
-            cleanup()
-            return null
+        const flushOnHide = () => {
+            if (loadingRef.current) return
+            quillRef.current.getModule('markdownTableEditing')?.finish(true)
+            closingRef.current = true
+            saveSchedulerRef.current?.flushForPageHide()
+            closingRef.current = false
+        }
+        // The shared owner covers visibilitychange, pagehide and freeze. Capture
+        // immediately on absence, before browser timers/uploads can be suspended.
+        const unsubscribePageHidden = subscribePageHidden(flushOnHide)
+        window.addEventListener('beforeunload', flushOnHide)
+
+        // Collaboration presence is member-owned mutable state. A shared/read-only note can still
+        // load its content, but must not start this write/listener pair.
+        if (!readOnlyRef.current) {
+            noteEditorPresenceRegisteredRef.current = true
+            Backend.addNoteEditor(projectId, note.id, { id: loggedUser.uid, color: color.current }).catch(error => {
+                noteEditorPresenceRegisteredRef.current = false
+                console.warn('Failed to add note collaboration presence', error)
+            })
+            noteCollabUnsubRef.current = Backend.watchNotesCollab(projectId, note.id, editors => {
+                if (editors) {
+                    setEditors(editors.editors)
+                }
+            })
         }
 
-        Backend.addNoteEditor(note.id, { id: loggedUser.uid, color: color.current })
-        Backend.watchNotesCollab(note.id, editors => {
-            if (editors) {
-                setEditors(editors.editors)
-            }
+        const disableDeferredEmbeds = enableDeferredNoteEmbeds(note.id, quillRef.current.root, {
+            subscribe: store.subscribe,
+            getTasks: () => store.getState().notesInnerTasks[note.id],
         })
-
         const loadNoteContent = async () => {
             try {
-                const data = await loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id))
-                if (noteUnmountedRef.current) return
-
-                const collaboration = await prepareSyncedNoteDocument(data, document => {
-                    return new WebsocketProvider(
-                        getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
-                        note.id,
-                        document
-                    )
+                storageRefreshPendingRef.current = !isBrowserOffline()
+                setStorageRefreshing(!isBrowserOffline())
+                const session = createLocalFirstNoteSession({
+                    createLocalPersistence: document => createNoteLocalPersistence(note.id, document),
+                    createProvider: document =>
+                        new WebsocketProvider(
+                            getNotesCollaborationServerData().NOTES_COLLABORATION_SERVER,
+                            note.id,
+                            document
+                        ),
+                    loadStorage: () =>
+                        isBrowserOffline()
+                            ? null
+                            : loadNoteContentWithRetry(() => Backend.getNoteData(projectId, note.id), {
+                                  attemptTimeoutMs: 10000,
+                              }),
+                    allowEmptyOpen: !(note.preview && note.preview.trim()),
+                    onRefresh: refresh => {
+                        if (noteUnmountedRef.current) return
+                        storageRefreshPendingRef.current = false
+                        setStorageRefreshing(false)
+                        catchUpUnverifiedRef.current = !refresh.verified
+                        setStorageUnverified(!refresh.verified)
+                        if (!refresh.verified && !isBrowserOffline()) {
+                            noteContentRetryTimeoutRef.current = setTimeout(
+                                () => verifyStorageRef.current?.(),
+                                NOTE_CONTENT_RETRY_DELAY
+                            )
+                        }
+                        if (refresh.needsUpload && !readOnlyRef.current) {
+                            dirtyEditor.current = true
+                            registerPendingNoteUpload(projectId, note.id)
+                            saveSchedulerRef.current?.markLocal()
+                            // ready may not have bound Quill yet; that path
+                            // triggers the pending save after it unlocks.
+                            if (!loadingRef.current) autosave()
+                        }
+                    },
                 })
+                localFirstSessionRef.current = session
+                const collaboration = await session.ready
                 if (noteUnmountedRef.current) {
-                    collaboration.provider.destroy()
-                    collaboration.document.destroy()
+                    session.dispose()
                     return
                 }
 
                 ydoc.current = collaboration.document
                 provider.current = collaboration.provider
+                localPersistence.current = collaboration.localPersistence
                 const type = ydoc.current.getText('quill')
                 provider.current.on('synced', synced => {
                     setSynced(synced)
@@ -780,29 +991,52 @@ const NotesEditorView = ({
                     }
                 }
                 checkMaxLength()
-                if (collaboration.recovered) {
-                    console.warn('Recovered note content after a destructive collaboration sync', {
-                        noteId: note.id,
-                    })
-                }
+                setContentUnavailableOffline(false)
                 loadingRef.current = false
                 exportLoadingRef = false
-                dispatch([resetLoadingData(), setIsLoadingNoteData(false)])
+                dispatch([setIsLoadingNoteData(false)])
+                if (dirtyEditor.current) autosave()
             } catch (error) {
                 if (noteUnmountedRef.current) return
+                localFirstSessionRef.current?.dispose()
+                localFirstSessionRef.current = null
                 binding.current?.destroy()
                 provider.current?.destroy()
+                localPersistence.current?.destroy()
                 ydoc.current?.destroy()
                 binding.current = null
                 provider.current = null
+                localPersistence.current = null
                 ydoc.current = null
+                // Offline with no local copy: tell the user why the note cannot
+                // open instead of spinning forever; the retry below picks the
+                // content up as soon as connectivity returns. Clear loading
+                // feedback while the explanation is up — the editor stays
+                // locked through contentUnavailableOffline
+                // in the pointerEvents/readOnly/disabled gates below.
+                const unavailableOffline = isBrowserOffline()
+                setContentUnavailableOffline(unavailableOffline)
+                if (unavailableOffline) dispatch(setIsLoadingNoteData(false))
                 console.error('Failed to load note content; keeping the editor locked and retrying', error)
                 noteContentRetryTimeoutRef.current = setTimeout(loadNoteContent, NOTE_CONTENT_RETRY_DELAY)
             }
         }
 
         loadNoteContent()
-        return cleanup
+        return () => {
+            // `cleanup` also runs from `window.onbeforeunload`, where the editor is NOT going
+            // away — the sweep belongs to the unmount only. Quill 2 never tells a blot that its
+            // editor is gone, so without this every embed in the note (task tags, mentions,
+            // hashtags, images) leaks its React root and redux subscription on the way out, and
+            // reopening the note simply adds another set.
+            const editorRoot = quillRef.current?.root
+            unsubscribePageHidden()
+            window.removeEventListener('beforeunload', flushOnHide)
+            cleanup()
+            disableDeferredEmbeds()
+            quillRef.current?.getModule('markdownTableEditing')?.destroy()
+            unmountEmbedReactRoots(editorRoot)
+        }
     }, [])
 
     useEffect(() => {
@@ -852,16 +1086,9 @@ const NotesEditorView = ({
     }, [mobile, mobileCollapsed])
 
     const disconnectFromServer = () => {
-        if (provider.current) {
-            //provider.current.disconnect()
-            provider.current.destroy()
-        }
-        if (ydoc.current) {
-            ydoc.current.destroy()
-        }
-        if (binding.current) {
-            binding.current.destroy()
-        }
+        saveSchedulerRef.current?.flush()
+        binding.current?.destroy()
+        localFirstSessionRef.current?.dispose()
     }
 
     const attachQuillRefs = () => {
@@ -1227,10 +1454,16 @@ const NotesEditorView = ({
     }
 
     return (
-        <View style={{ flexDirection: 'column', flex: 1 }} pointerEvents={isLoadingNoteData ? 'none' : 'auto'}>
+        <View
+            style={{ flexDirection: 'column', flex: 1 }}
+            pointerEvents={isLoadingNoteData || contentUnavailableOffline ? 'none' : 'auto'}
+        >
             {renderShortcuts()}
 
             <EditorToolbar
+                noteId={note.id}
+                persistMeetingChunk={persistMeetingChunk}
+                getMeetingInsertionTarget={getMeetingInsertionTarget}
                 getEditor={() => quillRef.current}
                 renderTask={renderTask}
                 renderTimestamp={renderTimestamp}
@@ -1242,9 +1475,9 @@ const NotesEditorView = ({
                 accessGranted={accessGranted}
                 isFullscreen={isFullscreen}
                 setFullscreen={switchScreenModes}
-                ptojectId={projectId}
+                projectId={projectId}
                 readOnly={readOnly}
-                disabled={timeoutModalIsOpen.current || isLoadingNoteData}
+                disabled={timeoutModalIsOpen.current || isLoadingNoteData || contentUnavailableOffline}
                 connectionState={connectionState}
                 scrollYPos={scrollYPos}
                 scrollRef={scrollRef}
@@ -1252,6 +1485,24 @@ const NotesEditorView = ({
                 onOpenSideChat={onOpenSideChat}
             />
 
+            {contentUnavailableOffline ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+                    <Text style={[styles.title6, { color: colors.Text02, textAlign: 'center' }]}>
+                        {translate('This note is not available offline yet')}
+                    </Text>
+                    <Text style={[styles.body1, { color: colors.Text03, textAlign: 'center', marginTop: 8 }]}>
+                        {translate('It will load automatically when you are back online')}
+                    </Text>
+                </View>
+            ) : null}
+            {dataLoaded && storageUnverified && (
+                <Text
+                    accessibilityRole="status"
+                    style={[styles.body2, { color: colors.Text03, paddingHorizontal: 16 }]}
+                >
+                    {translate('Note content is available locally; sync is pending')}
+                </Text>
+            )}
             <CustomScrollView
                 ref={scrollRef}
                 onScroll={e => {
@@ -1270,7 +1521,7 @@ const NotesEditorView = ({
                 keyboardShouldPersistTaps="always"
                 scrollOnLayout={scrollOnLayout}
             >
-                <ReactQuill
+                <NoteQuill
                     ref={el => {
                         reactQuillRef = el
                         exportRef = el
@@ -1280,7 +1531,13 @@ const NotesEditorView = ({
                     placeholder={createPlaceholder('Type your note...', QUILL_EDITOR_NOTE_TYPE, note.id)}
                     modules={modules}
                     formats={formats}
-                    readOnly={timeoutModalIsOpen.current || isLoadingNoteData || !accessGranted || readOnly}
+                    readOnly={
+                        timeoutModalIsOpen.current ||
+                        isLoadingNoteData ||
+                        contentUnavailableOffline ||
+                        !accessGranted ||
+                        readOnly
+                    }
                     style={{ marginTop: clicked ? -34 : 0 }}
                     onChangeSelection={onChangeSelection}
                 />

@@ -7,6 +7,7 @@ const { deductGold } = require('../Gold/goldHelper')
 const { classifyCalendarEventProject } = require('./calendarProjectClassifier')
 const {
     buildCalendarProjectDefinitions,
+    findLearnedCalendarSeriesRoute,
     loadActiveProjectsForCalendarRouting,
     loadCalendarProjectRoutingConfig,
 } = require('./calendarProjectRoutingConfig')
@@ -63,6 +64,31 @@ async function routeCalendarEventsToProjects({
             continue
         }
 
+        const learnedSeriesRoute = findLearnedCalendarSeriesRoute(config, event)
+        const learnedTargetProject = learnedSeriesRoute
+            ? projectDefinitionById.get(learnedSeriesRoute.targetProjectId)
+            : null
+        if (learnedTargetProject) {
+            routingDecisionsByEventId[event.id] = {
+                matched: true,
+                targetProjectId: learnedTargetProject.projectId,
+                confidence: 1,
+                reasoning: 'You previously moved another occurrence of this recurring event to this project.',
+                projectName: learnedTargetProject.name,
+                goldSpent: 0,
+                tokenUsage: null,
+                learnedFromFeedback: true,
+            }
+            logRouting('Applied learned recurring-event route', {
+                userId,
+                syncProjectId,
+                eventId: event.id,
+                recurringEventId: event.recurringEventId || event.seriesMasterId || '',
+                projectId: learnedTargetProject.projectId,
+            })
+            continue
+        }
+
         try {
             const userSnapshot = await admin.firestore().collection('users').doc(userId).get()
             const currentGold = Number(userSnapshot.data()?.gold) || 0
@@ -94,6 +120,7 @@ async function routeCalendarEventsToProjects({
                 projectId: syncProjectId,
                 objectId: event.id,
                 channel: 'calendar',
+                model: config?.model || '',
             })
 
             if (!chargeResult?.success) {

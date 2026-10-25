@@ -20,7 +20,7 @@ import HighlightWrapper from '../../UIComponents/FloatModals/ManageTaskModal/Hig
 import HelperFunctions from '../../../utils/HelperFunctions'
 import ContactMoreButton from '../../UIComponents/FloatModals/MorePopupsOfEditModals/Contacts/ContactMoreButton'
 import { FORM_TYPE_EDIT } from '../../NotesView/NotesDV/EditorView/EditorsGroup/EditorsConstants'
-import { checkDVLink, getDvMainTabLink } from '../../../utils/LinkingHelper'
+import { getDvMainTabLink } from '../../../utils/LinkingHelper'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import { getPathname } from '../../Tags/LinkTag'
 import { COMMENT_MODAL_ID, exitsOpenModals, TAGS_EDIT_OBJECT_MODAL_ID } from '../../ModalsManager/modalsManager'
@@ -101,7 +101,6 @@ export default function EditContactLink({ projectId, containerStyle, contactData
         closeModal()
 
         setTimeout(() => {
-            checkDVLink('people')
             const linkUrl =
                 objectUrl != null ? getPathname(objectUrl) : getDvMainTabLink(projectId, contactData.uid, 'contacts')
             URLTrigger.processUrl(NavigationService, linkUrl)

@@ -5,6 +5,7 @@ import moment from 'moment'
 
 import styles, { colors } from '../../../styles/global'
 import Icon from '../../../Icon'
+import { localizedMoment } from '../../../../i18n/localizedMoment'
 import { translate } from '../../../../i18n/TranslationService'
 import { getHeartbeatIntervalMs } from './heartbeatIntervalHelper'
 import { getHeartbeatStatusForUser } from './heartbeatStatusHelper'
@@ -15,10 +16,10 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
 
     const isDefaultAssistantInDefaultProject = assistant.isDefault && projectId === defaultProjectId
     const defaultChance = isDefaultAssistantInDefaultProject ? 10 : 0
-    const repliedChancePercent = assistant.heartbeatChancePercent ?? defaultChance
-    const noReplyChancePercent = assistant.heartbeatChanceNoReplyPercent ?? defaultChance
-    // The heartbeat is considered active when it can fire in at least one reply state.
-    const chancePercent = Math.max(repliedChancePercent, noReplyChancePercent)
+    const afterReplyChancePercent = assistant.heartbeatChancePercent ?? defaultChance
+    const beforeReplyChancePercent = assistant.heartbeatChanceNoReplyPercent ?? defaultChance
+    // The heartbeat is active when it can fire in either per-heartbeat reply state.
+    const chancePercent = Math.max(afterReplyChancePercent, beforeReplyChancePercent)
     const intervalMs = getHeartbeatIntervalMs(assistant.heartbeatIntervalMs)
     const {
         lastCheckedAt,
@@ -68,7 +69,7 @@ export default function HeartbeatStatusProperty({ projectId, assistant }) {
             <View style={localStyles.details}>
                 <StatusDetail label={translate('Last checked')} value={formatTimestamp(lastCheckedAt)} />
                 <StatusDetail label={translate('Last result')} value={lastResultLabel} />
-                <StatusDetail label={translate('Last executed')} value={formatTimestamp(lastExecutedAt)} />
+                <StatusDetail label={translate('Last visible heartbeat')} value={formatTimestamp(lastExecutedAt)} />
                 <StatusDetail
                     label={translate('Last silent OK (HEARTBEAT_OK)')}
                     value={formatTimestamp(lastSilentOkAt)}
@@ -93,7 +94,7 @@ function formatTimestamp(timestamp) {
         return translate('Never')
     }
 
-    return `${moment(timestamp).fromNow()} • ${moment(timestamp).format('MMM D, h:mm A')}`
+    return `${localizedMoment(timestamp).fromNow()} • ${moment(timestamp).format('MMM D, h:mm A')}`
 }
 
 function getHeartbeatBadgeStatus(chancePercent, hasRecentCheck, lastCheckedAt) {

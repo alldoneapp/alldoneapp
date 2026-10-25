@@ -17,7 +17,7 @@ import EstimationModal from './EstimationModal/EstimationModal'
 import { CONFIRM_POPUP_TRIGGER_DELETE_TASK } from '../ConfirmPopup'
 import DistributeModal from './DistributeModal'
 import Spinner from '../Spinner'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../ModalShell/AppPopover'
 import AssigneePickerModal from './AssigneePickerModal/AssigneePickerModal'
 import ProjectHelper, { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import Button from '../../UIControls/Button'
@@ -282,7 +282,7 @@ const DragTaskModal = ({ projectId: currentProjectIdFromProp }) => {
                         <Text style={[global.subtitle2, { color: 'white' }]}>{tasks.length}</Text>
                     </View>
                 )}
-                <Popover
+                <AppPopover
                     content={
                         <DueDateModal
                             task={tasks && tasks.length > 0 ? tasks[0] : {}}
@@ -315,9 +315,9 @@ const DragTaskModal = ({ projectId: currentProjectIdFromProp }) => {
                         onPress={onPressDueDateButton}
                         disabled={tasks.length === 0}
                     />
-                </Popover>
+                </AppPopover>
 
-                <Popover
+                <AppPopover
                     content={
                         <DistributeModal
                             closePopover={() => setShowDistribute(false)}
@@ -344,17 +344,15 @@ const DragTaskModal = ({ projectId: currentProjectIdFromProp }) => {
                         onPress={onPressDistributeButton}
                         disabled={tasks.length === 0}
                     />
-                </Popover>
+                </AppPopover>
 
                 {!anyTaskIsAssignedToAnAssistant && (
-                    <Popover
+                    <AppPopover
                         content={
                             <TaskParentGoalModal
                                 key={showParentGoal}
                                 activeGoal={activeGoal}
-                                setActiveGoal={goal => {
-                                    Backend.setTaskParentGoalMultiple(tasks, goal ? goal : null)
-                                }}
+                                setActiveGoal={goal => Backend.setTaskParentGoalMultiple(tasks, goal ? goal : null)}
                                 projectId={tasks[0] ? tasks[0].projectId : null}
                                 closeModal={() => setShowParentGoal(false)}
                             />
@@ -378,11 +376,11 @@ const DragTaskModal = ({ projectId: currentProjectIdFromProp }) => {
                             onPress={onPressParentGoalButton}
                             disabled={tasks.length === 0}
                         />
-                    </Popover>
+                    </AppPopover>
                 )}
 
                 {!anyTaskIsAssignedToAnAssistant && (
-                    <Popover
+                    <AppPopover
                         content={
                             <EstimationModal
                                 projectId={currentProjectIdFromProp}
@@ -414,11 +412,11 @@ const DragTaskModal = ({ projectId: currentProjectIdFromProp }) => {
                             onPress={onPressEstimationButton}
                             disabled={tasks.length === 0}
                         />
-                    </Popover>
+                    </AppPopover>
                 )}
 
                 {checkIfSelectedProject(selectedProjectIndex) && !anyTaskIsAssignedToAnAssistant && (
-                    <Popover
+                    <AppPopover
                         content={
                             <AssigneePickerModal
                                 projectIndex={tasks.length > 0 && ProjectHelper.getProjectIndexById(tasks[0].projectId)}
@@ -456,7 +454,7 @@ const DragTaskModal = ({ projectId: currentProjectIdFromProp }) => {
                             onPress={onPressAssigneeButton}
                             disabled={tasks.length === 0}
                         />
-                    </Popover>
+                    </AppPopover>
                 )}
 
                 <DragTaskModalMoreButtonWrapper

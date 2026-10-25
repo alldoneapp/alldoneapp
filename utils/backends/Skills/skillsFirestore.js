@@ -1,3 +1,4 @@
+import { subscribeWithLoading } from '../../redux/loadingOperation'
 import firebase from 'firebase/compat/app'
 import { intersection, isEqual, orderBy, uniq } from 'lodash'
 
@@ -14,7 +15,7 @@ import {
     mapSkillData,
 } from '../firestore'
 import store from '../../../redux/store'
-import { setSkillsByProject, setSkillsDefaultPrivacy, stopLoadingData } from '../../../redux/actions'
+import { setSkillsByProject, setSkillsDefaultPrivacy } from '../../../redux/actions'
 import { FEED_PUBLIC_FOR_ALL } from '../../../components/Feeds/Utils/FeedsConstants'
 import ProjectHelper from '../../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import {
@@ -38,6 +39,7 @@ import {
     updateChatPrivacy,
     updateChatTitleWithoutFeeds,
 } from '../Chats/chatsFirestore'
+import { withoutServerAccessProjection } from '../accessProjection'
 
 //ACCESS FUNCTIONS
 
@@ -59,11 +61,15 @@ export function watchSkill(projectId, skillId, watcherKey, callback) {
 export function watchSkills(projectId, userId, watcherKey) {
     const { uid: loggedUserId, isAnonymous } = store.getState().loggedUser
     const allowUserIds = isAnonymous ? [FEED_PUBLIC_FOR_ALL] : [FEED_PUBLIC_FOR_ALL, loggedUserId]
-    globalWatcherUnsub[watcherKey] = getDb()
-        .collection(`skills/${projectId}/items`)
-        .where('userId', '==', userId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
-        .onSnapshot(skillsDocs => {
+    globalWatcherUnsub[watcherKey] = subscribeWithLoading(
+        'profile_skills',
+        (next, error) =>
+            getDb()
+                .collection(`skills/${projectId}/items`)
+                .where('userId', '==', userId)
+                .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
+                .onSnapshot(next, error),
+        skillsDocs => {
             let skills = []
             skillsDocs.forEach(doc => {
                 const skill = mapSkillData(doc.id, doc.data())
@@ -71,8 +77,8 @@ export function watchSkills(projectId, userId, watcherKey) {
             })
             skills = orderBy(skills, 'sortIndex', 'asc')
             store.dispatch(setSkillsByProject(projectId, skills))
-            store.dispatch(stopLoadingData())
-        })
+        }
+    )
 }
 
 //EDTION AND ADITION FUNCTIONS
@@ -105,7 +111,7 @@ export function uploadNewSkill(projectId, skill, isUpdatingProject, oldProject, 
     skill.created = Date.now()
     skill.lastEditionDate = skill.created
 
-    const skillToStore = { ...skill }
+    const skillToStore = withoutServerAccessProjection(skill)
     delete skillToStore.id
 
     const batch = new BatchWrapper(getDb())
@@ -285,7 +291,7 @@ export function updateSkillPrivacy(projectId, skill, isPublicFor) {
 }
 
 export async function updateSkillDescription(projectId, skill, description) {
-    updateSkillData(projectId, skill.id, { description }, null)
+    await updateSkillData(projectId, skill.id, { description }, null)
 
     createGenericTaskWhenMentionInTitleEdition(
         projectId,

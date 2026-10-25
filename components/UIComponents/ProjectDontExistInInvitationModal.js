@@ -8,20 +8,19 @@ import { setShowProjectDontExistInInvitationModal } from '../../redux/actions'
 import { applyPopoverWidth } from '../../utils/HelperFunctions'
 import { translate } from '../../i18n/TranslationService'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
+import { useFixedModalOverlayPadding } from '../../hooks/useSafeAreaOverlayPadding'
 
 export default function ProjectDontExistInInvitationModal() {
+    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
-    const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
 
     const closeModal = () => {
         dispatch(setShowProjectDontExistInInvitationModal(false))
     }
 
-    const sidebarOpenStyle = smallScreenNavigation ? null : { marginLeft: 300 }
-
     return (
-        <View style={localStyles.container}>
-            <View style={[localStyles.popup, applyPopoverWidth(), sidebarOpenStyle]}>
+        <View style={[localStyles.container, safeAreaOverlayPadding]}>
+            <View style={[localStyles.popup, applyPopoverWidth()]}>
                 <View style={localStyles.header}>
                     <Text style={localStyles.title}>{translate('Invitation to project')}</Text>
                     <Text style={localStyles.description}>{translate('Looks like this project does not exist')}</Text>

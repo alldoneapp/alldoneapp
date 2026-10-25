@@ -13,6 +13,7 @@ jest.mock('firebase-admin', () => ({
 jest.mock('../Assistant/assistantHelper', () => ({
     calculateGoldCostFromTokens: jest.fn(() => 1),
     getCachedEnvFunctions: jest.fn(() => ({ OPEN_AI_KEY: 'test-key' })),
+    getModel: jest.fn(() => 'gpt-6-luna'),
     getOpenAIClient: jest.fn(() => ({
         responses: { create: mockResponsesCreate },
     })),
@@ -55,6 +56,7 @@ const {
     routeNewTaskToGoal,
     selectCandidateGoals,
 } = require('./taskGoalRouting')
+const { buildCalendarGoalSeriesRouteKey } = require('../GoogleCalendar/calendarProjectRoutingConfig')
 
 const createSnapshot = (id, data) => ({
     id,
@@ -174,6 +176,24 @@ const createDb = ({
 }
 
 describe('taskGoalRouting', () => {
+    test('does not auto-assign a goal when the assistant explicitly created an unlinked task', async () => {
+        const { createTaskObject } = require('../shared/TaskModelBuilder')
+        const task = createTaskObject({
+            name: 'Keep this task unlinked',
+            userId: 'user1',
+            projectId: 'project1',
+            taskId: 'task1',
+            skipAutomaticGoalRouting: true,
+        })
+        const db = { doc: jest.fn() }
+        const classify = jest.fn()
+        expect(await routeNewTaskToGoal({ task, projectId: 'project1', db, classify })).toEqual({
+            action: 'skipped',
+        })
+        expect(classify).not.toHaveBeenCalled()
+        expect(db.doc).not.toHaveBeenCalled()
+    })
+
     beforeEach(() => {
         jest.clearAllMocks()
         mockDeductGold.mockResolvedValue({ success: true })
@@ -182,7 +202,7 @@ describe('taskGoalRouting', () => {
         mockFeedCommit.mockResolvedValue()
     })
 
-    test('rejects invented goal IDs and uses the confidence margin for auto assignment', () => {
+    test('rejects invented goal IDs and ignores automatic matches below the auto-assignment threshold', () => {
         expect(normalizeTaskGoalRoutingMode(undefined)).toBe(TASK_GOAL_ROUTING_AUTOMATIC)
 
         expect(
@@ -208,7 +228,14 @@ describe('taskGoalRouting', () => {
                 confidence: 0.92,
                 alternativeConfidence: 0.8,
             })
-        ).toBe('suggest')
+        ).toBe('none')
+        expect(
+            chooseRoutingAction(TASK_GOAL_ROUTING_AUTOMATIC, {
+                goalId: 'goal1',
+                confidence: 0.8,
+                alternativeConfidence: 0.2,
+            })
+        ).toBe('none')
         expect(
             chooseRoutingAction(TASK_GOAL_ROUTING_AUTOMATIC, {
                 goalId: 'goal1',
@@ -239,7 +266,7 @@ describe('taskGoalRouting', () => {
         expect(result.totalTokens).toBe(123)
         expect(mockResponsesCreate).toHaveBeenCalledWith(
             expect.objectContaining({
-                model: 'gpt-5.6-luna',
+                model: 'gpt-6-luna',
                 reasoning: { effort: 'low' },
                 text: expect.objectContaining({
                     format: expect.objectContaining({
@@ -249,6 +276,256 @@ describe('taskGoalRouting', () => {
                 }),
             })
         )
+    })
+
+    test('passes learned calendar Goal rules into classification for similar one-off events', async () => {
+        const { db, state } = createDb()
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            originalProjectId: 'calendar-project',
+        }
+        const classify = jest.fn(async () => ({
+            result: {
+                goalId: null,
+                confidence: 0,
+                alternativeGoalId: null,
+                alternativeConfidence: 0,
+                reason: '',
+            },
+            totalTokens: 10,
+        }))
+
+        await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify,
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalRules: '- Weekly customer reviews go to Goal Improve onboarding.',
+                    learnedGoalSeriesRoutes: {},
+                },
+            }),
+        })
+
+        expect(classify).toHaveBeenCalledWith(
+            expect.objectContaining({
+                learnedRules: '- Weekly customer reviews go to Goal Improve onboarding.',
+            })
+        )
+    })
+
+    test('keeps Goals named by learned rules in the candidate set beyond the relevance limit', async () => {
+        const ordinaryGoals = Object.fromEntries(
+            Array.from({ length: 30 }, (_, index) => [
+                `goal-${String(index).padStart(2, '0')}`,
+                {
+                    name: `Operational Goal ${index}`,
+                    ownerId: 'ALL_USERS',
+                    progress: 10,
+                    isPublicFor: [0],
+                },
+            ])
+        )
+        const { db, state } = createDb({
+            goals: {
+                ...ordinaryGoals,
+                'goal-z': {
+                    name: 'Remembered Goal',
+                    ownerId: 'ALL_USERS',
+                    progress: 10,
+                    isPublicFor: [0],
+                },
+            },
+        })
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            originalProjectId: 'calendar-project',
+        }
+        let candidateIds = []
+
+        await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify: async ({ goals }) => {
+                candidateIds = goals.map(goal => goal.id)
+                return {
+                    result: {
+                        goalId: null,
+                        confidence: 0,
+                        alternativeGoalId: null,
+                        alternativeConfidence: 0,
+                        reason: '',
+                    },
+                    totalTokens: 10,
+                }
+            },
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalRules: '- Similar meetings go to Goal ID: "goal-z".',
+                    learnedGoalSeriesRoutes: {},
+                },
+            }),
+        })
+
+        expect(candidateIds).toContain('goal-z')
+        expect(candidateIds).toHaveLength(30)
+    })
+
+    test('auto-assigns an exact recurring learned Goal without a model call or Gold charge', async () => {
+        const { db, state } = createDb({ mode: TASK_GOAL_ROUTING_AUTOMATIC })
+        state.users.user1.gold = 0
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            recurringEventId: 'series-1',
+            originalProjectId: 'calendar-project',
+        }
+        const seriesKey = buildCalendarGoalSeriesRouteKey('google', 'series-1', 'project1')
+        const classify = jest.fn()
+
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify,
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalRules: '',
+                    learnedGoalSeriesRoutes: {
+                        [seriesKey]: {
+                            recurringEventId: 'series-1',
+                            provider: 'google',
+                            projectId: 'project1',
+                            targetGoalId: 'goal1',
+                            learnedAt: 123,
+                        },
+                    },
+                },
+            }),
+        })
+
+        expect(result).toEqual(expect.objectContaining({ action: 'auto_assign', learnedFromFeedback: true }))
+        expect(state.tasks.task1).toEqual(
+            expect.objectContaining({
+                parentGoalId: 'goal1',
+                goalSuggestion: expect.objectContaining({
+                    source: 'calendar_goal_learning',
+                    goldSpent: 0,
+                }),
+            })
+        )
+        expect(classify).not.toHaveBeenCalled()
+        expect(mockDeductGold).not.toHaveBeenCalled()
+    })
+
+    test('keeps an exact recurring learned Goal in the candidate set even beyond the relevance limit', async () => {
+        const ordinaryGoals = Object.fromEntries(
+            Array.from({ length: 30 }, (_, index) => [
+                `goal-${String(index).padStart(2, '0')}`,
+                {
+                    name: `Operational Goal ${index}`,
+                    ownerId: 'ALL_USERS',
+                    progress: 10,
+                    isPublicFor: [0],
+                },
+            ])
+        )
+        const { db, state } = createDb({
+            mode: TASK_GOAL_ROUTING_AUTOMATIC,
+            goals: {
+                ...ordinaryGoals,
+                'goal-z': {
+                    name: 'Remembered Goal',
+                    ownerId: 'ALL_USERS',
+                    progress: 10,
+                    isPublicFor: [0],
+                },
+            },
+        })
+        state.users.user1.gold = 0
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            recurringEventId: 'series-1',
+            originalProjectId: 'calendar-project',
+        }
+        const seriesKey = buildCalendarGoalSeriesRouteKey('google', 'series-1', 'project1')
+
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify: jest.fn(),
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalSeriesRoutes: {
+                        [seriesKey]: {
+                            recurringEventId: 'series-1',
+                            provider: 'google',
+                            projectId: 'project1',
+                            targetGoalId: 'goal-z',
+                            learnedAt: 123,
+                        },
+                    },
+                },
+            }),
+        })
+
+        expect(result.action).toBe('auto_assign')
+        expect(state.tasks.task1.parentGoalId).toBe('goal-z')
+    })
+
+    test('keeps an exact recurring learned no-Goal choice without a model call or Gold charge', async () => {
+        const { db, state } = createDb({ mode: TASK_GOAL_ROUTING_AUTOMATIC })
+        state.users.user1.gold = 0
+        state.users.user1.premium = { status: 'premium' }
+        state.tasks.task1.calendarData = {
+            provider: 'google',
+            recurringEventId: 'series-1',
+            originalProjectId: 'calendar-project',
+        }
+        const seriesKey = buildCalendarGoalSeriesRouteKey('google', 'series-1', 'project1')
+        const classify = jest.fn()
+
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            classify,
+            loadCalendarRoutingConfig: async () => ({
+                exists: true,
+                config: {
+                    enabled: true,
+                    learnedGoalRules: '- Leave this series without a Goal.',
+                    learnedGoalSeriesRoutes: {
+                        [seriesKey]: {
+                            recurringEventId: 'series-1',
+                            provider: 'google',
+                            projectId: 'project1',
+                            routeToNoGoal: true,
+                            learnedAt: 123,
+                        },
+                    },
+                },
+            }),
+        })
+
+        expect(result).toEqual({ action: 'learned_no_goal', learnedFromFeedback: true })
+        expect(state.tasks.task1.parentGoalId).toBeNull()
+        expect(classify).not.toHaveBeenCalled()
+        expect(mockDeductGold).not.toHaveBeenCalled()
     })
 
     test('uses fixed and dynamic completion plus current-milestone semantics for eligibility', () => {
@@ -496,7 +773,7 @@ describe('taskGoalRouting', () => {
     })
 
     test.each(['none', 'dismissed', 'failed', 'superseded'])(
-        'does not rerun resolved %s routing state after a project move',
+        'does not rerun resolved %s routing state without an explicit project-move reset',
         async status => {
             const { db, state } = createDb()
             const resolvedSuggestion = {
@@ -546,7 +823,7 @@ describe('taskGoalRouting', () => {
             expect.objectContaining({
                 goalId: 'goal1',
                 status: 'pending',
-                model: 'gpt-5.6-luna',
+                model: 'gpt-6-luna',
             })
         )
         expect(mockDeductGold).toHaveBeenCalledWith(
@@ -556,6 +833,38 @@ describe('taskGoalRouting', () => {
         )
         expect(mockAddGoalRoutingReasonComment).not.toHaveBeenCalled()
         expect(mockCreateTaskParentGoalChangedFeed).not.toHaveBeenCalled()
+    })
+
+    test('ignores a medium-confidence match in automatic mode without creating a pending suggestion', async () => {
+        const { db, state } = createDb({ mode: TASK_GOAL_ROUTING_AUTOMATIC })
+        const result = await routeNewTaskToGoal({
+            task: state.tasks.task1,
+            projectId: 'project1',
+            db,
+            now: 1000,
+            classify: async () => ({
+                result: {
+                    goalId: 'goal1',
+                    confidence: 0.8,
+                    alternativeGoalId: 'goal2',
+                    alternativeConfidence: 0.2,
+                    reason: 'Possible match.',
+                },
+                totalTokens: 100,
+            }),
+        })
+
+        expect(result.action).toBe('none')
+        expect(state.tasks.task1.parentGoalId).toBeNull()
+        expect(state.tasks.task1.goalSuggestion).toEqual(
+            expect.objectContaining({
+                goalId: 'goal1',
+                status: 'none',
+            })
+        )
+        expect(mockAddGoalRoutingReasonComment).not.toHaveBeenCalled()
+        expect(mockCreateTaskParentGoalChangedFeed).not.toHaveBeenCalled()
+        expect(state.undoActions).toEqual({})
     })
 
     test('auto-assigns only a high-confidence match and creates an undo action', async () => {

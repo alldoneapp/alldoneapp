@@ -3,36 +3,33 @@
  *
  * This service provides flexible task searching capabilities that work across
  * all platforms and contexts, supporting partial matching on various criteria:
- * - Task ID (direct lookup via Algolia)
- * - Task name (partial matching via Algolia)
- * - Human readable ID (via Algolia)
+ * - Task ID (direct Firestore lookup)
+ * - Task name (partial matching via Typesense)
+ * - Human readable ID (exact Firestore lookup when supplied as taskId)
  * - Project name (partial matching)
  * - Project ID (direct lookup)
  *
- * Uses Algolia exclusively for all searches (text, ID, and humanReadableId searches).
+ * Exact IDs are resolved against Firestore; flexible text searches use Typesense.
  */
 
 // Import shared utilities (using dynamic imports for cross-platform compatibility)
-let algoliasearch, getAlgoliaClient
+let searchTypesenseDocuments, formatTypesenseFilterValue
 
 // Dynamic imports for cross-platform compatibility
 async function loadDependencies() {
-    if (!algoliasearch) {
+    if (!searchTypesenseDocuments) {
         try {
-            // Try CommonJS first (Node.js/Cloud Functions)
-            if (typeof require !== 'undefined') {
-                algoliasearch = require('algoliasearch')
-                const searchHelper = require('../searchHelper')
-                getAlgoliaClient = searchHelper.getAlgoliaClient
-            }
+            const typesenseHelper = require('../typesenseHelper')
+            searchTypesenseDocuments = typesenseHelper.searchTypesenseDocuments
+            formatTypesenseFilterValue = typesenseHelper.formatTypesenseFilterValue
         } catch (error) {
-            console.warn('Failed to load Algolia dependencies for TaskSearchService:', error.message)
-            // Continue without Algolia - will fall back to Firestore
+            console.warn('Failed to load Typesense dependencies for TaskSearchService:', error.message)
+            // Continue without search - will fall back to Firestore
         }
     }
 }
 
-// Algolia index name for tasks
+// Search collection name for tasks
 const TASKS_INDEX_NAME = 'dev_tasks'
 
 class TaskSearchService {
@@ -52,7 +49,6 @@ class TaskSearchService {
 
         this.initialized = false
         this.projectService = null
-        this.algoliaClient = null
     }
 
     /**
@@ -65,15 +61,10 @@ class TaskSearchService {
             throw new Error('Database interface is required for TaskSearchService')
         }
 
-        // Load Algolia dependencies (required)
+        // Load Typesense dependencies (required)
         await loadDependencies()
-        if (!getAlgoliaClient) {
-            throw new Error('Algolia client not available. TaskSearchService requires Algolia.')
-        }
-        try {
-            this.algoliaClient = getAlgoliaClient()
-        } catch (error) {
-            throw new Error(`Failed to initialize Algolia client: ${error.message}`)
+        if (!searchTypesenseDocuments) {
+            throw new Error('Typesense search not available. TaskSearchService requires Typesense.')
         }
 
         // Initialize ProjectService for proper project filtering
@@ -145,6 +136,10 @@ class TaskSearchService {
                     matchScore: 1000, // Highest priority for direct ID match
                     matchType: 'direct_id',
                 })
+            } else {
+                matches.push(
+                    ...(await this.findTasksByHumanReadableId(taskId, userProjects, userId, normalizedCriteria))
+                )
             }
         }
 
@@ -426,10 +421,14 @@ class TaskSearchService {
     filterAndLimitResults(matches, searchCriteria) {
         const { taskId } = searchCriteria
 
-        // If searching by direct ID, return at most 1 result (exact match)
+        // Internal IDs take precedence. Keep every exact visible-number match so
+        // project-prefix collisions require selection instead of updating an arbitrary task.
         if (taskId) {
             const exactMatch = matches.find(m => m.task.id === taskId)
-            return exactMatch ? [exactMatch] : []
+            if (exactMatch) return [exactMatch]
+            return matches
+                .filter(m => m.task.humanReadableId?.toUpperCase() === taskId.toUpperCase())
+                .map(m => ({ ...m, matchScore: 1000, matchType: 'exact_id' }))
         }
 
         // Group matches by relevance tiers
@@ -541,7 +540,7 @@ class TaskSearchService {
                 if (!this.canUserAccessTask(taskData, userId)) continue
 
                 return {
-                    task: { id: taskId, ...taskData },
+                    task: { ...taskData, id: taskDoc.id },
                     projectId: candidateProjectId,
                     projectName: project.name,
                 }
@@ -555,6 +554,39 @@ class TaskSearchService {
         }
 
         return null
+    }
+
+    /**
+     * Resolve visible task numbers without depending on search-index freshness.
+     * Counters and prefixes are project-specific, so collect all accessible matches.
+     */
+    async findTasksByHumanReadableId(taskId, userProjects, userId, { projectId, projectName } = {}) {
+        if (!/^[a-z]+-\d+$/i.test(taskId)) return []
+
+        const targetProjects = userProjects.filter(project => {
+            if (projectId) return project.id === projectId
+            if (projectName) return project.name?.toLowerCase().includes(projectName.toLowerCase())
+            return true
+        })
+        const results = await Promise.all(
+            targetProjects.map(async project => {
+                const snapshot = await this.options.database
+                    .collection(`items/${project.id}/tasks`)
+                    .where('humanReadableId', '==', taskId.toUpperCase())
+                    .get()
+
+                return snapshot.docs
+                    .filter(doc => this.canUserAccessTask(doc.data(), userId))
+                    .map(doc => ({
+                        task: { ...doc.data(), id: doc.id },
+                        projectId: project.id,
+                        projectName: project.name,
+                        matchScore: 1000,
+                        matchType: 'exact_id',
+                    }))
+            })
+        )
+        return results.flat()
     }
 
     /**
@@ -635,10 +667,6 @@ class TaskSearchService {
             return []
         }
 
-        if (!this.algoliaClient) {
-            throw new Error('Algolia client not available. TaskSearchService requires Algolia for searching.')
-        }
-
         // Filter projects based on search criteria
         let targetProjects = userProjects
 
@@ -665,51 +693,28 @@ class TaskSearchService {
      * @returns {Array} Array of task matches with scores
      */
     async searchTasksWithAlgolia(userId, taskName, targetProjects, projectId) {
-        if (!this.algoliaClient) {
-            throw new Error('Algolia client not available')
-        }
-
         try {
-            const index = this.algoliaClient.initIndex(TASKS_INDEX_NAME)
-
-            // Build filters for project access and visibility
-            const filters = []
+            // Filters for project access and visibility (Typesense; isPublicFor is string[])
             const FEED_PUBLIC_FOR_ALL = 0 // Public visibility constant
-
-            // Project filter
+            const typesenseFilterParts = []
             if (projectId) {
-                filters.push(`projectId:"${projectId}"`)
+                typesenseFilterParts.push(`projectId:=${formatTypesenseFilterValue(projectId)}`)
             } else {
-                const projectFilters = targetProjects.map(p => `projectId:"${p.id}"`).join(' OR ')
-                if (projectFilters) {
-                    filters.push(`(${projectFilters})`)
-                }
+                const projectIdsList = targetProjects.map(p => formatTypesenseFilterValue(p.id)).join(',')
+                if (projectIdsList) typesenseFilterParts.push(`projectId:=[${projectIdsList}]`)
             }
+            typesenseFilterParts.push(
+                `isPublicFor:=[${formatTypesenseFilterValue(FEED_PUBLIC_FOR_ALL)},${formatTypesenseFilterValue(
+                    userId
+                )}]`
+            )
+            const typesenseFilterBy = typesenseFilterParts.join(' && ')
 
-            // Enforce visibility via access list, not isPrivate flag
-            filters.push(`(isPublicFor:${FEED_PUBLIC_FOR_ALL} OR isPublicFor:${userId})`)
-
-            const searchOptions = {
-                filters: filters.join(' AND '),
-                hitsPerPage: 50, // Limit results per search
-                attributesToRetrieve: [
-                    'objectID',
-                    'name',
-                    'description',
-                    'projectId',
-                    'userId',
-                    'humanReadableId',
-                    'humanReadableIdSearchable',
-                    'done',
-                    'created',
-                    'lastEditionDate',
-                ],
-                attributesToHighlight: ['name', 'description', 'humanReadableId', 'humanReadableIdSearchable'],
-                timeout: 5000, // 5 second timeout
-            }
+            const runSearch = async query =>
+                searchTypesenseDocuments(TASKS_INDEX_NAME, query, { filterBy: typesenseFilterBy, perPage: 50 })
 
             // Try initial search
-            let searchResponse = await index.search(taskName, searchOptions)
+            let searchResponse = await runSearch(taskName)
             const projectsMap = new Map(targetProjects.map(p => [p.id, p]))
             const matches = []
             const seenTaskIds = new Set() // Track seen tasks to avoid duplicates
@@ -741,7 +746,7 @@ class TaskSearchService {
                     if (variation === taskName) continue // Skip original, already tried
 
                     try {
-                        const fuzzyResponse = await index.search(variation, searchOptions)
+                        const fuzzyResponse = await runSearch(variation)
                         for (const hit of fuzzyResponse.hits) {
                             const project = projectsMap.get(hit.projectId)
                             if (!project) continue
@@ -802,7 +807,7 @@ class TaskSearchService {
                     if (importantWords.length > 0 && importantWords.length < words.length) {
                         const partialQuery = importantWords.join(' ')
                         try {
-                            const partialResponse = await index.search(partialQuery, searchOptions)
+                            const partialResponse = await runSearch(partialQuery)
                             for (const hit of partialResponse.hits) {
                                 const project = projectsMap.get(hit.projectId)
                                 if (!project) continue
@@ -830,7 +835,7 @@ class TaskSearchService {
                         for (const word of importantWords.slice(0, 3)) {
                             // Try each important word individually
                             try {
-                                const wordResponse = await index.search(word, searchOptions)
+                                const wordResponse = await runSearch(word)
                                 for (const hit of wordResponse.hits) {
                                     const project = projectsMap.get(hit.projectId)
                                     if (!project) continue

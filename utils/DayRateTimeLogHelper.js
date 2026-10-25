@@ -1,4 +1,9 @@
 import moment from 'moment-timezone'
+import {
+    calculateDayRateTimeLogAdjustment as calculateAdjustment,
+    getDayRateTaskEstimation as getTaskEstimation,
+    normalizeDayRateTimeLogConfig as normalizeConfig,
+} from '../functions/shared/dayRateTimeLogCalculation'
 
 import { BatchWrapper } from '../functions/BatchWrapper/batchWrapper'
 import {
@@ -9,7 +14,7 @@ import {
 } from '../components/TaskListView/Utils/TasksHelper'
 import ProjectHelper from '../components/SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../redux/store'
-import { generateSortIndex, getDb, updateStatistics } from './backends/firestore'
+import { generateSortIndex, getDb, getLoggedUserAccessReaderId, updateStatistics } from './backends/firestore'
 
 export const DAY_RATE_TIME_LOG_TASK_NAME = 'Time log for day rate'
 export const DAY_RATE_TIME_LOG_TYPE = 'dayRateTimeLog'
@@ -19,8 +24,18 @@ export const DAY_RATE_BACKFILL_VERSION = 2
 const DAY_RATE_BACKFILL_CURSOR_FIELD = 'backfilledUntilByUser'
 const DAY_RATE_BACKFILL_VERSION_FIELD = 'backfillVersionByUser'
 const DAY_RATE_LOG_PREFIX = '[day-rate-time-log]'
+const projectBackfills = new Map()
+
+const checkBackfillCancelled = (signal, userId) => {
+    if (signal?.aborted || (signal && store.getState().loggedUser?.uid !== userId))
+        throw Object.assign(new Error('Day-rate update cancelled'), { name: 'AbortError' })
+}
 
 function logDayRateTimeLog(event, data = {}) {
+    // Tracing only, and it serializes the whole day's task list — keep it out of production
+    // consoles. `__DEV__` is a DefinePlugin constant, so the body is dropped from the bundle.
+    if (!__DEV__) return
+
     const safeData = JSON.stringify(data, (key, value) => {
         if (value instanceof Error) {
             return {
@@ -34,18 +49,7 @@ function logDayRateTimeLog(event, data = {}) {
 }
 
 export function normalizeDayRateTimeLogConfig(config = {}) {
-    const targetMinutes = Number(config.targetMinutes)
-    const triggerTasks = Number(config.triggerTasks)
-
-    return {
-        enabled: config.enabled === true,
-        targetMinutes:
-            Number.isFinite(targetMinutes) && targetMinutes > 0 ? targetMinutes : DEFAULT_DAY_RATE_TARGET_MINUTES,
-        triggerTasks:
-            Number.isFinite(triggerTasks) && triggerTasks > 0
-                ? Math.floor(triggerTasks)
-                : DEFAULT_DAY_RATE_TRIGGER_TASKS,
-    }
+    return normalizeConfig(config)
 }
 
 export function isDayRateTimeLogTask(task = {}) {
@@ -121,20 +125,7 @@ export function getDayRateTimeLogRange(timestamp, timezone) {
 }
 
 export function getDayRateTaskEstimation(task = {}) {
-    const isAllDayCalendarTask = Boolean(task.calendarData?.start?.date && !task.calendarData?.start?.dateTime)
-    if (isAllDayCalendarTask) return 0
-
-    const estimations = task.estimations || {}
-    const estimation =
-        estimations[OPEN_STEP] ??
-        estimations[String(OPEN_STEP)] ??
-        estimations['-1'] ??
-        estimations.Open ??
-        estimations.open ??
-        0
-    const numericEstimation = Number(estimation)
-
-    return Number.isFinite(numericEstimation) ? numericEstimation : 0
+    return getTaskEstimation(task, OPEN_STEP)
 }
 
 function getDayRateTaskLogSummary(task = {}, timezone) {
@@ -179,22 +170,12 @@ async function getDayRateStatisticsForDay(projectId, userId, timestamp, timezone
 }
 
 export function calculateDayRateTimeLogAdjustment(tasks = [], config = {}, forceWorkedDay = false) {
-    const normalizedConfig = normalizeDayRateTimeLogConfig(config)
-    const realDoneTasks = tasks.filter(task => !task.parentId && !isDayRateTimeLogTask(task))
-    const realLoggedMinutes = realDoneTasks.reduce((total, task) => total + getDayRateTaskEstimation(task), 0)
-    const hasManualNonCalendarLoggedTime = realDoneTasks.some(
-        task => !task.calendarData && getDayRateTaskEstimation(task) > 0
-    )
-    const shouldLogDay =
-        forceWorkedDay || (!hasManualNonCalendarLoggedTime && realDoneTasks.length >= normalizedConfig.triggerTasks)
+    return calculateAdjustment(tasks, config, forceWorkedDay, OPEN_STEP)
+}
 
-    return {
-        adjustmentMinutes: shouldLogDay ? Math.max(0, normalizedConfig.targetMinutes - realLoggedMinutes) : 0,
-        realDoneTasksAmount: realDoneTasks.length,
-        realLoggedMinutes,
-        hasManualNonCalendarLoggedTime,
-        shouldLogDay,
-    }
+export function getDayRateCappedMinutes(task = {}) {
+    const cappedMinutes = Number(task.genericData?.cappedMinutes)
+    return Number.isFinite(cappedMinutes) && cappedMinutes > 0 ? cappedMinutes : 0
 }
 
 async function getDoneTasksForDay(projectId, userId, timestamp, timezone) {
@@ -209,6 +190,7 @@ async function getDoneTasksForDay(projectId, userId, timestamp, timezone) {
 
     const snapshot = await getDb()
         .collection(`items/${projectId}/tasks`)
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('userId', '==', userId)
         .where('inDone', '==', true)
         .where('completed', '>=', start)
@@ -234,6 +216,7 @@ async function getDoneTasksForDay(projectId, userId, timestamp, timezone) {
 async function getDoneTasksForRange(projectId, userId, start, end) {
     const snapshot = await getDb()
         .collection(`items/${projectId}/tasks`)
+        .where('readerIds', 'array-contains', getLoggedUserAccessReaderId())
         .where('userId', '==', userId)
         .where('inDone', '==', true)
         .where('completed', '>=', start)
@@ -244,7 +227,7 @@ async function getDoneTasksForRange(projectId, userId, start, end) {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(task => task.done === true)
 }
 
-function buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, manual, timezone) {
+function buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, cappedMinutes, manual, timezone) {
     const now = Date.now()
     const { loggedUser } = store.getState()
     const dayKey = getDayRateTimeLogRange(completed, timezone).dayKey
@@ -253,6 +236,7 @@ function buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes
 
     return {
         id: taskId,
+        projectId,
         name: DAY_RATE_TIME_LOG_TASK_NAME,
         extendedName: DAY_RATE_TIME_LOG_TASK_NAME,
         description: '',
@@ -287,6 +271,7 @@ function buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes
             projectId,
             day: dayKey,
             manual: manual === true,
+            cappedMinutes,
         },
         sortIndex: generateSortIndex(),
         linkedParentNotesIds: [],
@@ -324,6 +309,7 @@ async function upsertDayRateTimeLogTask({
     userId,
     completed,
     adjustmentMinutes,
+    cappedMinutes = 0,
     statisticsRepairDelta = 0,
     oldEstimationForStats = 0,
     existingTask,
@@ -357,6 +343,7 @@ async function upsertDayRateTimeLogTask({
             'genericData.projectId': projectId,
             'genericData.day': getDayRateTimeLogRange(completed, timezone).dayKey,
             'genericData.manual': nextManual,
+            'genericData.cappedMinutes': cappedMinutes,
         }
 
         if (oldEstimationForStats > 0) {
@@ -386,6 +373,7 @@ async function upsertDayRateTimeLogTask({
             oldEstimation,
             oldEstimationForStats,
             adjustmentMinutes,
+            cappedMinutes,
             statisticsRepairDelta,
             statsUpdated: oldEstimationForStats > 0 || adjustmentMinutes > 0 || statisticsRepairDelta !== 0,
             manual: nextManual,
@@ -393,7 +381,15 @@ async function upsertDayRateTimeLogTask({
 
         batch.update(getDb().doc(`items/${projectId}/tasks/${existingTask.id}`), updateData)
     } else {
-        const task = buildDayRateTimeLogTask(projectId, userId, completed, adjustmentMinutes, nextManual, timezone)
+        const task = buildDayRateTimeLogTask(
+            projectId,
+            userId,
+            completed,
+            adjustmentMinutes,
+            cappedMinutes,
+            nextManual,
+            timezone
+        )
         const { id, ...taskData } = task
         logDayRateTimeLog('upsert-new', {
             projectId,
@@ -401,6 +397,7 @@ async function upsertDayRateTimeLogTask({
             taskId: id,
             completed: formatDayRateTimestamp(completed, timezone),
             adjustmentMinutes,
+            cappedMinutes,
             statisticsRepairDelta,
             manual: nextManual,
         })
@@ -427,12 +424,149 @@ async function upsertDayRateTimeLogTask({
         userId,
         completed: formatDayRateTimestamp(completed, timezone),
         adjustmentMinutes,
+        cappedMinutes,
         statisticsRepairDelta,
         existingTask: !!existingTask,
     })
 }
 
+async function reconcileDayRateDay({
+    projectId,
+    userId,
+    timestamp,
+    config,
+    manual,
+    timezone,
+    source,
+    requireExistingTask,
+    signal,
+}) {
+    checkBackfillCancelled(signal, userId)
+    const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
+    checkBackfillCancelled(signal, userId)
+    const existingTask = tasks.find(isDayRateTimeLogTask)
+    const existingManual = existingTask?.genericData?.manual === true
+    const taskAdjustment = calculateDayRateTimeLogAdjustment(tasks, config, manual || existingManual)
+    const {
+        shouldLogDay,
+        shouldCapDay,
+        shouldPinDay,
+        adjustmentMinutes,
+        dayCeilingMinutes,
+        excessMinutes,
+        realDoneTasksAmount,
+        realLoggedMinutes,
+    } = taskAdjustment
+
+    // The lightweight after-every-task-change path only maintains a day that already carries a
+    // generated task — except when the day has just gone over the target, which is the one case
+    // that must act without one: the generated task is what will remember the trimmed minutes.
+    if (requireExistingTask && !existingTask && !shouldCapDay) {
+        logDayRateTimeLog('existing-reconcile-skipped', {
+            source,
+            projectId,
+            userId,
+            timestamp: formatDayRateTimestamp(timestamp, timezone),
+            reason: 'missing-generated-task',
+        })
+        return { updated: false }
+    }
+
+    const statistics = await getDayRateStatisticsForDay(projectId, userId, timestamp, timezone)
+    checkBackfillCancelled(signal, userId)
+    const oldGeneratedEstimation = existingTask ? getDayRateTaskEstimation(existingTask) : 0
+    const oldGeneratedIncludedInStats = !!existingTask && statistics.doneTime >= oldGeneratedEstimation
+    const oldEstimationForStats = oldGeneratedIncludedInStats ? oldGeneratedEstimation : 0
+    const oldCappedMinutes = existingTask ? getDayRateCappedMinutes(existingTask) : 0
+    const statsAfterGeneratedUpdate = statistics.doneTime - oldEstimationForStats + adjustmentMinutes
+    // Pinned: the day's statistics end at the day's ceiling whatever the tasks add up to — the
+    // top-up fills a short day to the target, the cap trims calendar time back to the ceiling (the
+    // target, or the hand-logged minutes when those are higher), and the same repair delta does
+    // both. Unpinned: give back whatever an earlier cap took away, so the statistics return to the
+    // task total. `cappedMinutes` is derived from the excess rather than from the delta so that a
+    // repeated reconcile of an already-capped day (delta 0) does not forget what it trimmed.
+    const statisticsRepairDelta = shouldPinDay
+        ? adjustmentMinutes > 0 || existingTask || shouldCapDay
+            ? dayCeilingMinutes - statsAfterGeneratedUpdate
+            : 0
+        : oldCappedMinutes
+    const cappedMinutes = shouldPinDay ? excessMinutes : 0
+
+    logDayRateTimeLog('day-reconcile-calculated', {
+        source,
+        projectId,
+        userId,
+        timestamp: formatDayRateTimestamp(timestamp, timezone),
+        config,
+        manual,
+        requireExistingTask,
+        existingTaskId: existingTask?.id || null,
+        existingManual,
+        shouldLogDay,
+        shouldCapDay,
+        adjustmentMinutes,
+        dayCeilingMinutes,
+        excessMinutes,
+        cappedMinutes,
+        oldCappedMinutes,
+        statisticsDoneTime: statistics.doneTime,
+        oldGeneratedEstimation,
+        oldGeneratedIncludedInStats,
+        oldEstimationForStats,
+        statsAfterGeneratedUpdate,
+        statisticsRepairDelta,
+        realDoneTasksAmount,
+        realLoggedMinutes,
+        tasks: tasks.map(task => getDayRateTaskLogSummary(task, timezone)),
+    })
+
+    if ((!shouldPinDay || (adjustmentMinutes === 0 && statisticsRepairDelta === 0)) && !existingTask) {
+        logDayRateTimeLog('day-reconcile-noop', {
+            source,
+            projectId,
+            userId,
+            timestamp: formatDayRateTimestamp(timestamp, timezone),
+            shouldLogDay,
+            shouldCapDay,
+            adjustmentMinutes,
+            realDoneTasksAmount,
+            realLoggedMinutes,
+        })
+        return { adjustmentMinutes: 0, cappedMinutes: 0, realDoneTasksAmount, realLoggedMinutes, updated: false }
+    }
+
+    const completed = existingTask?.completed || timestamp
+    await upsertDayRateTimeLogTask({
+        projectId,
+        userId,
+        completed,
+        adjustmentMinutes,
+        cappedMinutes,
+        statisticsRepairDelta,
+        oldEstimationForStats,
+        existingTask,
+        existingManual,
+        manual,
+        timezone,
+    })
+
+    logDayRateTimeLog('day-reconcile-finished', {
+        source,
+        projectId,
+        userId,
+        completed: formatDayRateTimestamp(completed, timezone),
+        adjustmentMinutes,
+        cappedMinutes,
+        statisticsRepairDelta,
+        realDoneTasksAmount,
+        realLoggedMinutes,
+    })
+
+    return { adjustmentMinutes, cappedMinutes, realDoneTasksAmount, realLoggedMinutes, updated: true }
+}
+
 export async function reconcileDayRateTimeLog(projectId, userId, timestamp, options = {}) {
+    checkBackfillCancelled(options.signal, userId)
     const project = ProjectHelper.getProjectById(projectId)
     const config = normalizeDayRateTimeLogConfig(options.config || project?.dayRateTimeLog)
     const manual = options.manual === true
@@ -458,83 +592,17 @@ export async function reconcileDayRateTimeLog(projectId, userId, timestamp, opti
         return null
     }
 
-    const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
-    const existingTask = tasks.find(isDayRateTimeLogTask)
-    const existingManual = existingTask?.genericData?.manual === true
-    const taskAdjustment = calculateDayRateTimeLogAdjustment(tasks, config, manual || existingManual)
-    const { shouldLogDay, realDoneTasksAmount, realLoggedMinutes } = taskAdjustment
-    const statistics = await getDayRateStatisticsForDay(projectId, userId, timestamp, timezone)
-    const oldGeneratedEstimation = existingTask ? getDayRateTaskEstimation(existingTask) : 0
-    const oldGeneratedIncludedInStats = existingTask && statistics.doneTime >= oldGeneratedEstimation
-    const oldEstimationForStats = oldGeneratedIncludedInStats ? oldGeneratedEstimation : 0
-    const adjustmentMinutes = taskAdjustment.adjustmentMinutes
-    const statsAfterGeneratedUpdate = statistics.doneTime - oldEstimationForStats + adjustmentMinutes
-    const statisticsRepairDelta =
-        shouldLogDay && (adjustmentMinutes > 0 || existingTask) ? config.targetMinutes - statsAfterGeneratedUpdate : 0
-
-    logDayRateTimeLog('day-reconcile-calculated', {
-        source,
+    return reconcileDayRateDay({
         projectId,
         userId,
-        timestamp: formatDayRateTimestamp(timestamp, timezone),
+        timestamp,
         config,
         manual,
-        existingTaskId: existingTask?.id || null,
-        existingManual,
-        shouldLogDay,
-        adjustmentMinutes,
-        taskBasedAdjustmentMinutes: taskAdjustment.adjustmentMinutes,
-        statisticsDoneTime: statistics.doneTime,
-        oldGeneratedEstimation,
-        oldGeneratedIncludedInStats,
-        oldEstimationForStats,
-        statsAfterGeneratedUpdate,
-        statisticsRepairDelta,
-        realDoneTasksAmount,
-        realLoggedMinutes,
-        tasks: tasks.map(task => getDayRateTaskLogSummary(task, timezone)),
-    })
-
-    if ((!shouldLogDay || (adjustmentMinutes === 0 && statisticsRepairDelta === 0)) && !existingTask) {
-        logDayRateTimeLog('day-reconcile-noop', {
-            source,
-            projectId,
-            userId,
-            timestamp: formatDayRateTimestamp(timestamp, timezone),
-            shouldLogDay,
-            adjustmentMinutes,
-            realDoneTasksAmount,
-            realLoggedMinutes,
-        })
-        return { adjustmentMinutes: 0, realDoneTasksAmount, realLoggedMinutes, updated: false }
-    }
-
-    const completed = existingTask?.completed || timestamp
-    await upsertDayRateTimeLogTask({
-        projectId,
-        userId,
-        completed,
-        adjustmentMinutes,
-        statisticsRepairDelta,
-        oldEstimationForStats,
-        existingTask,
-        existingManual,
-        manual,
         timezone,
-    })
-
-    logDayRateTimeLog('day-reconcile-finished', {
         source,
-        projectId,
-        userId,
-        completed: formatDayRateTimestamp(completed, timezone),
-        adjustmentMinutes,
-        statisticsRepairDelta,
-        realDoneTasksAmount,
-        realLoggedMinutes,
+        requireExistingTask: false,
+        signal: options.signal,
     })
-
-    return { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes, updated: true }
 }
 
 export async function reconcileExistingDayRateTimeLog(projectId, userId, timestamp) {
@@ -542,47 +610,23 @@ export async function reconcileExistingDayRateTimeLog(projectId, userId, timesta
     const config = normalizeDayRateTimeLogConfig(project?.dayRateTimeLog)
     const timezone = getDayRateTimezone()
 
-    if (!projectId || !userId || !timestamp) return null
+    // This lightweight reconciliation runs after every ordinary task status change. Match the
+    // main reconciliation entry point's feature gate so projects that never enabled day-rate time
+    // logging do not issue an unrelated Firestore query after their task write already succeeded.
+    // Apart from wasting a round trip, a rejected follow-up query made the workflow modal report
+    // the successful task completion itself as failed.
+    if (!projectId || !userId || !timestamp || !config.enabled) return null
 
-    const tasks = await getDoneTasksForDay(projectId, userId, timestamp, timezone)
-    const existingTask = tasks.find(isDayRateTimeLogTask)
-    if (!existingTask) {
-        logDayRateTimeLog('existing-reconcile-skipped', {
-            projectId,
-            userId,
-            timestamp: formatDayRateTimestamp(timestamp, timezone),
-            reason: 'missing-generated-task',
-        })
-        return { updated: false }
-    }
-
-    const existingManual = existingTask?.genericData?.manual === true
-    const taskAdjustment = calculateDayRateTimeLogAdjustment(tasks, config, existingManual)
-    const { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes } = taskAdjustment
-    const statistics = await getDayRateStatisticsForDay(projectId, userId, timestamp, timezone)
-    const oldGeneratedEstimation = getDayRateTaskEstimation(existingTask)
-    const oldGeneratedIncludedInStats = statistics.doneTime >= oldGeneratedEstimation
-    const oldEstimationForStats = oldGeneratedIncludedInStats ? oldGeneratedEstimation : 0
-    const statsAfterGeneratedUpdate = statistics.doneTime - oldEstimationForStats + adjustmentMinutes
-    const statisticsRepairDelta =
-        taskAdjustment.shouldLogDay && (adjustmentMinutes > 0 || existingTask)
-            ? config.targetMinutes - statsAfterGeneratedUpdate
-            : 0
-
-    await upsertDayRateTimeLogTask({
+    return reconcileDayRateDay({
         projectId,
         userId,
-        completed: existingTask.completed,
-        adjustmentMinutes,
-        statisticsRepairDelta,
-        oldEstimationForStats,
-        existingTask,
-        existingManual,
+        timestamp,
+        config,
         manual: false,
         timezone,
+        source: 'existing-reconcile',
+        requireExistingTask: true,
     })
-
-    return { adjustmentMinutes, realDoneTasksAmount, realLoggedMinutes, updated: true }
 }
 
 export async function reconcileDayRateTimeLogsForPastDays(
@@ -592,6 +636,7 @@ export async function reconcileDayRateTimeLogsForPastDays(
     endTimestamp,
     options = {}
 ) {
+    checkBackfillCancelled(options.signal, userId)
     if (!projectId || !userId || !startTimestamp || !endTimestamp) return []
 
     const timezone = getDayRateTimezone(options.timezone)
@@ -611,6 +656,7 @@ export async function reconcileDayRateTimeLogsForPastDays(
     }
 
     const tasks = await getDoneTasksForRange(projectId, userId, start, end)
+    checkBackfillCancelled(options.signal, userId)
     const dayTimestamps = [
         ...new Set(
             tasks.filter(task => task.completed).map(task => getDayRateTimeLogRange(task.completed, timezone).start)
@@ -629,11 +675,13 @@ export async function reconcileDayRateTimeLogsForPastDays(
 
     const results = []
     for (let i = 0; i < dayTimestamps.length; i++) {
+        checkBackfillCancelled(options.signal, userId)
         try {
             results.push(
                 await reconcileDayRateTimeLog(projectId, userId, dayTimestamps[i], {
                     timezone,
                     source,
+                    signal: options.signal,
                 })
             )
         } catch (error) {
@@ -658,13 +706,26 @@ export async function reconcileDayRateTimeLogsForPastDays(
     return results
 }
 
-export async function reconcileProjectDayRateTimeLogsBackfill(
-    project,
-    userId,
-    fallbackStartTimestamp,
-    endTimestamp,
-    options = {}
-) {
+// Serialize project backfills even across popup remounts. An SDK write already
+// submitted cannot be cancelled; its operation must settle before another run
+// can calculate corrections from the same statistics. Cancellation stops all
+// subsequent reads/writes, including the cursor advancement.
+export function reconcileProjectDayRateTimeLogsBackfill(project, userId, start, end, options = {}) {
+    const key = `${project?.id}:${userId}`
+    const previous = projectBackfills.get(key) || Promise.resolve()
+    const run = previous
+        .catch(() => {})
+        .then(() => runProjectDayRateTimeLogsBackfill(project, userId, start, end, options))
+    projectBackfills.set(key, run)
+    const release = () => {
+        if (projectBackfills.get(key) === run) projectBackfills.delete(key)
+    }
+    run.then(release, release)
+    return run
+}
+
+async function runProjectDayRateTimeLogsBackfill(project, userId, fallbackStartTimestamp, endTimestamp, options = {}) {
+    checkBackfillCancelled(options.signal, userId)
     const source =
         options.source || (options.forceFromProjectStart ? 'project-backfill-reset' : 'project-backfill-incremental')
     if (!project?.id || !userId || !endTimestamp) {
@@ -719,7 +780,9 @@ export async function reconcileProjectDayRateTimeLogsBackfill(
     const results = await reconcileDayRateTimeLogsForPastDays(project.id, userId, startTimestamp, end, {
         timezone,
         source,
+        signal: options.signal,
     })
+    checkBackfillCancelled(options.signal, userId)
     await getDb()
         .doc(`/projects/${project.id}`)
         .update({

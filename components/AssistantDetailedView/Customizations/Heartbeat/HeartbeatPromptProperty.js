@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View, Text } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -78,7 +78,7 @@ export default function HeartbeatPromptProperty({ disabled, projectId, assistant
                     description={translate('Select a heartbeat prompt version to recover')}
                     restorePrompt={updatePrompt}
                 />
-                <Popover
+                <AppPopover
                     content={
                         <AssistantInstructionsModal
                             disabled={disabled}
@@ -94,7 +94,7 @@ export default function HeartbeatPromptProperty({ disabled, projectId, assistant
                     contentLocation={null}
                 >
                     <Button type={'ghost'} icon={'edit-2'} onPress={openModal} disabled={isOpen || disabled} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

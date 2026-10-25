@@ -6,7 +6,6 @@ import { useSelector, useDispatch } from 'react-redux'
 import LoadingData from '../UIComponents/LoadingData'
 import CustomSideMenu from '../SidebarMenu/CustomSideMenu'
 import Header from './ChatDV/Header'
-import LoadingNoteData from '../UIComponents/LoadingNoteData'
 import NavigationBar from '../NavigationBar/NavigationBar'
 import { DV_TAB_CHAT_BOARD, DV_TAB_CHAT_NOTE, DV_TAB_CHAT_PROPERTIES } from '../../utils/TabNavigationConstants'
 import ChatBoard from './ChatDV/ChatBoard'
@@ -19,7 +18,6 @@ import {
     resetFloatPopup,
     setNavigationRoute,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
 } from '../../redux/actions'
 import store from '../../redux/store'
@@ -36,7 +34,6 @@ import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
 
 const ChatDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const loggedUser = useSelector(state => state.loggedUser)
     const showWebSideBar = useSelector(state => state.showWebSideBar)
     const mobile = useSelector(state => state.smallScreenNavigation)
@@ -64,7 +61,7 @@ const ChatDetailedView = ({ navigation }) => {
         } else {
             const { selectedTypeOfProject } = store.getState()
             NavigationService.navigate('Root')
-            dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+            dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             if (selectedTypeOfProject !== PROJECT_TYPE_SHARED && showAccessDeniedModal)
                 dispatch(setShowAccessDeniedPopup(true))
         }
@@ -105,10 +102,6 @@ const ChatDetailedView = ({ navigation }) => {
     }, [])
 
     useEffect(() => {
-        setFullscreen(assistantEnabled)
-    }, [assistantEnabled])
-
-    useEffect(() => {
         if (chat) {
             const isPrivateForUser = checkIfIsPrivateChat(chat.isPublicFor)
             if (isPrivateForUser) redirectOut(true)
@@ -126,7 +119,6 @@ const ChatDetailedView = ({ navigation }) => {
     return (
         <View style={localStyles.container}>
             <LoadingData />
-            <LoadingNoteData />
 
             {((!loggedUser.isAnonymous && !mobile) || (loggedUser.isAnonymous && mobile && showWebSideBar.visible)) && (
                 <CustomSideMenu navigation={navigation} isWeb />
@@ -169,6 +161,8 @@ const ChatDetailedView = ({ navigation }) => {
                                             assistantId={assistantId}
                                             setAssistantId={setAssistantId}
                                             objectType={'chats'}
+                                            isFullscreen={isFullscreen}
+                                            setFullscreen={setFullscreen}
                                         />
                                     )
                                 case DV_TAB_CHAT_PROPERTIES:

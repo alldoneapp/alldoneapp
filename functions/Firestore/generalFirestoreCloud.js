@@ -22,12 +22,6 @@ async function getUserProjects(userId, appAdmin) {
     return projects
 }
 
-async function updateFullSearchInProject(projectId, activeFullSearch, db, batch) {
-    batch
-        ? batch.update(db.doc(`projects/${projectId}`), { activeFullSearch })
-        : await db.doc(`projects/${projectId}`).update({ activeFullSearch })
-}
-
 async function getTemplateGuideIds(templateId, appAdmin) {
     const projectDocs = (
         await appAdmin.firestore().collection(`projects`).where('parentTemplateId', '==', templateId).get()
@@ -119,6 +113,5 @@ module.exports = {
     getProject,
     mapUsersInProject,
     getTemplateGuideIds,
-    updateFullSearchInProject,
     getUserProjects,
 }

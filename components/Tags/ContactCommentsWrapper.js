@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 
 import ObjectCommentsTag from './ObjectCommentsTag'
 import { useDispatch, useSelector } from 'react-redux'
@@ -70,7 +70,7 @@ export default function ContactCommentsWrapper({
             !openModals[BOT_WARNING_MODAL_ID] &&
             comment
         ) {
-            createObjectMessage(
+            await createObjectMessage(
                 projectId,
                 contactId,
                 comment,
@@ -86,7 +86,7 @@ export default function ContactCommentsWrapper({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <RichCommentModal
                     projectId={projectId}
@@ -97,6 +97,7 @@ export default function ContactCommentsWrapper({
                     userGettingKarmaId={userGettingKarmaId}
                     showBotButton={true}
                     objectName={contact.displayName}
+                    initialObject={contact}
                     externalAssistantId={contact.assistantId}
                 />
             }
@@ -118,6 +119,6 @@ export default function ContactCommentsWrapper({
                 disabled={disabled}
                 inTextInput={inTextInput}
             />
-        </Popover>
+        </AppPopover>
     )
 }

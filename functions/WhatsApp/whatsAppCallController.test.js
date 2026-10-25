@@ -1,5 +1,6 @@
 jest.mock('firebase-admin', () => ({ firestore: jest.fn() }))
 jest.mock('ws', () => jest.fn())
+jest.mock('./assistantLiveController', () => ({ runAssistantLiveCall: jest.fn() }))
 jest.mock('../Services/TwilioWhatsAppService', () => jest.fn())
 jest.mock('../Assistant/assistantHelper', () => ({
     addBaseInstructions: jest.fn(),
@@ -70,6 +71,45 @@ describe('WhatsApp call sideband configuration', () => {
         jest.clearAllMocks()
         getWhatsAppCallConfig.mockReturnValue(config)
         global.fetch = jest.fn()
+    })
+
+    test.each(['phone_call', 'whatsapp_call', 'browser_call'])(
+        'dispatches %s only to the Live controller',
+        async channel => {
+            const { runAssistantLiveCall } = require('./assistantLiveController')
+            getCallSession.mockResolvedValue({ voiceProvider: 'gpt-live', channel })
+            await runWhatsAppRealtimeCall('live-call')
+            expect(runAssistantLiveCall).toHaveBeenCalledWith('live-call')
+            expect(WebSocket).not.toHaveBeenCalled()
+        }
+    )
+
+    test.each([undefined, 'unknown'])(
+        'refuses a new call with provider %s instead of starting legacy voice',
+        async voiceProvider => {
+            getCallSession.mockResolvedValue({
+                id: 'call-1',
+                status: 'controller_queued',
+                openAiCallId: 'old-id',
+                voiceProvider,
+                ...(voiceProvider ? { acceptCompletedAt: 1 } : {}),
+            })
+            updateCallSession.mockResolvedValue()
+            finalizeCallSession.mockResolvedValue()
+            claimRecap.mockResolvedValue(false)
+            global.fetch.mockResolvedValue({ ok: true })
+            await runWhatsAppRealtimeCall('call-1')
+            expect(WebSocket).not.toHaveBeenCalled()
+            expect(finalizeCallSession).toHaveBeenCalledWith('call-1', 'gpt_live_required', 'failed')
+        }
+    )
+
+    test('never falls back when the Live controller fails', async () => {
+        const { runAssistantLiveCall } = require('./assistantLiveController')
+        getCallSession.mockResolvedValue({ voiceProvider: 'gpt-live' })
+        runAssistantLiveCall.mockRejectedValueOnce(new Error('Live unavailable'))
+        await expect(runWhatsAppRealtimeCall('live-call')).rejects.toThrow('Live unavailable')
+        expect(WebSocket).not.toHaveBeenCalled()
     })
 
     test('configures audio output, semantic VAD, interruption, transcription, reasoning, and tools', () => {
@@ -221,6 +261,7 @@ describe('WhatsApp call sideband configuration', () => {
             id: 'call-1',
             status: 'controller_queued',
             openAiCallId: 'openai-call-1',
+            acceptCompletedAt: 1,
             userId: 'user-1',
             projectId: 'project-1',
             assistantId: 'assistant-1',
@@ -365,6 +406,7 @@ describe('WhatsApp call sideband configuration', () => {
                 id: 'call-1',
                 status: 'controller_queued',
                 openAiCallId: 'openai-call-1',
+                acceptCompletedAt: 1,
                 userId: 'user-1',
                 projectId: 'project-1',
                 assistantId: 'assistant-1',

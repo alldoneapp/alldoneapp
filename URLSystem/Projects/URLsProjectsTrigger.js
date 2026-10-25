@@ -12,6 +12,7 @@ import {
     URL_PROJECT_DETAILS_WORKSTREAMS,
     URL_PROJECT_DETAILS_ASSISTANTS,
     URL_PROJECT_DETAILS_CONTACT_STATUSES,
+    URL_PROJECT_DETAILS_WIKI,
 } from './URLsProjects'
 import ProjectHelper from '../../components/SettingsView/ProjectsSettings/ProjectHelper'
 import {
@@ -25,6 +26,7 @@ import {
     DV_TAB_PROJECT_CONTACT_STATUSES,
     DV_TAB_PROJECT_HAPPINESS,
     DV_TAB_PROJECT_OKRS,
+    DV_TAB_PROJECT_WIKI,
 } from '../../utils/TabNavigationConstants'
 
 class URLsProjectsTrigger {
@@ -40,6 +42,7 @@ class URLsProjectsTrigger {
             [URL_PROJECT_DETAILS_STATISTICS]: new RegExp('^/project/(?<projectId>[\\w-]+)/statistics$'),
             [URL_PROJECT_DETAILS_HAPPINESS]: new RegExp('^/project/(?<projectId>[\\w-]+)/happiness$'),
             [URL_PROJECT_DETAILS_OKRS]: new RegExp('^/project/(?<projectId>[\\w-]+)/okrs$'),
+            [URL_PROJECT_DETAILS_WIKI]: new RegExp('^/project/(?<projectId>[\\w-]+)/wiki-settings$'),
             [URL_PROJECT_DETAILS_ASSISTANTS]: new RegExp('^/project/(?<projectId>[\\w-]+)/assistants$'),
             [URL_PROJECT_DETAILS_CONTACT_STATUSES]: new RegExp('^/project/(?<projectId>[\\w-]+)/contact-statuses$'),
             // [URL_PROJECT_ARCHIVE]: new RegExp('^/project/(?<projectId>[\\w-]+)/archive$'),
@@ -105,6 +108,8 @@ class URLsProjectsTrigger {
                 return ProjectHelper.processURLProjectDetailsTab(navigation, DV_TAB_PROJECT_HAPPINESS, params.projectId)
             case URL_PROJECT_DETAILS_OKRS:
                 return ProjectHelper.processURLProjectDetailsTab(navigation, DV_TAB_PROJECT_OKRS, params.projectId)
+            case URL_PROJECT_DETAILS_WIKI:
+                return ProjectHelper.processURLProjectDetailsTab(navigation, DV_TAB_PROJECT_WIKI, params.projectId)
             case URL_PROJECT_DETAILS_BACKLINKS_TASKS:
                 return ProjectHelper.processURLProjectDetailsTab(
                     navigation,

@@ -15,7 +15,7 @@ const { FieldValue, Timestamp } = require('firebase-admin/firestore')
 // ("Feedback revision produced no rules text"), silently dropping the correction; a stronger
 // model both fixes that and produces better-generalized rules.
 const FEEDBACK_DAILY_CAP = 30
-const FEEDBACK_REVISION_MODEL = 'MODEL_GPT5_6_SOL'
+const FEEDBACK_REVISION_MODEL = 'MODEL_GPT6_SOL'
 
 const REVISION_SYSTEM_PROMPT =
     'You maintain a compact list of user feedback rules for an AI email labeling assistant. ' +
@@ -144,9 +144,9 @@ async function reviseLearnedRules({
     if (!isGpt5ReasoningModel(FEEDBACK_REVISION_MODEL)) {
         requestParams.temperature = 0.1
     }
-    if (selectedModel.startsWith('gpt-5.6')) {
+    if (/^gpt-(?:5\.6|6)(?:[.-])/.test(selectedModel)) {
         // Each revision changes the learned-rules prefix and is already persisted by input hash,
-        // so there is no reusable prefix worth paying the GPT-5.6 cache-write premium for.
+        // so there is no reusable prefix worth paying the cache-write premium for.
         requestParams.prompt_cache_options = { mode: 'explicit', ttl: '30m' }
     }
 

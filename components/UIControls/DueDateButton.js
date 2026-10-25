@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import moment from 'moment'
 import Hotkeys from 'react-hot-keys'
 import { useSelector } from 'react-redux'
@@ -84,7 +84,7 @@ export default function DueDateButton({
     }
 
     return visiblePopover ? (
-        <Popover
+        <AppPopover
             content={
                 <DueDateModal
                     task={task}
@@ -122,7 +122,7 @@ export default function DueDateButton({
                     shortcutText={shortcutText}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     ) : (
         <Hotkeys
             keyName={`alt+${shortcutText}`}

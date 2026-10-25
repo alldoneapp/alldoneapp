@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import DueDateModal from '../UIComponents/FloatModals/DueDateModal/DueDateModal'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import moment from 'moment'
 import { useSelector } from 'react-redux'
 import DateTag from '../Tags/DateTag'
@@ -16,6 +16,7 @@ export default function DateTagButton({
     disabled,
     style,
     saveDueDateBeforeSaveTask,
+    setToBacklogBeforeSaveTask,
     outline = false,
 }) {
     const smallScreen = useSelector(state => state.smallScreen)
@@ -68,7 +69,7 @@ export default function DateTagButton({
     }
 
     return visiblePopover ? (
-        <Popover
+        <AppPopover
             content={
                 <DueDateModal
                     task={task}
@@ -77,6 +78,7 @@ export default function DateTagButton({
                     delayClosePopover={delayHidePopover}
                     isObservedTask={isObservedTask}
                     saveDueDateBeforeSaveTask={saveDueDateBeforeSaveTask}
+                    setToBacklogBeforeSaveTask={setToBacklogBeforeSaveTask}
                 />
             }
             onClickOutside={delayHidePopover}
@@ -95,7 +97,7 @@ export default function DateTagButton({
                 outline={outline}
                 disabled={disabled}
             />
-        </Popover>
+        </AppPopover>
     ) : (
         <DateTag
             date={moment(date).format(getDateFormat())}

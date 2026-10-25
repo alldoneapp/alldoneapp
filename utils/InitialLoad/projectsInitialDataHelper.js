@@ -108,6 +108,16 @@ export function sanitizeProjectsInitialData(projectsInitialData, projectIds = []
 }
 
 /**
+ * True when a Firestore doc snapshot reports "missing" from the LOCAL CACHE, i.e. the backend
+ * was unreachable and the SDK answered from what it has. Such a snapshot says nothing about the
+ * server: the doc may well exist (seen in production 2026-08-13 — three live projects and a live
+ * user doc all read as missing during one degraded load). Callers must treat this as a failed
+ * read (retryable), never as "the doc was deleted".
+ */
+export const isTransientMissingDocSnapshot = snapshot =>
+    !!snapshot && !snapshot.exists && !!(snapshot.metadata && snapshot.metadata.fromCache)
+
+/**
  * Order-insensitive comparison of two id lists WITHOUT mutating either of them.
  * The previous inline check called `.sort()` on the caller's arrays, which reordered
  * `loggedUser.projectIds` inside the redux state as a side effect of a cache lookup.

@@ -26,7 +26,7 @@ export const watchDoneGoalTasks = (projectId, goalId, watcherKey) => {
         .where('done', '==', true)
         .where('parentId', '==', null)
         .where('parentGoalId', '==', goalId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
         const { doneTasksArray } = processTaskChanges(projectId, snapshot.docs)
@@ -117,7 +117,7 @@ export const watchDoneGoalSubtasks = (projectId, goalId, watcherKey) => {
         .where('parentDone', '==', true)
         .where('isSubtask', '==', true)
         .where('parentGoalId', '==', goalId)
-        .where('isPublicFor', 'array-contains-any', allowUserIds)
+        .where('readerIds', 'array-contains', allowUserIds[allowUserIds.length - 1])
 
     globalWatcherUnsub[watcherKey] = query.onSnapshot(snapshot => {
         const { doneSubtasksByParent } = processSubtaskChanges(snapshot.docs)

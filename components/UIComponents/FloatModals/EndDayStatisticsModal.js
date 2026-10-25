@@ -1,14 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react'
-import {
-    ActivityIndicator,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native'
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react'
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSelector } from 'react-redux'
 import Lottie from 'lottie-react'
 import moment from 'moment'
@@ -33,35 +24,73 @@ import {
     getEstimationTypeByProjectId,
 } from '../../../utils/EstimationHelper'
 import { setUserStatisticsModalDate } from '../../../utils/backends/Users/usersFirestore'
-import { needToAcknowledgeNewDay } from '../../../utils/NewDayModalHelper'
+import { needToAcknowledgeNewDay, startNewDay as runStartNewDay } from '../../../utils/NewDayModalHelper'
+import { newDayRecoveryStore } from '../../../utils/newDayRecoveryStore'
+import { readNewDayAcknowledgement } from '../../../utils/backends/Users/newDayAcknowledgement'
+import { createNewDayAcknowledgementRetry } from '../../../utils/newDayAcknowledgementRetry'
+import { subscribePageVisible } from '../../../utils/appResume'
+import { isBrowserOffline } from '../../../utils/connectionState'
+import { dayReloadCoordinator, markDailyReload } from '../../../utils/dayReloadCoordinator'
+import { recordNewDayEvent, flushNewDayDiagnostics } from '../../../utils/newDayDiagnostics'
 import {
     normalizeDayRateTimeLogConfig,
     reconcileProjectDayRateTimeLogsBackfill,
 } from '../../../utils/DayRateTimeLogHelper'
-import HappinessRatingPicker from '../../ProjectHappiness/HappinessRatingPicker'
-import { HAPPINESS_PRIVACY_TEXT } from '../../../utils/ProjectHappinessHelper'
-import ProjectHelper from '../../SettingsView/ProjectsSettings/ProjectHelper'
-import { getSafeStatisticNumber, getSafeTextValue } from '../../../utils/StatisticDataHelper'
+import ProjectDayActivity from '../../ProjectHappiness/ProjectDayActivity'
+import ProjectHappinessRatingList from '../../ProjectHappiness/ProjectHappinessRatingList'
+import useProjectHappinessEditor from '../../ProjectHappiness/useProjectHappinessEditor'
+import { getHappinessProjects } from '../../ProjectHappiness/happinessProjects'
+import { getSafeStatisticNumber } from '../../../utils/StatisticDataHelper'
 import { getEndDayMoneyEarnedSummary } from './EndDayStatisticsHelper'
-import { fixedModalOverlayStyle } from '../../../utils/fixedModalPosition'
+import { createNewDayProjectLoader } from '../../../utils/newDayProjectLoader'
+import { reportNewDayStatisticsError } from '../../../utils/backends/Users/reportNewDayStatisticsError'
+import useSafeAreaOverlayPadding from '../../../hooks/useSafeAreaOverlayPadding'
+import {
+    CONNECTION_HEALTH_LIVE,
+    CONNECTION_HEALTH_OFFLINE,
+    CONNECTION_HEALTH_RECONNECTING,
+    CONNECTION_HEALTH_STALE,
+    reconnectNow,
+    isManualOfflineMode,
+} from '../../../utils/connectionHealth'
 
-const getActiveProjectsInSidebarOrder = (projects, user) =>
-    ProjectHelper.sortProjects(
-        ProjectHelper.getActiveProjectsInList(
-            projects,
-            user.projectIds,
-            user.archivedProjectIds,
-            user.templateProjectIds,
-            user.guideProjectIds
-        ),
-        user.uid
-    )
+/**
+ * Ceiling for the statistics re-read that follows a successful reconnect
+ * (AT-2391). `getUserStatistics` is callback-based and reports nothing when it
+ * neither resolves nor rejects, so without a bound the button could spin
+ * forever on a connection that came back and died again mid-read — the
+ * "spinner that never goes away" failure this codebase keeps re-learning.
+ * Generous, because by this point the transport has been *proven* alive: it is
+ * a backstop, not the normal path.
+ */
+export const RECONNECT_STATISTICS_TIMEOUT_MS = 15000
+
+/**
+ * Last-resort UI ceiling for the shared reconnect operation itself. The
+ * connection layer bounds its probes and transport restarts, but the popup
+ * must still own a deadline so a regression below it can never strand the
+ * button in its loading state again.
+ */
+export const RECONNECT_ATTEMPT_TIMEOUT_MS = 25000
+
+/**
+ * Stages of a manual reconnect, kept apart because the offline latch means
+ * opposite things in each: while PROBING the card is still legitimately
+ * offline, so a completion check must not read that latch as "the retry
+ * failed"; while RELOADING the latch has been cleared and setting it again IS
+ * the retry failing.
+ */
+const RECONNECT_IDLE = ''
+const RECONNECT_PROBING = 'probing'
+const RECONNECT_RELOADING = 'reloading'
+const RECONNECT_FAILED = 'failed'
 
 export default function EndDayStatisticsModal() {
-    const sidebarNumbersAreLoading = useSelector(state => state.sidebarNumbers.loading)
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding()
     const loggedUserProjectsAmount = useSelector(state => state.loggedUserProjects.length)
-    const statisticsModalDate = useSelector(state => state.loggedUser.statisticsModalDate)
+    const serverStatisticsModalDate = useSelector(state => state.loggedUser.statisticsModalDate)
     const loggedUserId = useSelector(state => state.loggedUser.uid)
+    const statisticsModalDate = newDayRecoveryStore.getAcknowledgedDate(loggedUserId, serverStatisticsModalDate)
     const isAnonymous = useSelector(state => state.loggedUser.isAnonymous)
     const projectIdsAmount = useSelector(state => state.loggedUser.projectIds.length)
     const showNewDayNotification = useSelector(state => state.showNewDayNotification)
@@ -71,6 +100,14 @@ export default function EndDayStatisticsModal() {
     const templateProjectIdsAmount = useSelector(state => state.loggedUser.templateProjectIds.length)
     const loggedUserProjects = useSelector(state => state.loggedUserProjects)
     const loggedUser = useSelector(state => state.loggedUser)
+    // Both connection signals, because they answer different questions and the
+    // popup is reachable in either state: `connectionState` is what the BROWSER
+    // reports, `connectionHealth` is whether the app is actually talking to the
+    // server (PT-4660) — the transport can be dead while the browser still says
+    // online. Primitives, so this cannot amplify renders (AT-2336).
+    const connectionState = useSelector(state => state.connectionState)
+    const connectionHealth = useSelector(state => state.connectionHealth)
+    const lastConnectionRef = useRef({ connectionState, connectionHealth })
 
     const [doneTasks, setDoneTasks] = useState(0)
     const [xp, setXp] = useState(0)
@@ -81,23 +118,129 @@ export default function EndDayStatisticsModal() {
     const [statsDate, setStatsDate] = useState(statisticsModalDate)
     const [doneTasksByProject, setDoneTasksByProject] = useState({})
     const [statisticsByProject, setStatisticsByProject] = useState({})
-    const [happinessRatings, setHappinessRatings] = useState({})
-    const [happinessComments, setHappinessComments] = useState({})
-    const [visibleComments, setVisibleComments] = useState({})
     const [startNewDayIsLoading, setStartNewDayIsLoading] = useState(false)
+    // Render mirror of `statisticsUnavailableRef`, which is a ref because the statistics
+    // callbacks below need to read it synchronously, plus the stage of a manual
+    // reconnect attempt (AT-2391).
+    const [statisticsUnavailable, setStatisticsUnavailable] = useState(false)
+    const [failedStatisticsProjectIds, setFailedStatisticsProjectIds] = useState([])
+    const [dayRateStates, setDayRateStates] = useState({})
+    const [reconnectStatus, setReconnectStatus] = useState(RECONNECT_IDLE)
 
-    const isOfflineRef = useRef(false)
+    const statisticsUnavailableRef = useRef(false)
+    const reconnectTimeoutRef = useRef(undefined)
     const isLoading = useRef(false)
+    const statisticsResultsRef = useRef({})
+    const statisticsFailuresRef = useRef(new Set())
+    const statisticsGenerationRef = useRef(0)
+    const projectLoadersRef = useRef(new Map())
+    const reconnectOperationRef = useRef(null)
+    const statisticsScopeRef = useRef(null)
+    const statisticsScope = `${loggedUserId}:${statisticsModalDate}:${loggedUserProjects
+        .map(project => project.id)
+        .sort()
+        .join(',')}`
     const isSavingStartNewDay = useRef(false)
+    const acknowledgementRetryRef = useRef(null)
+    const refreshAcknowledgementRef = useRef(null)
     const happinessWatcherKeyRef = useRef(`new_day_happiness_${loggedUserId}`)
-    const commentInputRefs = useRef({})
-    const pendingCommentFocusProjectIdRef = useRef(null)
-    const dirtyHappinessProjectIdsRef = useRef(new Set())
-    const happinessDraftsRef = useRef({})
+
+    const isReconnecting = reconnectStatus === RECONNECT_PROBING || reconnectStatus === RECONNECT_RELOADING
+    // Loading and failed statistics are distinct from device connectivity.
+    // Keep the popup startable while its summary is being fetched.
+    const statisticsPending = dataLoaded !== null && Object.values(dataLoaded).some(loaded => !loaded)
+    const showStatisticsPlaceholder = statisticsUnavailable || statisticsPending
+    const hasLoadedStatistics =
+        dataLoaded !== null && (Object.keys(dataLoaded).length === 0 || Object.values(dataLoaded).some(Boolean))
+    const showPartialSummary = hasLoadedStatistics && showStatisticsPlaceholder
+    const failedStatisticsProjects = loggedUserProjects.filter(project =>
+        failedStatisticsProjectIds.includes(project.id)
+    )
+    const browserOffline =
+        connectionState === 'offline' || (typeof navigator !== 'undefined' && navigator.onLine === false)
+    // The button is offered whenever there is something to reconnect: either
+    // the popup itself could not read the statistics, or the app as a whole is
+    // not talking to the server. The second case is real even with a complete
+    // summary on screen — yesterday's numbers can be served from the local
+    // cache while the connection is down.
+    const connectionNeedsAttention =
+        connectionState === 'offline' ||
+        connectionHealth === CONNECTION_HEALTH_OFFLINE ||
+        connectionHealth === CONNECTION_HEALTH_STALE ||
+        connectionHealth === CONNECTION_HEALTH_RECONNECTING
+    const dayRateNeedsAttention = Object.values(dayRateStates).some(
+        status => status === 'failed' || status === 'delayed'
+    )
+    const showReconnectButton =
+        statisticsUnavailable || dayRateNeedsAttention || connectionNeedsAttention || isReconnecting
+    // Also disabled while the app-wide monitor is mid-probe, so the popup and
+    // the top-bar chip can never disagree about whether a reconnect is running.
+    const reconnectDisabled = isReconnecting || connectionHealth === CONNECTION_HEALTH_RECONNECTING
 
     const needToShowYesterdayStats = () => needToAcknowledgeNewDay(statisticsModalDate)
 
-    const resetModalState = () => {
+    const clearReconnectTimeout = () => {
+        if (reconnectTimeoutRef.current !== undefined) {
+            clearTimeout(reconnectTimeoutRef.current)
+            reconnectTimeoutRef.current = undefined
+        }
+    }
+
+    const checkIfDataIsLoaded = () => {
+        if (!dataLoaded) return false
+        const { loggedUserProjects, loggedUser } = store.getState()
+        const { templateProjectIds } = loggedUser
+        for (let i = 0; i < loggedUserProjects.length; i++) {
+            const project = loggedUserProjects[i]
+            if (!dataLoaded[project.id] && !templateProjectIds.includes(project.id)) return false
+        }
+        return true
+    }
+
+    const reportNewDayError = (error, label) => {
+        // Never rethrow: by the time these run the popup is already closed and
+        // the state is already local. Logging with the failing step is what
+        // makes a real failure diagnosable instead of a silent `console.log`.
+        console.warn(`[NewDay] "${label}" failed`, error)
+        recordNewDayEvent('save-failed', { userId: loggedUserId, reason: label, errorCode: error?.code || 'unknown' })
+    }
+
+    const happinessProjects = getHappinessProjects(loggedUserProjects, loggedUser)
+
+    /**
+     * The rating rows are shared with Settings → Happiness (AT-2392): the
+     * state, the per-day watchers and the one deduplicated write path all live
+     * in `useProjectHappinessEditor` now. The watchers stay detached until the
+     * statistics have loaded — offline there is nothing to read, and an
+     * anonymous user has no ratings.
+     */
+    const happinessEditor = useProjectHappinessEditor({
+        projects: happinessProjects,
+        userId: loggedUserId,
+        date: statsDate,
+        watchEnabled: checkIfDataIsLoaded() && !statisticsUnavailableRef.current && !isAnonymous,
+        watcherKeyPrefix: happinessWatcherKeyRef.current,
+        onError: reportNewDayError,
+    })
+
+    /**
+     * @param {{ keepStartNewDayGuard?: boolean }} options when the reset comes
+     * from the "Start new day" flow itself the double-press guard must survive
+     * it: the flow closes the popup synchronously, so clearing the guard here
+     * would let a second tap landing in the same frame start a second
+     * acknowledgement (and a second reload). It is cleared again by the
+     * data-loading effect, i.e. the next time a day actually needs confirming.
+     */
+    const resetModalState = ({ keepStartNewDayGuard = false } = {}) => {
+        statisticsGenerationRef.current++
+        projectLoadersRef.current.forEach(loader => loader.dispose())
+        projectLoadersRef.current.clear()
+        reconnectOperationRef.current?.cancel?.()
+        reconnectOperationRef.current = null
+        setDayRateStates({})
+        statisticsResultsRef.current = {}
+        statisticsFailuresRef.current.clear()
+        setFailedStatisticsProjectIds([])
         setDoneTasks(0)
         setXp(0)
         setDonePoints(0)
@@ -106,141 +249,392 @@ export default function EndDayStatisticsModal() {
         setStatisticsByProject({})
         setShowEmptyInbox(true)
         setDataLoaded(null)
-        setStatsDate(statisticsModalDate)
-        setHappinessRatings({})
-        setHappinessComments({})
-        setVisibleComments({})
-        pendingCommentFocusProjectIdRef.current = null
-        dirtyHappinessProjectIdsRef.current.clear()
-        happinessDraftsRef.current = {}
-        isOfflineRef.current = false
+        // Read from the store rather than the render closure: the "Start new
+        // day" flow dispatches the new acknowledgement first, so the closure
+        // value here is one day stale by the time it resets.
+        setStatsDate(
+            newDayRecoveryStore.getAcknowledgedDate(loggedUserId, store.getState().loggedUser.statisticsModalDate)
+        )
+        happinessEditor.reset()
+        statisticsUnavailableRef.current = false
+        setStatisticsUnavailable(false)
+        clearReconnectTimeout()
+        setReconnectStatus(RECONNECT_IDLE)
         isLoading.current = false
-        isSavingStartNewDay.current = false
+        if (!keepStartNewDayGuard) isSavingStartNewDay.current = false
         setStartNewDayIsLoading(false)
     }
 
-    const saveDirtyHappinessEntries = async () => {
-        const dirtyProjectIds = dirtyHappinessProjectIdsRef.current
-        if (dirtyProjectIds.size === 0) return
-
-        const promises = getHappinessProjects().reduce((promises, project) => {
-            if (!dirtyProjectIds.has(project.id)) return promises
-
-            const draft = happinessDraftsRef.current[project.id] || {}
-            const rating = draft.rating || happinessRatings[project.id]
-            if (rating) {
-                promises.push(
-                    Backend.setProjectHappiness(
-                        project.id,
-                        loggedUserId,
-                        statsDate,
-                        rating,
-                        draft.comment != null ? draft.comment : happinessComments[project.id] || '',
-                        project
-                    )
-                )
-            }
-            return promises
-        }, [])
-
-        await Promise.all(promises)
-        dirtyProjectIds.clear()
-    }
-
-    const startNewDay = async e => {
-        e.preventDefault()
-        e.stopPropagation()
+    /**
+     * "Start new day" (AT-2367).
+     *
+     * The popup closes on the tap itself — see `startNewDay` in
+     * `NewDayModalHelper` for why every await used to sit in front of that.
+     * The full app reload is kept, but only for the device that actually
+     * crossed midnight while open (the one whose date-scoped watchers are on
+     * yesterday), and it can no longer be delayed by a pending write.
+     */
+    const onPressStartNewDay = e => {
+        e?.preventDefault?.()
+        e?.stopPropagation?.()
         if (isSavingStartNewDay.current) return
 
         isSavingStartNewDay.current = true
         setStartNewDayIsLoading(true)
 
-        try {
-            if (!isOfflineRef.current) {
-                const newStatisticsModalDate = Date.now()
+        const releaseSubmission = dayReloadCoordinator.hold()
+        const acknowledgedStatsDate = statsDate
+        const crossedMidnightWhileOpen = showNewDayNotification
+        // Snapshot the unsaved drafts here, not inside the flow: the flow
+        // closes the popup (which resets this editor) before it issues any
+        // write, so a flush read after the close would find nothing.
+        const persistHappinessDrafts = happinessEditor.takeDirtyEntries(acknowledgedStatsDate)
+
+        return runStartNewDay({
+            applyLocalAcknowledgement: statisticsModalDate => {
+                newDayRecoveryStore.acknowledge(loggedUserId, acknowledgedStatsDate, statisticsModalDate)
+                recordNewDayEvent('confirmation-local', {
+                    userId: loggedUserId,
+                    acknowledgedDate: statisticsModalDate,
+                    previousDate: acknowledgedStatsDate,
+                })
                 const { loggedUser } = store.getState()
                 const updatedLoggedUser = {
                     ...loggedUser,
-                    statisticsModalDate: newStatisticsModalDate,
-                    previousStatisticsModalDate: statsDate,
+                    statisticsModalDate,
+                    previousStatisticsModalDate: acknowledgedStatsDate,
                 }
-                await saveDirtyHappinessEntries()
-                await setUserStatisticsModalDate(statsDate, newStatisticsModalDate)
                 store.dispatch(storeLoggedUser(updatedLoggedUser))
                 UserDataCache.setCachedUserData(updatedLoggedUser)
                 store.dispatch(setShowNewDayNotification(false))
-            }
-
-            if (showNewDayNotification) {
-                await deleteCacheAndRefresh()
-            } else {
-                resetModalState()
-                isSavingStartNewDay.current = false
-                setStartNewDayIsLoading(false)
-            }
-        } catch (error) {
-            console.log(error)
-            isSavingStartNewDay.current = false
-            setStartNewDayIsLoading(false)
-        }
+            },
+            closePopup: () => resetModalState({ keepStartNewDayGuard: true }),
+            persistHappinessDrafts,
+            persistAcknowledgement: () => persistPendingAcknowledgement(),
+            reloadApp: crossedMidnightWhileOpen
+                ? () =>
+                      dayReloadCoordinator.request(
+                          () => {
+                              markDailyReload()
+                              recordNewDayEvent('reload-requested', {
+                                  userId: loggedUserId,
+                                  reason: 'new-day-confirmed',
+                              })
+                              void deleteCacheAndRefresh(undefined, 'new-day-confirmed')
+                          },
+                          () => typeof navigator === 'undefined' || navigator.onLine !== false
+                      )
+                : undefined,
+            onError: reportNewDayError,
+        }).finally(releaseSubmission)
     }
+
+    const persistPendingAcknowledgement = () => acknowledgementRetryRef.current?.retry() || Promise.resolve()
+
+    const flushPendingAcknowledgement = () => {
+        const entry = newDayRecoveryStore.getAcknowledgement(loggedUserId)
+        if (!entry?.pending) return Promise.resolve()
+        return newDayRecoveryStore
+            .flush(
+                entry,
+                async current => {
+                    await setUserStatisticsModalDate(current.previousDate, current.date, current.userId)
+                    recordNewDayEvent('confirmation-server', {
+                        userId: current.userId,
+                        acknowledgedDate: current.date,
+                        previousDate: current.previousDate,
+                    })
+                },
+                () => store.getState().loggedUser.uid === loggedUserId
+            )
+            .finally(() => dayReloadCoordinator.retry())
+    }
+
+    const needsAcknowledgement = !isAnonymous && !!loggedUserId && needToShowYesterdayStats()
+    useLayoutEffect(() => {
+        if (!needsAcknowledgement) return
+        recordNewDayEvent('popup-open', { userId: loggedUserId, previousDate: statisticsModalDate })
+        return dayReloadCoordinator.hold()
+    }, [loggedUserId, needsAcknowledgement])
+
+    useEffect(() => {
+        if (!loggedUserId || isAnonymous) return
+        let disposed = false
+        let reading
+        const isActive = () => !disposed && store.getState().loggedUser.uid === loggedUserId
+        const canSync = () =>
+            isActive() &&
+            !isBrowserOffline() &&
+            !isManualOfflineMode() &&
+            store.getState().connectionState !== 'offline'
+        const retry = createNewDayAcknowledgementRetry({
+            persist: flushPendingAcknowledgement,
+            isPending: () => !!newDayRecoveryStore.getAcknowledgement(loggedUserId)?.pending,
+            isActive: canSync,
+            onError: error => reportNewDayError(error, 'persistAcknowledgement'),
+        })
+        acknowledgementRetryRef.current = retry
+        const refresh = () => {
+            if (reading || !canSync()) return
+            const current = store.getState().loggedUser
+            if (
+                !needToAcknowledgeNewDay(
+                    newDayRecoveryStore.getAcknowledgedDate(loggedUserId, current.statisticsModalDate)
+                )
+            )
+                return
+            reading = readNewDayAcknowledgement(loggedUserId, () => store.getState().loggedUser.uid)
+                .then(user => {
+                    if (!isActive() || !user) return
+                    const date = Number(user.statisticsModalDate) || 0
+                    newDayRecoveryStore.observeAcknowledgement(loggedUserId, user.previousStatisticsModalDate, date)
+                    const current = store.getState().loggedUser
+                    const acknowledgedDate = newDayRecoveryStore.getAcknowledgedDate(
+                        loggedUserId,
+                        current.statisticsModalDate
+                    )
+                    if (acknowledgedDate <= Number(current.statisticsModalDate || 0)) return
+                    const updated = {
+                        ...current,
+                        statisticsModalDate: acknowledgedDate,
+                        previousStatisticsModalDate:
+                            acknowledgedDate === date
+                                ? user.previousStatisticsModalDate
+                                : current.previousStatisticsModalDate,
+                    }
+                    store.dispatch(storeLoggedUser(updated))
+                    UserDataCache.setCachedUserData(updated)
+                    recordNewDayEvent('confirmation-reconciled', {
+                        userId: loggedUserId,
+                        acknowledgedDate,
+                        previousDate: user.previousStatisticsModalDate,
+                    })
+                })
+                .catch(error => {
+                    if (isActive()) reportNewDayError(error, 'readAcknowledgement')
+                })
+                .finally(() => {
+                    reading = null
+                    if (isActive()) dayReloadCoordinator.retry()
+                })
+        }
+        const sync = () => {
+            void retry.retry().catch(() => {})
+            refresh()
+        }
+        refreshAcknowledgementRef.current = sync
+        sync()
+        const unsubscribe = subscribePageVisible(sync)
+        return () => {
+            disposed = true
+            retry.dispose()
+            unsubscribe()
+            acknowledgementRetryRef.current = null
+            refreshAcknowledgementRef.current = null
+        }
+    }, [loggedUserId, isAnonymous])
+
+    useEffect(() => {
+        if (!loggedUserId || isAnonymous) return
+        void flushNewDayDiagnostics(loggedUserId)
+        refreshAcknowledgementRef.current?.()
+        dayReloadCoordinator.retry()
+    }, [loggedUserId, isAnonymous, connectionState, connectionHealth, showNewDayNotification])
 
     const updateStatistics = (projectId, statistics = {}) => {
-        if (!isOfflineRef.current) {
-            const estimationType = getEstimationTypeByProjectId(projectId)
-            const recheadEmptyInbox = getIfLoggedUserReachedEmptyInbox(statsDate)
-            if (!recheadEmptyInbox) {
-                const { sidebarNumbers } = store.getState()
-                if (sidebarNumbers[projectId] && sidebarNumbers[projectId][loggedUserId]) setShowEmptyInbox(false)
+        // Replace this project's result, so a retry or late answer never doubles
+        // totals. One failed project must not discard all the successful ones.
+        statisticsResultsRef.current[projectId] = statistics
+        statisticsFailuresRef.current.delete(projectId)
+        setFailedStatisticsProjectIds(ids => ids.filter(id => id !== projectId))
+        const results = statisticsResultsRef.current
+        let taskTotal = 0,
+            pointTotal = 0,
+            goldTotal = 0,
+            xpTotal = 0
+        const tasksByProject = {},
+            timeByProject = {}
+        Object.entries(results).forEach(([id, data]) => {
+            const tasks = getSafeStatisticNumber(data.doneTasks)
+            const estimationType = getEstimationTypeByProjectId(id)
+            tasksByProject[id] = tasks
+            timeByProject[id] = {
+                doneTime: estimationType === ESTIMATION_TYPE_TIME ? getSafeStatisticNumber(data.doneTime) : 0,
             }
-
-            const doneTasks = getSafeStatisticNumber(statistics.doneTasks)
-            const donePoints = getSafeStatisticNumber(statistics.donePoints)
-            const doneTime = getSafeStatisticNumber(statistics.doneTime)
-            const gold = getSafeStatisticNumber(statistics.gold)
-            const xp = getSafeStatisticNumber(statistics.xp)
-
-            setDoneTasksByProject(state => ({ ...state, [projectId]: doneTasks }))
-            setStatisticsByProject(state => ({
-                ...state,
-                [projectId]: {
-                    doneTime: estimationType === ESTIMATION_TYPE_TIME ? doneTime : 0,
-                },
-            }))
-            setDoneTasks(state => state + doneTasks)
-            setDonePoints(state => state + (estimationType === ESTIMATION_TYPE_POINTS ? donePoints : 0))
-            setGold(state => state + gold)
-            setXp(state => state + xp)
-            setDataLoaded(dataLoaded => {
-                return { ...dataLoaded, [projectId]: true }
-            })
-        }
+            taskTotal += tasks
+            pointTotal += estimationType === ESTIMATION_TYPE_POINTS ? getSafeStatisticNumber(data.donePoints) : 0
+            goldTotal += getSafeStatisticNumber(data.gold)
+            xpTotal += getSafeStatisticNumber(data.xp)
+        })
+        setDoneTasksByProject(tasksByProject)
+        setStatisticsByProject(timeByProject)
+        setDoneTasks(taskTotal)
+        setDonePoints(pointTotal)
+        setGold(goldTotal)
+        setXp(xpTotal)
+        // Yesterday's recorded achievement does not depend on today's counters.
+        setShowEmptyInbox(getIfLoggedUserReachedEmptyInbox(statisticsModalDate))
+        statisticsUnavailableRef.current = statisticsFailuresRef.current.size > 0
+        setStatisticsUnavailable(statisticsUnavailableRef.current)
+        setDataLoaded(loaded => ({ ...loaded, [projectId]: true }))
     }
 
-    const activeOfflineMode = () => {
-        isOfflineRef.current = true
-        setDataLoaded({})
+    const markStatisticsUnavailable = (projectId, error, context = {}) => {
+        if (projectId) {
+            statisticsFailuresRef.current.add(projectId)
+            setFailedStatisticsProjectIds(ids => (ids.includes(projectId) ? ids : [...ids, projectId]))
+            // Reporting owns its deadline and handles failures; never await it in the UI.
+            const { connectionHealth, connectionState } = store.getState()
+            void reportNewDayStatisticsError(error, {
+                userId: loggedUserId,
+                projectId,
+                statisticsDate: moment(statisticsModalDate).format('DDMMYYYY'),
+                connectionHealth,
+                connectionState,
+                ...context,
+            })
+        }
+        statisticsUnavailableRef.current = true
+        setStatisticsUnavailable(true)
+        if (error) console.warn('[NewDay] Statistics could not be loaded', { code: error.code, message: error.message })
     }
 
-    const reconcileDayRateTimeLogBeforeStats = async (project, startTimestamp) => {
-        const dayRateTimeLog = normalizeDayRateTimeLogConfig(project.dayRateTimeLog)
-        if (!dayRateTimeLog.enabled) return
+    /**
+     * Reads yesterday's per-project statistics.
+     *
+     * Extracted from the mount effect so the offline card's reconnect button
+     * can run the very same load again (AT-2391) — a retry that read a
+     * different way could report a different answer than the one the popup was
+     * already showing, and the offline fallback (`markStatisticsUnavailable`) has to
+     * stay reachable on the second attempt exactly as on the first.
+     *
+     * Retry only missing projects. Successful results are retained and replaced
+     * by project rather than added again; obsolete attempts cannot update the UI.
+     */
+    const loadYesterdayStatistics = () => {
+        const { loggedUserProjects, loggedUser } = store.getState()
+        const acknowledgedDate = newDayRecoveryStore.getAcknowledgedDate(loggedUser.uid, loggedUser.statisticsModalDate)
+        const statisticsDate = moment(acknowledgedDate).format('DDMMYYYY')
+        const generation = statisticsGenerationRef.current
+        const projects = loggedUserProjects.filter(project => !loggedUser.templateProjectIds.includes(project.id))
+        setDataLoaded(
+            Object.fromEntries(projects.map(project => [project.id, !!statisticsResultsRef.current[project.id]]))
+        )
+        const isCurrent = () =>
+            generation === statisticsGenerationRef.current &&
+            store.getState().loggedUser.uid === loggedUser.uid &&
+            newDayRecoveryStore.getAcknowledgedDate(loggedUser.uid, store.getState().loggedUser.statisticsModalDate) ===
+                acknowledgedDate
 
-        try {
-            const yesterday = moment().subtract(1, 'day').endOf('day').valueOf()
-            await reconcileProjectDayRateTimeLogsBackfill(project, loggedUserId, startTimestamp, yesterday, {
-                source: 'new-day-modal',
-            })
-        } catch (error) {
-            console.log(error)
+        projects.forEach(project => {
+            if (!projectLoadersRef.current.has(project.id)) {
+                const end = moment().subtract(1, 'day').endOf('day').valueOf()
+                const loader = createNewDayProjectLoader({
+                    isCurrent,
+                    timeoutMs: RECONNECT_STATISTICS_TIMEOUT_MS,
+                    read: (onSuccess, onError, { refresh }) =>
+                        Backend.getUserStatistics(
+                            project.id,
+                            loggedUser.uid,
+                            statisticsDate,
+                            (id, statistics) => onSuccess(statistics),
+                            onError,
+                            { preferDirect: true, ...(refresh ? { allowCached: false } : {}) }
+                        ),
+                    reconcile: normalizeDayRateTimeLogConfig(project.dayRateTimeLog).enabled
+                        ? signal =>
+                              reconcileProjectDayRateTimeLogsBackfill(project, loggedUser.uid, acknowledgedDate, end, {
+                                  source: 'new-day-modal',
+                                  signal,
+                              })
+                        : null,
+                    onStatistics: statistics => updateStatistics(project.id, statistics),
+                    onReadStart: () => {
+                        statisticsFailuresRef.current.delete(project.id)
+                        setFailedStatisticsProjectIds(ids => ids.filter(id => id !== project.id))
+                        statisticsUnavailableRef.current = statisticsFailuresRef.current.size > 0
+                        setStatisticsUnavailable(statisticsUnavailableRef.current)
+                    },
+                    onReadError: (error, context) => markStatisticsUnavailable(project.id, error, context),
+                    onDayRateState: status => setDayRateStates(states => ({ ...states, [project.id]: status })),
+                    onMaintenanceError: (error, context) => {
+                        const { connectionHealth, connectionState } = store.getState()
+                        void reportNewDayStatisticsError(error, {
+                            userId: loggedUser.uid,
+                            projectId: project.id,
+                            statisticsDate,
+                            connectionHealth,
+                            connectionState,
+                            ...context,
+                        })
+                    },
+                })
+                projectLoadersRef.current.set(project.id, loader)
+            }
+            projectLoadersRef.current.get(project.id).load()
+        })
+    }
+
+    // Read missing summaries immediately. Transport recovery runs alongside them;
+    // neither a stalled SDK restart nor background day-rate writes gate REST reads.
+    const onPressReconnect = async e => {
+        e?.preventDefault?.()
+        e?.stopPropagation?.()
+        if (reconnectDisabled || reconnectOperationRef.current) return
+
+        clearReconnectTimeout()
+        if (!connectionNeedsAttention) {
+            setReconnectStatus(RECONNECT_RELOADING)
+            loadYesterdayStatistics()
+            return
         }
+        const operation = {}
+        const generation = statisticsGenerationRef.current
+        reconnectOperationRef.current = operation
+        const isCurrent = () =>
+            reconnectOperationRef.current === operation &&
+            generation === statisticsGenerationRef.current &&
+            store.getState().loggedUser.uid === loggedUserId &&
+            newDayRecoveryStore.getAcknowledgedDate(loggedUserId, store.getState().loggedUser.statisticsModalDate) ===
+                statisticsModalDate
+        setReconnectStatus(RECONNECT_PROBING)
+        loadYesterdayStatistics()
+
+        const reconnectAttempt = Promise.resolve()
+            .then(() => reconnectNow())
+            .catch(error => {
+                reportNewDayError(error, 'reconnectNow')
+                return undefined
+            })
+        const reconnectDeadline = new Promise(resolve => {
+            operation.cancel = () => resolve(undefined)
+            reconnectTimeoutRef.current = setTimeout(() => {
+                reconnectTimeoutRef.current = undefined
+                resolve(undefined)
+            }, RECONNECT_ATTEMPT_TIMEOUT_MS)
+        })
+        const outcome = await Promise.race([reconnectAttempt, reconnectDeadline])
+        if (!isCurrent()) return
+        reconnectOperationRef.current = null
+        clearReconnectTimeout()
+
+        if (outcome !== CONNECTION_HEALTH_LIVE) {
+            setReconnectStatus(RECONNECT_FAILED)
+            return
+        }
+
+        setReconnectStatus(RECONNECT_RELOADING)
+        // A read attempted during transport recovery may itself have failed.
+        // Retry only missing/stale figures and reuse any running maintenance.
+        loadYesterdayStatistics()
     }
 
     useEffect(() => {
         if (
             !isAnonymous &&
-            (projectIdsAmount === 0 || (!sidebarNumbersAreLoading && loggedUserProjectsAmount === projectIdsAmount)) &&
-            !isLoading.current &&
+            loggedUserId &&
+            (projectIdsAmount === 0 || loggedUserProjectsAmount === projectIdsAmount) &&
+            (!isLoading.current || statisticsScopeRef.current !== statisticsScope) &&
             // Account-scoped trigger: statisticsModalDate lives on the user doc and
             // syncs across devices, so it is the single source of truth for whether
             // the new day still needs confirmation. showNewDayNotification (the
@@ -248,31 +642,15 @@ export default function EndDayStatisticsModal() {
             // as a wake signal that re-evaluates this account state at midnight.
             needToShowYesterdayStats()
         ) {
-            isLoading.current = true
-            const endDayStatisticsDate = moment(statisticsModalDate)
-            const statisticsDate = endDayStatisticsDate.format('DDMMYYYY')
-            const dataLoaded = {}
-            setDoneTasksByProject({})
-            setStatisticsByProject({})
-            const { loggedUserProjects, loggedUser } = store.getState()
-            const { templateProjectIds } = loggedUser
-            for (let i = 0; i < loggedUserProjects.length; i++) {
-                const project = loggedUserProjects[i]
-                if (!templateProjectIds.includes(project.id)) {
-                    dataLoaded[project.id] = false
-                    reconcileDayRateTimeLogBeforeStats(project, endDayStatisticsDate.valueOf()).finally(() => {
-                        Backend.getUserStatistics(
-                            project.id,
-                            loggedUserId,
-                            statisticsDate,
-                            updateStatistics,
-                            activeOfflineMode
-                        )
-                    })
-                }
+            if (statisticsScopeRef.current !== statisticsScope) {
+                resetModalState()
+                statisticsScopeRef.current = statisticsScope
             }
-
-            setDataLoaded(dataLoaded)
+            isLoading.current = true
+            // A day is being confirmed again, so the previous confirmation's
+            // double-press guard (kept across its own close) is released here.
+            isSavingStartNewDay.current = false
+            loadYesterdayStatistics()
         }
     }, [
         showNewDayNotification,
@@ -280,7 +658,8 @@ export default function EndDayStatisticsModal() {
         statisticsModalDate,
         projectIdsAmount,
         templateProjectIdsAmount,
-        sidebarNumbersAreLoading,
+        statisticsScope,
+        loggedUserId,
         isAnonymous,
     ])
 
@@ -288,113 +667,78 @@ export default function EndDayStatisticsModal() {
     // per user account as statisticsModalDate on the user doc, which syncs to
     // every device in real time via watchLoggedUser. Once it advances to today
     // — because the user started the new day here or on another device — there
-    // is nothing left to confirm on this device: clear the per-device
-    // midnight-timer flag (showNewDayNotification) and dismiss any prompt still
-    // open here, so the same user is never asked to confirm the same day twice.
-    // This only ever tears down local state and never writes to Firestore, so
-    // anonymous users, offline use and other users on the same device are safe.
+    // is nothing left to confirm on this device. Its date-scoped watchers can
+    // still belong to yesterday: preserve that device's reload before clearing
+    // its midnight flag. The coordinator combines this with any daily reload
+    // already queued, and retains the normal pending-write and offline guards.
     useEffect(() => {
         if (isAnonymous || isSavingStartNewDay.current) return
         if (needToShowYesterdayStats()) return
 
-        if (showNewDayNotification) store.dispatch(setShowNewDayNotification(false))
+        if (showNewDayNotification) {
+            store.dispatch(setShowNewDayNotification(false))
+            dayReloadCoordinator.request(
+                () => {
+                    markDailyReload()
+                    recordNewDayEvent('reload-requested', {
+                        userId: loggedUserId,
+                        reason: 'new-day-confirmed-elsewhere',
+                    })
+                    void deleteCacheAndRefresh(undefined, 'new-day-confirmed-elsewhere')
+                },
+                () => !isBrowserOffline() && !isManualOfflineMode()
+            )
+        }
         if (dataLoaded || isLoading.current) resetModalState()
     }, [statisticsModalDate, showNewDayNotification, isAnonymous, dataLoaded])
 
+    // Closes out a reconnect attempt (AT-2391). `getUserStatistics` is
+    // callback-based, so the only honest "the retry finished" signal is the
+    // same one the first load uses: every project has reported, or one of them
+    // fell back to offline.
     useEffect(() => {
-        if (!checkIfDataIsLoaded() || isOfflineRef.current || isAnonymous) return
-
-        const { loggedUserProjects, loggedUser } = store.getState()
-        const activeProjects = getActiveProjectsInSidebarOrder(loggedUserProjects, loggedUser)
-        const watcherKeys = activeProjects.map(project => `${happinessWatcherKeyRef.current}_${project.id}`)
-        activeProjects.forEach(project => {
-            Backend.watchProjectHappinessByRange(
-                project.id,
-                loggedUserId,
-                statsDate,
-                statsDate,
-                `${happinessWatcherKeyRef.current}_${project.id}`,
-                (projectId, entries) => {
-                    const entry = entries[0]
-                    if (entry) {
-                        happinessDraftsRef.current[projectId] = {
-                            rating: entry.rating,
-                            comment: entry.comment || '',
-                        }
-                        setHappinessRatings(state => ({ ...state, [projectId]: entry.rating }))
-                        setHappinessComments(state => ({ ...state, [projectId]: entry.comment || '' }))
-                    }
-                }
-            )
-        })
-
-        return () => {
-            watcherKeys.forEach(key => Backend.unwatch(key))
+        // Only the RELOADING stage: while the probe is still running the card is
+        // legitimately still offline, and reading that latch as a verdict would
+        // fail the attempt before it had a chance.
+        if (reconnectStatus !== RECONNECT_RELOADING) return
+        if (statisticsUnavailable) {
+            clearReconnectTimeout()
+            setReconnectStatus(RECONNECT_FAILED)
+            return
         }
-    }, [JSON.stringify(dataLoaded), statsDate, loggedUserId, isAnonymous])
+        if (checkIfDataIsLoaded()) {
+            clearReconnectTimeout()
+            setReconnectStatus(RECONNECT_IDLE)
+        }
+    }, [reconnectStatus, statisticsUnavailable, dataLoaded])
 
+    // A real connectivity recovery retries missing projects without throwing
+    // away the successful results or restarting the entire Firestore transport.
     useEffect(() => {
-        const projectId = pendingCommentFocusProjectIdRef.current
-        if (!projectId || !visibleComments[projectId]) return
-
-        const timeoutId = setTimeout(() => {
-            commentInputRefs.current[projectId]?.focus?.()
-            pendingCommentFocusProjectIdRef.current = null
-        })
-
-        return () => clearTimeout(timeoutId)
-    }, [visibleComments])
-
-    const getHappinessProjects = () => getActiveProjectsInSidebarOrder(loggedUserProjects, loggedUser)
-
-    const updateHappinessRating = (project, rating) => {
-        dirtyHappinessProjectIdsRef.current.add(project.id)
-        happinessDraftsRef.current[project.id] = {
-            ...happinessDraftsRef.current[project.id],
-            rating,
-            comment: happinessComments[project.id] || happinessDraftsRef.current[project.id]?.comment || '',
+        const previous = lastConnectionRef.current
+        lastConnectionRef.current = { connectionState, connectionHealth }
+        if (previous.connectionState === connectionState && previous.connectionHealth === connectionHealth) return
+        if (
+            statisticsUnavailableRef.current &&
+            !isReconnecting &&
+            !browserOffline &&
+            connectionHealth === CONNECTION_HEALTH_LIVE
+        ) {
+            loadYesterdayStatistics()
         }
-        setHappinessRatings(state => ({ ...state, [project.id]: rating }))
-        Backend.setProjectHappiness(
-            project.id,
-            loggedUserId,
-            statsDate,
-            rating,
-            happinessComments[project.id] || '',
-            project
-        )
-    }
+    }, [connectionState, connectionHealth])
 
-    const updateHappinessComment = (project, comment) => {
-        dirtyHappinessProjectIdsRef.current.add(project.id)
-        happinessDraftsRef.current[project.id] = {
-            ...happinessDraftsRef.current[project.id],
-            rating: happinessRatings[project.id] || happinessDraftsRef.current[project.id]?.rating,
-            comment,
-        }
-        setHappinessComments(state => ({ ...state, [project.id]: comment }))
-    }
-
-    const saveHappinessComment = project => {
-        const rating = happinessRatings[project.id]
-        if (rating)
-            Backend.setProjectHappiness(
-                project.id,
-                loggedUserId,
-                statsDate,
-                rating,
-                happinessComments[project.id] || '',
-                project
-            )
-    }
-
-    const toggleHappinessComment = projectId => {
-        setVisibleComments(state => {
-            const willShow = !state[projectId]
-            pendingCommentFocusProjectIdRef.current = willShow ? projectId : null
-            return { ...state, [projectId]: willShow }
-        })
-    }
+    useEffect(
+        () => () => {
+            clearReconnectTimeout()
+            statisticsGenerationRef.current++
+            reconnectOperationRef.current?.cancel?.()
+            reconnectOperationRef.current = null
+            projectLoadersRef.current.forEach(loader => loader.dispose())
+            projectLoadersRef.current.clear()
+        },
+        []
+    )
 
     const getAnimationSegment = () => {
         if (showEmptyInbox) return [0, 180]
@@ -404,10 +748,22 @@ export default function EndDayStatisticsModal() {
     }
 
     const getRewardTexts = () => {
-        if (isOfflineRef.current) {
+        if (showPartialSummary) {
             return {
-                rewardTitle: translate('You surely did well:'),
-                rewardDescription: translate('but since we are offline right now we don’t know'),
+                rewardTitle: translate('Partial daily summary'),
+                rewardDescription: translate('These totals include only the projects that have loaded.'),
+            }
+        }
+        if (showStatisticsPlaceholder) {
+            return {
+                rewardTitle: translate('Welcome back!'),
+                rewardDescription: translate(
+                    statisticsUnavailable
+                        ? browserOffline
+                            ? 'You are offline. Your summary will load when you reconnect.'
+                            : 'Your summary could not be loaded. Please try again.'
+                        : 'Loading your daily summary...'
+                ),
             }
         }
         if (showEmptyInbox)
@@ -447,21 +803,8 @@ export default function EndDayStatisticsModal() {
         return { dayName, dateFormated }
     }
 
-    const checkIfDataIsLoaded = () => {
-        if (!dataLoaded) return false
-        if (isOfflineRef.current) return true
-        const { loggedUserProjects, loggedUser } = store.getState()
-        const { templateProjectIds } = loggedUser
-        for (let i = 0; i < loggedUserProjects.length; i++) {
-            const project = loggedUserProjects[i]
-            if (!dataLoaded[project.id] && !templateProjectIds.includes(project.id)) return false
-        }
-        return true
-    }
-
     const { dayName, dateFormated } = getDate()
     const { rewardTitle, rewardDescription } = getRewardTexts()
-    const happinessProjects = getHappinessProjects()
     const moneyEarnedSummary = getEndDayMoneyEarnedSummary(
         loggedUserProjects,
         statisticsByProject,
@@ -474,11 +817,15 @@ export default function EndDayStatisticsModal() {
         (maxDoneTasks, project) => Math.max(maxDoneTasks, getProjectDoneTasks(project.id)),
         0
     )
-    const getProjectActivityWidth = projectId => {
-        const projectDoneTasks = getProjectDoneTasks(projectId)
-        if (projectDoneTasks <= 0 || maxProjectDoneTasks <= 0) return 0
-        return `${Math.max(8, Math.round((projectDoneTasks / maxProjectDoneTasks) * 100))}%`
-    }
+    /**
+     * How busy the day being acknowledged was in this project, under its
+     * name. The shared rating list does not know about statistics; the host
+     * injects the day's count (`ProjectDayActivity` is the same row the
+     * Settings → Happiness rating popup renders for the day it rates).
+     */
+    const renderProjectDayActivity = project => (
+        <ProjectDayActivity doneTasks={getProjectDoneTasks(project.id)} maxDoneTasks={maxProjectDoneTasks} />
+    )
     const renderStatItem = (key, icon, label, value) => (
         <View style={[localStyles.statItem, compactModalLayout && localStyles.mobileStatItem]} key={key}>
             <View style={localStyles.statIcon}>{icon}</View>
@@ -519,13 +866,13 @@ export default function EndDayStatisticsModal() {
 
     return (
         !showNewVersionMandtoryNotifcation &&
-        checkIfDataIsLoaded() && (
-            <View style={localStyles.parent}>
+        needToShowYesterdayStats() &&
+        (dataLoaded !== null || isReconnecting) && (
+            <View style={[localStyles.parent, safeAreaOverlayPadding]}>
                 <View
                     style={[
                         localStyles.container,
                         compactModalLayout && localStyles.mobileContainer,
-                        !smallScreenNavigation && { marginLeft: 263 },
                         applyPopoverWidth(),
                     ]}
                 >
@@ -540,130 +887,154 @@ export default function EndDayStatisticsModal() {
                                 {translate('Here a quick summary of how you have been doing')}
                             </Text>
                             <View style={localStyles.animationContainer}>
-                                <Lottie
-                                    animationData={isOfflineRef.current ? cloudAnimation : starsAnimation}
-                                    autoplay={true}
-                                    initialSegment={isOfflineRef.current ? [0, 144] : getAnimationSegment()}
-                                    style={{ width: 132, height: 86 }}
-                                />
+                                {statisticsPending && !statisticsUnavailable ? (
+                                    <ActivityIndicator
+                                        size="large"
+                                        color="#ffffff"
+                                        style={{ width: 132, height: 86 }}
+                                    />
+                                ) : (
+                                    <Lottie
+                                        animationData={showStatisticsPlaceholder ? cloudAnimation : starsAnimation}
+                                        autoplay={true}
+                                        initialSegment={showStatisticsPlaceholder ? [0, 144] : getAnimationSegment()}
+                                        style={{ width: 132, height: 86 }}
+                                    />
+                                )}
                             </View>
                             <Text style={localStyles.emptyInboxTitle}>{rewardTitle}</Text>
                             <Text style={localStyles.emptyInboxDescription}>{rewardDescription}</Text>
                             <Text style={localStyles.date}>{`${dayName} ${dateFormated}`}</Text>
                         </View>
 
-                        {!isOfflineRef.current && (
-                            <View style={[localStyles.statsGrid, compactModalLayout && localStyles.mobileStatsGrid]}>
-                                {statItems}
+                        {hasLoadedStatistics && Object.values(dayRateStates).some(status => status !== 'complete') && (
+                            <View testID="newDayDayRateStatus" style={{ marginTop: 12 }}>
+                                <Text style={localStyles.emptyInboxDescription}>
+                                    {translate(
+                                        dayRateNeedsAttention
+                                            ? 'Saved summary shown. Day-rate figures could not be updated for:'
+                                            : 'Saved summary shown. Updating day-rate figures for:'
+                                    )}
+                                </Text>
+                                {loggedUserProjects
+                                    .filter(
+                                        project => dayRateStates[project.id] && dayRateStates[project.id] !== 'complete'
+                                    )
+                                    .map(project => (
+                                        <Text key={project.id} style={localStyles.emptyInboxDescription}>
+                                            {project.name}
+                                        </Text>
+                                    ))}
                             </View>
                         )}
-                        {!isOfflineRef.current && happinessProjects.length > 0 && (
-                            <View style={localStyles.happinessSection}>
-                                <Text style={localStyles.happinessTitle}>{translate('Project happiness')}</Text>
-                                <Text style={localStyles.happinessPrivacy}>{translate(HAPPINESS_PRIVACY_TEXT)}</Text>
-                                {happinessProjects.map(project => (
-                                    <View
-                                        key={project.id}
-                                        style={[
-                                            localStyles.happinessProject,
-                                            compactModalLayout && localStyles.mobileHappinessProject,
-                                        ]}
-                                    >
-                                        <View
-                                            style={[
-                                                localStyles.happinessProjectHeader,
-                                                compactModalLayout && localStyles.mobileHappinessProjectHeader,
-                                            ]}
-                                        >
-                                            <View
-                                                style={[
-                                                    localStyles.happinessProjectInfo,
-                                                    compactModalLayout && localStyles.mobileHappinessProjectInfo,
-                                                ]}
-                                            >
-                                                <Text style={localStyles.happinessProjectName} numberOfLines={1}>
-                                                    {getSafeTextValue(project.name, translate('Project'))}
-                                                </Text>
-                                                <View style={localStyles.happinessProjectStats}>
-                                                    <Icon name="check-square" size={16} color={colors.Text04} />
-                                                    <Text style={localStyles.happinessProjectStatsText}>
-                                                        {translate('Tasks done:')} {getProjectDoneTasks(project.id)}
-                                                    </Text>
-                                                </View>
-                                                <View style={localStyles.projectActivityTrack}>
-                                                    <View
-                                                        style={[
-                                                            localStyles.projectActivityFill,
-                                                            { width: getProjectActivityWidth(project.id) },
-                                                            getProjectDoneTasks(project.id) === 0 &&
-                                                                localStyles.projectActivityFillEmpty,
-                                                        ]}
-                                                    />
-                                                </View>
-                                            </View>
-                                            <View
-                                                style={[
-                                                    localStyles.happinessActions,
-                                                    compactModalLayout && localStyles.mobileHappinessActions,
-                                                ]}
-                                            >
-                                                <TouchableOpacity
-                                                    style={localStyles.commentButton}
-                                                    onPress={() => toggleHappinessComment(project.id)}
-                                                >
-                                                    <Icon name="message-circle" size={20} color="#ffffff" />
-                                                </TouchableOpacity>
-                                                <HappinessRatingPicker
-                                                    value={happinessRatings[project.id]}
-                                                    onChange={rating => updateHappinessRating(project, rating)}
-                                                    compact
-                                                    light
-                                                />
-                                            </View>
-                                        </View>
-                                        {visibleComments[project.id] && (
-                                            <TextInput
-                                                ref={ref => {
-                                                    if (ref) {
-                                                        commentInputRefs.current[project.id] = ref
-                                                    } else {
-                                                        delete commentInputRefs.current[project.id]
-                                                    }
-                                                }}
-                                                style={localStyles.happinessComment}
-                                                multiline
-                                                value={happinessComments[project.id] || ''}
-                                                placeholder={translate('Add comment')}
-                                                placeholderTextColor={colors.Text03}
-                                                onChangeText={comment => updateHappinessComment(project, comment)}
-                                                onBlur={() => saveHappinessComment(project)}
-                                            />
-                                        )}
-                                    </View>
+                        {failedStatisticsProjects.length > 0 && (
+                            <View testID="newDayFailedProjects" style={{ marginTop: 12 }}>
+                                <Text style={localStyles.emptyInboxDescription}>
+                                    {translate('Could not load statistics for:')}
+                                </Text>
+                                {failedStatisticsProjects.map(project => (
+                                    <Text key={project.id} style={localStyles.emptyInboxDescription}>
+                                        {project.name}
+                                    </Text>
                                 ))}
                             </View>
                         )}
-                        <View style={localStyles.line} />
-                        <TouchableOpacity
-                            style={[
-                                localStyles.refresh,
-                                compactModalLayout && localStyles.mobileRefresh,
-                                startNewDayIsLoading && localStyles.refreshDisabled,
-                            ]}
-                            onPress={startNewDay}
-                            disabled={startNewDayIsLoading}
-                        >
-                            <View style={localStyles.refreshContent}>
-                                {startNewDayIsLoading && (
-                                    <ActivityIndicator
-                                        size="small"
-                                        color="#FFFFFF"
-                                        style={localStyles.refreshSpinner}
-                                    />
-                                )}
-                                <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
+                        {showPartialSummary && statisticsPending && !statisticsUnavailable && (
+                            <Text style={localStyles.emptyInboxDescription}>
+                                {translate('Loading the remaining projects...')}
+                            </Text>
+                        )}
+                        {hasLoadedStatistics && (
+                            <View
+                                testID="newDayStatistics"
+                                style={[localStyles.statsGrid, compactModalLayout && localStyles.mobileStatsGrid]}
+                            >
+                                {statItems}
                             </View>
-                        </TouchableOpacity>
+                        )}
+                        {!showStatisticsPlaceholder && (
+                            <ProjectHappinessRatingList
+                                projects={happinessProjects}
+                                editor={happinessEditor}
+                                compact={compactModalLayout}
+                                renderProjectMeta={renderProjectDayActivity}
+                            />
+                        )}
+                        {reconnectStatus === RECONNECT_FAILED && (
+                            <Text style={localStyles.reconnectFailedNotice}>
+                                {translate(
+                                    browserOffline
+                                        ? 'Still no connection. You can start the day anyway, your data will sync later'
+                                        : hasLoadedStatistics && !statisticsUnavailable && !statisticsPending
+                                          ? 'The connection could not be restored. Your saved summary is still available.'
+                                          : hasLoadedStatistics
+                                            ? 'Some projects could not be loaded. You can start the day and try again later.'
+                                            : 'Your summary could not be loaded. You can start the day and try again later.'
+                                )}
+                            </Text>
+                        )}
+                        <View style={localStyles.line} />
+                        <View style={[localStyles.actions, compactModalLayout && localStyles.mobileActions]}>
+                            {/* Offline, the popup used to be a dead end: it said it could
+                                not read yesterday's numbers and offered no way to ask
+                                again (AT-2391). */}
+                            {showReconnectButton && (
+                                <TouchableOpacity
+                                    style={[
+                                        localStyles.reconnect,
+                                        compactModalLayout && localStyles.mobileReconnect,
+                                        reconnectDisabled && localStyles.refreshDisabled,
+                                    ]}
+                                    testID="newDayReconnectButton"
+                                    onPress={onPressReconnect}
+                                    disabled={reconnectDisabled}
+                                >
+                                    <View style={localStyles.refreshContent}>
+                                        {reconnectDisabled ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color="#FFFFFF"
+                                                style={localStyles.refreshSpinner}
+                                            />
+                                        ) : (
+                                            <View style={localStyles.refreshSpinner}>
+                                                <Icon name="refresh-cw" size={16} color="#ffffff" />
+                                            </View>
+                                        )}
+                                        <Text style={localStyles.buttonText}>
+                                            {translate(
+                                                reconnectDisabled
+                                                    ? 'Reconnecting'
+                                                    : connectionNeedsAttention
+                                                      ? 'Reconnect now'
+                                                      : 'Try again'
+                                            )}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                                style={[
+                                    localStyles.refresh,
+                                    compactModalLayout && localStyles.mobileRefresh,
+                                    startNewDayIsLoading && localStyles.refreshDisabled,
+                                ]}
+                                testID="startNewDayButton"
+                                onPress={onPressStartNewDay}
+                                disabled={startNewDayIsLoading}
+                            >
+                                <View style={localStyles.refreshContent}>
+                                    {startNewDayIsLoading && (
+                                        <ActivityIndicator
+                                            size="small"
+                                            color="#FFFFFF"
+                                            style={localStyles.refreshSpinner}
+                                        />
+                                    )}
+                                    <Text style={localStyles.buttonText}>{translate('Start new day')}</Text>
+                                </View>
+                            </TouchableOpacity>
+                        </View>
                     </ScrollView>
                 </View>
             </View>
@@ -680,14 +1051,19 @@ const localStyles = StyleSheet.create({
         right: 0,
         bottom: 0,
         backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
+        // Centered in the WINDOW on both axes (no sidebar offset — same call
+        // as popoverToCenter, 2026-08-12). The card caps itself below, so
+        // centering can never clip it.
         justifyContent: 'center',
         alignItems: 'center',
-        ...Platform.select({ web: fixedModalOverlayStyle }),
+        ...Platform.select({ web: { position: 'fixed' } }),
     },
     container: {
         backgroundColor: colors.Secondary400,
         padding: 24,
         borderRadius: 8,
+        // Content taller than the cap scrolls inside the card (deliberate:
+        // window-level scrolling was tried on 2026-08-12 and rolled back).
         maxHeight: '90%',
         ...Platform.select({
             web: {
@@ -767,6 +1143,44 @@ const localStyles = StyleSheet.create({
         alignItems: 'center',
         marginHorizontal: 4,
     },
+    // Side by side on desktop, stacked on phones — the same compact-layout
+    // switch the stats grid and the happiness rows already use, so the offline
+    // card never puts two buttons on a line too narrow for them.
+    actions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    mobileActions: {
+        flexDirection: 'column',
+        alignItems: 'stretch',
+    },
+    // Secondary treatment: reconnecting is the optional escape hatch, starting
+    // the day stays the primary action (offline it works regardless — the
+    // acknowledgement is queued locally).
+    reconnect: {
+        borderRadius: 4,
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        alignSelf: 'center',
+        marginRight: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    mobileReconnect: {
+        alignSelf: 'stretch',
+        alignItems: 'center',
+        marginRight: 0,
+        marginBottom: 8,
+        marginHorizontal: 4,
+    },
+    reconnectFailedNotice: {
+        ...styles.body2,
+        color: colors.Text04,
+        textAlign: 'center',
+        marginTop: 12,
+    },
     buttonText: {
         fontFamily: 'Roboto-Regular',
         fontWeight: '500',
@@ -824,105 +1238,5 @@ const localStyles = StyleSheet.create({
         color: colors.Text04,
         marginTop: 2,
         textAlign: 'center',
-    },
-    happinessSection: {
-        marginTop: 12,
-    },
-    happinessTitle: {
-        ...styles.subtitle1,
-        color: '#ffffff',
-        marginBottom: 4,
-    },
-    happinessPrivacy: {
-        ...styles.body2,
-        color: colors.Text04,
-        marginBottom: 8,
-    },
-    happinessProject: {
-        borderTopWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        paddingVertical: 16,
-    },
-    mobileHappinessProject: {
-        paddingVertical: 14,
-    },
-    happinessProjectHeader: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-    },
-    mobileHappinessProjectHeader: {
-        flexDirection: 'column',
-        alignItems: 'stretch',
-    },
-    happinessProjectInfo: {
-        flex: 1,
-        marginRight: 16,
-        minWidth: 0,
-    },
-    mobileHappinessProjectInfo: {
-        marginRight: 0,
-        marginBottom: 10,
-    },
-    happinessProjectName: {
-        ...styles.subtitle2,
-        color: '#ffffff',
-        flexShrink: 1,
-    },
-    happinessProjectStats: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 4,
-    },
-    happinessProjectStatsText: {
-        ...styles.caption2,
-        color: colors.Text04,
-        marginLeft: 4,
-    },
-    projectActivityTrack: {
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        marginTop: 8,
-        overflow: 'hidden',
-    },
-    projectActivityFill: {
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: colors.Primary300,
-    },
-    projectActivityFillEmpty: {
-        width: 0,
-    },
-    happinessActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexShrink: 0,
-    },
-    mobileHappinessActions: {
-        alignSelf: 'stretch',
-        justifyContent: 'space-between',
-    },
-    commentButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 4,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 8,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        backgroundColor: 'rgba(255,255,255,0.08)',
-    },
-    happinessComment: {
-        ...styles.body2,
-        color: '#ffffff',
-        minHeight: 72,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        borderRadius: 4,
-        padding: 8,
-        marginTop: 8,
-        textAlignVertical: 'top',
     },
 })

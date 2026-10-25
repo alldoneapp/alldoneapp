@@ -1,15 +1,27 @@
 const moment = require('moment')
 
 /**
- * AT-2259 - server-side mirror of `utils/CalendarTaskSortIndex.js` (Cloud Functions cannot import
+ * AT-2351 - server-side mirror of `utils/CalendarTaskSortIndex.js` (Cloud Functions cannot import
  * app modules, the same reason `FocusTaskService` mirrors `TASK_PRIORITY_RANK`). Keep the two in
- * sync; `functions/shared/calendarTaskSortIndex.test.js` pins the shared contract.
+ * sync; `utils/CalendarTaskSortIndex.test.js` pins the shared contract.
  *
- * A calendar task is ordered by when it entered the task list, exactly like a normal task. It used
- * to store the EVENT START in `sortIndex` - a future timestamp that no creation-time index can
- * beat - which pinned meetings to the top of their group. The write paths no longer do that, but
- * documents written before the fix still carry the old value, so reads normalize it onto the
- * task's `created` timestamp instead of requiring a backfill.
+ * Where a calendar task renders is no longer stored - it is decided when a group is ordered, by
+ * `orderCalendarTasksLast` in `utils/CalendarTaskOrder.js`. `sortIndex` means one thing again for
+ * every task: where the user put it in the list.
+ *
+ * What remains here is read-time repair of the two encodings the app has abandoned, both of which
+ * are harmful when read as a list position:
+ *
+ *   - AT-2259 and earlier: the EVENT START, a future timestamp no generated index can outrank. It
+ *     pins the task to the top of its group and to the top of the `orderBy('sortIndex','desc')`
+ *     window `FocusTaskService` scans when picking the next focus task.
+ *   - AT-2270: the reserved band `-1e14 - eventStart`. Drag & drop derives a dropped task's index
+ *     from its neighbours, so a normal task dropped below a banded meeting inherited ~-1e14 and
+ *     sank below everything else permanently.
+ *
+ * Both map onto the task's `created` stamp. The band rule applies to EVERY task, not just calendar
+ * ones, because no generator can produce a band value - that is what rescues a normal task dragged
+ * underneath a meeting.
  */
 
 const MINUTE_MS = 60 * 1000
@@ -18,6 +30,13 @@ const MINUTE_MS = 60 * 1000
 // stored value is local midnight for a timezone we cannot know at read time. 26h covers every
 // real offset with room to spare.
 const ALL_DAY_TOLERANCE_MS = 26 * 60 * 60 * 1000
+
+// The base AT-2270 derived its band from: `sortIndex = CALENDAR_LEGACY_SORT_INDEX_BASE - eventStart`.
+const CALENDAR_LEGACY_SORT_INDEX_BASE = -1e14
+
+// Anything at or below this is a band value and cannot be anything else: real indices are
+// millisecond timestamps (~1.7e12) or their negation, an order of magnitude away.
+const CALENDAR_LEGACY_BAND_CEILING = -1e13
 
 const toTimestamp = value => {
     if (!value) return null
@@ -31,8 +50,13 @@ const getCalendarEventStartTimestamp = calendarData => {
     return toTimestamp(start.dateTime || start.date)
 }
 
-const isCalendarDerivedSortIndex = (sortIndex, calendarData) => {
-    if (typeof sortIndex !== 'number' || !Number.isFinite(sortIndex)) return false
+const isFiniteNumber = value => typeof value === 'number' && Number.isFinite(value)
+
+const isLegacyCalendarBandSortIndex = sortIndex =>
+    isFiniteNumber(sortIndex) && sortIndex <= CALENDAR_LEGACY_BAND_CEILING
+
+const isLegacyCalendarEventStartSortIndex = (sortIndex, calendarData) => {
+    if (!isFiniteNumber(sortIndex)) return false
 
     const start = calendarData && calendarData.start
     if (!start) return false
@@ -51,12 +75,19 @@ const isCalendarDerivedSortIndex = (sortIndex, calendarData) => {
 }
 
 const resolveTaskSortIndex = (sortIndex, calendarData, created) => {
-    if (!isCalendarDerivedSortIndex(sortIndex, calendarData)) return sortIndex
-    return typeof created === 'number' && Number.isFinite(created) ? created : sortIndex
+    if (!isFiniteNumber(sortIndex)) return sortIndex
+    if (!isFiniteNumber(created)) return sortIndex
+
+    if (isLegacyCalendarBandSortIndex(sortIndex)) return created
+    if (isLegacyCalendarEventStartSortIndex(sortIndex, calendarData)) return created
+
+    return sortIndex
 }
 
 module.exports = {
+    CALENDAR_LEGACY_SORT_INDEX_BASE,
     getCalendarEventStartTimestamp,
-    isCalendarDerivedSortIndex,
+    isLegacyCalendarBandSortIndex,
+    isLegacyCalendarEventStartSortIndex,
     resolveTaskSortIndex,
 }

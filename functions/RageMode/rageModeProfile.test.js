@@ -1,0 +1,211 @@
+const mockDocs = new Map()
+const mockDeductGold = jest.fn()
+
+const mockRef = path => ({
+    path,
+    get: jest.fn(async () => {
+        const data = mockDocs.get(path)
+        return { exists: data !== undefined, data: () => data }
+    }),
+    set: jest.fn(async (update, options) => {
+        const current = options && options.merge ? mockDocs.get(path) || {} : {}
+        const next = { ...current }
+        Object.entries(update).forEach(([key, value]) => {
+            if (value && value.__arrayUnion) {
+                const list = Array.isArray(current[key]) ? current[key] : []
+                next[key] = [...list, ...value.__arrayUnion.filter(item => !list.includes(item))]
+            } else next[key] = value
+        })
+        mockDocs.set(path, next)
+    }),
+})
+
+jest.mock('firebase-admin', () => {
+    const refs = new Map()
+    const doc = path => {
+        if (!refs.has(path)) refs.set(path, mockRef(path))
+        return refs.get(path)
+    }
+    return {
+        firestore: () => ({
+            doc,
+            runTransaction: async fn =>
+                fn({
+                    get: ref => ref.get(),
+                    set: (ref, update, options) => ref.set(update, options),
+                }),
+        }),
+    }
+})
+jest.mock('firebase-admin/firestore', () => ({
+    FieldValue: { arrayUnion: (...items) => ({ __arrayUnion: items }) },
+}))
+jest.mock('../Gold/goldHelper', () => ({ deductGold: (...args) => mockDeductGold(...args) }))
+
+const {
+    getRageModeProfile,
+    MAX_SCORE,
+    normalizeProfile,
+    purchaseRageModeItem,
+    saveRageModeProgress,
+    submitRageModeScore,
+} = require('./rageModeProfile')
+const { RAGE_WEAPON_PRICES } = require('./rageWeaponsCatalog')
+
+describe('rage mode profile', () => {
+    beforeEach(() => {
+        mockDocs.clear()
+        mockDeductGold.mockReset()
+    })
+
+    it('gives everyone the blaster and no highscore to start with', async () => {
+        expect(await getRageModeProfile({ userId: 'u1' })).toEqual({
+            owned: ['blaster'],
+            highscore: 0,
+            games: 0,
+            progress: null,
+        })
+    })
+
+    it('ignores weapons that are not in the catalog and duplicates', () => {
+        expect(normalizeProfile({ owned: ['rocket', 'bazooka', 'rocket', 'blaster'] }).owned).toEqual([
+            'blaster',
+            'rocket',
+        ])
+    })
+
+    describe('buying a weapon', () => {
+        it('charges its catalog price once, with an idempotency key per weapon, and grants it', async () => {
+            mockDeductGold.mockResolvedValue({ success: true, newBalance: 750 })
+            const result = await purchaseRageModeItem({ userId: 'u1', itemId: 'rocket' })
+            expect(mockDeductGold).toHaveBeenCalledWith('u1', RAGE_WEAPON_PRICES.rocket, {
+                source: 'rage_mode_item',
+                note: 'rocket',
+                idempotencyKey: 'rage_mode_item:rocket',
+            })
+            expect(result).toEqual(expect.objectContaining({ ok: true, newBalance: 750 }))
+            expect(result.owned).toEqual(['blaster', 'rocket'])
+            expect((await getRageModeProfile({ userId: 'u1' })).owned).toEqual(['blaster', 'rocket'])
+        })
+
+        it('never charges for a weapon that is already owned', async () => {
+            mockDocs.set('rageModeProfiles/u1', { owned: ['laser'] })
+            const result = await purchaseRageModeItem({ userId: 'u1', itemId: 'laser' })
+            expect(result).toEqual(expect.objectContaining({ ok: true, alreadyOwned: true }))
+            expect(mockDeductGold).not.toHaveBeenCalled()
+        })
+
+        it('grants nothing when the user cannot afford it', async () => {
+            mockDeductGold.mockResolvedValue({ success: false, message: 'Insufficient gold', currentGold: 40 })
+            const result = await purchaseRageModeItem({ userId: 'u1', itemId: 'snap' })
+            expect(result).toEqual({ ok: false, reason: 'insufficient_gold', currentGold: 40 })
+            expect(mockDocs.get('rageModeProfiles/u1')).toBeUndefined()
+        })
+
+        it('refuses unknown and free items without charging', async () => {
+            expect(await purchaseRageModeItem({ userId: 'u1', itemId: 'bazooka' })).toEqual({
+                ok: false,
+                reason: 'unknown_item',
+            })
+            expect(await purchaseRageModeItem({ userId: 'u1', itemId: { $gt: '' } })).toEqual({
+                ok: false,
+                reason: 'unknown_item',
+            })
+            expect(mockDeductGold).not.toHaveBeenCalled()
+        })
+
+        it('finishes a purchase whose charge already went through (retry after a failed write)', async () => {
+            mockDeductGold.mockResolvedValue({ success: true, alreadyProcessed: true, newBalance: 900 })
+            const result = await purchaseRageModeItem({ userId: 'u1', itemId: 'shotgun' })
+            expect(result).toEqual(expect.objectContaining({ ok: true, alreadyCharged: true }))
+            expect((await getRageModeProfile({ userId: 'u1' })).owned).toContain('shotgun')
+        })
+    })
+
+    describe('scores', () => {
+        it('keeps the best score and counts games', async () => {
+            expect(await submitRageModeScore({ userId: 'u1', score: 120 })).toEqual(
+                expect.objectContaining({ ok: true, isNew: true, highscore: 120 })
+            )
+            expect(await submitRageModeScore({ userId: 'u1', score: 80 })).toEqual(
+                expect.objectContaining({ ok: true, isNew: false, highscore: 120 })
+            )
+            expect(await submitRageModeScore({ userId: 'u1', score: 300.7 })).toEqual(
+                expect.objectContaining({ isNew: true, highscore: 300, previous: 120 })
+            )
+            expect(await getRageModeProfile({ userId: 'u1' })).toEqual(
+                expect.objectContaining({ highscore: 300, games: 3 })
+            )
+        })
+
+        it.each([[-1], [MAX_SCORE + 1], ['lots'], [NaN], [null]])('rejects an invalid score %p', async score => {
+            expect(await submitRageModeScore({ userId: 'u1', score })).toEqual({ ok: false, reason: 'invalid_score' })
+        })
+    })
+
+    describe('raid progress', () => {
+        it('has none to start with', async () => {
+            expect((await getRageModeProfile({ userId: 'u1' })).progress).toBeNull()
+        })
+
+        it('saves a checkpoint with a server timestamp and hands it back on every device', async () => {
+            const saved = await saveRageModeProgress({
+                userId: 'u1',
+                checkpoint: { completed: 3, credits: 420, bombs: 4 },
+            })
+            expect(saved).toMatchObject({ ok: true, checkpoint: { completed: 3, credits: 420, bombs: 4 } })
+            expect(typeof saved.savedAt).toBe('number')
+            const { progress } = await getRageModeProfile({ userId: 'u1' })
+            expect(progress).toEqual({ checkpoint: saved.checkpoint, savedAt: saved.savedAt })
+        })
+
+        it('saves bombs bought with the last credits of a lost first mission', async () => {
+            const saved = await saveRageModeProgress({
+                userId: 'u1',
+                checkpoint: { completed: 0, credits: 0, bombs: 3 },
+            })
+            expect(saved).toMatchObject({ ok: true, checkpoint: { completed: 0, credits: 0, bombs: 3 } })
+            expect((await getRageModeProfile({ userId: 'u1' })).progress.checkpoint.bombs).toBe(3)
+        })
+
+        it('records a start-over as an empty checkpoint, so other devices drop theirs too', async () => {
+            await saveRageModeProgress({ userId: 'u1', checkpoint: { completed: 2 } })
+            const cleared = await saveRageModeProgress({ userId: 'u1', checkpoint: null })
+            expect(cleared).toMatchObject({ ok: true, checkpoint: null })
+            expect((await getRageModeProfile({ userId: 'u1' })).progress).toEqual({
+                checkpoint: null,
+                savedAt: cleared.savedAt,
+            })
+        })
+
+        it('clamps forged numbers and refuses something that is not a checkpoint', async () => {
+            const saved = await saveRageModeProgress({
+                userId: 'u1',
+                checkpoint: { completed: 1e9, credits: -4, bombs: 99, cannonLevel: 7, maxShield: 1e6, shield: 0 },
+            })
+            expect(saved.checkpoint).toEqual({
+                completed: 999,
+                score: 0,
+                credits: 0,
+                maxShield: 175,
+                shield: 1,
+                bombs: 5,
+                cannonLevel: 3,
+            })
+            expect(await saveRageModeProgress({ userId: 'u1', checkpoint: 'mission 9' })).toEqual({
+                ok: false,
+                reason: 'invalid_progress',
+            })
+            expect(await saveRageModeProgress({ userId: 'u1', checkpoint: undefined })).toEqual({
+                ok: false,
+                reason: 'invalid_progress',
+            })
+        })
+
+        it('keeps weapons and the highscore when progress is saved', async () => {
+            await submitRageModeScore({ userId: 'u1', score: 900 })
+            await saveRageModeProgress({ userId: 'u1', checkpoint: { completed: 1 } })
+            expect((await getRageModeProfile({ userId: 'u1' })).highscore).toBe(900)
+        })
+    })
+})

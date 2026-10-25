@@ -78,6 +78,10 @@ async function reconcileCallUsage({ sessionId, eventId, totalTokens }) {
                     objectId: session.chatId,
                     objectType: 'topics',
                     callSessionId: sessionId,
+                    // The realtime model this call was priced from, frozen on the session at
+                    // creation (AT-2487). A realtime call is token-priced, so its Gold total is
+                    // uninterpretable across a model change without it.
+                    ...(session.realtimeModel ? { model: String(session.realtimeModel) } : {}),
                     note:
                         getCallGoldSource(session.channel) === 'whatsapp_call'
                             ? 'WhatsApp assistant call'

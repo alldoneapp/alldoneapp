@@ -11,6 +11,7 @@ import {
     POPOVER_TABLET_WIDTH_V2,
     SIDEBAR_MENU_WIDTH,
 } from '../components/styles/global'
+import { MODAL_EDGE_GAP } from '../components/styles/modals'
 import store from '../redux/store'
 import {
     hideFloatPopup,
@@ -26,12 +27,16 @@ import {
 import Backend from './BackendBridge'
 import { registerPopupDismiss } from './popupDismissGuard'
 import { centerPopoverInWindow, clampToRange } from './popoverPositioning'
+import { formatLastEditDate } from '../i18n/relativeTime'
 import { getDateFormat } from '../components/UIComponents/FloatModals/DateFormatPickerModal'
 import { BACKWARD_COMMENT, FORDWARD_COMMENT } from '../components/Feeds/Utils/HelperFunctions'
 import { DONE_STEP, OPEN_STEP } from '../components/TaskListView/Utils/TasksHelper'
 import { updateQuotaTraffic } from './backends/Premium/premiumFirestore'
 import { compareWorkflowEntries, getWorkflowStepsIdsSorted as getSortedWorkflowStepIds } from './workflowOrder'
 import { FIXED_MODAL_TOP_OFFSET } from './fixedModalPosition'
+import { getSafeAreaInsets } from './safeAreaInsets'
+import { getWorkspaceViewport, getWorkspaceInsets } from './workspaceViewport'
+import { getSafeAreaModalMaxWidth } from './modalSafeArea'
 
 class HelperFunctions {
     static isValidEmail = email => {
@@ -88,7 +93,7 @@ class HelperFunctions {
     }
 }
 
-export const MODAL_MAX_HEIGHT_GAP = 32
+export const MODAL_MAX_HEIGHT_GAP = MODAL_EDGE_GAP * 2
 export const MENTION_MODAL_MIN_HEIGHT = 150
 
 export const chronoKeysOrder = (a, b) => {
@@ -216,16 +221,30 @@ const getScrollOffsets = () => {
 // above the top edge; and on a narrow screen the desktop sidebar offset pushes
 // the container past the right edge, where `overflow: hidden` clips it.
 // The math lives in utils/popoverPositioning.js so it can be unit-tested.
-export const popoverToCenter = (positioningData = {}, isMobile = true) =>
-    centerPopoverInWindow(positioningData, isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2)
+//
+// Centers in the WINDOW on every screen size. It used to add half the sidebar
+// width on desktop to center over the content area, but these popups dim the
+// whole window (sidebar included), so the offset read as "not centered"
+// (2026-08-12, same call as EndDayStatisticsModal). Callers still pass their
+// legacy isMobile argument; it is deliberately ignored.
+export const popoverToCenter = (positioningData = {}) => centerPopoverInWindow(positioningData, 0)
 
 export const popoverToSafePosition = (
     { targetRect, popoverRect, position, align, nudgedLeft, nudgedTop },
     isMobile = true
 ) => {
-    const dim = Dimensions.get('window')
+    const dim = getWorkspaceViewport(Dimensions.get('window'))
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
-    const padding = 16 // Safe padding from screen edges
+    const basePadding = 16 // Safe padding from screen edges
+    // AT-2339: several of these call sites pass `disableReposition`, which
+    // skips the patched library's own safe-area nudge, so the edge padding has
+    // to absorb the iOS insets itself. Zero insets (desktop / Android) leave
+    // every number below exactly as it was.
+    const safeAreaInsets = getWorkspaceInsets(getSafeAreaInsets())
+    const paddingTop = basePadding + safeAreaInsets.top
+    const paddingBottom = basePadding + safeAreaInsets.bottom
+    const paddingLeft = basePadding + safeAreaInsets.left
+    const paddingRight = basePadding + safeAreaInsets.right
     const viewportWidth = dim.width
     const viewportHeight = dim.height
 
@@ -235,51 +254,57 @@ export const popoverToSafePosition = (
         if (!targetRect || typeof targetRect.top !== 'number') {
             const centeredTop = clampToRange(
                 viewportHeight / 2 - popoverRect.height / 2,
-                padding,
-                viewportHeight - popoverRect.height - padding
+                paddingTop,
+                viewportHeight - popoverRect.height - paddingBottom
             )
             const centeredLeft = clampToRange(
                 viewportWidth / 2 - popoverRect.width / 2,
-                padding,
-                viewportWidth - popoverRect.width - padding
+                paddingLeft,
+                viewportWidth - popoverRect.width - paddingRight
             )
 
-            return { top: centeredTop, left: centeredLeft }
+            return { top: dim.top + centeredTop, left: dim.left + centeredLeft }
         }
 
         const anchorGap = 8
-        const targetTop = targetRect.top
-        const targetBottom = targetRect.bottom ?? targetTop + (targetRect.height ?? 0)
-        const targetLeft = targetRect.left ?? 0
-        const targetRight = targetRect.right ?? targetLeft + (targetRect.width ?? 0)
+        const targetTop = targetRect.top - dim.top
+        const targetBottom =
+            (targetRect.bottom == null ? null : targetRect.bottom - dim.top) ?? targetTop + (targetRect.height ?? 0)
+        const targetLeft = (targetRect.left ?? dim.left) - dim.left
+        const targetRight =
+            (targetRect.right == null ? null : targetRect.right - dim.left) ?? targetLeft + (targetRect.width ?? 0)
 
         // Prefer showing the popover underneath the trigger, but flip when needed.
         let top = targetBottom + anchorGap
-        const maxTop = viewportHeight - popoverRect.height - padding
+        const maxTop = viewportHeight - popoverRect.height - paddingBottom
 
-        if (top + popoverRect.height > viewportHeight - padding) {
+        if (top + popoverRect.height > viewportHeight - paddingBottom) {
             const aboveTop = targetTop - popoverRect.height - anchorGap
-            if (aboveTop >= padding) {
+            if (aboveTop >= paddingTop) {
                 top = aboveTop
             } else {
-                top = clampToRange(top, padding, maxTop)
+                top = clampToRange(top, paddingTop, maxTop)
             }
         } else {
-            top = clampToRange(top, padding, maxTop)
+            top = clampToRange(top, paddingTop, maxTop)
         }
 
         const desiredLeft = targetRight - popoverRect.width
-        const minLeft = padding
-        const maxLeft = viewportWidth - popoverRect.width - padding
+        const minLeft = paddingLeft
+        const maxLeft = viewportWidth - popoverRect.width - paddingRight
         let left
 
-        if (popoverRect.width > viewportWidth - 2 * padding) {
-            left = clampToRange(viewportWidth / 2 - popoverRect.width / 2, minLeft, viewportWidth - popoverRect.width)
+        if (popoverRect.width > viewportWidth - paddingLeft - paddingRight) {
+            left = clampToRange(
+                viewportWidth / 2 - popoverRect.width / 2,
+                minLeft,
+                viewportWidth - popoverRect.width - safeAreaInsets.right
+            )
         } else {
             left = clampToRange(desiredLeft, minLeft, maxLeft)
         }
 
-        return { top, left }
+        return { top: dim.top + top, left: dim.left + left }
     }
 
     // For desktop/tablet, use centered positioning with hard viewport clamping.
@@ -287,10 +312,10 @@ export const popoverToSafePosition = (
     let top = viewportHeight / 2 - popoverRect.height / 2
     let left = viewportWidth / 2 - popoverRect.width / 2 + sidebarDiff
 
-    top = clampToRange(top, padding, Math.max(padding, viewportHeight - popoverRect.height - padding))
-    left = clampToRange(left, padding, Math.max(padding, viewportWidth - popoverRect.width - padding))
+    top = clampToRange(top, paddingTop, Math.max(paddingTop, viewportHeight - popoverRect.height - paddingBottom))
+    left = clampToRange(left, paddingLeft, Math.max(paddingLeft, viewportWidth - popoverRect.width - paddingRight))
 
-    return { top, left }
+    return { top: dim.top + top, left: dim.left + left }
 }
 
 // Kept for explicitness at popoverToTop call sites; the patched
@@ -299,10 +324,23 @@ export const popoverToSafePosition = (
 export const popoverToTopContainerStyle = { position: 'fixed' }
 
 export const popoverToTop = ({ targetRect, popoverRect, position, align, nudgedLeft, nudgedTop }, isMobile = true) => {
-    const dim = Dimensions.get('window')
+    const dim = getWorkspaceViewport(Dimensions.get('window'))
     const sidebarDiff = isMobile ? 0 : SIDEBAR_MENU_WIDTH / 2
     const left = dim.width / 2 - popoverRect.width / 2
-    return { top: FIXED_MODAL_TOP_OFFSET, left: left + sidebarDiff }
+    // AT-2339, minimum semantics: this is the comment popup's placement, the
+    // one surface already signed off as correct on a notched iPhone, and 80px
+    // clears every current inset — so on those devices it does not move. The
+    // floor only engages on a device whose status bar is taller than the
+    // offset. The horizontal clamp is new: it keeps the card out of the
+    // landscape cutout, which nothing here handled before. This helper is used
+    // with `disableReposition`, so the library never nudges it.
+    const safeAreaInsets = getWorkspaceInsets(getSafeAreaInsets())
+    const maxLeft = Math.max(safeAreaInsets.left, dim.width - safeAreaInsets.right - popoverRect.width)
+
+    return {
+        top: dim.top + Math.max(FIXED_MODAL_TOP_OFFSET, safeAreaInsets.top),
+        left: dim.left + clampToRange(left + sidebarDiff, safeAreaInsets.left, maxLeft),
+    }
 }
 
 export const shortcutPreviewMount = () => {
@@ -438,14 +476,23 @@ export const calculateTimeDuration = secs => {
 
 export const getPopoverWidth = () => {
     const { isMiddleScreen: tablet, smallScreenNavigation: mobile } = store.getState()
-    return mobile ? POPOVER_MOBILE_WIDTH : tablet ? POPOVER_TABLET_WIDTH : POPOVER_DESKTOP_WIDTH
+    if (!mobile) return tablet ? POPOVER_TABLET_WIDTH : POPOVER_DESKTOP_WIDTH
+    // Mobile popups use the full window width minus the gutter; the fixed
+    // POPOVER_MOBILE_WIDTH card survives only as the fallback for the moments
+    // the window width is not measurable yet.
+    const { width: windowWidth } = getWorkspaceViewport(Dimensions.get('window'))
+    // AT-2339: the landscape cutout on a notched iPhone eats ~59px off ONE
+    // side, so "full window width minus the gutter" is wider than the space
+    // that actually exists and the card overhangs whichever edge the popover
+    // does not get clamped to. Zero insets give back `windowWidth - 32`.
+    const fullWidth = getSafeAreaModalMaxWidth(windowWidth)
+    return fullWidth > 0 ? fullWidth : POPOVER_MOBILE_WIDTH
 }
 
 export const applyPopoverWidth = (setMin = true, setMax = true) => {
     const desiredWidth = getPopoverWidth()
-    const { width: windowWidth } = Dimensions.get('window')
-    const gutter = 32
-    const availableWidth = windowWidth - gutter
+    const { width: windowWidth } = getWorkspaceViewport(Dimensions.get('window'))
+    const availableWidth = getSafeAreaModalMaxWidth(windowWidth)
     const resolvedWidth = availableWidth > 0 ? Math.min(desiredWidth, availableWidth) : desiredWidth
     const width = resolvedWidth > 0 ? resolvedWidth : desiredWidth
     const min = { minWidth: width }
@@ -455,8 +502,9 @@ export const applyPopoverWidth = (setMin = true, setMax = true) => {
 }
 
 const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {
+    const { left: safeLeft, right: safeRight } = getWorkspaceInsets(getSafeAreaInsets())
     return smallScreenNavigation
-        ? windowWidth - 50
+        ? windowWidth - 50 - safeLeft - safeRight
         : isMiddleScreen
           ? POPOVER_TABLET_WIDTH_V2
           : POPOVER_DESKTOP_WIDTH_V2
@@ -464,6 +512,12 @@ const getPopoverWidthv2 = (isMiddleScreen, smallScreenNavigation, windowWidth) =
 
 export const applyPopoverWidthV2 = (isMiddleScreen, smallScreenNavigation, windowWidth) => {
     const width = getPopoverWidthv2(isMiddleScreen, smallScreenNavigation, windowWidth)
+    const viewport = getWorkspaceViewport()
+    if (viewport.active) {
+        const available = getSafeAreaModalMaxWidth(viewport.width)
+        const resolved = Math.min(Math.max(width, POPOVER_MOBILE_WIDTH), available)
+        return { minWidth: resolved, maxWidth: resolved }
+    }
     return { minWidth: width > POPOVER_MOBILE_WIDTH ? width : POPOVER_MOBILE_WIDTH, maxWidth: width }
 }
 
@@ -552,37 +606,7 @@ export const parseLastEdit = async (lastEditDate, setEditionText) => {
     const serverDate = await Backend.getFirebaseTimestampDirectly()
 
     if (serverDate) {
-        let text = ''
-        const today = moment(serverDate)
-        const lastEdit = moment(lastEditDate)
-
-        const secondsDiff = today.diff(lastEdit, 'seconds')
-        if (secondsDiff < 60) {
-            if (secondsDiff === 1) {
-                text = tablet ? '1 sec ago' : '1 second ago'
-            }
-            text = `${secondsDiff} ${tablet ? 'sec ago' : 'seconds ago'}`
-        } else {
-            const minutesDiff = today.diff(lastEdit, 'minutes')
-            if (minutesDiff < 60) {
-                if (minutesDiff === 1) {
-                    text = tablet ? '1 min ago' : '1 minute ago'
-                }
-                text = `${minutesDiff} ${tablet ? 'min ago' : 'minutes ago'}`
-            } else {
-                const hoursDiff = today.diff(lastEdit, 'hours')
-                if (hoursDiff < 24) {
-                    if (hoursDiff === 1) {
-                        text = '1 hour ago'
-                    }
-                    text = `${hoursDiff} hours ago`
-                } else {
-                    text = moment(lastEditDate).format(getDateFormat())
-                }
-            }
-        }
-
-        setEditionText(text)
+        setEditionText(formatLastEditDate(serverDate, lastEditDate, { tablet, dateFormat: getDateFormat() }))
     }
 }
 

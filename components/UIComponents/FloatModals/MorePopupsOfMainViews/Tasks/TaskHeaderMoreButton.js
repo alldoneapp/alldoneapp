@@ -5,6 +5,7 @@ import MoreButtonWrapper from '../Common/MoreButtonWrapper'
 import CopyLinkModalItem from '../../MorePopupsOfEditModals/Common/CopyLinkModalItem'
 import ModalItem from '../../MorePopupsOfEditModals/Common/ModalItem'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
+import OpenProjectModalItem from '../Common/OpenProjectModalItem'
 import SyncCalendarModalItem from './SyncCalendarModalItem'
 import DateBarOrganizeModalItem from './DateBarOrganizeModalItem'
 import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
@@ -22,6 +23,9 @@ import { getOkrAllProjectsTodayKey, getOkrUserTimezone } from '../../../../TaskL
 import ProjectHelper from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import NavigationService from '../../../../../utils/NavigationService'
 import { DV_TAB_PROJECT_OKRS } from '../../../../../utils/TabNavigationConstants'
+import PrioritizeTasksModalItem from './PrioritizeTasksModalItem'
+import { openProjectWiki } from '../../../../WikiView/wikiLinks'
+import RunOutOfGoldAssistantModal from '../../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
 
 export default function TaskHeaderMoreButton({
     projectIdOverride,
@@ -31,6 +35,7 @@ export default function TaskHeaderMoreButton({
     disabled,
     shortcut = 'M',
     iconSize,
+    iconColor,
 }) {
     const selectedProjectId = useSelector(state => {
         const { selectedProjectIndex, loggedUserProjects } = state
@@ -41,7 +46,7 @@ export default function TaskHeaderMoreButton({
               ? loggedUserProjects[selectedProjectIndex].id
               : null
     })
-    const projectId = projectIdOverride || selectedProjectId
+    const projectId = projectIdOverride !== undefined ? projectIdOverride : selectedProjectId
     const projectOKRs = useSelector(state => (projectId ? state.okrsByProjectInTasks[projectId] || [] : []))
     // Organize / Select all act on the "Today" section of this project's task list. The date-section
     // store is keyed by `projectId + userId` and each section carries its own date string, so we find
@@ -57,6 +62,7 @@ export default function TaskHeaderMoreButton({
     const loggedUser = useSelector(state => state.loggedUser)
     const [showAddOKR, setShowAddOKR] = useState(false)
     const [showAutoPostpone, setShowAutoPostpone] = useState(false)
+    const [showRunOutOfGold, setShowRunOutOfGold] = useState(false)
     const modalRef = useRef()
     const openAddOKRTimeoutRef = useRef()
     const openAutoPostponeTimeoutRef = useRef()
@@ -152,6 +158,7 @@ export default function TaskHeaderMoreButton({
         clearOpenAutoPostponeTimeout()
         setShowAddOKR(false)
         setShowAutoPostpone(false)
+        setShowRunOutOfGold(false)
     }
 
     useEffect(() => {
@@ -163,6 +170,16 @@ export default function TaskHeaderMoreButton({
 
     const renderItems = () => {
         const list = []
+
+        list.push(shortcut => (
+            <PrioritizeTasksModalItem
+                key="gmbtn-prioritize"
+                projectId={projectId}
+                shortcut={shortcut}
+                onPress={dismissModal}
+                onRunOutOfGold={() => setShowRunOutOfGold(true)}
+            />
+        ))
 
         if (showOrganizeItems) {
             list.push(shortcut => {
@@ -249,6 +266,24 @@ export default function TaskHeaderMoreButton({
             })
         }
 
+        // The wiki is for members only (SharedHelper.isMember); a guest of a shared project has no way in.
+        if (inSelectedProject && !loggedUser.isAnonymous && (loggedUser.projectIds || []).includes(projectId)) {
+            list.push(shortcut => {
+                return (
+                    <ModalItem
+                        key={'gmbtn-project-wiki'}
+                        icon={'book-open'}
+                        text={'Project wiki'}
+                        shortcut={shortcut}
+                        onPress={() => {
+                            dismissModal()
+                            openProjectWiki(projectId)
+                        }}
+                    />
+                )
+            })
+        }
+
         list.push(shortcut => {
             return <CopyLinkModalItem key={'gmbtn-copy-link'} link={link} shortcut={shortcut} onPress={dismissModal} />
         })
@@ -291,16 +326,23 @@ export default function TaskHeaderMoreButton({
             shortcut={shortcut}
             wrapperStyle={wrapperStyle}
             iconSize={iconSize}
+            iconColor={iconColor}
             onCloseModal={onCloseMainModal}
             customModal={
-                showAddOKR ? (
+                showRunOutOfGold ? (
+                    <RunOutOfGoldAssistantModal
+                        closeModal={dismissModal}
+                        closeModalWhenNavigateToPremium={dismissModal}
+                    />
+                ) : showAddOKR ? (
                     <OKRModal projectId={projectId} closePopover={closeAddOKR} />
                 ) : showAutoPostpone ? (
                     <AutoPostponeTasksModal projectId={projectId} closePopover={closeAutoPostpone} />
                 ) : null
             }
         >
-            {renderItems().map((item, index) => item((index + 1).toString()))}
+            {inSelectedProject && <OpenProjectModalItem projectId={projectId} shortcut={'1'} onPress={dismissModal} />}
+            {renderItems().map((item, index) => item((index + (inSelectedProject ? 2 : 1)).toString()))}
         </MoreButtonWrapper>
     )
 }

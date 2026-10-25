@@ -1,16 +1,19 @@
+import { beginLoadingOperation } from '../../utils/redux/loadingOperation'
+import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import React, { PureComponent } from 'react'
 import { View } from 'react-native'
 import Backend from '../../utils/BackendBridge'
 import moment from 'moment'
 import store from '../../redux/store'
 import NotesByDate from './NotesByDate'
-import { setLastAddNewNoteDate, setNotesAmounts, stopLoadingData, startLoadingData } from '../../redux/actions'
+import { setLastAddNewNoteDate, setNotesAmounts } from '../../redux/actions'
 import { calcNotesAmountByProjectIndex, sortNotesFn } from './NotesHelper'
 import { checkIfSelectedAllProjects, checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 import ShowMoreButton from '../UIControls/ShowMoreButton'
 import { getDateFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
 import ProjectHeader from '../TaskListView/Header/ProjectHeader'
+import ProjectAssistantLine from '../MyDayView/AssistantLine/ProjectAssistantLine'
 import NotesSticky from './NotesSticky'
 import { isEqual } from 'lodash'
 import { filterNotes, filterStickyNotes } from '../HashtagFilters/FilterHelpers/FilterNotes'
@@ -18,33 +21,99 @@ import NotesHeader from './NotesHeader'
 import NoteMoreButton from '../UIComponents/FloatModals/MorePopupsOfMainViews/Notes/NoteMoreButton'
 import NoteOwnerFiltersLine from './NoteFilters/NoteOwnerFiltersLine'
 import { filterNotesByOwner, filterStickyNotesByOwner } from './NoteFilters/noteOwnerFilterHelper'
+import { getNoteFilterStateUpdate } from './noteFilterSubscription'
+import NotesListSkeleton from './NotesListSkeleton'
+import { resolveGhostRowCount } from '../UIComponents/Ghosts/ghostRowCount'
+import {
+    buildSecondaryViewCacheKey,
+    getSecondaryViewCacheEntry,
+    getSecondaryViewCacheEntrySync,
+    SECONDARY_VIEW_NOTES,
+    setSecondaryViewCacheEntry,
+} from '../../utils/InitialLoad/secondaryViewCache'
+
+export const getNotesViewCacheKey = ({ projectId, filterBy, maxNotesToRender, inAllProjects }) =>
+    buildSecondaryViewCacheKey(projectId, filterBy, maxNotesToRender, inAllProjects ? 'all-projects' : 'project')
+
+export const limitNotesForViewCache = (notes, maxNotesToRender) => {
+    const limited = {}
+    let remaining = Math.max(0, maxNotesToRender)
+    Object.keys(notes || {})
+        .sort((a, b) => b - a)
+        .some(date => {
+            if (remaining <= 0) return true
+            const rows = Array.isArray(notes[date]) ? notes[date].slice(0, remaining) : []
+            if (rows.length > 0) limited[date] = rows
+            remaining -= rows.length
+            return remaining <= 0
+        })
+    return limited
+}
 
 export default class NotesByProject extends PureComponent {
     constructor(props) {
         super(props)
         const storeState = store.getState()
+        const inAllProjects = checkIfSelectedAllProjects(storeState.selectedProjectIndex)
+        const cacheKey = getNotesViewCacheKey({
+            projectId: props.project.id,
+            filterBy: props.filterBy,
+            maxNotesToRender: props.maxNotesToRender,
+            inAllProjects,
+        })
+        const cachedSnapshot = getSecondaryViewCacheEntrySync(storeState.loggedUser.uid, SECONDARY_VIEW_NOTES, cacheKey)
+        const cachedSnapshotIsValid =
+            cachedSnapshot?.projectId === props.project.id &&
+            cachedSnapshot.filterBy === props.filterBy &&
+            cachedSnapshot.inAllProjects === inAllProjects
+        const notes = cachedSnapshotIsValid ? cachedSnapshot.notes || {} : {}
+        const stickyNotes = cachedSnapshotIsValid ? cachedSnapshot.stickyNotes || [] : []
+        const hashtagFilters = Array.from(storeState.hashtagFilters.keys())
+        const noteOwnerFilters = storeState.noteOwnerFilters
+        const hashtagFilteredNotes = hashtagFilters.length > 0 ? filterNotes(notes) : notes
+        const hashtagFilteredStickyNotes = hashtagFilters.length > 0 ? filterStickyNotes(stickyNotes) : stickyNotes
 
         this.state = {
-            notes: {},
-            stickyNotes: [],
-            filteredNotes: {},
-            filteredStickyNotes: [],
-            hashtagFilteredNotes: {},
-            hashtagFilteredStickyNotes: [],
+            notes,
+            stickyNotes,
+            filteredNotes: filterNotesByOwner(hashtagFilteredNotes, noteOwnerFilters),
+            filteredStickyNotes: filterStickyNotesByOwner(hashtagFilteredStickyNotes, noteOwnerFilters),
+            hashtagFilteredNotes,
+            hashtagFilteredStickyNotes,
             pressedShowMore: false,
-            needShowMoreButton: false,
-            hashtagFilters: Array.from(storeState.hashtagFilters.keys()),
-            noteOwnerFilters: storeState.noteOwnerFilters,
+            initialLoading: !cachedSnapshotIsValid && props.showInitialSkeleton === true,
+            // AT-2382 - drives the note-shaped ghosts under the list while an expansion is
+            // in flight. It stays local because the global loading refcount represents the
+            // page-level wait, while these ghosts represent one specific list expansion.
+            loadingMoreNotes: false,
+            needShowMoreButton: cachedSnapshotIsValid ? !!cachedSnapshot.needShowMoreButton : false,
+            hashtagFilters,
+            noteOwnerFilters,
             unsubscribe: store.subscribe(this.updateState),
         }
 
         this.dismissibleRefs = {}
         this.datesForNotes = {}
-        this.stickyCounter = 0
-        this.notesCounter = 0
+        Object.entries(notes).forEach(([date, rows]) => {
+            rows.forEach(note => {
+                this.datesForNotes[note.id] = date
+            })
+        })
+        this.stickyCounter = stickyNotes.length
+        this.notesCounter = Object.values(notes).reduce((total, rows) => total + rows.length, 0)
+        this.finishTrackedLoading = null
+        this.cacheKey = cacheKey
+        this.cachedSnapshot = cachedSnapshotIsValid ? cachedSnapshot : null
+        this.cacheApplied = cachedSnapshotIsValid
+        this.liveNotesSnapshotDelivered = false
+        this.liveStickySnapshotDelivered = false
+        this.mounted = false
     }
 
     componentDidMount() {
+        this.mounted = true
+        if (this.cachedSnapshot) this.publishCachedSnapshot(this.cachedSnapshot)
+        this.loadPersistedSnapshot()
         this.updateLastAddNewNoteDate()
         this.watchUserNotes(false, true)
         this.watchNotesNeedShowMoreButton()
@@ -59,10 +128,33 @@ export default class NotesByProject extends PureComponent {
         const projectIdChanged = prevProps.project.id !== project.id
 
         if (filterChanged || maxNotesChanged || projectIdChanged) {
+            this.persistViewSnapshot(prevProps, prevState)
             this.datesForNotes = {}
             this.stickyCounter = 0
             this.notesCounter = 0
-            this.setState({ notes: {}, stickyNotes: [] })
+            this.cacheApplied = false
+            const { loggedUser, selectedProjectIndex } = store.getState()
+            const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+            this.cacheKey = getNotesViewCacheKey({
+                projectId: project.id,
+                filterBy,
+                maxNotesToRender,
+                inAllProjects,
+            })
+            const cachedSnapshot = getSecondaryViewCacheEntrySync(loggedUser.uid, SECONDARY_VIEW_NOTES, this.cacheKey)
+            if (!this.applyCachedSnapshot(cachedSnapshot)) {
+                this.setState({
+                    notes: {},
+                    stickyNotes: [],
+                    filteredNotes: {},
+                    filteredStickyNotes: [],
+                    hashtagFilteredNotes: {},
+                    hashtagFilteredStickyNotes: [],
+                    loadingMoreNotes: false,
+                    initialLoading: this.props.showInitialSkeleton === true,
+                })
+            }
+            this.loadPersistedSnapshot()
             this.watchUserNotes(pressedShowMore, true)
             this.watchNotesNeedShowMoreButton()
         }
@@ -84,21 +176,119 @@ export default class NotesByProject extends PureComponent {
     }
 
     componentWillUnmount() {
+        this.mounted = false
+        this.persistViewSnapshot()
+        this.finishTrackedLoading?.()
         this.unwatchUserNotes()
         this.state.unsubscribe()
     }
 
     updateState = () => {
         const storeState = store.getState()
-        this.setState({
-            hashtagFilters: Array.from(storeState.hashtagFilters.keys()),
-            noteOwnerFilters: storeState.noteOwnerFilters,
+        this.setState(state => getNoteFilterStateUpdate(state, storeState))
+    }
+
+    publishCachedSnapshot = snapshot => {
+        const { project, onInitialSnapshot, setLastEditNoteDate } = this.props
+        const notes = snapshot?.notes || {}
+        const lastEditedDate = Object.values(notes)
+            .flat()
+            .reduce((latest, note) => Math.max(latest, note?.lastEditionDate || 0), 0)
+        if (setLastEditNoteDate) setLastEditNoteDate(project, lastEditedDate)
+        store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
+        onInitialSnapshot?.(project.id)
+    }
+
+    applyCachedSnapshot = snapshot => {
+        const { project, filterBy } = this.props
+        const { selectedProjectIndex, hashtagFilters, noteOwnerFilters } = store.getState()
+        const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+        if (
+            !snapshot ||
+            snapshot.projectId !== project.id ||
+            snapshot.filterBy !== filterBy ||
+            snapshot.inAllProjects !== inAllProjects ||
+            !snapshot.notes ||
+            !Array.isArray(snapshot.stickyNotes)
+        ) {
+            return false
+        }
+
+        const notes = snapshot.notes
+        const stickyNotes = snapshot.stickyNotes
+        const filtersArray = Array.from(hashtagFilters.keys())
+        const hashtagFilteredNotes = filtersArray.length > 0 ? filterNotes(notes) : notes
+        const hashtagFilteredStickyNotes = filtersArray.length > 0 ? filterStickyNotes(stickyNotes) : stickyNotes
+        this.datesForNotes = {}
+        Object.entries(notes).forEach(([date, rows]) => {
+            rows.forEach(note => {
+                this.datesForNotes[note.id] = date
+            })
+        })
+        this.notesCounter = Object.values(notes).reduce((total, rows) => total + rows.length, 0)
+        this.stickyCounter = stickyNotes.length
+        this.cacheApplied = true
+        this.cachedSnapshot = snapshot
+        this.setState(
+            {
+                notes,
+                stickyNotes,
+                hashtagFilteredNotes,
+                hashtagFilteredStickyNotes,
+                filteredNotes: filterNotesByOwner(hashtagFilteredNotes, noteOwnerFilters),
+                filteredStickyNotes: filterStickyNotesByOwner(hashtagFilteredStickyNotes, noteOwnerFilters),
+                initialLoading: false,
+                needShowMoreButton: !!snapshot.needShowMoreButton,
+            },
+            () => this.publishCachedSnapshot(snapshot)
+        )
+        return true
+    }
+
+    loadPersistedSnapshot = () => {
+        const { loggedUser } = store.getState()
+        getSecondaryViewCacheEntry(loggedUser.uid, SECONDARY_VIEW_NOTES, this.cacheKey).then(snapshot => {
+            // Either listener makes part of the current state newer than the stored projection.
+            // Mixing that live half with a late full-cache restore could resurrect stale rows.
+            if (
+                !this.mounted ||
+                this.liveNotesSnapshotDelivered ||
+                this.liveStickySnapshotDelivered ||
+                this.cacheApplied
+            ) {
+                return
+            }
+            this.applyCachedSnapshot(snapshot)
+        })
+    }
+
+    persistViewSnapshot = (props = this.props, state = this.state) => {
+        // Do not replace a persisted projection with the constructor's empty state while the
+        // IndexedDB read and the main notes listener are still racing on first mount.
+        if (!this.cacheApplied && !this.liveNotesSnapshotDelivered) return
+        const { loggedUser, selectedProjectIndex } = store.getState()
+        const { project, filterBy, maxNotesToRender } = props
+        const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+        const cacheKey = getNotesViewCacheKey({
+            projectId: project.id,
+            filterBy,
+            maxNotesToRender,
+            inAllProjects,
+        })
+        this.cacheKey = cacheKey
+        setSecondaryViewCacheEntry(loggedUser.uid, SECONDARY_VIEW_NOTES, cacheKey, {
+            projectId: project.id,
+            filterBy,
+            inAllProjects,
+            notes: limitNotesForViewCache(state.notes, maxNotesToRender),
+            stickyNotes: inAllProjects ? [] : state.stickyNotes.slice(0, maxNotesToRender),
+            needShowMoreButton: state.needShowMoreButton,
         })
     }
 
     setNeedShowMoreButton = amountOfNotes => {
         const { maxNotesToRender } = this.props
-        this.setState({ needShowMoreButton: amountOfNotes > maxNotesToRender })
+        this.setState({ needShowMoreButton: amountOfNotes > maxNotesToRender }, this.persistViewSnapshot)
     }
 
     watchNotesNeedShowMoreButton = () => {
@@ -122,22 +312,34 @@ export default class NotesByProject extends PureComponent {
     }
 
     watchUserNotes = (pressedShowMore, watchStickyNotes) => {
-        setTimeout(() => {
-            store.dispatch(startLoadingData())
-        })
-        const { project, filterBy, setLastEditNoteDate, maxNotesToRender } = this.props
+        this.finishTrackedLoading?.()
+        this.finishTrackedLoading = null
+
+        const { project, filterBy, setLastEditNoteDate, maxNotesToRender, onInitialSnapshot } = this.props
         const { selectedProjectIndex } = store.getState()
         const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+        const trackInitialLoad = (this.props.trackInitialLoad !== false && !this.cacheApplied) || pressedShowMore
+        const finishLoading = beginLoadingOperation('notes', { enabled: trackInitialLoad })
+        this.finishTrackedLoading = finishLoading
 
         let lastEditedDate = 0
-        this.notesCounter = 0
+        let initialSnapshotDelivered = false
+        this.liveNotesSnapshotDelivered = false
+        if (watchStickyNotes) this.liveStickySnapshotDelivered = false
 
         const updateNotes = changes => {
+            const replaceExistingSnapshot = !this.liveNotesSnapshotDelivered
+            this.liveNotesSnapshotDelivered = true
+            this.cacheApplied = false
+            if (replaceExistingSnapshot) {
+                this.datesForNotes = {}
+                this.notesCounter = 0
+            }
             // Compute state updates first; schedule side-effects in setState callback
             let finalLastEditedDate = 0
             this.setState(
                 state => {
-                    const notes = { ...state.notes }
+                    const notes = replaceExistingSnapshot ? {} : { ...state.notes }
                     const datesToSort = new Set()
                     let lastEditedDateRemoved = false
 
@@ -201,27 +403,34 @@ export default class NotesByProject extends PureComponent {
                         finalLastEditedDate = lastEditedDate
                     }
 
-                    return { notes }
+                    // AT-2382 - the ghosts are retired by the same state update that puts the
+                    // real rows in, so there is never a frame with both (or with neither).
+                    return { notes, loadingMoreNotes: false, initialLoading: false }
                 },
                 () => {
                     // Side-effects moved out of updater to avoid React warning about updates inside update functions
                     if (inAllProjects) {
-                        setLastEditNoteDate(finalLastEditedDate)
+                        setLastEditNoteDate(project, finalLastEditedDate)
                     }
-                    store.dispatch(stopLoadingData())
+                    finishLoading()
+                    if (this.finishTrackedLoading === finishLoading) this.finishTrackedLoading = null
+                    if (!initialSnapshotDelivered) {
+                        initialSnapshotDelivered = true
+                        onInitialSnapshot?.(project.id)
+                    }
                     store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
-                    // Debug: validate side-effects run post state update
-                    console.debug(
-                        '[NotesByProject] post-setState(updateNotes): dispatched setNotesAmounts and stopLoadingData'
-                    )
+                    this.persistViewSnapshot()
                 }
             )
         }
 
         const updateStickyNotes = changes => {
+            const replaceExistingSnapshot = !this.liveStickySnapshotDelivered
+            this.liveStickySnapshotDelivered = true
+            if (replaceExistingSnapshot) this.stickyCounter = 0
             this.setState(
                 state => {
-                    let stickyNotes = [...state.stickyNotes]
+                    let stickyNotes = replaceExistingSnapshot ? [] : [...state.stickyNotes]
                     let needToSortNotes = false
 
                     for (let change of changes) {
@@ -260,34 +469,39 @@ export default class NotesByProject extends PureComponent {
                 },
                 () => {
                     store.dispatch(setNotesAmounts(this.notesCounter + this.stickyCounter, project.index))
-                    // Debug: validate side-effects run post state update
-                    console.debug('[NotesByProject] post-setState(updateStickyNotes): dispatched setNotesAmounts')
+                    this.persistViewSnapshot()
                 }
             )
         }
 
+        const watcherOptions = { trackConnectionHealth: trackInitialLoad, onError: finishLoading }
         if (inAllProjects) {
             if (filterBy === ALL_TAB) {
                 pressedShowMore
-                    ? Backend.watchAllTabNotesExpandedInAllProjects(project.id, updateNotes)
-                    : Backend.watchAllTabNotesInAllProjects(project.id, maxNotesToRender, updateNotes)
+                    ? Backend.watchAllTabNotesExpandedInAllProjects(project.id, updateNotes, watcherOptions)
+                    : Backend.watchAllTabNotesInAllProjects(project.id, maxNotesToRender, updateNotes, watcherOptions)
             } else {
                 pressedShowMore
-                    ? Backend.watchFollowedTabNotesExpandedInAllProjects(project.id, updateNotes)
-                    : Backend.watchFollowedTabNotesInAllProjects(project.id, maxNotesToRender, updateNotes)
+                    ? Backend.watchFollowedTabNotesExpandedInAllProjects(project.id, updateNotes, watcherOptions)
+                    : Backend.watchFollowedTabNotesInAllProjects(
+                          project.id,
+                          maxNotesToRender,
+                          updateNotes,
+                          watcherOptions
+                      )
             }
         } else {
             if (filterBy === ALL_TAB) {
                 pressedShowMore
-                    ? Backend.watchAllTabNotesExpanded(project.id, updateNotes)
-                    : Backend.watchAllTabNotes(project.id, maxNotesToRender, updateNotes)
+                    ? Backend.watchAllTabNotesExpanded(project.id, updateNotes, watcherOptions)
+                    : Backend.watchAllTabNotes(project.id, maxNotesToRender, updateNotes, watcherOptions)
                 if (watchStickyNotes) {
                     Backend.watchAllTabStickyNotes(project.id, updateStickyNotes)
                 }
             } else {
                 pressedShowMore
-                    ? Backend.watchFollowedTabNotesExpanded(project.id, updateNotes)
-                    : Backend.watchFollowedTabNotes(project.id, maxNotesToRender, updateNotes)
+                    ? Backend.watchFollowedTabNotesExpanded(project.id, updateNotes, watcherOptions)
+                    : Backend.watchFollowedTabNotes(project.id, maxNotesToRender, updateNotes, watcherOptions)
                 if (watchStickyNotes) {
                     Backend.watchFollowedTabStickyNotes(project.id, updateStickyNotes)
                 }
@@ -371,13 +585,26 @@ export default class NotesByProject extends PureComponent {
     }
 
     expandShowMore = () => {
-        this.setState({ pressedShowMore: true })
+        // Guarded because the expanded watcher is unbounded and re-entrant: a second press
+        // while the first snapshot is still buffered would tear the listener down and start
+        // the wait over, with the ghosts already on screen making it look like progress.
+        if (this.state.loadingMoreNotes) return
+        this.setState({ pressedShowMore: true, loadingMoreNotes: true })
         this.watchUserNotes(true, false)
     }
 
     render() {
         const { selectedProjectIndex, currentUser } = store.getState()
-        const { project } = this.props
+        const { maxNotesToRender, project } = this.props
+
+        const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
+        if (this.state.initialLoading && inAllProjects) {
+            return (
+                <View style={{ marginBottom: inAllProjects ? 25 : 32 }}>
+                    <NotesListSkeleton rowCount={resolveGhostRowCount(maxNotesToRender)} showProjectHeader />
+                </View>
+            )
+        }
 
         const {
             filteredNotes,
@@ -386,6 +613,7 @@ export default class NotesByProject extends PureComponent {
             hashtagFilteredStickyNotes,
             pressedShowMore,
             needShowMoreButton,
+            loadingMoreNotes,
         } = this.state
 
         const notesArr = Object.entries(filteredNotes).sort((a, b) => b[0] - a[0])
@@ -395,72 +623,87 @@ export default class NotesByProject extends PureComponent {
         const todayNotes = filteredNotes[todayDateKey] ? filteredNotes[todayDateKey] : []
 
         const notesAmount = calcNotesAmountByProjectIndex(project.index)
-        const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
         const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
 
         const showShowMoreButton = needShowMoreButton && notesAmount > 0
 
         return (
-            <View style={{ marginBottom: inAllProjects ? 25 : 32 }}>
+            <ProjectSection
+                projectId={project.id}
+                projectColor={project.color}
+                selected={inSelectedProject}
+                style={{ marginBottom: inAllProjects ? 25 : 32 }}
+            >
                 <ProjectHeader
                     projectIndex={project.index}
                     projectId={project.id}
                     customRight={
-                        inSelectedProject ? (
-                            <NoteMoreButton
-                                projectId={project.id}
-                                user={currentUser}
-                                wrapperStyle={localStyles.moreButtonWrapper}
-                                buttonStyle={localStyles.moreButton}
-                                iconSize={16}
-                            />
-                        ) : null
+                        <NoteMoreButton
+                            projectId={project.id}
+                            user={currentUser}
+                            wrapperStyle={localStyles.moreButtonWrapper}
+                            buttonStyle={localStyles.moreButton}
+                            iconSize={16}
+                        />
                     }
                     showRootSectionNavigation={inSelectedProject}
                 />
-                {inSelectedProject && <NotesHeader />}
-                {inSelectedProject && (
-                    <NoteOwnerFiltersLine
-                        projectId={project.id}
-                        notes={hashtagFilteredNotes}
-                        stickyNotes={hashtagFilteredStickyNotes}
-                    />
-                )}
-                <NotesSticky
-                    fStickyNotes={filteredStickyNotes}
-                    inAllProjects={inAllProjects}
-                    dismissibleRefs={this.dismissibleRefs}
-                    project={project}
-                />
-                <NotesByDate notes={todayNotes} project={project} dateString={'TODAY'} date={todayDate} />
-                {notesArr.map((entry, index) => {
-                    const noteList = entry[1]
-                    const dateKey = entry[0]
-                    const isNotToday = todayDateKey !== dateKey
-                    if (isNotToday) {
-                        const isFirstDateSection = index === 0
-                        const timestamp = moment(noteList[0].lastEditionDate)
-                        const dateString = timestamp.format(getDateFormat())
-                        return (
-                            <NotesByDate
-                                key={dateKey}
-                                notes={noteList}
+                <ProjectSectionBody>
+                    {inSelectedProject && <ProjectAssistantLine project={project} />}
+                    {this.state.initialLoading ? (
+                        <NotesListSkeleton rowCount={resolveGhostRowCount(maxNotesToRender)} />
+                    ) : (
+                        <>
+                            {inSelectedProject && <NotesHeader />}
+                            {inSelectedProject && (
+                                <NoteOwnerFiltersLine
+                                    projectId={project.id}
+                                    notes={hashtagFilteredNotes}
+                                    stickyNotes={hashtagFilteredStickyNotes}
+                                />
+                            )}
+                            <NotesSticky
+                                fStickyNotes={filteredStickyNotes}
+                                inAllProjects={inAllProjects}
+                                dismissibleRefs={this.dismissibleRefs}
                                 project={project}
-                                dateString={dateString}
-                                date={timestamp}
-                                firstDateSection={isFirstDateSection}
                             />
-                        )
-                    }
-                })}
-                {showShowMoreButton && (
-                    <ShowMoreButton
-                        expanded={pressedShowMore}
-                        contract={this.contractShowMore}
-                        expand={this.expandShowMore}
-                    />
-                )}
-            </View>
+                            <NotesByDate notes={todayNotes} project={project} dateString={'TODAY'} date={todayDate} />
+                            {notesArr.map((entry, index) => {
+                                const noteList = entry[1]
+                                const dateKey = entry[0]
+                                const isNotToday = todayDateKey !== dateKey
+                                if (isNotToday) {
+                                    const isFirstDateSection = index === 0
+                                    const timestamp = moment(noteList[0].lastEditionDate)
+                                    const dateString = timestamp.format(getDateFormat())
+                                    return (
+                                        <NotesByDate
+                                            key={dateKey}
+                                            notes={noteList}
+                                            project={project}
+                                            dateString={dateString}
+                                            date={timestamp}
+                                            firstDateSection={isFirstDateSection}
+                                        />
+                                    )
+                                }
+                            })}
+                            {loadingMoreNotes && (
+                                <NotesListSkeleton rowCount={resolveGhostRowCount(this.props.maxNotesToRender)} />
+                            )}
+                            {showShowMoreButton && (
+                                <ShowMoreButton
+                                    expanded={pressedShowMore}
+                                    contract={this.contractShowMore}
+                                    expand={this.expandShowMore}
+                                    loading={loadingMoreNotes}
+                                />
+                            )}
+                        </>
+                    )}
+                </ProjectSectionBody>
+            </ProjectSection>
         )
     }
 }

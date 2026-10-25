@@ -14,7 +14,11 @@ export default function Reminder({ goal, projectId, disabled }) {
     const reminderDate = goal.assigneesReminderDate[loggedUserId]
 
     const updateReminder = date => {
-        if (reminderDate !== date) Backend.updateGoalAssigneeReminderDate(projectId, goal.id, loggedUserId, date)
+        if (reminderDate !== date) {
+            // Avoid re-reading the goal before every reminder write; this screen already owns the
+            // authoritative snapshot used to render the current value.
+            Backend.updateGoalAssigneeReminderDate(projectId, goal.id, loggedUserId, date, goal)
+        }
     }
 
     return (

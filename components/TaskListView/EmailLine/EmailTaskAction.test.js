@@ -104,6 +104,7 @@ describe('EmailTaskAction', () => {
     })
 
     it('uses the shared create flow while lookup continues and keeps the created state', async () => {
+        const onTaskCreated = jest.fn().mockResolvedValue()
         let resolveLookup
         performEmailLineAction.mockImplementation((connectionId, params) => {
             if (params.action === 'getTaskForEmail') {
@@ -116,7 +117,12 @@ describe('EmailTaskAction', () => {
         let tree
         act(() => {
             tree = renderer.create(
-                <EmailTaskAction connectionId="connection-1" messageIds={['message-1']} checkExisting />
+                <EmailTaskAction
+                    connectionId="connection-1"
+                    messageIds={['message-1']}
+                    checkExisting
+                    onTaskCreated={onTaskCreated}
+                />
             )
         })
 
@@ -139,6 +145,29 @@ describe('EmailTaskAction', () => {
             resolveLookup({ taskCreated: null })
             await Promise.resolve()
         })
+        expect(findByLabel(tree, 'Task created')).toHaveLength(1)
+        expect(onTaskCreated).toHaveBeenCalledWith({ taskId: 'task-2', projectId: 'project-2' })
+        expect(onTaskCreated.mock.invocationCallOrder[0]).toBeGreaterThan(
+            performEmailLineAction.mock.invocationCallOrder[1]
+        )
+    })
+
+    it('keeps a successfully created task linked when the post-create action fails', async () => {
+        performEmailLineAction.mockResolvedValue({ taskId: 'task-3', projectId: 'project-3' })
+        const onTaskCreated = jest.fn().mockRejectedValue(new Error('notification write failed'))
+        let tree
+        act(() => {
+            tree = renderer.create(
+                <EmailTaskAction connectionId="connection-1" messageIds={['message-1']} onTaskCreated={onTaskCreated} />
+            )
+        })
+
+        await act(async () => {
+            findByLabel(tree, 'Create task')[0].props.onPress()
+            await Promise.resolve()
+        })
+
+        expect(onTaskCreated).toHaveBeenCalledWith({ taskId: 'task-3', projectId: 'project-3' })
         expect(findByLabel(tree, 'Task created')).toHaveLength(1)
     })
 })

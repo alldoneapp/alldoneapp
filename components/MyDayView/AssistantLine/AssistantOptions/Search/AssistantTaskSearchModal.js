@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useDispatch, useSelector } from 'react-redux'
 
@@ -6,8 +6,9 @@ import { getPreConfigTasksForAllProjects } from '../../../../../utils/backends/A
 import { generateTaskFromPreConfig } from '../../../../../utils/assistantHelper'
 import { setIframeModalData, setPreConfigTaskExecuting } from '../../../../../redux/actions'
 import useWindowSize from '../../../../../utils/useWindowSize'
-import { MODAL_MAX_HEIGHT_GAP, applyPopoverWidth } from '../../../../../utils/HelperFunctions'
+import { applyPopoverWidth } from '../../../../../utils/HelperFunctions'
 import CustomScrollView from '../../../../UIControls/CustomScrollView'
+import Button from '../../../../UIControls/Button'
 import ModalHeader from '../../../../UIComponents/FloatModals/ModalHeader'
 import PreConfigTaskGeneratorModal from '../../../../UIComponents/FloatModals/PreConfigTaskGeneratorModal/PreConfigTaskGeneratorModal'
 import RunOutOfGoldAssistantModal from '../../../../ChatsView/ChatDV/EditorView/BotOption/RunOutOfGoldAssistantModal'
@@ -25,6 +26,7 @@ import {
 } from '../../../../UIComponents/FloatModals/PreConfigTaskModal/TaskModal'
 import { filterPreConfigTaskSearchItems, groupPreConfigTaskSearchItems } from './assistantTaskSearchHelper'
 import { getAssistantTaskIcon } from '../assistantTaskIcon'
+import { getSafeAreaModalMaxHeight } from '../../../../../utils/modalSafeArea'
 
 const getAiSettings = task => {
     return task.aiModel || task.aiReasoningEffort !== undefined || task.aiSystemMessage
@@ -50,9 +52,11 @@ export default function AssistantTaskSearchModal({ closeModal }) {
     const inputRef = useRef(null)
     const activeIndexRef = useRef(0)
     const executingTaskRef = useRef(false)
+    const mountedRef = useRef(false)
     const [tasks, setTasks] = useState([])
     const [searchText, setSearchText] = useState('')
     const [loading, setLoading] = useState(true)
+    const [loadError, setLoadError] = useState(null)
     const [activeIndex, setActiveIndex] = useState(0)
     const [selectedTask, setSelectedTask] = useState(null)
     const [runOutOfGold, setRunOutOfGold] = useState(false)
@@ -109,26 +113,34 @@ export default function AssistantTaskSearchModal({ closeModal }) {
         }
     }
 
-    useEffect(() => {
-        let mounted = true
+    const loadTasks = useCallback(async () => {
+        if (!mountedRef.current) return
         setLoading(true)
-        getPreConfigTasksForAllProjects()
-            .then(result => {
-                if (mounted) setTasks(result)
-            })
-            .catch(error => {
-                console.error('Error loading assistant pre-configured tasks:', error)
-                if (mounted) setTasks([])
-            })
-            .finally(() => {
-                if (mounted) setLoading(false)
-            })
-
-        setTimeout(() => inputRef.current?.focus?.(), 0)
-        return () => {
-            mounted = false
+        setLoadError(null)
+        try {
+            const result = await getPreConfigTasksForAllProjects()
+            if (mountedRef.current) setTasks(result)
+        } catch (error) {
+            console.error('Error loading assistant pre-configured tasks:', error)
+            if (mountedRef.current) {
+                setTasks([])
+                setLoadError(error)
+            }
+        } finally {
+            if (mountedRef.current) setLoading(false)
         }
     }, [])
+
+    useEffect(() => {
+        mountedRef.current = true
+        loadTasks()
+
+        const focusTimer = setTimeout(() => inputRef.current?.focus?.(), 0)
+        return () => {
+            mountedRef.current = false
+            clearTimeout(focusTimer)
+        }
+    }, [loadTasks])
 
     useEffect(() => {
         const newIndex = filteredTasks.length > 0 ? Math.min(activeIndexRef.current, filteredTasks.length - 1) : -1
@@ -193,7 +205,7 @@ export default function AssistantTaskSearchModal({ closeModal }) {
           })()
 
     return (
-        <View style={[localStyles.container, widerPopoverStyle, { maxHeight: height - MODAL_MAX_HEIGHT_GAP }]}>
+        <View style={[localStyles.container, widerPopoverStyle, { maxHeight: getSafeAreaModalMaxHeight(height) }]}>
             <ModalHeader closeModal={closeModal} title={translate('Search assistant tasks')} />
             <View style={localStyles.searchBox}>
                 <Icon name="search" size={18} color={colors.Text03} />
@@ -215,7 +227,17 @@ export default function AssistantTaskSearchModal({ closeModal }) {
                 indicatorStyle={localStyles.scrollIndicator}
                 showsVerticalScrollIndicator={false}
             >
-                {filteredTasks.length > 0 ? (
+                {loadError ? (
+                    <View style={localStyles.errorState}>
+                        <EmptyMatch showSpinner={false} text={translate('Could not load assistant tasks')} />
+                        <Button
+                            type={'primary'}
+                            title={translate('Try again')}
+                            onPress={loadTasks}
+                            buttonStyle={localStyles.retryButton}
+                        />
+                    </View>
+                ) : filteredTasks.length > 0 ? (
                     <GroupedResults
                         groupedTasks={groupedTasks}
                         activeTask={filteredTasks[activeIndex]}
@@ -364,6 +386,13 @@ const localStyles = StyleSheet.create({
     },
     scrollIndicator: {
         right: 8,
+    },
+    errorState: {
+        alignItems: 'center',
+        paddingBottom: 16,
+    },
+    retryButton: {
+        marginTop: 12,
     },
     projectHeader: {
         height: 40,

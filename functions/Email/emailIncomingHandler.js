@@ -7,7 +7,11 @@ const { v4: uuidv4 } = require('uuid')
 const { getEnvFunctions } = require('../envFunctionsHelper')
 const { sendAnnaEmailReply } = require('./emailReplyService')
 const { DEFAULT_PUBLIC_EMAIL, normalizeEmailAddress, normalizeEmailAddressList } = require('./emailChannelHelpers')
-const { findVerifiedUserByEmailIdentity, getDefaultAssistantIdForUser } = require('./emailUserRouting')
+const {
+    SENDER_STATUS_AMBIGUOUS,
+    getDefaultAssistantIdForUser,
+    resolveEmailSenderIdentity,
+} = require('./emailUserRouting')
 
 async function handleIncomingAnnaEmail(req, res) {
     if (req.method !== 'POST') {
@@ -30,10 +34,44 @@ async function handleIncomingAnnaEmail(req, res) {
             return res.status(403).send('Forbidden')
         }
 
-        const user = await findVerifiedUserByEmailIdentity(payload.fromEmail)
+        // A verified account owner can explicitly offer safe meeting slots to one external
+        // participant. Replies to that exact Anna message carry a one-purpose grant and must
+        // be resolved before ordinary account routing, even if the guest also has Alldone.
+        const { tryHandleGuestMeetingReply } = require('./emailGuestMeetingGrant')
+        const guestMeetingResult = await tryHandleGuestMeetingReply(payload)
+        if (guestMeetingResult.matched) {
+            await upsertAuditRecord(payload.messageId, {
+                status: guestMeetingResult.status,
+                userId: guestMeetingResult.ownerUserId || null,
+                fromEmail: payload.fromEmail,
+                guestMeetingGrantId: guestMeetingResult.grantId || null,
+                updatedAt: Date.now(),
+            })
+            return res.status(200).json({ ok: true, status: guestMeetingResult.status })
+        }
+
+        // A sender that cannot be routed used to leave no trace at all: no audit record,
+        // no log line, and a reply blaming verification for what was in fact an ambiguity.
+        // Both outcomes are now recorded and named (AT-2483).
+        const senderIdentity = await resolveEmailSenderIdentity(payload.fromEmail)
+        const user = senderIdentity.user
         if (!user) {
-            await replySafely(payload, `I couldn't match this sender to a verified Alldone account email.`)
-            return res.status(200).json({ ok: true, status: 'unknown_sender' })
+            const ambiguous = senderIdentity.status === SENDER_STATUS_AMBIGUOUS
+            const status = ambiguous ? 'ambiguous_sender' : 'unknown_sender'
+            await replySafely(
+                payload,
+                ambiguous
+                    ? `This email address belongs to more than one Alldone account, so I can't tell which one this should go to. Disconnect it from the account you don't want it on, or write from an address that only one account uses.`
+                    : `I couldn't match this sender to a verified Alldone account email.`
+            )
+            await upsertAuditRecord(payload.messageId, {
+                status,
+                fromEmail: payload.fromEmail,
+                subject: payload.subject,
+                senderCandidates: senderIdentity.candidates || [],
+                updatedAt: Date.now(),
+            })
+            return res.status(200).json({ ok: true, status })
         }
 
         if (user.assistantEmailEnabled !== true) {

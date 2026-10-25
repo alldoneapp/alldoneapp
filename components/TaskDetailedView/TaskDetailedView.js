@@ -11,10 +11,8 @@ import {
     setSelectedSidebarTab,
     setTaskInDetailView,
     setShowAccessDeniedPopup,
-    stopLoadingData,
     storeCurrentUser,
     unsetSharedMode,
-    switchProject,
     navigateToAllProjectsTasks,
 } from '../../redux/actions'
 import store from '../../redux/store'
@@ -55,6 +53,7 @@ import { SIDEBAR_MENU_COLLAPSED_WIDTH } from '../styles/global'
 import { getAssistant } from '../AdminPanel/Assistants/assistantsHelper'
 import TaskChatWorkflowControls from './TaskChatWorkflowControls'
 import useResetDetailedViewScroll from '../../hooks/useResetDetailedViewScroll'
+import useTaskProjectMoveHandoff from './useTaskProjectMoveHandoff'
 
 const TaskDetailedView = ({ navigation }) => {
     const dispatch = useDispatch()
@@ -62,7 +61,6 @@ const TaskDetailedView = ({ navigation }) => {
     const loggedUserProjectsMap = useSelector(state => state.loggedUserProjectsMap)
     const project = useSelector(state => state.loggedUserProjectsMap[projectId])
     const loggedUser = useSelector(state => state.loggedUser)
-    const assistantEnabled = useSelector(state => state.assistantEnabled)
     const selectedTab = useSelector(state => state.selectedNavItem)
     const smallScreenNavigation = useSelector(state => state.smallScreenNavigation)
     const isMiddleScreen = useSelector(state => state.isMiddleScreen)
@@ -75,6 +73,23 @@ const TaskDetailedView = ({ navigation }) => {
     const scrollRef = useRef()
     const isAssistant = task?.assigneeType === TASK_ASSIGNEE_ASSISTANT_TYPE
     useResetDetailedViewScroll(selectedTab, scrollRef)
+
+    const {
+        handoff: taskProjectMoveHandoff,
+        isHandoffActive: taskProjectMoveHandoffActive,
+        isMovePending: taskProjectMovePending,
+        startTaskProjectMove,
+        taskProjectMoveEnqueued,
+        taskProjectMoveEnqueueFailed,
+        handleSourceTaskChange,
+    } = useTaskProjectMoveHandoff({
+        sourceProjectId: projectId,
+        taskId: task.id,
+        selectedTab,
+        loggedUser,
+        loggedUserProjectsMap,
+        dispatch,
+    })
 
     const { overlay } = useCollapsibleSidebar()
 
@@ -126,10 +141,6 @@ const TaskDetailedView = ({ navigation }) => {
     }, [])
 
     useEffect(() => {
-        setFullscreen(assistantEnabled)
-    }, [assistantEnabled])
-
-    useEffect(() => {
         setAssistantId(task?.assistantId || '')
     }, [task?.assistantId])
 
@@ -149,8 +160,12 @@ const TaskDetailedView = ({ navigation }) => {
     }, [selectedTab])
 
     useEffect(() => {
-        Backend.getUserOrContactBy(projectId, task.userId).then(afterAssigneeFetch)
-    }, [task.userId])
+        if (loggedUser.isAnonymous) {
+            afterAssigneeFetch(SharedHelper.createAnonymousResourceUser(task.userId))
+        } else {
+            Backend.getUserOrContactBy(projectId, task.userId).then(afterAssigneeFetch)
+        }
+    }, [task.userId, loggedUser.isAnonymous])
 
     useEffect(() => {
         if (taskInDetailView.name != null) {
@@ -164,12 +179,7 @@ const TaskDetailedView = ({ navigation }) => {
                 )
             ) {
                 NavigationService.navigate('Root')
-                dispatch([
-                    resetFloatPopup(),
-                    setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-                    stopLoadingData(),
-                    setShowAccessDeniedPopup(true),
-                ])
+                dispatch([resetFloatPopup(), setSelectedSidebarTab(DV_TAB_ROOT_TASKS), setShowAccessDeniedPopup(true)])
             } else {
                 setTask(taskInDetailView)
             }
@@ -188,19 +198,16 @@ const TaskDetailedView = ({ navigation }) => {
     }, [projectId, task.id])
 
     const afterTaskChange = task => {
+        if (handleSourceTaskChange(task)) return
+
         if (task == null) {
             const { selectedTypeOfProject } = store.getState()
 
             NavigationService.navigate('Root')
             if (selectedTypeOfProject === PROJECT_TYPE_SHARED) {
-                dispatch([resetFloatPopup(), stopLoadingData(), navigateToAllProjectsTasks()])
+                dispatch([resetFloatPopup(), navigateToAllProjectsTasks()])
             } else {
-                dispatch([
-                    resetFloatPopup(),
-                    setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-                    stopLoadingData(),
-                    setShowAccessDeniedPopup(true),
-                ])
+                dispatch([resetFloatPopup(), setSelectedSidebarTab(DV_TAB_ROOT_TASKS), setShowAccessDeniedPopup(true)])
             }
         } else if (task !== null) {
             if (
@@ -214,13 +221,12 @@ const TaskDetailedView = ({ navigation }) => {
                     dispatch([
                         resetFloatPopup(),
                         setSelectedSidebarTab(DV_TAB_ROOT_TASKS),
-                        stopLoadingData(),
                         setShowAccessDeniedPopup(true),
                     ])
                 }
             } else {
                 setTask(task)
-                dispatch([setTaskInDetailView(task), stopLoadingData()])
+                dispatch([setTaskInDetailView(task)])
             }
         }
     }
@@ -257,7 +263,7 @@ const TaskDetailedView = ({ navigation }) => {
                 <CustomSideMenu navigation={navigation} isWeb />
             )}
             <View style={{ flex: 1 }}>
-                {!isMiddleScreen && accessGranted && (
+                {!smallScreenNavigation && !isMiddleScreen && accessGranted && (
                     <View style={[localStyles.backButton, overlay && { marginLeft: SIDEBAR_MENU_COLLAPSED_WIDTH }]}>
                         <BackButton projectId={projectId} task={task} />
                     </View>
@@ -293,7 +299,17 @@ const TaskDetailedView = ({ navigation }) => {
                                     </View>
                                 )}
                                 {selectedTab === DV_TAB_TASK_PROPERTIES && (
-                                    <PropertiesView project={projectCopy} task={task} loggedUser={loggedUser} />
+                                    <PropertiesView
+                                        project={projectCopy}
+                                        task={task}
+                                        loggedUser={loggedUser}
+                                        taskProjectMoveHandoff={taskProjectMoveHandoff}
+                                        taskProjectMoveHandoffActive={taskProjectMoveHandoffActive}
+                                        taskProjectMovePending={taskProjectMovePending}
+                                        onTaskProjectMoveStarted={startTaskProjectMove}
+                                        onTaskProjectMoveEnqueued={taskProjectMoveEnqueued}
+                                        onTaskProjectMoveEnqueueFailed={taskProjectMoveEnqueueFailed}
+                                    />
                                 )}
                                 {selectedTab === DV_TAB_TASK_ESTIMATIONS && (
                                     <WorkflowEstimation projectId={projectId} task={task} />
@@ -336,6 +352,8 @@ const TaskDetailedView = ({ navigation }) => {
                                             setAssistantId={setAssistantId}
                                             objectType={'tasks'}
                                             parentObject={task}
+                                            isFullscreen={isFullscreen}
+                                            setFullscreen={setFullscreen}
                                         />
                                     </>
                                 )}

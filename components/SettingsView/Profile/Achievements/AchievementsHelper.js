@@ -22,6 +22,48 @@ export const getEmptyInboxDaysWithLegacyFallback = user => {
     return [moment(user.lastDayEmptyInbox).format(EMPTY_INBOX_DATE_FORMAT)]
 }
 
+/**
+ * AT-2461 — the millisecond timestamp at which the user FIRST reached empty inbox today, or `null`
+ * when that moment is not known.
+ *
+ * There is no dedicated per-day time in the data model, and none is needed: `useReachEmptyInbox`
+ * already writes `lastDayEmptyInbox` as a full `moment().valueOf()` the moment the all-projects task
+ * count drops to zero, and it only writes it when the day is not yet recorded — so the field IS the
+ * first inbox-zero moment of the day it falls on, which is exactly what the card wants to report.
+ * `emptyInboxDays` deliberately keeps only `YYYY-MM-DD` keys, so it can say WHICH days but never
+ * WHEN.
+ *
+ * Two guards, and both are load-bearing rather than defensive:
+ *
+ * - The timestamp must fall on the day being asked about. `lastDayEmptyInbox` is a running "last
+ *   time" pointer, so on any day the inbox has not been cleared it holds an OLDER day's clock time —
+ *   rendering it would report a time for a day that never happened.
+ * - That day must also be present in the achievement days. A brand-new account is created with
+ *   `lastDayEmptyInbox: dateNow` and `emptyInboxDays: []` (see `ContactsHelper.createUserData`), so
+ *   the timestamp alone would congratulate somebody who has never cleared anything for signing up.
+ *   Asking the achievement days keeps this answer consistent with the green cell and the streak,
+ *   which are driven by the same array.
+ *
+ * Note the caller passes the ALREADY-RESOLVED days (`getEmptyInboxDaysWithLegacyFallback`), so a
+ * legacy account whose history was never initialized still gets its one derived day and behaves the
+ * same as the grid does for it.
+ */
+export const getTodayEmptyInboxTimestamp = (user, emptyInboxDays, todayTimestamp = Date.now()) => {
+    const lastDayEmptyInbox = user ? user.lastDayEmptyInbox : null
+    // `moment(undefined)` is NOW — i.e. always "today" — so nullish input must be rejected before it
+    // ever reaches moment, or an account with no timestamp at all would report the current time.
+    if (lastDayEmptyInbox == null || lastDayEmptyInbox === '') return null
+
+    const reachedAt = moment(lastDayEmptyInbox)
+    if (!reachedAt.isValid()) return null
+
+    const today = moment(todayTimestamp)
+    if (!reachedAt.isSame(today, 'day')) return null
+    if (!normalizeEmptyInboxDays(emptyInboxDays).includes(today.format(EMPTY_INBOX_DATE_FORMAT))) return null
+
+    return reachedAt.valueOf()
+}
+
 export const getEmptyInboxAchievementStats = (emptyInboxDays, todayTimestamp = Date.now()) => {
     const today = moment(todayTimestamp).startOf('day')
     const todayKey = today.format(EMPTY_INBOX_DATE_FORMAT)

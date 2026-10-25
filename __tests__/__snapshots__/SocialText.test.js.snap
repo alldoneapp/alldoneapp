@@ -13,6 +13,7 @@ exports[`SocialText component SocialText snapshot test should render correctly 1
 >
   <div
     className="css-view-g5y9jx r-display-xoduu5 r-alignItems-1awozwy r-flexDirection-18u37iz"
+    data-anna-highlight-group="true"
     dir={null}
   />
 </div>

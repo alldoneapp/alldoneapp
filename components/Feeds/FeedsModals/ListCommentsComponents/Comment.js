@@ -1,6 +1,5 @@
 import React from 'react'
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import moment from 'moment'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -14,6 +13,7 @@ import {
     parseMarkdownLines,
     parseInlineFormatting,
 } from '../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'
+import { hasContentBeforeLine, MARKDOWN_HEADING_TOP_MARGIN } from '../../../ChatsView/ChatDV/EditorView/markdownLayout'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import Icon from '../../../Icon'
@@ -30,10 +30,13 @@ import LinkTag from '../../../Tags/LinkTag'
 import MentionTag from '../../../Tags/MentionTag'
 import EmailTag from '../../../Tags/EmailTag'
 import TasksHelper from '../../../TaskListView/Utils/TasksHelper'
+import { localizedMoment } from '../../../../i18n/localizedMoment'
 import { translate } from '../../../../i18n/TranslationService'
 import GmailTag from '../../../Tags/GmailTag'
 import EmailTaskAction from '../../../TaskListView/EmailLine/EmailTaskAction'
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
+import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
+import MessageSendStatus from '../../../ChatsView/ChatDV/EditorView/MessageSendStatus'
 
 const INLINE_COMMENT_ELEMENT_TYPES = new Set([TEXT_ELEMENT, HASH_ELEMENT, URL_ELEMENT, MENTION_ELEMENT, EMAIL_ELEMENT])
 
@@ -230,7 +233,9 @@ export default function Comment({
 
     const { commentText, lastChangeDate, creatorId } = comment
 
-    const { photoURL, displayName } = useGetUserPresentationData(creatorId)
+    const { photoURL, displayName, isAssistant } = useGetUserPresentationData(creatorId, {
+        fromAssistant: comment.fromAssistant,
+    })
 
     const textsFiltered = divideQuotedText(commentText, 'quote')
 
@@ -243,10 +248,11 @@ export default function Comment({
         return linkCounter
     }
 
-    const renderTextContent = (text, lastItem) => {
+    const renderTextContent = (text, firstItem, lastItem) => {
         const textData = divideCodeText(text)
 
         return textData.map((data, subIndex) => {
+            const firstItemInsideItem = firstItem && subIndex === 0
             const lastItemInsideItem = lastItem && subIndex === textData.length - 1
             if (data.type === 'code') {
                 return (
@@ -275,10 +281,20 @@ export default function Comment({
                         )
                     } else if (/^h[1-6]$/.test(line.type)) {
                         const headingStyle = localStyles[`header${line.type.substring(1)}`]
+                        const hasPrecedingContent = hasContentBeforeLine(
+                            processedLines,
+                            lineIndex,
+                            !firstItemInsideItem
+                        )
                         return (
                             <Text
                                 key={`header-${lineIndex}`}
-                                style={[headingStyle, !isLastLine && { marginBottom: 16 }]}
+                                testID="markdown-heading"
+                                style={[
+                                    headingStyle,
+                                    hasPrecedingContent && { marginTop: MARKDOWN_HEADING_TOP_MARGIN },
+                                    !isLastLine && { marginBottom: 16 },
+                                ]}
                             >
                                 {renderFormattedText(line.segments, headingStyle, projectId, getLinkCounter)}
                             </Text>
@@ -385,20 +401,31 @@ export default function Comment({
         <View style={[localStyles.container, containerStyle]}>
             <View style={localStyles.commentBody}>
                 <View style={localStyles.commentHeader} testID="feed-comment-header">
-                    <Image style={localStyles.avatar} source={{ uri: photoURL }} />
+                    {isAssistant ? (
+                        <AssistantAvatar
+                            photoURL={photoURL?.uri || photoURL}
+                            assistantId={creatorId}
+                            size={24}
+                            containerStyle={{ marginRight: 8, flexShrink: 0 }}
+                        />
+                    ) : (
+                        <Image style={localStyles.avatar} source={{ uri: photoURL }} />
+                    )}
                     <Text style={[localStyles.name, { maxWidth: smallScreenNavigation ? 130 : 250 }]} numberOfLines={1}>
                         {displayName}
                     </Text>
                     <Text style={[localStyles.commentSubHeader, { marginHorizontal: 4 }]}>•</Text>
                     <Text style={localStyles.commentSubHeader} numberOfLines={1}>
-                        {moment(date).fromNow()}
+                        {localizedMoment(date).fromNow()}
                     </Text>
                     {linkedEmail && linkedEmailNew && <EmailNewBadge propStyles={localStyles.linkedEmailNewBadge} />}
+                    <MessageSendStatus pendingSend={comment.pendingSend} dark style={{ marginLeft: 8 }} />
                 </View>
 
                 {contentOverride ||
                     textsFiltered.map((commentData, index) => {
                         const { type, text } = commentData
+                        const firstItem = index === 0
                         const lastItem = index === textsFiltered.length - 1
                         if (type === 'quote') {
                             return (
@@ -412,7 +439,7 @@ export default function Comment({
                                 />
                             )
                         } else {
-                            return renderTextContent(text, lastItem)
+                            return renderTextContent(text, firstItem, lastItem)
                         }
                     })}
                 {linkedEmail && (
@@ -440,14 +467,15 @@ export default function Comment({
                                     disabled={linkedEmailArchiving || linkedEmailArchived}
                                     accessibilityLabel={translate('Archive email')}
                                 >
-                                    {linkedEmailArchiving ? (
+                                    {/* Archived wins over archiving (AT-2424): the archive is
+                                        optimistic, so the check mark is the answer from the
+                                        press onwards. */}
+                                    {linkedEmailArchived ? (
+                                        <Icon name="check" size={14} color={colors.UtilityBlue125} />
+                                    ) : linkedEmailArchiving ? (
                                         <ActivityIndicator size="small" color={colors.UtilityBlue125} />
                                     ) : (
-                                        <Icon
-                                            name={linkedEmailArchived ? 'check' : 'archive'}
-                                            size={14}
-                                            color={colors.UtilityBlue125}
-                                        />
+                                        <Icon name="archive" size={14} color={colors.UtilityBlue125} />
                                     )}
                                     <Text style={localStyles.linkedEmailButtonText}>
                                         {translate(linkedEmailArchived ? 'Archived' : 'Archive email')}
@@ -485,6 +513,7 @@ const localStyles = StyleSheet.create({
     name: {
         ...styles.subtitle1,
         color: colors.Text04,
+        flexShrink: 1,
     },
     commentBody: {
         flex: 1,

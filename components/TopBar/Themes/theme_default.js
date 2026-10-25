@@ -125,12 +125,12 @@ const ThemeColors = {
         NotificationArea: {
             iconColor: Colors.Text03,
         },
-        homeIcon: Colors.Text03,
+        homeIcon: Colors.Primary300,
     },
 
     TopBarMobile: {
         settingsIcon: Colors.White,
-        homeIcon: Colors.White,
+        homeIcon: Colors.Primary300,
         container: {
             backgroundColor: Colors.Primary400,
         },

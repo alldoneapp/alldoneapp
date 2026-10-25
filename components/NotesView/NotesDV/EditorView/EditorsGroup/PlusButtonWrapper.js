@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View, StyleSheet } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../../UIComponents/ModalShell/AppPopover'
 
 import EditorsModal from './EditorsModal'
 import EditorPlusButton from './EditorPlusButton'
@@ -17,7 +17,7 @@ export default function PlusButtonWrapper({ editors, markAssignee = false }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <View>
                     <EditorsModal closeModal={closeModal} editors={editors} markAssignee={markAssignee} />
@@ -30,7 +30,7 @@ export default function PlusButtonWrapper({ editors, markAssignee = false }) {
             align={'start'}
         >
             <EditorPlusButton editorsAmount={editors.length} openModal={openModal} />
-        </Popover>
+        </AppPopover>
     )
 }
 

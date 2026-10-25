@@ -14,10 +14,9 @@
  * every project the logged user has loaded.
  *
  * Assistants are stored per project (`assistants/{projectId}/items`) plus one shared
- * `assistants/globalProject/items` pool, and `state.projectAssistants` is populated for ALL of
- * the user's active projects at login (see `loadProjectsDataFromFirebase` in
- * `utils/InitialLoad/loggedUserHelper.js`) — not just the selected one. So an assistant that
- * belongs to another of the user's projects IS resolvable client-side, and must be resolved:
+ * `assistants/globalProject/items` pool. Project collections load on demand, so this lookup
+ * only sees profiles already loaded. Author presentation separately probes accessible projects
+ * on a miss and subscribes to state changes when profiles arrive. Cross-project authors are valid:
  * objects legitimately keep an assistant from the user's default project while living in a
  * different project (see `getAssignedAssistantInProjectContext` in `assistantsHelper.js`).
  *
@@ -37,4 +36,16 @@ export const getAssistantFromState = (state, assistantId) => {
     }
 
     return null
+}
+
+export const getAssistantAuthorProjectIds = state => {
+    const ids = new Set(Object.keys(state.loggedUserProjectsMap || {}))
+    // User membership can arrive before project documents; archived projects are not necessarily
+    // mounted in the sidebar either. Firestore still checks access on every targeted probe.
+    for (const field of ['projectIds', 'guideProjectIds', 'templateProjectIds', 'archivedProjectIds']) {
+        for (const id of state.loggedUser?.[field] || []) {
+            if (typeof id === 'string' && id.trim()) ids.add(id.trim())
+        }
+    }
+    return [...ids].sort()
 }

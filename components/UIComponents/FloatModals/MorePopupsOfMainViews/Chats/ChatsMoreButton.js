@@ -7,6 +7,7 @@ import CopyLinkModalItem from '../../MorePopupsOfEditModals/Common/CopyLinkModal
 import { FOLLOWED_TAB } from '../../../../Feeds/Utils/FeedsConstants'
 import ModalItem from '../../MorePopupsOfEditModals/Common/ModalItem'
 import OpenInNewWindowModalItem from '../Common/OpenInNewWindowModalItem'
+import OpenProjectModalItem from '../Common/OpenProjectModalItem'
 import { markMessagesAsRead } from '../../../../../utils/backends/Chats/chatsComments'
 import { checkIfSelectedAllProjects } from '../../../../SettingsView/ProjectsSettings/ProjectHelper'
 import store from '../../../../../redux/store'
@@ -26,17 +27,20 @@ export default function ChatsMoreButton({ projectId, userId, wrapperStyle, butto
     }
 
     const markRead = () => {
+        let projectIdsToClear = [projectId]
         if (checkIfSelectedAllProjects(selectedProjectIndex)) {
             const { loggedUser } = store.getState()
             const { realProjectIds, realTemplateProjectIds, realArchivedProjectIds } = loggedUser
 
-            const guidesAndNormalProjectIds = difference(realProjectIds, realTemplateProjectIds, realArchivedProjectIds)
-            guidesAndNormalProjectIds.forEach(projectId => {
-                markMessagesAsRead(projectId, userId, chatsActiveTab)
-            })
-        } else {
-            markMessagesAsRead(projectId, userId, chatsActiveTab)
+            projectIdsToClear = difference(realProjectIds, realTemplateProjectIds, realArchivedProjectIds)
         }
+        Promise.all(projectIdsToClear.map(id => markMessagesAsRead(id, userId, chatsActiveTab))).catch(error => {
+            console.error('[chat read] Could not clear project notifications', {
+                projectIds: projectIdsToClear,
+                code: error?.code,
+                message: error?.message,
+            })
+        })
         dismissModal()
     }
 
@@ -49,14 +53,24 @@ export default function ChatsMoreButton({ projectId, userId, wrapperStyle, butto
             wrapperStyle={wrapperStyle}
             iconSize={iconSize}
         >
-            <CopyLinkModalItem key={'gmbtn-copy-link'} link={link} shortcut={'1'} onPress={dismissModal} />
-            <OpenInNewWindowModalItem key={'gmbtn-open-new-win'} shortcut={'2'} onPress={dismissModal} />
+            {projectId && <OpenProjectModalItem projectId={projectId} shortcut={'1'} onPress={dismissModal} />}
+            <CopyLinkModalItem
+                key={'gmbtn-copy-link'}
+                link={link}
+                shortcut={projectId ? '2' : '1'}
+                onPress={dismissModal}
+            />
+            <OpenInNewWindowModalItem
+                key={'gmbtn-open-new-win'}
+                shortcut={projectId ? '3' : '2'}
+                onPress={dismissModal}
+            />
             <ModalItem
                 key={'gmbtn-mark-unread'}
                 icon={'double-check'}
                 text={'Mark all unread as read'}
                 onPress={markRead}
-                shortcut={'3'}
+                shortcut={projectId ? '4' : '3'}
             />
         </MoreButtonWrapper>
     )

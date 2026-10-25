@@ -3,11 +3,12 @@
  */
 
 import React from 'react'
-import { Text, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, Text, TouchableOpacity } from 'react-native'
 import renderer, { act } from 'react-test-renderer'
 
 import ChatItemUnreadMessage from './ChatItemUnreadMessage'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
+import { markAlldoneChatsReadForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
 import { openUrlInNewTab } from '../TaskListView/EmailLine/emailLineHelper'
 
 jest.mock('react-redux', () => ({
@@ -67,6 +68,10 @@ jest.mock('./ChatDV/EditorView/QuotedText', () => () => null)
 jest.mock('./ChatDV/EditorView/CodeText', () => () => null)
 jest.mock('../../utils/backends/Assistants/assistantRuns', () => ({ cancelAssistantRun: jest.fn() }))
 jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEmailLineAction: jest.fn() }))
+jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    markAlldoneChatsReadForLinkedEmails: jest.fn(),
+    markChatCommentsAsReadByMessageIds: jest.fn(),
+}))
 jest.mock('../../utils/Gmail/gmailTaskUtils', () => ({
     getGmailTaskData: gmailData => gmailData || null,
     getGmailTaskWebUrl: gmailData => gmailData?.webUrl || '',
@@ -143,6 +148,16 @@ describe('ChatItemUnreadMessage email actions', () => {
         expect(tree.root.findAllByType(require('../Tags/GmailTag').default)).toHaveLength(1)
     })
 
+    it('makes the message preview itself clickable without replacing its nested actions', () => {
+        const onPress = jest.fn()
+        const tree = renderPreviewMessage({ onPress })
+
+        pressByLabel(tree, 'Open chat')
+
+        expect(onPress).toHaveBeenCalledTimes(1)
+        expect(labels(tree)).toEqual(expect.arrayContaining(['Open chat', 'Create task', 'Archive email']))
+    })
+
     it('shows no email actions for an ordinary chat message', () => {
         const tree = renderPreviewMessage({ message: emailMessage({ gmailData: undefined }) })
 
@@ -168,6 +183,10 @@ describe('ChatItemUnreadMessage email actions', () => {
                 key: 'email_google_ada@example.com:msg-1',
                 connectionProjectId: 'email_google_ada@example.com',
                 messageId: 'msg-1',
+                commentId: 'comment-1',
+                projectId: 'project-1',
+                chatId: 'chat-1',
+                commentRefs: [{ projectId: 'project-1', chatId: 'chat-1', commentId: 'comment-1' }],
             },
         ])
     })
@@ -185,6 +204,17 @@ describe('ChatItemUnreadMessage email actions', () => {
         expect(button.props.disabled).toBe(true)
     })
 
+    // AT-2424: the archive is optimistic, so from the press onwards BOTH are true - the key is
+    // marked archived immediately while the mailbox call runs for another 4-8s. "Archived" has to
+    // win, or the one thing left on screen would be a spinner saying the work had not happened
+    // while the row it belongs to has already left the unread list.
+    it('shows Archived rather than a spinner while an optimistically archived email is still in flight', () => {
+        const tree = renderPreviewMessage({ isArchivedEmail: () => true, isArchivingEmail: () => true })
+
+        expect(tree.root.findAll(node => node.type === Text && node.props.children === 'Archived').length).toBe(1)
+        expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(0)
+    })
+
     it('offers Unsubscribe only when the email carries a usable unsubscribe target', () => {
         const withoutUnsubscribe = renderPreviewMessage()
         expect(labels(withoutUnsubscribe)).not.toEqual(expect.arrayContaining(['Unsubscribe']))
@@ -199,8 +229,9 @@ describe('ChatItemUnreadMessage email actions', () => {
         expect(openUrlInNewTab).toHaveBeenCalledWith('https://example.com/unsubscribe')
     })
 
-    it('creates the task for the previewed email through the email backend', async () => {
+    it('creates the task and marks the source email message as read in Alldone', async () => {
         performEmailLineAction.mockResolvedValue({ taskId: 'task-1', projectId: 'project-1' })
+        markAlldoneChatsReadForLinkedEmails.mockResolvedValue()
         const tree = renderPreviewMessage()
 
         await act(async () => {
@@ -211,6 +242,28 @@ describe('ChatItemUnreadMessage email actions', () => {
             'email_google_ada@example.com',
             expect.objectContaining({ action: 'createTask', messageIds: ['msg-1'] })
         )
+        expect(markAlldoneChatsReadForLinkedEmails).toHaveBeenCalledWith([
+            expect.objectContaining({
+                connectionProjectId: 'email_google_ada@example.com',
+                messageId: 'msg-1',
+                projectId: 'project-1',
+                chatId: 'chat-1',
+                commentId: 'comment-1',
+            }),
+        ])
+    })
+
+    it('keeps the source email unread in Alldone when task creation fails', async () => {
+        performEmailLineAction.mockImplementation((connectionId, params) =>
+            params.action === 'createTask' ? Promise.reject(new Error('offline')) : Promise.resolve({})
+        )
+        const tree = renderPreviewMessage()
+
+        await act(async () => {
+            pressByLabel(tree, 'Create task')
+        })
+
+        expect(markAlldoneChatsReadForLinkedEmails).not.toHaveBeenCalled()
     })
 
     it('badges a new email in the preview header, and only when it is one', () => {

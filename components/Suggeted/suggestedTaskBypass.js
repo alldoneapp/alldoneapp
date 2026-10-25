@@ -4,7 +4,7 @@ import { getTaskBypassingWorkflow } from '../WorkflowModal/workflowBypass'
 import { moveTasksFromOpen, updateSubtasksState, updateTaskData } from '../../utils/backends/Tasks/tasksFirestore'
 import { isAssistantSuggestedTask } from '../../utils/suggestedTaskFlow'
 
-export const BYPASS_WORKFLOW_LABEL = 'Bypass workflow'
+export const BYPASS_WORKFLOW_LABEL = 'Bypass workflow and mark done'
 export const ACCEPT_AND_DONE_LABEL = 'Accept and mark done'
 
 export const userHasWorkflowInProject = (user, projectId) => Object.keys(user?.workflow?.[projectId] || {}).length > 0
@@ -22,7 +22,7 @@ export const userHasWorkflowInProject = (user, projectId) => Object.keys(user?.w
 export const canBypassSuggestedTaskWorkflow = (user, projectId, task) =>
     isAssistantSuggestedTask(task) || userHasWorkflowInProject(user, projectId)
 
-// "Bypass workflow" only describes what happens when there actually is a workflow to skip.
+// "Bypass workflow and mark done" only describes what happens when there actually is a workflow to skip.
 // For an assistant suggestion in a project without one, the link simply accepts the task and
 // completes it, so it is labelled accordingly.
 export const getSuggestedTaskBypassLabel = (user, projectId) =>

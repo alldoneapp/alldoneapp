@@ -1,5 +1,3 @@
-import moment from 'moment'
-
 import store from '../../../redux/store'
 import { ALL_TAB, FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
 import {
@@ -26,6 +24,7 @@ import { exitsOpenModals } from '../../ModalsManager/modalsManager'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import NavigationService from '../../../utils/NavigationService'
 import { getDateFormat } from '../../UIComponents/FloatModals/DateFormatPickerModal'
+import { formatLastEditDate } from '../../../i18n/relativeTime'
 import { translate } from '../../../i18n/TranslationService'
 import { getChatMeta } from '../../../utils/backends/Chats/chatsFirestore'
 
@@ -85,7 +84,13 @@ class ChatHelper {
         const projectIndex = ProjectHelper.getProjectIndexById(projectId)
         console.log('ChatHelper: Project index:', projectIndex)
 
-        const user = chat ? await Backend.getUserDataByUidOrEmail(chat.creatorId) : null
+        // A chat creator is very often an assistant rather than a user — the `!user` branch below
+        // says so and falls back to the logged user — so this is a probe: an absence here is the
+        // expected answer and must not cost a verification round trip or log an ERROR (AT-2428).
+        const user =
+            chat && !loggedUser.isAnonymous
+                ? await Backend.getUserDataByUidOrEmail(chat.creatorId, { absenceIsExpected: true })
+                : null
         console.log('ChatHelper: Chat creator data:', user)
 
         if (!chat) {
@@ -151,6 +156,8 @@ export const getChatIcon = chat => {
             return 'star'
         case 'assistants':
             return 'cpu'
+        case 'artifacts':
+            return 'layers'
     }
 }
 
@@ -171,21 +178,9 @@ export const onOpenChat = (projectId, chat) => {
     }
 }
 
-export const getTimestampInMilliseconds = timestamp => {
-    if (!timestamp && timestamp !== 0) return undefined
-    if (typeof timestamp === 'number') return timestamp
-    if (typeof timestamp === 'string') {
-        const parsed = Date.parse(timestamp)
-        return Number.isNaN(parsed) ? undefined : parsed
-    }
-    if (typeof timestamp?.seconds === 'number') return timestamp.seconds * 1000
-    if (typeof timestamp?._seconds === 'number') return timestamp._seconds * 1000
-    if (typeof timestamp?.toDate === 'function') {
-        const date = timestamp.toDate()
-        return date instanceof Date && !Number.isNaN(date.getTime()) ? date.getTime() : undefined
-    }
-    return undefined
-}
+// Moved to a leaf module so lightweight consumers (the comment popup) can read a
+// message time without importing this file's redux/URL/firestore graph.
+export { getTimestampInMilliseconds } from './messageTimestamps'
 
 export const parseLastEdited = (serverTime, lastEdition) => {
     const tablet = store.getState().isMiddleScreen
@@ -193,33 +188,7 @@ export const parseLastEdited = (serverTime, lastEdition) => {
         return translate('Just now')
     }
     if (serverTime > lastEdition) {
-        const today = moment(serverTime)
-        const lastEdit = moment(lastEdition)
-        const secondsDiff = today.diff(lastEdit, 'seconds')
-        if (secondsDiff < 60) {
-            if (secondsDiff === 1) {
-                return translate(tablet ? '1 sec ago' : '1 second ago')
-            }
-            return `${secondsDiff} ${translate(tablet ? 'sec ago' : 'seconds ago')}`
-        } else {
-            const minutesDiff = today.diff(lastEdit, 'minutes')
-            if (minutesDiff < 60) {
-                if (minutesDiff === 1) {
-                    return translate(tablet ? '1 min ago' : '1 minute ago')
-                }
-                return `${minutesDiff} ${translate(tablet ? 'min ago' : 'minutes ago')}`
-            } else {
-                const hoursDiff = today.diff(lastEdit, 'hours')
-                if (hoursDiff < 24) {
-                    if (hoursDiff === 1) {
-                        return translate('1 hour ago')
-                    }
-                    return `${hoursDiff} ${translate('hours ago')}`
-                } else {
-                    return moment(lastEdition).format(getDateFormat())
-                }
-            }
-        }
+        return formatLastEditDate(serverTime, lastEdition, { tablet, dateFormat: getDateFormat() })
     }
 }
 

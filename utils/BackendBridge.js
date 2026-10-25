@@ -20,8 +20,8 @@ export default class Backend {
         return await bridge.removeInvitedUserFromProject(user, projectId)
     }
 
-    static async getUserDataByUidOrEmail(uidOrEmail) {
-        return await bridge.getUserDataByUidOrEmail(uidOrEmail)
+    static async getUserDataByUidOrEmail(uidOrEmail, options) {
+        return await bridge.getUserDataByUidOrEmail(uidOrEmail, options)
     }
 
     static async declineProjectInvitation(user, project) {
@@ -45,15 +45,15 @@ export default class Backend {
     }
 
     static setTaskParentGoalMultiple(tasks, goal) {
-        bridge.setTaskParentGoalMultiple(tasks, goal)
+        return bridge.setTaskParentGoalMultiple(tasks, goal)
     }
 
     static async setTaskDueDateMultiple(tasks, newDueDate) {
-        bridge.setTaskDueDateMultiple(tasks, newDueDate)
+        return bridge.setTaskDueDateMultiple(tasks, newDueDate)
     }
 
     static async setTaskToBacklogMultiple(tasks) {
-        bridge.setTaskToBacklogMultiple(tasks)
+        return bridge.setTaskToBacklogMultiple(tasks)
     }
 
     static watchNoteInnerTasks(projectId, noteId, watcherKey, callback) {
@@ -173,7 +173,7 @@ export default class Backend {
     }
 
     static async setProjectDescription(projectId, newDescription, project, oldDescription) {
-        bridge.setProjectDescription(projectId, newDescription, project, oldDescription)
+        return bridge.setProjectDescription(projectId, newDescription, project, oldDescription)
     }
 
     static async removeProject(projectId) {
@@ -218,6 +218,10 @@ export default class Backend {
 
     static signInWithGoogleRedirect() {
         return bridge.signInWithGoogleRedirect()
+    }
+
+    static signInWithApple() {
+        return bridge.signInWithAppleNative()
     }
 
     static handleGoogleRedirectResult() {
@@ -284,8 +288,8 @@ export default class Backend {
         bridge.watchUserStatistics(projectId, estimationType, userId, timestamp1, timestamp2, watcherKey, callback)
     }
 
-    static getUserStatistics(projectId, userId, date, callback, callbackOffline) {
-        bridge.getUserStatistics(projectId, userId, date, callback, callbackOffline)
+    static getUserStatistics(projectId, userId, date, callback, callbackOffline, options) {
+        return bridge.getUserStatistics(projectId, userId, date, callback, callbackOffline, options)
     }
 
     static watchAllUserStatisticsByRange(
@@ -308,8 +312,8 @@ export default class Backend {
         )
     }
 
-    static setProjectHappiness(projectId, userId, date, rating, comment, project) {
-        return bridge.setProjectHappiness(projectId, userId, date, rating, comment, project)
+    static setProjectHappiness(projectId, userId, date, rating, comment, project, options) {
+        return bridge.setProjectHappiness(projectId, userId, date, rating, comment, project, options)
     }
 
     static watchProjectHappiness(projectId, userId, watcherKey, callback) {
@@ -392,40 +396,40 @@ export default class Backend {
         return await bridge.getNotesByProject(projectId)
     }
 
-    static watchFollowedTabNotes(projectId, maxNotesToRender, callback) {
-        bridge.watchFollowedTabNotes(projectId, maxNotesToRender, callback)
+    static watchFollowedTabNotes(projectId, maxNotesToRender, callback, options) {
+        return bridge.watchFollowedTabNotes(projectId, maxNotesToRender, callback, options)
     }
 
-    static watchFollowedTabNotesExpanded(projectId, callback) {
-        bridge.watchFollowedTabNotesExpanded(projectId, callback)
+    static watchFollowedTabNotesExpanded(projectId, callback, options) {
+        return bridge.watchFollowedTabNotesExpanded(projectId, callback, options)
     }
 
-    static watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
-        bridge.watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback)
+    static watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
+        return bridge.watchFollowedTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
     }
 
-    static watchFollowedTabNotesExpandedInAllProjects(projectId, callback) {
-        bridge.watchFollowedTabNotesExpandedInAllProjects(projectId, callback)
+    static watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options) {
+        return bridge.watchFollowedTabNotesExpandedInAllProjects(projectId, callback, options)
     }
 
     static watchFollowedTabStickyNotes(projectId, callback) {
         bridge.watchFollowedTabStickyNotes(projectId, callback)
     }
 
-    static watchAllTabNotes(projectId, maxNotesToRender, callback) {
-        bridge.watchAllTabNotes(projectId, maxNotesToRender, callback)
+    static watchAllTabNotes(projectId, maxNotesToRender, callback, options) {
+        return bridge.watchAllTabNotes(projectId, maxNotesToRender, callback, options)
     }
 
-    static watchAllTabNotesExpanded(projectId, callback) {
-        bridge.watchAllTabNotesExpanded(projectId, callback)
+    static watchAllTabNotesExpanded(projectId, callback, options) {
+        return bridge.watchAllTabNotesExpanded(projectId, callback, options)
     }
 
-    static watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback) {
-        bridge.watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback)
+    static watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options) {
+        return bridge.watchAllTabNotesInAllProjects(projectId, maxNotesToRender, callback, options)
     }
 
-    static watchAllTabNotesExpandedInAllProjects(projectId, callback) {
-        bridge.watchAllTabNotesExpandedInAllProjects(projectId, callback)
+    static watchAllTabNotesExpandedInAllProjects(projectId, callback, options) {
+        return bridge.watchAllTabNotesExpandedInAllProjects(projectId, callback, options)
     }
 
     static watchAllTabStickyNotes(projectId, callback) {
@@ -476,8 +480,8 @@ export default class Backend {
         bridge.unwatchNote(projectId, noteId)
     }
 
-    static watchObjectLTag(objectType, path, watchId, callback) {
-        bridge.watchObjectLTag(objectType, path, watchId, callback)
+    static watchObjectLTag(objectType, path, watchId, callback, onError) {
+        bridge.watchObjectLTag(objectType, path, watchId, callback, onError)
     }
 
     static unwatchObjectLTag(objectType, path, watchId) {
@@ -508,20 +512,20 @@ export default class Backend {
         return bridge.getNoteMeta(projectId, noteId)
     }
 
-    static setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks) {
-        bridge.setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks)
+    static setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options) {
+        bridge.setLinkedParentObjects(projectId, linkedParents, linkedObject, initialLinks, options)
     }
 
-    static watchNotesCollab(noteId, callback) {
-        bridge.watchNotesCollab(noteId, callback)
+    static watchNotesCollab(projectId, noteId, callback) {
+        return bridge.watchNotesCollab(projectId, noteId, callback)
     }
 
-    static addNoteEditor(noteId, editor) {
-        bridge.addNoteEditor(noteId, editor)
+    static addNoteEditor(projectId, noteId, editor) {
+        return bridge.addNoteEditor(projectId, noteId, editor)
     }
 
-    static removeNoteEditor(noteId, editor) {
-        bridge.removeNoteEditor(noteId, editor)
+    static removeNoteEditor(projectId, noteId, editor) {
+        return bridge.removeNoteEditor(projectId, noteId, editor)
     }
 
     static createGenericTasksForMentionsInNoteContent(projectId, noteId, mentionedUserIds, assistantId) {
@@ -560,8 +564,8 @@ export default class Backend {
         return bridge.unsubStoreFeedsTab(projectId)
     }
 
-    static watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount) {
-        return bridge.watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount)
+    static watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount, options) {
+        return bridge.watchNewFeedsAllTabsRedux(projectId, userId, visibleAmount, options)
     }
 
     static async getFeedObject(projectId, dateFormated, objectId, feedType, lastChangeDate) {
@@ -602,22 +606,6 @@ export default class Backend {
 
     static async getFeedObjectsLastStateList(projectId, objectType) {
         return await bridge.getFeedObjectsLastStateList(projectId, objectType)
-    }
-
-    static getMeetings(projectId, setMeetings, setZero) {
-        return bridge.getMeetings(projectId, setMeetings, setZero)
-    }
-
-    static acceptJoinEvent(projectId, roomId, userEmail) {
-        return bridge.acceptJoinEvent(projectId, roomId, userEmail)
-    }
-
-    static rejectJoinEvent(projectId, roomId, userEmail, reasons, callback) {
-        return bridge.rejectJoinEvent(projectId, roomId, userEmail, reasons, callback)
-    }
-
-    static deleteEvent(projectId, roomId) {
-        return bridge.deleteEvent(projectId, roomId)
     }
 
     static getObjectFromUrl(objectType, url, callback) {
@@ -873,8 +861,20 @@ export default class Backend {
         return bridge.unwatchHastagsColors(hashtagId)
     }
 
-    static getAlgoliaSearchOnlyKeys() {
-        return bridge.getAlgoliaSearchOnlyKeys()
+    static async getTypesenseScopedSearchCredentials() {
+        return await bridge.getTypesenseScopedSearchCredentials()
+    }
+
+    static getCurrentUserId() {
+        return bridge.getCurrentUserId()
+    }
+
+    static getFunctionsRegion() {
+        return bridge.getFunctionsRegion()
+    }
+
+    static getFirebaseProjectId() {
+        return bridge.getFirebaseProjectId()
     }
 
     static watchNoteRevisionHistoryCopies(projectId, noteId, callback) {

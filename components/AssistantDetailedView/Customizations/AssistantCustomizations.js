@@ -160,7 +160,15 @@ export default function AssistantCustomizations({
                 </View>
                 <View style={{ flex: 1, width: smallScreen ? '100%' : '50%' }}>
                     <RealtimeVoiceProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
-                    <ToolsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
+                    <ToolsAccessProperty
+                        disabled={!canEditAssitant}
+                        projectId={projectId}
+                        // The project on screen, which is where a browsing allowlist belongs — see
+                        // ToolsAccessWrapper. `projectId` stays the assistant's own project because
+                        // that is where the assistant document is written.
+                        configProjectId={projectDetailedId}
+                        assistant={assistant}
+                    />
                     <SkillsAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     <McpServersAccessProperty disabled={!canEditAssitant} projectId={projectId} assistant={assistant} />
                     {hasTalkToAssistantTool && (

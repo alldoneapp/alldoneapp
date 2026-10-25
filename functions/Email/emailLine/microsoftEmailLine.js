@@ -25,11 +25,13 @@ const EXCLUDED_WELL_KNOWN_FOLDERS = new Set([
 ])
 
 const MAX_FOLDERS_TO_INSPECT = 25
+// Same bounds as the Gmail read-state lookup (AT-2376).
+const MESSAGE_STATE_LIMIT = 200
 
 function resolveAccountForProject(accounts, projectId) {
     if (!Array.isArray(accounts) || accounts.length === 0) return null
     return (
-        accounts.find(account => account.projectId === projectId) ||
+        accounts.find(account => account.projectId === projectId || account.connectionProjectId === projectId) ||
         accounts.find(account => account.emailDefault) ||
         accounts[0]
     )
@@ -136,13 +138,17 @@ async function listMessagesForLabel(userId, projectId, folderId, { pageToken } =
             $select: MESSAGE_SELECT,
             $orderby: 'receivedDateTime desc',
             $top: MESSAGES_PER_PAGE,
+            $count: true,
         })}`
 
     const response = await client.request(path)
     const value = Array.isArray(response?.value) ? response.value : []
+    const providerTotal = Number(response?.['@odata.count'])
+    const nextPageToken = nextLinkToPath(response?.['@odata.nextLink'])
     return {
         messages: value.map(normalizeListRow),
-        nextPageToken: nextLinkToPath(response?.['@odata.nextLink']),
+        nextPageToken,
+        totalCount: Number.isFinite(providerTotal) ? providerTotal : nextPageToken ? null : value.length,
     }
 }
 
@@ -171,6 +177,58 @@ async function archiveMessages(userId, projectId, messageIds) {
     }))
     await runGraphBatch(client, requests)
     return { processed: messageIds.length }
+}
+
+// Provider twin of gmailEmailLine.getMessageStates (AT-2376). Outlook has no INBOX label: a
+// message is "in the inbox" while it still sits in the inbox FOLDER, so the folder id is read once
+// and compared per message. A message that was moved (archived) or deleted therefore reports
+// `inInbox: false` / `exists: false` exactly like the Gmail side.
+async function getMessageStates(userId, projectId, messageIds) {
+    const uniqueIds = [...new Set((messageIds || []).map(id => String(id || '').trim()).filter(Boolean))].slice(
+        0,
+        MESSAGE_STATE_LIMIT
+    )
+    if (uniqueIds.length === 0) return { states: [] }
+
+    const { client } = await getClientForProject(userId, projectId)
+    const inboxFolder = await client.request(`/me/mailFolders/inbox${buildQuery({ $select: 'id' })}`)
+    const inboxFolderId = inboxFolder?.id || ''
+    const states = []
+
+    for (const ids of chunk(uniqueIds, GRAPH_BATCH_CHUNK)) {
+        const results = await Promise.all(
+            ids.map(async id => {
+                try {
+                    const message = await client.request(
+                        `/me/messages/${encodePath(id)}${buildQuery({ $select: 'id,isRead,parentFolderId' })}`
+                    )
+                    return {
+                        messageId: id,
+                        exists: true,
+                        unread: message?.isRead === false,
+                        inInbox: !!inboxFolderId && message?.parentFolderId === inboxFolderId,
+                    }
+                } catch (error) {
+                    if (
+                        String(error?.message || '')
+                            .toLowerCase()
+                            .includes('not found')
+                    ) {
+                        return { messageId: id, exists: false, unread: false, inInbox: false }
+                    }
+                    // Unknown is never reported: the caller would read it as "handled".
+                    console.warn('[emailLine] Could not read Microsoft message state', {
+                        messageId: id,
+                        error: error?.message,
+                    })
+                    return null
+                }
+            })
+        )
+        results.filter(Boolean).forEach(state => states.push(state))
+    }
+
+    return { states }
 }
 
 async function markMessagesRead(userId, projectId, messageIds) {
@@ -229,7 +287,7 @@ async function getUnreadInboxMessages(userId, projectId, limit = 15) {
 async function getMessageContext(userId, projectId, messageId) {
     const { client } = await getClientForProject(userId, projectId)
     const message = await client.request(
-        `/me/messages/${encodePath(messageId)}${buildQuery({ $select: 'subject,from,body,bodyPreview,webLink' })}`
+        `/me/messages/${encodePath(messageId)}${buildQuery({ $select: 'subject,from,body,bodyPreview,webLink,conversationId,receivedDateTime' })}`
     )
     const body = message.body?.content || message.bodyPreview || ''
     return {
@@ -237,6 +295,9 @@ async function getMessageContext(userId, projectId, messageId) {
         from: message.from?.emailAddress?.address || '',
         snippet: message.bodyPreview || '',
         body: String(body).slice(0, 4000),
+        bodyText: String(body),
+        threadId: message.conversationId || '',
+        date: message.receivedDateTime || '',
         webUrl: message.webLink || '',
     }
 }
@@ -262,6 +323,7 @@ module.exports = {
     archiveMessages,
     markMessagesRead,
     sweepLabel,
+    getMessageStates,
     getMessageContext,
     getUnreadInboxMessages,
     resolveAccountForProject,

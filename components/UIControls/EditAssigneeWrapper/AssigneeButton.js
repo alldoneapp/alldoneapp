@@ -13,6 +13,7 @@ import { WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import Icon from '../../Icon'
 import { ALL_GOALS_ID } from '../../AllSections/allSectionHelper'
 import store from '../../../redux/store'
+import { requestProjectDataOnLookupMiss } from '../../../utils/InitialLoad/projectDataLoader'
 
 export default function AssigneeButton({ projectId, task, disabled, showPopover }) {
     const showShortcuts = useSelector(state => state.showShortcuts)
@@ -22,6 +23,26 @@ export default function AssigneeButton({ projectId, task, disabled, showPopover 
 
     const userId = task.userId ? task.userId : currentUserId !== ALL_GOALS_ID ? currentUserId : loggedUserId
     const disableAssigneePicker = disabled || task.done
+
+    // AT-2386: `state.project*[projectId]` is filled on demand now, so this lookup can legitimately
+    // find nobody. It always could in principle - a deleted assignee - and `user.photoURL` on an
+    // undefined `user` threw; that is now a missing avatar instead of a crashed row.
+    //
+    // `projectPeopleKey` re-runs the effect once the project's people land, so the avatar fills in
+    // silently rather than staying blank. A STRING of the four sizes, not the arrays themselves:
+    // the slices are seeded `[]` for every project from the first frame, so their presence never
+    // changes and only their contents do — and a primitive cannot allocate a fresh identity on
+    // every selector run the way an object would (AT-2336).
+    const projectPeopleKey = useSelector(state =>
+        [
+            state.projectUsers[projectId],
+            state.projectContacts[projectId],
+            state.projectWorkstreams[projectId],
+            state.projectAssistants[projectId],
+        ]
+            .map(list => (list ? list.length : -1))
+            .join('|')
+    )
 
     useEffect(() => {
         const { projectUsers, projectContacts, projectWorkstreams, projectAssistants, globalAssistants } =
@@ -34,8 +55,14 @@ export default function AssigneeButton({ projectId, task, disabled, showPopover 
             find(projectAssistants[projectId], ['uid', userId]) ||
             find(globalAssistants, ['uid', userId])
 
+        if (!user) {
+            requestProjectDataOnLookupMiss(projectId)
+            setPhotoURL('')
+            return
+        }
+
         setPhotoURL(user.photoURL)
-    }, [userId])
+    }, [userId, projectId, projectPeopleKey])
 
     return (
         <Hotkeys

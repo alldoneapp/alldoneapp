@@ -1,4 +1,5 @@
 const admin = require('firebase-admin')
+const { getLiveSessionDefaults } = require('./assistantLiveConfig')
 const { hashRoutingToken } = require('./whatsAppCallSecurity')
 
 const FINAL_STATUSES = new Set(['completed', 'failed', 'rejected', 'stale', 'cancelled'])
@@ -66,6 +67,7 @@ async function createCallSessionWithLease({
             assistantId,
             chatId,
             channel,
+            ...getLiveSessionDefaults(),
             twilioCallSid,
             language: String(language || '').trim() || null,
             routingId: routeId,
@@ -126,6 +128,7 @@ async function createDirectCallSessionWithLease({
             assistantId,
             chatId,
             channel,
+            ...getLiveSessionDefaults(),
             twilioCallSid: null,
             language: String(language || '').trim() || null,
             routingId: null,

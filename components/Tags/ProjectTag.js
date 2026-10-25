@@ -20,6 +20,7 @@ export default function ProjectTag({
     path,
     shrinkTextToAmountOfLetter,
     hideDots,
+    truncate = false,
 }) {
     const loggedUserId = useSelector(state => state.loggedUser.uid)
     const dispatch = useDispatch()
@@ -39,7 +40,12 @@ export default function ProjectTag({
     }
 
     return finalProject ? (
-        <TouchableOpacity disabled={disabled} onPress={onPress}>
+        <TouchableOpacity
+            accessibilityLabel={truncate || name !== finalProject.name ? finalProject.name : undefined}
+            style={truncate && localStyles.truncate}
+            disabled={disabled}
+            onPress={onPress}
+        >
             <View style={[localStyles.container, isMobile && localStyles.containerMobile, style]}>
                 <ColoredCircleSmall
                     size={12}
@@ -49,7 +55,14 @@ export default function ProjectTag({
                     lineHeight={20}
                     projectId={finalProject.id}
                 />
-                {!isMobile && <Text style={[styles.subtitle2, localStyles.text, windowTagStyle()]}>{name}</Text>}
+                {!isMobile && (
+                    <Text
+                        numberOfLines={truncate ? 1 : undefined}
+                        style={[styles.subtitle2, localStyles.text, truncate && localStyles.truncate, windowTagStyle()]}
+                    >
+                        {name}
+                    </Text>
+                )}
             </View>
         </TouchableOpacity>
     ) : null
@@ -73,5 +86,10 @@ const localStyles = StyleSheet.create({
         marginVertical: 1,
         marginRight: 10,
         marginLeft: 2,
+    },
+    truncate: {
+        flexShrink: 1,
+        minWidth: 0,
+        maxWidth: '100%',
     },
 })

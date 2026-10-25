@@ -22,9 +22,12 @@ import {
     VIDEO_TRIGGER,
 } from '../Utils/HelperFunctions'
 import { formatUrl, getDvMainTabLink, getUrlObject } from '../../../utils/LinkingHelper'
+import { getUrlTokenParts } from '../Utils/linkDetection'
 import { cloneDeep } from 'lodash'
 import Backend from '../../../utils/BackendBridge'
 import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
+import { getAppHistoryAction, HASHTAG_COLOR_HISTORY_TYPE } from './quillHistoryEntries'
+import { resolveCopiedBlockTail } from './quillBlockFormats'
 import {
     getAttachmentData,
     getImageData,
@@ -32,6 +35,12 @@ import {
     getMilestoneTagData,
     getVideoData,
 } from '../../../functions/Utils/parseTextUtils'
+import { addFilesAsAttachments } from './attachmentFileUtils'
+import { unmountEmbedReactRoots } from './autoformat/formats/embedReactRoot'
+import {
+    markdownTableClipboardHtml,
+    markdownTableClipboardText,
+} from '../../NotesView/NotesDV/EditorView/markdownTableClipboard'
 
 export const MENTION_MODAL_TASKS_TAB = 0
 export const MENTION_MODAL_GOALS_TAB = 1
@@ -58,6 +67,21 @@ export const NOT_PLAIN_TEXT_SYMBOL = '&'
 export const MENTION_MODAL_WIDTH = 305
 export const MENTION_MODAL_RIGHT_MARGIN = 15
 export const TAG_INTERACTION_CLASS = 'TAG_INTERACTION_CLASS'
+
+/**
+ * Builds the Quill embed used for a resolved person mention.
+ *
+ * Assistants can be real mentions too: their ids are understood by the mention parser and the
+ * mention renderer. Keeping this construction shared prevents an assistant selected in a composer
+ * from silently losing its id and degrading into an ordinary URL (AT-2592).
+ */
+export const buildResolvedPeopleMention = ({ displayName = '', uid = '' }, id, editorId, userIdAllowedToEditTags) => ({
+    text: displayName.replaceAll(' ', MENTION_SPACE_CODE),
+    id,
+    userId: uid,
+    editorId,
+    userIdAllowedToEditTags,
+})
 
 export const TASK_THEME = 0
 export const SUBTASK_THEME = 1
@@ -121,6 +145,40 @@ export const insertAttachmentInsideEditor = (inputCursorIndex, editor, text, uri
         insertAttachmentTag(inputCursorIndex, editor, text, uri, id, isLoading)
     }
 }
+
+/**
+ * Put a list of picked/dropped/pasted files into an editor as the app's own attachment
+ * embeds, advancing the cursor between them (AT-2441).
+ *
+ * The one place that stepping lives: `AttachmentDropZone` (drop) and `CustomTextInput3`'s
+ * `appManagedFileUpload` (paste, see quill2Setup) both go through here, so a file reaches a
+ * comment identically however it arrives.
+ */
+export const insertFilesAsAttachments = ({ files, editor, startIndex = 0 }) => {
+    let nextCursorIndex = startIndex
+    const addedFiles = addFilesAsAttachments(files, (name, uri) => {
+        insertAttachmentInsideEditor(nextCursorIndex, editor, name, uri)
+        nextCursorIndex += 3
+    })
+    return { addedFiles, nextCursorIndex }
+}
+
+/**
+ * The `quill.appManagedFileUpload` an attachment-capable input declares (AT-2441).
+ *
+ * Quill hands it `(range, files)` from `Uploader.upload`, which since quill 2 is also how a
+ * PASTED image file arrives (`Clipboard.onCapturePaste`). Insert at the range quill resolved
+ * — the caret for a paste — rather than at a cursor the caller remembered, and apply the same
+ * traffic limit the drop zone does.
+ */
+export const createAppManagedFileUpload =
+    ({ editor, projectId, setInputCursorIndex }) =>
+    (range, files) => {
+        if (!editor || checkIsLimitedByTraffic(projectId)) return
+        const startIndex = range && range.index != null ? range.index : editor.getLength()
+        const { addedFiles, nextCursorIndex } = insertFilesAsAttachments({ files, editor, startIndex })
+        if (addedFiles.length > 0) setInputCursorIndex?.(nextCursorIndex)
+    }
 
 // The editorMeta module (quill2Setup) decodes the app-encoded placeholder during init and
 // then overwrites `options.placeholder` with the visible text only, so reading the raw
@@ -241,6 +299,15 @@ export const createPlaceholder = (
         disabledEnterKey ? disabledEnterKey : ''
     }`
 }
+
+// createPlaceholder always emits exactly six separators, so an app-encoded placeholder
+// splits into exactly this many fields. Used to tell an encoded placeholder apart from a
+// plain one that merely happens to contain a '#' (a hashtag in a note title, say), which
+// must be left alone.
+export const PLACEHOLDER_FIELD_COUNT = 7
+
+export const isEncodedPlaceholder = placeholder =>
+    typeof placeholder === 'string' && placeholder.split('#').length === PLACEHOLDER_FIELD_COUNT
 
 export const getPlaceholderData = placeholder => {
     const data = placeholder.split('#')
@@ -433,7 +500,7 @@ export const processPastedTextWithBreakLines = (
                 const mention = { text: mentionText, id, userId, editorId, userIdAllowedToEditTags }
                 delta.insert({ mention })
                 isFormatedList ? delta.insert(' ', attributes) : delta.insert(' ')
-            } else if (REGEX_EMAIL.test(word)) {
+            } else if (!isFomatedLink && !getUrlTokenParts(word) && REGEX_EMAIL.test(word)) {
                 const emailMatch = word.match(REGEX_EMAIL)
                 const id = v4()
                 // Create email object with just the email part, no punctuation
@@ -453,7 +520,9 @@ export const processPastedTextWithBreakLines = (
 
                 // If it's not a formatted link, check for trailing punctuation
                 if (!isFomatedLink) {
-                    const urlMatch = word.match(/^(.*?)([\.,;:!?]*?)$/)
+                    // Keep an attached `?` in the URL: it is a valid empty query delimiter
+                    // (AT-2620), not sentence punctuation.
+                    const urlMatch = word.match(/^(.*?)([\.,;:!]*?)$/)
                     if (urlMatch && urlMatch[2]) {
                         const urlPart = urlMatch[1]
                         const punctuation = urlMatch[2]
@@ -506,11 +575,16 @@ export const processPastedTextWithBreakLines = (
             }
         })
         if (lineIndex < maxLineIndex) {
-            if (delta.ops.length > 0 && typeof delta.ops[delta.ops.length - 1].insert === 'string') {
-                delta.ops[delta.ops.length - 1].insert = delta.ops[delta.ops.length - 1].insert + '\n'
-            } else {
-                attributes ? delta.insert('\n', attributes) : delta.insert('\n')
-            }
+            // AT-2526: the terminator has to carry THIS line's attributes, never whichever op
+            // happened to be emitted last. Appending '\n' to the last op — as this did — silently
+            // adopted that op's attributes instead, and the email branch above is the one that ends
+            // a line without any: it inserts its trailing space (and any trailing punctuation)
+            // unformatted, while every other token branch honours `isFormatedList`. So a bullet line
+            // ending in an email address lost its `list` and pasted as plain text.
+            //
+            // Delta.push already merges an insert into the previous op when the attributes match, so
+            // an ordinary line produces byte-identical ops to the manual append it replaces.
+            attributes ? delta.insert('\n', attributes) : delta.insert('\n')
         }
     })
 
@@ -524,7 +598,7 @@ export const getLinkedTasksIdsFromText = (text, projectId) => {
         let urlToProcess = word
 
         // Check for trailing punctuation and remove it for URL processing
-        const urlMatch = word.match(/^(.*?)([\.,;:!?]*?)$/)
+        const urlMatch = word.match(/^(.*?)([\.,;:!]*?)$/)
         if (urlMatch && urlMatch[2] && REGEX_URL.test(urlMatch[1])) {
             urlToProcess = urlMatch[1]
         }
@@ -619,7 +693,7 @@ export const processPastedText = (
             const mention = { text: mentionText, id, userId, editorId, userIdAllowedToEditTags }
             delta.insert({ mention })
             delta.insert(' ')
-        } else if (REGEX_EMAIL.test(word)) {
+        } else if (!getUrlTokenParts(word) && REGEX_EMAIL.test(word)) {
             const emailMatch = word.match(REGEX_EMAIL)
             const id = v4()
             // Create email object with just the email part, no punctuation
@@ -638,7 +712,9 @@ export const processPastedText = (
             let trailingPunctuation = ''
 
             // Check for trailing punctuation
-            const urlMatch = word.match(/^(.*?)([\.,;:!?]*?)$/)
+            // Keep an attached `?` in the URL: it is a valid empty query delimiter
+            // (AT-2620), not sentence punctuation.
+            const urlMatch = word.match(/^(.*?)([\.,;:!]*?)$/)
             if (urlMatch && urlMatch[2]) {
                 const urlPart = urlMatch[1]
                 const punctuation = urlMatch[2]
@@ -695,6 +771,12 @@ export const onCopy = (event, editor, projectId, isCuting) => {
     const { index, length } = editor.getSelection()
     const selectedContent = cloneDeep(editor.getContents(index, length))
 
+    // AT-2526: a block format lives on the line's terminating newline, which a selection that stops
+    // at the end of the last line's text leaves behind — so the last bullet would be copied as a
+    // paragraph. Resolved from the live document HERE, before the cut below deletes the line whose
+    // format we are reading; appended after the loop so `text/plain` is untouched.
+    const copiedBlockTail = resolveCopiedBlockTail(editor, index, length, selectedContent.ops)
+
     let parsedText = ''
 
     for (let i = 0; i < selectedContent.ops.length; i++) {
@@ -712,6 +794,7 @@ export const onCopy = (event, editor, projectId, isCuting) => {
             videoFormat,
             karma,
             taskTagFormat,
+            markdownTable,
         } = insert
 
         if (mention) {
@@ -759,25 +842,47 @@ export const onCopy = (event, editor, projectId, isCuting) => {
             const { userId } = karma
             parsedText += `${KARMA_TRIGGER}${userId}`
             op.insert = `${KARMA_TRIGGER}${userId}`
+        } else if (markdownTable) {
+            if (parsedText && !parsedText.endsWith('\n')) parsedText += '\n'
+            parsedText += markdownTableClipboardText(markdownTable)
         } else if (typeof insert === 'string') {
             parsedText += insert
         }
     }
 
     if (isCuting) {
-        const selection = document.getSelection()
-        selection.deleteFromDocument()
+        if (selectedContent.ops.some(op => op.insert?.markdownTable)) {
+            // Browser DOM deletion can leave an immutable table embed behind.
+            editor.deleteText(index, length, 'user')
+        } else {
+            const selection = document.getSelection()
+            selection.deleteFromDocument()
+        }
     }
+
+    if (copiedBlockTail) selectedContent.ops.push(copiedBlockTail)
 
     const tempContainer = document.createElement('div')
     const tempQuill = new Quill(tempContainer)
     tempQuill.setContents(selectedContent)
 
     const tempQuillContent = tempQuill.getContents()
+    tempQuillContent.ops.forEach(op => {
+        if (op.insert?.markdownTable) op.attributes = { ...op.attributes, renderAsBlock: true }
+    })
+    // This editor exists for exactly the two lines above, but building its document mounts one
+    // React root per embed in the selection. Nothing would ever take them down again — copying
+    // a note full of tags used to leak a root (and its redux subscription) per tag, per copy.
+    unmountEmbedReactRoots(tempQuill.root)
     var converter = new QuillDeltaToHtmlConverter(tempQuillContent.ops, {})
+    converter.renderCustomWith(op =>
+        op.insert.type === 'markdownTable' ? markdownTableClipboardHtml(op.insert.value) : ''
+    )
     var html = converter.convert()
 
-    if (html.length >= 7 && html.substring(0, 3) === `<p>` && html.substring(html.length - 4, html.length) === `</p>`) {
+    // Strip only a single paragraph. Removing the first/last tags around several
+    // blocks leaves a stray </p>, which HTML parsing turns into an empty line.
+    if (html.length >= 7 && html.substring(0, 3) === `<p>` && html.indexOf('</p>') === html.length - 4) {
         html = html.substring(3, html.length - 4)
     }
     event.clipboardData.setData('text/html', html)
@@ -785,17 +890,84 @@ export const onCopy = (event, editor, projectId, isCuting) => {
     event.preventDefault()
 }
 
+/**
+ * Claims the top of the stack when it is one of the app's own marker entries (a hashtag colour
+ * change, pushed by HashtagWrapper), applies that change through the backend instead of through
+ * the document, and returns false so `HookedHistory` cancels quill's own undo/redo.
+ *
+ * AT-2440: this used to index the entry the QUILL 1 way — `stack[startAction][last][startAction]`
+ * is `{ delta, range }.undo` under quill 2, i.e. `undefined`, so reading `.type` off it threw on
+ * EVERY undo and redo in every editor. Because quill runs this from inside its keydown binding
+ * and its `beforeinput` handler, and both reach `preventDefault()` only after `history.undo()`
+ * returns, the throw handed the keystroke to the browser's native contenteditable undo — which
+ * knows nothing about a programmatic paste and therefore reverted the user's earlier TYPING and
+ * left the pasted text in place. See quillHistoryEntries.js for the full shape story.
+ *
+ * Anything that is not an app entry (i.e. every ordinary edit) must fall through untouched, so
+ * this returns undefined rather than false for it.
+ */
 export const beforeUndoRedo = (stack, startAction, endAction) => {
-    if (
-        stack[startAction].length > 0 &&
-        stack[startAction][stack[startAction].length - 1][startAction].type === 'hashtagColor'
-    ) {
-        const hashtagColorAction = stack[startAction].pop()
-        stack[endAction].push(hashtagColorAction)
-        const { objectId, text, colorKey } = hashtagColorAction[startAction]
-        Backend.updateHastagsColors(objectId, text, colorKey, true)
-        return false
-    }
+    const entries = stack && stack[startAction]
+    if (!entries || entries.length === 0) return
+
+    const topEntry = entries[entries.length - 1]
+    const action = getAppHistoryAction(topEntry, startAction)
+    if (!action || action.type !== HASHTAG_COLOR_HISTORY_TYPE) return
+
+    entries.pop()
+    stack[endAction].push(topEntry)
+    const { objectId, text, colorKey } = action
+    Backend.updateHastagsColors(objectId, text, colorKey, true)
+    return false
+}
+
+// Single-line inputs (task names, titles) must never receive line breaks: a programmatic '\n'
+// bypasses the Enter keybinding that normally blocks them, so the collapse happens on the text.
+export const normalizeDictatedText = (text, singleLine) => {
+    const trimmed = typeof text === 'string' ? text.trim() : ''
+    return singleLine ? trimmed.replace(/\s+/g, ' ') : trimmed
+}
+
+/**
+ * Composes the update applied when dictated text lands in an editor: replace the current selection
+ * (when there is one) with the processed content, optionally separated from the preceding character
+ * by a space. `contentDelta` is the insert-ops delta built by processPastedText(WithBreakLines), so
+ * mentions/#hashtags/urls arrive as their blots. Returns the delta plus the caret position after it.
+ */
+export const buildDictationDelta = ({ Delta, contentDelta, index, length, needsLeadingSpace }) => {
+    let delta = new Delta().retain(index)
+    if (length > 0) delta = delta.delete(length)
+    if (needsLeadingSpace) delta = delta.insert(' ')
+    delta = delta.concat(contentDelta)
+    const caretIndex = index + (needsLeadingSpace ? 1 : 0) + contentDelta.length()
+    return { delta, caretIndex }
+}
+
+/**
+ * Puts the caret right after dictated text, reliably. A setSelection made synchronously after
+ * updateContents/insertText can be overridden by Quill's own scheduled selection reconciliation
+ * (the mutation update transforms and restores the pre-insert selection), which leaves the caret
+ * before the inserted text. Set it now for the common case, then re-assert it after Quill's update
+ * cycle has run. `isEditorStillLive` guards the deferred call against the editor unmounting in the
+ * meantime.
+ *
+ * Returns a canceller for that deferred re-assertion, because it is a FOCUS operation as much as a
+ * caret one and the two have opposite requirements (AT-2422). Quill's `setSelection` ends in
+ * `Selection.setNativeRange`, which does `if (!this.hasFocus()) this.root.focus()` — so the
+ * deferred call cannot merely move a caret, it resurrects focus in an editor that has since been
+ * blurred, re-opening the on-screen keyboard. A push-to-talk dictation that submits itself is
+ * exactly that case: its host sends and blurs, and this timer then undoes the blur. Cancel it
+ * whenever the dictation is going to submit rather than be typed into; see
+ * CustomTextInput3.submitDictatedText.
+ */
+export const placeDictationCaret = (editor, caretIndex, isEditorStillLive) => {
+    editor.setSelection(caretIndex, 0, 'user')
+    const deferredCaretTimeout = setTimeout(() => {
+        if (isEditorStillLive && !isEditorStillLive()) return
+        editor.focus()
+        editor.setSelection(caretIndex, 0, 'user')
+    }, 0)
+    return () => clearTimeout(deferredCaretTimeout)
 }
 
 export const insertPerplexityContent = (editor, content) => {

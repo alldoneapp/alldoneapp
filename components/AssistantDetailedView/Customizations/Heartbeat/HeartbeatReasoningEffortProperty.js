@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import styles, { colors } from '../../../styles/global'
@@ -10,9 +10,12 @@ import { updateAssistantHeartbeatSettings } from '../../../../utils/backends/Ass
 import { translate } from '../../../../i18n/TranslationService'
 import {
     getAssistantReasoningEffortLabelKey,
-    SELECTABLE_ASSISTANT_REASONING_EFFORTS,
+    getAssistantReasoningEffortOptions,
 } from '../../../../functions/Assistant/selectableAssistantReasoningEfforts'
-import { getEffectiveHeartbeatReasoningEffort } from '../../../../functions/Assistant/heartbeatSettingsHelper'
+import {
+    getEffectiveHeartbeatReasoningEffort,
+    getEffectiveHeartbeatModel,
+} from '../../../../functions/Assistant/heartbeatSettingsHelper'
 
 export default function HeartbeatReasoningEffortProperty({ disabled, projectId, assistant }) {
     const mobile = useSelector(state => state.smallScreen)
@@ -38,7 +41,7 @@ export default function HeartbeatReasoningEffortProperty({ disabled, projectId, 
                 <Text style={[styles.body1, { marginRight: 8 }]} numberOfLines={1}>
                     {translate(getAssistantReasoningEffortLabelKey(currentEffort))}
                 </Text>
-                <Popover
+                <AppPopover
                     content={
                         <View style={localStyles.popover}>
                             <Text style={[styles.title7, localStyles.title]}>
@@ -47,7 +50,7 @@ export default function HeartbeatReasoningEffortProperty({ disabled, projectId, 
                             <Text style={[styles.body2, localStyles.helpText]}>
                                 {translate('Choose how much reasoning heartbeat executions should use.')}
                             </Text>
-                            {SELECTABLE_ASSISTANT_REASONING_EFFORTS.map(option => {
+                            {getAssistantReasoningEffortOptions(getEffectiveHeartbeatModel(assistant)).map(option => {
                                 const selected = option.value === currentEffort
                                 return (
                                     <TouchableOpacity
@@ -77,7 +80,7 @@ export default function HeartbeatReasoningEffortProperty({ disabled, projectId, 
                     contentLocation={mobile ? null : undefined}
                 >
                     <Button icon={'edit-2'} type={'ghost'} onPress={() => setOpen(true)} disabled={disabled} />
-                </Popover>
+                </AppPopover>
             </View>
         </View>
     )

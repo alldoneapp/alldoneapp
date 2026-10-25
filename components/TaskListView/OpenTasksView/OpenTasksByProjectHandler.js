@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect } from 'react'
 import moment from 'moment'
 import { difference, isEmpty } from 'lodash'
 import { useDispatch, useSelector, shallowEqual } from 'react-redux'
@@ -8,16 +8,8 @@ import {
     clearOpenTasksMap,
     clearOpenSubtasksMap,
     setTaskListWatchersVars,
-    setTodayEmptyGoalsTotalAmountInOpenTasksView,
     setLaterTasksExpandedForNavigateFromAllProjects,
     setSomedayTasksExpandedForNavigateFromAllProjects,
-    updateOpenTasks,
-    updateThereAreHiddenNotMainTasks,
-    updateFilteredOpenTasks,
-    updateSubtaskByTask,
-    updateThereAreNotTasksInFirstDay,
-    updateInitialLoadingEndOpenTasks,
-    updateInitialLoadingEndObservedTasks,
 } from '../../../redux/actions'
 import { checkIfSelectedProject } from '../../SettingsView/ProjectsSettings/ProjectHelper'
 import {
@@ -34,15 +26,16 @@ import useEffectDebug from '../../../hooks/useEffectDebug'
 import { cleanDataWhenRemoveWorkstreamMember, WORKSTREAM_ID_PREFIX } from '../../Workstreams/WorkstreamHelper'
 import store from '../../../redux/store'
 import useSelectorHashtagFilters from '../../HashtagFilters/UseSelectorHashtagFilters'
-import { checkIfCalendarConnected } from '../../../utils/backends/firestore'
 import { fetchEmailLineSummary } from '../../../utils/backends/EmailLine/emailLineBackend'
 import { useIsUserEditing } from '../../../utils/editingGuard'
+import usePageVisibleRefreshGeneration from '../../../hooks/usePageVisibleRefreshGeneration'
 
 export default function OpenTasksByProjectHandler({
     projectIndex,
     firstProject,
     setProjectsHaveTasksInFirstDay,
     assistantProfileMode = false,
+    taskWatchersEnabled = true,
 }) {
     const dispatch = useDispatch()
     // Contracting the day list re-subscribes the open-task watchers with an
@@ -75,10 +68,13 @@ export default function OpenTasksByProjectHandler({
     )
 
     const inSelectedProject = checkIfSelectedProject(selectedProjectIndex)
+    const pageVisibleRefreshGeneration = usePageVisibleRefreshGeneration({ enabled: taskWatchersEnabled })
 
-    const clearTasksAndWatchers = () => {
-        dispatch([clearOpenTasksMap(projectId), clearOpenSubtasksMap(projectId)])
-        unwatchOpenTasks(projectId, currentUserId)
+    const stopTasksWatchers = ({ preserveSessionSnapshot = false } = {}) => {
+        if (!preserveSessionSnapshot) {
+            dispatch([clearOpenTasksMap(projectId), clearOpenSubtasksMap(projectId)])
+        }
+        unwatchOpenTasks(projectId, currentUserId, { preserveData: preserveSessionSnapshot })
     }
 
     const updateTaks = (initialTasks, initialLoadingInOpenTasks) => {
@@ -92,24 +88,47 @@ export default function OpenTasksByProjectHandler({
         )
     }
 
-    // Auto-sync calendar and gmail on page load
-    // Now safe with server-side sync + cooldown cache
+    useLayoutEffect(() => {
+        const {
+            openTasksStore,
+            laterTasksExpandedForNavigateFromAllProjects,
+            somedayTasksExpandedForNavigateFromAllProjects,
+        } = store.getState()
+        const retainedTasks = openTasksStore[instanceKey]
+        if (!retainedTasks) return
+
+        const keepExpandedDays =
+            laterTasksExpanded ||
+            somedayTasksExpanded ||
+            laterTasksExpandedForNavigateFromAllProjects ||
+            somedayTasksExpandedForNavigateFromAllProjects
+        const tasksForCurrentView = keepExpandedDays ? retainedTasks : retainedTasks.slice(0, 1)
+
+        // A selected-project snapshot contains sections that All Projects deliberately hides.
+        // Re-apply the current view projection before paint so navigating selected -> All Projects
+        // cannot flash observed/workstream rows from the previous task-board context.
+        updateOpTasks(projectId, instanceKey, tasksForCurrentView, undefined, null, inSelectedProject)
+    }, [])
+
+    // Keep integration refreshes out of the All Projects mount fan-out. The unified Email line
+    // refreshes connected accounts once.
+    //
+    // AT-2480: calendar used to be refreshed here too, per project block and only when that
+    // project was selected - which is exactly why meetings never appeared in All Projects. The
+    // calendar connection belongs to the user, not to the rendered project, so the pull now runs
+    // once for the whole board in `useTaskBoardCalendarSync` (mounted by `TasksByProjectSections`)
+    // and covers both views.
     useEffect(() => {
         const { loggedUser } = store.getState()
-        if (currentUserId === loggedUser.uid) {
+        if (inSelectedProject && currentUserId === loggedUser.uid) {
             const projectApis = loggedUser.apisConnected?.[projectId]
-            if (projectApis?.calendar) {
-                if (__DEV__)
-                    console.log('[OpenTasksByProjectHandler] 📅 Checking calendar sync for project:', projectId)
-                checkIfCalendarConnected(projectId)
-            }
             if (projectApis?.email || projectApis?.gmail) {
                 if (__DEV__)
                     console.log('[OpenTasksByProjectHandler] 📧 Fetching email line summary for project:', projectId)
                 fetchEmailLineSummary(projectId)
             }
         }
-    }, [projectId, currentUserId])
+    }, [projectId, currentUserId, inSelectedProject])
 
     useEffect(() => {
         // These flags are written straight from onSnapshot, so a task completed
@@ -157,10 +176,17 @@ export default function OpenTasksByProjectHandler({
     ])
 
     useEffect(() => {
-        if (currentUserId) {
-            const { laterTasksExpandedForNavigateFromAllProjects, somedayTasksExpandedForNavigateFromAllProjects } =
-                store.getState()
-            clearTasksAndWatchers()
+        if (currentUserId && taskWatchersEnabled) {
+            const {
+                laterTasksExpandedForNavigateFromAllProjects,
+                somedayTasksExpandedForNavigateFromAllProjects,
+                openTasksStore,
+                globalDataByProject,
+            } = store.getState()
+            const hasRenderedSessionSnapshot = openTasksStore[instanceKey] !== undefined
+            const canReuseWatcherData = hasRenderedSessionSnapshot && !!globalDataByProject[projectId]
+
+            stopTasksWatchers({ preserveSessionSnapshot: hasRenderedSessionSnapshot })
             dispatch([
                 setTaskListWatchersVars(WATCHER_VARS_DEFAULT),
                 setLaterTasksExpandedForNavigateFromAllProjects(false),
@@ -171,17 +197,23 @@ export default function OpenTasksByProjectHandler({
                 updateTaks,
                 laterTasksExpandedForNavigateFromAllProjects,
                 somedayTasksExpandedForNavigateFromAllProjects,
-                false,
+                canReuseWatcherData,
                 instanceKey,
-                assistantProfileMode
+                assistantProfileMode,
+                {
+                    trackConnectionHealth: inSelectedProject,
+                    deferSecondaryStreams: !inSelectedProject,
+                }
             )
 
             return () => {
-                dispatch([setTodayEmptyGoalsTotalAmountInOpenTasksView(projectId, 0)])
-                clearTasksAndWatchers()
+                // Keep the last published task/decorator snapshot in Redux and the mutable watcher
+                // indexes in globalDataByProject. Returning from Notes/Goals/etc. can paint those
+                // rows immediately; the newly attached listeners reconcile them in the background.
+                stopTasksWatchers({ preserveSessionSnapshot: true })
             }
         }
-    }, [])
+    }, [taskWatchersEnabled, pageVisibleRefreshGeneration])
 
     useEffect(() => {
         const { openTasksStore } = store.getState()
@@ -209,7 +241,7 @@ export default function OpenTasksByProjectHandler({
     if (!currentUserId.startsWith(WORKSTREAM_ID_PREFIX)) {
         useEffectDebug(
             changedDeps => {
-                if (!isEmpty(changedDeps) && currentUserId) {
+                if (!isEmpty(changedDeps) && currentUserId && taskWatchersEnabled) {
                     let changes = changedDeps.streams
 
                     if (changes.before) {
@@ -229,7 +261,8 @@ export default function OpenTasksByProjectHandler({
                                 taskListWatchersVars.subtasksMap,
                                 laterTasksExpanded,
                                 somedayTasksExpanded,
-                                userId
+                                userId,
+                                inSelectedProject
                             )
                         }
 
@@ -253,18 +286,6 @@ export default function OpenTasksByProjectHandler({
             dispatch(setLastAddNewTaskDate({ projectId: projectId, date }))
         }
     }, [firstProject])
-
-    useEffect(() => {
-        return () => {
-            dispatch(updateOpenTasks(instanceKey, null))
-            dispatch(updateThereAreHiddenNotMainTasks(instanceKey, null))
-            dispatch(updateFilteredOpenTasks(instanceKey, null))
-            dispatch(updateSubtaskByTask(instanceKey, null))
-            dispatch(updateThereAreNotTasksInFirstDay(instanceKey, null))
-            dispatch(updateInitialLoadingEndOpenTasks(instanceKey, null))
-            dispatch(updateInitialLoadingEndObservedTasks(instanceKey, null))
-        }
-    }, [])
 
     return null
 }

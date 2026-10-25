@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../../UIComponents/ModalShell/AppPopover'
 
 import { colors } from '../../../styles/global'
 import Button from '../../../UIControls/Button'
@@ -20,7 +20,7 @@ export default function CancelSubscriptionModalWrapper({ subscription }) {
     }
 
     return (
-        <Popover
+        <AppPopover
             isOpen={open}
             onClickOutside={closeModal}
             position={['top', 'bottom', 'left', 'right']}
@@ -42,6 +42,6 @@ export default function CancelSubscriptionModalWrapper({ subscription }) {
                 accessible={false}
                 onPress={openModal}
             />
-        </Popover>
+        </AppPopover>
     )
 }

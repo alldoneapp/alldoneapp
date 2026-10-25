@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 import Button from '../../UIControls/Button'
 import { execShortcutFn } from '../../../utils/HelperFunctions'
@@ -11,12 +11,15 @@ import { checkIsLimitedByTraffic } from '../../Premium/PremiumHelper'
 import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
 
 export default function AddFeedAttachButton({
-    subscribeClickObserver,
-    unsubscribeClickObserver,
+    subscribeClickObserver = () => {},
+    unsubscribeClickObserver = () => {},
     isDisabled,
     smallScreen,
     addAttachmentTag,
     projectId,
+    compact = false,
+    buttonStyle,
+    getPopoverViewport,
 }) {
     const dispatch = useDispatch()
     const blockShortcuts = useSelector(state => state.blockShortcuts)
@@ -24,7 +27,7 @@ export default function AddFeedAttachButton({
     const [showModal, setShowModal] = useState(false)
 
     const openModal = () => {
-        if (!checkIsLimitedByTraffic(projectId)) {
+        if (!isDisabled && !checkIsLimitedByTraffic(projectId)) {
             unsubscribeClickObserver()
             setShowModal(true)
             dispatch(showFloatPopup())
@@ -37,7 +40,7 @@ export default function AddFeedAttachButton({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <AttachmentsSelectorModal
                     closeModal={closeModal}
@@ -50,6 +53,8 @@ export default function AddFeedAttachButton({
             position={['bottom', 'top', 'right', 'left']}
             padding={4}
             align={'start'}
+            getViewport={getPopoverViewport}
+            useSheet={!getPopoverViewport}
         >
             <Hotkeys
                 keyName={'alt+U'}
@@ -59,16 +64,26 @@ export default function AddFeedAttachButton({
             >
                 <Button
                     ref={attachBtnRef}
-                    title={smallScreen ? null : translate('Add')}
+                    title={smallScreen || compact ? null : translate('Add')}
                     type={'ghost'}
-                    noBorder={smallScreen}
-                    icon={'folder-plus'}
-                    buttonStyle={{ marginRight: 4 }}
+                    noBorder={smallScreen || compact}
+                    icon={compact ? 'plus' : 'folder-plus'}
+                    iconSize={compact ? 16 : 24}
+                    buttonStyle={{
+                        ...(compact
+                            ? { width: 24, height: 24, minHeight: 24, padding: 0, paddingHorizontal: 0 }
+                            : { marginRight: 4 }),
+                        ...buttonStyle,
+                    }}
                     onPress={openModal}
                     disabled={isDisabled}
                     shortcutText={'U'}
+                    accessible={true}
+                    accessibilityRole={'button'}
+                    accessibilityLabel={translate('Select kind of file to add')}
+                    accessibilityState={{ expanded: showModal, disabled: !!isDisabled }}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

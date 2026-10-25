@@ -16,6 +16,7 @@ import Icon from '../Icon'
 import EditProjectLink from './Projects/EditProjectLink'
 import EditChatLink from './Chats/EditChatLink'
 import EditSkillLink from './Skills/EditSkillLink'
+import EditArtifactLink from './Artifacts/EditArtifactLink'
 
 export default function EditObjectsInLinks({
     projectId,
@@ -28,6 +29,7 @@ export default function EditObjectsInLinks({
     tagId,
     objectUrl,
     isPrivate = false,
+    inNote = false,
 }) {
     const dispatch = useDispatch()
 
@@ -128,6 +130,19 @@ export default function EditObjectsInLinks({
                         chatData={objectData}
                         closeModal={closeModal}
                         objectUrl={objectUrl}
+                    />
+                )
+            }
+            case 'artifact': {
+                return (
+                    <EditArtifactLink
+                        projectId={projectId}
+                        artifactData={objectData}
+                        closeModal={closeModal}
+                        objectUrl={objectUrl}
+                        editorRef={inNote ? editorRef : null}
+                        editorId={editorId}
+                        tagId={tagId}
                     />
                 )
             }

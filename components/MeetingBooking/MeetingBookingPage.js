@@ -3,7 +3,7 @@ import { Animated, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpac
 import moment from 'moment-timezone'
 
 import Button from '../UIControls/Button'
-import styles, { colors } from '../styles/global'
+import styles, { colors, hexColorToRGBa } from '../styles/global'
 import { setLanguage, translate } from '../../i18n/TranslationService'
 import { BOOKING_LANGUAGES, getInitialBookingLanguage, persistBookingLanguage } from './bookingLanguage'
 import {
@@ -11,8 +11,26 @@ import {
     getPublicBookingPage,
     getPublicBookingSlots,
 } from '../../utils/backends/Booking/bookingFirestore'
+import useSafeAreaOverlayPadding from '../../hooks/useSafeAreaOverlayPadding'
+import useWindowSize from '../../utils/useWindowSize'
+import { getSafeAreaViewportHeightCap } from '../../utils/modalSafeArea'
 
 const PUBLIC_BOOKING_DAYS_TO_SHOW = 31
+
+// The timezone picker overlay's existing per-side gap, and the card's fixed
+// height cap. Both are now floors/ceilings resolved against the safe area.
+const TIMEZONE_PICKER_OVERLAY_GAP = { top: 24, right: 24, bottom: 24, left: 24 }
+const TIMEZONE_PICKER_MAX_HEIGHT = 520
+
+function buildPublicBookingDays({ timeZone, allowSameDayBooking, includeWeekends, now = moment() }) {
+    const firstBookableDayOffset = allowSameDayBooking ? 0 : 1
+    return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
+        moment(now)
+            .tz(timeZone)
+            .add(index + firstBookableDayOffset, 'days')
+            .startOf('day')
+    ).filter(day => includeWeekends || (day.day() !== 0 && day.day() !== 6))
+}
 
 function formatZoneLabel(zone) {
     if (!zone) return ''
@@ -59,11 +77,22 @@ export default function MeetingBookingPage({ navigation }) {
     const hostTimeZone = page?.settings?.timeZone || visitorTimeZone
     const activeTimeZone = displayTimeZone || visitorTimeZone
 
+    // Unless the host opted in, today is not offered at all — the server refuses same-day
+    // slots anyway, so showing today would only ever render an empty day. Both sides read a
+    // missing value as false, which keeps booking links created before this setting existed
+    // on the no-same-day rule.
+    const allowSameDayBooking = page?.settings?.allowSameDayBooking === true
+    // The availability engine already treats a missing value as false. Mirror that here so
+    // legacy booking links do not show weekend cards that can never return a slot.
+    const includeWeekends = page?.settings?.includeWeekends === true
+
     const days = useMemo(() => {
-        return Array.from({ length: PUBLIC_BOOKING_DAYS_TO_SHOW }, (_, index) =>
-            moment().tz(hostTimeZone).add(index, 'days').startOf('day')
-        )
-    }, [hostTimeZone])
+        return buildPublicBookingDays({
+            timeZone: hostTimeZone,
+            allowSameDayBooking,
+            includeWeekends,
+        })
+    }, [hostTimeZone, allowSameDayBooking, includeWeekends])
 
     const changeLanguage = nextLanguage => {
         setLanguage(nextLanguage)
@@ -91,11 +120,12 @@ export default function MeetingBookingPage({ navigation }) {
                 setPage(result.page)
                 const durations = result.page?.settings?.availableDurations || [30]
                 setSelectedDuration(durations.includes(30) ? 30 : durations[0])
-                setSelectedDay(
-                    moment()
-                        .tz(result.page?.settings?.timeZone || moment.tz.guess())
-                        .startOf('day')
-                )
+                const initialDays = buildPublicBookingDays({
+                    timeZone: result.page?.settings?.timeZone || moment.tz.guess() || 'UTC',
+                    allowSameDayBooking: result.page?.settings?.allowSameDayBooking === true,
+                    includeWeekends: result.page?.settings?.includeWeekends === true,
+                })
+                setSelectedDay(initialDays[0] || null)
             } catch (loadError) {
                 setPageUnavailable(true)
                 if (loadError.message) setError(loadError.message)
@@ -424,6 +454,11 @@ function LanguageSelector({ language, onSelect }) {
 const MAX_TIMEZONE_RESULTS = 60
 
 function TimeZonePicker({ activeTimeZone, visitorTimeZone, hostTimeZone, hostName, onSelect, onClose }) {
+    // AT-2339: the overlay's flat 24px padding is narrower than a 47-59px
+    // inset, so the card's edges sat under the status bar / landscape cutout.
+    // Minimum semantics keep the 24px gap everywhere it already cleared.
+    const safeAreaOverlayPadding = useSafeAreaOverlayPadding(TIMEZONE_PICKER_OVERLAY_GAP)
+    const [, windowHeight] = useWindowSize()
     const [query, setQuery] = useState('')
 
     const allZones = useMemo(() => moment.tz.names(), [])
@@ -466,9 +501,16 @@ function TimeZonePicker({ activeTimeZone, visitorTimeZone, hostTimeZone, hostNam
     }
 
     return (
-        <View style={localStyles.pickerOverlay}>
+        <View style={[localStyles.pickerOverlay, safeAreaOverlayPadding]}>
             <TouchableOpacity style={localStyles.pickerBackdrop} activeOpacity={1} onPress={onClose} />
-            <View style={localStyles.pickerCard}>
+            <View
+                style={[
+                    localStyles.pickerCard,
+                    // A fixed 520 cap can still exceed a landscape phone
+                    // viewport, which the overlay padding alone cannot fix.
+                    { maxHeight: Math.min(TIMEZONE_PICKER_MAX_HEIGHT, getSafeAreaViewportHeightCap(windowHeight, 1)) },
+                ]}
+            >
                 <View style={localStyles.pickerHeader}>
                     <Text style={localStyles.pickerTitle}>{translate('Select timezone')}</Text>
                     <TouchableOpacity testID="booking-timezone-close" onPress={onClose} style={localStyles.pickerClose}>
@@ -509,8 +551,8 @@ function useShimmer() {
         if (process.env.NODE_ENV === 'test') return undefined
         const animation = Animated.loop(
             Animated.sequence([
-                Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: true }),
-                Animated.timing(pulse, { toValue: 0, duration: 850, useNativeDriver: true }),
+                Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: false }),
+                Animated.timing(pulse, { toValue: 0, duration: 850, useNativeDriver: false }),
             ])
         )
         animation.start()
@@ -578,12 +620,12 @@ function AvailabilityLoadingCard() {
                 Animated.timing(pulse, {
                     toValue: 1,
                     duration: 700,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
                 Animated.timing(pulse, {
                     toValue: 0,
                     duration: 700,
-                    useNativeDriver: true,
+                    useNativeDriver: false,
                 }),
             ])
         )
@@ -865,7 +907,7 @@ const localStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.35)',
+        backgroundColor: hexColorToRGBa(colors.Text03, 0.24),
     },
     pickerCard: {
         width: '100%',

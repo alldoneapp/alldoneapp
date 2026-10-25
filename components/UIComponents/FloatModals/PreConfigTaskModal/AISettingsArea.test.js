@@ -1,11 +1,16 @@
-import { getReasoningEffortOptions } from './AISettingsArea'
+import { getModelOptions, getReasoningEffortOptions } from './AISettingsArea'
+
+test('Sol overrides omit none; other model overrides keep it', () => {
+    expect(getReasoningEffortOptions('MODEL_GPT6_SOL').map(option => option.value)).not.toContain('none')
+    expect(getReasoningEffortOptions('MODEL_GPT5_6_TERRA').map(option => option.value)).toContain('none')
+})
 import {
     INHERIT_ASSISTANT_REASONING_EFFORT,
     MODEL_DEFAULT_REASONING_EFFORT,
 } from '../../../../functions/Assistant/preConfigTaskReasoningEffort'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
-    translate: value => value,
+    translate: (value, values = {}) => value.replace('%{tokens}', values.tokens || ''),
     getDeviceLanguage: () => 'en',
 }))
 jest.mock('./DropDown', () => 'DropDown')
@@ -20,6 +25,16 @@ jest.mock('../../../styles/global', () => ({
 }))
 
 describe('pre-configured task advanced AI settings', () => {
+    test('shows Gold pricing on every explicit model choice', () => {
+        expect(getModelOptions().map(option => option.label)).toEqual([
+            'Use assistant model',
+            'GPT 6.1 Sol · 1 Gold = 200 tokens',
+            'GPT 5_6 Terra · 1 Gold = 200 tokens',
+            'GPT 6 Luna · 1 Gold = 1,000 tokens',
+            'DeepSeek V4 Flash · 1 Gold = 2,000 tokens',
+        ])
+    })
+
     test('offers reasoning effort choices instead of temperature choices', () => {
         const options = getReasoningEffortOptions()
 

@@ -26,6 +26,8 @@ const {
     archiveMessages,
     markMessagesRead,
     sweepLabel,
+    getMessageStates,
+    getMessageContext,
 } = require('./microsoftEmailLine')
 
 const ACCOUNT = {
@@ -38,6 +40,27 @@ const ACCOUNT = {
 describe('microsoftEmailLine', () => {
     beforeEach(() => {
         jest.clearAllMocks()
+    })
+
+    test('message context requests conversation identity, date, and preserves the full body', async () => {
+        getConnectedMicrosoftEmailAccounts.mockResolvedValue([ACCOUNT])
+        const body = 'Email text '.repeat(600)
+        mockRequest.mockResolvedValueOnce({
+            conversationId: 'conversation-1',
+            receivedDateTime: '2026-10-07T11:00:00Z',
+            body: { content: body },
+        })
+        const context = await getMessageContext('user-1', 'proj1', 'message-1')
+        expect(context).toEqual(
+            expect.objectContaining({
+                threadId: 'conversation-1',
+                date: '2026-10-07T11:00:00Z',
+                bodyText: body,
+                body: body.slice(0, 4000),
+            })
+        )
+        const url = new URL(mockRequest.mock.calls[0][0], 'https://graph.microsoft.com')
+        expect(url.searchParams.get('$select')).toContain('conversationId,receivedDateTime')
     })
 
     test('resolveAccountForProject prefers project match, then default, then first', () => {
@@ -125,6 +148,7 @@ describe('microsoftEmailLine', () => {
                     internetMessageHeaders: [{ name: 'List-Unsubscribe', value: '<https://ex.com/u>' }],
                 },
             ],
+            '@odata.count': 31,
             '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/mailFolders/f1/messages?$skiptoken=abc',
         })
 
@@ -135,6 +159,8 @@ describe('microsoftEmailLine', () => {
         expect(row.isUnread).toBe(true)
         expect(row.webUrl).toBe('https://outlook/mail/m1')
         expect(row.unsubscribe).toEqual({ httpsUrl: 'https://ex.com/u' })
+        expect(result.totalCount).toBe(31)
+        expect(mockRequest.mock.calls[0][0]).toContain('%24count=true')
         // nextLink stripped of graph root → path only.
         expect(result.nextPageToken).toBe('/me/mailFolders/f1/messages?$skiptoken=abc')
     })
@@ -160,6 +186,26 @@ describe('microsoftEmailLine', () => {
         const body = JSON.parse(batchCall[1].body)
         expect(body.requests[0].method).toBe('PATCH')
         expect(body.requests[0].body).toEqual({ isRead: true })
+    })
+
+    // Provider twin of the Gmail read-state lookup (AT-2376): Outlook has no INBOX label, so
+    // inbox membership is the message's parent FOLDER.
+    test('getMessageStates reports read state and inbox membership by folder', async () => {
+        getConnectedMicrosoftEmailAccounts.mockResolvedValue([ACCOUNT])
+        mockRequest.mockImplementation(async path => {
+            if (path.startsWith('/me/mailFolders/inbox')) return { id: 'f_inbox' }
+            if (path.includes('m_read')) return { id: 'm_read', isRead: true, parentFolderId: 'f_inbox' }
+            if (path.includes('m_archived')) return { id: 'm_archived', isRead: false, parentFolderId: 'f_archive' }
+            if (path.includes('m_gone')) throw new Error('The specified object was not found in the store.')
+            return { id: 'm_unread', isRead: false, parentFolderId: 'f_inbox' }
+        })
+
+        const { states } = await getMessageStates('u', 'proj1', ['m_unread', 'm_read', 'm_archived', 'm_gone'])
+
+        expect(states).toContainEqual({ messageId: 'm_unread', exists: true, unread: true, inInbox: true })
+        expect(states).toContainEqual({ messageId: 'm_read', exists: true, unread: false, inInbox: true })
+        expect(states).toContainEqual({ messageId: 'm_archived', exists: true, unread: true, inInbox: false })
+        expect(states).toContainEqual({ messageId: 'm_gone', exists: false, unread: false, inInbox: false })
     })
 
     test('sweepLabel markAllRead only targets unread and caps at 500', async () => {

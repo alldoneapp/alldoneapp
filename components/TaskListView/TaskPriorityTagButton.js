@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { TouchableOpacity } from 'react-native'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import { useSelector } from 'react-redux'
 
 import { setTaskPriority } from '../../utils/backends/Tasks/tasksFirestore'
@@ -34,7 +34,7 @@ export default function TaskPriorityTagButton({ task, projectId, disabled, style
     }
 
     return (
-        <Popover
+        <AppPopover
             key={!isOpen}
             content={
                 <TaskPriorityModal
@@ -53,6 +53,6 @@ export default function TaskPriorityTagButton({ task, projectId, disabled, style
             <TouchableOpacity onPress={openModal} activeOpacity={0.8}>
                 <TaskPriorityTag priority={task.priority} style={style} />
             </TouchableOpacity>
-        </Popover>
+        </AppPopover>
     )
 }

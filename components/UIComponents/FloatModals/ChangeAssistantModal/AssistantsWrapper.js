@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../ModalShell/AppPopover'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { hideFloatPopup, showFloatPopup } from '../../../../redux/actions'
@@ -12,6 +12,7 @@ import { setContactAssistant } from '../../../../utils/backends/Contacts/contact
 import { setUserAssistant } from '../../../../utils/backends/Users/usersFirestore'
 import { setSkillAssistant } from '../../../../utils/backends/Skills/skillsFirestore'
 import { setGoalAssistant } from '../../../../utils/backends/Goals/goalsFirestore'
+import { setArtifactAssistant } from '../../../../utils/backends/Artifacts/artifactsFirestore'
 import { updateChatAssistant } from '../../../../utils/backends/Chats/chatsFirestore'
 import { setProjectAssistant } from '../../../../utils/backends/Projects/projectsFirestore'
 
@@ -59,6 +60,8 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
             setSkillAssistant(projectId, objectId, assistantId, !!currentAssistantId)
         } else if (objectType === 'goals') {
             setGoalAssistant(projectId, objectId, assistantId, !!currentAssistantId)
+        } else if (objectType === 'artifacts') {
+            setArtifactAssistant(projectId, objectId, assistantId)
         } else if (objectType === 'projects') {
             // For projects, assistantId can be null/empty to use default project's assistant
             setProjectAssistant(projectId, assistantId || '', !!currentAssistantId)
@@ -68,7 +71,7 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
     }
 
     return (
-        <Popover
+        <AppPopover
             key={!isOpen}
             content={
                 <AssistantModal
@@ -90,6 +93,6 @@ export default function AssistantsWrapper({ disabled, projectId, currentAssistan
                 assistantId={currentAssistantId}
                 onPress={openModal}
             />
-        </Popover>
+        </AppPopover>
     )
 }

@@ -24,7 +24,7 @@ jest.mock('../../../../utils/backends/Assistants/assistantsFirestore', () => ({
 }))
 
 describe('HeartbeatReasoningEffortProperty', () => {
-    test('inherits assistant effort and offers every assistant effort option', () => {
+    test('inherits assistant effort and offers supported Sol reasoning options', () => {
         const component = renderer.create(
             <HeartbeatReasoningEffortProperty
                 disabled={false}
@@ -34,9 +34,7 @@ describe('HeartbeatReasoningEffortProperty', () => {
         )
         const labels = component.root.findAllByType(Text).map(node => node.props.children)
 
-        expect(labels).toEqual(
-            expect.arrayContaining(['Model default', 'None', 'Low', 'Medium', 'High', 'XHigh', 'Max'])
-        )
+        expect(labels).toEqual(expect.arrayContaining(['Model default', 'Low', 'Medium', 'High', 'XHigh', 'Max']))
     })
 
     test('stores an explicit model default separately from inherited effort', () => {

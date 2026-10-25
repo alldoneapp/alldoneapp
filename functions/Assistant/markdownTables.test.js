@@ -16,6 +16,28 @@ class MockYText {
 }
 
 describe('assistant markdown table conversion', () => {
+    test('round-trips multiline cells without splitting table rows', () => {
+        const table = {
+            rows: [
+                ['Name', 'Plan'],
+                ['Alpha', '**October**\nNovember | beta\r\nDecember'],
+            ],
+            alignments: ['left', null],
+        }
+        const markdown = deltaToMarkdown([{ insert: { markdownTable: table } }])
+        expect(markdown.split('\n')).toHaveLength(3)
+        expect(markdown).toContain('**October**<br>November \\| beta<br>December')
+        const ytext = new MockYText()
+        insertMarkdownToYjs(ytext, 0, markdown)
+        expect(ytext.ops[0].insert.markdownTable.rows).toEqual([
+            ['Name', 'Plan'],
+            ['Alpha', '**October**\nNovember | beta\nDecember'],
+        ])
+        expect(
+            getMarkdownTableAt(['| A | B |', '| --- | --- |', '| One<BR />Two | Three<br/>Four |'], 0).rows[1]
+        ).toEqual(['One\nTwo', 'Three\nFour'])
+    })
+
     const tableMarkdown = ['| Name | Status | Score |', '| :--- | :---: | ---: |', '| Alpha | Done | 10 |'].join('\n')
 
     test('detects and parses markdown tables', () => {
@@ -71,19 +93,28 @@ describe('assistant markdown table conversion', () => {
 })
 
 describe('meeting transcript markdown conversion', () => {
-    test('converts headers, underscore italics, and uploaded screenshots', () => {
+    test('converts headers, underscore italics, asterisk italics, and uploaded screenshots', () => {
         const ytext = new MockYText()
         const imageUrl = 'https://firebasestorage.googleapis.com/example.jpg?token=abc'
 
-        insertMarkdownToYjs(ytext, 0, `# Meeting Notes\n\n_Duration: 1 min_\n\n![Screenshot at 0:04](<${imageUrl}>)`, {
-            editorId: 'note-1',
-        })
+        insertMarkdownToYjs(
+            ytext,
+            0,
+            `# Meeting Notes\n\n_Duration: 1 min_\n\n*Calendar-derived details.*\n\n![Screenshot at 0:04](<${imageUrl}>)`,
+            {
+                editorId: 'note-1',
+            }
+        )
 
         expect(ytext.ops).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ insert: '\n', attributes: { header: 1 } }),
                 expect.objectContaining({
                     insert: 'Duration: 1 min',
+                    attributes: expect.objectContaining({ italic: true }),
+                }),
+                expect.objectContaining({
+                    insert: 'Calendar-derived details.',
                     attributes: expect.objectContaining({ italic: true }),
                 }),
                 expect.objectContaining({
@@ -100,5 +131,110 @@ describe('meeting transcript markdown conversion', () => {
                 }),
             ])
         )
+    })
+
+    test('stores generated calendar and meeting URLs as clickable Quill embeds', () => {
+        const ytext = new MockYText()
+        const calendarUrl = 'https://www.google.com/calendar/event?eid=abc123+user%40gmail.com'
+        const meetingUrl =
+            'https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%22Tid%22%3a%22tenant%22%7d'
+
+        insertMarkdownToYjs(
+            ytext,
+            0,
+            [
+                '# Summary',
+                '- **Calendar entry:** ' + calendarUrl,
+                '- **Location:** Microsoft Teams – ' + meetingUrl,
+            ].join('\n'),
+            { editorId: 'note-1' }
+        )
+
+        const urlEmbeds = ytext.ops.filter(op => op.insert?.url).map(op => op.insert.url)
+        expect(urlEmbeds).toEqual([
+            expect.objectContaining({
+                url: calendarUrl,
+                type: 'plain',
+                urlBoundary: 'google.com...',
+                id: expect.any(String),
+                editorId: 'note-1',
+            }),
+            expect.objectContaining({
+                url: meetingUrl,
+                type: 'plain',
+                urlBoundary: 'teams.microsoft.com...',
+                id: expect.any(String),
+                editorId: 'note-1',
+            }),
+        ])
+        expect(containsMarkdown('Calendar: ' + calendarUrl)).toBe(true)
+        expect(containsMarkdown('*Calendar-derived details.*')).toBe(true)
+    })
+
+    test('keeps sentence punctuation outside generated URL embeds', () => {
+        const ytext = new MockYText()
+        const meetingUrl = 'https://teams.microsoft.com/l/meetup-join/abc?context=%7bvalue%7d'
+
+        insertMarkdownToYjs(ytext, 0, `Join ${meetingUrl}.`)
+
+        expect(ytext.ops).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ insert: { url: expect.objectContaining({ url: meetingUrl }) } }),
+                expect.objectContaining({ insert: '.' }),
+            ])
+        )
+    })
+
+    test('linkifies generic bare domains without treating email addresses as links', () => {
+        const ytext = new MockYText()
+
+        insertMarkdownToYjs(ytext, 0, 'Docs: example.com/reference. Contact: user@example.com')
+
+        const urlEmbeds = ytext.ops.filter(op => op.insert?.url).map(op => op.insert.url)
+        expect(urlEmbeds).toEqual([
+            expect.objectContaining({
+                url: 'example.com/reference',
+                type: 'plain',
+                urlBoundary: 'example.com...',
+            }),
+        ])
+        expect(
+            ytext.ops
+                .filter(op => typeof op.insert === 'string')
+                .map(op => op.insert)
+                .join('')
+        ).toContain('user@example.com')
+    })
+
+    test('preserves dotted email addresses with hyphenated domains while linkifying real URLs', () => {
+        const ytext = new MockYText()
+        const calendarUrl = 'https://calendar.google.com/calendar/event?eid=abc123'
+        const emailAddresses = [
+            'karsten.wysk@gmail.com',
+            'jan.gohrke@rmc-consult.de',
+            'daniel.sommerer+meeting@sub.rmc-consult.de',
+        ]
+
+        insertMarkdownToYjs(
+            ytext,
+            0,
+            [
+                `- **Organizer:** Karsten Wysk <${emailAddresses[0]}>`,
+                '- **Invited participants:**',
+                `  - Jan Gohrke <${emailAddresses[1]}>`,
+                `  - Daniel Sommerer <${emailAddresses[2]}>`,
+                `- **Calendar entry:** ${calendarUrl}`,
+            ].join('\n')
+        )
+
+        const urlEmbeds = ytext.ops.filter(op => op.insert?.url).map(op => op.insert.url.url)
+        const insertedText = ytext.ops
+            .filter(op => typeof op.insert === 'string')
+            .map(op => op.insert)
+            .join('')
+
+        expect(urlEmbeds).toEqual([calendarUrl])
+        emailAddresses.forEach(emailAddress => expect(insertedText).toContain(emailAddress))
+        expect(containsMarkdown(`Contact: ${emailAddresses[0]}`)).toBe(false)
     })
 })

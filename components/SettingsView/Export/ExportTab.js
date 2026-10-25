@@ -11,7 +11,7 @@ import { DV_TAB_SETTINGS_EXPORT } from '../../../utils/TabNavigationConstants'
 import { getDb, notesStorage } from '../../../utils/backends/firestore'
 import { translate } from '../../../i18n/TranslationService'
 import { FEED_PUBLIC_FOR_ALL } from '../../Feeds/Utils/FeedsConstants'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 
 export default function ExportTab() {
     const loggedUser = useSelector(state => state.loggedUser)
@@ -322,7 +322,7 @@ export default function ExportTab() {
                 allProjectIds.map(async projectId => {
                     const snap = await db
                         .collection(`/projectsContacts/${projectId}/contacts`)
-                        .where('isPublicFor', 'array-contains-any', allowUserIds)
+                        .where('readerIds', 'array-contains', uid)
                         .get()
                     snap.forEach(doc => {
                         allContacts.push({ id: doc.id, projectId, ...doc.data() })
@@ -379,7 +379,7 @@ export default function ExportTab() {
 
                 const chatsSnap = await db
                     .collection(`chatObjects/${projectId}/chats`)
-                    .where('isPublicFor', 'array-contains-any', allowUserIds)
+                    .where('readerIds', 'array-contains', uid)
                     .get()
 
                 const chatDocs = chatsSnap.docs
@@ -632,7 +632,7 @@ export default function ExportTab() {
                         onPress={exportAllTasks}
                         loading={isExporting && currentExportType === 'tasks'}
                     />
-                    <Popover
+                    <AppPopover
                         isOpen={tasksTfPopoverOpen}
                         onClickOutside={() => setTasksTfPopoverOpen(false)}
                         position={['bottom', 'left', 'right', 'top']}
@@ -668,7 +668,7 @@ export default function ExportTab() {
                             title={translate(tasksTimeframeLabel)}
                             buttonStyle={{ marginLeft: 12 }}
                         />
-                    </Popover>
+                    </AppPopover>
                     <Text style={localStyles.infoText}>
                         {currentExportType === 'tasks' && isExporting
                             ? exportStatus

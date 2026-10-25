@@ -36,9 +36,20 @@ import TaskId from './TaskId'
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 import Priority from './Priority'
 import MergeStatus from './MergeStatus'
+import ObjectArtifacts from '../../ArtifactsView/ObjectArtifacts'
 import useTaskMergeStatusRefresh from '../../../hooks/useTaskMergeStatusRefresh'
 
-export default function PropertiesView({ project, task, loggedUser }) {
+export default function PropertiesView({
+    project,
+    task,
+    loggedUser,
+    taskProjectMoveHandoff,
+    taskProjectMoveHandoffActive,
+    taskProjectMovePending,
+    onTaskProjectMoveStarted,
+    onTaskProjectMoveEnqueued,
+    onTaskProjectMoveEnqueueFailed,
+}) {
     const [creator, setCreator] = useState({})
     const isUnmountedRef = useRef(false)
     const smallScreen = useSelector(state => state.smallScreen)
@@ -49,7 +60,11 @@ export default function PropertiesView({ project, task, loggedUser }) {
     useTaskMergeStatusRefresh(project.id, task)
 
     useEffect(() => {
-        Backend.getUserOrContactBy(project.id, task.creatorId).then(afterCreatorFetch)
+        if (loggedUser.isAnonymous) {
+            afterCreatorFetch(SharedHelper.createAnonymousResourceUser(task.creatorId))
+        } else {
+            Backend.getUserOrContactBy(project.id, task.creatorId).then(afterCreatorFetch)
+        }
         writeBrowserURL()
         return () => {
             isUnmountedRef.current = true
@@ -126,6 +141,12 @@ export default function PropertiesView({ project, task, loggedUser }) {
                             item={{ type: 'task', data: task }}
                             project={project}
                             disabled={!accessGranted || isLockedGmailTask || isAssistant}
+                            taskProjectMoveHandoff={taskProjectMoveHandoff}
+                            taskProjectMoveHandoffActive={taskProjectMoveHandoffActive}
+                            taskProjectMovePending={taskProjectMovePending}
+                            onTaskProjectMoveStarted={onTaskProjectMoveStarted}
+                            onTaskProjectMoveEnqueued={onTaskProjectMoveEnqueued}
+                            onTaskProjectMoveEnqueueFailed={onTaskProjectMoveEnqueueFailed}
                         />
                         <Highlight
                             task={task}
@@ -234,6 +255,8 @@ export default function PropertiesView({ project, task, loggedUser }) {
                 objectType={FEED_TASK_OBJECT_TYPE}
                 calendarDataTask={task.calendarData}
             />
+
+            <ObjectArtifacts projectId={projectId} objectType="tasks" objectId={task.id} />
 
             {accessGranted && loggedUserCanUpdateObject && (
                 <View style={localStyles.deleteButtonContainer}>

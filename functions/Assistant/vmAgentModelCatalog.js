@@ -27,10 +27,12 @@ const {
     parseOpenRouterSelection,
     formatOpenRouterModelLabel,
 } = require('./vmModelRouting')
+const { resolveTokensPerGold } = require('./vmTokenPricing')
 
 const CATALOG_COLLECTION = 'vmAgentModelCatalog'
 const CATALOG_TTL_MS = 12 * 60 * 60 * 1000
 const DISCOVERY_TIMEOUT_MS = 8000
+const CODEX_CATALOG_SCHEMA_VERSION = 4
 
 const VALID_PROVIDERS = ['claude', 'codex']
 
@@ -50,14 +52,16 @@ const CATALOG_PROVIDERS = [...VALID_PROVIDERS, OPENROUTER_PROVIDER]
  */
 const OPENROUTER_REQUIRED_PARAMETER = 'tools'
 
-// Vendors surfaced first. Everything discovered still appears; this only orders the picker, so a
-// brand-new vendor needs no code change. DeepSeek leads because it is the headline use case.
+// Vendors surfaced in the featured picker. Search still covers every compatible model from every
+// vendor, so a brand-new vendor needs no code change. DeepSeek leads because it is the headline use
+// case; the rest keep the compact default list broad instead of letting one prolific vendor consume
+// every visible slot.
 const OPENROUTER_VENDOR_ORDER = ['deepseek', 'qwen', 'moonshotai', 'z-ai', 'minimax', 'mistralai', 'x-ai', 'google']
 
-// OpenRouter lists 300+ models. The picker (and the settings payload) needs a bound; entries are
-// sorted best-first, and `truncated` is reported so the UI can say the list was shortened rather
-// than silently implying it is everything.
-const OPENROUTER_MAX_MODELS = 40
+// At most two featured models per major vendor: its newest generally available model, plus the
+// strongest agentic model OpenRouter currently scores when that is a different release. The full
+// compatible catalog is carried separately as a compact, client-safe search index.
+const OPENROUTER_FEATURED_MODELS_PER_VENDOR = 2
 
 /**
  * Claude Code accepts these as *moving aliases* on `--model` and resolves each to the newest
@@ -72,7 +76,12 @@ const CLAUDE_CLI_ALIAS_FAMILIES = ['opus', 'sonnet', 'haiku']
 // Display order for known families; anything discovered but unlisted is appended in
 // version order, so a brand-new tier still shows up without a code change.
 const CLAUDE_FAMILY_ORDER = ['opus', 'sonnet', 'haiku', 'fable', 'mythos']
-const CODEX_FAMILY_ORDER = ['sol', 'terra', 'luna']
+const CODEX_FAMILY_ORDER = ['astra', 'sol', 'terra', 'luna']
+
+// These exact releases are no longer valid Codex choices. Keep retirement scoped to concrete ids:
+// if OpenAI later ships a new Mini or Nano generation, discovery will surface it automatically.
+// Future retirements should normally arrive through the provider's `shutdown_date` metadata.
+const CODEX_RETIRED_MODEL_IDS = new Set(['gpt-5.4-mini', 'gpt-5.4-nano'])
 
 /**
  * Last-resort catalogs. Only used when discovery fails AND no cached catalog exists, so the
@@ -89,9 +98,10 @@ const FALLBACK_CATALOGS = {
     },
     codex: {
         families: [
-            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-5.6-sol', isAlias: false },
+            { id: 'astra', label: 'Astra', resolvedModel: 'gpt-6-astra', isAlias: false },
+            { id: 'sol', label: 'Sol', resolvedModel: 'gpt-6.1-sol', isAlias: false },
             { id: 'terra', label: 'Terra', resolvedModel: 'gpt-5.6-terra', isAlias: false },
-            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-5.6-luna', isAlias: false },
+            { id: 'luna', label: 'Luna', resolvedModel: 'gpt-6-luna', isAlias: false },
         ],
     },
     // Only the two long-lived DeepSeek pointer ids, which OpenRouter keeps aimed at the current
@@ -175,16 +185,29 @@ function titleCase(value) {
 }
 
 /**
- * Group parsed models into families, each pointing at its newest member.
+ * Group parsed models into families, each pointing at its newest active member. `modelEntries`
+ * accepts both raw provider objects and plain ids for backwards-compatible callers/tests.
  *
- * Codex-only rule: keep families that exist in the newest generation. OpenAI's suffix is the
- * capability tier and the number is the generation, so a tier that stopped shipping (the
- * gpt-5.4-era `mini`/`nano`) is genuinely retired rather than merely older, while Sol/Terra/Luna
- * all appear at the current generation. Claude does NOT get this rule: Haiku 4.5 sits a whole
- * major behind Opus 5 and is still a current, offered tier.
+ * There is deliberately no provider-wide "newest generation" filter: model families advance on
+ * independent schedules, and a new flagship must not erase active value/latency tiers. Unknown
+ * families are included automatically and sorted after the familiar choices.
  */
-function buildFamilies(provider, modelIds) {
-    const parsed = (modelIds || []).map(id => parseModelId(provider, id)).filter(Boolean)
+function buildFamilies(provider, modelEntries, options = {}) {
+    const now = typeof options.now === 'number' ? options.now : Date.now()
+    const parsed = (modelEntries || [])
+        .map(entry => {
+            const rawEntry = typeof entry === 'string' ? { id: entry } : entry
+            if (!rawEntry || typeof rawEntry.id !== 'string') return null
+
+            if (provider === 'codex') {
+                if (CODEX_RETIRED_MODEL_IDS.has(rawEntry.id.trim().toLowerCase())) return null
+                const shutdownAt = rawEntry.shutdown_date ? Date.parse(rawEntry.shutdown_date) : NaN
+                if (Number.isFinite(shutdownAt) && shutdownAt <= now) return null
+            }
+
+            return parseModelId(provider, rawEntry.id)
+        })
+        .filter(Boolean)
     if (!parsed.length) return []
 
     const newestByFamily = new Map()
@@ -193,17 +216,7 @@ function buildFamilies(provider, modelIds) {
         if (!current || compareVersions(model, current) > 0) newestByFamily.set(model.family, model)
     }
 
-    let entries = Array.from(newestByFamily.values())
-
-    if (provider === 'codex') {
-        // Generation is major.minor for OpenAI ("5.6"), so compare both — matching on the major
-        // alone would keep the retired gpt-5.4 `mini`/`nano` tiers alive next to gpt-5.6.
-        const newestGeneration = entries.reduce(
-            (best, entry) => (compareVersions(entry, best) > 0 ? entry : best),
-            entries[0]
-        )
-        entries = entries.filter(entry => compareVersions(entry, newestGeneration) === 0)
-    }
+    const entries = Array.from(newestByFamily.values())
 
     const order = provider === 'claude' ? CLAUDE_FAMILY_ORDER : CODEX_FAMILY_ORDER
     entries.sort((a, b) => {
@@ -294,10 +307,10 @@ function normalizeOpenRouterPricing(pricing) {
 }
 
 /**
- * Upstream prices for **every** Codex-compatible model rather than only the picker's top-N slice. The
- * picker is capped at `OPENROUTER_MAX_MODELS`, but an `agentModel` tool argument can name any valid
- * id, and a job priced off a missing entry would silently fall back to the Sol base rate. A few
- * hundred small entries cost nothing against Firestore's 1MB document limit.
+ * Upstream prices for **every** Codex-compatible model rather than only the featured picker. Search
+ * and an `agentModel` tool argument can name any valid id, and a job priced off a missing entry would
+ * silently fall back to the Sol base rate. A few hundred small entries cost nothing against
+ * Firestore's 1MB document limit.
  *
  * An array of `{ id, … }` rather than an id-keyed map on purpose: OpenRouter ids contain `/`, `.` and
  * sometimes `:`, and while Firestore tolerates those in map keys written via `set()`, `.` is a field
@@ -349,8 +362,36 @@ async function getOpenRouterUpstreamPrice(modelId, options = {}) {
  * prefixed model selection here — OpenRouter ids like `deepseek/deepseek-chat` are already moving
  * pointers maintained by the vendor, so there is no family layer left to invent.
  */
+function openRouterAgenticScore(entry) {
+    const rawScore = entry?.benchmarks?.artificial_analysis?.agentic_index
+    if (rawScore == null || rawScore === '') return null
+    const score = Number(rawScore)
+    return Number.isFinite(score) ? score : null
+}
+
+function toOpenRouterModel(entry, vendor = openRouterVendor(entry.id), includePricing = true) {
+    return {
+        id: toOpenRouterSelection(entry.id),
+        // Prefer OpenRouter's own display name; derive one only when it is missing.
+        label:
+            typeof entry.name === 'string' && entry.name.trim()
+                ? entry.name.trim()
+                : formatOpenRouterModelLabel(entry.id),
+        vendor,
+        modelId: entry.id,
+        resolvedModel: toOpenRouterSelection(entry.id),
+        isAlias: false,
+        // Featured entries carry their price as a legacy-cache fallback. Search entries omit it:
+        // the UI never reads prices, and the separate server-only pricing list covers every model.
+        ...(includePricing ? { upstreamPrice: normalizeOpenRouterPricing(entry.pricing) } : {}),
+    }
+}
+
 function buildOpenRouterModels(entries, options = {}) {
-    const limit = Number(options.limit) || OPENROUTER_MAX_MODELS
+    const featuredPerVendor =
+        Number.isInteger(options.featuredPerVendor) && options.featuredPerVendor > 0
+            ? options.featuredPerVendor
+            : OPENROUTER_FEATURED_MODELS_PER_VENDOR
     const usable = (Array.isArray(entries) ? entries : []).filter(isCodexCompatibleOpenRouterModel)
 
     const ranked = usable
@@ -373,25 +414,40 @@ function buildOpenRouterModels(entries, options = {}) {
             return a.entry.id.localeCompare(b.entry.id)
         })
 
+    const featured = []
+    for (const vendor of OPENROUTER_VENDOR_ORDER) {
+        const vendorModels = ranked.filter(model => model.vendor === vendor)
+        if (!vendorModels.length) continue
+
+        // Variants such as :free and :batch remain searchable, but a canonical model is the less
+        // surprising default recommendation whenever the vendor exposes one.
+        const canonical = vendorModels.filter(model => !model.entry.id.includes(':'))
+        const candidates = canonical.length ? canonical : vendorModels
+        const newest = candidates[0]
+        const bestAgentic = candidates
+            .filter(model => openRouterAgenticScore(model.entry) !== null)
+            .sort((a, b) => {
+                const scoreDifference = openRouterAgenticScore(b.entry) - openRouterAgenticScore(a.entry)
+                if (scoreDifference) return scoreDifference
+                if (a.created !== b.created) return b.created - a.created
+                return a.entry.id.localeCompare(b.entry.id)
+            })[0]
+
+        for (const model of [newest, bestAgentic]) {
+            if (!model || featured.some(item => item.entry.id === model.entry.id)) continue
+            featured.push(model)
+            if (featured.filter(item => item.vendor === vendor).length >= featuredPerVendor) break
+        }
+    }
+
+    const effectiveFeatured = featured.length ? featured : ranked.slice(0, OPENROUTER_FEATURED_MODELS_PER_VENDOR)
+    const searchModels = ranked.map(({ entry, vendor }) => toOpenRouterModel(entry, vendor, false))
     return {
-        models: ranked.slice(0, limit).map(({ entry, vendor }) => ({
-            id: toOpenRouterSelection(entry.id),
-            // Prefer OpenRouter's own display name; derive one only when it is missing.
-            label:
-                typeof entry.name === 'string' && entry.name.trim()
-                    ? entry.name.trim()
-                    : formatOpenRouterModelLabel(entry.id),
-            vendor,
-            modelId: entry.id,
-            resolvedModel: toOpenRouterSelection(entry.id),
-            isAlias: false,
-            // Carried on the entry as well as in the `pricing` map so a cached catalog stays
-            // self-sufficient for everything the picker can actually offer.
-            upstreamPrice: normalizeOpenRouterPricing(entry.pricing),
-        })),
+        models: effectiveFeatured.map(({ entry, vendor }) => toOpenRouterModel(entry, vendor)),
+        searchModels,
         pricing: buildOpenRouterPricing(entries),
         total: ranked.length,
-        truncated: ranked.length > limit,
+        truncated: ranked.length > effectiveFeatured.length,
     }
 }
 
@@ -502,11 +558,13 @@ async function readCachedCatalog(provider) {
             source: 'cache',
             ...(typeof data.total === 'number' ? { total: data.total } : {}),
             ...(typeof data.truncated === 'boolean' ? { truncated: data.truncated } : {}),
+            ...(Array.isArray(data.searchModels) ? { searchModels: data.searchModels } : {}),
             // Carried through so a cache hit can still price a run. Without this the projection
             // silently drops the price list and every cached-catalog job falls back to the Sol base
             // rate — i.e. the live pricing path would only ever work on the one request that
             // refreshed the catalog, which is the majority of runs mispriced and nothing to show it.
             ...(Array.isArray(data.pricing) ? { pricing: data.pricing } : {}),
+            ...(typeof data.schemaVersion === 'number' ? { schemaVersion: data.schemaVersion } : {}),
         }
     } catch (error) {
         console.warn('🖥️ VM MODELS: Failed reading cached model catalog', { provider, error: error.message })
@@ -516,7 +574,16 @@ async function readCachedCatalog(provider) {
 
 async function writeCachedCatalog(provider, families, fetchedAt, extra = {}) {
     try {
-        await catalogRef(provider).set({ families, fetchedAt, provider, ...extra }, { merge: true })
+        await catalogRef(provider).set(
+            {
+                families,
+                fetchedAt,
+                provider,
+                ...(provider === 'codex' ? { schemaVersion: CODEX_CATALOG_SCHEMA_VERSION } : {}),
+                ...extra,
+            },
+            { merge: true }
+        )
     } catch (error) {
         console.warn('🖥️ VM MODELS: Failed writing model catalog cache', { provider, error: error.message })
     }
@@ -524,6 +591,40 @@ async function writeCachedCatalog(provider, families, fetchedAt, extra = {}) {
 
 function isFresh(catalog, now) {
     return !!catalog && typeof catalog.fetchedAt === 'number' && now - catalog.fetchedAt < CATALOG_TTL_MS
+}
+
+/**
+ * Attach the exact token-Gold rate the VM billing resolver would use to every client-selectable
+ * model. The Settings picker must never maintain a parallel price table: OpenAI and Anthropic
+ * families resolve through the same researched prices as a run, and OpenRouter uses the live
+ * catalog price for both featured and searched models.
+ *
+ * The server-only raw `pricing` array is still stripped before the catalog reaches the client. A
+ * single derived integer per model is all the UI needs and reveals no provider credentials or
+ * internal billing inputs.
+ */
+function decorateCatalogGoldPricing(provider, catalog) {
+    const pricingByModelId = new Map(
+        (Array.isArray(catalog?.pricing) ? catalog.pricing : []).map(price => [String(price.id).toLowerCase(), price])
+    )
+    const decorateModel = model => {
+        const selection =
+            provider === OPENROUTER_PROVIDER ? model.id : model.latestModel || model.resolvedModel || model.id
+        const livePrice =
+            provider === OPENROUTER_PROVIDER
+                ? pricingByModelId.get(String(model.modelId || '').toLowerCase()) || model.upstreamPrice
+                : null
+        return {
+            ...model,
+            tokensPerGold: resolveTokensPerGold(selection, undefined, { upstreamPrice: livePrice }),
+        }
+    }
+
+    return {
+        ...catalog,
+        families: (catalog?.families || []).map(decorateModel),
+        ...(Array.isArray(catalog?.searchModels) ? { searchModels: catalog.searchModels.map(decorateModel) } : {}),
+    }
 }
 
 /**
@@ -545,36 +646,59 @@ async function getModelCatalog(provider, options = {}) {
     // `getVmAgentSettings`, and shipping a few tens of KB of prices the UI never reads on every
     // Settings load would be pure waste.
     const decorate = catalog => {
-        if (!isOpenRouter) return catalog
-        const decorated = { ...catalog, available: isOpenRouterConfigured(options) }
+        // Cached/discovered Sol 6.0 choices follow the reviewed replacement even during outages.
+        if (provider === 'codex') {
+            catalog = {
+                ...catalog,
+                families: (catalog.families || []).map(model => ({
+                    ...model,
+                    ...(model.resolvedModel === 'gpt-6-sol' ? { resolvedModel: 'gpt-6.1-sol' } : {}),
+                    ...(model.latestModel === 'gpt-6-sol' ? { latestModel: 'gpt-6.1-sol' } : {}),
+                })),
+            }
+        }
+        const pricedCatalog = decorateCatalogGoldPricing(provider, catalog)
+        if (!isOpenRouter) return pricedCatalog
+        const decorated = { ...pricedCatalog, available: isOpenRouterConfigured(options) }
         if (!options.includePricing) delete decorated.pricing
         return decorated
     }
 
     const now = typeof options.now === 'number' ? options.now : Date.now()
     const cached = options.forceRefresh ? null : await readCachedCatalog(provider)
-    if (isFresh(cached, now)) return decorate({ ...cached, source: 'cache' })
+    // Refresh old cache shapes immediately after a catalog policy change instead of making users
+    // wait up to 12 hours. A schema version is deliberately better than checking for today's known
+    // families: new families remain valid without another code edit.
+    const hasCurrentOpenRouterShape = !isOpenRouter || Array.isArray(cached?.searchModels)
+    const hasCurrentCodexShape = provider !== 'codex' || cached?.schemaVersion === CODEX_CATALOG_SCHEMA_VERSION
+    const hasCurrentCacheShape = hasCurrentOpenRouterShape && hasCurrentCodexShape
+    if (isFresh(cached, now) && hasCurrentCacheShape) return decorate({ ...cached, source: 'cache' })
 
     try {
         const entries = await fetchProviderModelEntries(provider, options)
         if (isOpenRouter) {
-            const { models, pricing, total, truncated } = buildOpenRouterModels(entries, options)
+            const { models, searchModels, pricing, total, truncated } = buildOpenRouterModels(entries, options)
             if (models.length) {
-                await writeCachedCatalog(provider, models, now, { total, truncated, pricing })
-                return decorate({ families: models, fetchedAt: now, source: 'live', total, truncated, pricing })
+                await writeCachedCatalog(provider, models, now, { total, truncated, searchModels, pricing })
+                return decorate({
+                    families: models,
+                    searchModels,
+                    fetchedAt: now,
+                    source: 'live',
+                    total,
+                    truncated,
+                    pricing,
+                })
             }
             console.warn('🖥️ VM MODELS: OpenRouter discovery returned no compatible models', {
                 provider,
                 count: entries.length,
             })
         } else {
-            const families = buildFamilies(
-                provider,
-                entries.map(entry => entry.id)
-            )
+            const families = buildFamilies(provider, entries, { now })
             if (families.length) {
                 await writeCachedCatalog(provider, families, now)
-                return { families, fetchedAt: now, source: 'live' }
+                return decorate({ families, fetchedAt: now, source: 'live' })
             }
             console.warn('🖥️ VM MODELS: Discovery returned no usable families', { provider, count: entries.length })
         }
@@ -582,8 +706,10 @@ async function getModelCatalog(provider, options = {}) {
         console.warn('🖥️ VM MODELS: Live model discovery failed', { provider, error: error.message })
     }
 
-    // Stale beats static: a 3-day-old real catalog is closer to the truth than our hardcoded one.
-    if (cached) return decorate({ ...cached, source: 'stale' })
+    // A stale catalog beats static unless its Codex schema predates the current family policy.
+    // OpenRouter deliberately keeps accepting its pre-search shape here because old entries may
+    // still carry a live upstream price that is more useful to billing than the static fallback.
+    if (cached && hasCurrentCodexShape) return decorate({ ...cached, source: 'stale' })
     return decorate({ families: FALLBACK_CATALOGS[provider].families, fetchedAt: 0, source: 'fallback' })
 }
 
@@ -620,8 +746,9 @@ async function resolveFamilyToModel(provider, familyId, options = {}) {
         const modelId = parseOpenRouterSelection(familyId)
         if (!modelId) return null
         const catalog = await getModelCatalog(OPENROUTER_PROVIDER, options)
-        const match = catalog.families.find(model => model.id === familyId)
-        if (match) return match.resolvedModel
+        const availableModels = [...(catalog.families || []), ...(catalog.searchModels || [])]
+        const match = availableModels.find(model => model.id === familyId)
+        if (match) return match.resolvedModel || toOpenRouterSelection(match.modelId || modelId)
         // Degraded discovery must not silently downgrade the user to a different vendor's model.
         // The id is well-formed and OpenRouter resolves it itself, so pass it through.
         return toOpenRouterSelection(modelId)
@@ -641,16 +768,18 @@ async function resolveFamilyToModel(provider, familyId, options = {}) {
 module.exports = {
     CATALOG_TTL_MS,
     CATALOG_COLLECTION,
+    CODEX_CATALOG_SCHEMA_VERSION,
     VALID_PROVIDERS,
     CATALOG_PROVIDERS,
     OPENROUTER_PROVIDER,
-    OPENROUTER_MAX_MODELS,
+    OPENROUTER_FEATURED_MODELS_PER_VENDOR,
     CLAUDE_CLI_ALIAS_FAMILIES,
     FALLBACK_CATALOGS,
     parseModelId,
     buildFamilies,
     buildOpenRouterModels,
     buildOpenRouterPricing,
+    decorateCatalogGoldPricing,
     normalizeOpenRouterPricing,
     getOpenRouterUpstreamPrice,
     isCodexCompatibleOpenRouterModel,

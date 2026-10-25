@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Dimensions } from 'react-native'
+import { Dimensions, View } from 'react-native'
 import ReactQuill from 'react-quill-new'
 import v4 from 'uuid/v4'
 import { useDispatch, useSelector } from 'react-redux'
@@ -11,6 +11,7 @@ import {
     setQuillTextInputProjectIdsByEditorId,
 } from '../../../redux/actions'
 import CustomScrollView from '../../UIControls/CustomScrollView'
+import AddFeedAttachButton from '../AddFeed/AddFeedAttachButton'
 import WrapperMentionsModal from './WrapperMentionsModal'
 import {
     ALLOWED_FORMATS,
@@ -20,6 +21,7 @@ import {
     CREATE_SUBTASK_MODAL_THEME,
     CREATE_TASK_MODAL_THEME,
     createPlaceholder,
+    createAppManagedFileUpload,
     getElementOffset,
     GOAL_THEME,
     MENTION_MODAL_CONTACTS_TAB,
@@ -43,7 +45,17 @@ import {
     CREATE_PROJECT_THEME_MODERN,
     INVITE_THEME_MODERN,
     INVITE_THEME_DEFAULT,
+    normalizeDictatedText,
+    buildDictationDelta,
+    buildResolvedPeopleMention,
+    placeDictationCaret,
+    insertAttachmentInsideEditor,
 } from './textInputHelper'
+import RambleButton from '../../UIControls/RambleButton'
+import { isDictationSupported } from '../../../hooks/useRambleRecorder'
+import { isDictationButtonVisible, shouldTrackDictationActivity } from './dictationVisibility'
+import useDictationSubmit from './dictationSubmit'
+import { unmountEmbedReactRoots } from './autoformat/formats/embedReactRoot'
 import {
     ATTACHMENT_TRIGGER,
     IMAGE_TRIGGER,
@@ -64,6 +76,7 @@ import {
     isValidProjectLink,
     isValidTaskLink,
     isValidAssistantLink,
+    isValidArtifactLink,
     getDvMainTabLink,
 } from '../../../utils/LinkingHelper'
 import Backend from '../../../utils/BackendBridge'
@@ -129,11 +142,19 @@ function CustomTextInput3(
         chatAssistantData,
         setAssistantId,
         autoFocus,
+        focusOnInitialText = true,
         onMentionSelected,
+        insertAssistantAsMention = false,
         onContentSizeChange,
         scrollEnabled = true,
         showScrollIndicator = true,
         autoExpand = false,
+        hideDictation = false,
+        dictationTargetKind,
+        alwaysShowDictation = false,
+        onDictationSubmit,
+        showAttachmentButton = false,
+        getMentionViewport,
     },
     ref
 ) {
@@ -206,6 +227,164 @@ function CustomTextInput3(
     const processPastedFn = keepBreakLines ? processPastedTextWithBreakLines : processPastedText
 
     const allowMentions = !disabledTags && !disabledMentions && !inMentionsEditionTag
+
+    //DICTATION (rambler)
+    const selectionTouchedRef = useRef(false)
+    const [dictationVisible, setDictationVisible] = useState(false)
+    const dictationEnabled =
+        !hideDictation &&
+        !disabledEdition &&
+        !inMentionsEditionTag &&
+        styleTheme !== SEARCH_THEME &&
+        !!innerProjectId &&
+        isDictationSupported()
+    // Task/goal-name editors are title inputs even though they are not `singleLine` — they accept
+    // breaklines only to convert them into the Enter action (i.e. submit), so dictated text must
+    // arrive as a single line there too or a stray '\n' would submit the task mid-insert.
+    const dictationIsTitleTarget =
+        singleLine ||
+        [
+            TASK_THEME,
+            SUBTASK_THEME,
+            GOAL_THEME,
+            CREATE_TASK_MODAL_THEME,
+            CREATE_SUBTASK_MODAL_THEME,
+            NEW_TOPIC_MODAL_THEME,
+        ].includes(styleTheme)
+    const dictationKind = dictationTargetKind || (dictationIsTitleTarget ? 'title' : 'generic')
+
+    useEffect(() => {
+        if (!dictationEnabled || !editorElement) return
+        // Reserve the mic strip in the text layout (see .ql-editorWithDictation in styles.css).
+        editorElement.classList.add('ql-editorWithDictation')
+        return () => editorElement.classList.remove('ql-editorWithDictation')
+    }, [dictationEnabled, editorElement])
+
+    // Composer inputs (assistant line, chat) pin the mic on: on touch there is no hover, so the
+    // activity rule below only reveals it once the field is already focused — AT-2355.
+    const dictationButtonVisible = isDictationButtonVisible({
+        alwaysShowDictation,
+        activityVisible: dictationVisible,
+    })
+
+    useEffect(() => {
+        if (!shouldTrackDictationActivity({ dictationEnabled, alwaysShowDictation }) || !containerElement) return
+        // The mic overlay lives in CustomScrollView's fixedChildren, OUTSIDE the Quill container —
+        // so visibility tracks the whole input frame (the scroll-boundary element), not
+        // ql-container: moving the pointer onto the overlay itself must not count as leaving.
+        const frameElement = document.getElementById(scrollBoundaryId)
+        if (!frameElement) return
+
+        const activate = () => setDictationVisible(true)
+        const onFocusOut = event => {
+            if (event.relatedTarget && frameElement.contains(event.relatedTarget)) return
+            setDictationVisible(false)
+        }
+        const onMouseLeave = () => {
+            if (frameElement.contains(document.activeElement)) return
+            setDictationVisible(false)
+        }
+        // The listeners attach AFTER the mount effect has already autofocused the editor, and the
+        // pointer that clicked the input is usually still inside the frame — so neither focusin
+        // nor mouseenter will fire until the user happens to leave and re-enter. Initialize from
+        // the current state or the mic stays invisible on exactly the surfaces that autofocus
+        // (add goal/contact/topic — AT: rambler QA).
+        const alreadyActive = (() => {
+            if (frameElement.contains(document.activeElement)) return true
+            try {
+                return frameElement.matches(':hover')
+            } catch (error) {
+                return false
+            }
+        })()
+        if (alreadyActive) setDictationVisible(true)
+        frameElement.addEventListener('focusin', activate)
+        frameElement.addEventListener('focusout', onFocusOut)
+        frameElement.addEventListener('mouseenter', activate)
+        frameElement.addEventListener('mouseleave', onMouseLeave)
+        return () => {
+            frameElement.removeEventListener('focusin', activate)
+            frameElement.removeEventListener('focusout', onFocusOut)
+            frameElement.removeEventListener('mouseenter', activate)
+            frameElement.removeEventListener('mouseleave', onMouseLeave)
+        }
+    }, [dictationEnabled, alwaysShowDictation, containerElement])
+
+    // Whether the last transcript actually made it into the editor. A push-to-talk submit is only
+    // allowed to fire when it did: a transcript that normalizes away to nothing (whitespace, a
+    // lone newline in a title input) would otherwise submit the UNTOUCHED draft — i.e. holding the
+    // mic and saying nothing would send whatever the user had half-typed.
+    const dictationInsertedRef = useRef(false)
+
+    // Cancels the deferred caret re-assertion scheduled by the last `placeDictationCaret`. That
+    // deferred call also re-focuses the editor, which a submitting dictation must not do (AT-2422).
+    const cancelDictationCaretRef = useRef(null)
+
+    const armDictationSubmit = useDictationSubmit({ onDictationSubmit, forceTriggerEnterActionForBreakLines })
+
+    const insertDictatedText = text => {
+        dictationInsertedRef.current = false
+        const editor = quillRef.current
+        if (!editor) return
+        const cleaned = normalizeDictatedText(text, dictationIsTitleTarget)
+        if (!cleaned) return
+
+        const liveSelection = editor.hasFocus() ? editor.getSelection() : null
+        // With no live selection fall back to the last known caret; if the editor was never
+        // focused at all, append at the end rather than pushing dictation before existing text.
+        const fallback = selectionTouchedRef.current
+            ? selectionRef.current
+            : { index: Math.max(0, editor.getLength() - 1), length: 0 }
+        const { index, length } = liveSelection || fallback
+
+        const contentDelta = processPastedFn(
+            cleaned,
+            Delta,
+            innerProjectId,
+            editorId,
+            userEditingTagsId,
+            inGenericTask,
+            genericData,
+            editor,
+            false,
+            null,
+            false
+        )
+        const charBefore = index > 0 ? editor.getText(index - 1, 1) : ''
+        const needsLeadingSpace = !!charBefore && !/\s/.test(charBefore)
+        const { delta, caretIndex } = buildDictationDelta({ Delta, contentDelta, index, length, needsLeadingSpace })
+        // 'user' source: runs the normal onChange path (htmlRef stays in sync — AT-2178, and
+        // onChangeText reaches the parent's save flow) and lands in the undo history.
+        editor.updateContents(delta, 'user')
+        dictationInsertedRef.current = true
+        cancelDictationCaretRef.current = placeDictationCaret(editor, caretIndex, () => quillRef.current === editor)
+    }
+
+    // Push-to-talk (AT-2405): holding the mic inserts the transcript AND fires this input's own
+    // Enter action. The insertion above only QUEUES the host's state update, so the submit is
+    // armed rather than called — `useDictationSubmit` fires it after the next commit, by which
+    // time the host's Enter action can see the dictated text. Submitting synchronously here ran
+    // the host's pre-dictation closure instead, which in the add-new-task field dismissed the
+    // editor and created nothing; see dictationSubmit.js.
+    //
+    // `textRef` is written synchronously by `updateText`, so it already holds draft + transcript
+    // — that is what has to be sent, not the transcript alone, or a half-typed message would be
+    // silently thrown away.
+    //
+    // The caret re-assertion queued by the insertion above is dropped here (AT-2422). It is a
+    // deferred `focus()` + `setSelection()` on a macrotask, while this submit runs from a
+    // post-commit effect that React flushes through the Scheduler — so the host's send, and the
+    // `blur()` + `Keyboard.dismiss()` that go with it, land FIRST and the timer then puts focus
+    // straight back, re-opening the keyboard on a field the user has just emptied by voice. The
+    // caret it was protecting is meaningless on this path: the text is leaving the input. Only the
+    // submitting path cancels, so tapping the mic without holding still ends with the caret placed
+    // after the transcript, ready to keep typing.
+    const submitDictatedText = () => {
+        if (!dictationInsertedRef.current) return
+        cancelDictationCaretRef.current?.()
+        cancelDictationCaretRef.current = null
+        armDictationSubmit(() => textRef.current)
+    }
 
     //MENTIONS
     const tryToOpenMentionModalBySelection = contentLength => {
@@ -301,7 +480,16 @@ function CustomTextInput3(
         if (selectUserToMentionEditTag) {
             selectUserToMentionEditTag(item)
         } else if (activeTab === MENTION_MODAL_CONTACTS_TAB) {
-            if (item.isAssistant) {
+            if (item.isAssistant && insertAssistantAsMention) {
+                selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
+                const mention = buildResolvedPeopleMention(item, v4(), editorId, userEditingTagsId)
+                const delta = new Delta()
+                delta.retain(selectionRef.current.index)
+                delta.insert({ mention })
+                delta.insert(' ')
+                delta.delete(mentionTextRef.current.length + 1)
+                quillRef.current.updateContents(delta, 'user')
+            } else if (item.isAssistant) {
                 const { uid: assistantId } = item
                 selectionRef.current = { index: mentionStartIndexRef.current - 1, length: 0 }
                 const assistantUrl = `${window.location.origin}${getDvMainTabLink(
@@ -347,6 +535,14 @@ function CustomTextInput3(
                                 case 'skills':
                                     await setSkillAssistant(projectId, objectId, assistantId, true)
                                     break
+                                case 'artifacts': {
+                                    // Lazy: every editor in the app renders this input.
+                                    const {
+                                        setArtifactAssistant,
+                                    } = require('../../../utils/backends/Artifacts/artifactsFirestore')
+                                    await setArtifactAssistant(projectId, objectId, assistantId)
+                                    break
+                                }
                                 case 'chats':
                                 case 'topics':
                                     await updateChatAssistant(projectId, objectId, assistantId)
@@ -483,6 +679,13 @@ function CustomTextInput3(
         }
     }
 
+    useEffect(() => {
+        if (disabledEdition && showMentionPopupRef.current) {
+            closeMentionPopup()
+            setFlag(previous => !previous)
+        }
+    }, [disabledEdition])
+
     const getMentionModalLocation = selectionIndex => {
         const mentionModalParentOffset = getElementOffset(document.body)
         const editorOffset = getElementOffset(editorElement)
@@ -533,6 +736,7 @@ function CustomTextInput3(
             onCustomSelectionChange?.(selection, quillRef)
             const { index, length } = selection
             selectionRef.current = { index, length }
+            selectionTouchedRef.current = true
         }
 
         if (!disabledTags && !disabledMentions && selection && editorElement) {
@@ -568,7 +772,8 @@ function CustomTextInput3(
         linkedProjectsUrls,
         linkedGoalsUrls,
         linkedSkillsUrls,
-        linkedAssistantUrls
+        linkedAssistantUrls,
+        linkedArtifactsUrls
     ) => {
         if (!onChangeText) return
 
@@ -585,7 +790,8 @@ function CustomTextInput3(
             linkedProjectsUrls,
             linkedGoalsUrls,
             linkedSkillsUrls,
-            linkedAssistantUrls
+            linkedAssistantUrls,
+            linkedArtifactsUrls
         )
     }
 
@@ -654,6 +860,7 @@ function CustomTextInput3(
                 linkedGoalsUrls,
                 linkedSkillsUrls,
                 linkedAssistantUrls,
+                linkedArtifactsUrls,
             } = getFinalText()
             notifyTextChange(
                 extendedText,
@@ -663,7 +870,8 @@ function CustomTextInput3(
                 linkedProjectsUrls,
                 linkedGoalsUrls,
                 linkedSkillsUrls,
-                linkedAssistantUrls
+                linkedAssistantUrls,
+                linkedArtifactsUrls
             )
         }
 
@@ -703,7 +911,9 @@ function CustomTextInput3(
             }
 
             quillRef.current.updateContents(delta)
-            quillRef.current.setSelection(initialTextExtended.length, 0)
+            // setSelection also focuses Quill. Some prefilled editors, such as the
+            // description in Settings, must stay unfocused when their view opens.
+            if (focusOnInitialText) quillRef.current.setSelection(initialTextExtended.length, 0)
             setInitialLinkedObject && getLinkedUrlInitialText()
         }
     }
@@ -722,6 +932,7 @@ function CustomTextInput3(
         const linkedGoalsUrls = []
         const linkedSkillsUrls = []
         const linkedAssistantUrls = []
+        const linkedArtifactsUrls = []
 
         for (let i = 0; i < deltaContent.ops.length; i++) {
             const op = deltaContent.ops[i]
@@ -821,6 +1032,8 @@ function CustomTextInput3(
                     linkedSkillsUrls.push(url.url)
                 else if (isValidAssistantLink(url.url, innerProjectId) && linkedAssistantUrls.indexOf(url.url) < 0)
                     linkedAssistantUrls.push(url.url)
+                else if (isValidArtifactLink(url.url, innerProjectId) && linkedArtifactsUrls.indexOf(url.url) < 0)
+                    linkedArtifactsUrls.push(url.url)
             } else {
                 if (isValidTaskLink(insert, innerProjectId) && linkedTasksUrls.indexOf(insert) < 0)
                     linkedTasksUrls.push(insert)
@@ -836,6 +1049,8 @@ function CustomTextInput3(
                     linkedSkillsUrls.push(insert)
                 else if (isValidAssistantLink(insert, innerProjectId) && linkedAssistantUrls.indexOf(insert))
                     linkedAssistantUrls.push(insert)
+                else if (isValidArtifactLink(insert, innerProjectId) && linkedArtifactsUrls.indexOf(insert) < 0)
+                    linkedArtifactsUrls.push(insert)
                 finalText += insert
                 finalTextExtended += insert
             }
@@ -852,6 +1067,7 @@ function CustomTextInput3(
             linkedGoalsUrls,
             linkedSkillsUrls,
             linkedAssistantUrls,
+            linkedArtifactsUrls,
         }
     }
 
@@ -906,6 +1122,25 @@ function CustomTextInput3(
             initialSkillsUrls,
             initialAssistantUrls
         )
+    }
+
+    // Which inputs may hold a file at all — the chat composer, the rich comment modal and the
+    // task description ask for these formats; a title or search field does not (AT-2441).
+    const supportsAttachments =
+        !!otherFormats && otherFormats.some(format => format === 'attachment' || format === 'customImageFormat')
+
+    const attachmentButtonEnabled = showAttachmentButton && supportsAttachments && !!innerProjectId && !disabledEdition
+
+    useEffect(() => {
+        if (!attachmentButtonEnabled || !editorElement) return
+        const className = dictationEnabled ? 'ql-editorWithAttachmentAndDictation' : 'ql-editorWithAttachment'
+        editorElement.classList.add(className)
+        return () => editorElement.classList.remove(className)
+    }, [attachmentButtonEnabled, dictationEnabled, editorElement])
+
+    const addAttachmentTag = (text, uri) => {
+        if (!quillRef.current || !attachmentButtonEnabled) return
+        insertAttachmentInsideEditor(selectionRef.current.index, quillRef.current, text, uri)
     }
 
     const getFormats = () => {
@@ -975,6 +1210,12 @@ function CustomTextInput3(
 
     const unmountComponent = () => {
         dispatch(setIsQuillTagEditorOpen(false))
+
+        // Quill 2 has no destroy(), so it never tells a blot that the editor around it is
+        // gone — every React root mounted inside an embed would outlive this input together
+        // with its redux subscription. `detach()` only covers a blot that is deleted from a
+        // LIVING document; this is the other half.
+        unmountEmbedReactRoots(quillRef.current?.root)
 
         if (!inMentionsEditionTag) {
             cleanTagsInteractionsPopus()
@@ -1186,6 +1427,24 @@ function CustomTextInput3(
         return unmountComponent
     }, [])
 
+    // AT-2441. Quill routes a PASTED image file through its uploader, which would insert a
+    // base64 `image` embed this input cannot serialize — it is lost the moment the comment is
+    // posted (see GatedUploader in quill2Setup). Declare the app's own insert instead, so a
+    // pasted file becomes exactly what a dropped one does. Only for inputs that actually accept
+    // attachments: a title or search field has no such format and keeps quill's behaviour.
+    // Reassigned on every render on purpose — the handler closes over the project and the
+    // cursor setter, both of which can change under a live editor.
+    useEffect(() => {
+        if (!quillRef.current) return
+        quillRef.current.appManagedFileUpload = supportsAttachments
+            ? createAppManagedFileUpload({
+                  editor: quillRef.current,
+                  projectId: innerProjectId,
+                  setInputCursorIndex,
+              })
+            : undefined
+    })
+
     useImperativeHandle(ref, () => ({
         getEditorId: () => {
             return editorId
@@ -1268,6 +1527,30 @@ function CustomTextInput3(
             onContentSizeChange={autoExpand ? undefined : onContentSizeChange}
             scrollEnabled={scrollEnabled}
             showIndicator={showScrollIndicator}
+            fixedChildren={
+                dictationEnabled || attachmentButtonEnabled ? (
+                    <View pointerEvents={'box-none'} style={localDictationWrapperStyle}>
+                        {attachmentButtonEnabled && (
+                            <AddFeedAttachButton
+                                compact
+                                projectId={innerProjectId}
+                                isDisabled={!editorElement}
+                                addAttachmentTag={addAttachmentTag}
+                            />
+                        )}
+                        {dictationEnabled && (
+                            <RambleButton
+                                projectId={innerProjectId}
+                                targetKind={dictationKind}
+                                getCurrentText={() => textRef.current}
+                                onTextReady={insertDictatedText}
+                                onSubmit={submitDictatedText}
+                                visible={dictationButtonVisible}
+                            />
+                        )}
+                    </View>
+                ) : null
+            }
         >
             <ReactQuill
                 ref={el => {
@@ -1312,10 +1595,32 @@ function CustomTextInput3(
                     }}
                     inMentionsEditionTag={inMentionsEditionTag}
                     insertNormalMention={insertNormalMention}
+                    getMentionViewport={getMentionViewport}
                 />
             )}
         </CustomScrollView>
     )
+}
+
+// Anchored to the input's visible frame (fixedChildren renders outside the scroll content); right
+// offset clears CustomScrollView's 4px scroll indicator. The mic centers on the FIRST text line,
+// which sits ~5px below the frame top (that offset is codified by the global placeholder rule
+// `.ql-textInputContainer > .ql-editor.ql-blank::before { top: 5px }` in styles.css) with a fixed
+// 24px line-height — so a 24px band at top:6 centers the icon on that line in every input, and in
+// the task row it lands level with the 24px assignee avatar (avatar top 8 in the outer row, this
+// frame at row y=2 → both centers at frame y=18). Frame-centering or bottom-anchoring both drift
+// below the text in inputs whose frame is taller than their content (the add-task row has
+// minHeight 45 with one line at the top). Box-none so the band never swallows input clicks.
+const localDictationWrapperStyle = {
+    position: 'absolute',
+    right: 8,
+    top: 6,
+    height: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    justifyContent: 'center',
+    zIndex: 10,
 }
 
 export default forwardRef(CustomTextInput3)

@@ -6,7 +6,10 @@ const REGEX_URL_START =
 
 const LEADING_BOUNDARIES = new Set(['(', '[', '{', '<', '"', "'", '“', '‘'])
 const TRAILING_BOUNDARIES = new Set(['>', '"', "'", '”', '’'])
-const TRAILING_PUNCTUATION = new Set(['.', ',', ';', ':', '!', '?'])
+// An attached `?` is a valid URL query delimiter even when no query parameters follow it.
+// Treating it as prose punctuation changed the destination of pasted URLs such as
+// `https://example.com/edit?` and also added a separate character after the link embed.
+const TRAILING_PUNCTUATION = new Set(['.', ',', ';', ':', '!'])
 const CLOSING_BOUNDARIES = {
     ')': '(',
     ']': '[',

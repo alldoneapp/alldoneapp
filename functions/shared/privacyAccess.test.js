@@ -57,6 +57,9 @@ describe('privacyAccess', () => {
     test('asserts project membership before object access', async () => {
         const db = makeDb({
             'users/user-1': { projectIds: ['project-1'] },
+            'projects/project-1': { userIds: ['user-1'] },
+            // A forged denormalized user field must not grant access.
+            'projects/project-2': { userIds: ['user-2'] },
             'items/project-1/tasks/task-1': { isPublicFor: ['user-1'] },
             'items/project-1/tasks/task-hidden': { isPublicFor: ['user-2'] },
         })

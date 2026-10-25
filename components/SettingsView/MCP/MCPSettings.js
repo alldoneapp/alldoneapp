@@ -23,6 +23,13 @@ const MCP_TOOL_KEYS = [
     'create_note',
     'update_note',
     'get_notes',
+    'get_artifacts',
+    'read_artifact',
+    'create_artifact',
+    'update_artifact',
+    'read_knowledge_page',
+    'correct_knowledge_page',
+    'undo_knowledge_correction',
     'update_contact',
     'get_contacts',
     'search',
@@ -50,6 +57,19 @@ const MCP_TOOL_KEYS = [
     'update_calendar_event',
     'delete_calendar_event',
 ]
+
+// MCP lists the artifact tools one by one; in an assistant's Tools Access they are a single
+// permission, so they have no label of their own there. The wiki tools have no Tools Access entry at
+// all (an assistant gets them with the wiki).
+const MCP_TOOL_LABELS = {
+    get_artifacts: 'List artifacts',
+    read_artifact: 'Read artifact',
+    create_artifact: 'Create artifact',
+    update_artifact: 'Update artifact',
+    read_knowledge_page: 'Read wiki page',
+    correct_knowledge_page: 'Correct wiki page',
+    undo_knowledge_correction: 'Undo wiki correction',
+}
 
 // Derive the MCP server URL from the host the user is currently on so it is
 // always correct for the environment (my.alldone.app, mystaging.alldone.app, …).
@@ -190,7 +210,7 @@ export default function MCPSettings() {
                     {MCP_TOOL_KEYS.map(toolKey => (
                         <View style={localStyles.toolRow} key={toolKey}>
                             <Text style={localStyles.toolLabel} numberOfLines={1}>
-                                {translate(TOOL_LABEL_BY_KEY[toolKey] || toolKey)}
+                                {translate(TOOL_LABEL_BY_KEY[toolKey] || MCP_TOOL_LABELS[toolKey] || toolKey)}
                             </Text>
                             <Switch
                                 active={mcpEnabled && !disabledSet.has(toolKey)}

@@ -25,6 +25,16 @@ export const STATISTIC_CHART_XP = 'CHART_XP'
 export const STATISTIC_CHART_HAPPINESS = 'CHART_HAPPINESS'
 export const STATISTIC_CHART_OKRS = 'CHART_OKRS'
 
+// A statistics document's `timestamp` is the completion time of the LAST task that touched it,
+// so two consecutive days can carry stamps minutes apart (23:48 on one day, 00:00 on the next
+// once a day-rate reconcile writes a midnight stamp). Chart.js sizes every bar on a time axis
+// from the smallest gap between x values, so an 11-minute gap turned a month of bars into
+// hairlines. Snap each point to the start of the chart's unit so the bars are evenly spaced.
+export const getChartBucketTimestamp = (timestamp, unit) => {
+    const bucket = moment(timestamp)
+    return unit ? bucket.startOf(unit).valueOf() : bucket.valueOf()
+}
+
 export const getDataForCharts = (data, format, unit, dateList) => {
     const dataArray = transformObjectToArray(data)
     let groupedData = dateList ? Array.from({ length: dateList.length }, (v, i) => ({ x: dateList[i], y: 0 })) : []
@@ -39,7 +49,7 @@ export const getDataForCharts = (data, format, unit, dateList) => {
             groupedData[index] = { ...item, y: item.y + yData.y }
         } else {
             tempDateList.push(formattedDate)
-            groupedData.push(yData)
+            groupedData.push({ x: getChartBucketTimestamp(yData.x, unit), y: yData.y })
         }
     })
 

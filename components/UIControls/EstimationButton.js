@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react'
-import Popover from 'react-tiny-popover'
+import AppPopover from '../UIComponents/ModalShell/AppPopover'
 import Hotkeys from 'react-hot-keys'
 import { useSelector } from 'react-redux'
 
@@ -68,7 +68,7 @@ export default function EstimationButton({
     }
 
     return (
-        <Popover
+        <AppPopover
             content={
                 <EstimationModal
                     projectId={projectId}
@@ -106,6 +106,6 @@ export default function EstimationButton({
                     shortcutText={shortcutText}
                 />
             </Hotkeys>
-        </Popover>
+        </AppPopover>
     )
 }

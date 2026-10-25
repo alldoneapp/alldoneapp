@@ -2,195 +2,197 @@ import moment from 'moment'
 import { orderBy } from 'lodash'
 
 import {
+    CALENDAR_LEGACY_SORT_INDEX_BASE,
     getCalendarEventStartTimestamp,
-    isCalendarDerivedSortIndex,
+    isLegacyCalendarBandSortIndex,
+    isLegacyCalendarEventStartSortIndex,
     resolveTaskSortIndex,
 } from './CalendarTaskSortIndex'
-import { sortTasksByPriority, TASK_PRIORITY_MUST_DO, TASK_PRIORITY_NONE } from './TaskPriority'
+import { sortTasksByPriority, TASK_PRIORITY_NONE } from './TaskPriority'
 
 const {
-    isCalendarDerivedSortIndex: serverIsCalendarDerivedSortIndex,
+    isLegacyCalendarBandSortIndex: serverIsLegacyCalendarBandSortIndex,
+    isLegacyCalendarEventStartSortIndex: serverIsLegacyCalendarEventStartSortIndex,
     resolveTaskSortIndex: serverResolveTaskSortIndex,
 } = require('../functions/shared/calendarTaskSortIndex')
 
-const NOW = moment('2026-08-11T17:00:00+02:00').valueOf()
+const NOW = moment('2026-08-18T15:00:00+02:00').valueOf()
+const CREATED = NOW - 3 * 86400000
 const MEETING_START = '2026-08-20T10:00:00+02:00'
 
-/** Exactly what `sortTasksListThatHaveNewTasks` runs for a main-task group. */
-const orderGroupLikeTheTaskList = tasks => sortTasksByPriority(orderBy(tasks, 'sortIndex', 'desc'))
+const calendarData = (start = { dateTime: MEETING_START }) => ({ eventId: 'event-1', start })
 
-/** A task as it lands in the store: `mapTaskData` normalizes sortIndex on the way in. */
-const ingest = task => ({
-    ...task,
-    priority: task.priority || TASK_PRIORITY_NONE,
-    sortIndex: resolveTaskSortIndex(task.sortIndex, task.calendarData, task.created),
+/** How the sync wrote a calendar task before AT-2259: the event start WAS the ordering key. */
+const legacyEventStartIndex = start =>
+    start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf()
+
+/** How AT-2270 wrote it: a reserved band two orders of magnitude below every generated index. */
+const legacyBandIndex = start => {
+    const eventStart = start.dateTime
+        ? moment(start.dateTime).valueOf()
+        : moment.utc(start.date, 'YYYY-MM-DD', true).valueOf()
+    return CALENDAR_LEGACY_SORT_INDEX_BASE - eventStart
+}
+
+describe('getCalendarEventStartTimestamp', () => {
+    it('reads the event start, and only from calendarData', () => {
+        expect(getCalendarEventStartTimestamp(calendarData())).toBe(moment(MEETING_START).valueOf())
+        expect(getCalendarEventStartTimestamp(calendarData({ date: '2026-08-20' }))).toBe(
+            moment('2026-08-20').valueOf()
+        )
+        expect(getCalendarEventStartTimestamp(null)).toBeNull()
+        expect(getCalendarEventStartTimestamp({ eventId: 'no-start' })).toBeNull()
+    })
 })
 
-const buildLegacyCalendarTask = (id, { start = { dateTime: MEETING_START }, created = NOW - 3 * 86400000 } = {}) => ({
-    id,
-    calendarData: { eventId: `event-${id}`, start },
-    // The bug: the event start was persisted as the ordering key.
-    sortIndex: start.dateTime ? moment(start.dateTime).valueOf() : moment(start.date).valueOf(),
-    created,
+describe('isLegacyCalendarBandSortIndex', () => {
+    it('recognises an AT-2270 band value', () => {
+        expect(isLegacyCalendarBandSortIndex(legacyBandIndex({ dateTime: MEETING_START }))).toBe(true)
+        expect(isLegacyCalendarBandSortIndex(legacyBandIndex({ date: '2026-08-20' }))).toBe(true)
+    })
+
+    it('does not touch any value a generator can actually produce', () => {
+        expect(isLegacyCalendarBandSortIndex(NOW)).toBe(false)
+        // generateNegativeSortIndex() — subtasks, templates, the "no stored index" fallback.
+        expect(isLegacyCalendarBandSortIndex(-NOW)).toBe(false)
+        // The focus band.
+        expect(isLegacyCalendarBandSortIndex(Number.MAX_SAFE_INTEGER - 1e15 + NOW)).toBe(false)
+        expect(isLegacyCalendarBandSortIndex(0)).toBe(false)
+        expect(isLegacyCalendarBandSortIndex(undefined)).toBe(false)
+        expect(isLegacyCalendarBandSortIndex(NaN)).toBe(false)
+    })
 })
 
-const buildTask = (id, sortIndex) => ({ id, sortIndex, created: sortIndex, calendarData: null })
-
-const idsOf = tasks => tasks.map(task => task.id)
-
-describe('AT-2259 - calendar tasks are not pinned to the top of their group', () => {
-    it('adds a newly created task above an existing calendar task', () => {
-        const meeting = ingest(buildLegacyCalendarTask('meeting'))
-        const existing = ingest(buildTask('existing', NOW - 60000))
-        const justAdded = ingest(buildTask('just-added', NOW))
-
-        expect(idsOf(orderGroupLikeTheTaskList([meeting, existing, justAdded]))).toEqual([
-            'just-added',
-            'existing',
-            'meeting',
-        ])
+describe('isLegacyCalendarEventStartSortIndex', () => {
+    it('matches a timed event exactly', () => {
+        const start = { dateTime: MEETING_START }
+        expect(isLegacyCalendarEventStartSortIndex(legacyEventStartIndex(start), calendarData(start))).toBe(true)
+        expect(isLegacyCalendarEventStartSortIndex(legacyEventStartIndex(start) + 1, calendarData(start))).toBe(false)
     })
 
-    it('leaves the meeting above tasks that are older than it is, rather than always demoting it', () => {
-        // The rule is "ordered by when it entered the list", not "calendar tasks go last".
-        const meeting = ingest(buildLegacyCalendarTask('meeting', { created: NOW - 3600000 }))
-        const older = ingest(buildTask('older', NOW - 7200000))
-        const newer = ingest(buildTask('newer', NOW - 600000))
+    it('matches an all-day event by proximity to local midnight AND minute alignment', () => {
+        const start = { date: '2026-08-20' }
+        const localMidnight = moment('2026-08-20').valueOf()
 
-        expect(idsOf(orderGroupLikeTheTaskList([older, meeting, newer]))).toEqual(['newer', 'meeting', 'older'])
+        expect(isLegacyCalendarEventStartSortIndex(localMidnight, calendarData(start))).toBe(true)
+        // A different timezone's midnight for the same day is still within tolerance.
+        expect(isLegacyCalendarEventStartSortIndex(localMidnight + 6 * 3600000, calendarData(start))).toBe(true)
+        // A generated index is an arbitrary millisecond, so it is not minute-aligned.
+        expect(isLegacyCalendarEventStartSortIndex(localMidnight + 1, calendarData(start))).toBe(false)
+        // Far outside any real offset.
+        expect(isLegacyCalendarEventStartSortIndex(localMidnight + 40 * 3600000, calendarData(start))).toBe(false)
     })
 
-    it('lets a task dragged to the top of the group actually land above the calendar task', () => {
-        // DragHelper assigns `generateSortIndex()` (= now) when a task is dropped at index 0. Under
-        // the old behavior that was still below the meeting's future event start.
-        const meeting = ingest(buildLegacyCalendarTask('meeting'))
-        const dragged = { ...ingest(buildTask('dragged', NOW - 86400000)), sortIndex: NOW }
-
-        expect(idsOf(orderGroupLikeTheTaskList([meeting, dragged]))).toEqual(['dragged', 'meeting'])
-    })
-
-    it('keeps an all-day event from outranking everything in a future group', () => {
-        const allDay = ingest(
-            buildLegacyCalendarTask('all-day', { start: { date: '2026-08-20' }, created: NOW - 86400000 })
-        )
-        const justAdded = ingest(buildTask('just-added', NOW))
-
-        expect(idsOf(orderGroupLikeTheTaskList([allDay, justAdded]))).toEqual(['just-added', 'all-day'])
-    })
-
-    it('still lets priority beat recency, for calendar tasks too', () => {
-        const meeting = { ...ingest(buildLegacyCalendarTask('meeting')), priority: TASK_PRIORITY_MUST_DO }
-        const justAdded = ingest(buildTask('just-added', NOW))
-
-        expect(idsOf(orderGroupLikeTheTaskList([justAdded, meeting]))).toEqual(['meeting', 'just-added'])
-    })
-
-    it('orders several calendar tasks among themselves by when they arrived', () => {
-        const first = ingest(buildLegacyCalendarTask('synced-first', { created: NOW - 7200000 }))
-        const second = ingest(
-            buildLegacyCalendarTask('synced-second', {
-                start: { dateTime: '2026-08-20T08:00:00+02:00' },
-                created: NOW - 3600000,
-            })
-        )
-
-        expect(idsOf(orderGroupLikeTheTaskList([first, second]))).toEqual(['synced-second', 'synced-first'])
+    it('never matches a task that is not a calendar task', () => {
+        expect(isLegacyCalendarEventStartSortIndex(NOW, null)).toBe(false)
+        expect(isLegacyCalendarEventStartSortIndex(NOW, { eventId: 'no-start' })).toBe(false)
     })
 })
 
 describe('resolveTaskSortIndex', () => {
-    it('leaves a normal task untouched', () => {
-        expect(resolveTaskSortIndex(NOW, null, NOW - 1000)).toBe(NOW)
-        expect(resolveTaskSortIndex(NOW, { eventId: 'no-start' }, NOW - 1000)).toBe(NOW)
+    it('maps the pre-AT-2259 event start onto the created stamp', () => {
+        const start = { dateTime: MEETING_START }
+        expect(resolveTaskSortIndex(legacyEventStartIndex(start), calendarData(start), CREATED)).toBe(CREATED)
     })
 
-    it('maps a legacy calendar sortIndex onto the moment the task entered the list', () => {
-        const created = NOW - 86400000
-        expect(
-            resolveTaskSortIndex(moment(MEETING_START).valueOf(), { start: { dateTime: MEETING_START } }, created)
-        ).toBe(created)
+    it('maps the AT-2270 band onto the created stamp', () => {
+        const start = { dateTime: MEETING_START }
+        expect(resolveTaskSortIndex(legacyBandIndex(start), calendarData(start), CREATED)).toBe(CREATED)
     })
 
-    it('respects a sortIndex the user has since influenced', () => {
-        // Dragged / postponed / re-assigned: no longer the event start, so it is authoritative.
-        const dragged = NOW - 12345
-        expect(resolveTaskSortIndex(dragged, { start: { dateTime: MEETING_START } }, NOW - 86400000)).toBe(dragged)
+    it('repairs a band value on a NON-calendar task too', () => {
+        // Drag & drop derives a dropped task's index from its neighbours, so a normal task dropped
+        // below a banded meeting inherited ~-1e14 and sank below everything else permanently.
+        const inheritedFromBandedNeighbour = legacyBandIndex({ dateTime: MEETING_START }) - 1
+        expect(resolveTaskSortIndex(inheritedFromBandedNeighbour, null, CREATED)).toBe(CREATED)
     })
 
-    it('preserves the reserved focus range so a focused calendar task stays on top', () => {
-        const focusSortIndex = Number.MAX_SAFE_INTEGER - 1e15 + NOW
-        expect(resolveTaskSortIndex(focusSortIndex, { start: { dateTime: MEETING_START } }, NOW)).toBe(focusSortIndex)
+    it('passes an ordinary index straight through', () => {
+        expect(resolveTaskSortIndex(NOW, calendarData(), CREATED)).toBe(NOW)
+        expect(resolveTaskSortIndex(NOW, null, CREATED)).toBe(NOW)
+        expect(resolveTaskSortIndex(-NOW, null, CREATED)).toBe(-NOW)
+        // The focus band must survive - it is what keeps the focused task pinned.
+        const focusIndex = Number.MAX_SAFE_INTEGER - 1e15 + NOW
+        expect(resolveTaskSortIndex(focusIndex, calendarData(), CREATED)).toBe(focusIndex)
     })
 
-    it('falls back to the stored value when the task has no usable created timestamp', () => {
-        const legacy = moment(MEETING_START).valueOf()
-        expect(resolveTaskSortIndex(legacy, { start: { dateTime: MEETING_START } }, undefined)).toBe(legacy)
-        expect(resolveTaskSortIndex(legacy, { start: { dateTime: MEETING_START } }, NaN)).toBe(legacy)
+    it('passes non-numbers through untouched', () => {
+        expect(resolveTaskSortIndex(undefined, calendarData(), CREATED)).toBeUndefined()
+        expect(resolveTaskSortIndex(null, calendarData(), CREATED)).toBeNull()
+        expect(resolveTaskSortIndex(NOW, calendarData(), undefined)).toBe(NOW)
     })
 })
 
-describe('isCalendarDerivedSortIndex', () => {
-    it('matches a timed event exactly and nothing else', () => {
-        const calendarData = { start: { dateTime: MEETING_START } }
-        expect(isCalendarDerivedSortIndex(moment(MEETING_START).valueOf(), calendarData)).toBe(true)
-        expect(isCalendarDerivedSortIndex(moment(MEETING_START).valueOf() + 1, calendarData)).toBe(false)
+describe('legacy documents order sanely once repaired', () => {
+    const ingest = task => ({
+        ...task,
+        priority: TASK_PRIORITY_NONE,
+        sortIndex: resolveTaskSortIndex(task.sortIndex, task.calendarData, task.created),
     })
 
-    it('accepts an all-day value written under any real timezone offset', () => {
-        const calendarData = { start: { date: '2026-08-20' } }
-        const localMidnight = moment('2026-08-20').valueOf()
-        for (const offsetHours of [-12, -5, 0, 2, 14]) {
-            expect(isCalendarDerivedSortIndex(localMidnight + offsetHours * 3600000, calendarData)).toBe(true)
-        }
-        expect(isCalendarDerivedSortIndex(localMidnight - 48 * 3600000, calendarData)).toBe(false)
+    const orderGroupLikeTheTaskList = tasks => sortTasksByPriority(orderBy(tasks, 'sortIndex', 'desc'))
+
+    it('stops a pre-AT-2259 meeting from hogging the top of the sortIndex ordering', () => {
+        const start = { dateTime: MEETING_START }
+        const group = [
+            ingest({
+                id: 'legacy-meeting',
+                calendarData: calendarData(start),
+                sortIndex: legacyEventStartIndex(start),
+                created: CREATED,
+            }),
+            ingest({ id: 'normal', calendarData: null, sortIndex: NOW, created: NOW }),
+        ]
+
+        // Repaired to `created`, so the normal task outranks it on sortIndex - and the calendar
+        // rule sends the meeting to the end regardless.
+        expect(group.find(item => item.id === 'legacy-meeting').sortIndex).toBe(CREATED)
+        expect(orderGroupLikeTheTaskList(group).map(item => item.id)).toEqual(['normal', 'legacy-meeting'])
     })
 
-    it('does not mistake an arbitrary-millisecond index for an all-day value', () => {
-        // This is the case that matters: a task dragged next to today's all-day event. A generated
-        // sortIndex is a raw millisecond, a calendar-derived one is always minute-aligned.
-        const calendarData = { start: { date: '2026-08-20' } }
-        expect(isCalendarDerivedSortIndex(moment('2026-08-20T09:41:07.512').valueOf(), calendarData)).toBe(false)
-    })
+    it('rescues a normal task that had inherited a band index from a dragged-past meeting', () => {
+        const stranded = ingest({
+            id: 'stranded',
+            calendarData: null,
+            sortIndex: legacyBandIndex({ dateTime: MEETING_START }) - 1,
+            created: NOW + 1000,
+        })
 
-    it('ignores anything that is not a finite number', () => {
-        const calendarData = { start: { dateTime: MEETING_START } }
-        expect(isCalendarDerivedSortIndex(undefined, calendarData)).toBe(false)
-        expect(isCalendarDerivedSortIndex(NaN, calendarData)).toBe(false)
-        expect(isCalendarDerivedSortIndex('123', calendarData)).toBe(false)
+        const group = [stranded, ingest({ id: 'other', calendarData: null, sortIndex: NOW, created: NOW })]
+
+        expect(stranded.sortIndex).toBe(NOW + 1000)
+        expect(orderGroupLikeTheTaskList(group).map(item => item.id)).toEqual(['stranded', 'other'])
     })
 })
 
 // Cloud Functions cannot import app modules, so functions/shared/calendarTaskSortIndex.js is a hand
-// copy. Drift between the two would mean the server picks a next focus task the list does not show
-// at the top, so pin them against each other here - this suite runs in the web config, which is the
-// one CI executes on a branch.
-describe('the Cloud Functions mirror stays in sync', () => {
-    const cases = [
-        [moment(MEETING_START).valueOf(), { start: { dateTime: MEETING_START } }, NOW - 86400000],
-        [NOW, { start: { dateTime: MEETING_START } }, NOW - 86400000],
-        [NOW, null, NOW],
-        [moment('2026-08-20').valueOf(), { start: { date: '2026-08-20' } }, NOW],
-        [moment('2026-08-20T09:41:07.512').valueOf(), { start: { date: '2026-08-20' } }, NOW],
-        [undefined, { start: { dateTime: MEETING_START } }, NOW],
+// mirror of this module. Drive both through the same inputs so they cannot drift apart silently.
+describe('client / Cloud Functions parity', () => {
+    const start = { dateTime: MEETING_START }
+    const allDayStart = { date: '2026-08-20' }
+
+    const inputs = [
+        [legacyEventStartIndex(start), calendarData(start), CREATED],
+        [legacyBandIndex(start), calendarData(start), CREATED],
+        [legacyEventStartIndex(allDayStart), calendarData(allDayStart), CREATED],
+        [legacyBandIndex(allDayStart), calendarData(allDayStart), CREATED],
+        [NOW, calendarData(start), CREATED],
+        [NOW, null, CREATED],
+        [-NOW, null, CREATED],
+        [0, calendarData(start), CREATED],
+        [Number.MAX_SAFE_INTEGER - 1e15 + NOW, calendarData(start), CREATED],
     ]
 
-    it.each(cases)('agrees on (%p, %p, %p)', (sortIndex, calendarData, created) => {
-        expect(serverIsCalendarDerivedSortIndex(sortIndex, calendarData)).toBe(
-            isCalendarDerivedSortIndex(sortIndex, calendarData)
-        )
-        expect(serverResolveTaskSortIndex(sortIndex, calendarData, created)).toBe(
-            resolveTaskSortIndex(sortIndex, calendarData, created)
-        )
+    it.each(inputs.map((input, index) => [index, input]))('resolveTaskSortIndex matches for case %i', (_i, input) => {
+        expect(serverResolveTaskSortIndex(...input)).toBe(resolveTaskSortIndex(...input))
     })
-})
 
-describe('getCalendarEventStartTimestamp', () => {
-    it('is the field anything needing the event time should read', () => {
-        expect(getCalendarEventStartTimestamp({ start: { dateTime: MEETING_START } })).toBe(
-            moment(MEETING_START).valueOf()
-        )
-        expect(getCalendarEventStartTimestamp({ start: { date: '2026-08-20' } })).toBe(moment('2026-08-20').valueOf())
-        expect(getCalendarEventStartTimestamp(null)).toBeNull()
-        expect(getCalendarEventStartTimestamp({ eventId: 'no-start' })).toBeNull()
+    it('the predicates match too', () => {
+        inputs.forEach(([sortIndex, data]) => {
+            expect(serverIsLegacyCalendarBandSortIndex(sortIndex)).toBe(isLegacyCalendarBandSortIndex(sortIndex))
+            expect(serverIsLegacyCalendarEventStartSortIndex(sortIndex, data)).toBe(
+                isLegacyCalendarEventStartSortIndex(sortIndex, data)
+            )
+        })
     })
 })

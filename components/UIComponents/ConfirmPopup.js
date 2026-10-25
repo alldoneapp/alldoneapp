@@ -41,6 +41,7 @@ import { GLOBAL_PROJECT_ID } from '../AdminPanel/Assistants/assistantsHelper'
 import { removeChatTopic } from '../../utils/backends/Chats/chatsFirestore'
 import { fixedModalOverlayStyle } from '../../utils/fixedModalPosition'
 import { rejectAllSuggestedTasks } from '../../utils/suggestedTaskBulkActions'
+import { useFixedModalOverlayPadding } from '../../hooks/useSafeAreaOverlayPadding'
 
 export const CONFIRM_POPUP_TRIGGER_DELETE_TASK = 'DELETE TASK'
 export const CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT = 'CONFIRM_POPUP_TRIGGER_DELETE_ASSISTANT'
@@ -66,6 +67,7 @@ export const CONFIRM_POPUP_NOTE_REVISION_HISTORY = 'CONFIRM POPUP NOTE REVISION 
 export const CONFIRM_POPUP_TRIGGER_INFO = 'CONFIRM POPUP TRIGGER INFO'
 
 export default function ConfirmPopup() {
+    const safeAreaOverlayPadding = useFixedModalOverlayPadding()
     const dispatch = useDispatch()
     const showConfirmPopupData = useSelector(state => state.showConfirmPopupData)
     const [processing, setProcessing] = useState(false)
@@ -136,7 +138,13 @@ export default function ConfirmPopup() {
             case CONFIRM_POPUP_TRIGGER_DELETE_USER:
                 setProcessing(true)
                 const { user } = object
-                deleteUser(user)
+                try {
+                    await deleteUser(user)
+                } catch (error) {
+                    console.error('[Account deletion] Could not delete account', error)
+                    setProcessing(false)
+                    alert('The account could not be deleted. Please try again or contact support.')
+                }
                 break
             case CONFIRM_POPUP_TRIGGER_DELETE_TASK: {
                 const { originalTaskName, projectId, task, multiTasks, tasks } = object
@@ -307,7 +315,7 @@ export default function ConfirmPopup() {
     const customStyles = getCustomStyle()
 
     return (
-        <View style={localStyles.container}>
+        <View style={[localStyles.container, safeAreaOverlayPadding]}>
             {trigger === CONFIRM_POPUP_TRIGGER_KICK_USER_FROM_PROJECT ? (
                 <KickUserConfirmPopup projectId={object.projectId} userId={object.userId} hidePopup={hidePopup} />
             ) : trigger === CONFIRM_POPUP_MANDATORY_NOTIFICATION ? (
@@ -408,6 +416,11 @@ const localStyles = StyleSheet.create({
         boxShadow: '0px 16px 24px rgba(0,0,0,0.04)',
         borderRadius: 4,
         alignItems: 'center',
+        // The card used to have no width constraint at all: a long translated
+        // headerQuestion grew it arbitrarily wide (the 432 cap existed only on
+        // the INFO variant). 16px keeps a gutter on narrow screens.
+        maxWidth: 432,
+        marginHorizontal: 16,
     },
     title: {
         color: '#ffffff',
