@@ -38,7 +38,6 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
     const isLoadingData = useSelector(state => state.isLoadingData > 0)
     const showFloatPopup = useSelector(state => state.showFloatPopup)
     const chatNotifications = useSelector(state => state.projectChatNotifications[project.id][chat.id])
-    const chatsActiveTab = useSelector(state => state.chatsActiveTab)
 
     const totalFollowed = chatNotifications ? chatNotifications.totalFollowed : 0
     const totalUnfollowed = chatNotifications ? chatNotifications.totalUnfollowed : 0
@@ -46,9 +45,13 @@ export default function ChatItem({ chat, project, openEditModal, inCommentPopup,
 
     // The unread messages previewed under the title (AT-2256). Never in a comment popup: that
     // popup is a compact picker of chats, and it already renders the thread it is pointing at.
+    //
+    // Exactly the messages `notificationsAmount` above is counting, on either tab - a row that
+    // shows a grey badge on the Followed tab must preview those messages there too, or the emails
+    // behind them are invisible and the header's bulk archive buttons have nothing to act on.
     const unreadCommentIds = useMemo(
-        () => (inCommentPopup ? [] : getUnreadCommentIds(chatNotifications, chatsActiveTab)),
-        [chatNotifications, chatsActiveTab, inCommentPopup]
+        () => (inCommentPopup ? [] : getUnreadCommentIds(chatNotifications)),
+        [chatNotifications, inCommentPopup]
     )
 
     const hasUnreadPreview = unreadCommentIds.length > 0
