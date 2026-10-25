@@ -14,6 +14,11 @@ export const URL_PROJECT_WIKI = 'PROJECT_WIKI'
 export const URL_PROJECT_WIKI_PAGE = 'PROJECT_WIKI_PAGE'
 
 /**
+ * /projects/{projectId}/wiki/{slug}/changes/{revision}
+ */
+export const URL_PROJECT_WIKI_PAGE_CHANGE = 'PROJECT_WIKI_PAGE_CHANGE'
+
+/**
  * URL System for the project wiki
  */
 class URLsWiki {
@@ -35,17 +40,22 @@ class URLsWiki {
                 return `projects/${params[0]}/wiki`
             case URL_PROJECT_WIKI_PAGE:
                 return `projects/${params[0]}/wiki/${params[1]}`
+            case URL_PROJECT_WIKI_PAGE_CHANGE:
+                return `projects/${params[0]}/wiki/${params[1]}/changes/${params[3]}`
         }
     }
 
-    // params: projectId, slug, page title
+    // params: projectId, slug, page title, revision
     static setTitle = (urlConstant, internal = false, ...params) => {
         const prefix = internal ? '' : 'Alldone.app - '
         const projectName = shrinkTagText(ProjectHelper.getProjectNameById(params[0], 'Project'))
+        const pageTitle = shrinkTagText(params[2] || params[1] || 'Wiki', 100)
         const title =
             urlConstant === URL_PROJECT_WIKI_PAGE
-                ? `${prefix}${projectName} - ${shrinkTagText(params[2] || params[1] || 'Wiki', 100)}`
-                : `${prefix}${projectName} - Wiki`
+                ? `${prefix}${projectName} - ${pageTitle}`
+                : urlConstant === URL_PROJECT_WIKI_PAGE_CHANGE
+                  ? `${prefix}${projectName} - ${pageTitle} - Changes`
+                  : `${prefix}${projectName} - Wiki`
         !internal && (document.title = title)
         return title
     }

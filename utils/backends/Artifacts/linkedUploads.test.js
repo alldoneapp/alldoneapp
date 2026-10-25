@@ -245,7 +245,7 @@ it('opens the original source editor or thread without a download capability', (
     expect(getUploadSourcePath('p', { type: 'users', id: 'u' })).toBe('/projects/p/contacts/u/chat')
 })
 
-it('keeps same-named distinct files separate and mints no address of its own', () => {
+it('keeps same-named distinct files separate and exposes no file URL', () => {
     const files = mergeLinkedUploads([
         {
             references: ['a', 'b'].map(id => ({ path: `attachments/${id}/report.pdf`, fileName: 'report.pdf' })),
@@ -254,31 +254,6 @@ it('keeps same-named distinct files separate and mints no address of its own', (
         },
     ])
     expect(files).toHaveLength(2)
-    expect(files.map(file => file.url)).toEqual([null, null])
+    expect(JSON.stringify(files)).not.toContain('token=')
     expect(readNoteUploadReferences(null, bucketName)).toEqual([])
-})
-
-it('shows a file through the address its source already embeds, with the image thumbnail if any', () => {
-    const image = url('attachments/c/shot.png')
-    const thumbnail = url('attachments/c/shot_300x300.png')
-    const [file] = mergeLinkedUploads([
-        {
-            references: [{ path: 'attachments/c/shot.png', url: image, fileName: 'shot.png' }],
-            source: { type: 'tasks', id: 't' },
-            date: 1,
-        },
-        {
-            references: [
-                {
-                    path: 'attachments/c/shot.png',
-                    url: url('attachments/c/shot.png', 'rotated'),
-                    thumbnailUrl: thumbnail,
-                },
-            ],
-            source: { type: 'notes', id: 'n' },
-            date: 2,
-        },
-    ])
-    expect(file).toMatchObject({ kind: 'image', mimeType: 'image/png', url: image, thumbnailUrl: thumbnail })
-    expect(file.linkedSources.map(source => source.type)).toEqual(['tasks', 'notes'])
 })

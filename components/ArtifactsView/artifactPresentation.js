@@ -2,7 +2,6 @@ import moment from 'moment'
 
 import { ARTIFACT_KINDS, ARTIFACT_SOURCES } from '../../functions/Artifacts/artifactModel'
 import { getDateFormat, getTimeFormat } from '../UIComponents/FloatModals/DateFormatPickerModal'
-import { colors } from '../styles/global'
 
 const KIND_ICONS = {
     [ARTIFACT_KINDS.WEB]: 'globe',
@@ -18,59 +17,6 @@ const KIND_ICONS = {
 
 export function getArtifactKindIcon(kind) {
     return KIND_ICONS[kind] || KIND_ICONS[ARTIFACT_KINDS.FILE]
-}
-
-// The tile behind a row's icon, so a list can be scanned by kind before it is read. Text kinds stay
-// neutral; only the kinds people look for by sight get a colour.
-const NEUTRAL_TINT = { background: colors.Grey200, icon: colors.Text02 }
-const KIND_TINTS = {
-    [ARTIFACT_KINDS.WEB]: { background: colors.UtilityBlue100, icon: colors.UtilityBlue300 },
-    [ARTIFACT_KINDS.PDF]: { background: colors.UtilityRed100, icon: colors.UtilityRed300 },
-    [ARTIFACT_KINDS.IMAGE]: { background: colors.UtilityViolet100, icon: colors.UtilityViolet300 },
-    [ARTIFACT_KINDS.VIDEO]: { background: colors.UtilityViolet100, icon: colors.UtilityViolet300 },
-    [ARTIFACT_KINDS.AUDIO]: { background: colors.UtilityOrange100, icon: colors.UtilityOrange300 },
-    [ARTIFACT_KINDS.DATA]: { background: colors.UtilityGreen100, icon: colors.UtilityGreen300 },
-}
-
-export function getArtifactKindTint(kind) {
-    return KIND_TINTS[kind] || NEUTRAL_TINT
-}
-
-// What a row draws instead of its icon. An image shows itself (a linked upload's stored 300px copy
-// when the source has one, otherwise the file), a linked video its first frame. Everything else,
-// and a full artifact's video, keeps its icon: a frame of a page would mean running the page, and
-// a video behind serveArtifact cannot be range-read for one frame.
-export function getArtifactThumbnail(artifact, getServeUrl) {
-    if (!artifact) return null
-    if (artifact.linkedUpload) {
-        if (!artifact.url) return null
-        if (artifact.kind === ARTIFACT_KINDS.IMAGE) return { type: 'image', url: artifact.thumbnailUrl || artifact.url }
-        if (artifact.kind === ARTIFACT_KINDS.VIDEO) return { type: 'video', url: artifact.url }
-        return null
-    }
-    if (artifact.kind !== ARTIFACT_KINDS.IMAGE || typeof getServeUrl !== 'function') return null
-    const url = getServeUrl(artifact)
-    return url ? { type: 'image', url } : null
-}
-
-// A linked upload opens in the app's own viewer straight from the address its source embeds. Only
-// media the browser renders without running anything (img, video, audio) is shown inline. A PDF or
-// any other file is offered in a new tab instead: Chrome renders a PDF only in an unsandboxed frame,
-// and a stored file's content type is whatever the uploader's browser declared, so such a frame
-// could run a disguised page's script on top of the app.
-const LINKED_INLINE_KINDS = new Set([ARTIFACT_KINDS.IMAGE, ARTIFACT_KINDS.VIDEO, ARTIFACT_KINDS.AUDIO])
-
-export function canShowLinkedUploadInline(artifact) {
-    return !!artifact?.linkedUpload && !!artifact.url && LINKED_INLINE_KINDS.has(artifact.kind)
-}
-
-// How many rows a project shows before "show more": a glance in All projects, a page in one project.
-export const ALL_PROJECTS_ARTIFACTS_PREVIEW = 3
-export const PROJECT_ARTIFACTS_PREVIEW = 10
-
-export function limitArtifacts(artifacts, limit, expanded) {
-    const list = artifacts || []
-    return { visible: expanded ? list : list.slice(0, limit), hasMore: list.length > limit }
 }
 
 const SOURCE_LABEL_KEYS = {

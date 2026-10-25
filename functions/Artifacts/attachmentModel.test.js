@@ -25,7 +25,7 @@ it('recognizes only stored attachment capabilities in the deployment bucket', ()
     }
 })
 
-it('reads file, image and video comment tokens; a thumbnail only rides along with its image', () => {
+it('reads file, image and video comment tokens while excluding thumbnails and external links', () => {
     const file = urlFor('feedAttachments/date/id/report.pdf')
     const image = urlFor('notesAttachments/date/id/photo.png')
     const thumbnail = urlFor('notesAttachments/date/id/photo_300x300.png')
@@ -39,27 +39,8 @@ it('reads file, image and video comment tokens; a thumbnail only rides along wit
 
     expect(extractAttachmentReferences(text, BUCKET)).toEqual([
         { path: 'feedAttachments/date/id/report.pdf', url: file, fileName: 'report.pdf' },
-        { path: 'notesAttachments/date/id/photo.png', url: image, fileName: 'photo.png', thumbnailUrl: thumbnail },
+        { path: 'notesAttachments/date/id/photo.png', url: image, fileName: 'photo.png' },
         { path: 'feedAttachments/date/id/movie.mp4', url: video, fileName: 'movie.mp4' },
-    ])
-})
-
-it('keeps a thumbnail only when it is a stored attachment itself, and fills it in from a later embed', () => {
-    const image = urlFor('notesAttachments/date/id/photo.png')
-    const thumbnail = urlFor('notesAttachments/date/id/photo_300x300.png')
-    expect(
-        extractAttachmentReferences(buildImageToken(image, 'https://example.com/tracker.png', 'photo.png'), BUCKET)
-    ).toEqual([{ path: 'notesAttachments/date/id/photo.png', url: image, fileName: 'photo.png' }])
-    expect(
-        extractAttachmentReferences(
-            [
-                { insert: { attachment: { uri: image, text: 'photo.png' } } },
-                { insert: { customImageFormat: { uri: image, resizedUri: thumbnail, text: 'photo.png' } } },
-            ],
-            BUCKET
-        )
-    ).toEqual([
-        { path: 'notesAttachments/date/id/photo.png', url: image, fileName: 'photo.png', thumbnailUrl: thumbnail },
     ])
 })
 

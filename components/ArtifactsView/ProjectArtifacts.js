@@ -4,7 +4,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import styles, { colors } from '../styles/global'
 import Icon from '../Icon'
 import Button from '../UIControls/Button'
-import ShowMoreButton from '../UIControls/ShowMoreButton'
 import ProjectSection, { ProjectSectionBody } from '../TaskListView/ProjectSection'
 import ProjectHeader from '../TaskListView/Header/ProjectHeader'
 import { translate } from '../../i18n/TranslationService'
@@ -12,19 +11,12 @@ import URLsArtifacts, { URL_ARTIFACT_DETAILS, URL_PROJECT_ARTIFACTS } from '../.
 import { ALL_TAB } from '../Feeds/Utils/FeedsConstants'
 import ArtifactRow from './ArtifactRow'
 import ArtifactDetail from './ArtifactDetail'
-import ArtifactFileViewer from './ArtifactFileViewer'
 import { ArtifactDropZone, ArtifactFileInput, ArtifactUploadStatus, useArtifactUploader } from './ArtifactUpload'
 import { useArtifactsActiveTab, useSelectedArtifactId } from './artifactsNavigationState'
 import { openUploadSource } from './uploadSourceLinks'
 import { openProjectArtifacts } from './artifactLinks'
 import { useProjectArtifacts } from './useArtifacts'
-import {
-    ALL_PROJECTS_ARTIFACTS_PREVIEW,
-    PROJECT_ARTIFACTS_PREVIEW,
-    filterArtifactsByKindGroup,
-    getPresentArtifactKindGroups,
-    limitArtifacts,
-} from './artifactPresentation'
+import { filterArtifactsByKindGroup, getPresentArtifactKindGroups } from './artifactPresentation'
 
 // Filter chips over the list, offered only when there is more than one kind to choose between.
 function KindFilter({ groups, active, onChange }) {
@@ -68,8 +60,7 @@ function EmptyArtifacts({ followedOnly }) {
 
 // One project's artifacts. In a single project it is the whole view and opens an artifact in place;
 // in All projects it is one section among many, hides itself while empty, and opening an artifact
-// switches to that project. Both show the newest few and the rest behind "show more", like Notes.
-// A linked upload opens in the file viewer where it is listed; its link badge leads to its source.
+// switches to that project.
 export default function ProjectArtifacts({ project, inAllProjects = false, onLoaded }) {
     const [activeTab] = useArtifactsActiveTab()
     const followedOnly = activeTab !== ALL_TAB
@@ -82,13 +73,6 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
     // A filter whose kind is gone (the last such artifact was deleted) is no filter.
     const activeKindGroup = kindGroups.some(group => group.key === kindGroup) ? kindGroup : null
     const shownArtifacts = filterArtifactsByKindGroup(artifacts, activeKindGroup)
-    const [expanded, setExpanded] = useState(false)
-    const { visible: visibleArtifacts, hasMore } = limitArtifacts(
-        shownArtifacts,
-        inAllProjects ? ALL_PROJECTS_ARTIFACTS_PREVIEW : PROJECT_ARTIFACTS_PREVIEW,
-        expanded
-    )
-    const [viewerFileId, setViewerFileId] = useState(null)
 
     const onUploaded = useCallback(
         result => {
@@ -106,15 +90,9 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
         if (loaded && onLoaded) onLoaded(project.id, artifacts.length)
     }, [loaded, artifacts.length])
 
-    const openSource = artifact => {
-        setViewerFileId(null)
-        openUploadSource(project.id, artifact.linkedSources[0])
-    }
-
     const openArtifact = artifact => {
         if (artifact.linkedUpload) {
-            if (artifact.url) setViewerFileId(artifact.id)
-            else openSource(artifact)
+            openUploadSource(project.id, artifact.linkedSources[0])
             return
         }
         if (inAllProjects) openProjectArtifacts(project.id, artifact.id)
@@ -171,23 +149,9 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
                         ) : (
                             <View testID={`artifacts-list-${project.id}`} style={localStyles.list}>
                                 <KindFilter groups={kindGroups} active={activeKindGroup} onChange={setKindGroup} />
-                                {visibleArtifacts.map(artifact => (
-                                    <ArtifactRow
-                                        key={artifact.id}
-                                        artifact={artifact}
-                                        projectId={project.id}
-                                        onPress={openArtifact}
-                                        onOpenSource={openSource}
-                                    />
+                                {shownArtifacts.map(artifact => (
+                                    <ArtifactRow key={artifact.id} artifact={artifact} onPress={openArtifact} />
                                 ))}
-                                {hasMore && (
-                                    <ShowMoreButton
-                                        expanded={expanded}
-                                        expand={() => setExpanded(true)}
-                                        contract={() => setExpanded(false)}
-                                        style={localStyles.showMore}
-                                    />
-                                )}
                             </View>
                         )}
                         {!inAllProjects && loaded && (
@@ -201,17 +165,6 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
                             />
                         )}
                     </ArtifactDropZone>
-                )}
-                {/* Outside the drop zone: React bubbles a portal's events through its owner, so a
-                    file dropped on the viewer would otherwise be uploaded to the project. */}
-                {!!viewerFileId && (
-                    <ArtifactFileViewer
-                        files={shownArtifacts.filter(artifact => artifact.linkedUpload)}
-                        fileId={viewerFileId}
-                        onSelect={setViewerFileId}
-                        onClose={() => setViewerFileId(null)}
-                        onOpenSource={openSource}
-                    />
                 )}
             </ProjectSectionBody>
         </ProjectSection>
@@ -232,9 +185,6 @@ const localStyles = StyleSheet.create({
     },
     list: {
         marginTop: 8,
-    },
-    showMore: {
-        marginTop: 4,
     },
     chips: {
         flexDirection: 'row',
