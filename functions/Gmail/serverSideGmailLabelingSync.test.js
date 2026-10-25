@@ -120,6 +120,7 @@ const {
     getExternalRecipientEmails,
     getGmailLabelingLookupKeys,
     processSingleMessage,
+    reconcileEmailCommentReadStateOnPollTick,
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,
     resolvePostLabelAssistantModel,
@@ -1315,5 +1316,104 @@ describe('buildThreadLabelModification (feedback re-label)', () => {
                 targetAutoArchive: false,
             })
         ).toEqual({ addLabelIds: ['L_new'], removeLabelIds: [] })
+    })
+})
+
+// The Gmail → Alldone read sync used to ride on the LABELING interval (`syncIntervalMinutes`,
+// minimum and default 30), which exists to bound Gold spend on classification. Reconciliation
+// spends no Gold, so that coupling made a free, read-only operation wait up to half an hour — the
+// production symptom being "I marked these read in Gmail and Alldone still shows them unread" while
+// every stage was in fact working. It now also runs on the poller's own five-minute cadence.
+//
+// The reconciler is re-required through `jest.isolateModules` with `./emailCommentReadSync` mocked,
+// because the sync destructures it at load time — a later `spyOn` would never be seen.
+describe('reconcileEmailCommentReadStateOnPollTick (AT-2376 follow-up)', () => {
+    const { getAuthorizedOAuth2Client } = require('../GoogleOAuth/googleOAuthHandler')
+    const idleState = { status: 'idle' }
+
+    const loadWithReconciler = reconcile => {
+        let sync
+        jest.isolateModules(() => {
+            jest.doMock('./emailCommentReadSync', () => ({
+                buildEmailCommentAuditPatch: jest.fn(() => ({})),
+                reconcileEmailCommentReadState: reconcile,
+            }))
+            sync = require('./serverSideGmailLabelingSync')
+        })
+        return sync.reconcileEmailCommentReadStateOnPollTick
+    }
+
+    const summary = { candidates: 2, alreadyRead: 0, looked: 2, markedRead: 2, expired: 0, stillUnread: 0 }
+
+    beforeEach(() => {
+        getAuthorizedOAuth2Client.mockReset()
+        jest.spyOn(console, 'warn').mockImplementation(() => {})
+        jest.spyOn(console, 'log').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        console.warn.mockRestore()
+        console.log.mockRestore()
+        jest.dontMock('./emailCommentReadSync')
+    })
+
+    test('reconciles on a tick where the labeling sync is NOT due — the whole point of the fix', async () => {
+        const reconcile = jest.fn(async () => summary)
+
+        await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')).resolves.toEqual(summary)
+        expect(reconcile).toHaveBeenCalledTimes(1)
+        expect(reconcile.mock.calls[0][0]).toMatchObject({ userId: 'user-1', connectionKey: 'conn-1' })
+    })
+
+    test('passes a LAZY Gmail factory, not a client — an idle tick must build no authorized client', async () => {
+        // This is what makes running on every five-minute tick for every connection affordable:
+        // with nothing pending the reconciler returns before it ever calls the factory.
+        const reconcile = jest.fn(async () => ({ ...summary, candidates: 0, looked: 0, markedRead: 0 }))
+
+        await loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')
+
+        const { gmail, getGmail } = reconcile.mock.calls[0][0]
+        expect(gmail).toBeUndefined()
+        expect(typeof getGmail).toBe('function')
+        expect(getAuthorizedOAuth2Client).not.toHaveBeenCalled()
+    })
+
+    test('builds the Gmail client at most once, however often the factory is called', async () => {
+        getAuthorizedOAuth2Client.mockResolvedValue({})
+        let getGmail
+        const reconcile = jest.fn(async options => {
+            getGmail = options.getGmail
+            await Promise.all([getGmail(), getGmail(), getGmail()])
+            return summary
+        })
+
+        await loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')
+
+        expect(getAuthorizedOAuth2Client).toHaveBeenCalledTimes(1)
+    })
+
+    test('stands down while a labeling sync holds the lock, so the two never race', async () => {
+        const reconcile = jest.fn(async () => summary)
+        const locked = { status: 'running', lockAcquiredAt: { toMillis: () => Date.now() } }
+
+        await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', locked, 'a@b.c')).resolves.toBeNull()
+        expect(reconcile).not.toHaveBeenCalled()
+    })
+
+    test('still runs once a stale lock has timed out, so a dead run cannot block it forever', async () => {
+        const reconcile = jest.fn(async () => summary)
+        const stale = { status: 'running', lockAcquiredAt: { toMillis: () => Date.now() - 60 * 60 * 1000 } }
+
+        await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', stale, 'a@b.c')).resolves.toEqual(summary)
+        expect(reconcile).toHaveBeenCalledTimes(1)
+    })
+
+    test('never lets a reconciliation failure escape into the labeling poller', async () => {
+        const reconcile = jest.fn(async () => {
+            throw new Error('EMAIL_AUTH_EXPIRED')
+        })
+
+        await expect(loadWithReconciler(reconcile)('user-1', 'conn-1', idleState, 'a@b.c')).resolves.toBeNull()
+        expect(console.warn).toHaveBeenCalled()
     })
 })

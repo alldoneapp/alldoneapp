@@ -1,13 +1,14 @@
 'use strict'
 
 // Project wiki (a Karpathy-style knowledge base): markdown pages an LLM compiles from a
-// project's tasks, goals, notes and contacts, kept current by scheduled ingest runs and read
-// by the project's assistants. One tree per project:
+// project's tasks, goals, notes and contacts, and from documents members add to it, kept current
+// by scheduled ingest runs and read by the project's assistants. One tree per project:
 //
 //   knowledgeBases/{projectId}                                 settings + run state
 //   knowledgeBases/{projectId}/pages/{pageId}                  one compiled markdown page
 //   knowledgeBases/{projectId}/pages/{pageId}/revisions/{id}   every change, with its run and reason
 //   knowledgeBases/{projectId}/corrections/{id}                user corrections, a source of their own
+//   knowledgeBases/{projectId}/documents/{id}                  files members added, as extracted text
 //   knowledgeBases/{projectId}/runs/{runId}                    ingest runs (the wiki's log)
 //
 // The whole tree has ONE audience, the project's members, because only sources every member
@@ -15,9 +16,10 @@
 // Functions write it, settings included (setKnowledgeBaseSettings).
 //
 // Deliberately not notes: notes are content users write, the wiki is derived data that can be
-// rebuilt from its sources. As notes, every ingest run would surface in the Updates feed, notify
-// followers, re-download and re-index each page, and every notes list in the app would have to
-// filter the pages out again.
+// rebuilt from its sources. As notes, every ingest run would notify followers, re-download and
+// re-index each page, and every notes list in the app would have to filter the pages out again.
+// The wiki does appear in the Updates feed, but on its own terms: one line per revision, no page
+// text, and no unread badge for the changes nobody in the project made (knowledgeWikiFeed.js).
 
 const {
     SELECTABLE_ASSISTANT_MODELS,
@@ -28,6 +30,7 @@ const KNOWLEDGE_BASES_COLLECTION = 'knowledgeBases'
 const KNOWLEDGE_PAGES_COLLECTION = 'pages'
 const KNOWLEDGE_PAGE_REVISIONS_COLLECTION = 'revisions'
 const KNOWLEDGE_CORRECTIONS_COLLECTION = 'corrections'
+const KNOWLEDGE_DOCUMENTS_COLLECTION = 'documents'
 const KNOWLEDGE_RUNS_COLLECTION = 'runs'
 
 const KNOWLEDGE_PAGE_SLUG_MAX_CHARS = 80
@@ -45,8 +48,13 @@ const DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 500
 const MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 50
 const MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 100000
 const KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000
+// A document's text is stored inside its Firestore document, so it stays well under the 1 MiB limit
+// even at three bytes a character. About 30,000 tokens: a long deck, a short report.
+const KNOWLEDGE_DOCUMENT_MAX_CHARS = 120000
+const KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS = 200
+const KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS = 1000
 
-const KNOWLEDGE_SOURCE_TYPES = ['task', 'goal', 'note', 'contact', 'correction']
+const KNOWLEDGE_SOURCE_TYPES = ['task', 'goal', 'note', 'contact', 'correction', 'document']
 
 // Object collections name their types in the plural (`tasks`); source keys use the singular.
 const OBJECT_TYPE_TO_SOURCE_TYPE = {
@@ -61,7 +69,7 @@ const OBJECT_TYPE_TO_SOURCE_TYPE = {
 }
 
 const SOURCE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
-const SOURCE_TOKEN_PATTERN = /^(task|goal|note|contact|correction):([A-Za-z0-9_-]{1,128})$/
+const SOURCE_TOKEN_PATTERN = /^(task|goal|note|contact|correction|document):([A-Za-z0-9_-]{1,128})$/
 // [[slug]], [[slug|Label]], [[task:ID]] and [[task:ID|Label]]. No brackets, pipes or line
 // breaks inside, so a stray "[[" in prose can never swallow the rest of a page.
 const KNOWLEDGE_TOKEN_REGEX = /\[\[([^[\]\n|]{1,200})(?:\|([^[\]\n]{1,200}))?\]\]/g
@@ -84,6 +92,10 @@ function getKnowledgePageRevisionsPath(projectId, pageId) {
 
 function getKnowledgeCorrectionsPath(projectId) {
     return `${getKnowledgeBasePath(projectId)}/${KNOWLEDGE_CORRECTIONS_COLLECTION}`
+}
+
+function getKnowledgeDocumentsPath(projectId) {
+    return `${getKnowledgeBasePath(projectId)}/${KNOWLEDGE_DOCUMENTS_COLLECTION}`
 }
 
 function getKnowledgeRunsPath(projectId) {
@@ -267,6 +279,7 @@ module.exports = {
     KNOWLEDGE_PAGES_COLLECTION,
     KNOWLEDGE_PAGE_REVISIONS_COLLECTION,
     KNOWLEDGE_CORRECTIONS_COLLECTION,
+    KNOWLEDGE_DOCUMENTS_COLLECTION,
     KNOWLEDGE_RUNS_COLLECTION,
     KNOWLEDGE_PAGE_SLUG_MAX_CHARS,
     KNOWLEDGE_PAGE_TITLE_MAX_CHARS,
@@ -279,6 +292,9 @@ module.exports = {
     MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS,
+    KNOWLEDGE_DOCUMENT_MAX_CHARS,
+    KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS,
+    KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS,
     KNOWLEDGE_SOURCE_TYPES,
     KnowledgeBaseSettingsError,
     getKnowledgeBasePath,
@@ -286,6 +302,7 @@ module.exports = {
     getKnowledgePagePath,
     getKnowledgePageRevisionsPath,
     getKnowledgeCorrectionsPath,
+    getKnowledgeDocumentsPath,
     getKnowledgeRunsPath,
     normalizeKnowledgePageSlug,
     toKnowledgeSourceType,

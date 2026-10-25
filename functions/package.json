@@ -40,6 +40,7 @@
         "googleapis": "^174.0.0",
         "handlebars": "^4.7.6",
         "isomorphic-fetch": "^3.0.0",
+        "jszip": "3.10.1",
         "lodash": "^4.17.21",
         "mammoth": "^1.8.0",
         "moment": "^2.24.0",

@@ -403,3 +403,93 @@ describe('loadKnowledgeSourcesByKeys', () => {
         expect(sources).toEqual([])
     })
 })
+
+describe('documents added to the wiki', () => {
+    const {
+        DOCUMENT_PART_MAX_TOKENS,
+        loadKnowledgeSourcesByKeys,
+        splitDocumentText,
+    } = require('./collectKnowledgeSources')
+    const { estimateTextTokens } = require('./knowledgeBaseModel')
+    const documentPath = id => `knowledgeBases/${PROJECT_ID}/documents/${id}`
+    const slide = number => `Slide ${number}\n${`Pricing point ${number} `.repeat(60).trim()}`
+    const longText = Array.from({ length: 40 }, (_, index) => slide(index + 1)).join('\n\n')
+
+    function documentDb() {
+        return new KnowledgeFirestoreDouble({
+            [documentPath('deck')]: {
+                title: 'Pricing concept 2026',
+                fileName: 'pricing.pptx',
+                authorName: 'Karsten',
+                instructions: 'Only the pricing',
+                text: longText,
+                status: 'active',
+                createdAt: NOW - DAY,
+                lastEditionDate: NOW - DAY,
+            },
+            [documentPath('withdrawn')]: {
+                title: 'Old deck',
+                status: 'removed',
+                createdAt: NOW - DAY,
+                lastEditionDate: NOW - DAY,
+            },
+        })
+    }
+
+    it('turns a long document into parts that each fit a prompt, in order, and skips a removed one', async () => {
+        const { sources, stats } = await collect(documentDb())
+
+        expect(sources.length).toBeGreaterThan(1)
+        expect(sources.every(source => source.key === 'document:deck')).toBe(true)
+        expect(stats.skipped).toEqual({ private: 1 })
+        sources.forEach((source, index) => {
+            expect(source.title).toBe('Pricing concept 2026')
+            expect(source.tokens).toBeLessThanOrEqual(DOCUMENT_PART_MAX_TOKENS + 200)
+            expect(source.text.split('\n').slice(0, 3)).toEqual([
+                `[[document:deck]] "Pricing concept 2026" (file pricing.pptx, added by Karsten on 2026-10-23, part ${
+                    index + 1
+                } of ${sources.length})`,
+                'The member who added it asked: Only the pricing',
+                'Content:',
+            ])
+        })
+        // Nothing is lost or repeated between the parts, and the last slide is still there.
+        const content = sources.map(source => source.text.split('Content:\n')[1]).join('\n')
+        expect(content.replace(/\s+/g, ' ')).toBe(longText.replace(/\s+/g, ' '))
+        // A part always travels whole: the chunker never has to cut one.
+        chunkKnowledgeSources(sources, { maxTokens: 16000 })
+            .flat()
+            .forEach((item, index) => expect(item.text).toBe(sources[index].text))
+    })
+
+    it('moves the cursor only with the last part, so a run stopped mid-document reads it again', async () => {
+        const { sources } = await collect(documentDb())
+        const firstParts = sources.slice(0, -1)
+
+        expect(firstParts.every(source => source.positions.length === 0)).toBe(true)
+        expect(advanceKnowledgeCursor({}, firstParts)).toEqual({})
+        expect(advanceKnowledgeCursor({}, sources)).toEqual({ documents: { ms: NOW - DAY, ids: ['deck'] } })
+    })
+
+    it('rebuilds a page from every part of a document it cites, and from nothing once it is removed', async () => {
+        const parts = await loadKnowledgeSourcesByKeys({
+            db: documentDb(),
+            projectId: PROJECT_ID,
+            keys: ['document:deck', 'document:withdrawn'],
+        })
+
+        expect(parts.length).toBeGreaterThan(1)
+        expect(new Set(parts.map(part => part.key))).toEqual(new Set(['document:deck']))
+        expect(parts.map(part => part.part)).toEqual(parts.map((part, index) => index))
+    })
+
+    it('splits at line ends, and cuts a single line longer than a part by length', () => {
+        const parts = splitDocumentText(`short\n${'ü'.repeat(25000)}\nend`, 10000)
+
+        expect(parts[0]).toBe('short')
+        expect(parts.every(part => estimateTextTokens(part) <= 10000)).toBe(true)
+        // The cuts inside the long line fall mid-line; "end" follows the line's last piece.
+        expect(parts.join('')).toBe(`short${'ü'.repeat(25000)}\nend`)
+        expect(splitDocumentText('')).toEqual([])
+    })
+})

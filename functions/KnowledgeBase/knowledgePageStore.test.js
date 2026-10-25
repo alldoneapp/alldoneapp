@@ -45,7 +45,19 @@ describe('writeKnowledgePage', () => {
             revision: 1,
             reason: 'Neuer Kunde',
             runId: 'run-1',
+            created: true,
         })
+
+        // The Updates feed tells a new page from a changed one by this flag.
+        await write(db, {
+            slug: 'kunden-partner',
+            title: 'Kunden & Partner',
+            summary: 'Wer mit dem Projekt zusammenarbeitet.',
+            body: '## Acme\nAcme ist Kunde [[task:t1]].',
+            allowedSourceKeys: new Set(['task:t1']),
+            expectedRevision: 1,
+        })
+        expect(db.read(revisionPath('kunden-partner', 2)).created).toBe(false)
     })
 
     it('removes citations of sources the run may not cite, invented ones included', async () => {

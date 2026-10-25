@@ -54,15 +54,10 @@ export function mergeLinkedUploads(entries) {
             if (!file) {
                 const title = reference.fileName || reference.path.split('/').pop()
                 const mimeType = getMimeTypeForPath(title)
-                // `url` is the download address the source itself embeds, so a reader of the source
-                // already holds it; the list shows the file with it and creates no new address.
                 file = {
                     id: `upload:${reference.path}`,
                     title,
                     kind: getArtifactKindForMimeType(mimeType),
-                    mimeType,
-                    url: reference.url || null,
-                    thumbnailUrl: reference.thumbnailUrl || null,
                     source: 'upload',
                     linkedUpload: true,
                     linkedSources: [],
@@ -71,8 +66,6 @@ export function mergeLinkedUploads(entries) {
                 }
                 files.set(reference.path, file)
             }
-            if (!file.url && reference.url) file.url = reference.url
-            if (!file.thumbnailUrl && reference.thumbnailUrl) file.thumbnailUrl = reference.thumbnailUrl
             if (
                 !file.linkedSources.some(
                     existing =>

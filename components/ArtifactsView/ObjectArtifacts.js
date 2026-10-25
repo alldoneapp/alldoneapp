@@ -32,7 +32,6 @@ export default function ObjectArtifacts({ projectId, objectType, objectId }) {
                 <ArtifactRow
                     key={artifact.id}
                     artifact={artifact}
-                    projectId={projectId}
                     onPress={() => openProjectArtifacts(projectId, artifact.id)}
                 />
             ))}

@@ -259,6 +259,27 @@ describe('FocusTaskService general task priority', () => {
         )
     })
 
+    test('does not start the search in a project the user does not belong to', async () => {
+        // get_focus_task passes a model-authored projectId straight through; a foreign one must not
+        // become the project whose tasks are read and focused.
+        const service = createService({
+            collections: {
+                [`items/project-foreign/tasks`]: [{ id: 'foreign-1', ...baseTask, sortIndex: 900 }],
+                [`items/${currentProjectId}/tasks`]: [{ id: 'own-1', ...baseTask, sortIndex: 100 }],
+            },
+        })
+
+        const result = await service.findAndSetNewFocusTask(userId, 'project-foreign', null, null, null, null)
+
+        expect(result.id).toBe('own-1')
+        expect(service.setNewFocusTask).not.toHaveBeenCalledWith(
+            userId,
+            'project-foreign',
+            expect.anything(),
+            expect.anything()
+        )
+    })
+
     test('moves to a goal task when no general tasks remain in the project', async () => {
         const service = createService({
             collections: {

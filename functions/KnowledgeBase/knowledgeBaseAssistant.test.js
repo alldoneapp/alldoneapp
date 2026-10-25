@@ -9,8 +9,10 @@ const {
     undoKnowledgeCorrection,
 } = require('./knowledgeBaseAssistant')
 const {
+    ADD_KNOWLEDGE_DOCUMENT_TOOL,
     CORRECT_KNOWLEDGE_PAGE_TOOL,
     READ_KNOWLEDGE_PAGE_TOOL,
+    REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
     UNDO_KNOWLEDGE_CORRECTION_TOOL,
 } = require('./knowledgeBaseToolSchemas')
 
@@ -179,17 +181,37 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
             READ_KNOWLEDGE_PAGE_TOOL,
             CORRECT_KNOWLEDGE_PAGE_TOOL,
             UNDO_KNOWLEDGE_CORRECTION_TOOL,
+            ADD_KNOWLEDGE_DOCUMENT_TOOL,
+            REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
         ])
     })
 
-    it('offers nothing while the wiki has no page anyone may read', async () => {
+    it('offers only the document tools, and only to a direct conversation, while no page can be read', async () => {
         const db = new KnowledgeFirestoreDouble({
             [`projects/${PROJECT_ID}`]: { userIds: ['member'] },
             [KB_PATH]: { enabled: true },
             [pagePath('geheim')]: { needsRebuild: true, archived: false },
         })
 
-        await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([])
+        // A new wiki's first content is often a deck: adding one must not wait for a first page.
+        await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([
+            ADD_KNOWLEDGE_DOCUMENT_TOOL,
+            REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
+        ])
+        _resetKnowledgeBaseAvailabilityCacheForTests()
+        await expect(
+            getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun({ allowKnowledgeCorrections: false }) })
+        ).resolves.toEqual([])
+    })
+
+    it('offers no document tools for a wiki that is switched off, though its pages stay readable', async () => {
+        const db = createDb({ [KB_PATH]: { enabled: false, ownerUserId: 'member' } })
+
+        await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([
+            READ_KNOWLEDGE_PAGE_TOOL,
+            CORRECT_KNOWLEDGE_PAGE_TOOL,
+            UNDO_KNOWLEDGE_CORRECTION_TOOL,
+        ])
     })
 
     it('asks Firestore at most every 30 seconds per project and person', async () => {
@@ -200,7 +222,7 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
         db.write(KB_PATH, { enabled: true })
         db.write(pagePath('kunden'), { title: 'Kunden', archived: false, needsRebuild: false })
         await expect(ask(NOW + 10_000)).resolves.toEqual([])
-        await expect(ask(NOW + 31_000)).resolves.toHaveLength(3)
+        await expect(ask(NOW + 31_000)).resolves.toHaveLength(5)
     })
 })
 
@@ -221,10 +243,32 @@ describe('read_knowledge_page', () => {
         })
     })
 
-    it('lists every visible page when no slug is given', async () => {
-        const result = await run(createDb(), READ_KNOWLEDGE_PAGE_TOOL, {})
+    it('lists every visible page and the documents in the wiki when no slug is given', async () => {
+        const db = createDb({
+            [`${KB_PATH}/documents/d1`]: {
+                title: 'Pricing concept',
+                fileName: 'pricing.pptx',
+                authorName: 'Karsten',
+                createdAt: NOW,
+                status: 'active',
+                text: 'Team costs 12 euros.',
+            },
+            [`${KB_PATH}/documents/d2`]: { title: 'Old deck', status: 'removed', createdAt: NOW - 1 },
+        })
+        const result = await run(db, READ_KNOWLEDGE_PAGE_TOOL, {})
 
         expect(result.pages.map(page => page.slug)).toEqual(['entscheidungen', 'kunden'])
+        expect(result.documents).toEqual([
+            {
+                documentId: 'd1',
+                title: 'Pricing concept',
+                fileName: 'pricing.pptx',
+                addedBy: 'Karsten',
+                addedAt: new Date(NOW).toISOString(),
+            },
+        ])
+        // The listing never downloads a document's text.
+        expect(db.queries.find(query => query.collectionPath === `${KB_PATH}/documents`).select).not.toContain('text')
     })
 
     it('refuses a page waiting for a rebuild, an archived page and another project it is no member of', async () => {

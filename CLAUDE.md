@@ -596,7 +596,8 @@ tools and the execution gate:
   `adaptToolSchemaForMcp` in `mcpServerSimple.js` rewrites exactly those parts of the shared
   descriptions. A correction made this way records `sourceChannel: 'mcp'` and `assistantId: null`.
   `__tests__/SettingsView/MCPSettingsToolParity.test.js` fails the build when the server serves a
-  tool that Settings → MCP cannot switch off (the six `browser_*` tools are a known exception).
+  tool that Settings → MCP cannot switch off, or when Settings lists a tool the server does not
+  serve; every MCP tool, the six `browser_*` tools included, is its own switch there.
 
 A correction is stored in `knowledgeBases/{id}/corrections/{id}` in the SAME transaction as the
 page revision it produced (`writeKnowledgePage`'s `onWrite`), is cited as `[[correction:ID]]`
@@ -608,6 +609,103 @@ neither the ingest prompts nor `loadKnowledgeSourcesByKeys` use it. The "Suggest
 button on a page only opens a chat with the project's assistant (`createBotQuickTopic`); it never
 writes the wiki itself. Pinned by `knowledgeBaseAssistant.test.js` and the `project wiki wiring`
 block in `assistantHelper.test.js`.
+
+**A page is the current state, never its history.** The revisions already keep every past version
+of a page, so `WIKI_RULES` in `knowledgeBaseIngest.js` forbids narrating how the project got there
+(meeting chronology, "first …, then …"), tells the model to replace a superseded statement and its
+citation instead of adding the new one beside it, and allows alternatives only while a question is
+still undecided: once decided, the decision and its reason stay and the rejected options go. Both
+ingest modes list source cards oldest first, so a later card wins a disagreement; the rebuild path
+sorts them itself because `loadKnowledgeSourcesByKeys` returns them in page order. The
+`correct_knowledge_page` body follows the same rule. Pinned by the `current state` case in
+`knowledgeBaseIngest.test.js`.
+
+An ingest run only rewrites a page when one of its sources changes, so pages written before these
+rules keep their history until a **one-time current-state pass** reaches them
+(`knowledgeCurrentStateRewrite.js`, requested by `migration/rewriteKnowledgeBasesToCurrentState.js`
+after `runKnowledgeBaseIngest` is deployed; dry run by default). The request is only a list of slugs
+on the wiki document (`currentStateRewrite.pendingSlugs`) plus making the wiki due; the run works
+through it after its rebuilds and before the delta, at most `MAX_CURRENT_STATE_REWRITES_PER_RUN`
+conversations per run, each from the page's own text plus the cards of the sources it cites, billed
+to the owner and stopped by the monthly cap like any other run. Three details: the store sees the
+rewrite as an ordinary `ingest` edit (it read the page first and keeps its `sourceKeys`; only a
+rebuild replaces them), so neither the store nor the Updates feed needs a new mode (the feed lists
+it as an update that badges nobody, like any change the wiki makes itself); a page this run has
+just rebuilt is skipped (`lastRunId`), and a page that is archived, hidden or has no readable source
+leaves the list without a model call; and a run stopped mid-conversation leaves that slug
+pending, so the page is rewritten by the next run rather than skipped. Pinned by
+`knowledgeCurrentStateRewrite.test.js` and the `one-time current-state pass` block of
+`knowledgeBaseIngest.test.js`.
+
+**Every page revision is a line in the Updates feed, and the line carries no page text.**
+`onCreateKnowledgePageRevisionSecondGen` (`KnowledgeBase/knowledgeWikiFeed.js`) turns each new
+revision — ingest, rebuild, archive, correction, undo — into one feed entry under ONE feed object
+per project and day (objectId and type `wiki`, never the project id: `projectsFeeds` is keyed by
+object id alone and the project's own object lives there). The entry stores `wikiSlug`,
+`wikiRevision` and `wikiChange` and nothing else of the page — no title, summary or reason —
+because a withdrawn source is removed from the page and its revisions by
+`knowledgeSourceInvalidation.js`, and nothing would remove a copy from `feedsStore`, the followed
+stores, `feedsCount`, `projectsFeeds` and the activity summary. The client reads the title of that
+revision for the line (`useWikiFeedPageTitle`, falling back to the slug) and the diff from the
+revisions themselves. Only a change a member made (correction, undo) badges the other members;
+the wiki's own nightly changes are listed but badge nobody, which is what kept the wiki out of the
+feed in the first place. Ids are derived from slug + revision, so a redelivered trigger rewrites
+the same documents. A line opens `/projects/{id}/wiki/{slug}/changes/{revision}`
+(`WikiPageChange`, diff in `wikiDiff.js`: LCS over lines, word highlights inside an edited line,
+folded context), which also works for archived and hidden pages because it reads revisions, not
+the visible page list, and shows a redacted revision as removed and nothing more. Revisions record
+`created` so a new page reads "created", not "updated". Pinned by
+`knowledgeWikiFeed.test.js` (including that no page text reaches any feed document),
+`components/WikiView/wikiDiff.test.js`, the `what a revision changed` block of `WikiView.test.js`
+and `components/Feeds/FeedsObjects/WikiObject.test.js`.
+
+**The project description frames the wiki and is never one of its sources.** The two have
+separate jobs. The description (`projects/{id}.description`) is a short, stable profile written by
+people: what the project is, what belongs in it, standing rules. Task, calendar and Gmail routing,
+the email channel, VM jobs and projects without a wiki depend on it. The wiki holds everything that
+changes. Every ingest conversation therefore gets the description, capped at
+`PROJECT_DESCRIPTION_MAX_CHARS`, to judge scope and framing. It may never
+be cited or copied onto a page. It is free text written without a visibility filter and has no
+source key, so `knowledgeSourceInvalidation.js` could never take a copied statement back out.
+`update_project_description` and its base instruction steer assistants the same way: status
+and recent activity stay out of the description unless the user explicitly asks for them.
+
+**A member can hand the wiki a document: "put this deck into the wiki" (AT-2816).** The runs that
+may correct also get `add_knowledge_document` and `remove_knowledge_document`
+(`knowledgeDocuments.js`), offered as soon as the wiki is switched ON, not only once it has a page,
+because a deck is often the first thing a new wiki gets. The model passes no content: the server
+reads the uploaded file of THIS conversation (`readChatAttachmentFile`, the same resolution as
+`get_chat_attachment`), extracts up to 120,000 characters and stores them at
+`knowledgeBases/{id}/documents/{id}`, then pulls `nextRunAt` to now and enqueues a run. The ingest
+reads documents as a source type of their own, cited `[[document:ID]]`, with a rule to work the document
+into the pages it concerns rather than write a summary page next to them. Four things are
+load-bearing. A long document is split into parts of at most `DOCUMENT_PART_MAX_TOKENS` (10,000)
+because `chunkKnowledgeSources` CUTS an oversized card instead of splitting it — a deck would
+otherwise lose everything after its first ~55,000 characters, silently. Only the LAST part carries
+the cursor position, so a run that stops after part 2 of 4 reads the whole document again rather
+than never seeing parts 3 and 4. A document is not a note on purpose: it lives inside the wiki tree,
+shares its audience by construction (like a correction), and never shows up in notes lists or
+follower notifications; only the page revisions it causes reach the Updates feed, like any other
+wiki change. The current-state pass and rebuilds load all its parts through
+`loadKnowledgeSourcesByKeys`. And removal runs the same `invalidateKnowledgeSource` as an object that
+turned private — pages emptied, hidden and rebuilt, revisions redacted — after deleting the stored
+text, because members can read the whole tree. The same text hash already active answers
+`alreadyAdded` instead of feeding the document twice.
+
+**PowerPoint and Excel are read as text everywhere a file reaches an assistant.**
+`functions/Utils/officeDocumentText.js` turns .pptx (slides in the deck's own order from
+`presentation.xml`, speaker notes, no field text) and .xlsx (rows with " | ", dates formatted from
+the cell's number format, cached formula results) into text; `extractTextFromWhatsAppFile` uses it
+for WhatsApp, inbound email and chat uploads alike, and takes a `maxChars` budget (8,000 inline,
+120,000 for the wiki). A chat upload the model sees only the beginning of is now labelled
+`[FILE: name, type=…, only the first N characters]` (`extractionTruncated`), so it cannot answer
+about the whole deck from its first slides. The archive is untrusted: each part's declared size is
+checked before it is inflated (60 MB per part, 150 MB in all). Legacy .ppt/.xls and Keynote stay
+unsupported. `jszip` is pinned to 3.10.1, the version mammoth already brought in. Pinned by
+`officeDocumentText.test.js` (real files written by python-pptx/openpyxl and re-saved by
+LibreOffice, whose markup differs), `knowledgeDocuments.test.js` (a real deck end to end into the
+ingest's source card) and the `documents added to the wiki` block of
+`collectKnowledgeSources.test.js`.
 
 Keep the parser `components/WikiView/wikiMarkdownParser.js` and the renderer `WikiMarkdown.js`
 under different names: a `wikiMarkdown.js` next to `WikiMarkdown.js` collides on macOS's
@@ -675,12 +773,7 @@ the artifact. Existing assistants store their own `allowedTools` and get the key
 **Linked uploads (AT-2828) supersede the original explicit-copy UI decision.** The All artifacts
 list additionally projects uploads from their readable source documents, comments and saved Yjs
 notes (`utils/backends/Artifacts/linkedUploads.js`). Existing uploads need no migration. One stored
-path yields one row, which never gets a new serving/public URL: pressing it opens
-`ArtifactFileViewer` with the download URL the source itself embeds (an image's stored 300px copy is
-the row thumbnail), and its link badge opens the source. Only img/video/audio render inline; a PDF or
-other file goes to a new tab, because Chrome frames a PDF only unsandboxed and a stored file's content
-type is whatever the uploader's browser declared. Lists show 3 per project in All projects and 10 in
-one project, the rest behind `ShowMoreButton`, like Notes. Membership, original
+path yields one row; a row opens the source, never a new serving/public URL. Membership, original
 query rules and current source privacy gate the projection; removals and listener failures clear
 it, including pending asynchronous note loads. `uploadsRevision` on notes announces completed local
 Storage writes, including offline catch-up, without changing edition metadata. The chip's action is
@@ -2997,6 +3090,23 @@ authorized Gmail client for exactly the account whose comments it is reconciling
 path, no second client. It runs on every tick, including ticks with no new mail to label: it is
 answering a question about OLD messages. It is wrapped in try/catch — labeling is that function's
 job, and failing to reconcile read state must never fail a run that labeled mail correctly.
+
+**Reconciling read state is not gated on `syncIntervalMinutes`, and must not be.** That interval
+(minimum and default **30**) exists to bound how often the **classifier** runs, because
+classification spends Gold per message; reconciliation spends none — one indexed Firestore query
+plus at most a handful of `messages.get` at `format: 'minimal'` (1 quota unit each, capped at 50 per
+run). Riding on the labeling interval therefore made a free, read-only operation wait up to half an
+hour, which is indistinguishable from the feature being broken: production logs for the reporting
+account show the reconciler firing correctly (`markedRead: 6`) **four minutes after** the user
+reported that Gmail-read mail was still unread in Alldone. `processEnabledGmailLabelingConfigs`
+therefore calls `reconcileEmailCommentReadStateOnPollTick` on the `interval_not_due` branch too, so
+the worst case is the poller's own 5 minutes instead of the connection's 30. Three properties make
+that affordable and safe, and all three are load-bearing: the Gmail client is passed as a **lazy
+`getGmail` factory** rather than a client (an idle tick — which is the overwhelming majority — costs
+one query and builds **no** authorized client, so no OAuth read/refresh per connection per tick);
+the pass **never writes `lastSyncAt`**, or it would starve the labeling sync it is standing in for;
+and it **stands down while the labeling lock is held** (respecting `GMAIL_LABELING_LOCK_TIMEOUT_MS`,
+so a dead run cannot block it forever) so the two never reconcile the same candidates concurrently.
 
 The mapping it needs (Gmail messageId → chat comment) is written by the sync itself: the post-label
 prompt's `add_chat_comment` result is collected in `collectAssistantTextWithToolCalls` as

@@ -286,3 +286,71 @@ describe('reconcileEmailCommentReadState', () => {
         expect(mockDeletedNotificationPaths).toEqual([])
     })
 })
+
+// The poll-tick pass (AT-2376 follow-up) runs on EVERY five-minute tick for every enabled
+// connection, most of which have nothing pending. It is only affordable because the Gmail client is
+// built lazily — an eager build would cost an OAuth read + refresh per connection per tick.
+describe('reconcileEmailCommentReadState — lazy Gmail client', () => {
+    it('never builds a Gmail client when nothing is pending', async () => {
+        const getGmail = jest.fn()
+
+        const summary = await reconcileEmailCommentReadState({
+            getGmail,
+            userId: USER_ID,
+            connectionKey: CONNECTION_KEY,
+        })
+
+        expect(summary).toMatchObject({ candidates: 0, looked: 0 })
+        expect(getGmail).not.toHaveBeenCalled()
+    })
+
+    it('never builds a Gmail client when every candidate was already read in Alldone', async () => {
+        seedCandidate('m_done')
+        // Unread state IS the notification doc; without it the comment is already read, so there is
+        // nothing to ask Gmail about.
+        mockNotificationDocs.clear()
+        const getGmail = jest.fn()
+
+        const summary = await reconcileEmailCommentReadState({
+            getGmail,
+            userId: USER_ID,
+            connectionKey: CONNECTION_KEY,
+        })
+
+        expect(summary).toMatchObject({ candidates: 1, alreadyRead: 1, looked: 0 })
+        expect(getGmail).not.toHaveBeenCalled()
+        expect(mockAuditDocs.get('m_done').emailCommentReadResolution).toBe('already_read')
+    })
+
+    it('builds the client once and marks read exactly as the eager path does', async () => {
+        seedCandidate('m_read_in_gmail')
+        seedCandidate('m_still_unread')
+        const gmail = makeGmail({ m_read_in_gmail: ['INBOX'], m_still_unread: ['INBOX', 'UNREAD'] })
+        const getGmail = jest.fn(async () => gmail)
+
+        const summary = await reconcileEmailCommentReadState({
+            getGmail,
+            userId: USER_ID,
+            connectionKey: CONNECTION_KEY,
+        })
+
+        expect(getGmail).toHaveBeenCalledTimes(1)
+        expect(summary).toMatchObject({ candidates: 2, looked: 2, markedRead: 1, stillUnread: 1 })
+        expect(mockDeletedNotificationPaths).toEqual([notificationPath('project-1', 'c_m_read_in_gmail')])
+        // The one still unread in Gmail keeps its flag and is retried on the next tick.
+        expect(mockAuditDocs.get('m_still_unread').emailCommentReadPending).toBe(true)
+    })
+
+    it('leaves unread state untouched when the client cannot be built', async () => {
+        seedCandidate('m_read_in_gmail')
+        const getGmail = jest.fn(async () => {
+            throw new Error('EMAIL_AUTH_EXPIRED')
+        })
+
+        await expect(
+            reconcileEmailCommentReadState({ getGmail, userId: USER_ID, connectionKey: CONNECTION_KEY })
+        ).rejects.toThrow('EMAIL_AUTH_EXPIRED')
+        expect(mockDeletedNotificationPaths).toEqual([])
+        expect(mockAuditDocs.get('m_read_in_gmail').emailCommentReadPending).toBe(true)
+    })
+})
