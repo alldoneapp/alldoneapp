@@ -27,6 +27,9 @@ const MCP_TOOL_KEYS = [
     'read_artifact',
     'create_artifact',
     'update_artifact',
+    'read_knowledge_page',
+    'correct_knowledge_page',
+    'undo_knowledge_correction',
     'update_contact',
     'get_contacts',
     'search',
@@ -56,12 +59,16 @@ const MCP_TOOL_KEYS = [
 ]
 
 // MCP lists the artifact tools one by one; in an assistant's Tools Access they are a single
-// permission, so they have no label of their own there.
+// permission, so they have no label of their own there. The wiki tools have no Tools Access entry at
+// all (an assistant gets them with the wiki).
 const MCP_TOOL_LABELS = {
     get_artifacts: 'List artifacts',
     read_artifact: 'Read artifact',
     create_artifact: 'Create artifact',
     update_artifact: 'Update artifact',
+    read_knowledge_page: 'Read wiki page',
+    correct_knowledge_page: 'Correct wiki page',
+    undo_knowledge_correction: 'Undo wiki correction',
 }
 
 // Derive the MCP server URL from the host the user is currently on so it is
