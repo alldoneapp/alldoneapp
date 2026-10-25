@@ -202,7 +202,7 @@ const toolSchemas = {
         function: {
             name: 'create_note',
             description:
-                'Creates a new note in the current project. Supports markdown formatting. The successful result includes the canonical note URL; include that exact URL in the user-facing response. Never call create_note again merely to provide the link to a note that was already created.',
+                'Creates a new note in the current project, or in the project named by projectId or projectName. Supports markdown formatting. The successful result includes the canonical note URL; include that exact URL in the user-facing response. Never call create_note again merely to provide the link to a note that was already created.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -213,6 +213,16 @@ const toolSchemas = {
                     content: {
                         type: 'string',
                         description: 'The content of the note in markdown format',
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: the project ID where the note should be created. If neither projectId nor projectName is given, the note is created in the current project.',
+                    },
+                    projectName: {
+                        type: 'string',
+                        description:
+                            "Optional: the project name where the note should be created. IMPORTANT: Use the exact project name as shown in the user's project list - do not translate or modify it. If both projectId and projectName are provided, they must name the same project.",
                     },
                 },
                 required: ['title', 'content'],

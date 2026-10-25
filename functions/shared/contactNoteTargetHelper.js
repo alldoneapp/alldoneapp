@@ -145,13 +145,22 @@ async function resolveProjectForContactNote({ db, userId, projectId = '', projec
     const normalizedProjectName = normalizeText(projectName)
 
     if (normalizedProjectId) {
-        const projectDoc = await db.collection('projects').doc(normalizedProjectId).get()
-        if (!projectDoc.exists) {
-            throw new Error(`Project "${normalizedProjectId}" was not found.`)
+        // The contact (and, with createIfMissing, a new contact and note) is written through the
+        // Admin SDK, so existence is not enough: the id must be one of the user's own projects.
+        const projectService = new ProjectService({ database: db })
+        await projectService.initialize()
+        const accessibleProjects = await projectService.getUserProjects(userId, {
+            includeArchived: true,
+            includeCommunity: true,
+            activeOnly: false,
+        })
+        const project = accessibleProjects.find(candidate => candidate?.id === normalizedProjectId)
+        if (!project) {
+            throw new Error(`Target project not found or not accessible: "${normalizedProjectId}"`)
         }
         return {
             id: normalizedProjectId,
-            name: projectDoc.data()?.name || normalizedProjectId,
+            name: project.name || normalizedProjectId,
         }
     }
 
