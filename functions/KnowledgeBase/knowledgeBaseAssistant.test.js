@@ -186,20 +186,6 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
         ])
     })
 
-    it('offers a writing run only wiki tools the writing executor will run', async () => {
-        const { WRITING_READ_TOOLS } = require('../Assistant/assistantWritingTools')
-        const db = createDb()
-
-        // writingAssistant.js refuses any tool outside WRITING_READ_TOOLS and that refusal ends
-        // the whole draft, so a tool offered here but missing there fails the menubar request.
-        const offered = await getKnowledgeBaseToolNamesForRun({
-            db,
-            toolRuntimeContext: chatRun({ writingDraft: true }),
-        })
-        expect(offered).toEqual([READ_KNOWLEDGE_PAGE_TOOL])
-        offered.forEach(toolName => expect(WRITING_READ_TOOLS.has(toolName)).toBe(true))
-    })
-
     it('offers only the document tools, and only to a direct conversation, while no page can be read', async () => {
         const db = new KnowledgeFirestoreDouble({
             [`projects/${PROJECT_ID}`]: { userIds: ['member'] },

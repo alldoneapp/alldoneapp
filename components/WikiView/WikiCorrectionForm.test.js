@@ -86,7 +86,7 @@ describe('WikiCorrectionForm', () => {
 
         expect(createBotQuickTopic).toHaveBeenCalledWith(
             mockState.assistants.anna,
-            'Please correct the wiki page "Kunden" (kunden): Ansprechpartnerin ist Frau Brandt.',
+            'Feedback on the wiki page "Kunden" (kunden): Ansprechpartnerin ist Frau Brandt.\nPlease adjust the page accordingly.',
             { projectId: 'p1', enableAssistant: true }
         )
         expect(onClose).toHaveBeenCalled()

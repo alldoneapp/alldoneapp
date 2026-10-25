@@ -620,6 +620,26 @@ or no field on wikis that predate the default) never changes hands that way — 
 `releaseIngestLease` must not `Math.min` a null `nextRunAt` (it is `0`, i.e. due forever). Pinned by
 `knowledgeBaseDefaults.test.js` and the `owner_inactive` cases in `knowledgeBaseIngest.test.js`.
 
+**A wiki that reaches its monthly Gold limit says so, and raising the limit resumes it.** The run
+stops with `monthly_cap` and schedules itself for the first of next month (UTC); before this, that
+was visible only on the wiki document, and two production wikis stood still unnoticed on their
+first build. `knowledgeBaseCapNotice.js` now has the project's assistant open a topic of its own
+(`WikiGoldCap_<projectId>_<month>`, private to the payer, unread badge, MyDay assistant line) with a
+link to `/project/<id>/wiki-settings`. The message is fixed text in the payer's language, not a
+model answer: a notice that the Gold ran out must not spend Gold. It is sent once per wiki, month
+and limit (the comment id carries the limit), and it never throws into the run. Raising the limit
+above this month's spending in the settings sets `nextRunAt` to now and enqueues a run
+(`cap_raised`); otherwise the notice would send people to a setting that changed nothing until the
+1st. The wiki view and the settings show the pause too (`isKnowledgeBasePausedAtMonthlyCap`).
+Pinned by `knowledgeBaseCapNotice.test.js`, the monthly-cap cases in `knowledgeBaseIngest.test.js`
+and `knowledgeBaseSettings.test.js`.
+
+The wiki view is one column on every screen: the index (each page with its own "last updated"),
+then a page in its place with a back link. The line above the index is the wiki's last run, not a
+page's. "Give feedback" at the top of a page opens the same assistant topic the old footer link
+"Suggest a correction" did (`WikiCorrectionForm`); the assistant applies it with
+`correct_knowledge_page`.
+
 **The ingest runs through the Admin SDK, so the visibility filter is the ONLY protection.**
 `isVisibleToWholeProject` in `collectKnowledgeSources.js` admits an object only when `isPublicFor`
 names `0` and it is not `isPrivate` (goals without `isPublicFor` count as public, matching
@@ -946,10 +966,9 @@ is right for access and ownership. Two things were wrong with that and both are 
 `{ via: 'mcp', viaClient: 'Claude' }` (`functions/shared/mcpActor.js`): the app could not tell the
 agent's work from the user's own, and the user was never notified of it, because every fan-out skips
 the actor. The marker is stamped on feeds (`generateFeedModel`, both copies), comments and their
-chat/push notifications (`TaskCommentService`), wiki revision authors, artifact versions and
-their history events (`commitArtifactVersion({ actorChannel })`, `setArtifactDataAccess`), and the
-`lastEditorVia` of a task or an artifact (bound to `lastEditionDate`, because the app writes
-`lastEditorId` without knowing to clear it; the artifact update trigger reads it to label a rename). The app renders it as "Karsten Wysk (via Claude)" (`utils/mcpActorLabel.js`,
+chat/push notifications (`TaskCommentService`), wiki revision authors, and a task's
+`lastEditorVia` (bound to `lastEditionDate`, because the app writes `lastEditorId` without knowing
+to clear it). The app renders it as "Karsten Wysk (via Claude)" (`utils/mcpActorLabel.js`,
 `getFeedCreatorPresentationData`); readers must keep using the user's id for avatar and navigation.
 Every notification path that skips the actor keeps the actor when the marker is present:
 `increaseFeedCount`, `TaskCommentService.addComment`, the wiki feed and the WhatsApp initiator guard

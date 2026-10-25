@@ -7,7 +7,9 @@ const {
     KNOWLEDGE_BASE_ENABLED_BY_MEMBER,
     KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS,
     KnowledgeBaseSettingsError,
+    getKnowledgeBaseMonthlyGoldSpent,
     getKnowledgeBasePath,
+    isKnowledgeBasePausedAtMonthlyCap,
     isKnowledgeBasePausedForInactiveOwner,
     normalizeKnowledgeBaseSettingsInput,
     resolveKnowledgeBaseModel,
@@ -116,6 +118,7 @@ async function setKnowledgeBaseSettings({
 
         if (!current) next.createdAt = now
 
+        let resumedFromCap = false
         if (enabled) {
             // Switching it on, or taking over from a departed owner, makes the caller the payer, by
             // their own choice: the default switch-on no longer hands this wiki to somebody else.
@@ -130,6 +133,14 @@ async function setKnowledgeBaseSettings({
             } else if (isKnowledgeBasePausedForInactiveOwner(current)) {
                 // Whoever saves is using Alldone right now, and is (or just became) the payer.
                 next.nextRunAt = now
+            } else if (
+                isKnowledgeBasePausedAtMonthlyCap(current, now) &&
+                next.monthlyGoldCap > getKnowledgeBaseMonthlyGoldSpent(current, now)
+            ) {
+                // The cap notice (knowledgeBaseCapNotice.js) sends the payer here to raise the cap.
+                // Raising it has to end the pause now, not on the first of next month.
+                next.nextRunAt = now
+                resumedFromCap = true
             }
         } else if (wasEnabled) {
             next.disabledAt = now
@@ -138,13 +149,15 @@ async function setKnowledgeBaseSettings({
 
         transaction.set(knowledgeBaseRef, next, { merge: true })
         return {
-            ...toKnowledgeBaseSettingsView(projectId, { ...(current || {}), ...next }),
+            ...toKnowledgeBaseSettingsView(projectId, { ...(current || {}), ...next }, now),
             justEnabled: enabled && !wasEnabled,
+            resumedFromCap,
         }
     })
 
-    const { justEnabled, ...settingsView } = view
+    const { justEnabled, resumedFromCap, ...settingsView } = view
     if (justEnabled) await enqueueSoon(enqueue, projectId, now, 'enabled')
+    else if (resumedFromCap) await enqueueSoon(enqueue, projectId, now, 'cap_raised')
     return settingsView
 }
 

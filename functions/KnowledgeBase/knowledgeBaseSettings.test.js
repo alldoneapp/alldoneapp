@@ -172,6 +172,56 @@ describe('setKnowledgeBaseSettings', () => {
         })
     })
 
+    it('resumes a wiki paused at its monthly cap as soon as the payer raises the cap', async () => {
+        const nextMonth = Date.UTC(2027, 1, 1)
+        const db = createDb({
+            enabled: true,
+            ownerUserId: 'owner',
+            monthlyGoldCap: 500,
+            monthlyGold: { month: '2027-01', spent: 506 },
+            lastRunStopReason: 'monthly_cap',
+            nextRunAt: nextMonth,
+        })
+
+        const view = await setKnowledgeBaseSettings({
+            enqueue,
+            db,
+            now: NOW,
+            userId: 'owner',
+            projectId: PROJECT_ID,
+            settings: { monthlyGoldCap: 1000 },
+        })
+
+        expect(view).toMatchObject({ monthlyGoldCap: 1000, nextRunAt: NOW, pausedAtMonthlyCap: false })
+        expect(view).not.toHaveProperty('resumedFromCap')
+        expect(db.read(KB_PATH).nextRunAt).toBe(NOW)
+        expect(enqueue).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: NOW, trigger: 'cap_raised' })
+    })
+
+    it('keeps a capped wiki paused while the raised cap is still below this month’s spending', async () => {
+        const nextMonth = Date.UTC(2027, 1, 1)
+        const db = createDb({
+            enabled: true,
+            ownerUserId: 'owner',
+            monthlyGoldCap: 500,
+            monthlyGold: { month: '2027-01', spent: 506 },
+            lastRunStopReason: 'monthly_cap',
+            nextRunAt: nextMonth,
+        })
+
+        const view = await setKnowledgeBaseSettings({
+            enqueue,
+            db,
+            now: NOW,
+            userId: 'owner',
+            projectId: PROJECT_ID,
+            settings: { monthlyGoldCap: 505 },
+        })
+
+        expect(view).toMatchObject({ nextRunAt: nextMonth, pausedAtMonthlyCap: true })
+        expect(enqueue).not.toHaveBeenCalled()
+    })
+
     it('does not reschedule an already enabled wiki on an unrelated edit', async () => {
         const db = createDb({ enabled: true, ownerUserId: 'owner', nextRunAt: NOW + 5000, enabledAt: 1 })
 

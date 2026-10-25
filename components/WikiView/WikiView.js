@@ -23,7 +23,10 @@ import WikiCorrectionForm from './WikiCorrectionForm'
 import { formatWikiDate, isKnowledgeBaseRunning, useKnowledgeBaseDoc, useKnowledgePages } from './useKnowledgeBase'
 import { setWikiSelectedSlug, useWikiSelectedRevision, useWikiSelectedSlug } from './wikiNavigationState'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
-import { parseKnowledgeSourceKey } from '../../functions/KnowledgeBase/knowledgeBaseModel'
+import {
+    isKnowledgeBasePausedAtMonthlyCap,
+    parseKnowledgeSourceKey,
+} from '../../functions/KnowledgeBase/knowledgeBaseModel'
 
 function WikiStatusLine({ knowledgeBase, pendingRebuilds }) {
     const lines = []
@@ -32,6 +35,9 @@ function WikiStatusLine({ knowledgeBase, pendingRebuilds }) {
         lines.push(translate('Wiki last updated', { date: formatWikiDate(knowledgeBase.lastRunAt) }))
     }
     if (knowledgeBase && knowledgeBase.enabled !== true) lines.push(translate('Wiki paused hint'))
+    if (isKnowledgeBasePausedAtMonthlyCap(knowledgeBase || {})) {
+        lines.push(translate('Wiki paused at monthly cap', { date: formatWikiDate(knowledgeBase.nextRunAt) }))
+    }
     if (pendingRebuilds > 0) lines.push(translate('Wiki pages being rebuilt', { amount: pendingRebuilds }))
     if (!lines.length) return null
     return (
@@ -89,6 +95,11 @@ function WikiIndex({ pages, selectedSlug, onSelect }) {
                                 {page.summary}
                             </Text>
                         )}
+                        {!!page.updatedAt && (
+                            <Text testID={`wiki-index-updated-${page.slug}`} style={localStyles.indexUpdated}>
+                                {translate('Wiki page last updated', { date: formatWikiDate(page.updatedAt) })}
+                            </Text>
+                        )}
                     </TouchableOpacity>
                 )
             })}
@@ -121,6 +132,25 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                 </TouchableOpacity>
             )}
             <Text style={localStyles.pageTitle}>{page.title}</Text>
+            <View style={localStyles.pageMeta}>
+                <Text testID="wiki-page-updated" style={localStyles.pageMetaText}>
+                    {page.updatedAt
+                        ? translate('Wiki page last updated', { date: formatWikiDate(page.updatedAt) })
+                        : ''}
+                </Text>
+                {!correcting && (
+                    <Button
+                        type={'ghost'}
+                        icon={'message-circle'}
+                        title={translate('Give feedback')}
+                        onPress={() => setCorrecting(true)}
+                        buttonStyle={localStyles.feedbackButton}
+                    />
+                )}
+            </View>
+            {correcting && (
+                <WikiCorrectionForm projectId={projectId} page={page} onClose={() => setCorrecting(false)} />
+            )}
             {!!page.summary && <Text style={localStyles.pageSummary}>{page.summary}</Text>}
 
             <WikiMarkdown
@@ -160,30 +190,12 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
                         date: formatWikiDate(page.updatedAt),
                     })}
                 </Text>
-                <View style={localStyles.footerActions}>
-                    {!correcting && (
-                        <TouchableOpacity
-                            testID="wiki-suggest-correction"
-                            onPress={() => setCorrecting(true)}
-                            accessible={false}
-                        >
-                            <Text style={localStyles.historyToggle}>{translate('Suggest a correction')}</Text>
-                        </TouchableOpacity>
-                    )}
-                    <TouchableOpacity
-                        onPress={() => setShowHistory(!showHistory)}
-                        accessible={false}
-                        style={localStyles.footerAction}
-                    >
-                        <Text style={localStyles.historyToggle}>
-                            {translate(showHistory ? 'Hide history' : 'Show history')}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+                <TouchableOpacity onPress={() => setShowHistory(!showHistory)} accessible={false}>
+                    <Text style={localStyles.historyToggle}>
+                        {translate(showHistory ? 'Hide history' : 'Show history')}
+                    </Text>
+                </TouchableOpacity>
             </View>
-            {correcting && (
-                <WikiCorrectionForm projectId={projectId} page={page} onClose={() => setCorrecting(false)} />
-            )}
             {showHistory && (
                 <WikiPageHistory
                     projectId={projectId}
@@ -197,7 +209,6 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
 }
 
 export function ProjectWiki({ project }) {
-    const mobile = useSelector(state => state.smallScreenNavigation)
     const knowledgeBase = useKnowledgeBaseDoc(project.id)
     const { pages, pendingRebuilds, loaded } = useKnowledgePages(project.id)
     const [selectedSlug, setSelectedSlug] = useWikiSelectedSlug(project.id)
@@ -205,8 +216,8 @@ export function ProjectWiki({ project }) {
 
     const pageSlugs = useMemo(() => new Set(pages.map(page => page.slug)), [pages])
     const selectedPage = pages.find(page => page.slug === selectedSlug) || null
-    // On a wide screen a page is always open; on a phone the index is a screen of its own.
-    const shownPage = selectedPage || (!mobile ? pages[0] || null : null)
+    // The index and a page are one column on every screen: the index first, a page in its place.
+    const shownPage = selectedPage
     // A change is shown for any page, archived or hidden ones included: the Updates feed links to
     // every change, and the page view only knows the pages people may read right now.
     const shownChange = selectedSlug && selectedRevision ? { slug: selectedSlug, revision: selectedRevision } : null
@@ -251,6 +262,7 @@ export function ProjectWiki({ project }) {
                     <Button
                         type={'ghost'}
                         icon={'settings'}
+                        noBorder
                         onPress={() => openProjectWikiSettings(project.id)}
                         accessibilityLabel={translate('Wiki settings')}
                         buttonStyle={localStyles.settingsButton}
@@ -260,48 +272,25 @@ export function ProjectWiki({ project }) {
             <ProjectSectionBody>
                 {loading ? (
                     <Text style={localStyles.statusText}>{translate('Loading wiki')}</Text>
-                ) : changeView && (mobile || pages.length === 0) ? (
+                ) : changeView ? (
                     changeView
                 ) : pages.length === 0 ? (
                     <WikiEmptyState projectId={project.id} knowledgeBase={knowledgeBase} />
                 ) : (
-                    <>
+                    <View style={localStyles.column}>
                         <WikiStatusLine knowledgeBase={knowledgeBase} pendingRebuilds={pendingRebuilds} />
-                        {mobile ? (
-                            shownPage ? (
-                                <WikiPage
-                                    projectId={project.id}
-                                    page={shownPage}
-                                    pageSlugs={pageSlugs}
-                                    onSelectPage={setSelectedSlug}
-                                    onBack={() => setSelectedSlug(null)}
-                                />
-                            ) : (
-                                <WikiIndex pages={pages} selectedSlug={null} onSelect={setSelectedSlug} />
-                            )
+                        {shownPage ? (
+                            <WikiPage
+                                projectId={project.id}
+                                page={shownPage}
+                                pageSlugs={pageSlugs}
+                                onSelectPage={setSelectedSlug}
+                                onBack={() => setSelectedSlug(null)}
+                            />
                         ) : (
-                            <View style={localStyles.columns}>
-                                <View style={localStyles.indexColumn}>
-                                    <WikiIndex
-                                        pages={pages}
-                                        selectedSlug={shownChange ? shownChange.slug : shownPage?.slug}
-                                        onSelect={setSelectedSlug}
-                                    />
-                                </View>
-                                <View style={localStyles.pageColumn}>
-                                    {changeView ||
-                                        (shownPage && (
-                                            <WikiPage
-                                                projectId={project.id}
-                                                page={shownPage}
-                                                pageSlugs={pageSlugs}
-                                                onSelectPage={setSelectedSlug}
-                                            />
-                                        ))}
-                                </View>
-                            </View>
+                            <WikiIndex pages={pages} selectedSlug={null} onSelect={setSelectedSlug} />
                         )}
-                    </>
+                    </View>
                 )}
             </ProjectSectionBody>
         </ProjectSection>
@@ -350,8 +339,17 @@ const localStyles = StyleSheet.create({
     containerTablet: {
         marginHorizontal: 56,
     },
+    // An icon in the 56px project line, centred like the other header actions.
     settingsButton: {
-        marginTop: 16,
+        width: 32,
+        height: 32,
+        minHeight: 32,
+        maxHeight: 32,
+        paddingLeft: 0,
+        paddingRight: 0,
+        paddingVertical: 0,
+        marginLeft: 8,
+        alignSelf: 'center',
     },
     statusLine: {
         marginTop: 12,
@@ -383,17 +381,9 @@ const localStyles = StyleSheet.create({
     emptyButton: {
         marginTop: 16,
     },
-    columns: {
-        flexDirection: 'row',
-        marginTop: 12,
-    },
-    indexColumn: {
-        width: 260,
-        marginRight: 32,
-    },
-    pageColumn: {
-        flex: 1,
-        minWidth: 0,
+    // One readable column; on a wide screen a full-width line of prose is hard to follow.
+    column: {
+        maxWidth: 880,
     },
     indexItem: {
         paddingVertical: 8,
@@ -416,6 +406,11 @@ const localStyles = StyleSheet.create({
         color: colors.Text03,
         marginTop: 2,
     },
+    indexUpdated: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginTop: 2,
+    },
     backLink: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -431,6 +426,21 @@ const localStyles = StyleSheet.create({
         ...styles.title5,
         color: colors.Text01,
         marginTop: 8,
+    },
+    pageMeta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        marginTop: 4,
+    },
+    pageMetaText: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginRight: 12,
+    },
+    feedbackButton: {
+        marginVertical: 4,
     },
     pageSummary: {
         ...styles.body2,
@@ -479,12 +489,5 @@ const localStyles = StyleSheet.create({
     historyToggle: {
         ...styles.caption2,
         color: colors.Primary100,
-    },
-    footerActions: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-    },
-    footerAction: {
-        marginLeft: 16,
     },
 })

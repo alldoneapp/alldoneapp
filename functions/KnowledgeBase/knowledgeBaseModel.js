@@ -54,6 +54,7 @@ const KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000
 const KNOWLEDGE_BASE_ENABLED_BY_MEMBER = 'member'
 const KNOWLEDGE_BASE_ENABLED_BY_DEFAULT = 'default'
 const KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON = 'owner_inactive'
+const KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON = 'monthly_cap'
 // A document's text is stored inside its Firestore document, so it stays well under the 1 MiB limit
 // even at three bytes a character. About 30,000 tokens: a long deck, a short report.
 const KNOWLEDGE_DOCUMENT_MAX_CHARS = 120000
@@ -261,13 +262,36 @@ function isKnowledgeBasePausedForInactiveOwner(data = {}) {
     )
 }
 
+// The month a wiki's Gold counter belongs to. UTC, like the reset on the first of the month.
+function getKnowledgeBaseMonthKey(now = Date.now()) {
+    return new Date(now).toISOString().slice(0, 7)
+}
+
+function getKnowledgeBaseMonthlyGoldSpent(data = {}, now = Date.now()) {
+    return data?.monthlyGold?.month === getKnowledgeBaseMonthKey(now) ? Number(data.monthlyGold.spent) || 0 : 0
+}
+
+// A run that reaches the monthly cap schedules the next one for the first of next month. Until then
+// the wiki stands still, and raising the cap above what this month has spent is what ends that early
+// (knowledgeBaseSettings.js).
+function isKnowledgeBasePausedAtMonthlyCap(data = {}, now = Date.now()) {
+    return (
+        data.enabled === true &&
+        data.lastRunStopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON &&
+        data.monthlyGold?.month === getKnowledgeBaseMonthKey(now) &&
+        Number.isFinite(data.nextRunAt) &&
+        data.nextRunAt > now
+    )
+}
+
 // What a client may see of the settings document. Run state (cursor, lease) stays out of it.
-function toKnowledgeBaseSettingsView(projectId, data = {}) {
+function toKnowledgeBaseSettingsView(projectId, data = {}, now = Date.now()) {
     return {
         projectId,
         enabled: data.enabled === true,
         enabledByDefault: data.enabled === true && data.enabledBy === KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
         pausedForInactiveOwner: isKnowledgeBasePausedForInactiveOwner(data),
+        pausedAtMonthlyCap: isKnowledgeBasePausedAtMonthlyCap(data, now),
         instructions: typeof data.instructions === 'string' ? data.instructions : '',
         model: resolveKnowledgeBaseModel(data.model),
         monthlyGoldCap: resolveKnowledgeBaseMonthlyGoldCap(data.monthlyGoldCap),
@@ -313,6 +337,7 @@ module.exports = {
     KNOWLEDGE_BASE_ENABLED_BY_MEMBER,
     KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
     KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
+    KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON,
     KNOWLEDGE_DOCUMENT_MAX_CHARS,
     KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS,
     KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS,
@@ -334,6 +359,9 @@ module.exports = {
     rewriteKnowledgeSourceTokens,
     isKnowledgePageVisible,
     isKnowledgeBasePausedForInactiveOwner,
+    getKnowledgeBaseMonthKey,
+    getKnowledgeBaseMonthlyGoldSpent,
+    isKnowledgeBasePausedAtMonthlyCap,
     resolveKnowledgeBaseModel,
     resolveKnowledgeBaseMonthlyGoldCap,
     normalizeKnowledgeBaseSettingsInput,
