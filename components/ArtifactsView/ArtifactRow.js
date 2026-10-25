@@ -32,9 +32,7 @@ export default function ArtifactRow({ artifact, onPress, inCommentPopup = false 
                 <Text style={[localStyles.meta, inCommentPopup && localStyles.metaOnDark]} numberOfLines={1}>
                     {translate('Artifact edited at', { date: formatArtifactDate(artifact.lastEditionDate) })}
                     {' · '}
-                    {artifact.linkedUpload
-                        ? `${translate('Open upload source')}: ${artifact.linkedSources[0].title || translate('File')}`
-                        : formatArtifactSize(artifact.sizeBytes)}
+                    {formatArtifactSize(artifact.sizeBytes)}
                     {artifact.versionCount > 1
                         ? ` · ${translate('Artifact version', { number: artifact.versionCount })}`
                         : ''}
@@ -43,9 +41,6 @@ export default function ArtifactRow({ artifact, onPress, inCommentPopup = false 
             {/* What an artifact is besides its file: who made it, whether it reads live data, whether
                 people are talking about it. Small and quiet, the title stays the thing to read. */}
             <View style={localStyles.badges}>
-                {artifact.linkedUpload && (
-                    <Icon name="link" size={14} color={badgeColor(inCommentPopup)} style={localStyles.badge} />
-                )}
                 {!!SOURCE_ICONS[artifact.source] && (
                     <Icon
                         name={SOURCE_ICONS[artifact.source]}

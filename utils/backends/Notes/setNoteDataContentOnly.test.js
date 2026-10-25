@@ -160,30 +160,3 @@ it('retains the pending upload on network failure and allows a subsequent retry'
     expect(clearPendingNoteUpload).toHaveBeenCalledTimes(1)
     warning.mockRestore()
 })
-
-it('announces a new upload revision only after Storage has accepted the local content', async () => {
-    jest.clearAllMocks()
-    let complete
-    mockPut.mockImplementationOnce(
-        () =>
-            new Promise(resolve => {
-                complete = resolve
-            })
-    )
-    const save = setNoteData('p', 'n', new Uint8Array([1]), 'preview', null, true)
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(mockUpdate.mock.calls.some(([data]) => data.uploadsRevision)).toBe(false)
-    complete()
-    await save
-    expect(mockUpdate).toHaveBeenCalledWith({ uploadsRevision: 'generated-id' })
-})
-
-it('does not announce an upload revision when Storage failed', async () => {
-    jest.clearAllMocks()
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
-    mockPut.mockRejectedValueOnce(new Error('offline'))
-    await setNoteData('p', 'n', new Uint8Array([1]), 'preview', null, true)
-    expect(mockUpdate.mock.calls.some(([data]) => data.uploadsRevision)).toBe(false)
-    warn.mockRestore()
-})

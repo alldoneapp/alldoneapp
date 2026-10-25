@@ -23,10 +23,33 @@ const {
 // really has — the token is what makes an attachment URL a capability, so a caller who only guessed
 // a path learns nothing and copies nothing.
 
-const { ATTACHMENT_PREFIXES, parseAttachmentUrl } = require('./attachmentModel')
+const ATTACHMENT_PREFIXES = ['attachments/', 'feedAttachments/', 'notesAttachments/']
+const STORAGE_HOST = 'firebasestorage.googleapis.com'
 
 function notFound() {
     return new HttpsError('not-found', 'Attachment not found.')
+}
+
+function parseAttachmentUrl(url, bucketName) {
+    let parsed
+    try {
+        parsed = new URL(String(url || ''))
+    } catch (_) {
+        return null
+    }
+    if (parsed.protocol !== 'https:' || parsed.hostname !== STORAGE_HOST) return null
+    const match = parsed.pathname.match(/^\/v0\/b\/([^/]+)\/o\/([^/]+)$/)
+    if (!match || match[1] !== bucketName) return null
+    let path
+    try {
+        path = decodeURIComponent(match[2])
+    } catch (_) {
+        return null
+    }
+    const token = parsed.searchParams.get('token')
+    if (!token || !ATTACHMENT_PREFIXES.some(prefix => path.startsWith(prefix))) return null
+    if (path.split('/').some(segment => !segment || segment === '.' || segment === '..')) return null
+    return { path, token }
 }
 
 function hasDownloadToken(metadata, token) {

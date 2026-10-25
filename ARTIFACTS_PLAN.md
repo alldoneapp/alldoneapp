@@ -267,10 +267,8 @@ tasks/goals.
 1. **Name: Artefakte.** UI strings: _Artifacts_ (en), _Artefakte_ (de), _Artefactos_ (es).
 2. **The per-project Chats item stays in the sidebar.** The top-right button only opens All
    projects → Chats, so the sidebar remains the per-project way in. Chats leaves only the tab bar.
-3. **Updated 2026-10-25, AT-2828:** all project uploads, including existing ones, appear as links
-   to their original readable sources. No automatic copies, independent access or public shares.
-   "Show in artifacts" replaces the chip's copy action. VM deliverables remain full artifacts.
-   See the linked-upload implementation notes below (supersedes the original explicit-promotion decision).
+3. **Existing attachments do not appear automatically.** Notes and chats get an explicit "Save as
+   artifact"; VM deliverables do become artifacts automatically.
 4. **Sharing outside the project comes in Phase 3.** The MVP offers "Open full screen" and "Reset
    link"; the raw link works without sign-in from day one, but the UI does not advertise it.
 5. **AI-created artifacts inherit the privacy of the thread's object.** An artifact made in a
@@ -409,41 +407,3 @@ Open items:
 - Once, per environment: `node migration/backfillTypesense.js --types=artifacts --force --execute`
   (search for artifacts created before the trigger existed) and
   `node migration/enableArtifactToolForAssistants.js` (dry run first) for existing assistants.
-
-## Linked uploads (AT-2828, 2026-10-25)
-
-The All list combines full artifacts with a read-time view of original uploads
-(`utils/backends/Artifacts/linkedUploads.js`). It reads authorized task, note, goal, contact,
-skill, topic, artifact and OKR documents, their comment threads, plus project-user and assistant
-threads. Historical note bodies are decoded from their existing Yjs Storage content; no production
-backfill, new collection, index or rules deployment is required. Profile pictures, assistant-skill
-packages, unfinished composer drafts and unreferenced Storage objects are not project deliverables.
-
-Every object query uses `readerIds`; comments use the original parent's rules. Aggregation is
-member-only, including in shared projects. The current `isPublicFor` is checked again to remove
-revoked sources while reader projections catch up. Rows open the source editor/thread; they expose
-neither a Storage download capability nor a `serveArtifact` address, sharing control, version or
-separate privacy setting. Source removal, comment edits, listener permission errors and project
-membership loss clear the affected rows. Cancelled/in-flight note reads cannot repopulate them.
-
-A stored path identifies one file, independently of display names or download-token rotations.
-Several readable sources contribute one row; removing one source preserves the remaining links.
-Existing independently copied artifacts remain independent: historical copies have no reliable
-origin identity, so matching only by filename would hide unrelated files. VM-generated full
-artifacts also remain distinct from their legacy chat-attachment copies.
-
-The projection runs only while the All artifacts list is mounted. Followed still describes full
-artifacts, which have their own followers. Existing uploads are not newly indexed in global
-artifact search. It reads source documents and comment collections plus saved note bodies, so
-large projects incur additional reads; note downloads are limited to four concurrently. No file
-bytes are copied. A successful local note upload (including offline catch-up) updates only an
-`uploadsRevision` marker after Storage completion so the list can refresh after the earlier
-metadata write. Collaborator-only durability saves retain their content-only contract.
-
-Removal means removing the reference/source in the app. Deleting Storage bytes administratively
-while leaving the reference behind can leave a broken source link, just as in the original source.
-The UI never scans orphaned Storage or broadens access in an attempt to recover such files.
-
-Verification: targeted web Jest suites; `ci/jest.functions.config.js` attachment suites; real
-Firestore emulator coverage in `__tests__/Firestore/firestoreRules.emulator.test.js`.
-Run the app with Node 22.23.4+ / npm 10 using `npm run dev`, then open project → Artefakte → All.

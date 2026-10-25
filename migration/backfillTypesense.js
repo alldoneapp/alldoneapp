@@ -17,6 +17,7 @@
 //   TYPESENSE_ADMIN_API_KEY=... \
 //   GOOGLE_FIREBASE_WEB_NOTES_STORAGE_BUCKET=<see envs/env.master or env.develop> \
 //   GOOGLE_APPLICATION_CREDENTIALS=serv_account_key_master.json \
+//   [GOOGLE_FIREBASE_STORAGE_BUCKET=<default bucket, defaults to <gcp-project-id>.appspot.com>] \
 //   node migration/backfillTypesense.js --firebase-project-id=<gcp-project-id>            (dry run)
 //   node migration/backfillTypesense.js --firebase-project-id=<gcp-project-id> --execute  (apply)
 //
@@ -143,9 +144,13 @@ async function main() {
     }
 
     if (!admin.apps.length) {
+        // The artifact records read their entry file through admin.storage().bucket(), the
+        // default bucket. Cloud Functions get it from FIREBASE_CONFIG; a local script has to name
+        // it, or every project fails with "Bucket name not specified".
         admin.initializeApp({
             credential: admin.credential.applicationDefault(),
             projectId: firebaseProjectId,
+            storageBucket: process.env.GOOGLE_FIREBASE_STORAGE_BUCKET || `${firebaseProjectId}.appspot.com`,
         })
     }
 
