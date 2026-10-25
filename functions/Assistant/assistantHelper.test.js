@@ -1821,6 +1821,125 @@ describe('Responses API compatibility helpers', () => {
         })
     })
 
+    // Asked to check a deploy and run a migration, an assistant with execute_task_in_vm enabled
+    // answered that it had no access to a VM, GitLab or a deployment console. The tool was in the
+    // request, deferred in tasks_and_goals, and no system message named it, so it was never pinned.
+    describe('execute_task_in_vm is never deferred behind tool search', () => {
+        const schemasFor = names =>
+            names.map(name => ({
+                type: 'function',
+                function: { name, description: '', parameters: { type: 'object', properties: {} } },
+            }))
+        const directNamesOf = result => result.tools.filter(tool => tool.type === 'function').map(tool => tool.name)
+        const deferredNamesOf = result =>
+            result.tools
+                .filter(tool => tool.type === 'namespace')
+                .flatMap(namespace => namespace.tools.map(tool => tool.name))
+
+        // The 47 schemas of the reported request, in the order the run logged them.
+        const reportedRequestTools = [
+            'web_search',
+            'get_notes',
+            'search',
+            'get_user_projects',
+            'get_focus_task',
+            'get_tasks',
+            'update_note',
+            'update_task',
+            'create_note',
+            'create_task',
+            'execute_task_in_vm',
+            'delete_calendar_event',
+            'update_calendar_event',
+            'search_calendar_events',
+            'create_calendar_event',
+            'update_gmail_email',
+            'update_gmail_draft',
+            'create_gmail_draft',
+            'get_gmail_attachment',
+            'create_gmail_reply_draft',
+            'get_chat_attachment',
+            'list_recent_chat_media',
+            'search_gmail',
+            'get_contacts',
+            'get_chats',
+            'get_project_happiness',
+            'get_project_okrs',
+            'get_goals',
+            'get_updates',
+            'compact_thread_context',
+            'update_assistant_settings',
+            'update_user_description',
+            'update_project_description',
+            'update_heartbeat_settings',
+            'update_user_memory',
+            'update_contact',
+            'read_knowledge_page',
+            'correct_knowledge_page',
+            'undo_knowledge_correction',
+            'add_knowledge_document',
+            'remove_knowledge_document',
+            'get_artifacts',
+            'read_artifact',
+            'create_artifact',
+            'update_artifact',
+            'talk_to_assistant_alldone_produc_derek_designer_997f6af2074a',
+            'talk_to_assistant_alldone_produc_marty_marketing_6465a2ac379d',
+        ]
+
+        test('reproduces the reported request: the VM tool is directly callable', () => {
+            // The system prompt named many tools, but not this one.
+            const messages = [
+                ['system', 'Use get_tasks to look up tasks and create_task to add one.'],
+                ['user', 'mach das mal bitte'],
+            ]
+
+            const result = buildResponsesTools(schemasFor(reportedRequestTools), 'MODEL_GPT6_SOL', {
+                alwaysDirectToolNames: collectPromptReferencedToolNames(messages, reportedRequestTools),
+            })
+
+            expect(result.toolSearchEnabled).toBe(true)
+            expect(directNamesOf(result)).toEqual(
+                expect.arrayContaining(['execute_task_in_vm', 'get_tasks', 'create_task'])
+            )
+            expect(deferredNamesOf(result)).not.toContain('execute_task_in_vm')
+            expect(result.alwaysDirectCount).toBe(3)
+            // Everything else still defers, and the fallback still carries every schema.
+            expect(deferredNamesOf(result)).toHaveLength(reportedRequestTools.length - 3)
+            expect(result.fallbackTools).toHaveLength(reportedRequestTools.length)
+        })
+
+        test('is sent directly even when no prompt names any tool', () => {
+            const result = buildResponsesTools(schemasFor(reportedRequestTools), 'MODEL_GPT6_SOL')
+
+            expect(directNamesOf(result)).toEqual(['execute_task_in_vm'])
+            expect(result.alwaysDirectCount).toBe(1)
+        })
+
+        test('accepts the prompt-referenced names as a Set or an array', () => {
+            for (const alwaysDirectToolNames of [new Set(['get_goals']), ['get_goals']]) {
+                const result = buildResponsesTools(schemasFor(reportedRequestTools), 'MODEL_GPT6_SOL', {
+                    alwaysDirectToolNames,
+                })
+
+                expect(directNamesOf(result).sort()).toEqual(['execute_task_in_vm', 'get_goals'])
+            }
+        })
+
+        test('adds nothing for an assistant that does not have the VM tool', () => {
+            const withoutVm = reportedRequestTools.filter(name => name !== 'execute_task_in_vm')
+
+            const result = buildResponsesTools(schemasFor(withoutVm), 'MODEL_GPT6_SOL')
+
+            expect(result.toolSearchEnabled).toBe(true)
+            expect(directNamesOf(result)).toEqual([])
+            expect(result.alwaysDirectCount).toBe(0)
+            expect([...deferredNamesOf(result), ...result.fallbackTools.map(tool => tool.name)]).not.toContain(
+                'execute_task_in_vm'
+            )
+        })
+    })
+
     // `talk_to_assistant_*` / `external_tool_*` / `mcp_*` names are built from
     // user-authored project and assistant names, so every keyword rule matched them first.
     describe('tool search namespace routing', () => {

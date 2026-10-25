@@ -104,6 +104,7 @@ const {
     collectStartedVmJobs,
     ensureVmHostThreadLinksInResponse,
     startsVmJobInCurrentThread,
+    VM_JOB_TOOL_NAME,
 } = require('./vmHostTaskHelper')
 const {
     addTimestampToContextContent,
@@ -269,6 +270,13 @@ const MAX_ASSISTANT_DELEGATION_DEPTH = 2
 const MAX_NATIVE_TOOL_CALL_ITERATIONS = 200
 const TOOL_SEARCH_MIN_FUNCTIONS = 10
 const TOOL_SEARCH_NAMESPACE_MAX_FUNCTIONS = 8
+// Tools that are sent directly whenever they are allowed, whatever the prompt says. A deferred tool
+// only exists for the model if it thinks to search for it, and the VM tool is the one whose absence
+// the model explains instead of looking: asked to deploy and run a migration, an assistant with
+// execute_task_in_vm enabled answered that it had no access to a VM, GitLab or a deployment console,
+// in one round, without a tool search. Its schema description, which says to use it for any coding
+// or repository work, was never loaded, and the namespace it sat in only mentions "execution jobs".
+const NEVER_DEFERRED_TOOL_NAMES = new Set([VM_JOB_TOOL_NAME])
 const ASSISTANT_PROMPT_CACHE_VERSION = 'assistant-prefix-v2'
 // Fallback wall-clock budget for callers that do not provide an explicit limit. Assistant-task
 // and interactive-chat entry points provide their longer budget through toolRuntimeContext when
@@ -13763,8 +13771,7 @@ function buildResponsesTools(tools, modelKey, { disableToolSearch = false, alway
         const secondName = secondTool?.name || secondTool?.type || ''
         return firstName.localeCompare(secondName)
     })
-    const alwaysDirect =
-        alwaysDirectToolNames instanceof Set ? alwaysDirectToolNames : new Set(alwaysDirectToolNames || [])
+    const alwaysDirect = new Set([...(alwaysDirectToolNames || []), ...NEVER_DEFERRED_TOOL_NAMES])
     const functionTools = convertedTools.filter(
         tool => tool?.type === 'function' && tool.name && !alwaysDirect.has(tool.name)
     )

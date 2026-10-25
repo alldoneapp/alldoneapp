@@ -428,6 +428,20 @@ and the assistant's configured instructions, whereas a tool name in a user turn 
 conversational noise that would pin schemas for the whole thread. Matching is longest-name-first, so
 `web_search` is never reported as a bare `search`.
 
+**`execute_task_in_vm` is never deferred either, named or not (AT-2842).** No system message names
+it, so the rule above never pinned it, and the namespace it landed in (`tasks_and_goals`) mentions
+only "execution jobs". Asked in a task thread to check a deploy and run a migration, the Alldone CTO
+(tool enabled, GitLab repo connected) answered in one round, without a tool search, that it had no
+access to a VM, GitLab or a deployment console, and told the user to use "the VM-capable session of
+this task", which did not exist. It never saw the tool's own description, which says to use it for any
+coding or repository work. The thread made it worse: the status comments a coding agent had posted
+through MCP sit in the context as **user** turns and talk about "the other session". So
+`NEVER_DEFERRED_TOOL_NAMES` in `assistantHelper.js` is merged into `alwaysDirectToolNames` inside
+`buildResponsesTools` for every caller. It changes nothing for an assistant without the tool, since
+only schemas already in the request can be sent directly. Add a tool there only when its absence
+makes the model explain instead of search; every entry costs a full schema in every request that
+carries it. Pinned by the `execute_task_in_vm is never deferred` block in `assistantHelper.test.js`.
+
 **An unattended run turns tool search off entirely.** Tool search trades a retry for a smaller
 prompt, and an interactive user simply asks again — but nobody is watching a recurring task, a
 heartbeat or a workflow AI step, so there the trade is all cost. `generatePreConfigTaskResult` takes
