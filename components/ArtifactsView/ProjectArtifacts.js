@@ -13,6 +13,7 @@ import ArtifactRow from './ArtifactRow'
 import ArtifactDetail from './ArtifactDetail'
 import { ArtifactDropZone, ArtifactFileInput, ArtifactUploadStatus, useArtifactUploader } from './ArtifactUpload'
 import { useArtifactsActiveTab, useSelectedArtifactId } from './artifactsNavigationState'
+import { openUploadSource } from './uploadSourceLinks'
 import { openProjectArtifacts } from './artifactLinks'
 import { useProjectArtifacts } from './useArtifacts'
 import { filterArtifactsByKindGroup, getPresentArtifactKindGroups } from './artifactPresentation'
@@ -63,7 +64,7 @@ function EmptyArtifacts({ followedOnly }) {
 export default function ProjectArtifacts({ project, inAllProjects = false, onLoaded }) {
     const [activeTab] = useArtifactsActiveTab()
     const followedOnly = activeTab !== ALL_TAB
-    const { artifacts, loaded } = useProjectArtifacts(project.id, followedOnly)
+    const { artifacts, loaded, uploadsError } = useProjectArtifacts(project.id, followedOnly)
     const [selectedArtifactId, setSelectedArtifactId] = useSelectedArtifactId(project.id)
     const openArtifactId = inAllProjects ? null : selectedArtifactId
     const fileInput = useRef(null)
@@ -90,6 +91,10 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
     }, [loaded, artifacts.length])
 
     const openArtifact = artifact => {
+        if (artifact.linkedUpload) {
+            openUploadSource(project.id, artifact.linkedSources[0])
+            return
+        }
         if (inAllProjects) openProjectArtifacts(project.id, artifact.id)
         else {
             setSelectedArtifactId(artifact.id)
@@ -134,6 +139,9 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
                     >
                         <ArtifactFileInput ref={fileInput} onFiles={uploadFiles} />
                         <ArtifactUploadStatus uploading={uploading} error={error} />
+                        {uploadsError && (
+                            <Text style={localStyles.status}>{translate('Some uploads could not be loaded')}</Text>
+                        )}
                         {!loaded ? (
                             <Text style={localStyles.status}>{translate('Loading artifacts')}</Text>
                         ) : artifacts.length === 0 ? (

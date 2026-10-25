@@ -6,6 +6,7 @@ import {
     getFirebaseProjectId,
     getFunctionsRegion,
     getLoggedUserAccessReaderId,
+    getNoteData,
     runHttpsCallableFunction,
 } from '../firestore'
 import { updateQuotaTraffic } from '../Premium/premiumFirestore'
@@ -27,6 +28,7 @@ import {
     sortArtifactsByLastEdition,
 } from '../../../functions/Artifacts/artifactModel'
 import { getArtifactHistoryCollectionPath, mapArtifactHistoryEvent } from '../../../functions/Artifacts/artifactHistory'
+import { watchLinkedUploads } from './linkedUploads'
 import { ARTIFACT_BRIDGE_QUERY_PARAM } from '../../../functions/Artifacts/artifactDataBridge'
 
 // Artifacts are read straight from Firestore and their metadata is edited there; versions and
@@ -59,6 +61,20 @@ export function watchProjectArtifacts(projectId, { followedOnly = false } = {}, 
         snapshot => onChange(sortArtifactsByLastEdition(snapshot.docs.map(doc => mapArtifactData(doc.id, doc.data())))),
         reportListenerError('list', projectId, onError)
     )
+}
+
+// Linked uploads deliberately use the original object views rather than serveArtifact.
+export function watchProjectUploads(projectId, onChange, onError) {
+    return watchLinkedUploads({
+        db: getDb(),
+        projectId,
+        userId: store.getState().loggedUser?.uid,
+        readerId: getLoggedUserAccessReaderId(),
+        bucketName: firebase.app().options.storageBucket,
+        loadNote: getNoteData,
+        onChange,
+        onError,
+    })
 }
 
 export async function getArtifactData(projectId, artifactId) {

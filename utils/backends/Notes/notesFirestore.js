@@ -416,6 +416,21 @@ export async function setNoteData(
               storageRef.child(`notesData/${objectId}/${noteId}`).put(encodedStateData)
           )
               .then(() => {
+                  // Metadata is queued before the bytes finish uploading. Publish a distinct
+                  // revision afterwards so the linked-upload view never keeps the older bytes.
+                  // A remote durability save still writes no editor metadata (AT-2340).
+                  if (!contentOnly && userCanEditNote) {
+                      try {
+                          getDb()
+                              .doc(`noteItems/${objectId}/notes/${noteId}`)
+                              .update({ uploadsRevision: getId() })
+                              .catch(error => {
+                                  console.warn('Could not notify linked uploads of saved note content:', error)
+                              })
+                      } catch (error) {
+                          console.warn('Could not notify linked uploads of saved note content:', error)
+                      }
+                  }
                   clearPendingNoteUpload(noteId, revision)
                   return true
               })
