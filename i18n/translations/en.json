@@ -280,6 +280,8 @@
     "Monthly Gold limit": "Monthly Gold limit",
     "Wiki Gold spent this month": "%{spent} of %{cap} Gold spent this month",
     "Wiki payment hint": "The member who switches the wiki on pays for its updates with their Gold.",
+    "Switching the wiki on": "Switching the wiki on…",
+    "Switching the wiki off": "Switching the wiki off…",
     "Wiki paid by": "Paid by %{name}. Updates are charged to their Gold.",
     "Only the paying member can change the wiki": "Only the member who pays for the wiki can change these settings.",
     "Instructions for the wiki": "Instructions for the wiki",

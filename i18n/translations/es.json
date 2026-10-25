@@ -280,6 +280,8 @@
     "Monthly Gold limit": "Límite mensual de Oro",
     "Wiki Gold spent this month": "%{spent} de %{cap} de Oro gastado este mes",
     "Wiki payment hint": "Quien activa la wiki paga sus actualizaciones con su propio Oro.",
+    "Switching the wiki on": "Activando la wiki…",
+    "Switching the wiki off": "Desactivando la wiki…",
     "Wiki paid by": "Lo paga %{name}. Las actualizaciones se cobran de su Oro.",
     "Only the paying member can change the wiki": "Solo el miembro que paga la wiki puede cambiar estos ajustes.",
     "Instructions for the wiki": "Instrucciones para la wiki",
