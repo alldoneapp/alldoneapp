@@ -4,6 +4,7 @@ const admin = require('firebase-admin')
 
 const { canAccessObject, getObjectDocPath, FEED_PUBLIC_FOR_ALL } = require('../shared/privacyAccess')
 const { commitArtifactVersion, setArtifactDataAccess } = require('./artifactStore')
+const { MCP_CHANNEL, buildLastEditorVia, buildMcpActorMarker } = require('../shared/mcpActor')
 const {
     ARTIFACT_SOURCES,
     ArtifactInputError,
@@ -224,6 +225,11 @@ async function readArtifactTool({ db, bucket, projectId, userId, args, baseUrl }
     }
 }
 
+// An artifact an MCP client creates or changes in the user's name says so in its history.
+function getMcpActorChannel(runtime) {
+    return runtime?.sourceChannel === MCP_CHANNEL ? buildMcpActorMarker(runtime.mcpClient) : null
+}
+
 async function createArtifactTool({ db, bucket, projectId, userId, assistantId, args, runtime, baseUrl }) {
     const files = encodeTextFiles(args.files)
     if (files.length === 0) fail('An artifact needs at least one file.')
@@ -244,6 +250,7 @@ async function createArtifactTool({ db, bucket, projectId, userId, assistantId, 
         parentObject: buildParentObject(runtime),
         assistantId: assistantId || null,
         dataAccess: args.liveData === true,
+        actorChannel: getMcpActorChannel(runtime),
     })
     const artifact = await readArtifact(db, projectId, result.artifactId, userId)
     return {
@@ -254,15 +261,23 @@ async function createArtifactTool({ db, bucket, projectId, userId, assistantId, 
     }
 }
 
-async function updateMetadata({ db, projectId, artifactId, userId, title, description }) {
-    const patch = { lastEditorId: userId, lastEditionDate: Date.now() }
+async function updateMetadata({ db, projectId, artifactId, userId, title, description, actorChannel = null }) {
+    const lastEditionDate = Date.now()
+    // The update trigger derives the history event from this edit; the stamp is how it knows the edit
+    // came through an MCP client (artifactHistory.buildMetadataHistoryEvents).
+    const patch = {
+        lastEditorId: userId,
+        lastEditionDate,
+        lastEditorVia: buildLastEditorVia(actorChannel, lastEditionDate),
+    }
     if (title) patch.title = title
     if (description !== undefined) patch.description = description
     await db.doc(getArtifactDocPath(projectId, artifactId)).update(patch)
 }
 
-async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, args, baseUrl }) {
+async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, args, runtime, baseUrl }) {
     await assertMember(db, projectId, userId)
+    const actorChannel = getMcpActorChannel(runtime)
     const artifact = await readArtifact(db, projectId, args.artifactId, userId)
     const title = args.title === undefined ? '' : normalizeArtifactTitle(args.title)
     const description = args.description === undefined ? undefined : normalizeArtifactDescription(args.description)
@@ -275,10 +290,17 @@ async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, 
         if (!title && description === undefined && !switchesLiveData)
             fail('Nothing to change: give edits, files, removePaths, a title, a description or liveData.')
         if (switchesLiveData) {
-            await setArtifactDataAccess({ db, projectId, artifactId: artifact.id, userId, enabled: args.liveData })
+            await setArtifactDataAccess({
+                db,
+                projectId,
+                artifactId: artifact.id,
+                userId,
+                enabled: args.liveData,
+                actorChannel,
+            })
         }
         if (title || description !== undefined)
-            await updateMetadata({ db, projectId, artifactId: artifact.id, userId, title, description })
+            await updateMetadata({ db, projectId, artifactId: artifact.id, userId, title, description, actorChannel })
         const updated = await readArtifact(db, projectId, artifact.id, userId)
         return {
             success: true,
@@ -312,6 +334,7 @@ async function updateArtifactTool({ db, bucket, projectId, userId, assistantId, 
         source: ARTIFACT_SOURCES.ASSISTANT,
         assistantId: assistantId || null,
         dataAccess: typeof args.liveData === 'boolean' ? args.liveData : undefined,
+        actorChannel,
     })
     const updated = await readArtifact(db, projectId, artifact.id, userId)
     return {
