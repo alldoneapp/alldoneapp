@@ -283,8 +283,6 @@
     "Switching the wiki on": "Wiki wird eingeschaltet…",
     "Switching the wiki off": "Wiki wird ausgeschaltet…",
     "Wiki paid by": "Bezahlt von %{name}. Die Aktualisierungen gehen von deren Gold ab.",
-    "Wiki switched on by default": "Das Wiki ist in Projekten von Mitgliedern, die Alldone nutzen, standardmäßig an.",
-    "Wiki paused while its payer is inactive": "Pausiert: Das zahlende Mitglied hat Alldone seit 30 Tagen nicht genutzt. Das Wiki läuft weiter, sobald es zurück ist.",
     "Only the paying member can change the wiki": "Nur das Mitglied, das das Wiki bezahlt, kann diese Einstellungen ändern.",
     "Instructions for the wiki": "Anweisungen für das Wiki",
     "Wiki instructions placeholder": "Zum Beispiel: Schreibe auf Deutsch. Lege pro Kunde eine Seite an. Ignoriere interne Verwaltungsaufgaben.",
@@ -3249,5 +3247,6 @@
     "Artifact upload in": "In %{title}",
     "Previous file": "Vorherige Datei",
     "Next file": "Nächste Datei",
-    "File": "Datei"
+    "File": "Datei",
+    "Actor via MCP client": "%{name} (via %{client})"
 }

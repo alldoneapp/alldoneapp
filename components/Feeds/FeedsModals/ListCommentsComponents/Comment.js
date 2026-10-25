@@ -15,6 +15,7 @@ import {
 } from '../../../ChatsView/ChatDV/EditorView/markdownParserFunctions'
 import { hasContentBeforeLine, MARKDOWN_HEADING_TOP_MARGIN } from '../../../ChatsView/ChatDV/EditorView/markdownLayout'
 import useGetUserPresentationData from '../../../ContactsView/Utils/useGetUserPresentationData'
+import { withMcpActorLabel } from '../../../../utils/mcpActorLabel'
 import { getTimestampInMilliseconds } from '../../../ChatsView/Utils/ChatHelper'
 import Icon from '../../../Icon'
 import {
@@ -412,7 +413,7 @@ export default function Comment({
                         <Image style={localStyles.avatar} source={{ uri: photoURL }} />
                     )}
                     <Text style={[localStyles.name, { maxWidth: smallScreenNavigation ? 130 : 250 }]} numberOfLines={1}>
-                        {displayName}
+                        {withMcpActorLabel(displayName, comment)}
                     </Text>
                     <Text style={[localStyles.commentSubHeader, { marginHorizontal: 4 }]}>•</Text>
                     <Text style={localStyles.commentSubHeader} numberOfLines={1}>

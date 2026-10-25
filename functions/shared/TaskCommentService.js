@@ -9,6 +9,7 @@ const { getEmailIdentity, matchesEmailThread } = require('../Email/emailThreadId
 const { canAccessObject } = require('./privacyAccess')
 const { buildEmailTaskUpdate } = require('../Email/emailTaskContentUpdate')
 const { resolveEmailThreadTask } = require('../Email/emailThreadTaskStore')
+const { MCP_CHANNEL, formatActorDisplayName, getActorChannelFields, isMcpActor } = require('./mcpActor')
 
 const COMMENT_MAX_LENGTH = 5000
 
@@ -52,6 +53,9 @@ class TaskCommentService {
         const commentText = normalizeTaskComment(comment)
         const actorId = actor?.uid || actor?.id || actor?.creatorId
         if (!actorId) throw new Error('A valid comment author is required')
+        // A comment an MCP client wrote in the user's name is news to the user as well.
+        const actorChannelFields = getActorChannelFields(actor)
+        const notifyActor = isMcpActor(actor)
 
         const taskRef = this.database.doc(`items/${projectId}/tasks/${taskId}`)
         const chatRef = this.database.doc(`chatObjects/${projectId}/chats/${taskId}`)
@@ -120,7 +124,7 @@ class TaskCommentService {
             ])
             const followers = uniqueStrings([...existingFollowers, taskData.userId, actorId])
             const members = uniqueStrings([...(chatData.members || []), taskData.userId, actorId])
-            const usersToNotify = followers.filter(userId => userId !== actorId)
+            const usersToNotify = followers.filter(userId => notifyActor || userId !== actorId)
             const isPublicFor = Array.isArray(taskData.isPublicFor)
                 ? taskData.isPublicFor
                 : [FEED_PUBLIC_FOR_ALL, taskData.userId].filter(Boolean)
@@ -139,6 +143,7 @@ class TaskCommentService {
                 ...(fromAssistant && requestUserId ? { requestUserId } : {}),
                 ...(fromAssistant && suppressAssistantReply ? { suppressAssistantReply: true } : {}),
                 ...(gmailData ? { gmailData } : {}),
+                ...actorChannelFields,
             }
 
             transaction.set(commentRef, commentData)
@@ -213,7 +218,8 @@ class TaskCommentService {
                 task: taskData,
                 followers: visibleUsersToNotify,
                 actorId,
-                actorName: actor.displayName || actor.name || 'Assistant',
+                actorName: formatActorDisplayName(actor.displayName || actor.name || 'Assistant', actor),
+                actorChannelFields,
                 commentId,
                 commentText,
             }
@@ -262,6 +268,7 @@ class TaskCommentService {
         commentId,
         commentText,
         fromAssistant,
+        actorChannelFields = {},
     }) {
         if (followers.length === 0) return
 
@@ -279,6 +286,7 @@ class TaskCommentService {
                 date: messageTimestamp,
                 creatorId: actorId,
                 creatorType: fromAssistant ? 'assistant' : 'user',
+                ...actorChannelFields,
             })
         })
 
@@ -304,6 +312,8 @@ class TaskCommentService {
             chatId: taskId,
             projectId,
             initiatorId: actorId,
+            // Delivery channels skip the initiator; through MCP the initiator is the user's agent.
+            ...(actorChannelFields.via === MCP_CHANNEL ? { initiatorVia: MCP_CHANNEL } : {}),
         })
 
         await batch.commit()

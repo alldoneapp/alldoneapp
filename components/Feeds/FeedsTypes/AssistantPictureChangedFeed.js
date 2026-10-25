@@ -12,7 +12,8 @@ import {
     generatorParserTextElement,
     generatorParserCustomElement,
 } from '../Utils/HelperFunctions'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function AssistantPictureChangedFeed({
     feed,
@@ -26,7 +27,7 @@ export default function AssistantPictureChangedFeed({
     const [width, setWidth] = useState(0)
     const { newPhotoURL, oldPhotoURL, id, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     const firstEntryText = `${shortName} changed picture • From`
     const secondEntryText = `to`

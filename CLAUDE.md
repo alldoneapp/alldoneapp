@@ -565,24 +565,6 @@ from the project's tasks, goals, notes and contacts (`functions/KnowledgeBase/`,
 write it; every write is a callable or the `runKnowledgeBaseIngest` worker. The member who switches
 it on pays (`knowledge_base_ingest` Gold, monthly cap, default model DeepSeek V4 Flash).
 
-**It is on by default for every project of an active user, and a run spends nothing on a payer who
-is away.** "Active" is the heartbeat rule (a login within `ACTIVE_USER_WINDOW_MS`, 30 days), imported
-through `knowledgeBaseSchedule.js` rather than re-declared. `knowledgeBaseDefaults.js` writes the
-default as a real document (`enabledBy: 'default'`, first run at the payer's next 03:00) for a
-project that has **no** `knowledgeBases/{projectId}` document at all; an existing document is a
-decision and is never switched back on. Three callers reach it: `onCreateProject`, the user trigger
-when somebody logs in after 30 days away, and the daily `applyKnowledgeBaseDefaults` sweep, which is
-also what reached the projects that existed before the default — there is no migration. The payer
-is the project's creator when they are an active member, otherwise the member being processed.
-Guides (`parentTemplateId`) and templates are excluded on purpose: a guide's `creatorId` is the
-template's author, who would otherwise pay for the wiki of every guide anybody starts. When the
-payer has been away 30 days the run stops with `owner_inactive` and clears `nextRunAt` (paused, no
-model call); the payer's return resumes it, and a wiki the default switched on moves to another
-active member once its payer is gone. A wiki a member switched on themselves (`enabledBy: 'member'`,
-or no field on wikis that predate the default) never changes hands that way — it waits. Note
-`releaseIngestLease` must not `Math.min` a null `nextRunAt` (it is `0`, i.e. due forever). Pinned by
-`knowledgeBaseDefaults.test.js` and the `owner_inactive` cases in `knowledgeBaseIngest.test.js`.
-
 **The ingest runs through the Admin SDK, so the visibility filter is the ONLY protection.**
 `isVisibleToWholeProject` in `collectKnowledgeSources.js` admits an object only when `isPublicFor`
 names `0` and it is not `isPrivate` (goals without `isPublicFor` count as public, matching
@@ -876,6 +858,32 @@ drops `admin.firestore.FieldValue` — use `require('firebase-admin/firestore').
 `ArtifactsView/artifactNoteEmbed.js`). Both carry the in-app URL, so `scanLinkedObjects` records a
 backlink for either; the card is mounted through `renderEmbedContent` and reads the artifact with the
 viewer's own access.
+
+### An MCP client acts in the user's name, and says so
+
+Claude, Codex and other MCP clients have no account of their own: every MCP tool runs as the
+OAuth-authenticated user (`assistantId = null`), so `creatorId` / `lastEditorId` is the user, which
+is right for access and ownership. Two things were wrong with that and both are fixed by one marker,
+`{ via: 'mcp', viaClient: 'Claude' }` (`functions/shared/mcpActor.js`): the app could not tell the
+agent's work from the user's own, and the user was never notified of it, because every fan-out skips
+the actor. The marker is stamped on feeds (`generateFeedModel`, both copies), comments and their
+chat/push notifications (`TaskCommentService`), wiki revision authors, and a task's
+`lastEditorVia` (bound to `lastEditionDate`, because the app writes `lastEditorId` without knowing
+to clear it). The app renders it as "Karsten Wysk (via Claude)" (`utils/mcpActorLabel.js`,
+`getFeedCreatorPresentationData`); readers must keep using the user's id for avatar and navigation.
+Every notification path that skips the actor keeps the actor when the marker is present:
+`increaseFeedCount`, `TaskCommentService.addComment`, the wiki feed and the WhatsApp initiator guard
+(`initiatorVia`). An MCP `update_task` comment is therefore not silent, unlike an assistant's.
+
+`viaClient` comes from the `clientInfo.name` the client sends with `initialize`, remembered on its
+`oauthTokens` / `oauthRefreshTokens` documents (`mcpClientName`, carried over on refresh), and is
+only ever one of the labels in `MCP_CLIENT_LABELS` — a client's self-description is rendered to every
+project member, so an unknown name is shown as "via MCP", never verbatim. Production clients report
+`codex-mcp-client`, `Anthropic/ClaudeAI`, `claude-code`. A token from before this shipped is labelled
+once its client next initializes. A new MCP-reachable tool that writes feeds or comments gets the
+marker for free if it builds its actor with `getAssistantFeedUserForTool(..., toolRuntimeContext)`.
+Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
+`functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
 ### Assistant Tool Checklist
 

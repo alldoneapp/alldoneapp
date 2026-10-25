@@ -11,7 +11,8 @@ import {
     generatorParserTextElement,
     generatorParserViewElement,
 } from '../Utils/HelperFunctions'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function ProjectChangedGuide({ feed, projectId, showNewFeedDot, feedActiveTab, lastChangeDateObject }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
@@ -19,7 +20,7 @@ export default function ProjectChangedGuide({ feed, projectId, showNewFeedDot, f
     const [width, setWidth] = useState(0)
     const { guideProjectId, projectName, projectColor, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     const firstEntryText = `${shortName} added new community project:`
 

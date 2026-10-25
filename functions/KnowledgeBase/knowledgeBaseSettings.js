@@ -4,11 +4,9 @@ const admin = require('firebase-admin')
 const { HttpsError } = require('firebase-functions/v2/https')
 
 const {
-    KNOWLEDGE_BASE_ENABLED_BY_MEMBER,
     KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS,
     KnowledgeBaseSettingsError,
     getKnowledgeBasePath,
-    isKnowledgeBasePausedForInactiveOwner,
     normalizeKnowledgeBaseSettingsInput,
     resolveKnowledgeBaseModel,
     resolveKnowledgeBaseMonthlyGoldCap,
@@ -117,18 +115,11 @@ async function setKnowledgeBaseSettings({
         if (!current) next.createdAt = now
 
         if (enabled) {
-            // Switching it on, or taking over from a departed owner, makes the caller the payer, by
-            // their own choice: the default switch-on no longer hands this wiki to somebody else.
-            if (!wasEnabled || current?.ownerUserId !== userId) {
-                next.ownerUserId = userId
-                next.enabledBy = KNOWLEDGE_BASE_ENABLED_BY_MEMBER
-            }
+            // Switching it on, or taking over from a departed owner, makes the caller the payer.
+            if (!wasEnabled || current?.ownerUserId !== userId) next.ownerUserId = userId
             if (!wasEnabled) {
                 next.enabledAt = now
                 // The first build should not wait for the nightly slot.
-                next.nextRunAt = now
-            } else if (isKnowledgeBasePausedForInactiveOwner(current)) {
-                // Whoever saves is using Alldone right now, and is (or just became) the payer.
                 next.nextRunAt = now
             }
         } else if (wasEnabled) {

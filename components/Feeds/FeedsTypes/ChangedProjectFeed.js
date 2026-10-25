@@ -11,7 +11,8 @@ import {
     generatorParserTextElement,
     generatorParserViewElement,
 } from '../Utils/HelperFunctions'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function ChangedProjectFeed({ feed, projectId, showNewFeedDot, feedActiveTab, lastChangeDateObject }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
@@ -19,7 +20,7 @@ export default function ChangedProjectFeed({ feed, projectId, showNewFeedDot, fe
     const [width, setWidth] = useState(0)
     const { projectName, projectColor, changeDirection, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     const firstEntryText = `${shortName} changed project • Moved ${changeDirection}`
 

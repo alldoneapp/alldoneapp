@@ -15,9 +15,6 @@ const onCreateProject = async project => {
                 projectId: project.id,
             }
         )
-        // The project wiki is on by default; never throws.
-        const { applyKnowledgeBaseDefaultForNewProject } = require('../KnowledgeBase/knowledgeBaseDefaults')
-        await applyKnowledgeBaseDefaultForNewProject({ project })
     }
 }
 
