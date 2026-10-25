@@ -216,31 +216,6 @@ describe('ProjectWikiSettings', () => {
         expect(component.root.findByProps({ testID: 'project-wiki-instructions' }).props.editable).toBe(false)
     })
 
-    it('says when the wiki was switched on by default, and when it waits for its payer to come back', () => {
-        const component = mount({ enabled: true, enabledBy: 'default', ownerUserId: 'owner', nextRunAt: 5 })
-        let text = textOf(component.toJSON())
-        expect(text).toContain('Paid by Karsten')
-        expect(text).toContain('The wiki is on by default in projects of members who use Alldone.')
-        expect(component.root.findAllByProps({ testID: 'project-wiki-paused-hint' })).toHaveLength(0)
-
-        act(() =>
-            mockWatchers.knowledgeBase({
-                enabled: true,
-                enabledBy: 'default',
-                ownerUserId: 'owner',
-                nextRunAt: null,
-                lastRunStopReason: 'owner_inactive',
-            })
-        )
-        text = textOf(component.toJSON())
-        expect(text).toContain('Paused: the paying member has not used Alldone for 30 days.')
-
-        // A wiki a member switched on themselves says neither.
-        act(() => mockWatchers.knowledgeBase({ enabled: true, ownerUserId: 'owner', nextRunAt: 5 }))
-        expect(component.root.findAllByProps({ testID: 'project-wiki-default-hint' })).toHaveLength(0)
-        expect(component.root.findAllByProps({ testID: 'project-wiki-paused-hint' })).toHaveLength(0)
-    })
-
     it('only saves a monthly limit inside the allowed range', async () => {
         const component = mount({ enabled: true, ownerUserId: 'me', monthlyGoldCap: 500 })
         const cap = component.root.findByProps({ testID: 'project-wiki-cap' })

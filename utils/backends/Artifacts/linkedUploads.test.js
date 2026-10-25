@@ -29,12 +29,6 @@ const latest = () => onChange.mock.calls.at(-1)?.[0] || []
 const send = (path, entries) => listeners.get(path).next(snapshot(entries))
 const project = userIds => listeners.get('projects/p').next({ exists: true, data: () => ({ userIds }) })
 const parent = (description = '', extra = {}) => ({ isPublicFor: [0], description, lastEditionDate: 1, ...extra })
-// An object's comments are only listened to once it has a chat object, as every comment write creates.
-const chats = (...objects) =>
-    send(
-        'chatObjects/p/chats',
-        objects.map(([type, id]) => [id, { type, isPublicFor: [0] }])
-    )
 
 beforeEach(() => {
     listeners = new Map()
@@ -119,7 +113,6 @@ it('deduplicates the same stored file across names, rotated tokens, fields and s
     const path = 'notesAttachments/n/old.pdf'
     send('noteItems/p/notes', [['n', parent()]])
     send('items/p/tasks', [['t', parent(token(path, 'Renamed.pdf', 'new-token'), { extendedName: token(path) })]])
-    chats(['tasks', 't'])
     send('chatComments/p/tasks/t/comments', [['c', { commentText: token(path, 'Third.pdf') }]])
     await tick()
     expect(latest()).toHaveLength(1)
@@ -128,7 +121,6 @@ it('deduplicates the same stored file across names, rotated tokens, fields and s
 
 it('replaces edited comments and never resurrects a removed attachment from stale mediaContext', () => {
     send('items/p/tasks', [['t', parent()]])
-    chats(['tasks', 't'])
     send('chatComments/p/tasks/t/comments', [['c', { commentText: token('attachments/c/report.pdf') }]])
     expect(latest()).toHaveLength(1)
     send('chatComments/p/tasks/t/comments', [
@@ -161,7 +153,6 @@ it('ignores mirrored chats and unauthorized sources even with stale readerIds', 
 
 it('removes files on privacy changes, source deletion and denied comment reads', () => {
     send('items/p/tasks', [['t', parent(token('attachments/c/a.pdf'))]])
-    chats(['tasks', 't'])
     expect(latest()).toHaveLength(1)
     const oldCommentListener = listeners.get('chatComments/p/tasks/t/comments')
     send('items/p/tasks', [['t', parent('', { isPublicFor: ['other'] })]])
@@ -234,7 +225,7 @@ it('offers no aggregated uploads to a public reader or unauthenticated visitor',
     ]) {
         const change = jest.fn()
         watchLinkedUploads({ db, projectId: 'p', bucketName, ...identity, onChange: change })()
-        expect(change).toHaveBeenCalledWith([], { settled: true })
+        expect(change).toHaveBeenCalledWith([])
     }
 })
 
@@ -252,13 +243,6 @@ it('opens the original source editor or thread without a download capability', (
     expect(getUploadSourcePath('p', { type: 'notes', id: 'n', commentId: 'c' })).toBe('/projects/p/notes/n/chat')
     expect(getUploadSourcePath('p', { type: 'topics', id: 'c' })).toBe('/projects/p/chats/c/chat')
     expect(getUploadSourcePath('p', { type: 'users', id: 'u' })).toBe('/projects/p/contacts/u/chat')
-    // Where an assistant made an artifact: that object's conversation.
-    expect(getUploadSourcePath('p', { type: 'tasks', id: 't', inThread: true })).toBe('/projects/p/tasks/t/chat')
-    // An artifact opens in the artifacts view, its chat when a file was sent there.
-    expect(getUploadSourcePath('p', { type: 'artifacts', id: 'a' })).toBe('/projects/p/artifacts/a')
-    expect(getUploadSourcePath('p', { type: 'artifacts', id: 'a', commentId: 'c' })).toBe(
-        '/projects/p/artifacts/a/chat'
-    )
 })
 
 it('keeps same-named distinct files separate and mints no address of its own', () => {
@@ -297,181 +281,4 @@ it('shows a file through the address its source already embeds, with the image t
     ])
     expect(file).toMatchObject({ kind: 'image', mimeType: 'image/png', url: image, thumbnailUrl: thumbnail })
     expect(file.linkedSources.map(source => source.type)).toEqual(['tasks', 'notes'])
-})
-
-const settled = () => onChange.mock.calls.at(-1)?.[1]?.settled
-const everySourcePath = () => [
-    ...UPLOAD_SOURCES.map(({ path }) => path.replace('{p}', 'p')),
-    'assistants/p/items',
-    'assistants/globalProject/items',
-]
-const answerEverySource = (except = []) =>
-    everySourcePath()
-        .filter(path => !except.includes(path))
-        .forEach(path => send(path, []))
-
-it('listens to the comments of only the objects that have a chat, following chats as they come and go', () => {
-    send('items/p/tasks', [
-        ['quiet', parent()],
-        ['talked', parent()],
-    ])
-    expect(listeners.has('chatComments/p/tasks/quiet/comments')).toBe(false)
-    expect(listeners.has('chatComments/p/tasks/talked/comments')).toBe(false)
-
-    chats(['tasks', 'talked'])
-    expect(listeners.has('chatComments/p/tasks/quiet/comments')).toBe(false)
-    send('chatComments/p/tasks/talked/comments', [['c', { commentText: token('attachments/c/a.pdf') }]])
-    expect(latest()).toHaveLength(1)
-
-    const commentListener = listeners.get('chatComments/p/tasks/talked/comments')
-    chats()
-    expect(commentListener.stop).toHaveBeenCalled()
-    expect(latest()).toEqual([])
-    commentListener.next(snapshot([['late', { commentText: token('attachments/c/a.pdf') }]]))
-    expect(latest()).toEqual([])
-})
-
-it('still reads uploads in the object itself when it has no chat', () => {
-    send('goals/p/items', [['g', parent(token('attachments/g/plan.pdf'))]])
-    expect(latest().map(file => file.title)).toEqual(['report.pdf'])
-    expect(listeners.has('chatComments/p/goals/g/comments')).toBe(false)
-})
-
-it('reports settled only once every source, comment thread and note body has answered', async () => {
-    let finishNote
-    loadNote.mockImplementationOnce(
-        () =>
-            new Promise(done => {
-                finishNote = done
-            })
-    )
-    expect(settled()).toBe(false)
-    send('noteItems/p/notes', [['n', parent()]])
-    send('items/p/tasks', [['t', parent()]])
-    answerEverySource(['noteItems/p/notes', 'items/p/tasks', 'chatObjects/p/chats'])
-    chats(['tasks', 't'])
-    expect(settled()).toBe(false)
-
-    send('chatComments/p/users/u/comments', [])
-    send('chatComments/p/tasks/t/comments', [])
-    await tick()
-    expect(settled()).toBe(false)
-
-    finishNote(noteBytes())
-    await tick()
-    expect(settled()).toBe(true)
-    expect(latest().map(file => file.title)).toEqual(['Old.pdf'])
-
-    // Later changes are live updates of a settled list, not a new first load.
-    send('items/p/tasks', [['t', parent(token('attachments/t/new.pdf', 'new.pdf'))]])
-    expect(settled()).toBe(true)
-    expect(latest()).toHaveLength(2)
-})
-
-it('settles with whatever answered when a note body or a listener fails', async () => {
-    loadNote.mockRejectedValueOnce(new Error('offline'))
-    send('noteItems/p/notes', [['n', parent()]])
-    answerEverySource(['noteItems/p/notes'])
-    listeners.get('chatComments/p/users/u/comments').error({ code: 'permission-denied' })
-    await tick()
-    expect(settled()).toBe(true)
-    expect(latest()).toEqual([])
-    expect(onError).toHaveBeenCalledTimes(2)
-})
-
-it('settles at once, and empty, when the viewer is not a member', () => {
-    send('items/p/tasks', [['t', parent(token('attachments/c/a.pdf'))]])
-    project([])
-    expect(latest()).toEqual([])
-    expect(settled()).toBe(true)
-})
-
-it('keeps a note’s files listed while its edited body is read again', async () => {
-    send('noteItems/p/notes', [['n', parent()]])
-    await tick()
-    expect(latest().map(file => file.title)).toEqual(['Old.pdf'])
-    let finishNote
-    loadNote.mockImplementationOnce(
-        () =>
-            new Promise(done => {
-                finishNote = done
-            })
-    )
-    send('noteItems/p/notes', [['n', parent('', { lastEditionDate: 2 })]])
-    await tick()
-    expect(latest().map(file => file.title)).toEqual(['Old.pdf'])
-    finishNote(new Uint8Array())
-    await tick()
-    expect(latest()).toEqual([])
-})
-
-describe('remembered note attachments', () => {
-    let cache
-    beforeEach(() => {
-        stop()
-        listeners.clear()
-        const stored = new Map()
-        cache = {
-            get: jest.fn(async (id, signature) => stored.get(`${id}@${signature}`) || null),
-            set: jest.fn((id, signature, refs) => stored.set(`${id}@${signature}`, refs)),
-        }
-        stop = watchLinkedUploads({
-            db,
-            projectId: 'p',
-            userId: 'u',
-            readerId: 'u',
-            bucketName,
-            loadNote,
-            noteUploadsCache: cache,
-            onChange,
-            onError,
-        })
-        project(['u'])
-    })
-
-    it('reads an unchanged note from what it found last time instead of downloading it again', async () => {
-        send('noteItems/p/notes', [['n', parent()]])
-        await tick()
-        expect(loadNote).toHaveBeenCalledTimes(1)
-        expect(cache.set).toHaveBeenCalledWith('n', '1|', [expect.objectContaining({ fileName: 'Old.pdf' })])
-
-        // The tab is opened again: a new watcher, the same note.
-        stop()
-        listeners.clear()
-        stop = watchLinkedUploads({
-            db,
-            projectId: 'p',
-            userId: 'u',
-            readerId: 'u',
-            bucketName,
-            loadNote,
-            noteUploadsCache: cache,
-            onChange,
-            onError,
-        })
-        project(['u'])
-        send('noteItems/p/notes', [['n', parent()]])
-        await tick()
-        expect(loadNote).toHaveBeenCalledTimes(1)
-        expect(latest().map(file => file.title)).toEqual(['Old.pdf'])
-    })
-
-    it('downloads a note again once its edition stamps moved', async () => {
-        send('noteItems/p/notes', [['n', parent()]])
-        await tick()
-        loadNote.mockResolvedValueOnce(noteBytes('notesAttachments/n/second.pdf'))
-        send('noteItems/p/notes', [['n', parent('', { uploadsRevision: 'uploaded-2' })]])
-        await tick()
-        expect(loadNote).toHaveBeenCalledTimes(2)
-        expect(cache.get).toHaveBeenLastCalledWith('n', '1|uploaded-2')
-        expect(latest()[0].id).toBe('upload:notesAttachments/n/second.pdf')
-    })
-
-    it('never uses a remembered note the viewer can no longer read', async () => {
-        await cache.set('n', '1|', [{ path: 'notesAttachments/n/old.pdf', fileName: 'Old.pdf' }])
-        send('noteItems/p/notes', [['n', parent('', { isPublicFor: ['other'] })]])
-        await tick()
-        expect(cache.get).not.toHaveBeenCalled()
-        expect(latest()).toEqual([])
-    })
 })

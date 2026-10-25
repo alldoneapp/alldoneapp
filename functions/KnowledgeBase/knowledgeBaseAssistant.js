@@ -30,7 +30,6 @@
 
 const crypto = require('crypto')
 const { FieldValue } = require('firebase-admin/firestore')
-const { buildMcpActorMarker, MCP_CHANNEL } = require('../shared/mcpActor')
 
 const {
     getKnowledgeBasePath,
@@ -263,12 +262,6 @@ async function readKnowledgePage({ db, projectId, slug }) {
     }
 }
 
-// A change an MCP client made in the user's name says so on the revision, which is what the history and
-// the Updates feed read (shared/mcpActor.js).
-function getMcpAuthorFields(toolRuntimeContext) {
-    return toolRuntimeContext?.sourceChannel === MCP_CHANNEL ? buildMcpActorMarker(toolRuntimeContext.mcpClient) : {}
-}
-
 async function correctKnowledgePage({ db, projectId, userId, assistantId, args, toolRuntimeContext, now, fieldValue }) {
     const slug = normalizeKnowledgePageSlug(args.slug)
     if (!slug) return failure('correct_knowledge_page needs the slug of the page to correct.')
@@ -309,14 +302,7 @@ async function correctKnowledgePage({ db, projectId, userId, assistantId, args, 
         sourceLabels: { [correctionKey]: `Correction by ${authorName}` },
         expectedRevision,
         mode: 'correction',
-        author: {
-            type: 'user',
-            userId,
-            name: authorName,
-            correctionId,
-            assistantId: assistantId || null,
-            ...getMcpAuthorFields(toolRuntimeContext),
-        },
+        author: { type: 'user', userId, name: authorName, correctionId, assistantId: assistantId || null },
         reason: text,
         now,
         fieldValue,
@@ -357,7 +343,6 @@ async function undoKnowledgeCorrection({
     projectId,
     userId,
     correctionId,
-    authorFields = {},
     now = Date.now(),
     fieldValue = FieldValue,
 }) {
@@ -376,7 +361,7 @@ async function undoKnowledgeCorrection({
         slug: correction.pageSlug,
         expectedRevision: correction.revisionAfter,
         targetRevision: correction.revisionBefore,
-        author: { type: 'user', userId, name: authorName, undoneCorrectionId: correctionId, ...authorFields },
+        author: { type: 'user', userId, name: authorName, undoneCorrectionId: correctionId },
         reason: `Undid the correction: ${correction.text || ''}`,
         now,
         fieldValue,
@@ -430,15 +415,7 @@ async function executeKnowledgeBaseTool({
                 fieldValue,
             })
         case UNDO_KNOWLEDGE_CORRECTION_TOOL:
-            return undoKnowledgeCorrection({
-                db,
-                projectId,
-                userId,
-                correctionId: args.correctionId,
-                authorFields: getMcpAuthorFields(toolRuntimeContext),
-                now,
-                fieldValue,
-            })
+            return undoKnowledgeCorrection({ db, projectId, userId, correctionId: args.correctionId, now, fieldValue })
         case ADD_KNOWLEDGE_DOCUMENT_TOOL:
             return addKnowledgeDocument({
                 db,

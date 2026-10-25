@@ -166,7 +166,7 @@ import { getRoundedStartAndEndDates } from '../../../components/MyDayView/MyDayT
 import { getCalendarTaskStartAndEndTimestamp } from '../../../components/MyDayView/MyDayTasks/MyDayOpenTasks/myDayOpenTasksIntervals'
 import { NOT_PARENT_GOAL_INDEX, sortGoalTasksGorups } from '../openTasks'
 import { buildWorkflowAiPromptOverride } from '../../../components/WorkflowView/workflowStepHelper'
-import { TASK_EXECUTION_MODE_DIRECT } from '../../taskExecutionMode'
+import { TASK_EXECUTION_MODE_DIRECT, getTaskExecutionMode } from '../../taskExecutionMode'
 import { getAssistantSuggestedTaskRejection } from '../../suggestedTaskFlow'
 import { shouldReleaseFocusOnWorkflowMove } from './workflowFocusHandoff'
 import { buildCalendarGoalRoutingFeedback, buildCalendarProjectRoutingFeedback } from '../../CalendarRoutingFeedback'
@@ -1251,6 +1251,20 @@ export async function setTaskPriority(projectId, task, priority) {
         ],
     })
     return result
+}
+
+export async function setTaskExecutionMode(projectId, task, executionMode) {
+    const previousMode = getTaskExecutionMode(task)
+    if (previousMode === executionMode) return
+
+    const batch = new BatchWrapper(getDb())
+    queueUndoAction({
+        label: `Changed completion mode for “${task.name}”`,
+        operations: [buildTaskUpdateOperation(projectId, task.id, { executionMode: previousMode }, { executionMode })],
+        batch,
+    })
+    updateTaskData(projectId, task.id, { executionMode }, batch)
+    return batch.commit()
 }
 
 export const setTaskAssistant = async (projectId, taskId, assistantId, needGenerateUpdate) => {

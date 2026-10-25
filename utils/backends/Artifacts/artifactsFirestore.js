@@ -28,8 +28,7 @@ import {
     sortArtifactsByLastEdition,
 } from '../../../functions/Artifacts/artifactModel'
 import { getArtifactHistoryCollectionPath, mapArtifactHistoryEvent } from '../../../functions/Artifacts/artifactHistory'
-import { UPLOAD_SOURCES, sourceTitle, watchLinkedUploads } from './linkedUploads'
-import { createNoteUploadsCache } from './artifactsLocalCache'
+import { watchLinkedUploads } from './linkedUploads'
 import { ARTIFACT_BRIDGE_QUERY_PARAM } from '../../../functions/Artifacts/artifactDataBridge'
 
 // Artifacts are read straight from Firestore and their metadata is edited there; versions and
@@ -65,48 +64,17 @@ export function watchProjectArtifacts(projectId, { followedOnly = false } = {}, 
 }
 
 // Linked uploads deliberately use the original object views rather than serveArtifact.
-// `onChange(files, { settled })`, see watchLinkedUploads.
 export function watchProjectUploads(projectId, onChange, onError) {
-    const userId = store.getState().loggedUser?.uid
     return watchLinkedUploads({
         db: getDb(),
         projectId,
-        userId,
+        userId: store.getState().loggedUser?.uid,
         readerId: getLoggedUserAccessReaderId(),
         bucketName: firebase.app().options.storageBucket,
         loadNote: getNoteData,
-        noteUploadsCache: userId ? createNoteUploadsCache(userId, projectId) : null,
         onChange,
         onError,
     })
-}
-
-const CONTEXT_OBJECT_PATHS = Object.fromEntries(UPLOAD_SOURCES.map(({ type, path }) => [type, path]))
-
-// The title of the object an artifact was made in (its `parentObject`), read with the viewer's own
-// access: `null` when the viewer cannot see that object or it is gone, so no link leads there; ''
-// when it has no title of its own or could not be read just now (offline), so the link still shows.
-export async function getArtifactContextTitle(projectId, source) {
-    const db = getDb()
-    if (!db || !projectId || !source?.type || !source?.id) return null
-    const paths =
-        source.type === 'assistants'
-            ? [`assistants/${projectId}/items/${source.id}`, `assistants/globalProject/items/${source.id}`]
-            : CONTEXT_OBJECT_PATHS[source.type]
-              ? [`${CONTEXT_OBJECT_PATHS[source.type].replace('{p}', projectId)}/${source.id}`]
-              : null
-    // A user thread has no document to read; it is a conversation with a project member.
-    if (!paths) return ''
-    for (const path of paths) {
-        try {
-            const snapshot = await db.doc(path).get()
-            if (snapshot.exists) return sourceTitle(snapshot.data() || {})
-        } catch (error) {
-            // A project assistant's path is denied for a global one; the next path answers for it.
-            if (error?.code !== 'permission-denied') return ''
-        }
-    }
-    return null
 }
 
 export async function getArtifactData(projectId, artifactId) {

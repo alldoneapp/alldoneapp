@@ -424,7 +424,7 @@ member-only, including in shared projects. The current `isPublicFor` is checked 
 revoked sources while reader projections catch up. Rows carry no `serveArtifact` address, sharing
 control, version or separate privacy setting. **Updated 2026-10-25:** a row now opens the file in the
 app's viewer (`ArtifactFileViewer`) through the download URL its source already embeds, and the
-row's context line opens the source editor/thread. This mints no new capability: every reader of the
+row's link badge opens the source editor/thread. This mints no new capability: every reader of the
 source holds that URL already, and the row disappears with the source. Only images, videos and
 audio render inline; PDFs and other files open in a new tab rather than an unsandboxed frame. Image
 rows show the stored 300px thumbnail when the source embedded one. Source removal, comment edits, listener permission errors and project
@@ -438,12 +438,9 @@ artifacts also remain distinct from their legacy chat-attachment copies.
 
 The projection runs only while the All artifacts list is mounted. Followed still describes full
 artifacts, which have their own followers. Existing uploads are not newly indexed in global
-artifact search. It reads source documents, the comment collections of objects that have a chat
-object, plus saved note bodies; note downloads are limited to four concurrently. No file bytes are
-copied. **Updated 2026-10-25:** the tab first shows the list this device remembered and replaces it
-once the projection has settled, and a note body is only downloaded again when its edition stamps
-moved (`utils/backends/Artifacts/artifactsLocalCache.js`). Each row now carries a context line that
-opens its source, replacing the link badge. A successful local note upload (including offline catch-up) updates only an
+artifact search. It reads source documents and comment collections plus saved note bodies, so
+large projects incur additional reads; note downloads are limited to four concurrently. No file
+bytes are copied. A successful local note upload (including offline catch-up) updates only an
 `uploadsRevision` marker after Storage completion so the list can refresh after the earlier
 metadata write. Collaborator-only durability saves retain their content-only contract.
 

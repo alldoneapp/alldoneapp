@@ -3957,6 +3957,11 @@ export function mapTaskData(taskId, task) {
         isAssistantEnabled: task.isAssistantEnabled,
         workflowTask: task.workflowTask === true,
         workflowPayerUserId: task.workflowPayerUserId || null,
+        // 'workflow' | 'direct' (utils/taskExecutionMode.js). It was missing here from the day it was
+        // introduced, so a task set to "direct" by an assistant, MCP or the workflow bypass still went
+        // through the workflow on the checkbox. Missing stays null so getTaskExecutionMode's
+        // per-caller legacy default keeps applying.
+        executionMode: task.executionMode || null,
         commentsData: task.commentsData ? task.commentsData : null,
         autoEstimation: task.autoEstimation === false || task.autoEstimation === true ? task.autoEstimation : null,
         completedTime: task.completedTime ? task.completedTime : null,

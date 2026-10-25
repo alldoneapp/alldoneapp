@@ -2320,12 +2320,6 @@ describe('linked uploads respect their original sources', () => {
         const commentPath = `chatComments/${PROJECT_ID}/tasks/upload-source/comments/old-comment`
         await writeAsAdmin(async db => {
             await setDoc(doc(db, sourcePath), { isPublicFor: [MEMBER_ID], readerIds: [MEMBER_ID] })
-            // Every comment write creates the object's chat; only objects with one are listened to.
-            await setDoc(doc(db, `chatObjects/${PROJECT_ID}/chats/upload-source`), {
-                type: 'tasks',
-                isPublicFor: [MEMBER_ID],
-                readerIds: [MEMBER_ID],
-            })
             await setDoc(doc(db, commentPath), { commentText: attachmentText })
         })
         const member = start(MEMBER_ID)

@@ -60,10 +60,7 @@ jest.mock('../../utils/backends/Artifacts/artifactsFirestore', () => ({
     updateArtifactMetadata: jest.fn(),
     watchArtifactBacklinks: jest.fn(() => () => {}),
     setArtifactDataAccess: jest.fn(() => Promise.resolve()),
-    getArtifactContextTitle: jest.fn(async () => 'Prepare the offsite'),
 }))
-const mockOpenSource = jest.fn()
-jest.mock('./uploadSourceLinks', () => ({ openUploadSource: (...args) => mockOpenSource(...args) }))
 jest.mock('../../utils/HelperFunctions', () => ({ copyTextToClipboard: jest.fn() }))
 jest.mock('../UIComponents/FloatModals/DateFormatPickerModal', () => ({
     getDateFormat: () => 'DD.MM.YYYY',
@@ -246,29 +243,5 @@ describe('ArtifactDetail', () => {
         const tree = render()
         const meta = tree.root.findAllByProps({ testID: 'artifact-meta' })[0]
         expect(textOf(meta.children)).toContain('Created by an assistant')
-    })
-
-    it('leads to the thread the artifact was made in', async () => {
-        mockArtifact.parentObject = { type: 'tasks', id: 'task-9', projectId: 'project-a' }
-        const tree = render()
-        await act(async () => {})
-        const link = tree.root.findAll(
-            node => node.props.testID === 'artifact-context' && typeof node.props.onPress === 'function'
-        )[0]
-        expect(textOf(link.findAllByType(Text)[0].children)).toBe('Created in Prepare the offsite')
-        act(() => link.props.onPress())
-        expect(mockOpenSource).toHaveBeenCalledWith('project-a', {
-            type: 'tasks',
-            id: 'task-9',
-            projectId: 'project-a',
-            inThread: true,
-        })
-    })
-
-    it('shows no such link for an artifact uploaded straight into the artifacts', () => {
-        const tree = render()
-        expect(tree.root.findAll(node => node.props.testID === 'artifact-context' && node.props.onPress)).toHaveLength(
-            0
-        )
     })
 })

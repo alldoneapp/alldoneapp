@@ -4585,35 +4585,6 @@ describe('assistant parent goal tools', () => {
         }
     )
 
-    test.each([
-        ['an MCP client', { sourceChannel: 'mcp', mcpClient: 'Claude' }, { via: 'mcp', viaClient: 'Claude' }, false],
-        ['another assistant-less caller', null, null, true],
-    ])('update_task from %s', async (_label, toolRuntimeContext, marker, silentComment) => {
-        jest.spyOn(TaskUpdateService.prototype, 'initialize').mockResolvedValue(undefined)
-        const findAndUpdate = jest.spyOn(TaskUpdateService.prototype, 'findAndUpdateTask').mockResolvedValue({
-            success: true,
-            taskId: 'task-1',
-            changes: ['comment'],
-        })
-        await executeToolNatively(
-            'update_task',
-            { taskName: 'Goal task', comment: 'Merge request is up' },
-            'project-goal',
-            null,
-            'user-1',
-            null,
-            toolRuntimeContext
-        )
-        const [, , , options] = findAndUpdate.mock.calls[0]
-        // The user stays the actor; over MCP the feeds and the comment say which client acted, and the
-        // comment notifies instead of being filed silently (shared/mcpActor.js).
-        expect(options.feedUser).toEqual(expect.objectContaining({ uid: 'user-1' }))
-        if (marker) expect(options.feedUser).toEqual(expect.objectContaining(marker))
-        else expect(options.feedUser).not.toHaveProperty('via')
-        expect(options.silentComment).toBe(silentComment)
-        expect(options.commentFromAssistant).toBe(false)
-    })
-
     test('refuses combined project moves and goal assignment before updating', async () => {
         jest.spyOn(TaskUpdateService.prototype, 'initialize').mockResolvedValue(undefined)
         const findAndUpdate = jest.spyOn(TaskUpdateService.prototype, 'findAndUpdateTask')

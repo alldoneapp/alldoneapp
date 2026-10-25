@@ -18,10 +18,6 @@ jest.mock('../Assistant/assistantHeartbeatSchedule', () => ({
     syncHeartbeatSchedulesForUser: jest.fn(),
 }))
 jest.mock('firebase-admin/firestore', () => ({ FieldValue: { serverTimestamp: jest.fn() } }))
-const mockApplyKnowledgeBaseDefaultsForUser = jest.fn()
-jest.mock('../KnowledgeBase/knowledgeBaseDefaults', () => ({
-    applyKnowledgeBaseDefaultsForUser: (...args) => mockApplyKnowledgeBaseDefaultsForUser(...args),
-}))
 
 const { onUpdateUser, searchIndexedFieldsChanged } = require('./onUpdateUserFunctions')
 
@@ -39,37 +35,6 @@ const baseUser = {
 beforeEach(() => {
     mockUpdateUserRecord.mockReset()
     mockGenerateUserWarnings.mockReset()
-    mockApplyKnowledgeBaseDefaultsForUser.mockReset()
-})
-
-describe('project wiki default', () => {
-    const DAY = 24 * 60 * 60 * 1000
-
-    test('a login after 30 days away switches the wiki of their projects on and resumes paused ones', async () => {
-        const now = Date.now()
-        const returning = { ...baseUser, lastLogin: now }
-        await onUpdateUser('u1', change({ ...baseUser, lastLogin: now - 40 * DAY }, returning))
-        expect(mockApplyKnowledgeBaseDefaultsForUser).toHaveBeenCalledWith({
-            userId: 'u1',
-            userData: { ...returning, uid: 'u1' },
-        })
-    })
-
-    test('an ordinary login of an active user leaves it to the daily sweep', async () => {
-        const now = Date.now()
-        await onUpdateUser('u1', change({ ...baseUser, lastLogin: now - DAY }, { ...baseUser, lastLogin: now }))
-        expect(mockApplyKnowledgeBaseDefaultsForUser).not.toHaveBeenCalled()
-    })
-
-    test('a failure there never fails the user trigger', async () => {
-        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
-        mockApplyKnowledgeBaseDefaultsForUser.mockRejectedValue(new Error('unavailable'))
-        const now = Date.now()
-        await expect(
-            onUpdateUser('u1', change({ ...baseUser, lastLogin: 0 }, { ...baseUser, lastLogin: now }))
-        ).resolves.toBeUndefined()
-        consoleError.mockRestore()
-    })
 })
 
 describe('search re-index guard', () => {

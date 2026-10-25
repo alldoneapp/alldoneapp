@@ -42,7 +42,6 @@ jest.mock('../Premium/PremiumHelper', () => ({ checkIsLimitedByTraffic: () => fa
 jest.mock('../../utils/backends/Artifacts/artifactsFirestore', () => ({
     isArtifactUploadTooLarge: files => files.some(file => file.size > 20 * 1024 * 1024),
     uploadArtifactFiles: (...args) => mockUpload(...args),
-    getArtifactContextTitle: async () => 'Prepare the offsite',
     getArtifactUrl: (projectId, artifact) =>
         `https://serve.test/a/${projectId}/${artifact.id}/secret/${artifact.title}`,
 }))
@@ -59,15 +58,6 @@ jest.mock('../UIComponents/FloatModals/DateFormatPickerModal', () => ({
 }))
 
 import ProjectArtifacts from './ProjectArtifacts'
-
-// The pressable host of a testID: the composite that carries the testID has no onPress of its own.
-const pressable = (tree, testID) =>
-    tree.root.findAll(node => node.props.testID === testID && typeof node.props.onPress === 'function')[0]
-const texts = node =>
-    node
-        .findAllByType(Text)
-        .map(text => [].concat(text.props.children).join(''))
-        .join(' ')
 import { setSelectedArtifactId } from './artifactsNavigationState'
 import { openProjectArtifacts } from './artifactLinks'
 
@@ -243,7 +233,7 @@ it('shows ten in a single project and offers no show more when nothing is hidden
     expect(short.root.findAllByType(require('../UIControls/ShowMoreButton').default)).toHaveLength(0)
 })
 
-it('shows a linked screenshot in the viewer, and its context line still leads to the source', async () => {
+it('shows a linked screenshot in the viewer, and its link badge still leads to the source', async () => {
     const source = { type: 'tasks', id: 'task-1', title: 'Roadmap' }
     const shot = {
         id: 'upload:attachments/c/shot.png',
@@ -269,55 +259,9 @@ it('shows a linked screenshot in the viewer, and its context line still leads to
     expect(mockOpenSource).not.toHaveBeenCalled()
     expect(openProjectArtifacts).not.toHaveBeenCalled()
 
-    await act(async () => pressable(tree, `artifact-open-source-${shot.id}`).props.onPress())
-    expect(mockOpenSource).toHaveBeenCalledWith('project-a', expect.objectContaining(source))
+    await act(async () => tree.root.findByProps({ testID: `artifact-open-source-${shot.id}` }).props.onPress())
+    expect(mockOpenSource).toHaveBeenCalledWith('project-a', source)
     expect(tree.root.findAllByProps({ testID: 'artifact-file-viewer' })).toHaveLength(0)
-})
-
-it('names where a linked upload came from, and how many more places hold it', async () => {
-    const shot = {
-        id: 'upload:notesAttachments/n/shot.png',
-        title: 'shot.png',
-        kind: 'image',
-        linkedUpload: true,
-        linkedSources: [
-            { type: 'notes', id: 'note-1', title: 'Meeting notes' },
-            { type: 'tasks', id: 'task-1', title: 'Roadmap', commentId: 'c' },
-        ],
-        url: 'https://storage.test/shot.png?token=t',
-    }
-    mockArtifacts = [shot]
-    const tree = await render()
-    expect(texts(pressable(tree, `artifact-open-source-${shot.id}`))).toContain('In Meeting notes +1')
-    await act(async () => pressable(tree, `artifact-open-source-${shot.id}`).props.onPress())
-    expect(mockOpenSource).toHaveBeenCalledWith(
-        'project-a',
-        expect.objectContaining({ type: 'notes', id: 'note-1', projectId: 'project-a' })
-    )
-})
-
-it('leads from an artifact an assistant made to the thread it was made in', async () => {
-    mockArtifacts = [
-        {
-            ...mockArtifacts[0],
-            id: 'made-in-a-task',
-            parentObject: { type: 'tasks', id: 'task-9', projectId: 'project-a' },
-        },
-    ]
-    const tree = await render()
-    await act(async () => pressable(tree, 'artifact-open-source-made-in-a-task').props.onPress())
-    expect(mockOpenSource).toHaveBeenCalledWith('project-a', {
-        type: 'tasks',
-        id: 'task-9',
-        projectId: 'project-a',
-        inThread: true,
-    })
-})
-
-it('offers no context for an artifact uploaded straight into the artifacts', async () => {
-    mockArtifacts = [{ ...mockArtifacts[0], id: 'plain', parentObject: null }]
-    const tree = await render()
-    expect(pressable(tree, 'artifact-open-source-plain')).toBeUndefined()
 })
 
 it('previews a full image artifact through serveArtifact and keeps the icon for other kinds', async () => {

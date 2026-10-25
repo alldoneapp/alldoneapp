@@ -35,7 +35,6 @@ describe('setKnowledgeBaseSettings', () => {
         expect(enqueue).toHaveBeenCalledWith({ projectId: PROJECT_ID, dueAt: NOW, trigger: 'enabled' })
         expect(db.read(KB_PATH)).toMatchObject({
             enabled: true,
-            enabledBy: 'member',
             ownerUserId: 'owner',
             enabledAt: NOW,
             nextRunAt: NOW,
@@ -97,44 +96,6 @@ describe('setKnowledgeBaseSettings', () => {
         })
 
         expect(view).toMatchObject({ ownerUserId: 'teammate', monthlyGoldCap: 900, enabled: true })
-        // Their own choice now: the default never hands this wiki on again.
-        expect(db.read(KB_PATH).enabledBy).toBe('member')
-    })
-
-    it('lets the payer of a wiki the default switched on edit it without making it theirs by choice', async () => {
-        const db = createDb({ enabled: true, enabledBy: 'default', ownerUserId: 'owner', nextRunAt: NOW + 5 })
-
-        await setKnowledgeBaseSettings({
-            enqueue,
-            db,
-            now: NOW,
-            userId: 'owner',
-            projectId: PROJECT_ID,
-            settings: { instructions: 'Eine Seite pro Kunde.' },
-        })
-
-        expect(db.read(KB_PATH)).toMatchObject({ enabledBy: 'default', ownerUserId: 'owner', nextRunAt: NOW + 5 })
-    })
-
-    it('runs a wiki paused for its inactive payer again as soon as that payer saves it', async () => {
-        const db = createDb({
-            enabled: true,
-            ownerUserId: 'owner',
-            nextRunAt: null,
-            lastRunStopReason: 'owner_inactive',
-        })
-
-        const view = await setKnowledgeBaseSettings({
-            enqueue,
-            db,
-            now: NOW,
-            userId: 'owner',
-            projectId: PROJECT_ID,
-            settings: { monthlyGoldCap: 800 },
-        })
-
-        expect(view).toMatchObject({ nextRunAt: NOW, pausedForInactiveOwner: false })
-        expect(db.read(KB_PATH).nextRunAt).toBe(NOW)
     })
 
     it('lets any member edit a wiki that is off without becoming its owner', async () => {

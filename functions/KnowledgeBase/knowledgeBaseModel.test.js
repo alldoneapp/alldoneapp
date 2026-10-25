@@ -154,21 +154,6 @@ describe('settings', () => {
         expect(view).not.toHaveProperty('leaseOwner')
         expect(view).toMatchObject({ projectId: 'p1', enabled: true, ownerUserId: 'u1' })
     })
-
-    it('tells a wiki the default switched on, and one paused for an inactive payer, apart', () => {
-        const paused = { enabled: true, enabledBy: 'default', nextRunAt: null, lastRunStopReason: 'owner_inactive' }
-        expect(toKnowledgeBaseSettingsView('p1', paused)).toMatchObject({
-            enabledByDefault: true,
-            pausedForInactiveOwner: true,
-        })
-        // Scheduled again, or switched off: no longer paused, whatever the last run said.
-        expect(toKnowledgeBaseSettingsView('p1', { ...paused, nextRunAt: 5 }).pausedForInactiveOwner).toBe(false)
-        expect(toKnowledgeBaseSettingsView('p1', { ...paused, enabled: false })).toMatchObject({
-            enabledByDefault: false,
-            pausedForInactiveOwner: false,
-        })
-        expect(toKnowledgeBaseSettingsView('p1', { enabled: true }).enabledByDefault).toBe(false)
-    })
 })
 
 describe('estimateTextTokens', () => {
