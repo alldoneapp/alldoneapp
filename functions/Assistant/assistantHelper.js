@@ -5975,9 +5975,9 @@ async function executeToolNativelyImpl(
             const db = admin.firestore()
 
             // An explicit target must be a project the requesting user belongs to. NoteService
-            // writes through the Admin SDK and checks no membership itself, and the MCP surface
-            // takes its context project straight from these same arguments, so this resolution
-            // is the only access check on that path.
+            // writes through the Admin SDK and checks no membership itself; the MCP surface checks
+            // an explicit projectId too, but the in-app assistant reaches this with only the model's
+            // arguments, so the check has to live here as well.
             const targetProject = await resolveMoveTargetProject(
                 db,
                 creatorId,
