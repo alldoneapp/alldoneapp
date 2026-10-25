@@ -53,7 +53,6 @@ import Backend from '../../../utils/BackendBridge'
 import URLTrigger from '../../../URLSystem/URLTrigger'
 import { getAssistant, getAssistantInProject } from '../../AdminPanel/Assistants/assistantsHelper'
 import { removeColor } from '../../../functions/Utils/hashtagUtils'
-import { FEED_WIKI_TYPES, WIKI_FEED_OBJECTS_TYPE } from '../../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 import {
     LAST_COMMENT_CHARACTER_LIMIT_IN_BIG_SCREEN,
     LAST_COMMENT_CHARACTER_LIMIT_IN_MEDIUM_SCREEN,
@@ -483,9 +482,6 @@ export const getFeedObjectTypes = feedType => {
     }
     if (FEED_ASSISTANT_TYPES.includes(feedType)) {
         return 'assistants'
-    }
-    if (FEED_WIKI_TYPES.includes(feedType)) {
-        return WIKI_FEED_OBJECTS_TYPE
     }
 }
 

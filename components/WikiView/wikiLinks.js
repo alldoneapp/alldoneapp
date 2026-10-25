@@ -15,20 +15,13 @@ const SOURCE_OBJECT_TYPES = {
     contact: 'contacts',
 }
 
-export function getProjectWikiPath(projectId, slug = null, revision = null) {
-    const page = slug ? `/${slug}${revision ? `/changes/${revision}` : ''}` : ''
-    return `/projects/${projectId}/wiki${page}`
+export function getProjectWikiPath(projectId, slug = null) {
+    return `/projects/${projectId}/wiki${slug ? `/${slug}` : ''}`
 }
 
 export function openProjectWiki(projectId, slug = null) {
     if (!projectId) return
     getURLTrigger().processUrl(NavigationService, getProjectWikiPath(projectId, slug))
-}
-
-// What one revision of a page changed: where a wiki line in the Updates feed leads.
-export function openProjectWikiChange(projectId, slug, revision) {
-    if (!projectId || !slug || !revision) return
-    getURLTrigger().processUrl(NavigationService, getProjectWikiPath(projectId, slug, revision))
 }
 
 export function openProjectWikiSettings(projectId) {

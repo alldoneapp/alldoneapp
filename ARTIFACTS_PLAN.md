@@ -421,9 +421,13 @@ packages, unfinished composer drafts and unreferenced Storage objects are not pr
 
 Every object query uses `readerIds`; comments use the original parent's rules. Aggregation is
 member-only, including in shared projects. The current `isPublicFor` is checked again to remove
-revoked sources while reader projections catch up. Rows open the source editor/thread; they expose
-neither a Storage download capability nor a `serveArtifact` address, sharing control, version or
-separate privacy setting. Source removal, comment edits, listener permission errors and project
+revoked sources while reader projections catch up. Rows carry no `serveArtifact` address, sharing
+control, version or separate privacy setting. **Updated 2026-10-25:** a row now opens the file in the
+app's viewer (`ArtifactFileViewer`) through the download URL its source already embeds, and the
+row's link badge opens the source editor/thread. This mints no new capability: every reader of the
+source holds that URL already, and the row disappears with the source. Only images, videos and
+audio render inline; PDFs and other files open in a new tab rather than an unsandboxed frame. Image
+rows show the stored 300px thumbnail when the source embedded one. Source removal, comment edits, listener permission errors and project
 membership loss clear the affected rows. Cancelled/in-flight note reads cannot repopulate them.
 
 A stored path identifies one file, independently of display names or download-token rotations.

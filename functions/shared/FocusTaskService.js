@@ -537,9 +537,7 @@ class FocusTaskService {
             // - Else prefer the user's top-sorted project (by sortIndexByUser desc)
             // - Fallbacks: user's default project, then first user project
             let searchProjectId
-            // Only one of the user's own projects is a starting point; a foreign id falls through
-            // to the same choice as no id at all.
-            if (currentProjectId && userProjectIds.includes(currentProjectId)) {
+            if (currentProjectId) {
                 searchProjectId = currentProjectId
             } else {
                 try {
