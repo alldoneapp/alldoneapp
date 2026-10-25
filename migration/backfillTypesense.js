@@ -26,6 +26,7 @@
 //   --concurrency=N                   projects processed in parallel (default 1)
 //   --force                           reprocess projects already marked complete
 //   --stats                           print live Typesense collection counts and exit
+//   --types=artifacts                 only these object types (comma-separated)
 //
 // Note: the dry run performs the same Firestore/Storage reads as a real run (it builds the
 // full record lists to count them) — it only skips the Typesense writes and progress marks.
@@ -39,6 +40,7 @@ const CONTACTS_OBJECTS_TYPE = 'contacts'
 const ASSISTANTS_OBJECTS_TYPE = 'assistants'
 const USERS_OBJECTS_TYPE = 'users'
 const CHATS_OBJECTS_TYPE = 'chats'
+const ARTIFACTS_OBJECTS_TYPE = 'artifacts'
 
 function getArgument(name) {
     const prefix = `--${name}=`
@@ -64,6 +66,9 @@ const buildRecordsForType = async (objectsType, projectId, usersMap, db) => {
         await searchHelper.addAssistantsToList(projectId, {}, records, db)
     } else if (objectsType === USERS_OBJECTS_TYPE) {
         records.push(...(await searchHelper.buildProjectUsersSearchRecords(projectId)))
+    } else if (objectsType === ARTIFACTS_OBJECTS_TYPE) {
+        const { buildProjectArtifactSearchRecords } = require('../functions/Artifacts/artifactSearch')
+        records.push(...(await buildProjectArtifactSearchRecords({ projectId, db })))
     }
     return records
 }
@@ -164,7 +169,7 @@ async function main() {
     }
 
     const db = admin.firestore()
-    const projectObjectTypes = [
+    const allProjectObjectTypes = [
         TASKS_OBJECTS_TYPE,
         GOALS_OBJECTS_TYPE,
         NOTES_OBJECTS_TYPE,
@@ -172,7 +177,17 @@ async function main() {
         CONTACTS_OBJECTS_TYPE,
         ASSISTANTS_OBJECTS_TYPE,
         USERS_OBJECTS_TYPE,
+        ARTIFACTS_OBJECTS_TYPE,
     ]
+    // --types=artifacts indexes one newly searchable type without redoing the rest (combine with
+    // --force, since projects backfilled before it existed are marked complete).
+    const requestedTypes = (getArgument('types') || '')
+        .split(',')
+        .map(type => type.trim())
+        .filter(Boolean)
+    const unknownTypes = requestedTypes.filter(type => !allProjectObjectTypes.includes(type))
+    if (unknownTypes.length > 0) throw new Error(`Unknown --types: ${unknownTypes.join(', ')}`)
+    const projectObjectTypes = requestedTypes.length > 0 ? requestedTypes : allProjectObjectTypes
 
     console.log('Typesense backfill starting', {
         firebaseProjectId,

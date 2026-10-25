@@ -255,6 +255,8 @@ const MCP_TOOL_PREFIX = 'mcp_'
 // the names, the policy and the audit trail all live under ./browser.
 const { BROWSER_TOOL_KEY, BROWSER_TOOL_PREFIX, isBrowserToolName } = require('./browser/browserToolContract')
 const { KNOWLEDGE_BASE_TOOL_NAMES } = require('../KnowledgeBase/knowledgeBaseToolSchemas')
+// Project artifacts: one Tools Access key (`artifacts`) for four tools, see ../Artifacts.
+const { ARTIFACT_TOOL_KEY, isArtifactToolName } = require('../Artifacts/artifactToolSchemas')
 const MAX_MCP_TOOLS = 60
 const MAX_TALK_TO_ASSISTANT_TARGETS = 50
 // How many projects to scan in parallel when discovering delegation targets. The scan used to
@@ -2409,6 +2411,9 @@ async function isToolAllowedForExecution(assistantAllowedTools, toolName, toolRu
     if (isBrowserToolName(toolName)) {
         return assistantAllowedTools.includes(BROWSER_TOOL_KEY)
     }
+    if (isArtifactToolName(toolName)) {
+        return assistantAllowedTools.includes(ARTIFACT_TOOL_KEY)
+    }
 
     const hasDelegationToggle = assistantAllowedTools.includes(TALK_TO_ASSISTANT_TOOL_KEY)
     if (hasDelegationToggle && isTalkToAssistantToolName(toolName)) {
@@ -3561,6 +3566,9 @@ const updateLastCommentDataOfChatParentObject = async (projectId, objectId, type
         await updateGoalLastCommentData(projectId, objectId, cleanedComment, commentType)
     } else if (type === 'notes') {
         await updateNoteLastCommentData(projectId, objectId, cleanedComment, commentType)
+    } else if (type === 'artifacts') {
+        const { updateArtifactLastCommentData } = require('../Artifacts/artifactsFirestoreCloud')
+        await updateArtifactLastCommentData(projectId, objectId, cleanedComment, commentType)
     }
 }
 
@@ -5526,6 +5534,20 @@ async function executeToolNativelyImpl(
             assistantId,
             requestUserId,
             toolRuntimeContext,
+        })
+    }
+
+    // Every artifact write goes through commitArtifactVersion like an upload from the app, and acts
+    // for the requesting user: an artifact needs a project member as its owner.
+    if (isArtifactToolName(toolName)) {
+        const { executeArtifactTool } = require('../Artifacts/artifactAssistant')
+        return executeArtifactTool({
+            toolName,
+            args: toolArgs,
+            projectId,
+            requestUserId,
+            assistantId,
+            toolRuntimeContext: { projectId, ...(toolRuntimeContext || {}) },
         })
     }
 
@@ -12760,6 +12782,12 @@ async function addBaseInstructions(
             'After create_note succeeds, include the exact canonical URL returned by the tool in your response. If the user later asks where the note is or requests its link, reuse the exact note URL from the recent conversation or created-entity metadata. Never call create_note again merely to provide a link. If no prior link or note ID is available, retrieve the existing note with get_notes or search instead of creating a replacement.',
         ])
     }
+    if (Array.isArray(allowedTools) && allowedTools.includes(ARTIFACT_TOOL_KEY)) {
+        messages.push([
+            'system',
+            'ARTIFACTS: When the user asks for a dashboard, an HTML page, a report, a visual or another deliverable to look at or share, build it as an artifact with create_artifact instead of pasting long code into the chat. To change an existing artifact, find it with get_artifacts, read it with read_artifact and save a new version with update_artifact; never create a second copy. After create_artifact or update_artifact succeeds, include the exact url from the result in your answer.',
+        ])
+    }
     if (Array.isArray(allowedTools) && allowedTools.includes('get_goals')) {
         messages.push([
             'system',
@@ -13625,6 +13653,9 @@ function getToolSearchNamespaceName(toolName = '') {
     // by accident, and splitting the six across `research` and `other` would advertise half a
     // workflow — the model would find `browser_navigate` and never look for `browser_click`.
     if (name.startsWith(BROWSER_TOOL_PREFIX)) return 'browsing'
+    // Before the keyword rules: `update_artifact` would otherwise land in chats_and_media on /update/
+    // while its three siblings fell through to `other`.
+    if (/artifact/.test(name)) return 'artifacts'
     if (/gmail|email/.test(name)) return 'gmail'
     if (/calendar|availability/.test(name)) return 'calendar'
     if (/task|goal|focus|execute_.*vm/.test(name)) return 'tasks_and_goals'
@@ -14128,10 +14159,30 @@ function buildCurrentObjectContextMessage({
     parentGoalData,
     chatData,
 }) {
+    if (objectType === 'artifacts' && objectData) {
+        const artifact = objectData
+        const lines = [
+            'The current conversation is attached to the project artifact below. When the user says "this artifact", "this page", "this dashboard" or "this report", they mean this exact artifact.',
+            `Project: ${projectData?.name || projectId || '(unknown)'} (ID: ${projectId || '(unknown)'})`,
+            `Artifact ID: ${objectId || artifact.id || '(unknown)'}`,
+            `Artifact title: ${artifact.title || '(untitled)'}`,
+        ]
+        if (artifact.description) lines.push(`Artifact description: ${artifact.description}`)
+        lines.push(
+            `Kind: ${artifact.kind || 'file'}; entry file: ${artifact.entryPath || '(none)'}; files: ${
+                Number(artifact.fileCount) || 0
+            }; current version: ${Number(artifact.versionCount) || 0}`
+        )
+        lines.push(
+            'To change it, read it with read_artifact and save the change as a new version with update_artifact using this artifact ID; earlier versions stay restorable. Do not create a second artifact for a change to this one.'
+        )
+        return lines.join('\n')
+    }
     if (objectType !== 'tasks') {
         if (!chatData?.title) return ''
         const objectTypeLabel = objectType === 'topics' ? 'chat' : objectType.replace(/s$/, '')
-        return `This conversation is about a ${objectTypeLabel} titled: "${chatData.title}"`
+        const article = /^[aeiou]/.test(objectTypeLabel) ? 'an' : 'a'
+        return `This conversation is about ${article} ${objectTypeLabel} titled: "${chatData.title}"`
     }
 
     const task = objectData || {}
@@ -14161,6 +14212,16 @@ function buildCurrentObjectContextMessage({
 }
 
 async function getCurrentObjectContextData(projectId, objectType, objectId) {
+    if (objectType === 'artifacts') {
+        const [projectDoc, artifactDoc] = await Promise.all([
+            admin.firestore().doc(`projects/${projectId}`).get(),
+            admin.firestore().doc(`artifactItems/${projectId}/artifacts/${objectId}`).get(),
+        ])
+        return {
+            projectData: projectDoc.exists ? { id: projectDoc.id || projectId, ...(projectDoc.data() || {}) } : null,
+            objectData: artifactDoc.exists ? { id: artifactDoc.id || objectId, ...(artifactDoc.data() || {}) } : null,
+        }
+    }
     if (objectType !== 'tasks') return { projectData: null, objectData: null }
 
     const [projectDoc, taskDoc] = await Promise.all([

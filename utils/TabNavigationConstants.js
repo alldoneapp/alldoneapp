@@ -15,6 +15,7 @@ export const DV_TAB_ROOT_CONTACTS = 'ROOT_CONTACTS'
 export const DV_TAB_ROOT_CHATS = 'ROOT_CHATS'
 export const DV_TAB_ROOT_UPDATES = 'ROOT_UPDATES'
 export const DV_TAB_ROOT_WIKI = 'ROOT_WIKI'
+export const DV_TAB_ROOT_ARTIFACTS = 'ROOT_ARTIFACTS'
 
 export const ROOT_ROUTES = [
     DV_TAB_ROOT_TASKS,
@@ -24,6 +25,7 @@ export const ROOT_ROUTES = [
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_UPDATES,
     DV_TAB_ROOT_WIKI,
+    DV_TAB_ROOT_ARTIFACTS,
 ]
 
 /**
@@ -179,6 +181,7 @@ export const NAVBAR_ITEM_MAP = {
     [DV_TAB_ROOT_CONTACTS]: 'Contacts',
     [DV_TAB_ROOT_CHATS]: 'Chats',
     [DV_TAB_ROOT_UPDATES]: 'Updates',
+    [DV_TAB_ROOT_ARTIFACTS]: 'Artifacts',
     // Tasks
     [DV_TAB_TASK_PROPERTIES]: 'Properties',
     [DV_TAB_TASK_BACKLINKS]: 'Backlinks',

@@ -13,6 +13,7 @@ import { FOLLOWED_TAB } from '../components/Feeds/Utils/FeedsConstants'
 import { getOptimisticGoalPostponeKey } from '../utils/backends/Goals/optimisticGoalPostpone'
 import {
     DV_TAB_ADMIN_PANEL_USER,
+    DV_TAB_ROOT_ARTIFACTS,
     DV_TAB_ROOT_CHATS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_ROOT_GOALS,
@@ -2839,6 +2840,17 @@ export const theReducer = (state = initialState, action) => {
                 shortcutSelectedProjectIndex: null,
                 selectedSidebarTab: DV_TAB_ROOT_NOTES,
                 notesActiveTab: options.notesActiveTab || FOLLOWED_TAB,
+            }
+        }
+
+        case 'Navigate to all projects artifacts': {
+            return {
+                ...state,
+                currentUser: state.loggedUser,
+                selectedTypeOfProject: PROJECT_TYPE_ACTIVE,
+                selectedProjectIndex: ALL_PROJECTS_INDEX,
+                shortcutSelectedProjectIndex: null,
+                selectedSidebarTab: DV_TAB_ROOT_ARTIFACTS,
             }
         }
 

@@ -181,6 +181,16 @@ describe('AlldoneSimpleMCPServer tools/list', () => {
         expect(tool.inputSchema.properties.limit.type).toBe('number')
     })
 
+    test('exposes the four project artifact tools from the shared assistant schemas', async () => {
+        const tools = await listTools()
+        for (const name of ['get_artifacts', 'read_artifact', 'create_artifact', 'update_artifact']) {
+            expect(tools.find(entry => entry.name === name)).toBeDefined()
+        }
+        const create = tools.find(entry => entry.name === 'create_artifact')
+        expect(create.inputSchema.required).toEqual(['title', 'files'])
+        expect(create.inputSchema.properties.projectId.type).toBe('string')
+    })
+
     test('exposes the safe patch fields for update_note', async () => {
         const tools = await listTools()
         const tool = tools.find(entry => entry.name === 'update_note')

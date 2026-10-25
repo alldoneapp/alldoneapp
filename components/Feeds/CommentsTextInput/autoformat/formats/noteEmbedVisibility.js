@@ -21,7 +21,8 @@ export const enableDeferredNoteEmbeds = (editorId, editorRoot, { subscribe, getT
         // text node and its caret (AT-2697). Restore the normal React mount
         // before rendering so Quill's guards follow the entire visible row.
         // Media still needs its reserved box while its dimensions load.
-        if (entry.kind === 'task') mount.style.cssText = 'display: contents;'
+        // An artifact card sizes itself the same way once it renders.
+        if (entry.kind === 'task' || entry.kind === 'artifact') mount.style.cssText = 'display: contents;'
         entry.render()
     }
     const observer = new IntersectionObserver(

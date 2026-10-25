@@ -70,6 +70,30 @@ describe('writeLinkedParentsIfChanged', () => {
         await expect(writeLinkedParentsIfChanged(ref, next)).resolves.toBe(true)
     })
 
+    it('treats a backlink field the document never had as the empty list it is', async () => {
+        // linkedParentArtifactsIds arrived after most documents were written. Comparing it
+        // literally would rewrite every task and note once, on its next autosave.
+        const ref = makeRef({ cached: { ...LINKS } })
+        const next = {
+            ...LINKS,
+            linkedParentArtifactsIds: [],
+            linkedParentsInContentIds: { ...LINKS.linkedParentsInContentIds, linkedParentArtifactsIds: [] },
+        }
+
+        await expect(writeLinkedParentsIfChanged(ref, next)).resolves.toBe(false)
+    })
+
+    it('still writes when the new field actually links something', async () => {
+        const ref = makeRef({ cached: { ...LINKS } })
+        const next = {
+            ...LINKS,
+            linkedParentArtifactsIds: ['artifact-1'],
+            linkedParentsInContentIds: { ...LINKS.linkedParentsInContentIds, linkedParentArtifactsIds: ['artifact-1'] },
+        }
+
+        await expect(writeLinkedParentsIfChanged(ref, next)).resolves.toBe(true)
+    })
+
     it('writes when the document is not in the cache (uncertain ⇒ write)', async () => {
         const ref = makeRef({ cached: null, cacheFails: true })
 

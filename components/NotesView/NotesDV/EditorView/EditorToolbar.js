@@ -34,6 +34,7 @@ import Email from '../../../Feeds/CommentsTextInput/autoformat/formats/email'
 import Karma from '../../../Feeds/CommentsTextInput/autoformat/formats/karma'
 import VideoFormat from '../../../Feeds/CommentsTextInput/autoformat/formats/videoFormat'
 import TaskTagFormat from '../../../Feeds/CommentsTextInput/autoformat/formats/taskTagFormat'
+import ArtifactEmbed from '../../../Feeds/CommentsTextInput/autoformat/formats/artifactEmbed'
 import Autoformat, { AutoformatHelperAttribute } from '../../../Feeds/CommentsTextInput/autoformat/modules/autoformat'
 import MarkdownTableFormat from './MarkdownTableFormat'
 import domServer from 'react-dom/server'
@@ -657,6 +658,7 @@ Quill.register({
     'formats/customImageFormat': CustomImageFormat,
     'formats/videoFormat': VideoFormat,
     'formats/taskTagFormat': TaskTagFormat,
+    'formats/artifactEmbed': ArtifactEmbed,
     'formats/markdownTable': MarkdownTableFormat,
     'formats/autoformat-helper': AutoformatHelperAttribute,
     'formats/karma': Karma,
@@ -681,7 +683,17 @@ const convertContentToText = (projectId, deltaContent) => {
     for (let i = 0; i < deltaContent.ops.length; i++) {
         const op = deltaContent.ops[i]
         const { insert } = op
-        const { mention, hashtag, email, url, attachment, customImageFormat, videoFormat, taskTagFormat } = insert
+        const {
+            mention,
+            hashtag,
+            email,
+            url,
+            attachment,
+            customImageFormat,
+            videoFormat,
+            taskTagFormat,
+            artifactEmbed,
+        } = insert
 
         let beforeSpace = ''
         if (i > 0) {
@@ -724,6 +736,8 @@ const convertContentToText = (projectId, deltaContent) => {
             textExtended += beforeSpace + email.text + afterSpace
         } else if (url) {
             textExtended += beforeSpace + url.url + afterSpace
+        } else if (artifactEmbed) {
+            textExtended += beforeSpace + artifactEmbed.url + afterSpace
         } else if (taskTagFormat) {
             const { taskId } = taskTagFormat
             const url = `${window.location.origin}${getDvMainTabLink(projectId, taskId, 'tasks')}`
@@ -919,6 +933,7 @@ export const formats = [
     'customImageFormat',
     'videoFormat',
     'taskTagFormat',
+    'artifactEmbed',
     'markdownTable',
 ]
 

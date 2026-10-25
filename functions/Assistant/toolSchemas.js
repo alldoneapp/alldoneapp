@@ -6,6 +6,7 @@
 const { SELECTABLE_ASSISTANT_MODELS } = require('./selectableAssistantModels')
 const { BROWSER_TOOL_KEY, BROWSER_TOOL_NAMES } = require('./browser/browserToolContract')
 const { KNOWLEDGE_BASE_TOOL_SCHEMAS } = require('../KnowledgeBase/knowledgeBaseToolSchemas')
+const { ARTIFACT_TOOL_KEY, ARTIFACT_TOOL_NAMES, ARTIFACT_TOOL_SCHEMAS } = require('../Artifacts/artifactToolSchemas')
 
 /**
  * Model enums are derived from the shared selector rather than hand-listed, so a model added to the
@@ -1444,6 +1445,10 @@ const toolSchemas = {
     // decides per run whether they are offered.
     ...KNOWLEDGE_BASE_TOOL_SCHEMAS,
 
+    // Project artifacts (get_artifacts, read_artifact, create_artifact, update_artifact), behind the
+    // single `artifacts` Tools Access key. Executed by Artifacts/artifactAssistant.js.
+    ...ARTIFACT_TOOL_SCHEMAS,
+
     fetch_url: {
         type: 'function',
         function: {
@@ -2750,6 +2755,14 @@ function getToolSchemas(allowedTools) {
     if (effectiveTools.includes(BROWSER_TOOL_KEY)) {
         for (const browserToolName of BROWSER_TOOL_NAMES) {
             if (!effectiveTools.includes(browserToolName)) effectiveTools.push(browserToolName)
+        }
+    }
+
+    // One Tools Access toggle, four tool names: an assistant that could create an artifact but not
+    // read it back could never iterate on one.
+    if (effectiveTools.includes(ARTIFACT_TOOL_KEY)) {
+        for (const artifactToolName of ARTIFACT_TOOL_NAMES) {
+            if (!effectiveTools.includes(artifactToolName)) effectiveTools.push(artifactToolName)
         }
     }
 

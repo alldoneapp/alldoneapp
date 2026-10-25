@@ -2043,3 +2043,199 @@ describe('project wiki', () => {
         await assertFails(getDocs(collection(testEnv.authenticatedContext(OUTSIDER_ID).firestore(), pages)))
     })
 })
+
+describe('project artifacts', () => {
+    const PUBLIC_ARTIFACT = `artifactItems/${PROJECT_ID}/artifacts/public-artifact`
+    const PRIVATE_ARTIFACT = `artifactItems/${PROJECT_ID}/artifacts/private-artifact`
+    const artifact = (isPublicFor, readerIds) => ({
+        title: 'Dashboard',
+        kind: 'web',
+        mimeType: 'text/html',
+        entryPath: 'index.html',
+        currentVersionId: 'version-1',
+        versionCount: 1,
+        sizeBytes: 10,
+        fileCount: 1,
+        source: 'upload',
+        serveSecret: 'secret-aaaaaaaaaaaaaaaaaaaaaaaa',
+        created: 1,
+        creatorId: MEMBER_ID,
+        userId: MEMBER_ID,
+        lastEditionDate: 1,
+        isPublicFor,
+        readerIds,
+        followedReaderIds: [],
+    })
+
+    beforeEach(async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            await setDoc(doc(db, PUBLIC_ARTIFACT), artifact([0, MEMBER_ID], [0, MEMBER_ID, TEAMMATE_ID]))
+            await setDoc(doc(db, `${PUBLIC_ARTIFACT}/versions/version-1`), { entryPath: 'index.html' })
+            await setDoc(doc(db, PRIVATE_ARTIFACT), artifact([MEMBER_ID], [MEMBER_ID]))
+            await setDoc(doc(db, `${PRIVATE_ARTIFACT}/versions/version-1`), { entryPath: 'index.html' })
+        })
+    })
+
+    it('is read like a note: members see public artifacts, only the owner a private one', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertSucceeds(getDoc(doc(teammateDb, PUBLIC_ARTIFACT)))
+        await assertSucceeds(getDoc(doc(teammateDb, `${PUBLIC_ARTIFACT}/versions/version-1`)))
+        await assertSucceeds(getDoc(doc(memberDb, PRIVATE_ARTIFACT)))
+        await assertFails(getDoc(doc(teammateDb, PRIVATE_ARTIFACT)))
+        await assertFails(getDoc(doc(teammateDb, `${PRIVATE_ARTIFACT}/versions/version-1`)))
+        await assertFails(getDoc(doc(outsiderDb, PUBLIC_ARTIFACT)))
+    })
+
+    it('lists what the client queries: readable and followed artifacts', async () => {
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+        const artifacts = collection(teammateDb, `artifactItems/${PROJECT_ID}/artifacts`)
+
+        const readable = await assertSucceeds(
+            getDocs(query(artifacts, where('readerIds', 'array-contains', TEAMMATE_ID)))
+        )
+        expect(readable.docs.map(snapshot => snapshot.id)).toEqual(['public-artifact'])
+        await assertSucceeds(getDocs(query(artifacts, where('followedReaderIds', 'array-contains', TEAMMATE_ID))))
+        await assertFails(
+            getDocs(
+                query(
+                    collection(outsiderDb, `artifactItems/${PROJECT_ID}/artifacts`),
+                    where('readerIds', 'array-contains', OUTSIDER_ID)
+                )
+            )
+        )
+    })
+
+    it('lets a reader edit the metadata', async () => {
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        await assertSucceeds(
+            updateDoc(doc(teammateDb, PUBLIC_ARTIFACT), {
+                title: 'Renamed',
+                description: 'Q3',
+                lastEditionDate: 2,
+                lastEditorId: TEAMMATE_ID,
+            })
+        )
+        // The thread's assistant is chosen in the chat like on every other object.
+        await assertSucceeds(updateDoc(doc(teammateDb, PUBLIC_ARTIFACT), { assistantId: 'another-assistant' }))
+    })
+
+    it.each([
+        ['serveSecret', 'forged-secret-aaaaaaaaaaaaaaaaaa'],
+        ['currentVersionId', 'version-9'],
+        ['kind', 'text'],
+        ['mimeType', 'text/plain'],
+        ['entryPath', 'other.html'],
+        ['creatorId', TEAMMATE_ID],
+        ['creatorAssistantId', 'forged-assistant'],
+        ['vmOutputKey', 'tasks/other-task/index.html'],
+        ['parentObject', { type: 'tasks', id: 'someone-elses-task', projectId: PROJECT_ID }],
+        ['readerIds', [0, MEMBER_ID, TEAMMATE_ID, OUTSIDER_ID]],
+    ])('never lets a client change the server-owned field %s', async (field, value) => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        await assertFails(updateDoc(doc(memberDb, PUBLIC_ARTIFACT), { [field]: value }))
+    })
+
+    describe('comments on an artifact', () => {
+        const commentPath = (artifactId, commentId) =>
+            `chatComments/${PROJECT_ID}/artifacts/${artifactId}/comments/${commentId}`
+
+        it('lets the readers of an artifact read and write its chat, and nobody else', async () => {
+            const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+            const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+            const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+            await assertSucceeds(
+                setDoc(doc(teammateDb, commentPath('public-artifact', 'c1')), {
+                    commentText: 'Looks good',
+                    creatorId: TEAMMATE_ID,
+                })
+            )
+            await assertSucceeds(getDoc(doc(memberDb, commentPath('public-artifact', 'c1'))))
+            await assertFails(getDoc(doc(outsiderDb, commentPath('public-artifact', 'c1'))))
+            await assertFails(
+                setDoc(doc(outsiderDb, commentPath('public-artifact', 'c2')), {
+                    commentText: 'Hi',
+                    creatorId: OUTSIDER_ID,
+                })
+            )
+
+            await assertSucceeds(
+                setDoc(doc(memberDb, commentPath('private-artifact', 'c3')), {
+                    commentText: 'Note to self',
+                    creatorId: MEMBER_ID,
+                })
+            )
+            await assertFails(getDoc(doc(teammateDb, commentPath('private-artifact', 'c3'))))
+            await assertFails(
+                setDoc(doc(teammateDb, commentPath('private-artifact', 'c4')), {
+                    commentText: 'Sneaking in',
+                    creatorId: TEAMMATE_ID,
+                })
+            )
+        })
+
+        it('notifies a reader of the artifact, but not a member who cannot see it', async () => {
+            const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+            const notify = (artifactId, commentId) => {
+                const batch = writeBatch(memberDb)
+                batch.set(doc(memberDb, commentPath(artifactId, commentId)), {
+                    commentText: 'Please review',
+                    creatorId: MEMBER_ID,
+                    created: 1,
+                })
+                batch.set(doc(memberDb, `chatNotifications/${PROJECT_ID}/${TEAMMATE_ID}/${commentId}`), {
+                    projectId: PROJECT_ID,
+                    chatType: 'artifacts',
+                    objectId: artifactId,
+                    chatId: artifactId,
+                    commentId,
+                    creatorId: MEMBER_ID,
+                    followed: false,
+                })
+                return batch.commit()
+            }
+
+            await assertSucceeds(notify('public-artifact', 'n1'))
+            await assertFails(notify('private-artifact', 'n2'))
+        })
+    })
+
+    it('lets only the server create artifacts and write versions', async () => {
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const { readerIds, followedReaderIds, ...withoutProjection } = artifact([0, MEMBER_ID], [])
+        await assertFails(setDoc(doc(memberDb, `artifactItems/${PROJECT_ID}/artifacts/forged`), withoutProjection))
+        await assertFails(setDoc(doc(memberDb, `${PUBLIC_ARTIFACT}/versions/version-2`), { entryPath: 'x.html' }))
+        await assertFails(updateDoc(doc(memberDb, `${PUBLIC_ARTIFACT}/versions/version-1`), { entryPath: 'x.html' }))
+    })
+
+    it('shows an artifact history to its readers and lets nobody write it', async () => {
+        await testEnv.withSecurityRulesDisabled(async context => {
+            const db = context.firestore()
+            await setDoc(doc(db, `${PUBLIC_ARTIFACT}/history/event-1`), { type: 'created', date: 1 })
+            await setDoc(doc(db, `${PRIVATE_ARTIFACT}/history/event-1`), { type: 'created', date: 1 })
+        })
+        const memberDb = testEnv.authenticatedContext(MEMBER_ID).firestore()
+        const teammateDb = testEnv.authenticatedContext(TEAMMATE_ID).firestore()
+        const outsiderDb = testEnv.authenticatedContext(OUTSIDER_ID).firestore()
+
+        await assertSucceeds(
+            getDocs(query(collection(teammateDb, `${PUBLIC_ARTIFACT}/history`), orderBy('date', 'desc'), limit(50)))
+        )
+        await assertSucceeds(getDocs(collection(memberDb, `${PRIVATE_ARTIFACT}/history`)))
+        await assertFails(getDocs(collection(teammateDb, `${PRIVATE_ARTIFACT}/history`)))
+        await assertFails(getDocs(collection(outsiderDb, `${PUBLIC_ARTIFACT}/history`)))
+        await assertFails(setDoc(doc(memberDb, `${PUBLIC_ARTIFACT}/history/forged`), { type: 'created', date: 2 }))
+        await assertFails(deleteDoc(doc(memberDb, `${PUBLIC_ARTIFACT}/history/event-1`)))
+    })
+
+    it('lets a reader delete an artifact, nobody else', async () => {
+        await assertFails(deleteDoc(doc(testEnv.authenticatedContext(TEAMMATE_ID).firestore(), PRIVATE_ARTIFACT)))
+        await assertFails(deleteDoc(doc(testEnv.authenticatedContext(OUTSIDER_ID).firestore(), PUBLIC_ARTIFACT)))
+        await assertSucceeds(deleteDoc(doc(testEnv.authenticatedContext(TEAMMATE_ID).firestore(), PUBLIC_ARTIFACT)))
+    })
+})

@@ -390,6 +390,7 @@ export default function UrlWrapper({ value, objectName, isShared, embedNode }) {
                         tagId={tagId}
                         isPrivate={isPrivate}
                         objectUrl={url}
+                        inNote={inNote}
                     />
                 ) : (
                     <TagsInteractionPopup

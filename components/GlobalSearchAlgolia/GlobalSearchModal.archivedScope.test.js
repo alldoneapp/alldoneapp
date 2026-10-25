@@ -42,6 +42,7 @@ import {
 import { translate } from '../../i18n/TranslationService'
 import { getAllUserProjects } from '../../utils/backends/firestore'
 import { warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
+import { GLOBAL_SEARCH_ARTIFACTS_TAB } from './searchIndexes'
 
 const searchCalls = []
 const mockMultiSearchTypesense = jest.fn(async searches => {
@@ -51,9 +52,21 @@ const mockMultiSearchTypesense = jest.fn(async searches => {
     return searches.map(() => ({ hits: [] }))
 })
 
+// Artifacts are searched in their own request (GlobalSearchModal: `separateRequest`). This suite
+// is about the scope of the main request, so artifact-only requests are recorded apart and do
+// not count as a second search.
+const artifactSearchCalls = []
+const mockArtifactSearch = jest.fn(async searches => {
+    searches.forEach(({ query, filterBy }) => artifactSearchCalls.push({ text: query, filters: filterBy }))
+    return searches.map(() => ({ hits: [] }))
+})
+
 jest.mock('../../utils/typesenseSearch', () => ({
     warmTypesenseSearchCredentials: jest.fn(async () => true),
-    multiSearchTypesense: (...args) => mockMultiSearchTypesense(...args),
+    multiSearchTypesense: (...args) =>
+        args[0].every(search => search.collection === 'dev_artifacts')
+            ? mockArtifactSearch(...args)
+            : mockMultiSearchTypesense(...args),
 }))
 
 const ACTIVE_PROJECT = { id: 'project-active', name: 'Alldone Product', color: 'sky', sortIndexByUser: {} }
@@ -188,7 +201,9 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         // The shared RN mock predates Spinner's cleanup and omits stop().
         jest.spyOn(Animated, 'loop').mockImplementation(() => ({ start: jest.fn(), stop: jest.fn() }))
         searchCalls.length = 0
+        artifactSearchCalls.length = 0
         mockMultiSearchTypesense.mockClear()
+        mockArtifactSearch.mockClear()
         warmTypesenseSearchCredentials.mockClear()
         getAllUserProjects.mockResolvedValue(ALL_PROJECTS)
     })
@@ -330,7 +345,12 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
         await refresh.resolve(ALL_PROJECTS)
         await act(async () => rejectEarlySearch(new Error('Superseded request failed')))
 
-        expect(Object.values(component.root.findByType(ResultLists).props.processing).every(Boolean)).toBe(true)
+        // The artifacts tab has its own request, which has already answered; every tab the
+        // pending main request owns must still be waiting for it.
+        const { [GLOBAL_SEARCH_ARTIFACTS_TAB]: artifactsProcessing, ...mainProcessing } =
+            component.root.findByType(ResultLists).props.processing
+        expect(artifactsProcessing).toBe(false)
+        expect(Object.values(mainProcessing).every(Boolean)).toBe(true)
         expect(JSON.stringify(component.toJSON())).not.toContain('Search is temporarily unavailable')
 
         await act(async () => resolveRefreshedSearch(Array.from({ length: 5 }, () => ({ hits: [] }))))
@@ -433,6 +453,8 @@ describe('GlobalSearchModal — project scope groups (AT-2390)', () => {
 
         expect(searchCalls).toHaveLength(5)
         expect(searchedProjectIds()).toEqual(['project-archived', 'project-archived-2'])
+        // Artifacts are searched in their own request, over exactly the same scope.
+        expect(artifactSearchCalls.at(-1).filters).toBe(searchCalls[0].filters)
     })
 
     it('searches active AND archived projects by default (AT-2524)', async () => {

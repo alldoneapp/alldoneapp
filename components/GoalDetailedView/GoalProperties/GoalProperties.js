@@ -22,6 +22,7 @@ import FollowObject from '../../Followers/FollowObject'
 import { FOLLOWER_GOALS_TYPE } from '../../Followers/FollowerConstants'
 import HighlightProperty from './HighlightProperty'
 import DescriptionField from '../../TaskDetailedView/Properties/DescriptionField'
+import ObjectArtifacts from '../../ArtifactsView/ObjectArtifacts'
 import { FEED_GOAL_OBJECT_TYPE } from '../../Feeds/Utils/FeedsConstants'
 import { translate } from '../../../i18n/TranslationService'
 import ObjectRevisionHistory from '../../NotesView/NotesDV/PropertiesView/ObjectRevisionHistory'
@@ -151,6 +152,8 @@ export default function GoalProperties({ projectId, goal, accessGranted }) {
                 disabled={!accessGranted || !loggedUserCanUpdateObject}
                 objectType={FEED_GOAL_OBJECT_TYPE}
             />
+
+            <ObjectArtifacts projectId={projectId} objectType="goals" objectId={goal.id} />
 
             {accessGranted && loggedUserCanUpdateObject && (
                 <View style={localStyles.footerSection}>

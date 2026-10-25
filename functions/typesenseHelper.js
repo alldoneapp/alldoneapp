@@ -21,8 +21,16 @@ const GOALS_COLLECTION = 'dev_goals'
 const NOTES_COLLECTION = 'dev_notes'
 const CONTACTS_COLLECTION = 'dev_contacts'
 const CHATS_COLLECTION = 'dev_updates'
+const ARTIFACTS_COLLECTION = 'dev_artifacts'
 
-const ALL_COLLECTIONS = [TASKS_COLLECTION, GOALS_COLLECTION, NOTES_COLLECTION, CONTACTS_COLLECTION, CHATS_COLLECTION]
+const ALL_COLLECTIONS = [
+    TASKS_COLLECTION,
+    GOALS_COLLECTION,
+    NOTES_COLLECTION,
+    CONTACTS_COLLECTION,
+    CHATS_COLLECTION,
+    ARTIFACTS_COLLECTION,
+]
 
 const IMPORT_BATCH_SIZE = 500
 
@@ -106,6 +114,24 @@ const COLLECTION_SCHEMAS = {
             { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
             { name: 'isPrivate', type: 'bool', facet: true, optional: true },
             { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
+            { name: '.*', type: 'auto' },
+        ],
+    },
+    // Project artifacts (functions/Artifacts/artifactSearch.js). `content` is the text of the
+    // entry file, searched but never returned.
+    [ARTIFACTS_COLLECTION]: {
+        name: ARTIFACTS_COLLECTION,
+        fields: [
+            { name: 'title', type: 'string', optional: true },
+            { name: 'description', type: 'string', optional: true },
+            { name: 'content', type: 'string', optional: true },
+            { name: 'projectId', type: 'string', facet: true, optional: true },
+            { name: 'userId', type: 'string', facet: true, optional: true },
+            { name: 'kind', type: 'string', facet: true, optional: true },
+            { name: 'isPublicFor', type: 'string[]', facet: true, optional: true },
+            { name: 'isPrivate', type: 'bool', facet: true, optional: true },
+            { name: 'lastEditionDate', type: 'int64', facet: true, optional: true },
+            { name: 'created', type: 'int64', optional: true },
             { name: '.*', type: 'auto' },
         ],
     },
@@ -344,6 +370,10 @@ const SEARCH_QUERY_CONFIG = {
         query_by: 'cleanName,cleanLastComment,cleanComments',
         num_typos: 0,
     },
+    [ARTIFACTS_COLLECTION]: {
+        query_by: 'title,description,content',
+        num_typos: 2,
+    },
 }
 
 // Read path (server-side consumers: SearchService, TaskSearchService). THROWS on failure —
@@ -429,6 +459,7 @@ module.exports = {
     NOTES_COLLECTION,
     CONTACTS_COLLECTION,
     CHATS_COLLECTION,
+    ARTIFACTS_COLLECTION,
     ALL_COLLECTIONS,
     COLLECTION_SCHEMAS,
     isTypesenseConfigured,

@@ -47,6 +47,7 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
     const [linkedParentGoalsUrl, setLinkedParentGoalsUrl] = useState([])
     const [linkedParentSkillsUrl, setLinkedParentSkillsUrl] = useState([])
     const [linkedParentAssistantsUrl, setLinkedParentAssistantsUrl] = useState([])
+    const [linkedParentArtifactsUrl, setLinkedParentArtifactsUrl] = useState([])
     const inputText = useRef()
 
     const cleanedName = task?.extendedName?.trim()
@@ -63,7 +64,8 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         if (extendedName !== '') {
             setLinkedParentNotesUrl(linkedParentNotesUrl)
@@ -73,6 +75,7 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
             setLinkedParentGoalsUrl(linkedParentGoalsUrl)
             setLinkedParentSkillsUrl(linkedParentSkillsUrl)
             setLinkedParentAssistantsUrl(linkedParentAssistantsUrl)
+            setLinkedParentArtifactsUrl(linkedParentArtifactsUrl)
         }
         setTask(task => ({ ...task, extendedName }))
     }
@@ -175,6 +178,7 @@ export default function CreateTask({ projectId, containerStyle, selectItemToMent
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             { type: 'task', id: task.id }
         )

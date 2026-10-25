@@ -15,6 +15,7 @@ jest.mock('../Feeds/RootViewFeedsGlobalProject', () => 'RootViewFeedsGlobalProje
 jest.mock('../NotesView/NotesView', () => 'NotesView')
 jest.mock('../ChatsView/ChatsView', () => 'ChatsView')
 jest.mock('../WikiView/WikiView', () => 'WikiView')
+jest.mock('../ArtifactsView/ArtifactsView', () => 'ArtifactsView')
 jest.mock('../UIControls/CustomScrollView', () => 'CustomScrollView')
 jest.mock('./RootSectionNavigation', () => 'RootSectionNavigation')
 jest.mock('../TopBar/ConnectionStatusChip', () => 'ConnectionStatusChip')

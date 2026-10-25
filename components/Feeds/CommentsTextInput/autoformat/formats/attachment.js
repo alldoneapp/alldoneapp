@@ -3,6 +3,7 @@ import v4 from 'uuid/v4'
 import { Provider } from 'react-redux'
 
 import FileDownloadableTag from '../../../../Tags/FileDownloadableTag'
+import { isNoteAttachmentUri } from '../../../../Tags/SaveAttachmentAsArtifactButton'
 import store from '../../../../../redux/store'
 import { quillTextInputProjectIds } from '../../CustomTextInput3'
 import { renderEmbedContent } from './embedReactRoot'
@@ -33,6 +34,8 @@ export default class Attachment extends ReactEmbedBlot {
                     text={text}
                     uri={uri}
                     isLoading={isLoading}
+                    editorId={editorId}
+                    canSaveAsArtifact={isNoteAttachmentUri(uri)}
                 />
             </Provider>
         )

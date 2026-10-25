@@ -9,6 +9,7 @@ import {
     MENTION_MODAL_TASKS_TAB,
     MENTION_MODAL_TOPICS_TAB,
 } from '../../Feeds/CommentsTextInput/textInputHelper'
+import { GLOBAL_SEARCH_ARTIFACTS_TAB } from '../searchIndexes'
 
 export default function Header({
     activeTab,
@@ -18,6 +19,7 @@ export default function Header({
     contactsResultAmount,
     notesResultAmount,
     chatsResultAmount,
+    artifactsResultAmount = 0,
     showShortcuts,
     mobile,
     compact,
@@ -36,7 +38,7 @@ export default function Header({
     const onKeyDown = event => {
         const { key } = event
         if (key === 'Tab') {
-            if (activeTab === MENTION_MODAL_TOPICS_TAB) {
+            if (activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB) {
                 changeTab(MENTION_MODAL_TASKS_TAB)
             } else {
                 changeTab(activeTab + 1)
@@ -59,6 +61,9 @@ export default function Header({
     const activeTopicsTab = () => {
         changeTab(MENTION_MODAL_TOPICS_TAB)
     }
+    const activeArtifactsTab = () => {
+        changeTab(GLOBAL_SEARCH_ARTIFACTS_TAB)
+    }
 
     return (
         <View
@@ -73,7 +78,7 @@ export default function Header({
                 text={'Tasks'}
                 onPress={activeTasksTab}
                 isActive={activeTab === MENTION_MODAL_TASKS_TAB}
-                isNextShortcutTab={activeTab === MENTION_MODAL_TOPICS_TAB}
+                isNextShortcutTab={activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB}
                 badgeValue={tasksResultAmount}
                 showShortcuts={showShortcuts}
                 mobile={mobile}
@@ -111,6 +116,15 @@ export default function Header({
                 isActive={activeTab === MENTION_MODAL_TOPICS_TAB}
                 isNextShortcutTab={activeTab === MENTION_MODAL_CONTACTS_TAB}
                 badgeValue={chatsResultAmount}
+                showShortcuts={showShortcuts}
+                mobile={mobile}
+            />
+            <HeaderTab
+                text={'Artifacts'}
+                onPress={activeArtifactsTab}
+                isActive={activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB}
+                isNextShortcutTab={activeTab === MENTION_MODAL_TOPICS_TAB}
+                badgeValue={artifactsResultAmount}
                 showShortcuts={showShortcuts}
                 mobile={mobile}
             />

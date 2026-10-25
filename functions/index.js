@@ -554,7 +554,9 @@ exports.awardXpSecondGen = onCall(
         try {
             return await awardUserXp({
                 db: admin.firestore(),
-                FieldValue: admin.firestore.FieldValue,
+                // The modular statics (CLAUDE.md): the Functions emulator replaces admin.firestore and
+                // drops its static FieldValue, which failed every XP award locally.
+                FieldValue: require('firebase-admin/firestore').FieldValue,
                 projectId,
                 userId,
                 xpEarned,
@@ -873,6 +875,21 @@ exports.openInBrowserTab = onRequest(
     (req, res) => {
         const { handleOpenInBrowserTab } = require('./WebApp/openInBrowserTab')
         handleOpenInBrowserTab(req, res)
+    }
+)
+
+// Serves artifact files on this function's own origin, never the app's: an HTML artifact is code,
+// and on my.alldone.app it would run with the viewer's session. Do not add a Hosting rewrite to it
+// on any alldone.app host. See functions/Artifacts/serveArtifact.js.
+exports.serveArtifact = onRequest(
+    {
+        timeoutSeconds: 120,
+        memory: '512MiB',
+        region: 'europe-west1',
+    },
+    async (req, res) => {
+        const { handleServeArtifactRequest } = require('./Artifacts/serveArtifact')
+        await handleServeArtifactRequest(req, res)
     }
 )
 
@@ -1560,6 +1577,115 @@ exports.requestKnowledgeBaseRefresh = onCall(
         return await requestKnowledgeBaseRefresh({
             userId: auth.uid,
             projectId: data && data.projectId,
+        })
+    }
+)
+
+// Every version of an artifact, and every byte of it, is written here and never by a client. The
+// files arrive base64-encoded in the request, which is why an upload is capped at 20 MB.
+exports.commitArtifactVersion = onCall(
+    {
+        timeoutSeconds: 300,
+        memory: '1GiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { commitArtifactVersion } = require('./Artifacts/artifactStore')
+        return await commitArtifactVersion({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: (data && data.artifactId) || null,
+            files: data && data.files,
+            title: data && data.title,
+            description: data && data.description,
+            isPrivate: !!(data && data.isPrivate),
+            changeSummary: data && data.changeSummary,
+        })
+    }
+)
+
+// "Save as artifact" on a chat or note attachment: the server copies the file it already stores,
+// after checking that the URL is an attachment of this app carrying the file's own download token.
+exports.saveAttachmentAsArtifact = onCall(
+    {
+        timeoutSeconds: 300,
+        memory: '1GiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { saveAttachmentAsArtifact } = require('./Artifacts/attachmentPromotion')
+        return await saveAttachmentAsArtifact({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            url: data && data.url,
+            fileName: data && data.fileName,
+        })
+    }
+)
+
+exports.restoreArtifactVersion = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { restoreArtifactVersion } = require('./Artifacts/artifactStore')
+        return await restoreArtifactVersion({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: data && data.artifactId,
+            versionId: data && data.versionId,
+        })
+    }
+)
+
+// "Live project data" on or off for a web artifact; only its owner may (artifactDataBridge.js).
+exports.setArtifactDataAccess = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { setArtifactDataAccess } = require('./Artifacts/artifactStore')
+        return await setArtifactDataAccess({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: data && data.artifactId,
+            enabled: data && data.enabled,
+        })
+    }
+)
+
+// "Reset link": a new serve secret, so every address copied before stops working.
+exports.resetArtifactLink = onCall(
+    {
+        timeoutSeconds: 30,
+        memory: '256MiB',
+        region: 'europe-west1',
+        cors: true,
+    },
+    async request => {
+        const { data, auth } = request
+        if (!auth) throw new HttpsError('permission-denied', 'Authentication required')
+        const { resetArtifactLink } = require('./Artifacts/artifactStore')
+        return await resetArtifactLink({
+            userId: auth.uid,
+            projectId: data && data.projectId,
+            artifactId: data && data.artifactId,
         })
     }
 )
@@ -5124,6 +5250,114 @@ exports.onDeleteNoteSecondGen = onDocumentDeleted(
         const { projectId, noteId } = event.params
         const note = { ...event.data.data(), id: noteId }
         await Promise.all([onDeleteNote(projectId, note), invalidateKnowledgeSourcesOnDelete(event, 'notes')])
+    }
+)
+
+//ARTIFACTS
+
+// Artifacts are created server-side with their access projection already written (see
+// Artifacts/artifactStore.js), so the create trigger only makes them findable in search. An update
+// keeps the projection in step, rotates the serve secret whenever somebody loses read access and
+// re-indexes the artifact when something search shows changed.
+exports.onCreateArtifactSecondGen = onDocumentCreated(
+    {
+        document: 'artifactItems/{projectId}/artifacts/{artifactId}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const { indexArtifactForSearch } = require('./Artifacts/artifactSearch')
+        const { projectId, artifactId } = event.params
+        await indexArtifactForSearch({ projectId, artifactId, artifact: event.data.data() || {} }).catch(error =>
+            console.error('[artifacts] Could not index the artifact for search', {
+                projectId,
+                artifactId,
+                error: error.message,
+            })
+        )
+    }
+)
+
+exports.onUpdateArtifactSecondGen = onDocumentUpdated(
+    {
+        document: 'artifactItems/{projectId}/artifacts/{artifactId}',
+        timeoutSeconds: 60,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const admin = require('firebase-admin')
+        const { rotateServeSecretOnLostReaders } = require('./Artifacts/artifactStore')
+        const { artifactSearchUpdateNeeded, indexArtifactForSearch } = require('./Artifacts/artifactSearch')
+        const { recordMetadataHistory } = require('./Artifacts/artifactHistory')
+        const { projectId, artifactId } = event.params
+        const before = event.data.before.data() || {}
+        const after = event.data.after.data() || {}
+        await Promise.all([
+            synchronizeAccessProjection(event, null, 'isVisibleInFollowedFor'),
+            recordMetadataHistory({
+                db: admin.firestore(),
+                projectId,
+                artifactId,
+                before,
+                after,
+                eventId: event.id,
+            }).catch(error =>
+                console.error('[artifacts] Could not record the artifact history', {
+                    projectId,
+                    artifactId,
+                    error: error.message,
+                })
+            ),
+            artifactSearchUpdateNeeded(before, after)
+                ? indexArtifactForSearch({ projectId, artifactId, artifact: after }).catch(error =>
+                      console.error('[artifacts] Could not re-index the artifact for search', {
+                          projectId,
+                          artifactId,
+                          error: error.message,
+                      })
+                  )
+                : null,
+            rotateServeSecretOnLostReaders({
+                projectId,
+                artifactId,
+                before,
+                after,
+            }).catch(error =>
+                console.error('[artifacts] Could not rotate the serve secret', {
+                    projectId,
+                    artifactId,
+                    error: error.message,
+                })
+            ),
+        ])
+    }
+)
+
+exports.onDeleteArtifactSecondGen = onDocumentDeleted(
+    {
+        document: 'artifactItems/{projectId}/artifacts/{artifactId}',
+        timeoutSeconds: 300,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async event => {
+        const admin = require('firebase-admin')
+        const { deleteArtifactData } = require('./Artifacts/artifactStore')
+        const { removeArtifactFromSearch } = require('./Artifacts/artifactSearch')
+        const { removeObjectFromBacklinks } = require('./Backlinks/backlinksHelper')
+        const { deleteChat } = require('./Chats/chatsFirestoreCloud')
+        const { projectId, artifactId } = event.params
+        await Promise.all([
+            deleteArtifactData({ projectId, artifactId }),
+            removeArtifactFromSearch({ projectId, artifactId }),
+            // Tasks and notes that linked to it stop listing it as a backlink.
+            removeObjectFromBacklinks(projectId, 'linkedParentArtifactsIds', artifactId, admin),
+            // Its conversation goes with it, as a skill's does; the chat's own delete trigger
+            // removes the comments.
+            deleteChat(admin, projectId, artifactId),
+        ])
     }
 )
 

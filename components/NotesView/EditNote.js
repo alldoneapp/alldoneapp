@@ -86,6 +86,7 @@ class EditNote extends Component {
             linkedParentGoalsUrl: [],
             linkedParentSkillsUrl: [],
             linkedParentAssistantsUrl: [],
+            linkedParentArtifactsUrl: [],
             initialLinkedTasksUrl: [],
             initialLinkedNotesUrl: [],
             initialLinkedContactsUrl: [],
@@ -406,6 +407,7 @@ class EditNote extends Component {
             linkedParentGoalsUrl,
             linkedParentSkillsUrl,
             linkedParentAssistantsUrl,
+            linkedParentArtifactsUrl,
             initialLinkedTasksUrl,
             initialLinkedNotesUrl,
             initialLinkedContactsUrl,
@@ -425,6 +427,7 @@ class EditNote extends Component {
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             {
                 type: 'note',
@@ -555,7 +558,8 @@ class EditNote extends Component {
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         if (text !== '') {
             this.setState({
@@ -566,6 +570,7 @@ class EditNote extends Component {
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             })
         }
         this.updateNoteField('title', text.replace(/\r?\n|\r/g, ''))

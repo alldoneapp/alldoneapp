@@ -200,7 +200,7 @@ async function updateLastCommentDataOfChatParentObject(projectId, objectId, obje
 }
 
 // Thread types whose parent document carries a commentsData preview this helper maintains.
-const PARENT_OBJECT_TYPES = new Set(['tasks', 'notes', 'goals', 'topics', 'contacts'])
+const PARENT_OBJECT_TYPES = new Set(['tasks', 'notes', 'goals', 'topics', 'contacts', 'artifacts'])
 
 /**
  * Get the Firestore path for the parent object. The path itself comes from the shared

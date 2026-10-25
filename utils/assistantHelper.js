@@ -59,6 +59,7 @@ export const setObjectAssistantEnabled = async (projectId, objectId, objectType,
             user: 'users',
             skill: 'skills',
             goal: 'goals',
+            artifact: 'artifacts',
         }[objectType] || objectType
 
     let collectionPath = ''
@@ -85,6 +86,9 @@ export const setObjectAssistantEnabled = async (projectId, objectId, objectType,
             break
         case 'goals':
             collectionPath = `goals/${projectId}/items`
+            break
+        case 'artifacts':
+            collectionPath = `artifactItems/${projectId}/artifacts`
             break
         default:
             return

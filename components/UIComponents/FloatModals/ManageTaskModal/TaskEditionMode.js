@@ -111,6 +111,7 @@ export default class TaskEditionMode extends Component {
             linkedParentGoalsUrl: [],
             linkedParentSkillsUrl: [],
             linkedParentAssistantsUrl: [],
+            linkedParentArtifactsUrl: [],
             editorId,
             initialOps,
         }
@@ -225,7 +226,8 @@ export default class TaskEditionMode extends Component {
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         const { tempTask } = this.state
         const { editing } = this.props
@@ -242,6 +244,7 @@ export default class TaskEditionMode extends Component {
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             })
         }
         if (!editing) {
@@ -505,6 +508,7 @@ export default class TaskEditionMode extends Component {
             linkedParentGoalsUrl,
             linkedParentSkillsUrl,
             linkedParentAssistantsUrl,
+            linkedParentArtifactsUrl,
         } = this.state
         const { projectId } = this.props
         Backend.setLinkedParentObjects(
@@ -517,6 +521,7 @@ export default class TaskEditionMode extends Component {
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             { type: 'task', id: task.id }
         )

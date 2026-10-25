@@ -32,6 +32,7 @@ export default function TaskEditForm({
     const [linkedParentGoalsUrl, setLinkedParentGoalsUrl] = useState([])
     const [linkedParentSkillsUrl, setLinkedParentSkillsUrl] = useState([])
     const [linkedParentAssistantsUrl, setLinkedParentAssistantsUrl] = useState([])
+    const [linkedParentArtifactsUrl, setLinkedParentArtifactsUrl] = useState([])
 
     const onChangeInputText = (
         text,
@@ -41,7 +42,8 @@ export default function TaskEditForm({
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         if (text) {
             setLinkedParentContactsUrl(linkedParentContactsUrl)
@@ -50,6 +52,7 @@ export default function TaskEditForm({
             setLinkedParentProjectsUrl(linkedParentProjectsUrl)
             setLinkedParentSkillsUrl(linkedParentSkillsUrl)
             setLinkedParentAssistantsUrl(linkedParentAssistantsUrl)
+            setLinkedParentArtifactsUrl(linkedParentArtifactsUrl)
             setLinkedParentTasksUrl(linkedParentTasksUrl)
         }
         setTaskProperty('name', text.replace(/\r?\n|\r/g, ''))
@@ -66,6 +69,7 @@ export default function TaskEditForm({
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             { type: 'task', id: task.id }
         )

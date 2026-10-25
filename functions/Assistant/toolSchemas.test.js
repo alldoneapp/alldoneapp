@@ -744,3 +744,28 @@ describe('Contact research tool schemas (profile enrichment)', () => {
         expect(properties.photoUrl.description).toMatch(/find_profile_photo/)
     })
 })
+
+describe('Artifact assistant tool schemas', () => {
+    test('one Tools Access key offers all four artifact tools', () => {
+        expect(getToolSchemas(['artifacts']).map(schema => schema.function.name)).toEqual([
+            'get_artifacts',
+            'read_artifact',
+            'create_artifact',
+            'update_artifact',
+        ])
+        expect(getToolSchemas(['create_note']).map(schema => schema.function.name)).toEqual(['create_note'])
+    })
+
+    test('create and update take text files, and update can send only the change', () => {
+        const create = toolSchemas.create_artifact.function.parameters
+        expect(create.required).toEqual(['title', 'files'])
+        expect(create.properties.files.items.required).toEqual(['path', 'content'])
+
+        const update = toolSchemas.update_artifact.function.parameters
+        expect(update.required).toEqual(['artifactId'])
+        expect(update.properties.edits.items.required).toEqual(['path', 'find', 'replace'])
+        expect(Object.keys(update.properties)).toEqual(
+            expect.arrayContaining(['files', 'removePaths', 'title', 'description', 'changeSummary'])
+        )
+    })
+})

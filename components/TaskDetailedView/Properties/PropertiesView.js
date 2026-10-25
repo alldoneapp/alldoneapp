@@ -36,6 +36,7 @@ import TaskId from './TaskId'
 import { isInboxSummaryGmailTask } from '../../../utils/Gmail/gmailTaskUtils'
 import Priority from './Priority'
 import MergeStatus from './MergeStatus'
+import ObjectArtifacts from '../../ArtifactsView/ObjectArtifacts'
 import useTaskMergeStatusRefresh from '../../../hooks/useTaskMergeStatusRefresh'
 
 export default function PropertiesView({
@@ -254,6 +255,8 @@ export default function PropertiesView({
                 objectType={FEED_TASK_OBJECT_TYPE}
                 calendarDataTask={task.calendarData}
             />
+
+            <ObjectArtifacts projectId={projectId} objectType="tasks" objectId={task.id} />
 
             {accessGranted && loggedUserCanUpdateObject && (
                 <View style={localStyles.deleteButtonContainer}>

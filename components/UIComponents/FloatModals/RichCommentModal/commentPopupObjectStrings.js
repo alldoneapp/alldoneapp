@@ -17,7 +17,17 @@
  */
 
 // Every slug the popup can render. `object` is the fallback for an unknown object type.
-export const COMMENT_POPUP_OBJECT_SLUGS = ['task', 'goal', 'note', 'contact', 'chat', 'skill', 'assistant', 'object']
+export const COMMENT_POPUP_OBJECT_SLUGS = [
+    'task',
+    'goal',
+    'note',
+    'contact',
+    'chat',
+    'skill',
+    'assistant',
+    'artifact',
+    'object',
+]
 
 export const COMMENT_POPUP_STRING_KINDS = [
     'loading',
@@ -38,6 +48,7 @@ const SLUG_BY_OBJECT_TYPE = {
     topics: 'chat',
     skills: 'skill',
     assistants: 'assistant',
+    artifacts: 'artifact',
 }
 
 export const getCommentPopupObjectSlug = objectType => SLUG_BY_OBJECT_TYPE[objectType] || 'object'

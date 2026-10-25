@@ -108,6 +108,7 @@ export const getNotePreviewText = (projectId, editor) => {
             videoFormat,
             karma,
             taskTagFormat,
+            artifactEmbed,
         } = insert
 
         if (mention) {
@@ -126,6 +127,9 @@ export const getNotePreviewText = (projectId, editor) => {
         } else if (url) {
             const { url: link } = url
             parsedText += ' ' + link.trim()
+        } else if (artifactEmbed) {
+            // Copied out of the note, a preview card is the link to its artifact.
+            parsedText += ' ' + String(artifactEmbed.url || '').trim()
         } else if (taskTagFormat) {
             const { taskId } = taskTagFormat
             const url = `${window.location.origin}${getDvMainTabLink(projectId, taskId, 'tasks')}`

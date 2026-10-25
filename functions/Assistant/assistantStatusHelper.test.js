@@ -65,6 +65,7 @@ describe('getParentObjectPath', () => {
         ['goals', 'goals/project-1/items/object-1'],
         ['topics', 'chatObjects/project-1/chats/object-1'],
         ['contacts', 'projectsContacts/project-1/contacts/object-1'],
+        ['artifacts', 'artifactItems/project-1/artifacts/object-1'],
     ])('resolves %s to the document the object actually lives in', (objectType, expectedPath) => {
         expect(getParentObjectPath('project-1', objectType, 'object-1')).toBe(expectedPath)
     })
