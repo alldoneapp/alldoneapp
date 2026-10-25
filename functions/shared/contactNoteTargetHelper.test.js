@@ -27,7 +27,42 @@ jest.mock('../Utils/HelperFunctionsCloud', () => ({
     FEED_PUBLIC_FOR_ALL: 'public',
 }))
 
-const { findMatchingContacts, resolveContactNoteTarget, resolveContactTarget } = require('./contactNoteTargetHelper')
+const {
+    findMatchingContacts,
+    resolveContactNoteTarget,
+    resolveContactTarget,
+    resolveProjectForContactNote,
+} = require('./contactNoteTargetHelper')
+
+describe('resolveProjectForContactNote with an explicit projectId', () => {
+    // ProjectService reads users/{uid} and then projects/{id}; both projects exist here, so only
+    // membership can tell them apart.
+    const db = {
+        collection: name => ({
+            doc: id => ({
+                get: async () => {
+                    if (name === 'users') {
+                        return { exists: true, id, data: () => ({ projectIds: ['p-own'] }) }
+                    }
+                    return { exists: true, id, data: () => ({ name: id === 'p-own' ? 'Own' : 'Foreign' }) }
+                },
+            }),
+        }),
+    }
+
+    test('resolves a project the user belongs to', async () => {
+        await expect(resolveProjectForContactNote({ db, userId: 'u-1', projectId: 'p-own' })).resolves.toEqual({
+            id: 'p-own',
+            name: 'Own',
+        })
+    })
+
+    test('refuses an existing project the user does not belong to', async () => {
+        await expect(resolveProjectForContactNote({ db, userId: 'u-1', projectId: 'p-foreign' })).rejects.toThrow(
+            'Target project not found or not accessible: "p-foreign"'
+        )
+    })
+})
 
 function createDb(initialDocs = {}) {
     const docs = { ...initialDocs }

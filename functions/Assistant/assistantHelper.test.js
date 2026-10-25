@@ -2292,8 +2292,8 @@ describe('assistant attachment handoff helpers', () => {
         })
 
         test('refuses a projectId the requesting user is not a member of', async () => {
-            // Over MCP the context project is this same argument, so the executor's membership
-            // check is the only thing between a caller and a note in somebody else's project.
+            // The in-app assistant hands the model's projectId straight through, so the executor's
+            // membership check is what keeps a note out of somebody else's project.
             mockUserProjects([{ id: 'project-1', name: 'Inbox' }])
 
             await expect(
@@ -4174,6 +4174,59 @@ describe('resolveCreateTaskTargetProject', () => {
             },
         })
     })
+
+    test('refuses an explicit projectId the creator is not a member of', async () => {
+        // The project exists, so a lookup by id alone would accept it; TaskService then writes
+        // through the Admin SDK with no membership check of its own.
+        const getUserProjects = jest.fn().mockResolvedValue([{ id: 'p-own', name: 'Own' }])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+        const fakeDb = {
+            collection: jest.fn(() => ({
+                doc: jest.fn(() => ({
+                    get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Somebody else' }) }),
+                })),
+            })),
+        }
+
+        await expect(
+            resolveCreateTaskTargetProject(fakeDb, {
+                creatorId: 'u-1',
+                contextProjectId: 'p-own',
+                assistantId: 'a-1',
+                globalProjectId: 'global',
+                requestedProjectId: 'p-foreign',
+            })
+        ).rejects.toThrow('Target project not found or not accessible: "p-foreign"')
+        expect(getUserProjects).toHaveBeenCalledWith(
+            'u-1',
+            expect.objectContaining({ includeArchived: true, includeCommunity: true, activeOnly: false })
+        )
+    })
+
+    test('still accepts the global assistant project without a membership lookup', async () => {
+        const getUserProjects = jest.fn().mockResolvedValue([])
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects,
+        }))
+
+        await expect(
+            resolveCreateTaskTargetProject(
+                {},
+                {
+                    creatorId: 'u-1',
+                    contextProjectId: 'p-own',
+                    assistantId: 'a-1',
+                    globalProjectId: 'global',
+                    requestedProjectId: 'global',
+                }
+            )
+        ).resolves.toMatchObject({ targetProjectId: 'global', source: 'toolArgs.projectId' })
+        expect(getUserProjects).not.toHaveBeenCalled()
+    })
 })
 
 describe('assistant parent goal tools', () => {
@@ -4737,6 +4790,15 @@ describe('assistant create_task project routing comments', () => {
     })
 
     test('uses Gmail label matched project over conflicting assistant task project', async () => {
+        // The label's project is honoured only because the user is a member of it, as the user
+        // doc below says; the project list has to agree with it.
+        ProjectService.mockImplementation(() => ({
+            initialize: jest.fn().mockResolvedValue(undefined),
+            getUserProjects: jest.fn().mockResolvedValue([
+                { id: 'project-bechtle', name: 'Bechtle' },
+                { id: 'project-jtl', name: 'JTL Software - Project Juno' },
+            ]),
+        }))
         mockDocGet
             .mockResolvedValueOnce({
                 exists: true,

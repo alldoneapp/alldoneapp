@@ -279,6 +279,7 @@ describe('AlldoneSimpleMCPServer tools/call routing', () => {
         const server = new AlldoneSimpleMCPServer()
         server.getAuthenticatedUserForClient = jest.fn().mockResolvedValue('user-1')
         server.checkRateLimits = jest.fn().mockResolvedValue({ allowed: true })
+        server.getUserProjectList = jest.fn().mockResolvedValue([{ id: 'project-2', name: 'Project 2' }])
         // Stub the runtime-context builder so the routing test does not need the
         // full user-doc / timezone plumbing.
         server.buildDelegatedToolRuntimeContext = jest.fn().mockResolvedValue({
@@ -328,6 +329,32 @@ describe('AlldoneSimpleMCPServer tools/call routing', () => {
             }
         )
         expect(JSON.parse(response.result.content[0].text)).toEqual({ contacts: [], count: 0 })
+    })
+
+    test('refuses an explicit projectId the caller is not a member of before any tool runs', async () => {
+        // Every delegated tool writes through the Admin SDK, so this is the only point where a
+        // foreign project id can be stopped for all of them at once.
+        const server = buildServer()
+
+        const response = await server.handleSingleJsonRpc(
+            {
+                jsonrpc: '2.0',
+                id: 6,
+                method: 'tools/call',
+                params: { name: 'create_task', arguments: { name: 'Plant', projectId: 'foreign-project' } },
+            },
+            {}
+        )
+
+        expect(server.getUserProjectList).toHaveBeenCalledWith(
+            'user-1',
+            expect.objectContaining({ includeArchived: true, includeCommunity: true, activeOnly: false })
+        )
+        expect(mockExecuteToolNatively).not.toHaveBeenCalled()
+        expect(response.result.isError).toBe(true)
+        expect(JSON.parse(response.result.content[0].text).error).toContain(
+            'Target project not found or not accessible: "foreign-project"'
+        )
     })
 
     test('pins the resolved project for assistant-less create_task with no project args', async () => {
@@ -413,6 +440,7 @@ describe('AlldoneSimpleMCPServer per-user MCP access', () => {
         server.getAuthenticatedUserForClient = jest.fn().mockResolvedValue('user-1')
         server.checkRateLimits = jest.fn().mockResolvedValue({ allowed: true })
         server.getUserMcpAccess = jest.fn().mockResolvedValue(access)
+        server.getUserProjectList = jest.fn().mockResolvedValue([{ id: 'p1', name: 'Project 1' }])
         server.buildDelegatedToolRuntimeContext = jest.fn().mockResolvedValue({ sourceChannel: 'mcp' })
         return server
     }
