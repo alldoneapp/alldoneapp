@@ -25,6 +25,7 @@ jest.mock('../../utils/backends/KnowledgeBase/knowledgeBaseFirestore', () => ({
     }),
     watchKnowledgeRuns: jest.fn(() => () => {}),
     getKnowledgePageRevisions: jest.fn(),
+    getKnowledgePageChange: jest.fn(),
     undoKnowledgeCorrection: jest.fn(),
 }))
 jest.mock('../TaskListView/ProjectSection', () => {
@@ -51,6 +52,7 @@ jest.mock('../../URLSystem/Wiki/URLsWiki', () => ({
     default: { push: jest.fn() },
     URL_PROJECT_WIKI: 'PROJECT_WIKI',
     URL_PROJECT_WIKI_PAGE: 'PROJECT_WIKI_PAGE',
+    URL_PROJECT_WIKI_PAGE_CHANGE: 'PROJECT_WIKI_PAGE_CHANGE',
 }))
 jest.mock('./wikiLinks', () => ({ openProjectWikiSettings: jest.fn(), openWikiSource: jest.fn() }))
 jest.mock('./WikiCorrectionForm', () => {
@@ -76,12 +78,13 @@ jest.mock('../../i18n/TranslationService', () => {
 
 import URLsWiki from '../../URLSystem/Wiki/URLsWiki'
 import {
+    getKnowledgePageChange,
     getKnowledgePageRevisions,
     undoKnowledgeCorrection,
 } from '../../utils/backends/KnowledgeBase/knowledgeBaseFirestore'
 import WikiView from './WikiView'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
-import { setWikiSelectedSlug } from './wikiNavigationState'
+import { getWikiSelectedRevision, setWikiSelectedSlug } from './wikiNavigationState'
 
 const page = (slug, title, extra = {}) => ({
     slug,
@@ -317,5 +320,117 @@ describe('WikiView', () => {
         expect(textOf(component.root.findByProps({ testID: 'wiki-history' }).children)).toContain(
             'The page changed after this correction.'
         )
+    })
+
+    describe('what a revision changed', () => {
+        const CORRECTION = {
+            id: '000003',
+            revision: 3,
+            title: 'Kunden',
+            summary: 'Kunden summary',
+            body: 'Acme ist seit März Kunde.\nZweite Zeile.',
+            sourceKeys: ['task:t1', 'correction:k1'],
+            mode: 'correction',
+            reason: 'Acme ist seit März Kunde',
+            author: { type: 'user', userId: 'u2', name: 'Maria', correctionId: 'k1' },
+            createdAt: Date.UTC(2026, 9, 20, 8),
+        }
+        const BEFORE = {
+            revision: 2,
+            title: 'Kunden',
+            summary: 'Kunden summary',
+            body: 'Acme ist seit Mai Kunde.\nZweite Zeile.',
+            sourceKeys: ['task:t1'],
+            mode: 'ingest',
+        }
+
+        it('opens from the page history, in place of the page, and keeps its own address', async () => {
+            getKnowledgePageRevisions.mockResolvedValue([CORRECTION])
+            getKnowledgePageChange.mockResolvedValue({ revision: CORRECTION, previous: BEFORE, page: PAGES[1] })
+            setWikiSelectedSlug('p1', 'kunden')
+            const component = mount()
+            deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
+            await act(async () => {
+                pressText(component, 'Show history')
+            })
+
+            await act(async () => press(component, 'wiki-history-changes-3'))
+
+            expect(getWikiSelectedRevision('p1')).toBe(3)
+            expect(getKnowledgePageChange).toHaveBeenCalledWith('p1', 'kunden', 3)
+            expect(component.root.findAllByProps({ testID: 'wiki-page-kunden' })).toHaveLength(0)
+            expect(URLsWiki.push).toHaveBeenLastCalledWith(
+                'PROJECT_WIKI_PAGE_CHANGE',
+                null,
+                'p1',
+                'kunden',
+                'Kunden',
+                3
+            )
+            expect(textOf(component.root.findByProps({ testID: 'wiki-change-description' }).children)).toBe(
+                'Maria corrected the page “Kunden”'
+            )
+            const body = component.root.findByProps({ testID: 'wiki-diff-body' })
+            expect(body.findAllByProps({ testID: 'wiki-diff-removed' })).toHaveLength(1)
+            expect(textOf(body.findAllByProps({ testID: 'wiki-diff-added' })[0].children)).toContain('März')
+            expect(textOf(component.root.findByProps({ testID: 'wiki-change-sources' }).children)).toContain(
+                'Correction'
+            )
+
+            press(component, 'wiki-change-back')
+            expect(getWikiSelectedRevision('p1')).toBeNull()
+            expect(component.root.findAllByProps({ testID: 'wiki-page-kunden' })).not.toHaveLength(0)
+        })
+
+        it('shows a change of a page nobody can open any more, even with no page left to show', async () => {
+            getKnowledgePageChange.mockResolvedValue({
+                revision: { id: '000004', revision: 4, archived: true, mode: 'ingest', createdAt: 1 },
+                previous: { ...BEFORE, title: 'Alt' },
+                page: { slug: 'alt', title: 'Alt', revision: 4, archived: true, needsRebuild: false },
+            })
+            setWikiSelectedSlug('p1', 'alt', 4)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: [] }))
+
+            expect(component.root.findAllByProps({ testID: 'wiki-building' })).toHaveLength(0)
+            expect(textOf(component.root.findByProps({ testID: 'wiki-change-description' }).children)).toBe(
+                'The wiki archived the page “Alt”'
+            )
+            expect(component.root.findAllByProps({ testID: 'wiki-change-open-page' })).toHaveLength(0)
+            expect(textOf(component.root.findByProps({ testID: 'wiki-change-back' }).children)).toBe('All wiki pages')
+            const body = component.root.findByProps({ testID: 'wiki-diff-body' })
+            expect(body.findAllByProps({ testID: 'wiki-diff-removed' })).toHaveLength(2)
+        })
+
+        it('shows no text at all for a revision the wiki removed it from', async () => {
+            getKnowledgePageChange.mockResolvedValue({
+                revision: { id: '000003', revision: 3, redacted: true, mode: 'ingest', createdAt: 1 },
+                previous: BEFORE,
+                page: PAGES[1],
+            })
+            setWikiSelectedSlug('p1', 'kunden', 3)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: PAGES }))
+
+            expect(component.root.findAllByProps({ testID: 'wiki-change-redacted' })).not.toHaveLength(0)
+            expect(component.root.findAllByProps({ testID: 'wiki-diff-body' })).toHaveLength(0)
+            expect(textOf(component.toJSON())).not.toContain('seit Mai')
+        })
+
+        it('steps to the older and the newer change of the same page', async () => {
+            getKnowledgePageChange.mockResolvedValue({
+                revision: CORRECTION,
+                previous: BEFORE,
+                page: { ...PAGES[1], revision: 5 },
+            })
+            setWikiSelectedSlug('p1', 'kunden', 3)
+            const component = mount()
+            await act(async () => deliver({ knowledgeBase: { enabled: true }, pages: PAGES }))
+
+            await act(async () => press(component, 'wiki-change-newer'))
+            expect(getWikiSelectedRevision('p1')).toBe(4)
+            await act(async () => press(component, 'wiki-change-older'))
+            expect(getWikiSelectedRevision('p1')).toBe(3)
+        })
     })
 })
