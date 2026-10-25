@@ -33,7 +33,7 @@ import * as Y from 'yjs'
 
 import store from '../redux/store'
 import Backend from './BackendBridge'
-import { getDb, getId, notesStorage } from './backends/firestore'
+import { notesStorage } from './backends/firestore'
 import { isBrowserOffline } from './connectionState'
 import { queueNoteUpload } from './Notes/noteUploadQueue'
 import {
@@ -84,14 +84,6 @@ export const resolveNoteCatchUpState = async (noteId, storageBytes) => {
 
 const uploadNoteContent = async (projectId, noteId, encodedState) => {
     await notesStorage.ref().child(`notesData/${projectId}/${noteId}`).put(encodedState)
-    // The edit's metadata was already flushed before this content caught up.
-    // Notify upload readers without claiming a second edit or delaying durability.
-    getDb()
-        .doc(`noteItems/${projectId}/notes/${noteId}`)
-        .update({ uploadsRevision: getId() })
-        .catch(error => {
-            console.warn('Could not notify linked uploads after note catch-up:', error)
-        })
 }
 
 export const runNotesOfflineCatchUp = async () => {
