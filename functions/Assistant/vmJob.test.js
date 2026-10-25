@@ -1256,6 +1256,13 @@ describe('startVmJob', () => {
         expect(mockDocs['pendingWebhooks/correlation-1'].set).toHaveBeenCalledWith(
             expect.objectContaining({ status: 'queued' })
         )
+        // …and the status comment says so too, instead of claiming the VM is already running (AT-2018).
+        expect(mockDocs['chatComments/project-1/topics/chat-1/comments/status-comment-1'].set).toHaveBeenCalledWith(
+            expect.objectContaining({
+                assistantRun: expect.objectContaining({ status: 'queued' }),
+            }),
+            { merge: true }
+        )
         // The cross-thread concurrency cap is skipped for a same-thread follow-up.
         expect(mockCollectionQuery.get).not.toHaveBeenCalled()
     })

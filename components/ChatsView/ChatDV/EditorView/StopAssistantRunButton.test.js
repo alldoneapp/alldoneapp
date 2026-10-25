@@ -54,6 +54,12 @@ describe('StopAssistantRunButton', () => {
             expect(canStopAssistantRun({ ...base, assistantRun: runningRun({ requestUserId: 'user-1' }) })).toBe(true)
         })
 
+        test('accepts a VM job that is queued behind another run on the same thread (AT-2018)', () => {
+            expect(
+                canStopAssistantRun({ ...base, assistantRun: runningRun({ kind: 'vm_job', status: 'queued' }) })
+            ).toBe(true)
+        })
+
         test('rejects everything that is not actually stoppable', () => {
             // Another user's run: only the requester may cancel it.
             expect(canStopAssistantRun({ ...base, assistantRun: runningRun({ requestUserId: 'user-2' }) })).toBe(false)
