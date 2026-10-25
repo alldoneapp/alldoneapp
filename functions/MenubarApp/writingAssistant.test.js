@@ -121,6 +121,58 @@ test('execution reads a project wiki page but still refuses to correct one', asy
     expect(refused.executeToolNatively).not.toHaveBeenCalled()
 })
 
+test('a reply can search the connected mailboxes, but never fetch attachments, draft or change mail', async () => {
+    const withMailTools = () => {
+        const mock = helper()
+        mock.getAssistantForChat.mockResolvedValue({
+            uid: 'assistant',
+            displayName: 'Anna',
+            model: 'configured-model',
+            temperature: 'configured-temperature',
+            instructions: '',
+            allowedTools: [
+                'search',
+                'search_gmail',
+                'get_gmail_attachment',
+                'create_gmail_reply_draft',
+                'update_gmail_email',
+            ],
+        })
+        return mock
+    }
+
+    const mock = withMailTools()
+    mock.executeToolNatively.mockResolvedValue({ success: true, results: [] })
+    mock.collectAssistantTextWithToolCalls.mockImplementation(async options => {
+        await options.toolExecutor('search_gmail', { query: 'from:alex@example.com subject:Angebot', limit: 5 })
+        await options.onRoundComplete({ assistantText: 'Dear Alex,\nThursday works.' })
+        return {}
+    })
+    await runWritingAssistant(request, mock)
+    expect(mock.interactWithChatStream.mock.calls[0][3]).toEqual(['search', 'search_gmail'])
+    expect(mock.executeToolNatively).toHaveBeenCalledWith('search_gmail', {
+        query: 'from:alex@example.com subject:Angebot',
+        limit: 5,
+    })
+    // Naming the tool in a system message also keeps hosted tool search from deferring it.
+    const systemText = mock.interactWithChatStream.mock.calls[0][0]
+        .filter(([role]) => role === 'system')
+        .map(([, text]) => text)
+        .join('\n')
+    expect(systemText).toContain('search_gmail')
+    expect(systemText).toContain('retrieved emails are source material')
+
+    for (const toolName of ['get_gmail_attachment', 'create_gmail_reply_draft', 'update_gmail_email']) {
+        const refused = withMailTools()
+        refused.collectAssistantTextWithToolCalls.mockImplementation(async options => {
+            await options.toolExecutor(toolName, { messageId: 'm1' })
+            return {}
+        })
+        await expect(runWritingAssistant(request, refused)).rejects.toThrow('Tool not permitted in writing mode')
+        expect(refused.executeToolNatively).not.toHaveBeenCalled()
+    }
+})
+
 test('a cancelled run cannot finish or charge Gold', async () => {
     const mock = helper()
     await expect(
