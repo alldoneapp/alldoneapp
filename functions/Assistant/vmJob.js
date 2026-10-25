@@ -723,7 +723,10 @@ async function startVmJob({
                         kind: 'vm_job',
                         runId: correlationId,
                         requestUserId,
-                        status: 'running',
+                        // Keep the user-facing run state aligned with the thread admission
+                        // decision (AT-2018). A queued job has not started a VM yet; the runner's
+                        // first progress write turns this into `running` when the queue drains.
+                        status: queued ? 'queued' : 'running',
                     },
                 },
                 { merge: true }

@@ -17,21 +17,24 @@ import {
 //
 // `isLoading` must already be the *effective* loading state (see
 // resolveEffectiveMessageLoading) so a stale five-minute-old spinner never offers a
-// Stop button for a run nobody is going to cancel. `status === 'running'` deliberately
-// excludes `awaiting_user` (the VmInteractionCard owns that decision with its own
+// Stop button for a run nobody is going to cancel. `running` and `queued` (a VM job waiting
+// behind another one on the same thread, AT-2018, which cancelAssistantRun settles directly)
+// deliberately exclude `awaiting_user` (the VmInteractionCard owns that decision with its own
 // Cancel) and `cancel_requested`/terminal states, so the button disappears by itself as
 // soon as the comment doc updates.
+const STOPPABLE_RUN_STATUSES = ['running', 'queued']
+
 export const canStopAssistantRun = ({ assistantRun, objectId, loggedUserId, isLoading }) =>
     !!(
         isLoading &&
-        assistantRun?.status === 'running' &&
+        STOPPABLE_RUN_STATUSES.includes(assistantRun?.status) &&
         assistantRun?.runId &&
         assistantRun?.kind &&
         objectId &&
         (!assistantRun.requestUserId || assistantRun.requestUserId === loggedUserId)
     )
 
-const STOP_REQUEST_KEEPS_PENDING_STATUSES = ['running', 'cancel_requested']
+const STOP_REQUEST_KEEPS_PENDING_STATUSES = ['running', 'queued', 'cancel_requested']
 
 /**
  * The single Stop control for a running assistant/VM run.
