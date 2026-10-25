@@ -127,4 +127,10 @@ async function runAssistantCommentReply(params, { db = admin.firestore(), askToB
     }
 }
 
-module.exports = { isReplyCandidate, resolveCommentReply, enqueueAssistantCommentReply, runAssistantCommentReply }
+module.exports = {
+    COMMENT_OBJECT_TYPES,
+    isReplyCandidate,
+    resolveCommentReply,
+    enqueueAssistantCommentReply,
+    runAssistantCommentReply,
+}

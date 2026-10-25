@@ -413,7 +413,8 @@ const storeComment = async (
     chatMembers,
     assistantId,
     sharedBatch = null,
-    created = Date.now()
+    created = Date.now(),
+    assistantRunRequest = null
 ) => {
     const batch = sharedBatch || new BatchWrapper(getDb())
     const mediaContext = extractMediaContextFromText(comment)
@@ -468,6 +469,7 @@ const storeComment = async (
                   creatorId,
                   fromAssistant: false,
                   ...(objectType === 'tasks' && { commentType }),
+                  ...(assistantRunRequest && { assistantRunRequest }),
               },
         { merge: true }
     )
@@ -618,6 +620,8 @@ export async function createObjectMessage(
         skipAssistantTrigger,
         explicitAssistantEnabled,
         explicitAssistantId,
+        // A caller that skips the trigger here because it starts the assistant run itself.
+        ...(submission?.requestsAssistantRun === true && { requestsAssistantRun: true }),
     })
     if (onAssistantRunSettled) pendingAssistantCallbacks.set(id, onAssistantRunSettled)
     // The return value means locally saved. The regular message list renders
@@ -721,6 +725,24 @@ async function sendObjectMessage(
         assistantId = queuedEntry
             ? resolveAssistantForProjectObject(projectId, assistantId)?.uid || assistantId
             : updateParentObjectAssistantIfNeeded(projectId, assistantId, objectId, objectType)
+
+        const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
+        const isThreadAssistantEnabled =
+            explicitAssistantEnabled !== null
+                ? explicitAssistantEnabled
+                : object
+                  ? object.isAssistantEnabled === true
+                  : assistantEnabled
+        const triggersAssistantRun =
+            !editingCommentId && isThreadAssistantEnabled && !isWebhookTask && !skipAssistantTrigger
+        // The assistant answers only if this page gets its askToBot request out. Recording the run on
+        // the comment lets the server start it when the page goes away first, e.g. a phone discarding
+        // the tab while the callable cold-starts (functions/Assistant/assistantMissedRunCatchUp.js).
+        const assistantRunRequest =
+            triggersAssistantRun || queuedEntry?.requestsAssistantRun === true
+                ? { projectId, objectType, objectId, assistantId: assistantId || null }
+                : null
+
         const promises = []
         if (queuedEntry) {
             const committed = await commitCommentOnce(getDb(), {
@@ -743,7 +765,8 @@ async function sendObjectMessage(
                         currentChat ? uniq([...(currentChat.members || []), creatorId]) : [creatorId],
                         assistantId,
                         batch,
-                        queuedEntry.created
+                        queuedEntry.created,
+                        assistantRunRequest
                     )
                     const preview = cleanTextMetaData(removeFormatTagsFromText(comment), true).trim() || 'Comment'
                     const isLatestComment = !currentChat || !(currentChat.lastEditionDate > queuedEntry.created)
@@ -897,8 +920,6 @@ async function sendObjectMessage(
 
         createGenericTaskWhenMention(projectId, objectId, newMentionIds, GENERIC_COMMENT_TYPE, objectType, assistantId)
 
-        const isWebhookTask = objectType === 'tasks' && object?.taskMetadata?.isWebhookTask
-
         try {
             // Offline these acks never arrive, so awaiting them left the comment
             // modal open forever on a comment that was in fact already stored
@@ -921,13 +942,6 @@ async function sendObjectMessage(
             throw error
         }
 
-        const isThreadAssistantEnabled =
-            explicitAssistantEnabled !== null
-                ? explicitAssistantEnabled
-                : object
-                  ? object.isAssistantEnabled === true
-                  : assistantEnabled
-
         // Only trigger regular AI assistant if not a webhook task and not explicitly skipped
         if (__DEV__) {
             console.log('🔍 [TIMING] CLIENT: Checking assistant trigger conditions', {
@@ -939,7 +953,7 @@ async function sendObjectMessage(
                 hasTaskMetadata: !!object?.taskMetadata,
             })
         }
-        if (!editingCommentId && isThreadAssistantEnabled && !isWebhookTask && !skipAssistantTrigger) {
+        if (triggersAssistantRun) {
             const clientSubmissionTime = Date.now()
             const clientSubmissionTimestamp = new Date().toISOString()
             if (__DEV__) {
