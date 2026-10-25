@@ -145,27 +145,8 @@ class SearchService {
             throw new Error(`Search limit cannot exceed ${MAX_SEARCH_LIMIT}`)
         }
 
-        // buildTypesenseFilters narrows to an explicit projectId exactly as given, so it has to be one
-        // of the caller's own projects: a foreign id would otherwise return everything that project
-        // shares with its members. Checked once here, not on every fallback pass.
-        if (projectId && !(await this.userBelongsToProject(userId, projectId))) {
-            return {
-                results: {},
-                query,
-                totalResults: 0,
-                message: `Target project not found or not accessible: "${projectId}"`,
-            }
-        }
-
         // Use enhanced search with result optimization
         return await this.searchWithOptimization(userId, searchParams)
-    }
-
-    // The same membership source as getUserProjects (users/{uid}.projectIds), for one project.
-    async userBelongsToProject(userId, projectId) {
-        const userDoc = await this.options.database.collection('users').doc(userId).get()
-        const projectIds = userDoc.exists ? userDoc.data().projectIds || [] : []
-        return projectIds.includes(projectId)
     }
 
     /**
