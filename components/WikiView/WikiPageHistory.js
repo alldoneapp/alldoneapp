@@ -20,10 +20,9 @@ function describeRevision(revision) {
 
 // The last revisions of one page, read when the history is opened and again whenever the page gets a
 // new revision: it changes at most a few times a day, so a live listener would cost more than it
-// shows. Each revision opens what it changed (the same view an Updates entry leads to). A correction
-// can be undone from here while it is still the page's latest revision — the same rule the
-// assistant's undo tool follows.
-export default function WikiPageHistory({ projectId, slug, currentRevision, onOpenChange }) {
+// shows. A correction can be undone from here while it is still the page's latest revision — the
+// same rule the assistant's undo tool follows.
+export default function WikiPageHistory({ projectId, slug, currentRevision }) {
     const [revisions, setRevisions] = useState(null)
     const [failed, setFailed] = useState(false)
     const [undo, setUndo] = useState({ correctionId: null, error: '' })
@@ -66,15 +65,6 @@ export default function WikiPageHistory({ projectId, slug, currentRevision, onOp
                             {`${translate('Revision')} ${revision.revision} · ${formatWikiDate(revision.createdAt)}`}
                         </Text>
                         <Text style={localStyles.text}>{describeRevision(revision)}</Text>
-                        {!revision.redacted && onOpenChange && (
-                            <TouchableOpacity
-                                testID={`wiki-history-changes-${revision.revision}`}
-                                onPress={() => onOpenChange(revision.revision)}
-                                accessible={false}
-                            >
-                                <Text style={localStyles.action}>{translate('Show changes')}</Text>
-                            </TouchableOpacity>
-                        )}
                         {canUndo && (
                             <TouchableOpacity
                                 testID={`wiki-undo-${correctionId}`}

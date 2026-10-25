@@ -170,7 +170,6 @@ async function writeKnowledgePage({
             if (typeof label === 'string' && label.trim()) sourceLabels[key] = clip(label, 120)
         })
         const revision = currentRevision + 1
-        const created = !current || current.archived === true
 
         const page = {
             slug,
@@ -203,9 +202,6 @@ async function writeKnowledgePage({
             body,
             sourceKeys,
             archived: false,
-            // Whether this revision brought the page (back) into existence: the Updates feed says
-            // "created" rather than "updated" for it (knowledgeWikiFeedModel.getWikiChangeKind).
-            created,
             mode,
             author,
             runId,
@@ -218,7 +214,7 @@ async function writeKnowledgePage({
             success: true,
             slug,
             revision,
-            created,
+            created: !current || current.archived === true,
             removedSourceReferences: removed,
             page: {
                 ...page,

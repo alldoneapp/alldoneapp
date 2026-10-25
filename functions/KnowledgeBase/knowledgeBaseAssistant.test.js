@@ -9,8 +9,10 @@ const {
     undoKnowledgeCorrection,
 } = require('./knowledgeBaseAssistant')
 const {
+    ADD_KNOWLEDGE_DOCUMENT_TOOL,
     CORRECT_KNOWLEDGE_PAGE_TOOL,
     READ_KNOWLEDGE_PAGE_TOOL,
+    REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
     UNDO_KNOWLEDGE_CORRECTION_TOOL,
 } = require('./knowledgeBaseToolSchemas')
 
@@ -113,15 +115,6 @@ describe('resolveKnowledgeBaseAccess', () => {
     it('lets writing mode read but never write', () => {
         expect(resolveKnowledgeBaseAccess(chatRun({ writingDraft: true }))).toBe('read')
     })
-
-    it('lets an MCP client, which acts for the signed-in member without an assistant, read and correct', () => {
-        const mcpCall = { projectId: PROJECT_ID, requestUserId: 'member', assistantId: null, sourceChannel: 'mcp' }
-        expect(resolveKnowledgeBaseAccess(mcpCall)).toBe('correct')
-        expect(resolveKnowledgeBaseAccess({ ...mcpCall, projectId: null })).toBe('none')
-        expect(resolveKnowledgeBaseAccess({ ...mcpCall, requestUserId: null })).toBe('none')
-        // Any other assistant-less context still gets nothing.
-        expect(resolveKnowledgeBaseAccess({ ...mcpCall, sourceChannel: 'whatsapp' })).toBe('none')
-    })
 })
 
 describe('getKnowledgeBaseContextMessage', () => {
@@ -179,17 +172,37 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
             READ_KNOWLEDGE_PAGE_TOOL,
             CORRECT_KNOWLEDGE_PAGE_TOOL,
             UNDO_KNOWLEDGE_CORRECTION_TOOL,
+            ADD_KNOWLEDGE_DOCUMENT_TOOL,
+            REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
         ])
     })
 
-    it('offers nothing while the wiki has no page anyone may read', async () => {
+    it('offers only the document tools, and only to a direct conversation, while no page can be read', async () => {
         const db = new KnowledgeFirestoreDouble({
             [`projects/${PROJECT_ID}`]: { userIds: ['member'] },
             [KB_PATH]: { enabled: true },
             [pagePath('geheim')]: { needsRebuild: true, archived: false },
         })
 
-        await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([])
+        // A new wiki's first content is often a deck: adding one must not wait for a first page.
+        await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([
+            ADD_KNOWLEDGE_DOCUMENT_TOOL,
+            REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
+        ])
+        _resetKnowledgeBaseAvailabilityCacheForTests()
+        await expect(
+            getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun({ allowKnowledgeCorrections: false }) })
+        ).resolves.toEqual([])
+    })
+
+    it('offers no document tools for a wiki that is switched off, though its pages stay readable', async () => {
+        const db = createDb({ [KB_PATH]: { enabled: false, ownerUserId: 'member' } })
+
+        await expect(getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext: chatRun() })).resolves.toEqual([
+            READ_KNOWLEDGE_PAGE_TOOL,
+            CORRECT_KNOWLEDGE_PAGE_TOOL,
+            UNDO_KNOWLEDGE_CORRECTION_TOOL,
+        ])
     })
 
     it('asks Firestore at most every 30 seconds per project and person', async () => {
@@ -200,7 +213,7 @@ describe('getKnowledgeBaseToolNamesForRun', () => {
         db.write(KB_PATH, { enabled: true })
         db.write(pagePath('kunden'), { title: 'Kunden', archived: false, needsRebuild: false })
         await expect(ask(NOW + 10_000)).resolves.toEqual([])
-        await expect(ask(NOW + 31_000)).resolves.toHaveLength(3)
+        await expect(ask(NOW + 31_000)).resolves.toHaveLength(5)
     })
 })
 
@@ -221,10 +234,32 @@ describe('read_knowledge_page', () => {
         })
     })
 
-    it('lists every visible page when no slug is given', async () => {
-        const result = await run(createDb(), READ_KNOWLEDGE_PAGE_TOOL, {})
+    it('lists every visible page and the documents in the wiki when no slug is given', async () => {
+        const db = createDb({
+            [`${KB_PATH}/documents/d1`]: {
+                title: 'Pricing concept',
+                fileName: 'pricing.pptx',
+                authorName: 'Karsten',
+                createdAt: NOW,
+                status: 'active',
+                text: 'Team costs 12 euros.',
+            },
+            [`${KB_PATH}/documents/d2`]: { title: 'Old deck', status: 'removed', createdAt: NOW - 1 },
+        })
+        const result = await run(db, READ_KNOWLEDGE_PAGE_TOOL, {})
 
         expect(result.pages.map(page => page.slug)).toEqual(['entscheidungen', 'kunden'])
+        expect(result.documents).toEqual([
+            {
+                documentId: 'd1',
+                title: 'Pricing concept',
+                fileName: 'pricing.pptx',
+                addedBy: 'Karsten',
+                addedAt: new Date(NOW).toISOString(),
+            },
+        ])
+        // The listing never downloads a document's text.
+        expect(db.queries.find(query => query.collectionPath === `${KB_PATH}/documents`).select).not.toContain('text')
     })
 
     it('refuses a page waiting for a rebuild, an archived page and another project it is no member of', async () => {
@@ -277,7 +312,6 @@ describe('correct_knowledge_page', () => {
             revisionAfter: 3,
             objectType: 'topics',
             objectId: 'chat-1',
-            sourceChannel: null,
             createdAt: NOW,
         })
         expect(db.read(revisionPath('kunden', 3))).toMatchObject({
@@ -418,98 +452,5 @@ describe('undoing a correction', () => {
 
         expect(result).toMatchObject({ success: false, error: expect.stringMatching(/no longer available/) })
         expect(JSON.stringify(db.read(pagePath('kunden')))).not.toContain('Pilotkunde')
-    })
-})
-
-describe('over MCP', () => {
-    // The context executeToolNatively builds for an MCP call: the project the MCP server resolved,
-    // the OAuth-authenticated user, no assistant and no thread.
-    const mcpCall = (overrides = {}) => ({
-        projectId: PROJECT_ID,
-        requestUserId: 'member',
-        assistantId: null,
-        sourceChannel: 'mcp',
-        userTimezoneOffset: 120,
-        language: 'de',
-        objectType: null,
-        objectId: null,
-        ...overrides,
-    })
-    const mcpRun = (db, toolName, args, context = mcpCall()) =>
-        executeKnowledgeBaseTool({
-            db,
-            toolName,
-            args,
-            assistantId: null,
-            toolRuntimeContext: context,
-            now: NOW,
-            fieldValue,
-        })
-
-    it('lists and reads the pages a member may see', async () => {
-        const db = createDb()
-
-        const list = await mcpRun(db, READ_KNOWLEDGE_PAGE_TOOL, {})
-        expect(list.pages.map(page => page.slug)).toEqual(['entscheidungen', 'kunden'])
-
-        await expect(mcpRun(db, READ_KNOWLEDGE_PAGE_TOOL, { slug: 'kunden' })).resolves.toMatchObject({
-            success: true,
-            revision: 2,
-            body: KUNDEN_BODY,
-        })
-        await expect(mcpRun(db, READ_KNOWLEDGE_PAGE_TOOL, { slug: 'geheim' })).resolves.toMatchObject({
-            success: false,
-        })
-    })
-
-    it('corrects a page in the member’s name and records that the correction came through MCP', async () => {
-        const db = createDb()
-
-        const result = await mcpRun(db, CORRECT_KNOWLEDGE_PAGE_TOOL, {
-            slug: 'kunden',
-            revision: 2,
-            correction: 'Die Ansprechpartnerin heißt Frau Brandt.',
-            body: 'Ansprechpartnerin ist Frau Brandt [[correction:new]].',
-        })
-
-        expect(result).toMatchObject({ success: true, revision: 3 })
-        expect(db.read(`${KB_PATH}/corrections/${result.correctionId}`)).toMatchObject({
-            authorUserId: 'member',
-            authorName: 'Karsten',
-            assistantId: null,
-            objectType: null,
-            objectId: null,
-            sourceChannel: 'mcp',
-            status: 'applied',
-        })
-        expect(db.read(revisionPath('kunden', 3)).author).toMatchObject({
-            type: 'user',
-            userId: 'member',
-            assistantId: null,
-        })
-
-        await expect(
-            mcpRun(db, UNDO_KNOWLEDGE_CORRECTION_TOOL, { correctionId: result.correctionId })
-        ).resolves.toMatchObject({ success: true })
-        expect(db.read(pagePath('kunden')).body).toBe(KUNDEN_BODY)
-        expect(db.read(`${KB_PATH}/corrections/${result.correctionId}`).status).toBe('reverted')
-    })
-
-    it('refuses a project the signed-in user is no member of', async () => {
-        const db = createDb()
-
-        await expect(
-            mcpRun(db, READ_KNOWLEDGE_PAGE_TOOL, {}, mcpCall({ projectId: 'project-b' }))
-        ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/members/) })
-        await expect(
-            mcpRun(db, CORRECT_KNOWLEDGE_PAGE_TOOL, {
-                slug: 'kunden',
-                revision: 2,
-                correction: 'x',
-                body: 'x',
-                projectId: 'project-b',
-            })
-        ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/members/) })
-        expect(db.read(pagePath('kunden')).revision).toBe(2)
     })
 })

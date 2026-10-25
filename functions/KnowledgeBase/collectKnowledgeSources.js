@@ -8,6 +8,12 @@
 // source only when it is visible to the whole project (isPublicFor contains FEED_PUBLIC_FOR_ALL);
 // a private task, a private note or a contact only one member can see must never reach a card.
 //
+// Documents members added to the wiki (knowledgeDocuments.js) are read here too. They live inside
+// the wiki tree and so share its audience by construction, like corrections; one that was removed
+// is no source any more. A long document is split into several cards ("part 2 of 4"), each small
+// enough for one prompt, because chunkKnowledgeSources cuts a card that is too large rather than
+// splitting it, and a deck's last slides matter as much as its first.
+//
 // What else is deliberately left out, and why:
 //   - email-derived tasks (gmailData): emails are opt-in for the wiki and not part of the MVP;
 //   - the generated day-rate time-log task: bookkeeping, not knowledge;
@@ -28,7 +34,12 @@
 
 const { cleanTextMetaData } = require('../Utils/parseTextUtils')
 const { mapWithConcurrency } = require('../Utils/mapWithConcurrency')
-const { buildKnowledgeSourceKey, estimateTextTokens, parseKnowledgeSourceKey } = require('./knowledgeBaseModel')
+const {
+    buildKnowledgeSourceKey,
+    estimateTextTokens,
+    getKnowledgeDocumentsPath,
+    parseKnowledgeSourceKey,
+} = require('./knowledgeBaseModel')
 
 const FEED_PUBLIC_FOR_ALL = 0
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -80,6 +91,16 @@ const SOURCE_QUERIES = [
         pageLimit: 200,
         initialLookbackMs: null,
     },
+    {
+        cursorKey: 'documents',
+        // Up to 120,000 characters each, so only a few per page.
+        type: 'document',
+        collectionPath: projectId => getKnowledgeDocumentsPath(projectId),
+        field: 'lastEditionDate',
+        direction: 'asc',
+        pageLimit: 5,
+        initialLookbackMs: null,
+    },
 ]
 
 const TASK_DESCRIPTION_MAX_CHARS = 1500
@@ -87,6 +108,8 @@ const GOAL_DESCRIPTION_MAX_CHARS = 1500
 const CONTACT_DESCRIPTION_MAX_CHARS = 1500
 const NOTE_CONTENT_MAX_CHARS = 6000
 const NOTE_READ_CONCURRENCY = 5
+// Well under the ingest's 16,000-token chunk, so a part always travels whole and with company.
+const DOCUMENT_PART_MAX_TOKENS = 10000
 // Due dates this far out are the "Someday" backlog, not a date anyone means.
 const FAR_FUTURE_MS = Date.UTC(3000, 0, 1)
 
@@ -99,8 +122,10 @@ function toMillis(value) {
 // Visible to every member of the project. `isPrivate` is checked as well as a second line: the two
 // fields are written together, and if they ever disagree the stricter one wins. A goal without
 // isPublicFor is public, because that is how mapGoalData renders it to every member; for every
-// other type a missing array is treated as private.
+// other type a missing array is treated as private. A document added to the wiki is visible to the
+// wiki's audience until it is removed.
 function isVisibleToWholeProject(data, type) {
+    if (type === 'document') return !!data && data.status === 'active'
     if (!data || data.isPrivate === true) return false
     if (!Array.isArray(data.isPublicFor)) return type === 'goal'
     return data.isPublicFor.includes(FEED_PUBLIC_FOR_ALL)
@@ -181,6 +206,59 @@ function buildNoteCard(id, data, content) {
     const body = cleanText(content || data.preview, NOTE_CONTENT_MAX_CHARS)
     if (body) lines.push(`Content:\n${body}`)
     return { title, text: lines.join('\n') }
+}
+
+// A document's text in parts of at most `maxTokens`, cut at line ends where it can be. The token
+// count is kept as a running sum: re-estimating a growing part on every line would make a long
+// document quadratic.
+function splitDocumentText(text, maxTokens = DOCUMENT_PART_MAX_TOKENS) {
+    const parts = []
+    let current = []
+    let currentTokens = 0
+    const flush = () => {
+        const part = current.join('\n').trim()
+        if (part) parts.push(part)
+        current = []
+        currentTokens = 0
+    }
+    for (const line of String(text || '').split('\n')) {
+        let rest = line
+        let restTokens = estimateTextTokens(rest)
+        if (currentTokens + restTokens + 1 > maxTokens) flush()
+        // A single line longer than a part (a slide pasted as one paragraph) is cut by length.
+        while (restTokens > maxTokens) {
+            let cut = Math.max(1, Math.floor((rest.length * maxTokens) / restTokens))
+            // The estimate is per character class, so a cut proportional to the whole line can still
+            // land over budget when the text is denser at its start.
+            while (cut > 1 && estimateTextTokens(rest.slice(0, cut)) > maxTokens) cut = Math.floor(cut * 0.9)
+            parts.push(rest.slice(0, cut))
+            rest = rest.slice(cut)
+            restTokens = estimateTextTokens(rest)
+        }
+        current.push(rest)
+        currentTokens += restTokens + 1
+    }
+    flush()
+    return parts
+}
+
+function buildDocumentCards(id, data) {
+    const title = cleanText(data.title || data.fileName, 300) || '(untitled document)'
+    const details = []
+    if (data.fileName) details.push(`file ${cleanText(data.fileName, 300)}`)
+    const author = cleanText(data.authorName, 200)
+    const addedOn = formatDate(toMillis(data.createdAt))
+    if (author || addedOn) details.push(`added by ${author || 'a project member'}${addedOn ? ` on ${addedOn}` : ''}`)
+    if (data.truncated) details.push('only the beginning of a longer file')
+    const instructions = cleanText(data.instructions, 1000)
+    const parts = splitDocumentText(data.text)
+    return parts.map((part, index) => {
+        const partLabel = parts.length > 1 ? `, part ${index + 1} of ${parts.length}` : ''
+        const lines = [`[[document:${id}]] "${title}" (${details.join(', ')}${partLabel})`]
+        if (instructions) lines.push(`The member who added it asked: ${instructions}`)
+        lines.push(`Content:\n${part}`)
+        return { title, text: lines.join('\n'), part: index }
+    })
 }
 
 // Name, role, company and description only. Phone numbers and email addresses describe how to
@@ -348,7 +426,11 @@ async function collectKnowledgeSources({
 
     const sources = (
         await buildSourceCards({ projectId, entries: [...candidates.values()], readNoteContent, resolveUserNames })
-    ).sort((left, right) => left.updatedAt - right.updatedAt || (left.key < right.key ? -1 : 1))
+    ).sort(
+        (left, right) =>
+            left.updatedAt - right.updatedAt ||
+            (left.key < right.key ? -1 : left.key > right.key ? 1 : left.part - right.part)
+    )
 
     stats.included = sources.length
     return { sources, nextCursor, exhausted: results.every(result => result.exhausted), stats }
@@ -379,18 +461,20 @@ async function buildSourceCards({ projectId, entries, readNoteContent, resolveUs
         }
     })
 
-    return entries.map(entry => {
-        const card =
+    return entries.flatMap(entry => {
+        const cards =
             entry.type === 'task'
-                ? buildTaskCard(entry.id, entry.data, userNames)
+                ? [buildTaskCard(entry.id, entry.data, userNames)]
                 : entry.type === 'goal'
-                  ? buildGoalCard(entry.id, entry.data, userNames)
+                  ? [buildGoalCard(entry.id, entry.data, userNames)]
                   : entry.type === 'note'
-                    ? buildNoteCard(entry.id, entry.data, noteContents.get(entry.id))
+                    ? [buildNoteCard(entry.id, entry.data, noteContents.get(entry.id))]
                     : entry.type === 'correction'
-                      ? buildCorrectionCard(entry.id, entry.data)
-                      : buildContactCard(entry.id, entry.data)
-        return {
+                      ? [buildCorrectionCard(entry.id, entry.data)]
+                      : entry.type === 'document'
+                        ? buildDocumentCards(entry.id, entry.data)
+                        : [buildContactCard(entry.id, entry.data)]
+        return cards.map((card, index) => ({
             key: entry.key,
             type: entry.type,
             id: entry.id,
@@ -398,8 +482,11 @@ async function buildSourceCards({ projectId, entries, readNoteContent, resolveUs
             text: card.text,
             tokens: estimateTextTokens(card.text),
             updatedAt: entry.updatedAt,
-            positions: entry.positions || [],
-        }
+            part: index,
+            // Only the last part moves the cursor: a run that stops after part 2 of 4 must read the
+            // whole document again next time rather than never seeing parts 3 and 4.
+            positions: index === cards.length - 1 ? entry.positions || [] : [],
+        }))
     })
 }
 
@@ -423,6 +510,7 @@ const SOURCE_DOC_PATHS = {
     note: (projectId, id) => `noteItems/${projectId}/notes/${id}`,
     contact: (projectId, id) => `projectsContacts/${projectId}/contacts/${id}`,
     correction: (projectId, id) => `knowledgeBases/${projectId}/corrections/${id}`,
+    document: (projectId, id) => `${getKnowledgeDocumentsPath(projectId)}/${id}`,
 }
 
 /**
@@ -505,12 +593,14 @@ function chunkKnowledgeSources(sources, { maxTokens = 20000 } = {}) {
 
 module.exports = {
     SOURCE_QUERIES,
+    DOCUMENT_PART_MAX_TOKENS,
     isVisibleToWholeProject,
     getExclusionReason,
     collectKnowledgeSources,
     loadKnowledgeSourcesByKeys,
     buildCorrectionCard,
+    buildDocumentCards,
+    splitDocumentText,
     advanceKnowledgeCursor,
     chunkKnowledgeSources,
-    cleanText,
 }

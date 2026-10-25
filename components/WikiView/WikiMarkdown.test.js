@@ -73,6 +73,21 @@ describe('WikiMarkdown', () => {
         expect(component.root.findByProps({ testID: 'wiki-source-correction:k1' }).props.onPress).toBeUndefined()
     })
 
+    it('shows a document added to the wiki by its title, as a source that cannot be opened', () => {
+        const onPressSource = jest.fn()
+        const component = render({
+            body: 'Team kostet 12 € [[document:d1]], Business 24 € [[document:d2]].',
+            sourceLabels: { 'document:d1': 'Pricing concept 2026' },
+            onPressSource,
+        })
+        const text = textOf(component.toJSON())
+
+        expect(text).toContain('<paperclip> Pricing concept 2026')
+        expect(text).toContain('<paperclip> Document')
+        expect(text).not.toContain('[[')
+        expect(component.root.findByProps({ testID: 'wiki-source-document:d1' }).props.onPress).toBeUndefined()
+    })
+
     it('renders no markup it was not written for', () => {
         const component = render({ body: '<img src=x onerror=alert(1)> **fett** [Link](javascript:alert(1))' })
         const texts = component.root.findAllByType(Text)
