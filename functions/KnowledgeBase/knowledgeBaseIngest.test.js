@@ -243,35 +243,46 @@ describe('runKnowledgeBaseIngest', () => {
     })
 
     it('frames every conversation with the project description, which is never a source', async () => {
-        const db = createDb({
-            [`projects/${PROJECT_ID}`]: {
-                name: 'Alldone Product',
-                userIds: ['owner', 'teammate'],
-                description: 'Alldone baut ein AI-Execution-OS.\n\n\n\nKunden und Piloten gehören hierher.',
+        const db = createDb(
+            {
+                [`projects/${PROJECT_ID}`]: {
+                    name: 'Alldone Product',
+                    userIds: ['owner', 'teammate'],
+                    description: 'Alldone baut ein AI-Execution-OS.\n\n\n\nKunden und Piloten gehören hierher.',
+                },
+                [taskPath('decided')]: {
+                    name: 'Hosting: Cloud Run',
+                    isPublicFor: PUBLIC,
+                    lastEditionDate: NOW - 20 * DAY,
+                },
+                [taskPath('changed')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
+                [pagePath('hosting')]: {
+                    slug: 'hosting',
+                    title: 'Hosting',
+                    body: 'Hosting [[task:decided]] [[note:gone]].',
+                    revision: 1,
+                    sourceKeys: ['task:decided'],
+                    removedSourceKeys: ['note:gone'],
+                    needsRebuild: true,
+                },
+                [pagePath('betrieb')]: {
+                    slug: 'betrieb',
+                    title: 'Betrieb',
+                    body: 'Läuft auf Cloud Run [[task:decided]].',
+                    revision: 1,
+                    sourceKeys: ['task:decided'],
+                },
             },
-            [taskPath('decided')]: {
-                name: 'Hosting: Cloud Run',
-                isPublicFor: PUBLIC,
-                lastEditionDate: NOW - 20 * DAY,
-            },
-            [taskPath('changed')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-            [pagePath('hosting')]: {
-                slug: 'hosting',
-                title: 'Hosting',
-                body: 'Hosting [[task:decided]] [[note:gone]].',
-                revision: 1,
-                sourceKeys: ['task:decided'],
-                removedSourceKeys: ['note:gone'],
-                needsRebuild: true,
-            },
-        })
+            { currentStateRewrite: { requestedAt: NOW - 1000, pendingSlugs: ['betrieb'] } }
+        )
         const { runConversation, calls } = scriptedModel()
 
         await run(db, { runConversation })
 
-        // Rebuild and delta: the description frames both.
-        expect(calls.map(call => call.system.match(/^(Rebuild|The next message)/m)?.[1])).toEqual([
+        // Rebuild, current-state rewrite and delta: the description frames all three.
+        expect(calls.map(call => call.system.match(/^(Rebuild|Bring|The next message)/m)?.[1])).toEqual([
             'Rebuild',
+            'Bring',
             'The next message',
         ])
         for (const call of calls) {
