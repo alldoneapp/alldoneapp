@@ -5,31 +5,28 @@ goals, notes and contacts, kept current by ingest runs and read by the project's
 The design notes live in the module headers; this file is the operational checklist.
 
 The web client reads the wiki straight from Firestore (`utils/backends/KnowledgeBase/`) and
-renders it in `components/WikiView/` (the `ROOT_WIKI` root tab, `/projects/{id}/wiki[/slug]`, and
-`/projects/{id}/wiki/{slug}/changes/{revision}` for what one revision changed, as a diff);
+renders it in `components/WikiView/` (the `ROOT_WIKI` root tab, `/projects/{id}/wiki[/slug]`);
 its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-settings`).
 
-| Module                           | Role                                                                                    |
-| -------------------------------- | --------------------------------------------------------------------------------------- |
-| `knowledgeBaseModel.js`          | Paths, limits, slugs, `[[slug]]` / `[[task:ID]]` tokens, settings validation            |
-| `knowledgeBaseSettings.js`       | `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh` callables                     |
-| `collectKnowledgeSources.js`     | Delta of objects visible to the whole project, as source cards                          |
-| `knowledgeSourceInvalidation.js` | Hides and empties pages citing a withdrawn object, redacts their revisions              |
-| `knowledgePageStore.js`          | The one place a page is written: citation, revision and concurrency checks              |
-| `knowledgeBaseIngest.js`         | One ingest run (rebuilds, then delta), billed as `knowledge_base_ingest`                |
-| `knowledgeBaseDispatcher.js`     | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue                   |
-| `knowledgeBaseAssistant.js`      | Wiki index in assistant prompts; read, correct and undo tools                           |
-| `knowledgeBaseToolSchemas.js`    | Names and schemas of those tools (dependency-free, for `toolSchemas.js`)                |
-| `knowledgeWikiFeedModel.js`      | How a revision appears in Updates: ids, change kinds (dependency-free, shared with web) |
-| `knowledgeWikiFeed.js`           | The revision trigger's body: one Updates line per revision, no page text in it          |
+| Module                            | Role                                                                                    |
+| --------------------------------- | --------------------------------------------------------------------------------------- |
+| `knowledgeBaseModel.js`           | Paths, limits, slugs, `[[slug]]` / `[[task:ID]]` tokens, settings validation            |
+| `knowledgeBaseSettings.js`        | `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh` callables                     |
+| `collectKnowledgeSources.js`      | Delta of objects visible to the whole project, as source cards                          |
+| `knowledgeSourceInvalidation.js`  | Hides and empties pages citing a withdrawn object, redacts their revisions              |
+| `knowledgePageStore.js`           | The one place a page is written: citation, revision and concurrency checks              |
+| `knowledgeBaseIngest.js`          | One ingest run (rebuilds, current-state pass, delta), billed as `knowledge_base_ingest` |
+| `knowledgeCurrentStateRewrite.js` | Requests the one-time pass that rewrites existing pages to the current state            |
+| `knowledgeBaseDispatcher.js`      | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue                   |
+| `knowledgeBaseAssistant.js`       | Wiki index in assistant prompts; read, correct and undo tools                           |
+| `knowledgeBaseToolSchemas.js`     | Names and schemas of those tools (dependency-free, for `toolSchemas.js`)                |
 
 ## Deploying
 
 1. `deploy:firestore:rules:<env>` — the `knowledgeBases/{projectId}/**` rule (members read, no
    client writes).
 2. Functions: `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh`, `undoKnowledgeCorrection`,
-   `runKnowledgeBaseIngest`, `dispatchKnowledgeBaseIngests`, `onCreateKnowledgePageRevisionSecondGen`
-   (the Updates feed lines), plus the task/goal/note/contact update
+   `runKnowledgeBaseIngest`, `dispatchKnowledgeBaseIngests`, plus the task/goal/note/contact update
    and delete triggers that invalidate pages and every function that runs an assistant (the wiki
    context and tools live in `Assistant/assistantHelper.js`).
 3. Once per environment, after the first deploy of the worker, let the Firebase Admin SDK service
@@ -51,3 +48,18 @@ its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-set
    rather than trusting the deploy summary.
 
 No composite index is needed: every query is a single-field range or equality.
+
+## Rewriting existing pages to the current state (one-time)
+
+Pages written before the current-state rules may still narrate meetings or list options that have
+since been decided. After `runKnowledgeBaseIngest` is deployed, request the pass for every enabled
+wiki (or one, with `--project-id=<id>`); without `--execute` it only lists what it would request:
+
+```sh
+node migration/rewriteKnowledgeBasesToCurrentState.js --firebase-project-id=<projectId>
+node migration/rewriteKnowledgeBasesToCurrentState.js --firebase-project-id=<projectId> --execute
+```
+
+Each wiki becomes due at once, and its runs then rewrite up to ten pages each, continuing a minute
+later until the list on the wiki document (`currentStateRewrite`) is empty. It is billed to the
+wiki's owner and stops at the monthly cap like any other run; what is left continues next month.

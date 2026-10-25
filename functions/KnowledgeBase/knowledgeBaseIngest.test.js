@@ -2,6 +2,7 @@ const { KnowledgeFirestoreDouble, fieldValue } = require('./__fixtures__/knowled
 const {
     CONTINUE_DELAY_MS,
     GOLD_SOURCE,
+    MAX_CURRENT_STATE_REWRITES_PER_RUN,
     nextNightlyRunAt,
     runKnowledgeBaseIngest,
     startOfNextMonthUtc,
@@ -121,7 +122,6 @@ describe('runKnowledgeBaseIngest', () => {
         expect(calls[0].toolNames).toEqual(['read_page', 'write_page', 'archive_page'])
         expect(calls[0].system).toContain('Alldone Product')
         expect(calls[0].system).toContain('Eine Seite pro Kunde.')
-        expect(calls[0].system).not.toContain('Project description')
         expect(calls[0].user).toContain('[[task:t1]] "Acme als Pilotkunde gewinnen"')
 
         expect(db.read(pagePath('kunden'))).toMatchObject({
@@ -206,25 +206,22 @@ describe('runKnowledgeBaseIngest', () => {
         expect(result.rebuilt).toBe(1)
     })
 
-    it('frames every conversation with the project description, which is never a source', async () => {
+    it('asks for the current state, not the history, and lists sources oldest first in both modes', async () => {
         const db = createDb({
-            [`projects/${PROJECT_ID}`]: {
-                name: 'Alldone Product',
-                userIds: ['owner', 'teammate'],
-                description: 'Alldone baut ein AI-Execution-OS.\n\n\n\nKunden und Piloten gehören hierher.',
-            },
-            [taskPath('decided')]: {
-                name: 'Hosting: Cloud Run',
+            [taskPath('decided')]: { name: 'Hosting: Cloud Run', isPublicFor: PUBLIC, lastEditionDate: NOW - 20 * DAY },
+            [taskPath('options')]: {
+                name: 'Hosting: App Engine oder Cloud Run?',
                 isPublicFor: PUBLIC,
-                lastEditionDate: NOW - 20 * DAY,
+                lastEditionDate: NOW - 30 * DAY,
             },
             [taskPath('changed')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
             [pagePath('hosting')]: {
                 slug: 'hosting',
                 title: 'Hosting',
-                body: 'Hosting [[task:decided]] [[note:gone]].',
+                body: 'Hosting [[task:decided]] [[task:options]] [[note:gone]].',
                 revision: 1,
-                sourceKeys: ['task:decided'],
+                // Newest first on purpose: the prompt must not inherit the page's own order.
+                sourceKeys: ['task:decided', 'task:options'],
                 removedSourceKeys: ['note:gone'],
                 needsRebuild: true,
             },
@@ -233,32 +230,15 @@ describe('runKnowledgeBaseIngest', () => {
 
         await run(db, { runConversation })
 
-        // Rebuild and delta: the description frames both.
-        expect(calls.map(call => call.system.match(/^(Rebuild|The next message)/m)?.[1])).toEqual([
-            'Rebuild',
-            'The next message',
-        ])
+        expect(calls).toHaveLength(2)
         for (const call of calls) {
-            expect(call.system).toContain(
-                'Project description, as the project members wrote it:\nAlldone baut ein AI-Execution-OS.\n\nKunden und Piloten gehören hierher.'
-            )
-            expect(call.system).toContain('It is not a source: never cite it and never copy a statement from it')
-            expect(call.system.indexOf('Project description')).toBeLessThan(call.system.indexOf('Rules:'))
-            expect(call.user).not.toContain('AI-Execution-OS')
+            expect(call.system).toContain('Every page describes the current state of its subject')
+            expect(call.system).toContain('Options belong on a page only while the decision is still open')
+            expect(call.system).toContain('remove the outdated one together with its citation')
         }
-    })
-
-    it('caps a long project description', async () => {
-        const db = createDb({
-            [`projects/${PROJECT_ID}`]: { name: 'Alldone Product', userIds: ['owner'], description: 'x'.repeat(9000) },
-            [taskPath('changed')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-        })
-        const { runConversation, calls } = scriptedModel()
-
-        await run(db, { runConversation })
-
-        expect(calls[0].system).toContain(`${'x'.repeat(4000)} […]`)
-        expect(calls[0].system).not.toContain('x'.repeat(4001))
+        expect(calls[0].user).toMatch(/^Source cards for \[\[hosting\]\], oldest first:/)
+        expect(calls[0].user.indexOf('[[task:options]]')).toBeLessThan(calls[0].user.indexOf('[[task:decided]]'))
+        expect(calls[1].user).toMatch(/^Source cards, oldest first:/)
     })
 
     it('does not hand the page it is rebuilding back through read_page', async () => {
@@ -550,5 +530,188 @@ describe('runKnowledgeBaseIngest', () => {
         // The chunk that failed is read again next time.
         expect(knowledgeBase.cursor.tasks).toEqual({ ms: NOW - 10 * DAY, ids: [] })
         errorLog.mockRestore()
+    })
+})
+
+describe('the one-time current-state pass', () => {
+    const rewriteRequest = pendingSlugs => ({ currentStateRewrite: { requestedAt: NOW - 1000, pendingSlugs } })
+
+    it('rewrites a pending page from the sources it cites, oldest first, and then clears the request', async () => {
+        const db = createDb(
+            {
+                [taskPath('options')]: {
+                    name: 'Hosting: A oder B?',
+                    isPublicFor: PUBLIC,
+                    lastEditionDate: NOW - 30 * DAY,
+                },
+                [taskPath('decided')]: { name: 'Hosting: B', isPublicFor: PUBLIC, lastEditionDate: NOW - 20 * DAY },
+                [pagePath('hosting')]: {
+                    slug: 'hosting',
+                    title: 'Hosting',
+                    summary: 'Hosting.',
+                    body: 'Im Meeting wurden A und B diskutiert [[task:options]]. Entschieden: B [[task:decided]].',
+                    revision: 2,
+                    sourceKeys: ['task:decided', 'task:options'],
+                },
+                [pagePath('kunden')]: { slug: 'kunden', title: 'Kunden', body: 'Acme.', revision: 1, sourceKeys: [] },
+            },
+            rewriteRequest(['hosting'])
+        )
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.read_page({ slug: 'hosting' })
+            await tools.write_page({
+                slug: 'kunden',
+                title: 'Kunden',
+                summary: 'Kunden.',
+                body: 'Etwas anderes.',
+                sourceKeys: [],
+                reason: 'Nebenbei',
+            })
+            await tools.write_page({
+                slug: 'hosting',
+                title: 'Hosting',
+                summary: 'Das Projekt läuft auf B.',
+                body: 'Das Projekt läuft auf B [[task:decided]].',
+                sourceKeys: ['task:decided'],
+                reason: 'Aktueller Stand',
+            })
+        })
+
+        const result = await run(db, { runConversation })
+
+        expect(calls).toHaveLength(1)
+        expect(calls[0].system).toContain('Bring the page [[hosting]] up to the current state')
+        expect(calls[0].system).toContain('Every page describes the current state of its subject')
+        expect(calls[0].user).toMatch(/^Source cards for \[\[hosting\]\], oldest first:/)
+        expect(calls[0].user.indexOf('[[task:options]]')).toBeLessThan(calls[0].user.indexOf('[[task:decided]]'))
+        expect(calls[0].results[1].result).toMatchObject({ success: false, error: expect.stringMatching(/hosting/) })
+        expect(db.read(pagePath('kunden')).body).toBe('Acme.')
+        expect(db.read(pagePath('hosting'))).toMatchObject({
+            body: 'Das Projekt läuft auf B [[task:decided]].',
+            revision: 3,
+        })
+        expect(db.read(`${pagePath('hosting')}/revisions/000003`)).toMatchObject({ mode: 'ingest', runId: 'run-1' })
+        expect(result).toMatchObject({ status: 'completed', rewritten: 1, rewriteUnchanged: 0 })
+        expect(db.read(KB_PATH)).not.toHaveProperty('currentStateRewrite')
+    })
+
+    it('drops pages with nothing to rewrite without asking the model, and counts a page left as it was', async () => {
+        const db = createDb(
+            {
+                [taskPath('t1')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - 30 * DAY },
+                [pagePath('alt')]: { slug: 'alt', title: 'Alt', revision: 4, archived: true, sourceKeys: ['task:t1'] },
+                [pagePath('ohne-quellen')]: {
+                    slug: 'ohne-quellen',
+                    title: 'Ohne',
+                    revision: 1,
+                    sourceKeys: ['task:gone'],
+                },
+                [pagePath('aktuell')]: {
+                    slug: 'aktuell',
+                    title: 'Aktuell',
+                    body: 'Acme [[task:t1]].',
+                    revision: 2,
+                    sourceKeys: ['task:t1'],
+                },
+            },
+            rewriteRequest(['alt', 'fehlt', 'ohne-quellen', 'aktuell'])
+        )
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.read_page({ slug: 'aktuell' })
+        })
+
+        const result = await run(db, { runConversation })
+
+        expect(calls).toHaveLength(1)
+        expect(calls[0].system).toContain('Bring the page [[aktuell]]')
+        expect(db.read(pagePath('aktuell')).revision).toBe(2)
+        expect(result).toMatchObject({ rewritten: 0, rewriteUnchanged: 1 })
+        expect(db.read(KB_PATH)).not.toHaveProperty('currentStateRewrite')
+    })
+
+    it('does not rewrite again a page this run has just rebuilt', async () => {
+        const db = createDb(
+            {
+                [taskPath('t1')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - 30 * DAY },
+                [pagePath('kunden')]: {
+                    slug: 'kunden',
+                    title: 'Kunden',
+                    body: 'Acme [[task:t1]] [[note:n1]].',
+                    revision: 2,
+                    sourceKeys: ['task:t1'],
+                    removedSourceKeys: ['note:n1'],
+                    needsRebuild: true,
+                },
+            },
+            rewriteRequest(['kunden'])
+        )
+        const { runConversation, calls } = scriptedModel(async tools => {
+            await tools.write_page({
+                slug: 'kunden',
+                title: 'Kunden',
+                summary: 'Kunden.',
+                body: 'Acme ist Pilotkunde [[task:t1]].',
+                sourceKeys: ['task:t1'],
+                reason: 'Neu aufgebaut',
+            })
+        })
+
+        const result = await run(db, { runConversation })
+
+        expect(calls).toHaveLength(1)
+        expect(calls[0].system).toContain('Rebuild the page [[kunden]]')
+        expect(result).toMatchObject({ rebuilt: 1, rewritten: 0, rewriteUnchanged: 0 })
+        expect(db.read(KB_PATH)).not.toHaveProperty('currentStateRewrite')
+    })
+
+    it('rewrites a bounded number of pages per run and continues with the rest soon', async () => {
+        const slugs = Array.from(
+            { length: MAX_CURRENT_STATE_REWRITES_PER_RUN + 2 },
+            (_, index) => `seite-${index + 10}`
+        )
+        const pageDocs = Object.fromEntries(
+            slugs.map(slug => [
+                pagePath(slug),
+                { slug, title: slug, body: 'Acme [[task:t1]].', revision: 1, sourceKeys: ['task:t1'] },
+            ])
+        )
+        const db = createDb(
+            { [taskPath('t1')]: { name: 'Acme', isPublicFor: PUBLIC, lastEditionDate: NOW - 30 * DAY }, ...pageDocs },
+            rewriteRequest(slugs)
+        )
+        const { runConversation, calls } = scriptedModel()
+
+        const result = await run(db, { runConversation })
+
+        expect(calls).toHaveLength(MAX_CURRENT_STATE_REWRITES_PER_RUN)
+        expect(result.status).toBe('partial')
+        const knowledgeBase = db.read(KB_PATH)
+        expect(knowledgeBase.currentStateRewrite).toEqual({
+            requestedAt: NOW - 1000,
+            pendingSlugs: slugs.slice(MAX_CURRENT_STATE_REWRITES_PER_RUN),
+        })
+        expect(knowledgeBase.nextRunAt).toBe(NOW + CONTINUE_DELAY_MS)
+    })
+
+    it('keeps a page pending when the run stops during its conversation', async () => {
+        const db = createDb(
+            {
+                [taskPath('t1')]: { name: 'Acme', isPublicFor: PUBLIC, lastEditionDate: NOW - 30 * DAY },
+                [pagePath('kunden')]: {
+                    slug: 'kunden',
+                    title: 'Kunden',
+                    body: 'Acme [[task:t1]].',
+                    revision: 1,
+                    sourceKeys: ['task:t1'],
+                },
+            },
+            rewriteRequest(['kunden'])
+        )
+        const { runConversation } = scriptedModel()
+
+        const result = await run(db, { runConversation, charge: jest.fn(async () => ({ success: false })) })
+
+        expect(result).toMatchObject({ status: 'stopped', stopReason: 'insufficient_gold' })
+        expect(db.read(KB_PATH).currentStateRewrite.pendingSlugs).toEqual(['kunden'])
     })
 })
