@@ -3509,7 +3509,7 @@
     "Artifact upload failed": "La subida falló. Inténtalo de nuevo.",
     "No followed artifacts yet": "Aún no sigues ningún artefacto",
     "No artifacts yet": "Aún no hay artefactos",
-    "Artifacts explanation": "Sube paneles, informes, PDF o imágenes soltándolos aquí. Cada artefacto tiene su propia dirección y se muestra en vivo.",
+    "Artifacts explanation": "Los archivos subidos en notas, tareas y conversaciones aparecen aquí vinculados a su origen. Suelta archivos aquí para crear un artefacto.",
     "No artifacts in your projects yet": "Aún no hay artefactos en tus proyectos",
     "Loading artifacts": "Cargando artefactos…",
     "Loading artifact": "Cargando…",
@@ -3587,5 +3587,8 @@
     "Artifact kind media": "Imágenes y medios",
     "Artifact kind data": "Datos",
     "Artifact kind files": "Archivos",
-    "Artifact action needs internet": "Esto necesita conexión a internet. Inténtalo de nuevo cuando estés en línea."
+    "Artifact action needs internet": "Esto necesita conexión a internet. Inténtalo de nuevo cuando estés en línea.",
+    "Open upload source": "Abrir origen",
+    "Some uploads could not be loaded": "No se pudieron cargar algunos archivos. Vuelve a abrir Artefactos para reintentar.",
+    "Show in artifacts": "Mostrar en artefactos"
 }

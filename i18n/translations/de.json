@@ -3119,7 +3119,7 @@
     "Artifact upload failed": "Der Upload ist fehlgeschlagen. Bitte versuche es noch einmal.",
     "No followed artifacts yet": "Noch keine gefolgten Artefakte",
     "No artifacts yet": "Noch keine Artefakte",
-    "Artifacts explanation": "Lade Dashboards, Reports, PDFs oder Bilder hoch, indem du sie hier ablegst. Jedes Artefakt bekommt eine eigene Adresse und wird live angezeigt.",
+    "Artifacts explanation": "Dateien aus Notizen, Aufgaben und Unterhaltungen erscheinen hier mit einem Verweis auf ihre Quelle. Lege Dateien hier ab, um ein Artefakt zu erstellen.",
     "No artifacts in your projects yet": "Noch keine Artefakte in deinen Projekten",
     "Loading artifacts": "Artefakte werden geladen…",
     "Loading artifact": "Wird geladen…",
@@ -3197,5 +3197,8 @@
     "Artifact kind media": "Bilder & Medien",
     "Artifact kind data": "Daten",
     "Artifact kind files": "Dateien",
-    "Artifact action needs internet": "Dafür braucht es eine Internetverbindung. Versuch es wieder, sobald du online bist."
+    "Artifact action needs internet": "Dafür braucht es eine Internetverbindung. Versuch es wieder, sobald du online bist.",
+    "Open upload source": "Quelle öffnen",
+    "Some uploads could not be loaded": "Einige Uploads konnten nicht geladen werden. Öffne Artefakte erneut, um es noch einmal zu versuchen.",
+    "Show in artifacts": "Unter Artefakte anzeigen"
 }
