@@ -12831,7 +12831,7 @@ async function addBaseInstructions(
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_PROJECT_DESCRIPTION_TOOL_KEY)) {
         messages.push([
             'system',
-            'When the user asks to update a project description, use update_project_description. The project description is added as shared context to every chat and thread in that project, so edit it carefully. Treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.',
+            "When the user asks to update a project description, use update_project_description. The project description is the project's stable profile: what the project is, what belongs in it and what does not, and standing rules. It is added as shared context to every chat and thread in that project and routing reads it to place tasks, calendar events and emails, so keep it short and durable. Keep current status, recent activity and dated progress out of it unless the user explicitly asks for them; the project's tasks, notes and wiki hold the current state. Treat the current project description as the base text, preserve useful existing content unless the user clearly asks for a rewrite, and if the user wants to update another project by name call get_user_projects first so you can inspect the exact project name and current description before writing.",
         ])
     }
     if (Array.isArray(allowedTools) && allowedTools.includes(UPDATE_USER_DESCRIPTION_TOOL_KEY)) {
