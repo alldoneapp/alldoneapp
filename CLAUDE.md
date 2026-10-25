@@ -628,12 +628,35 @@ through it after its rebuilds and before the delta, at most `MAX_CURRENT_STATE_R
 conversations per run, each from the page's own text plus the cards of the sources it cites, billed
 to the owner and stopped by the monthly cap like any other run. Three details: the store sees the
 rewrite as an ordinary `ingest` edit (it read the page first and keeps its `sourceKeys`; only a
-rebuild replaces them), so neither the store nor the Updates feed needs a new mode; a page this run
-has just rebuilt is skipped (`lastRunId`), and a page that is archived, hidden or has no readable
-source leaves the list without a model call; and a run stopped mid-conversation leaves that slug
+rebuild replaces them), so neither the store nor the Updates feed needs a new mode (the feed lists
+it as an update that badges nobody, like any change the wiki makes itself); a page this run has
+just rebuilt is skipped (`lastRunId`), and a page that is archived, hidden or has no readable source
+leaves the list without a model call; and a run stopped mid-conversation leaves that slug
 pending, so the page is rewritten by the next run rather than skipped. Pinned by
 `knowledgeCurrentStateRewrite.test.js` and the `one-time current-state pass` block of
 `knowledgeBaseIngest.test.js`.
+
+**Every page revision is a line in the Updates feed, and the line carries no page text.**
+`onCreateKnowledgePageRevisionSecondGen` (`KnowledgeBase/knowledgeWikiFeed.js`) turns each new
+revision — ingest, rebuild, archive, correction, undo — into one feed entry under ONE feed object
+per project and day (objectId and type `wiki`, never the project id: `projectsFeeds` is keyed by
+object id alone and the project's own object lives there). The entry stores `wikiSlug`,
+`wikiRevision` and `wikiChange` and nothing else of the page — no title, summary or reason —
+because a withdrawn source is removed from the page and its revisions by
+`knowledgeSourceInvalidation.js`, and nothing would remove a copy from `feedsStore`, the followed
+stores, `feedsCount`, `projectsFeeds` and the activity summary. The client reads the title of that
+revision for the line (`useWikiFeedPageTitle`, falling back to the slug) and the diff from the
+revisions themselves. Only a change a member made (correction, undo) badges the other members;
+the wiki's own nightly changes are listed but badge nobody, which is what kept the wiki out of the
+feed in the first place. Ids are derived from slug + revision, so a redelivered trigger rewrites
+the same documents. A line opens `/projects/{id}/wiki/{slug}/changes/{revision}`
+(`WikiPageChange`, diff in `wikiDiff.js`: LCS over lines, word highlights inside an edited line,
+folded context), which also works for archived and hidden pages because it reads revisions, not
+the visible page list, and shows a redacted revision as removed and nothing more. Revisions record
+`created` so a new page reads "created", not "updated". Pinned by
+`knowledgeWikiFeed.test.js` (including that no page text reaches any feed document),
+`components/WikiView/wikiDiff.test.js`, the `what a revision changed` block of `WikiView.test.js`
+and `components/Feeds/FeedsObjects/WikiObject.test.js`.
 
 **The project description frames the wiki and is never one of its sources.** The two have
 separate jobs. The description (`projects/{id}.description`) is a short, stable profile written by

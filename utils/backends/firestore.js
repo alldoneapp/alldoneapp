@@ -133,6 +133,10 @@ import {
     FEED_ASSISTANT_BACKLINK,
 } from '../../components/Feeds/Utils/FeedsConstants'
 import { getFeedObjectTypes, STAYWARD_COMMENT } from '../../components/Feeds/Utils/HelperFunctions'
+import {
+    WIKI_FEED_OBJECTS_TYPE,
+    generateWikiFeedObjectModel,
+} from '../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 import { selectNewFeeds } from './Feeds/newFeedsHelper'
 import { getFeedObjectDateCandidates, readFeedObjectFromCandidates } from './Feeds/feedObjectDate'
 import { getFeedsQueryLimit, MAX_NUMBER_OF_FEEDS_TO_SHOW } from './Feeds/feedQueryLimits'
@@ -6524,6 +6528,8 @@ async function generateMissingFeedObject(projectId, dateFormated, objectType, ob
     } else if (objectType === 'assistants') {
         const assistant = await getAssistantData(projectId, objectId)
         feedObject = generateAssistantObjectModel(lastChangeDate, assistant, objectId)
+    } else if (objectType === WIKI_FEED_OBJECTS_TYPE) {
+        feedObject = generateWikiFeedObjectModel(lastChangeDate)
     }
     if (!feedObject) return null
     const batch = new BatchWrapper(db)
