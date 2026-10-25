@@ -13,6 +13,7 @@ import {
 } from '../Utils/HelperFunctions'
 import { capacityDataMap } from '../../GoalsView/GoalsHelper'
 import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function GoalChangedCapacityFeed({
     feed,
@@ -26,7 +27,7 @@ export default function GoalChangedCapacityFeed({
     const [width, setWidth] = useState(0)
     const { capacityUserId, oldCapacity, newCapacity, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
     const { photoURL: capacityUserPhotoUrl, shortName: capacityUserName } = getUserPresentationDataInProject(
         projectId,
         capacityUserId

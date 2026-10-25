@@ -7,8 +7,9 @@ import FeedsTypesLeftHeader from '../Commons/FeedsTypesLeftHeader'
 import MultilineParser from '../TextParser/MultilineParser'
 import { generatorParserImageElement, generatorParserTextElement } from '../Utils/HelperFunctions'
 import { FEEDS_TYPES_TO_PARSE } from '../Utils/FeedsConstants'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
 import FeedUndoAction from '../FeedUndoAction'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function RegularFeed({ feed, projectId, showNewFeedDot, feedActiveTab, lastChangeDateObject }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
@@ -16,7 +17,7 @@ export default function RegularFeed({ feed, projectId, showNewFeedDot, feedActiv
     const [width, setWidth] = useState(0)
     const { entryText, type, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     const elementsData = []
 

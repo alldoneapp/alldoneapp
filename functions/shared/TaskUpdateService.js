@@ -16,6 +16,7 @@
 
 // Import shared utilities
 let TaskService, TaskSearchService, admin
+const { isMcpActor } = require('./mcpActor')
 
 // Dynamic imports for dependencies
 async function loadDependencies() {
@@ -624,7 +625,13 @@ class TaskUpdateService {
 
             // Handle estimation update if provided
             if (updateFields.estimation !== undefined && updateFields.parentGoalId === undefined) {
-                await this.performEstimationUpdate(projectId, currentTask.id, currentTask, updateFields.estimation)
+                await this.performEstimationUpdate(
+                    projectId,
+                    currentTask.id,
+                    currentTask,
+                    updateFields.estimation,
+                    feedUser
+                )
             }
 
             // Handle dueDate with timezone conversion if it's a string
@@ -697,7 +704,13 @@ class TaskUpdateService {
             }
             if (updateFields.estimation !== undefined && updateFields.parentGoalId !== undefined) {
                 try {
-                    await this.performEstimationUpdate(projectId, currentTask.id, currentTask, updateFields.estimation)
+                    await this.performEstimationUpdate(
+                        projectId,
+                        currentTask.id,
+                        currentTask,
+                        updateFields.estimation,
+                        feedUser
+                    )
                 } catch (error) {
                     throw new Error(
                         `Parent goal change committed in project ${projectId}, but estimation update failed: ${error.message}`
@@ -807,7 +820,7 @@ class TaskUpdateService {
      * @param {number} estimationMinutes - Estimation value in minutes
      * @returns {Promise<Object>} Update result
      */
-    async performEstimationUpdate(projectId, taskId, task, estimationMinutes) {
+    async performEstimationUpdate(projectId, taskId, task, estimationMinutes, feedUser = null) {
         console.log('🔄 TaskUpdateService: Updating task estimation', {
             projectId,
             taskId,
@@ -830,11 +843,15 @@ class TaskUpdateService {
             const userDoc = await this.options.database.collection('users').doc(task.userId).get()
             const userData = userDoc.exists ? userDoc.data() : {}
 
-            const feedCreator = {
-                uid: task.userId,
-                name: userData.name || userData.displayName || task.userName || 'User',
-                email: userData.email || task.userEmail || '',
-            }
+            // An MCP client's change is attributed to the user who connected it and says so
+            // (shared/mcpActor.js); everything else keeps crediting the assignee as before.
+            const feedCreator = isMcpActor(feedUser)
+                ? feedUser
+                : {
+                      uid: task.userId,
+                      name: userData.name || userData.displayName || task.userName || 'User',
+                      email: userData.email || task.userEmail || '',
+                  }
 
             console.log('🔄 TaskUpdateService: Calling setTaskEstimationsCloud', {
                 projectId,

@@ -3,14 +3,15 @@
  */
 
 import React from 'react'
-import { StyleSheet } from 'react-native'
+import { StyleSheet, Text } from 'react-native'
 import renderer from 'react-test-renderer'
 
 import MessageItemHeader from './MessageItemHeader'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 
 jest.mock('../../../../i18n/TranslationService', () => ({
-    translate: value => value,
+    translate: (value, params = {}) =>
+        value === 'Actor via MCP client' ? `${params.name} (via ${params.client})` : value,
 }))
 
 jest.mock('react-redux', () => ({
@@ -96,5 +97,26 @@ describe('MessageItemHeader', () => {
         const tree = renderer.create(<MessageItemHeader {...defaultProps} linkedEmailNew={false} />)
 
         expect(tree.root.findAllByProps({ testID: 'email-new-badge' })).toHaveLength(0)
+    })
+
+    const headerName = tree =>
+        tree.root
+            .findAllByType(Text)
+            .map(node => node.props.children)
+            .find(children => typeof children === 'string' && children.startsWith('Ada'))
+
+    test('shows a comment an MCP client wrote under the user, with the client', () => {
+        const tree = renderer.create(
+            <MessageItemHeader
+                {...defaultProps}
+                message={{ ...defaultProps.message, via: 'mcp', viaClient: 'Claude' }}
+            />
+        )
+        expect(headerName(tree)).toBe('Ada (via Claude)')
+    })
+
+    test("shows the user's own comment under their name alone", () => {
+        const tree = renderer.create(<MessageItemHeader {...defaultProps} />)
+        expect(headerName(tree)).toBe('Ada')
     })
 })

@@ -35,6 +35,7 @@ const {
     getWikiChangeAuthorId,
     getWikiChangeKind,
 } = require('./knowledgeWikiFeedModel')
+const { getActorChannelFields, isMcpActor } = require('../shared/mcpActor')
 
 const FEED_PUBLIC_FOR_ALL = 0
 
@@ -64,6 +65,7 @@ function buildWikiRevisionFeed({ slug, revision }) {
             wikiSlug: slug,
             wikiRevision: revisionNumber,
             wikiChange: change,
+            ...(authorId ? getActorChannelFields(revision.author) : {}),
         },
     }
 }
@@ -92,7 +94,8 @@ async function publishWikiRevisionFeed({ db, projectId, slug, revision }) {
         knowledgeBase?.ownerUserId,
         authorId,
     ]).filter(isMember)
-    const notifiedIds = authorId ? memberIds.filter(userId => userId !== authorId) : []
+    // A member's change badges the others; one their MCP client made badges them as well.
+    const notifiedIds = authorId ? memberIds.filter(userId => userId !== authorId || isMcpActor(feed)) : []
 
     // Cloud Functions run in UTC, and that is the day the client falls back to when it looks the
     // object up (utils/backends/Feeds/feedObjectDate.js). The counters record it explicitly.

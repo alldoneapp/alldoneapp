@@ -12,7 +12,8 @@ import {
     generatorParserTextElement,
     generatorParserCustomElement,
 } from '../Utils/HelperFunctions'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function ContactAddedContactFeed({
     feed,
@@ -27,7 +28,7 @@ export default function ContactAddedContactFeed({
     const { contactName, contactAvatarURL, id, creatorId } = feed
     const elementsData = []
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     const firstEntryText = `${shortName} added a new relevant person •`
     const avatarsStyles = [localStyles.avatar, localStyles.contactAvatar]

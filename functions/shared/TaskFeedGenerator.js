@@ -13,6 +13,8 @@ const FEED_PUBLIC_FOR_ALL = 0 // Must be 0 (number) to match HelperFunctionsClou
 const OPEN_STEP = 'Open'
 const TASK_PRIORITIES = new Set(['none', 'do_later', 'could_do', 'should_do', 'must_do'])
 
+const { getActorChannelFields } = require('./mcpActor')
+
 /**
  * Generates current date objects for feed creation
  * @param {Object} moment - Moment.js instance (optional)
@@ -75,6 +77,7 @@ function generateFeedModel({ feedType, lastChangeDate, entryText, feedUser, obje
         creatorId: uid,
         objectId,
         isPublicFor: isPublicFor || [FEED_PUBLIC_FOR_ALL],
+        ...getActorChannelFields(feedUser),
     }
 
     if (entryText) {

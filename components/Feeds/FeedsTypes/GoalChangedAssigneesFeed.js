@@ -12,7 +12,8 @@ import {
     generatorParserCustomElement,
 } from '../Utils/HelperFunctions'
 import AssigneesIcon from '../../GoalsView/EditGoalsComponents/AssigneesIcon'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function GoalChangedAssigneesFeed({
     feed,
@@ -27,7 +28,7 @@ export default function GoalChangedAssigneesFeed({
     const { newAssigneesIds, oldAssigneesIds, creatorId } = feed
     const elementsData = []
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     const firstEntryText = `${shortName} changed assginees • From${oldAssigneesIds.length === 0 ? ' Unassigned' : ''}`
     const secondEntryText = `to${newAssigneesIds.length === 0 ? ' Unassigned' : ''}`
