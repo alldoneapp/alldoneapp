@@ -1,4 +1,5 @@
 const { getCachedEnvFunctions, getOpenAIClient } = require('../Assistant/assistantHelper')
+const { extractPptxText, extractXlsxText, isPptxFile, isXlsxFile } = require('../Utils/officeDocumentText')
 
 const MAX_EXTRACTED_TEXT_PER_FILE = 8000
 
@@ -17,39 +18,53 @@ try {
     console.warn('WhatsApp FileExtraction: mammoth not available:', error.message)
 }
 
-async function extractTextFromWhatsAppFile({ buffer, contentType, fileName }) {
+/**
+ * Text of a file sent to an assistant (WhatsApp, email, chat uploads, documents added to the
+ * project wiki). `maxChars` defaults to the inline budget a conversation carries; the wiki asks for
+ * more. `truncated` says the file had more text than was returned.
+ */
+async function extractTextFromWhatsAppFile({ buffer, contentType, fileName, maxChars = MAX_EXTRACTED_TEXT_PER_FILE }) {
     if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
         return { extractedText: '', status: 'no_data' }
     }
 
     const normalizedContentType = String(contentType || '').toLowerCase()
     const normalizedFileName = String(fileName || '').toLowerCase()
+    const result = text => {
+        const normalized = String(text || '').trim()
+        if (!normalized) return { extractedText: '', status: 'empty_extraction' }
+        const truncated = normalized.length > maxChars
+        return { extractedText: limitText(normalized, maxChars), status: 'ok', truncated }
+    }
 
     try {
         if (isTextLikeFile(normalizedContentType, normalizedFileName)) {
-            const extractedText = limitText(buffer.toString('utf8'))
-            return extractedText ? { extractedText, status: 'ok' } : { extractedText: '', status: 'empty_extraction' }
+            return result(buffer.toString('utf8'))
         }
 
         if (normalizedContentType.includes('application/pdf') || normalizedFileName.endsWith('.pdf')) {
             if (!pdfParse) return { extractedText: '', status: 'parser_unavailable' }
             const parsed = await pdfParse(buffer)
-            const extractedText = limitText(parsed?.text || '')
-            return extractedText ? { extractedText, status: 'ok' } : { extractedText: '', status: 'empty_extraction' }
+            return result(parsed?.text || '')
         }
 
         if (isDocx(normalizedContentType, normalizedFileName)) {
             if (!mammoth) return { extractedText: '', status: 'parser_unavailable' }
             const parsed = await mammoth.extractRawText({ buffer })
-            const extractedText = limitText(parsed?.value || '')
-            return extractedText ? { extractedText, status: 'ok' } : { extractedText: '', status: 'empty_extraction' }
+            return result(parsed?.value || '')
+        }
+
+        // One character past the budget is read so that a cut can be told from an exact fit.
+        if (isPptxFile(normalizedContentType, normalizedFileName)) {
+            return result(await extractPptxText(buffer, { maxChars: maxChars + 1 }))
+        }
+
+        if (isXlsxFile(normalizedContentType, normalizedFileName)) {
+            return result(await extractXlsxText(buffer, { maxChars: maxChars + 1 }))
         }
 
         if (normalizedContentType.startsWith('audio/') || normalizedContentType.startsWith('video/')) {
-            const extractedText = await transcribeMediaBuffer(buffer, normalizedContentType, normalizedFileName)
-            return extractedText
-                ? { extractedText: limitText(extractedText), status: 'ok' }
-                : { extractedText: '', status: 'empty_extraction' }
+            return result(await transcribeMediaBuffer(buffer, normalizedContentType, normalizedFileName))
         }
 
         return { extractedText: '', status: 'unsupported' }
@@ -109,12 +124,10 @@ function getExtensionFromContentType(contentType, fileName) {
     return 'bin'
 }
 
-function limitText(text) {
+function limitText(text, maxChars = MAX_EXTRACTED_TEXT_PER_FILE) {
     const normalized = String(text || '').trim()
     if (!normalized) return ''
-    return normalized.length > MAX_EXTRACTED_TEXT_PER_FILE
-        ? `${normalized.substring(0, MAX_EXTRACTED_TEXT_PER_FILE)}...`
-        : normalized
+    return normalized.length > maxChars ? `${normalized.substring(0, maxChars)}...` : normalized
 }
 
 module.exports = {

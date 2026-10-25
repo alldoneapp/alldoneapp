@@ -1,13 +1,16 @@
 'use strict'
 
 // What a project's assistants get from its wiki: the page index in their prompt, a tool to read a
-// page, and — when a project member is talking to them — tools to correct a page and to take a
-// correction back.
+// page, and — when a project member is talking to them — tools to correct a page, to take a
+// correction back, and to add a document they sent to the wiki or take it out again
+// (knowledgeDocuments.js).
 //
 // The tools have no Tools Access toggle, like load_skill: the wiki itself is the access control.
 // They are offered exactly when the run's project has a wiki with at least one visible page and the
 // person the run answers is a member of that project, because a member may read the whole wiki
-// tree anyway (firestore.rules). Two kinds of run never get them:
+// tree anyway (firestore.rules). The document tools are the exception: they need a wiki that is
+// switched on, not one that has pages, because a deck is often the first thing a new wiki gets.
+// Two kinds of run never get them:
 //   - the email channel is action-only and can reply to people outside the project, and Gmail
 //     labeling runs on untrusted mail without anyone asking; neither may read project knowledge;
 //   - writing is reserved for runs that answer a member directly (`allowKnowledgeCorrections`,
@@ -15,10 +18,6 @@
 //     canCorrectKnowledgeBaseOnChannel). A heartbeat, a recurring task, a delegated assistant or a
 //     reply drafted from an email is not a member saying "this is wrong", and writing mode never
 //     writes.
-// An MCP client (Claude, Codex, any agent signed in through OAuth) is the one caller without an
-// assistant: it acts for the signed-in member directly, so it may read and correct. Each of the
-// three tools can be switched off on its own under Settings → MCP, which mcpServerSimple enforces
-// before a call ever reaches this module.
 //
 // A correction is a source of its own (knowledgeBases/{projectId}/corrections/{id}): it is stored
 // together with the page revision it produced, the ingest treats it as overriding older sources,
@@ -36,18 +35,21 @@ const {
     normalizeKnowledgePageSlug,
 } = require('./knowledgeBaseModel')
 const { buildKnowledgeIndex, restoreKnowledgePageRevision, writeKnowledgePage } = require('./knowledgePageStore')
+const { addKnowledgeDocument, listKnowledgeDocuments, removeKnowledgeDocument } = require('./knowledgeDocuments')
 const {
+    ADD_KNOWLEDGE_DOCUMENT_TOOL,
     CORRECT_KNOWLEDGE_PAGE_TOOL,
-    KNOWLEDGE_BASE_TOOL_NAMES,
     KNOWLEDGE_CORRECTION_MAX_CHARS,
     READ_KNOWLEDGE_PAGE_TOOL,
+    REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
     UNDO_KNOWLEDGE_CORRECTION_TOOL,
 } = require('./knowledgeBaseToolSchemas')
 
 // The index rides in every prompt of the project, so it gets a tighter budget than the ingest's.
 const KNOWLEDGE_CONTEXT_INDEX_MAX_CHARS = 6000
-// Whether a project has a readable wiki is asked once per model round; only that yes/no is cached,
-// never page content, so a withdrawn source cannot linger in a prompt through this cache.
+// Whether a project has a readable wiki is asked once per model round; only that yes/no (and
+// whether the wiki is switched on) is cached, never page content, so a withdrawn source cannot
+// linger in a prompt through this cache.
 const AVAILABILITY_TTL_MS = 30 * 1000
 const NEW_CORRECTION_TOKEN = /\[\[\s*correction:new\s*(\|[^\]]*)?\]\]/g
 
@@ -61,11 +63,6 @@ const ACCESS_CORRECT = 'correct'
  * tool call is executed.
  */
 function resolveKnowledgeBaseAccess(context) {
-    // The MCP server builds this context itself for the OAuth-authenticated user, so the channel
-    // cannot be claimed by a model. Membership is still checked per call.
-    if (context?.sourceChannel === 'mcp') {
-        return context.projectId && context.requestUserId ? ACCESS_CORRECT : ACCESS_NONE
-    }
     // Like load_skill, the wiki comes with an assistant: a bare model call (the writing router)
     // has no tools at all.
     if (!context?.projectId || !context?.requestUserId || !context?.assistantId) return ACCESS_NONE
@@ -124,7 +121,8 @@ function buildKnowledgeBaseContextMessage({ projectName, pages, access }) {
     ]
     if (access === ACCESS_CORRECT) {
         lines.push(
-            `- When the user says something in the wiki is wrong or missing, read the page, then call ${CORRECT_KNOWLEDGE_PAGE_TOOL} with their correction in their own words and the corrected page. Change only what they asked for, and never put anything into the wiki that you know from private tasks, notes or chats. To take a correction back, call ${UNDO_KNOWLEDGE_CORRECTION_TOOL}.`
+            `- When the user says something in the wiki is wrong or missing, read the page, then call ${CORRECT_KNOWLEDGE_PAGE_TOOL} with their correction in their own words and the corrected page. Change only what they asked for, and never put anything into the wiki that you know from private tasks, notes or chats. To take a correction back, call ${UNDO_KNOWLEDGE_CORRECTION_TOOL}.`,
+            `- When the user asks to put a file they sent (a deck, a spreadsheet, a document) into the wiki, call ${ADD_KNOWLEDGE_DOCUMENT_TOOL}; the wiki then integrates it into its pages itself. Do not copy the file into a correction.`
         )
     }
     lines.push('Pages:', index)
@@ -150,12 +148,13 @@ async function getKnowledgeBaseContextMessage({ db, context }) {
 
 const availabilityCache = new Map()
 
-async function hasReadableKnowledgeBase({ db, projectId, userId, now = Date.now() }) {
+// { hasPages, enabled } for a member of the project; both false for anyone else.
+async function getKnowledgeBaseAvailability({ db, projectId, userId, now = Date.now() }) {
     const cacheKey = `${projectId}|${userId}`
     const cached = availabilityCache.get(cacheKey)
-    if (cached && cached.expiresAt > now) return cached.available
+    if (cached && cached.expiresAt > now) return cached.availability
 
-    let available = false
+    const availability = { hasPages: false, enabled: false }
     const knowledgeBase = await db.doc(getKnowledgeBasePath(projectId)).get()
     if (knowledgeBase.exists && (await isProjectMember(db, projectId, userId))) {
         const visible = await db
@@ -164,29 +163,38 @@ async function hasReadableKnowledgeBase({ db, projectId, userId, now = Date.now(
             .where('needsRebuild', '==', false)
             .limit(1)
             .get()
-        available = !visible.empty
+        availability.hasPages = !visible.empty
+        availability.enabled = knowledgeBase.data()?.enabled === true
     }
-    availabilityCache.set(cacheKey, { available, expiresAt: now + AVAILABILITY_TTL_MS })
-    return available
+    availabilityCache.set(cacheKey, { availability, expiresAt: now + AVAILABILITY_TTL_MS })
+    return availability
 }
 
+const PAGE_TOOLS_BY_ACCESS = {
+    [ACCESS_CORRECT]: [READ_KNOWLEDGE_PAGE_TOOL, CORRECT_KNOWLEDGE_PAGE_TOOL, UNDO_KNOWLEDGE_CORRECTION_TOOL],
+    [ACCESS_READ]: [READ_KNOWLEDGE_PAGE_TOOL],
+}
+const DOCUMENT_TOOLS = [ADD_KNOWLEDGE_DOCUMENT_TOOL, REMOVE_KNOWLEDGE_DOCUMENT_TOOL]
+
 function toolNamesForAccess(access) {
-    if (access === ACCESS_CORRECT) return [...KNOWLEDGE_BASE_TOOL_NAMES]
-    if (access === ACCESS_READ) return [READ_KNOWLEDGE_PAGE_TOOL]
-    return []
+    if (access === ACCESS_CORRECT) return [...PAGE_TOOLS_BY_ACCESS[ACCESS_CORRECT], ...DOCUMENT_TOOLS]
+    return [...(PAGE_TOOLS_BY_ACCESS[access] || [])]
 }
 
 /** The wiki tools to offer a run, added to the assistant's own tools like load_skill. */
 async function getKnowledgeBaseToolNamesForRun({ db, toolRuntimeContext, now }) {
     const access = resolveKnowledgeBaseAccess(toolRuntimeContext)
     if (access === ACCESS_NONE) return []
-    const available = await hasReadableKnowledgeBase({
+    const { hasPages, enabled } = await getKnowledgeBaseAvailability({
         db,
         projectId: toolRuntimeContext.projectId,
         userId: toolRuntimeContext.requestUserId,
         now,
     })
-    return available ? toolNamesForAccess(access) : []
+    return [
+        ...(hasPages ? PAGE_TOOLS_BY_ACCESS[access] || [] : []),
+        ...(enabled && access === ACCESS_CORRECT ? DOCUMENT_TOOLS : []),
+    ]
 }
 
 async function isKnowledgeBaseToolAllowed({ db, toolName, toolRuntimeContext, now }) {
@@ -206,13 +214,17 @@ function toIso(value) {
 
 async function readKnowledgePage({ db, projectId, slug }) {
     if (!slug) {
-        const pages = await loadIndexPages(db, projectId)
+        const [pages, documents] = await Promise.all([
+            loadIndexPages(db, projectId),
+            listKnowledgeDocuments(db, projectId),
+        ])
         return {
             success: true,
             projectId,
             pages: [...pages.values()]
                 .sort((left, right) => String(left.title || left.slug).localeCompare(String(right.title || right.slug)))
                 .map(page => ({ slug: page.slug, title: page.title || page.slug, summary: page.summary || '' })),
+            documents,
         }
     }
     const key = normalizeKnowledgePageSlug(slug)
@@ -296,7 +308,6 @@ async function correctKnowledgePage({ db, projectId, userId, assistantId, args, 
                 revisionAfter: revision,
                 objectType: toolRuntimeContext?.objectType || null,
                 objectId: toolRuntimeContext?.objectId || null,
-                sourceChannel: toolRuntimeContext?.sourceChannel || null,
                 createdAt: now,
             }),
     })
@@ -363,6 +374,9 @@ async function executeKnowledgeBaseTool({
     args = {},
     assistantId = null,
     toolRuntimeContext,
+    readChatAttachment,
+    extractText,
+    enqueue,
     now = Date.now(),
     fieldValue = FieldValue,
 }) {
@@ -391,6 +405,21 @@ async function executeKnowledgeBaseTool({
             })
         case UNDO_KNOWLEDGE_CORRECTION_TOOL:
             return undoKnowledgeCorrection({ db, projectId, userId, correctionId: args.correctionId, now, fieldValue })
+        case ADD_KNOWLEDGE_DOCUMENT_TOOL:
+            return addKnowledgeDocument({
+                db,
+                projectId,
+                userId,
+                assistantId,
+                args,
+                toolRuntimeContext,
+                readChatAttachment,
+                ...(extractText ? { extractText } : {}),
+                ...(enqueue ? { enqueue } : {}),
+                now,
+            })
+        case REMOVE_KNOWLEDGE_DOCUMENT_TOOL:
+            return removeKnowledgeDocument({ db, projectId, userId, documentId: args.documentId, now, fieldValue })
         default:
             return failure(`Unknown wiki tool: ${toolName}`)
     }

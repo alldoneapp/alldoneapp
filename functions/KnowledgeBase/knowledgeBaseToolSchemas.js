@@ -4,15 +4,24 @@
 // tool schema registry (Assistant/toolSchemas.js) can include them without loading Firestore code.
 // What the tools do and when a run gets them: knowledgeBaseAssistant.js.
 
-const { KNOWLEDGE_PAGE_SUMMARY_MAX_CHARS, KNOWLEDGE_PAGE_TITLE_MAX_CHARS } = require('./knowledgeBaseModel')
+const {
+    KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS,
+    KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS,
+    KNOWLEDGE_PAGE_SUMMARY_MAX_CHARS,
+    KNOWLEDGE_PAGE_TITLE_MAX_CHARS,
+} = require('./knowledgeBaseModel')
 
 const READ_KNOWLEDGE_PAGE_TOOL = 'read_knowledge_page'
 const CORRECT_KNOWLEDGE_PAGE_TOOL = 'correct_knowledge_page'
 const UNDO_KNOWLEDGE_CORRECTION_TOOL = 'undo_knowledge_correction'
+const ADD_KNOWLEDGE_DOCUMENT_TOOL = 'add_knowledge_document'
+const REMOVE_KNOWLEDGE_DOCUMENT_TOOL = 'remove_knowledge_document'
 const KNOWLEDGE_BASE_TOOL_NAMES = [
     READ_KNOWLEDGE_PAGE_TOOL,
     CORRECT_KNOWLEDGE_PAGE_TOOL,
     UNDO_KNOWLEDGE_CORRECTION_TOOL,
+    ADD_KNOWLEDGE_DOCUMENT_TOOL,
+    REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
 ]
 
 const KNOWLEDGE_CORRECTION_MAX_CHARS = 2000
@@ -28,7 +37,7 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
         function: {
             name: READ_KNOWLEDGE_PAGE_TOOL,
             description:
-                "Read a page of the project wiki: what the project knows, compiled from its shared tasks, goals, notes and contacts. Pass the page's slug from the wiki index in your instructions. Without a slug it returns the list of all pages.",
+                "Read a page of the project wiki: what the project knows, compiled from its shared tasks, goals, notes and contacts and from documents members added. Pass the page's slug from the wiki index in your instructions. Without a slug it returns the list of all pages and of the added documents.",
             parameters: {
                 type: 'object',
                 properties: {
@@ -59,7 +68,7 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
                     body: {
                         type: 'string',
                         description:
-                            'The complete corrected page in markdown. Replace what is wrong with what is right rather than keeping both: the page states the current version only, without mentioning the old one or that it was corrected. Keep every [[...]] token of statements that stay, and mark each corrected statement with [[correction:new]].',
+                            'The complete corrected page in markdown. Keep every [[...]] token of statements that stay, and mark each corrected statement with [[correction:new]].',
                     },
                     title: {
                         type: 'string',
@@ -93,12 +102,68 @@ const KNOWLEDGE_BASE_TOOL_SCHEMAS = {
             },
         },
     },
+    [ADD_KNOWLEDGE_DOCUMENT_TOOL]: {
+        type: 'function',
+        function: {
+            name: ADD_KNOWLEDGE_DOCUMENT_TOOL,
+            description: `Add a file the user uploaded in this conversation to the project wiki, when they ask you to put it, or what it says, into the wiki. Works for PowerPoint (.pptx), Excel (.xlsx), Word (.docx), PDF and text files. The server reads the whole file; you do not pass its content. Within minutes the wiki integrates what the document says into its pages, updating what it supersedes, and cites it. Everyone in the project can then read what the wiki takes from it, so only add a file when the user asked for it.`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    messageId: {
+                        type: 'string',
+                        description:
+                            'Optional: the id of the message the file is attached to, from list_recent_chat_media. Leave it out for a file on the current message or one sent recently in this thread.',
+                    },
+                    fileName: {
+                        type: 'string',
+                        description:
+                            'Optional: the file name as shown in the conversation, to pick one file when several were sent.',
+                    },
+                    title: {
+                        type: 'string',
+                        description: `Optional: a short title for the document (at most ${KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS} characters). Defaults to the file name.`,
+                    },
+                    instructions: {
+                        type: 'string',
+                        description: `Optional: what the user wants the wiki to take from the document, in their own words, e.g. "only the pricing" (at most ${KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS} characters).`,
+                    },
+                    projectId: {
+                        type: 'string',
+                        description:
+                            'Optional: the ID of the project whose wiki gets the document. Defaults to the project of this conversation; pass another one when the user names it or the document clearly belongs there.',
+                    },
+                },
+                required: [],
+            },
+        },
+    },
+    [REMOVE_KNOWLEDGE_DOCUMENT_TOOL]: {
+        type: 'function',
+        function: {
+            name: REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
+            description: `Take a document added with ${ADD_KNOWLEDGE_DOCUMENT_TOOL} out of the project wiki. Every page that used it is rebuilt from its other sources, so nothing the document said stays in the wiki. ${READ_KNOWLEDGE_PAGE_TOOL} without a slug lists the documents.`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    documentId: {
+                        type: 'string',
+                        description: `The documentId ${ADD_KNOWLEDGE_DOCUMENT_TOOL} returned or ${READ_KNOWLEDGE_PAGE_TOOL} lists.`,
+                    },
+                    projectId: projectIdProperty,
+                },
+                required: ['documentId'],
+            },
+        },
+    },
 }
 
 module.exports = {
     READ_KNOWLEDGE_PAGE_TOOL,
     CORRECT_KNOWLEDGE_PAGE_TOOL,
     UNDO_KNOWLEDGE_CORRECTION_TOOL,
+    ADD_KNOWLEDGE_DOCUMENT_TOOL,
+    REMOVE_KNOWLEDGE_DOCUMENT_TOOL,
     KNOWLEDGE_BASE_TOOL_NAMES,
     KNOWLEDGE_CORRECTION_MAX_CHARS,
     KNOWLEDGE_BASE_TOOL_SCHEMAS,

@@ -207,6 +207,16 @@ const TOOL_ACTIVITY_RULES = {
         subjectKey: 'assistant_activity_undo_wiki_correction',
         plainKey: 'assistant_activity_undo_wiki_correction',
     },
+    add_knowledge_document: {
+        params: ['title', 'fileName'],
+        subjectKey: 'assistant_activity_add_wiki_document',
+        plainKey: 'assistant_activity_add_wiki_document_plain',
+    },
+    remove_knowledge_document: {
+        params: [],
+        subjectKey: 'assistant_activity_remove_wiki_document',
+        plainKey: 'assistant_activity_remove_wiki_document',
+    },
 
     // --- Handing work off ------------------------------------------------------
     execute_task_in_vm: {

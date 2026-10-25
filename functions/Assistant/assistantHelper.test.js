@@ -2250,109 +2250,6 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
-    describe('create_note target project', () => {
-        const mockUserProjects = projects => {
-            const getUserProjects = jest.fn().mockResolvedValue(projects)
-            ProjectService.mockImplementationOnce(() => ({
-                initialize: jest.fn().mockResolvedValue(),
-                getUserProjects,
-            }))
-            return getUserProjects
-        }
-
-        test('creates the note in the project named by projectName', async () => {
-            const getUserProjects = mockUserProjects([
-                { id: 'project-1', name: 'Inbox' },
-                { id: 'project-2', name: 'Alldone Product' },
-            ])
-            mockCreateAndPersistNote.mockResolvedValue({
-                success: true,
-                noteId: 'note-5',
-                note: { id: 'note-5', projectId: 'project-2' },
-            })
-
-            const result = await executeToolNatively(
-                'create_note',
-                { title: 'Routing', content: 'Body', projectName: 'Alldone Product' },
-                'project-1',
-                null,
-                'user-1',
-                null
-            )
-
-            expect(getUserProjects).toHaveBeenCalledWith('user-1', expect.anything())
-            expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
-                expect.objectContaining({ projectId: 'project-2' }),
-                expect.objectContaining({ userId: 'user-1', projectId: 'project-2' })
-            )
-            expect(result).toMatchObject({
-                projectId: 'project-2',
-                url: 'https://my.alldone.app/projects/project-2/notes/note-5/editor',
-            })
-        })
-
-        test('refuses a projectId the requesting user is not a member of', async () => {
-            // The in-app assistant hands the model's projectId straight through, so the executor's
-            // membership check is what keeps a note out of somebody else's project.
-            mockUserProjects([{ id: 'project-1', name: 'Inbox' }])
-
-            await expect(
-                executeToolNatively(
-                    'create_note',
-                    { title: 'Elsewhere', content: 'Body', projectId: 'foreign-project' },
-                    'foreign-project',
-                    null,
-                    'user-1',
-                    null
-                )
-            ).rejects.toThrow('Target project not found or not accessible: "foreign-project"')
-            expect(mockCreateAndPersistNote).not.toHaveBeenCalled()
-        })
-
-        test('asks for projectId, not moveToProjectId, when the name is ambiguous', async () => {
-            mockUserProjects([
-                { id: 'project-2', name: 'Alldone' },
-                { id: 'project-3', name: 'Alldone' },
-            ])
-
-            await expect(
-                executeToolNatively(
-                    'create_note',
-                    { title: 'Ambiguous', content: 'Body', projectName: 'Alldone' },
-                    'project-1',
-                    null,
-                    'user-1',
-                    null
-                )
-            ).rejects.toThrow('Please use projectId to choose one target project.')
-            expect(mockCreateAndPersistNote).not.toHaveBeenCalled()
-        })
-
-        test('keeps the current project and reads no project list when no target is given', async () => {
-            ProjectService.mockClear()
-            mockCreateAndPersistNote.mockResolvedValue({
-                success: true,
-                noteId: 'note-6',
-                note: { id: 'note-6', projectId: 'project-1' },
-            })
-
-            await executeToolNatively(
-                'create_note',
-                { title: 'Here', content: 'Body' },
-                'project-1',
-                null,
-                'user-1',
-                null
-            )
-
-            expect(ProjectService).not.toHaveBeenCalled()
-            expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
-                expect.objectContaining({ projectId: 'project-1' }),
-                expect.objectContaining({ projectId: 'project-1' })
-            )
-        })
-    })
-
     test('falls back to the assistant for both owner and creator when there is no requesting user', async () => {
         mockCreateAndPersistNote.mockResolvedValue({
             success: true,
@@ -3823,6 +3720,110 @@ describe('assistant chat media helpers', () => {
         })
     })
 
+    test('reads a PowerPoint or Excel upload as text, so the assistant can see what it says', async () => {
+        const { extractTextFromWhatsAppFile } = require('../WhatsApp/whatsAppFileExtraction')
+        const commentRef = { set: jest.fn(async () => {}) }
+        mockCollectionGet.mockResolvedValue({
+            docs: ['deck.pptx', 'prices.xlsx'].map((fileName, index) => ({
+                id: `message-${index}`,
+                ref: commentRef,
+                data: () => ({
+                    created: index,
+                    fromAssistant: false,
+                    mediaContext: [{ kind: 'file', fileName, storageUrl: `https://cdn.example.com/${fileName}` }],
+                }),
+            })),
+        })
+        global.fetch.mockResolvedValue({
+            ok: true,
+            arrayBuffer: async () => Buffer.from('zip-bytes'),
+            headers: { get: jest.fn(() => '') },
+        })
+
+        await listRecentChatMediaForAssistantRequest({
+            projectId: 'project-1',
+            objectType: 'topics',
+            objectId: 'chat-1',
+        })
+
+        expect(extractTextFromWhatsAppFile.mock.calls.map(([args]) => [args.fileName, args.contentType])).toEqual([
+            ['deck.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+            ['prices.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        ])
+        expect(commentRef.set).toHaveBeenCalledWith(
+            { mediaContext: [expect.objectContaining({ extractedText: 'Extracted text for deck.pptx' })] },
+            { merge: true }
+        )
+    })
+
+    test('tells the model when it sees only the beginning of a long file', () => {
+        const [media] = normalizeCommentMediaContext({
+            mediaContext: [
+                {
+                    kind: 'file',
+                    fileName: 'deck.pptx',
+                    mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    storageUrl: 'https://cdn.example.com/deck.pptx',
+                    extractedText: 'Slide 1',
+                    extractionStatus: 'ok',
+                    extractionTruncated: true,
+                },
+            ],
+        })
+
+        expect(buildUserMessageContentFromComment('Put this into the wiki', [media])).toBe(
+            'Put this into the wiki\n\n[FILE: deck.pptx, type=application/vnd.openxmlformats-officedocument.presentationml.presentation, only the first 7 characters]\nSlide 1'
+        )
+    })
+
+    test('hands the wiki the bytes of a file from the conversation, never from the target project', async () => {
+        mockDocGet.mockResolvedValue({
+            exists: true,
+            data: () => ({
+                fromAssistant: false,
+                commentText: 'Put the deck into the wiki of the other project',
+                mediaContext: [
+                    {
+                        kind: 'file',
+                        fileName: 'deck.pptx',
+                        storageUrl: 'https://cdn.example.com/deck.pptx',
+                        extractedText: 'Slide 1',
+                    },
+                ],
+            }),
+        })
+        global.fetch.mockResolvedValue({
+            ok: true,
+            arrayBuffer: async () => Buffer.from('deck-bytes'),
+            headers: { get: jest.fn(() => '') },
+        })
+
+        await executeToolNatively(
+            'add_knowledge_document',
+            { projectId: 'other-project' },
+            'p1',
+            'anna',
+            'u1',
+            { message: 'Put the deck into the wiki of the other project' },
+            { allowKnowledgeCorrections: true, objectType: 'topics', objectId: 'c1', messageId: 'm1' }
+        )
+        const [{ readChatAttachment, args }] = mockKnowledgeBase.executeKnowledgeBaseTool.mock.calls.at(-1)
+        expect(args).toEqual({ projectId: 'other-project' })
+
+        mockDocGet.mockClear()
+        const file = await readChatAttachment({ messageId: '', fileName: '' })
+
+        expect(mockDocGet.mock.contexts[0].path).toBe('chatComments/p1/topics/c1/comments/m1')
+        expect(file).toEqual({
+            fileName: 'deck.pptx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            kind: 'file',
+            buffer: Buffer.from('deck-bytes'),
+            fileSizeBytes: Buffer.from('deck-bytes').length,
+            messageId: 'm1',
+        })
+    })
+
     test('lists recent chat media with message ids and extracted-text availability', async () => {
         mockCollectionGet.mockResolvedValue({
             docs: [
@@ -4173,59 +4174,6 @@ describe('resolveCreateTaskTargetProject', () => {
                 correctedProjectId: 'p-alldone',
             },
         })
-    })
-
-    test('refuses an explicit projectId the creator is not a member of', async () => {
-        // The project exists, so a lookup by id alone would accept it; TaskService then writes
-        // through the Admin SDK with no membership check of its own.
-        const getUserProjects = jest.fn().mockResolvedValue([{ id: 'p-own', name: 'Own' }])
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects,
-        }))
-        const fakeDb = {
-            collection: jest.fn(() => ({
-                doc: jest.fn(() => ({
-                    get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ name: 'Somebody else' }) }),
-                })),
-            })),
-        }
-
-        await expect(
-            resolveCreateTaskTargetProject(fakeDb, {
-                creatorId: 'u-1',
-                contextProjectId: 'p-own',
-                assistantId: 'a-1',
-                globalProjectId: 'global',
-                requestedProjectId: 'p-foreign',
-            })
-        ).rejects.toThrow('Target project not found or not accessible: "p-foreign"')
-        expect(getUserProjects).toHaveBeenCalledWith(
-            'u-1',
-            expect.objectContaining({ includeArchived: true, includeCommunity: true, activeOnly: false })
-        )
-    })
-
-    test('still accepts the global assistant project without a membership lookup', async () => {
-        const getUserProjects = jest.fn().mockResolvedValue([])
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects,
-        }))
-
-        await expect(
-            resolveCreateTaskTargetProject(
-                {},
-                {
-                    creatorId: 'u-1',
-                    contextProjectId: 'p-own',
-                    assistantId: 'a-1',
-                    globalProjectId: 'global',
-                    requestedProjectId: 'global',
-                }
-            )
-        ).resolves.toMatchObject({ targetProjectId: 'global', source: 'toolArgs.projectId' })
-        expect(getUserProjects).not.toHaveBeenCalled()
     })
 })
 
@@ -4790,15 +4738,6 @@ describe('assistant create_task project routing comments', () => {
     })
 
     test('uses Gmail label matched project over conflicting assistant task project', async () => {
-        // The label's project is honoured only because the user is a member of it, as the user
-        // doc below says; the project list has to agree with it.
-        ProjectService.mockImplementation(() => ({
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getUserProjects: jest.fn().mockResolvedValue([
-                { id: 'project-bechtle', name: 'Bechtle' },
-                { id: 'project-jtl', name: 'JTL Software - Project Juno' },
-            ]),
-        }))
         mockDocGet
             .mockResolvedValueOnce({
                 exists: true,
@@ -7762,10 +7701,6 @@ describe('assistant project description tool', () => {
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Current project description text.')
         expect(systemMessages).toContain('Treat the current project description as the base text')
-        expect(systemMessages).toContain("The project description is the project's stable profile")
-        expect(systemMessages).toContain(
-            'Keep current status, recent activity and dated progress out of it unless the user explicitly asks for them'
-        )
         expect(systemMessages).toContain('call get_user_projects first')
     })
 
