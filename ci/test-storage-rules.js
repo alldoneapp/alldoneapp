@@ -3,9 +3,14 @@
 
 // Tests storage.rules (default bucket) and storage.notes.rules (notes bucket) with the Firebase
 // Rules API test endpoint, which compiles and evaluates the real rules without publishing them.
-// firestore.get() is answered by function mocks describing a small fixed world:
-//   p1  private project (isShared 2), member u1
-//   p2  public project  (isShared 0), member u2, notes "pub" (readerIds has 0) and "priv"
+// firestore.get() / firestore.exists() are answered by function mocks describing a small world:
+//   p1  private project (isShared 2), members u1 and u4. Notes:
+//         n1       project-public (readerIds [0, u1, u4])
+//         mine4    u4's private note (readerIds [u4])
+//         pending  just created, no projection yet, isPublicFor [0]
+//         pending4 just created by u4, no projection yet, isPublicFor [u4]
+//         moved    no note document yet (setNoteProject writes the body first)
+//   p2  public project (isShared 0), member u2, notes "pub" (readerIds has 0) and "priv"
 //   admin1 is roles/administrator; u3 is a member of nothing
 //
 //   node ci/test-storage-rules.js [gcp-project-id]      (default alldonestaging)
@@ -20,17 +25,32 @@ const projectId = process.argv[2] || 'alldonestaging'
 const repo = path.resolve(__dirname, '..')
 const DOCS = '/databases/(default)/documents'
 const MOCK_DATA = {
-    [`${DOCS}/projects/p1`]: { userIds: ['u1'], isShared: 2 },
+    [`${DOCS}/projects/p1`]: { userIds: ['u1', 'u4'], isShared: 2 },
     [`${DOCS}/projects/p2`]: { userIds: ['u2'], isShared: 0 },
     [`${DOCS}/roles/administrator`]: { userId: 'admin1' },
-    [`${DOCS}/noteItems/p2/notes/pub`]: { readerIds: [0, 'u2'] },
-    [`${DOCS}/noteItems/p2/notes/priv`]: { readerIds: ['u2'] },
+    [`${DOCS}/noteItems/p1/notes/n1`]: { readerIds: [0, 'u1', 'u4'], isPublicFor: [0] },
+    [`${DOCS}/noteItems/p1/notes/mine4`]: { readerIds: ['u4'], isPublicFor: ['u4'] },
+    [`${DOCS}/noteItems/p1/notes/pending`]: { isPublicFor: [0] },
+    [`${DOCS}/noteItems/p1/notes/pending4`]: { isPublicFor: ['u4'] },
+    [`${DOCS}/noteItems/p2/notes/pub`]: { readerIds: [0, 'u2'], isPublicFor: [0] },
+    [`${DOCS}/noteItems/p2/notes/priv`]: { readerIds: ['u2'], isPublicFor: ['u2'] },
 }
-const functionMocks = Object.entries(MOCK_DATA).map(([docPath, data]) => ({
-    function: 'firestore.get',
-    args: [{ exactValue: docPath }],
-    result: { value: { data } },
-}))
+const MISSING_NOTES = [`${DOCS}/noteItems/p1/notes/moved`]
+const functionMocks = [
+    ...Object.entries(MOCK_DATA).map(([docPath, data]) => ({
+        function: 'firestore.get',
+        args: [{ exactValue: docPath }],
+        result: { value: { data } },
+    })),
+    ...Object.keys(MOCK_DATA)
+        .filter(docPath => docPath.includes('/noteItems/'))
+        .map(docPath => ({ function: 'firestore.exists', args: [{ exactValue: docPath }], result: { value: true } })),
+    ...MISSING_NOTES.map(docPath => ({
+        function: 'firestore.exists',
+        args: [{ exactValue: docPath }],
+        result: { value: false },
+    })),
+]
 
 const DEFAULT_CASES = [
     ['DENY', 'get', 'artifacts/p1/a1/v1/index.html', 'u1'],
@@ -44,6 +64,11 @@ const DEFAULT_CASES = [
     ['DENY', 'get', 'noteVersionsData/p2/priv/v1', 'u3'],
     ['DENY', 'create', 'noteVersionsData/p2/pub/v1', 'u3'],
     ['DENY', 'list', 'noteVersionsData/p1/n1', 'u1'],
+    ['DENY', 'get', 'noteVersionsData/p1/mine4/v1', 'u1'],
+    ['ALLOW', 'get', 'noteVersionsData/p1/mine4/v1', 'u4'],
+    ['DENY', 'get', 'noteDailyVersionsData/p1/mine4', 'u1'],
+    ['DENY', 'create', 'noteDailyVersionsData/p1/mine4', 'u1'],
+    ['ALLOW', 'create', 'noteDailyVersionsData/p1/mine4', 'u4'],
     ['ALLOW', 'create', 'noteDailyVersionsData/p1/n1', 'u1'],
     ['ALLOW', 'delete', 'noteDailyVersionsData/p1/n1', 'u1'],
     ['DENY', 'get', 'noteDailyVersionsData/p1/n1', 'u3'],
@@ -87,6 +112,19 @@ const NOTES_CASES = [
     ['DENY', 'get', 'notesData/p1/n1', 'u3'],
     ['DENY', 'update', 'notesData/p1/n1', 'u3'],
     ['DENY', 'list', 'notesData/p1', 'u1'],
+    // another member's private note: closed (it was readable by membership alone)
+    ['DENY', 'get', 'notesData/p1/mine4', 'u1'],
+    ['DENY', 'update', 'notesData/p1/mine4', 'u1'],
+    ['ALLOW', 'get', 'notesData/p1/mine4', 'u4'],
+    ['ALLOW', 'update', 'notesData/p1/mine4', 'u4'],
+    // a note created a moment ago, before its readerIds projection: isPublicFor decides
+    ['ALLOW', 'create', 'notesData/p1/pending', 'u1'],
+    ['ALLOW', 'get', 'notesData/p1/pending', 'u1'],
+    ['ALLOW', 'create', 'notesData/p1/pending4', 'u4'],
+    ['DENY', 'get', 'notesData/p1/pending4', 'u1'],
+    // moving a note: the body lands before the note document exists in the new project
+    ['ALLOW', 'create', 'notesData/p1/moved', 'u1'],
+    ['DENY', 'create', 'notesData/p1/moved', 'u3'],
     ['ALLOW', 'get', 'notesData/p2/pub', 'u3'],
     ['DENY', 'get', 'notesData/p2/priv', 'u3'],
     ['ALLOW', 'get', 'notesData/p2/priv', 'u2'],

@@ -31,11 +31,45 @@ service firebase.storage {
       return signedIn() && projectDoc(projectId).data.get('isShared', 2) != 2;
     }
 
-    // A non-member of a publicly shared project may read a note copy only if the note itself is
-    // public, exactly as canReadSharedObject in firestore.rules.
-    function isPublicNoteOfSharedProject(projectId, noteId) {
-      return isPublicSharedProject(projectId) &&
-        0 in firestore.get(/databases/(default)/documents/noteItems/$(projectId)/notes/$(noteId)).data.get('readerIds', []);
+    // Note copies follow the note they copy, with the same helpers as storage.notes.rules. Cross-
+    // service rules may read at most TWO Firestore documents per evaluation: the project and the
+    // note.
+    function noteExists(projectId, noteId) {
+      return firestore.exists(/databases/(default)/documents/noteItems/$(projectId)/notes/$(noteId));
+    }
+
+    function note(projectId, noteId) {
+      return firestore.get(/databases/(default)/documents/noteItems/$(projectId)/notes/$(noteId)).data;
+    }
+
+    // canAccessObjectWhileProjectionIsPending in firestore.rules.
+    function canAccessNote(projectId, noteId) {
+      return isProjectMember(projectId) && (
+        request.auth.uid in note(projectId, noteId).get('readerIds', []) ||
+        request.auth.uid in note(projectId, noteId).get('roleIdsVisibleTo', {}) ||
+        request.auth.uid in note(projectId, noteId).get('backlinkIdsVisibleTo', {}) ||
+        request.auth.uid in note(projectId, noteId).get('followedReaderIds', []) ||
+        note(projectId, noteId).get('followedByVisibleTo', {}).get(request.auth.uid, false) == true ||
+        (
+          !('readerIds' in note(projectId, noteId)) &&
+          !('roleIdsVisibleTo' in note(projectId, noteId)) &&
+          !('followedByVisibleTo' in note(projectId, noteId)) &&
+          !('followedReaderIds' in note(projectId, noteId)) &&
+          !('backlinkIdsVisibleTo' in note(projectId, noteId)) &&
+          note(projectId, noteId).get('isPublicFor', []).hasAny([0, request.auth.uid])
+        )
+      );
+    }
+
+    // canReadSharedObject in firestore.rules.
+    function canReadSharedNote(projectId, noteId) {
+      return isPublicSharedProject(projectId) && 0 in note(projectId, noteId).get('readerIds', []);
+    }
+
+    // Membership alone while the note document does not exist (canProbeMissingObject).
+    function canUseNoteBody(projectId, noteId) {
+      return (isProjectMember(projectId) && !noteExists(projectId, noteId)) ||
+        (noteExists(projectId, noteId) && canAccessNote(projectId, noteId));
     }
 
     // Same as isAdministrator in firestore.rules.
@@ -52,13 +86,15 @@ service firebase.storage {
 
     // Copies of note bodies (the live body is in the notes bucket, storage.notes.rules).
     match /noteVersionsData/{projectId}/{noteId}/{versionId} {
-      allow get: if isProjectMember(projectId) || isPublicNoteOfSharedProject(projectId, noteId);
-      allow write: if isProjectMember(projectId);
+      allow get: if canUseNoteBody(projectId, noteId) ||
+        (noteExists(projectId, noteId) && canReadSharedNote(projectId, noteId));
+      allow write: if canUseNoteBody(projectId, noteId);
     }
 
     match /noteDailyVersionsData/{projectId}/{noteId} {
-      allow get: if isProjectMember(projectId) || isPublicNoteOfSharedProject(projectId, noteId);
-      allow write: if isProjectMember(projectId);
+      allow get: if canUseNoteBody(projectId, noteId) ||
+        (noteExists(projectId, noteId) && canReadSharedNote(projectId, noteId));
+      allow write: if canUseNoteBody(projectId, noteId);
     }
 
     // Contact, assistant and feed avatars, uploaded under the project they belong to.

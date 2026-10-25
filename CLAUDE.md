@@ -3595,30 +3595,37 @@ browser before trusting a bigger change.
 across all workspaces. `storage.rules` (default bucket `<project>.appspot.com`) and
 `storage.notes.rules` (the notes bucket) are now the source of truth and mirror `firestore.rules`:
 per-project folders require `projects/{projectId}.userIds` membership via cross-service
-`firestore.get()`, a non-member of a public project (`isShared != 2`) may read only a note whose
+`firestore.get()`, a note body or note copy additionally requires that the note itself grants the
+caller access, a non-member of a public project (`isShared != 2`) may read only a note whose
 `readerIds` holds `0` (exactly `canReadSharedObject`), `artifacts/` is server-only, and nothing may be
 listed except one comment's `attachments/{commentId}` folder (`AttachmentsTag` lists it).
 
-Three things are load-bearing. **The Admin SDK and token download URLs bypass these rules**, so they
+Four things are load-bearing. **The Admin SDK and token download URLs bypass these rules**, so they
 only decide what a browser may do through the Storage SDK (`put`, `getDownloadURL`, `listAll`,
 `delete`) — inventory those call sites (`utils/backends/firestore.js`, `notesFirestore.js`,
-`NotesOfflineCatchUp.js`) before adding a folder. **Members are checked by membership, not by a
-note's `readerIds`**: the browser writes the empty body right after creating the note document,
-before the server trigger has projected `readerIds`. **Cross-service `firestore.get()` needs the
-Storage service agent (`service-<number>@gcp-sa-firebasestorage.iam.gserviceaccount.com`) to hold
+`NotesOfflineCatchUp.js`) before adding a folder. **A note body follows the note's own access
+exactly as `canAccessObjectWhileProjectionIsPending` does**: the projected fields (`readerIds` and
+its siblings) when they exist, `isPublicFor` while none exist yet — the browser writes the empty body
+right after creating the note document, before the server trigger has projected `readerIds` — and
+membership alone while the note document does not exist at all, because `setNoteProject` writes the
+body into the new project BEFORE the note document lands there. **Cross-service rules may read at most
+two Firestore documents per evaluation**; every note path reads exactly two (the project and the
+note), so a third lookup (a user doc, a role doc) on those paths would push every note access over
+the limit and deny it. **Cross-service `firestore.get()` needs the Storage service agent
+(`service-<number>@gcp-sa-firebasestorage.iam.gserviceaccount.com`) to hold
 `roles/firebaserules.firestoreServiceAgent`**; without it every lookup is an evaluation error, an
 error is a denial, and every note stops loading. The console grants it when it publishes such rules;
 the Rules API does not.
 
 Neither file is in `firebase.json`, so neither CI nor `firebase deploy` publishes them: publish with
 the Rules API (create a ruleset, PATCH `releases/firebase.storage/<bucket>`) and note the previous
-ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs 58
-cases through the Rules API test endpoint (real compiler, mocked `firestore.get`) and treats any
-compile warning as a failure — a type error such as `allPaths.matches(...)` (`allPaths` is a path,
-not a string) evaluates to an error and therefore to "deny" for everyone, while every DENY case
-still passes. Known gaps, deliberately left: a project member can read another member's private
-note body if they know its id, and `feedAttachments/` / `notesAttachments/` stay readable by any
-signed-in user who knows the random path.
+ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs 73
+cases through the Rules API test endpoint (real compiler, mocked `firestore.get`/`exists`) and
+treats any compile warning as a failure — a type error such as `allPaths.matches(...)` (`allPaths`
+is a path, not a string) evaluates to an error and therefore to "deny" for everyone, while every
+DENY case still passes. One known gap, deliberately left: `feedAttachments/` and `notesAttachments/`
+carry no project in their path, so any signed-in user who knows an object's random path may read
+it (listing is denied, so the path cannot be enumerated).
 
 ### Firestore indexes (`firestore.indexes.json`)
 
