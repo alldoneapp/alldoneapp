@@ -34,9 +34,15 @@ jest.mock('../../UIControls/Button', () => {
 jest.mock('../../UIControls/Switch', () => {
     const { TouchableOpacity: MockTouchable } = require('react-native')
     return ({ active, disabled, activeSwitch, deactiveSwitch }) => (
-        <MockTouchable testID="wiki-switch" disabled={!!disabled} onPress={active ? deactiveSwitch : activeSwitch} />
+        <MockTouchable
+            testID="wiki-switch"
+            accessibilityState={{ checked: !!active }}
+            disabled={!!disabled}
+            onPress={active ? deactiveSwitch : activeSwitch}
+        />
     )
 })
+jest.mock('../../UIComponents/Spinner', () => () => null)
 jest.mock(
     '../../UIComponents/ModalShell/AppPopover',
     () =>
@@ -96,6 +102,18 @@ function mount(knowledgeBase, project = PROJECT) {
     return component
 }
 
+const wikiSwitch = component => component.root.findByProps({ testID: 'wiki-switch' })
+const isSwitching = component => component.root.findAllByProps({ testID: 'project-wiki-switching' }).length > 0
+
+function deferred() {
+    let resolve, reject
+    const promise = new Promise((res, rej) => {
+        resolve = res
+        reject = rej
+    })
+    return { promise, resolve, reject }
+}
+
 const findButton = (component, title) =>
     component.root
         .findAllByType(TouchableOpacity)
@@ -135,6 +153,56 @@ describe('ProjectWikiSettings', () => {
 
         expect(saveKnowledgeBaseSettings).toHaveBeenCalledWith('p1', { enabled: true })
         expect(textOf(component.toJSON())).toContain('Saved')
+    })
+
+    it('moves the switch on the press and says the change is on its way', async () => {
+        const call = deferred()
+        saveKnowledgeBaseSettings.mockReturnValue(call.promise)
+        const component = mount(null)
+
+        act(() => {
+            wikiSwitch(component).props.onPress()
+        })
+
+        // Before the function has answered: the switch is already on, with a pending note beside it.
+        expect(wikiSwitch(component).props.accessibilityState.checked).toBe(true)
+        expect(wikiSwitch(component).props.disabled).toBe(true)
+        expect(isSwitching(component)).toBe(true)
+        expect(textOf(component.toJSON())).toContain('Switching the wiki on…')
+
+        // The transaction commits before the first build is queued, so the document usually agrees
+        // before the call returns; from then on the wiki is on and nothing is pending any more.
+        act(() => mockWatchers.knowledgeBase({ enabled: true, ownerUserId: 'me' }))
+        expect(isSwitching(component)).toBe(false)
+        expect(wikiSwitch(component).props.accessibilityState.checked).toBe(true)
+
+        await act(async () => call.resolve({ success: true }))
+        expect(textOf(component.toJSON())).toContain('Saved')
+        expect(wikiSwitch(component).props.accessibilityState.checked).toBe(true)
+    })
+
+    it('keeps the switch where it was sent when the call answers before the document', async () => {
+        const component = mount({ enabled: true, ownerUserId: 'me' })
+
+        await act(async () => wikiSwitch(component).props.onPress())
+
+        expect(saveKnowledgeBaseSettings).toHaveBeenCalledWith('p1', { enabled: false })
+        expect(isSwitching(component)).toBe(false)
+        expect(wikiSwitch(component).props.accessibilityState.checked).toBe(false)
+
+        act(() => mockWatchers.knowledgeBase({ enabled: false, ownerUserId: 'me' }))
+        expect(wikiSwitch(component).props.accessibilityState.checked).toBe(false)
+    })
+
+    it('puts the switch back when the change is refused', async () => {
+        saveKnowledgeBaseSettings.mockRejectedValue({ code: 'permission-denied', message: 'Nope' })
+        const component = mount(null)
+
+        await act(async () => wikiSwitch(component).props.onPress())
+
+        expect(wikiSwitch(component).props.accessibilityState.checked).toBe(false)
+        expect(isSwitching(component)).toBe(false)
+        expect(textOf(component.toJSON())).toContain('Nope')
     })
 
     it('locks every control of a wiki another member pays for', () => {

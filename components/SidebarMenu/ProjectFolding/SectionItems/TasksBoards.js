@@ -14,6 +14,7 @@ import InvitePeopleWrapper from '../InvitePeople/InvitePeopleWrapper'
 import ProjectHelper from '../../../SettingsView/ProjectsSettings/ProjectHelper'
 import ContactItem from '../../Items/ContactItem'
 import AssistantItem from '../../Items/AssistantItem'
+import WikiItem from '../../Items/WikiItem'
 import useProjectData from '../../../../hooks/useProjectData'
 
 // Shared identity so a missing slice does not hand `useSelector` a new array on every render.
@@ -146,6 +147,9 @@ export default function TasksBoards({
                         ))
                     )
                 })}
+
+            {/* Not behind "show more": a long member list must not hide the way into the wiki. */}
+            {!isShared && <WikiItem projectId={projectId} projectColor={projectColor} />}
 
             {!isTemplate &&
                 !isGuideProject &&

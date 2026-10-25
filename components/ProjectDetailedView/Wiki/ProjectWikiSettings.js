@@ -6,6 +6,7 @@ import styles, { colors } from '../../styles/global'
 import Icon from '../../Icon'
 import Button from '../../UIControls/Button'
 import Switch from '../../UIControls/Switch'
+import Spinner from '../../UIComponents/Spinner'
 import AppPopover from '../../UIComponents/ModalShell/AppPopover'
 import AssistantModelModal from '../../UIComponents/FloatModals/AssistantModelModal/AssistantModelModal'
 import { hideFloatPopup, showFloatPopup } from '../../../redux/actions'
@@ -108,6 +109,10 @@ export default function ProjectWikiSettings({ project }) {
     const [saving, setSaving] = useState(false)
     const [message, setMessage] = useState(null)
     const [refreshState, setRefreshState] = useState(null)
+    // The value the switch was just pressed to. Switching the wiki on waits for a cold function, the
+    // settings transaction and queueing the first build, which can take several seconds; a switch
+    // that only moved once all of that had answered looked as if the press had been lost.
+    const [requestedEnabled, setRequestedEnabled] = useState(null)
 
     useEffect(() => {
         URLsProjects.push(URL_PROJECT_DETAILS_WIKI, { projectId: project.id, userId: loggedUserId }, project.id)
@@ -120,20 +125,33 @@ export default function ProjectWikiSettings({ project }) {
         setCap(String(settings.monthlyGoldCap))
     }, [knowledgeBase === undefined, settings.instructions, settings.monthlyGoldCap])
 
+    // The watched document is the authority: once it agrees, the switch goes back to showing it.
+    useEffect(() => {
+        if (requestedEnabled !== null && settings.enabled === requestedEnabled) setRequestedEnabled(null)
+    }, [settings.enabled, requestedEnabled])
+
     const save = async patch => {
         setSaving(true)
         setMessage(null)
         try {
             await saveKnowledgeBaseSettings(project.id, patch)
             setMessage({ type: 'success', text: translate('Saved') })
+            return true
         } catch (error) {
             setMessage({
                 type: 'error',
                 text: error?.code === 'offline' ? translate('Wiki settings need a connection') : error?.message || '',
             })
+            return false
         } finally {
             setSaving(false)
         }
+    }
+
+    const toggleWiki = async enabled => {
+        setRequestedEnabled(enabled)
+        // A refused change puts the switch back where the document says it is.
+        if (!(await save({ enabled }))) setRequestedEnabled(null)
     }
 
     const refresh = async () => {
@@ -157,6 +175,10 @@ export default function ProjectWikiSettings({ project }) {
         parsedCap <= MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP
     const disabled = !canManage || saving
     const running = isKnowledgeBaseRunning(knowledgeBase)
+    const switchedOn = requestedEnabled !== null ? requestedEnabled : settings.enabled
+    // Only while the server has not answered: a document that already agrees, or a finished call,
+    // means the change is in place even if the other one is still on its way.
+    const switching = requestedEnabled !== null && saving && settings.enabled !== requestedEnabled
 
     return (
         <View testID="project-wiki-settings" style={localStyles.container}>
@@ -165,12 +187,20 @@ export default function ProjectWikiSettings({ project }) {
             <View style={localStyles.row}>
                 <Icon name="book-open" size={24} color={colors.Text03} />
                 <Text style={localStyles.label}>{translate('Project wiki')}</Text>
-                <View style={localStyles.right}>
+                <View style={[localStyles.right, localStyles.inline]}>
+                    {switching && (
+                        <View testID="project-wiki-switching" style={localStyles.switching}>
+                            <Spinner containerSize={20} spinnerSize={16} containerColor={'transparent'} />
+                            <Text style={localStyles.switchingText}>
+                                {translate(requestedEnabled ? 'Switching the wiki on' : 'Switching the wiki off')}
+                            </Text>
+                        </View>
+                    )}
                     <Switch
-                        active={settings.enabled}
+                        active={switchedOn}
                         disabled={disabled}
-                        activeSwitch={() => save({ enabled: true })}
-                        deactiveSwitch={() => save({ enabled: false })}
+                        activeSwitch={() => toggleWiki(true)}
+                        deactiveSwitch={() => toggleWiki(false)}
                     />
                 </View>
             </View>
@@ -347,6 +377,16 @@ const localStyles = StyleSheet.create({
     inline: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    switching: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    switchingText: {
+        ...styles.caption2,
+        color: colors.Text03,
+        marginLeft: 4,
     },
     capInput: {
         ...styles.body1,
