@@ -2303,6 +2303,66 @@ async function syncGmailLabeling(userId, projectId, options = {}) {
     }
 }
 
+/**
+ * Gmail → Alldone read sync on a tick where the LABELING sync is not yet due (AT-2376 follow-up).
+ *
+ * Reconciling read state and labeling mail are two different jobs with two different costs, and
+ * they were sharing one interval. `syncIntervalMinutes` (default and minimum 30) exists to bound
+ * how often the classifier runs, because classification spends GOLD per message. Reconciliation
+ * spends none: it is a Firestore equality query plus, at most, a handful of `messages.get` calls at
+ * `format: 'minimal'` (1 quota unit each, hard-capped per run). Bolting it onto the labeling
+ * interval therefore made a free, read-only operation wait up to 30 minutes — which is exactly what
+ * "I marked these read in Gmail and Alldone still shows them unread" looks like from the outside,
+ * with every stage in fact working. Running it on the poller's own five-minute cadence removes that
+ * coupling without a new schedule, a new client or a second auth path.
+ *
+ * Three properties keep this cheap and safe:
+ *   - an idle tick costs ONE indexed query and no Gmail call at all (the client is built lazily,
+ *     only once something is genuinely still unread);
+ *   - it never touches `lastSyncAt`, so it cannot starve or advance the labeling sync it is
+ *     standing in for;
+ *   - it stands down while a labeling sync holds the lock, so the two never reconcile the same
+ *     candidates concurrently.
+ *
+ * Best effort throughout: this is a side job of a poller whose contract is labeling, so every
+ * failure is logged and swallowed.
+ */
+async function reconcileEmailCommentReadStateOnPollTick(userId, connectionKey, state = {}, gmailEmail = '') {
+    const lockMillis = normalizeTimestampToMillis(state?.lockAcquiredAt)
+    const labelingSyncRunning =
+        state?.status === 'running' && lockMillis > 0 && Date.now() - lockMillis < GMAIL_LABELING_LOCK_TIMEOUT_MS
+    if (labelingSyncRunning) return null
+
+    const logContext = createSyncLogContext(userId, connectionKey, gmailEmail)
+
+    try {
+        let gmailClientPromise = null
+        const summary = await reconcileEmailCommentReadState({
+            // Deliberately a factory, not a client: see the note in reconcileEmailCommentReadState.
+            getGmail: () => {
+                if (!gmailClientPromise) gmailClientPromise = getGmailClient(userId, connectionKey)
+                return gmailClientPromise
+            },
+            userId,
+            connectionKey,
+        })
+        if (summary.candidates > 0) {
+            logSync('Reconciled Alldone email comments against the mailbox', {
+                ...logContext,
+                pollOnly: true,
+                ...summary,
+            })
+        }
+        return summary
+    } catch (error) {
+        console.warn('[gmailLabeling] Email comment read sync failed on poll tick', {
+            ...logContext,
+            error: error.message,
+        })
+        return null
+    }
+}
+
 async function processEnabledGmailLabelingConfigs(limit = 100) {
     const snapshot = await admin
         .firestore()
@@ -2328,12 +2388,21 @@ async function processEnabledGmailLabelingConfigs(limit = 100) {
         try {
             const { state } = await loadState(userId, syncKey, data.gmailEmail || '')
             if (!isScheduledSyncDue(state, data)) {
+                // Labeling waits for its interval; the read-state reconciliation does not — it
+                // costs no Gold and answers a question about mail the user has already handled.
+                const emailCommentReadSync = await reconcileEmailCommentReadStateOnPollTick(
+                    userId,
+                    syncKey,
+                    state,
+                    data.gmailEmail || ''
+                )
                 results.push({
                     success: true,
                     skippedReason: 'interval_not_due',
                     userId,
                     projectId: syncKey,
                     syncIntervalMinutes: getConfiguredSyncIntervalMinutes(data),
+                    emailCommentReadSync,
                 })
                 continue
             }
@@ -2403,6 +2472,7 @@ module.exports = {
     loadAuditEntry,
     loadConfig,
     processEnabledGmailLabelingConfigs,
+    reconcileEmailCommentReadStateOnPollTick,
     processSingleMessage,
     resolveEffectiveGmailLabelingConfig,
     resolveEffectiveLabelingConfig,
