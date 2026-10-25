@@ -789,7 +789,7 @@ list additionally projects uploads from their readable source documents, comment
 notes (`utils/backends/Artifacts/linkedUploads.js`). Existing uploads need no migration. One stored
 path yields one row, which never gets a new serving/public URL: pressing it opens
 `ArtifactFileViewer` with the download URL the source itself embeds (an image's stored 300px copy is
-the row thumbnail), and its link badge opens the source. Only img/video/audio render inline; a PDF or
+the row thumbnail), and its context line opens the source. Only img/video/audio render inline; a PDF or
 other file goes to a new tab, because Chrome frames a PDF only unsandboxed and a stored file's content
 type is whatever the uploader's browser declared. Lists show 3 per project in All projects and 10 in
 one project, the rest behind `ShowMoreButton`, like Notes. Membership, original
@@ -798,6 +798,30 @@ it, including pending asynchronous note loads. `uploadsRevision` on notes announ
 Storage writes, including offline catch-up, without changing edition metadata. The chip's action is
 now "Show in artifacts" and opens All, without invoking the old copying callable. Full historical
 copies and VM artifacts remain independent (see `ARTIFACTS_PLAN.md` linked-upload limitations).
+
+**The Artifacts tab opens from what this device showed last time, and the listeners only update
+it** (`utils/backends/Artifacts/artifactsLocalCache.js`, an IndexedDB store with a memory mirror,
+keyed by user, project and tab). Without it every visit rebuilt the whole projection: one
+comment listener per task, note and goal of every project, and every note body downloaded from
+Storage four at a time, which is many seconds per project. Three rules make the cache safe. Real
+artifacts come from one query and its first snapshot replaces the remembered list. Linked uploads
+report `onChange(files, { settled })` and the remembered files stay (plus any new live file) until
+every source, comment thread and note body has answered once, so the list never shrinks to a
+partial result and grows back; a result that saw a listener fail is shown but never remembered,
+and a remembered list whose listener fails before confirming it is dropped. And a note body is
+only re-read when its `lastEditionDate`/`uploadsRevision` moved (the same stamps the watcher
+always re-read on), or after `NOTE_REFS_MAX_AGE_MS`, which bounds a body change that stamped
+nothing. **Comments are only listened to for objects that have a chat object**
+(`chatObjects/{p}/chats/{objectId}`), because every comment write creates or updates it; topics,
+user and assistant threads are always listened to. That replaced one Firestore query per object,
+almost all of them empty and each billed a read. A comment path that writes no chat object would
+make its uploads invisible here, so keep that invariant if a new comment writer is added.
+
+**Every artifact row leads to where the artifact was made** (`ArtifactContextLink`,
+`artifactContext.js`): a linked upload to its first source ("In Meeting notes +1"), and a full
+artifact with a `parentObject` to that object's thread ("Created in …"), also in the detail view.
+The parent's title is read once per session with the viewer's own access; a parent the viewer
+cannot read (or that is gone) gets no link at all.
 
 **The legacy `saveAttachmentAsArtifact` callable copies an attachment the server already stores, and the URL is the only
 input** (`Artifacts/attachmentPromotion.js`, callable `saveAttachmentAsArtifact`). It is checked

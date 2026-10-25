@@ -14,7 +14,6 @@ jest.mock('react-redux', () => ({
     useSelector: jest.fn().mockImplementation(fnc => {
         return fnc({
             currentUser: {},
-            loggedUser: { uid: 'user-1' },
             assignee: { workflow: {} },
         })
     }),

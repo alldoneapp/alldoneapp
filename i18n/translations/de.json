@@ -2659,9 +2659,6 @@
     "Use workflow": "Workflow verwenden",
     "Bypass workflow": "Workflow umgehen",
     "Bypass workflow and mark done": "Workflow umgehen und als erledigt markieren",
-    "On completion": "Beim Abhaken",
-    "Through workflow": "Workflow durchlaufen",
-    "Straight to Done": "Direkt auf Erledigt",
     "Submit": "Absenden",
     "Submitting task": "Aufgabe wird übermittelt...",
     "Task submitted": "Aufgabe übermittelt.",
@@ -3248,6 +3245,8 @@
     "Some uploads could not be loaded": "Einige Uploads konnten nicht geladen werden. Öffne Artefakte erneut, um es noch einmal zu versuchen.",
     "Show in artifacts": "Unter Artefakte anzeigen",
     "Artifact upload in": "In %{title}",
+    "Artifact created in": "Erstellt in %{title}",
+    "Open in context": "Im Kontext öffnen",
     "Previous file": "Vorherige Datei",
     "Next file": "Nächste Datei",
     "File": "Datei"

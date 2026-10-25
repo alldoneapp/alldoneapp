@@ -22,6 +22,8 @@ import {
 } from '../../functions/Artifacts/artifactModel'
 import ArtifactPreview from './ArtifactPreview'
 import ArtifactBacklinks from './ArtifactBacklinks'
+import ArtifactContextLink from './ArtifactContextLink'
+import { openUploadSource } from './uploadSourceLinks'
 import ArtifactAssistantForm from './ArtifactAssistantForm'
 import ArtifactChat from './ArtifactChat'
 import ArtifactHistory from './ArtifactHistory'
@@ -418,6 +420,13 @@ export default function ArtifactDetail({ projectId, artifactId, onBack }) {
                             {translate(getArtifactSourceLabelKey(artifact.source))} ·{' '}
                             {translate('Artifact edited at', { date: formatArtifactDate(artifact.lastEditionDate) })}
                         </Text>
+
+                        <ArtifactContextLink
+                            projectId={projectId}
+                            artifact={artifact}
+                            onOpen={source => openUploadSource(projectId, source)}
+                            testID="artifact-context"
+                        />
 
                         <ArtifactBacklinks projectId={projectId} artifactId={artifact.id} />
 
