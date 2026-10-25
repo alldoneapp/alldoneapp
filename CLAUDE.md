@@ -565,6 +565,24 @@ from the project's tasks, goals, notes and contacts (`functions/KnowledgeBase/`,
 write it; every write is a callable or the `runKnowledgeBaseIngest` worker. The member who switches
 it on pays (`knowledge_base_ingest` Gold, monthly cap, default model DeepSeek V4 Flash).
 
+**It is on by default for every project of an active user, and a run spends nothing on a payer who
+is away.** "Active" is the heartbeat rule (a login within `ACTIVE_USER_WINDOW_MS`, 30 days), imported
+through `knowledgeBaseSchedule.js` rather than re-declared. `knowledgeBaseDefaults.js` writes the
+default as a real document (`enabledBy: 'default'`, first run at the payer's next 03:00) for a
+project that has **no** `knowledgeBases/{projectId}` document at all; an existing document is a
+decision and is never switched back on. Three callers reach it: `onCreateProject`, the user trigger
+when somebody logs in after 30 days away, and the daily `applyKnowledgeBaseDefaults` sweep, which is
+also what reached the projects that existed before the default — there is no migration. The payer
+is the project's creator when they are an active member, otherwise the member being processed.
+Guides (`parentTemplateId`) and templates are excluded on purpose: a guide's `creatorId` is the
+template's author, who would otherwise pay for the wiki of every guide anybody starts. When the
+payer has been away 30 days the run stops with `owner_inactive` and clears `nextRunAt` (paused, no
+model call); the payer's return resumes it, and a wiki the default switched on moves to another
+active member once its payer is gone. A wiki a member switched on themselves (`enabledBy: 'member'`,
+or no field on wikis that predate the default) never changes hands that way — it waits. Note
+`releaseIngestLease` must not `Math.min` a null `nextRunAt` (it is `0`, i.e. due forever). Pinned by
+`knowledgeBaseDefaults.test.js` and the `owner_inactive` cases in `knowledgeBaseIngest.test.js`.
+
 **The ingest runs through the Admin SDK, so the visibility filter is the ONLY protection.**
 `isVisibleToWholeProject` in `collectKnowledgeSources.js` admits an object only when `isPublicFor`
 names `0` and it is not `isPrivate` (goals without `isPublicFor` count as public, matching

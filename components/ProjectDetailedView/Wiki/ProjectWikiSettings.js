@@ -209,6 +209,16 @@ export default function ProjectWikiSettings({ project }) {
                     ? translate('Wiki paid by', { name: owner.displayName || owner.name || '' })
                     : translate('Wiki payment hint')}
             </Text>
+            {settings.enabledByDefault && (
+                <Text testID="project-wiki-default-hint" style={localStyles.hint}>
+                    {translate('Wiki switched on by default')}
+                </Text>
+            )}
+            {settings.pausedForInactiveOwner && (
+                <Text testID="project-wiki-paused-hint" style={localStyles.hint}>
+                    {translate('Wiki paused while its payer is inactive')}
+                </Text>
+            )}
             {!canManage && (
                 <Text style={localStyles.hint}>{translate('Only the paying member can change the wiki')}</Text>
             )}
