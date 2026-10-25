@@ -322,6 +322,11 @@ describe('User memory assistant tool schemas', () => {
     test('documents project description update fields', () => {
         expect(toolSchemas.update_project_description.function.parameters.required).toEqual(['description'])
         expect(toolSchemas.update_project_description.function.description).toContain('shared context')
+        // A stable profile that routing reads, not a status report.
+        expect(toolSchemas.update_project_description.function.description).toContain("the project's stable profile")
+        expect(toolSchemas.update_project_description.function.description).toContain(
+            'Leave current status, recent activity, dated progress and weekly summaries out of it unless the user explicitly asks for them'
+        )
         expect(toolSchemas.update_project_description.function.parameters.properties.description.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectId.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectName.type).toBe('string')
