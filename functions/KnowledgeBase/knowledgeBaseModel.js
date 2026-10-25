@@ -48,12 +48,6 @@ const DEFAULT_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 500
 const MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 50
 const MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP = 100000
 const KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS = 10 * 60 * 1000
-// Who switched a wiki on. A member's choice is theirs to undo (enabledBy 'member', or no field at
-// all on the wikis that predate the default); a wiki the default switched on (knowledgeBaseDefaults.js)
-// may move to another active member once its payer has gone.
-const KNOWLEDGE_BASE_ENABLED_BY_MEMBER = 'member'
-const KNOWLEDGE_BASE_ENABLED_BY_DEFAULT = 'default'
-const KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON = 'owner_inactive'
 // A document's text is stored inside its Firestore document, so it stays well under the 1 MiB limit
 // even at three bytes a character. About 30,000 tokens: a long deck, a short report.
 const KNOWLEDGE_DOCUMENT_MAX_CHARS = 120000
@@ -251,23 +245,11 @@ function normalizeKnowledgeBaseSettingsInput(input) {
     return patch
 }
 
-// A wiki whose payer has not used Alldone for 30 days stops running until they are back: the run
-// clears nextRunAt and records why, and the default switch-on schedules it again.
-function isKnowledgeBasePausedForInactiveOwner(data = {}) {
-    return (
-        data.enabled === true &&
-        !Number.isFinite(data.nextRunAt) &&
-        data.lastRunStopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON
-    )
-}
-
 // What a client may see of the settings document. Run state (cursor, lease) stays out of it.
 function toKnowledgeBaseSettingsView(projectId, data = {}) {
     return {
         projectId,
         enabled: data.enabled === true,
-        enabledByDefault: data.enabled === true && data.enabledBy === KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
-        pausedForInactiveOwner: isKnowledgeBasePausedForInactiveOwner(data),
         instructions: typeof data.instructions === 'string' ? data.instructions : '',
         model: resolveKnowledgeBaseModel(data.model),
         monthlyGoldCap: resolveKnowledgeBaseMonthlyGoldCap(data.monthlyGoldCap),
@@ -310,9 +292,6 @@ module.exports = {
     MIN_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     MAX_KNOWLEDGE_BASE_MONTHLY_GOLD_CAP,
     KNOWLEDGE_BASE_REFRESH_COOLDOWN_MS,
-    KNOWLEDGE_BASE_ENABLED_BY_MEMBER,
-    KNOWLEDGE_BASE_ENABLED_BY_DEFAULT,
-    KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
     KNOWLEDGE_DOCUMENT_MAX_CHARS,
     KNOWLEDGE_DOCUMENT_TITLE_MAX_CHARS,
     KNOWLEDGE_DOCUMENT_INSTRUCTIONS_MAX_CHARS,
@@ -333,7 +312,6 @@ module.exports = {
     extractKnowledgeTokens,
     rewriteKnowledgeSourceTokens,
     isKnowledgePageVisible,
-    isKnowledgeBasePausedForInactiveOwner,
     resolveKnowledgeBaseModel,
     resolveKnowledgeBaseMonthlyGoldCap,
     normalizeKnowledgeBaseSettingsInput,

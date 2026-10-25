@@ -36,6 +36,7 @@ import TaskPriorityTagButton from '../../TaskPriorityTagButton'
 import TaskVmStatusTag from '../../../Tags/InProgressVmTag'
 import { doTrailingTagsCrowdTaskTitle } from '../../TagsArea/taskTagSummaryHelper'
 import { shouldShowAiStepControl } from './taskAiStepControl'
+import { shouldShowWorkflowIndicator } from './taskWorkflowIndicator'
 import CommentPopupWorkflowControls from '../../../UIComponents/FloatModals/RichCommentModal/CommentPopupWorkflowControls'
 import AssistantWorkflowRunTag from '../../../Tags/AssistantWorkflowRunTag'
 import { taskPresentationLayout } from './TaskPresentationLayout'
@@ -186,8 +187,7 @@ function TaskPresentation(
 
     const isActiveTask = activeTaskId === task.id
 
-    const hasWorkflow = workflow && Object.keys(workflow).length > 0
-    const showWorkflowIndicator = hasWorkflow && task.done === false && !task.parentId
+    const showWorkflowIndicator = shouldShowWorkflowIndicator({ workflow, task })
 
     // Task placement logic - workflow tasks assigned to others go to pending section
     const pending =

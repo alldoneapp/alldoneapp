@@ -14,7 +14,6 @@ import {
     FEED_USER_WORKFLOW_REMOVE,
 } from '../Utils/FeedsConstants'
 import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
-import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function UserWorkflowStepFeed({ feed, projectId, showNewFeedDot, feedActiveTab, lastChangeDateObject }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
@@ -22,7 +21,7 @@ export default function UserWorkflowStepFeed({ feed, projectId, showNewFeedDot, 
     const [width, setWidth] = useState(0)
     const { reviewerUserId, objectId, type: feedType, description, oldReviewerUid, creatorId } = feed
 
-    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
+    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
 
     const { photoURL: reviewerPhotoURL, shortName: reviewerName } = getUserPresentationDataInProject(
         projectId,

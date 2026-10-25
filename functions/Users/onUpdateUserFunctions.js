@@ -20,29 +20,10 @@ const HEARTBEAT_USER_SCHEDULE_FIELDS = [
     'defaultProjectId',
 ]
 
-// A login after 30 days away (or the first one): the user counts as active again.
-function userBecameActive(oldUser, newUser, now = Date.now()) {
-    const cutoff = now - ACTIVE_USER_WINDOW_MS
-    return getTimestampMillis(oldUser?.lastLogin) < cutoff && getTimestampMillis(newUser?.lastLogin) >= cutoff
-}
-
 function heartbeatUserScheduleChanged(oldUser, newUser, now = Date.now()) {
     if (HEARTBEAT_USER_SCHEDULE_FIELDS.some(field => oldUser?.[field] !== newUser?.[field])) return true
-    return userBecameActive(oldUser, newUser, now)
-}
-
-// Switches the wiki of the user's projects on and resumes the ones paused while they were away.
-// Never throws; the daily sweep reaches whatever this misses.
-async function applyKnowledgeBaseDefaultsOnReturn(userId, newUser) {
-    try {
-        const { applyKnowledgeBaseDefaultsForUser } = require('../KnowledgeBase/knowledgeBaseDefaults')
-        await applyKnowledgeBaseDefaultsForUser({ userId, userData: newUser })
-    } catch (error) {
-        console.error('[knowledge base] Could not apply the wiki default for a returning user', {
-            userId,
-            error: error.message,
-        })
-    }
+    const cutoff = now - ACTIVE_USER_WINDOW_MS
+    return getTimestampMillis(oldUser?.lastLogin) < cutoff && getTimestampMillis(newUser?.lastLogin) >= cutoff
 }
 
 // The only user fields the search index stores (see mapUserData in ParsingTextHelper.js plus the
@@ -91,8 +72,6 @@ const onUpdateUser = async (userId, change) => {
         )
     }
 
-    if (userBecameActive(oldUser, newUser)) promises.push(applyKnowledgeBaseDefaultsOnReturn(userId, newUser))
-
     // Check for WhatsApp phone number update
     if (newUser.phone && newUser.phone !== oldUser.phone) {
         console.log(`User ${userId} updated phone number. Scheduling WhatsApp welcome message.`)
@@ -109,10 +88,4 @@ const onUpdateUser = async (userId, change) => {
     await Promise.all(promises)
 }
 
-module.exports = {
-    onUpdateUser,
-    userBecameActive,
-    heartbeatUserScheduleChanged,
-    searchIndexedFieldsChanged,
-    SEARCH_INDEXED_USER_FIELDS,
-}
+module.exports = { onUpdateUser, heartbeatUserScheduleChanged, searchIndexedFieldsChanged, SEARCH_INDEXED_USER_FIELDS }

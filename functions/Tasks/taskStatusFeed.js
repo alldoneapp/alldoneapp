@@ -6,7 +6,6 @@ const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { FEED_TASK_CHECKED_DONE, FEED_TASK_UNCHECKED_DONE } = require('../Feeds/FeedsConstants')
 const { createTaskUpdatedFeed } = require('../Feeds/tasksFeeds')
 const { loadFeedsGlobalState } = require('../GlobalState/globalState')
-const { getLastEditorChannelFields } = require('../shared/mcpActor')
 
 const normalizeTaskForFeeds = task => {
     const estimations = task?.estimations ? { ...task.estimations } : { Open: 0 }
@@ -61,8 +60,6 @@ async function persistTaskStatusFeed({ projectId, taskId, oldTask, newTask, data
         uid: actorId,
         displayName: actor.displayName || newTask.lastEditorName || 'Alldone',
         photoURL: actor.photoURL || '',
-        // Completed by the user's MCP client: the feed says so, and it notifies the user too.
-        ...getLastEditorChannelFields(newTask),
     }
 
     loadFeedsGlobalState(admin, admin, feedCreator, project, [], null)

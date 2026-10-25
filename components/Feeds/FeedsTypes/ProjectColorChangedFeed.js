@@ -11,8 +11,7 @@ import {
     generatorParserTextElement,
     generatorParserViewElement,
 } from '../Utils/HelperFunctions'
-import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
-import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
+import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 
 export default function ProjectColorChangedFeed({
     feed,
@@ -26,7 +25,7 @@ export default function ProjectColorChangedFeed({
     const [width, setWidth] = useState(0)
     const { newColor, oldColor, creatorId } = feed
 
-    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
+    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
 
     const elementsData = []
 
