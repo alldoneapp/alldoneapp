@@ -22,6 +22,7 @@ const LINKED_PARENT_FIELDS = [
     'linkedParentGoalsIds',
     'linkedParentSkillsIds',
     'linkedParentAssistantIds',
+    'linkedParentArtifactsIds',
     // Preserve the misspelled legacy field used by a small number of old documents.
     'linkedParentAsistantIds',
 ]
@@ -36,6 +37,8 @@ const OBJECT_COLLECTIONS = [
     { root: 'projectsContacts', child: 'contacts' },
     { root: 'skills', child: 'items' },
     { root: 'okrs', child: 'projectOkrs' },
+    // Appended, not inserted: a membership sync in flight stores its position as an index here.
+    { root: 'artifactItems', child: 'artifacts', followerField: 'isVisibleInFollowedFor' },
 ]
 
 function withoutAccessProjection(objectData = {}) {

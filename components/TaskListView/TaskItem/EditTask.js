@@ -133,6 +133,7 @@ export default function EditTask({
         linkedParentGoalsUrl: [],
         linkedParentSkillsUrl: [],
         linkedParentAssistantsUrl: [],
+        linkedParentArtifactsUrl: [],
     })
     const [linkedObjects, setLinkedObjects] = useState({
         initialLinkedTasksUrl: [],
@@ -371,7 +372,8 @@ export default function EditTask({
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         const extendedName = text.replace(/\r?\n|\r/g, '')
 
@@ -383,6 +385,7 @@ export default function EditTask({
             linkedParentGoalsUrl,
             linkedParentSkillsUrl,
             linkedParentAssistantsUrl,
+            linkedParentArtifactsUrl,
         })
 
         setTmpTask({ ...tmpTask, extendedName, name: TasksHelper.getTaskNameWithoutMeta(extendedName) })

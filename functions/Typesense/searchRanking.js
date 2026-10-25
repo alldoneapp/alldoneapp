@@ -11,6 +11,7 @@ const EXACT_MATCH_FIELDS = {
     dev_notes: ['title'],
     dev_contacts: ['displayName', 'role', 'company'],
     dev_updates: ['cleanName'],
+    dev_artifacts: ['title'],
 }
 
 const buildRecencySortBy = (collection, query, queryBy) => {

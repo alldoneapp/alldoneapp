@@ -71,6 +71,9 @@ function getObjectDocPath(projectId, objectType, objectId) {
         case 'skills':
         case 'skill':
             return `skills/${projectId}/items/${objectId}`
+        case 'artifacts':
+        case 'artifact':
+            return `artifactItems/${projectId}/artifacts/${objectId}`
         case 'chats':
         case 'topics':
         case 'chat':

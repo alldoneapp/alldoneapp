@@ -37,6 +37,7 @@ import {
     NOTES_INDEX_NAME_PREFIX,
     TASKS_INDEX_NAME_PREFIX,
 } from './searchHelper'
+import { ARTIFACTS_INDEX_NAME_PREFIX, GLOBAL_SEARCH_ARTIFACTS_TAB } from './searchIndexes'
 import { buildTypesenseSearchFilters } from './typesenseSearchFilters'
 import { multiSearchTypesense, warmTypesenseSearchCredentials } from '../../utils/typesenseSearch'
 import Backend from '../../utils/BackendBridge'
@@ -131,6 +132,7 @@ export default function GlobalSearchModal() {
         [MENTION_MODAL_NOTES_TAB]: false,
         [MENTION_MODAL_TASKS_TAB]: false,
         [MENTION_MODAL_TOPICS_TAB]: false,
+        [GLOBAL_SEARCH_ARTIFACTS_TAB]: false,
     })
     const [tasksResult, setTasksResult] = useState({})
     const [tasksResultAmount, setTasksResultAmount] = useState(0)
@@ -142,6 +144,8 @@ export default function GlobalSearchModal() {
     const [contactsResultAmount, setContactsResultAmount] = useState(0)
     const [chatsResult, setChatsResult] = useState({})
     const [chatsResultAmount, setChatsResultAmount] = useState(0)
+    const [artifactsResult, setArtifactsResult] = useState({})
+    const [artifactsResultAmount, setArtifactsResultAmount] = useState(0)
 
     const [activeItemData, setActiveItemData] = useState({ projectId: '', activeIndex: -1 })
     const [showSelectProjectModal, setShowSelectProjectModal] = useState(false)
@@ -300,7 +304,8 @@ export default function GlobalSearchModal() {
             !processing?.[MENTION_MODAL_GOALS_TAB] &&
             !processing?.[MENTION_MODAL_NOTES_TAB] &&
             !processing?.[MENTION_MODAL_CONTACTS_TAB] &&
-            !processing?.[MENTION_MODAL_TOPICS_TAB]
+            !processing?.[MENTION_MODAL_TOPICS_TAB] &&
+            !processing?.[GLOBAL_SEARCH_ARTIFACTS_TAB]
         ) {
             showNextPositiveResultsTab()
         }
@@ -322,11 +327,13 @@ export default function GlobalSearchModal() {
                 if (inactive) {
                     const { parentObject } = object
                     const url =
-                        objectType === 'notes' && parentObject
-                            ? `/projects/${activeItemData.projectId}/${convertNoteObjectType(parentObject.type)}/${
-                                  parentObject.id
-                              }/note`
-                            : getDvMainTabLink(activeItemData.projectId, objectId, objectType)
+                        objectType === 'artifacts'
+                            ? `/projects/${activeItemData.projectId}/artifacts/${objectId}`
+                            : objectType === 'notes' && parentObject
+                              ? `/projects/${activeItemData.projectId}/${convertNoteObjectType(parentObject.type)}/${
+                                    parentObject.id
+                                }/note`
+                              : getDvMainTabLink(activeItemData.projectId, objectId, objectType)
 
                     ProjectHelper.navigateToInactiveProject(projectType, url)
                 } else {
@@ -386,6 +393,13 @@ export default function GlobalSearchModal() {
                 resultsAmount: chatsResultAmount,
                 objectType: 'chats',
                 detailedViewType: 'chat',
+            }
+        } else if (activeTab === GLOBAL_SEARCH_ARTIFACTS_TAB) {
+            return {
+                resultsByProject: artifactsResult,
+                resultsAmount: artifactsResultAmount,
+                objectType: 'artifacts',
+                detailedViewType: 'artifact',
             }
         }
     }
@@ -664,6 +678,16 @@ export default function GlobalSearchModal() {
                 setResultsAmount: setChatsResultAmount,
                 tab: MENTION_MODAL_TOPICS_TAB,
             },
+            {
+                indexPrefix: ARTIFACTS_INDEX_NAME_PREFIX,
+                setResults: setArtifactsResult,
+                setResultsAmount: setArtifactsResultAmount,
+                tab: GLOBAL_SEARCH_ARTIFACTS_TAB,
+                // Its own request: the scoped search key allows eight engine searches per
+                // request, which the five original tabs already use up, and a collection that
+                // does not exist yet must not take the other tabs down with it.
+                separateRequest: true,
+            },
         ]
 
         tabsConfig.forEach(({ setResults, setResultsAmount }) => {
@@ -694,19 +718,41 @@ export default function GlobalSearchModal() {
 
         setSearchOfflineNotice(false)
         setSearchErrorNotice(false)
+        const toEngineSearch = ({ indexPrefix, filterBy }) => ({
+            collection: indexPrefix,
+            query,
+            filterBy,
+            // Lead each tab with the objects whose NAME matches, ahead of the ones
+            // that merely mention the query somewhere in their body (AT-2527).
+            // Nothing is filtered out — see mergeIdentityFirstHits.
+            identityFirst: true,
+        })
+        const mainTabs = searchableTabs.filter(config => !config.separateRequest)
+        const separateTabs = searchableTabs.filter(config => config.separateRequest)
+        // A separate tab that fails shows no results; it never turns the whole search into an
+        // error, since the main tabs carry what the user came for.
+        separateTabs.forEach(config => {
+            multiSearchTypesense([toEngineSearch(config)])
+                .then(([result]) => result.hits)
+                .catch(error => {
+                    console.log('Typesense search failed for', config.indexPrefix, error.message)
+                    return []
+                })
+                .then(hits =>
+                    applySearchHits(
+                        config.indexPrefix,
+                        hits,
+                        config.setResults,
+                        config.setResultsAmount,
+                        config.tab,
+                        searchInstanceId
+                    )
+                )
+        })
+        if (mainTabs.length === 0) return
         try {
-            const results = await multiSearchTypesense(
-                searchableTabs.map(({ indexPrefix, filterBy }) => ({
-                    collection: indexPrefix,
-                    query,
-                    filterBy,
-                    // Lead each tab with the objects whose NAME matches, ahead of the ones
-                    // that merely mention the query somewhere in their body (AT-2527).
-                    // Nothing is filtered out — see mergeIdentityFirstHits.
-                    identityFirst: true,
-                }))
-            )
-            searchableTabs.forEach((config, index) => {
+            const results = await multiSearchTypesense(mainTabs.map(toEngineSearch))
+            mainTabs.forEach((config, index) => {
                 applySearchHits(
                     config.indexPrefix,
                     results[index].hits,
@@ -729,6 +775,7 @@ export default function GlobalSearchModal() {
                 [MENTION_MODAL_NOTES_TAB]: false,
                 [MENTION_MODAL_TASKS_TAB]: false,
                 [MENTION_MODAL_TOPICS_TAB]: false,
+                [GLOBAL_SEARCH_ARTIFACTS_TAB]: false,
             })
         }
     }
@@ -740,6 +787,7 @@ export default function GlobalSearchModal() {
             notesResultAmount,
             contactsResultAmount,
             chatsResultAmount,
+            artifactsResultAmount,
         ]
         if (tabResults[activeTab] === 0) {
             for (let resultIdx in tabResults) {
@@ -763,6 +811,7 @@ export default function GlobalSearchModal() {
                 [MENTION_MODAL_NOTES_TAB]: true,
                 [MENTION_MODAL_TASKS_TAB]: true,
                 [MENTION_MODAL_TOPICS_TAB]: true,
+                [GLOBAL_SEARCH_ARTIFACTS_TAB]: true,
             })
             setActiveItemData({ projectId: '', activeIndex: -1 })
 
@@ -957,6 +1006,8 @@ export default function GlobalSearchModal() {
                 contactsResult={contactsResult}
                 chatsResultAmount={chatsResultAmount}
                 chatsResult={chatsResult}
+                artifactsResultAmount={artifactsResultAmount}
+                artifactsResult={artifactsResult}
                 activeItemData={activeItemData}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}

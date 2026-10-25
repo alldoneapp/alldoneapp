@@ -45,6 +45,12 @@ export const TYPESENSE_QUERY_CONFIG = {
         identity_query_by: 'cleanName',
         num_typos: 0,
     },
+    // Artifacts: the title names one, the description and the entry file's text are its body.
+    dev_artifacts: {
+        query_by: 'title,description,content',
+        identity_query_by: 'title',
+        num_typos: 2,
+    },
 }
 
 // Global search queries five collections at once. Twenty results per collection is ample

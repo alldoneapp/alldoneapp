@@ -337,7 +337,8 @@ service cloud.firestore {
 
     function isStoredCommentParentType(chatType) {
       return chatType == 'tasks' || chatType == 'notes' || chatType == 'goals' ||
-        chatType == 'topics' || chatType == 'contacts' || chatType == 'users' || chatType == 'skills';
+        chatType == 'topics' || chatType == 'contacts' || chatType == 'users' || chatType == 'skills' ||
+        chatType == 'artifacts';
     }
 
     function isContactCommentParentType(chatType) {
@@ -357,7 +358,9 @@ service cloud.firestore {
                 ? /databases/$(database)/documents/projectsContacts/$(projectId)/contacts/$(objectId)
                 : chatType == 'skills'
                   ? /databases/$(database)/documents/skills/$(projectId)/items/$(objectId)
-                  : /databases/$(database)/documents/invalidCommentParents/invalid/objects/$(objectId);
+                  : chatType == 'artifacts'
+                    ? /databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(objectId)
+                    : /databases/$(database)/documents/invalidCommentParents/invalid/objects/$(objectId);
     }
 
     function assistantCommentParentExists(projectId, objectId) {
@@ -578,6 +581,55 @@ service cloud.firestore {
         canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged();
       allow delete: if canProbeMissingObject(projectId) ||
         canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+    }
+
+    // Project artifacts (functions/Artifacts/artifactModel.js). Read exactly like notes. Only Cloud
+    // Functions create artifacts and write their versions; a member may edit the metadata (title,
+    // description, privacy, star, followers) but never the server-owned fields: the serve secret
+    // that makes up the artifact's address, and the pointer to and description of its current
+    // version, which decide what serveArtifact serves and whether it is sandboxed.
+    function artifactServerFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'serveSecret', 'serveSecretRotatedAt', 'currentVersionId', 'versionCount', 'kind', 'mimeType',
+        'entryPath', 'sizeBytes', 'fileCount', 'source', 'creatorId', 'created', 'creatorAssistantId',
+        'vmOutputKey', 'parentObject', 'dataAccess'
+      ]);
+    }
+
+    match /artifactItems/{projectId}/artifacts/{artifactId} {
+      allow get: if canProbeMissingObject(projectId);
+      allow read: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) ||
+        canReadSharedObject(projectId, resource.data);
+      allow create: if false;
+      allow update: if canAccessObjectWhileProjectionIsPending(projectId, resource.data) &&
+        canWriteObject(projectId, request.resource.data) && accessProjectionUnchanged() &&
+        artifactServerFieldsUnchanged();
+      allow delete: if canProbeMissingObject(projectId) ||
+        canAccessObjectWhileProjectionIsPending(projectId, resource.data);
+
+      match /versions/{versionId} {
+        allow read: if canAccessObjectWhileProjectionIsPending(
+            projectId,
+            get(/databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(artifactId)).data
+          ) || canReadSharedObject(
+            projectId,
+            get(/databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(artifactId)).data
+          );
+        allow write: if false;
+      }
+
+      // What happened to the artifact, written only by Cloud Functions (functions/Artifacts/
+      // artifactHistory.js) and readable exactly like its versions.
+      match /history/{eventId} {
+        allow read: if canAccessObjectWhileProjectionIsPending(
+            projectId,
+            get(/databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(artifactId)).data
+          ) || canReadSharedObject(
+            projectId,
+            get(/databases/$(database)/documents/artifactItems/$(projectId)/artifacts/$(artifactId)).data
+          );
+        allow write: if false;
+      }
     }
 
     match /noteItemsVersions/{projectId}/{noteId}/{versionId} {

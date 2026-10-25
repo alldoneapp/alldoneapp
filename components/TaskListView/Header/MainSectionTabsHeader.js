@@ -13,7 +13,7 @@ import { hideFloatPopup, hideWebSideBar, setSelectedSidebarTab, storeCurrentUser
 import store from '../../../redux/store'
 import { dismissAllPopups } from '../../../utils/HelperFunctions'
 import {
-    DV_TAB_ROOT_CHATS,
+    DV_TAB_ROOT_ARTIFACTS,
     DV_TAB_ROOT_CONTACTS,
     DV_TAB_ROOT_GOALS,
     DV_TAB_ROOT_NOTES,
@@ -26,10 +26,19 @@ import { allGoals } from '../../AllSections/allSectionHelper'
  * Spanish ("Aufgaben Ziele Notizen Kontakte Chats" needs ~372px at 16px + 10px padding, and a
  * 390px phone leaves the card ~336px). English only just fits, which is why it was never noticed.
  * The mobile layout above this width keeps the centred scroller; below it the tabs become a fixed
- * single row with 15px labels, 1px tab padding and 5px card padding per side, leaving room for all
- * three languages even in the narrower project navigation on a 320px phone.
+ * single row with 15px labels, 1px tab padding and 5px card padding per side.
  */
 export const COMPACT_TABS_BREAKPOINT = 420
+
+/**
+ * Below this width even the compact row cuts labels off: "Artefakte" / "Artefactos" took the Chats
+ * slot, and at 15px the German and Spanish labels alone need ~273-277px while a project on a 320px
+ * phone gives the card 272px (16px view margin + 8px navigation padding a side). Measured in
+ * Chromium with the app's Roboto, 15px stops fitting at ~357px. Under this width the labels drop to
+ * 13px and lose their own padding, and the space-between row keeps a ~7px gap between them.
+ * `browser-tests/section-tabs` measures every language at these widths.
+ */
+export const TIGHT_TABS_BREAKPOINT = 360
 
 export default function MainSectionTabsHeader({
     showSectionToggle = false,
@@ -52,13 +61,15 @@ export default function MainSectionTabsHeader({
     const availableWidth = workspaceWidth > 0 ? workspaceWidth : viewportWidth
     const useMobileLayout = availableWidth < SCREEN_BREAKPOINT_NAV
     const useCompactMobileTabs = useMobileLayout && availableWidth < COMPACT_TABS_BREAKPOINT
+    const useTightMobileTabs = useCompactMobileTabs && availableWidth < TIGHT_TABS_BREAKPOINT
     const useCompactDesktopTabs = !useMobileLayout && availableWidth < 1500
     const tabs = [
         { text: 'Tasks', value: DV_TAB_ROOT_TASKS },
         { text: 'Goals', value: DV_TAB_ROOT_GOALS },
         { text: 'Notes', value: DV_TAB_ROOT_NOTES },
         { text: 'Contacts', value: DV_TAB_ROOT_CONTACTS },
-        { text: 'Chats', value: DV_TAB_ROOT_CHATS },
+        // Artifacts took the Chats slot; Chats stays in the sidebar and behind the top bar's button.
+        { text: 'Artifacts', value: DV_TAB_ROOT_ARTIFACTS },
     ]
 
     const inAllProjects = checkIfSelectedAllProjects(selectedProjectIndex)
@@ -101,7 +112,7 @@ export default function MainSectionTabsHeader({
         dispatch(actionsToDispatch)
     }
 
-    const renderMobileTabs = compact =>
+    const renderMobileTabs = (compact, tight = false) =>
         tabs.map(tab => {
             const selected = selectedSidebarTab === tab.value
             return (
@@ -111,6 +122,7 @@ export default function MainSectionTabsHeader({
                         localStyles.tabButton,
                         localStyles.tabButtonMobile,
                         compact && localStyles.tabButtonCompact,
+                        tight && localStyles.tabButtonTight,
                         selected && localStyles.tabButtonSelected,
                     ]}
                     onPress={() => onPressSectionTab(tab.value)}
@@ -122,6 +134,7 @@ export default function MainSectionTabsHeader({
                             localStyles.tabText,
                             localStyles.tabTextMobile,
                             compact && localStyles.tabTextCompact,
+                            tight && localStyles.tabTextTight,
                             selected && localStyles.tabTextSelected,
                         ]}
                         numberOfLines={1}
@@ -135,7 +148,13 @@ export default function MainSectionTabsHeader({
     return (
         <View style={localStyles.container}>
             {useMobileLayout ? (
-                <View style={[localStyles.controlsRowMobile, useCompactMobileTabs && localStyles.controlsRowCompact]}>
+                <View
+                    style={[
+                        localStyles.controlsRowMobile,
+                        useCompactMobileTabs && localStyles.controlsRowCompact,
+                        useTightMobileTabs && localStyles.controlsRowTight,
+                    ]}
+                >
                     {useCompactMobileTabs ? (
                         <View
                             style={[
@@ -144,7 +163,7 @@ export default function MainSectionTabsHeader({
                                 !accessGranted && localStyles.tabsContainerDisabled,
                             ]}
                         >
-                            {renderMobileTabs(true)}
+                            {renderMobileTabs(true, useTightMobileTabs)}
                         </View>
                     ) : (
                         <ScrollView
@@ -263,6 +282,9 @@ const localStyles = StyleSheet.create({
     controlsRowCompact: {
         paddingHorizontal: 5,
     },
+    controlsRowTight: {
+        paddingHorizontal: 3,
+    },
     tabsRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -313,6 +335,9 @@ const localStyles = StyleSheet.create({
         flexShrink: 1,
         minWidth: 0,
     },
+    tabButtonTight: {
+        paddingHorizontal: 0,
+    },
     tabButtonSelected: {
         borderBottomColor: colors.Primary100,
     },
@@ -327,6 +352,10 @@ const localStyles = StyleSheet.create({
         fontSize: 15,
         lineHeight: 22,
         letterSpacing: 0,
+    },
+    tabTextTight: {
+        fontSize: 13,
+        lineHeight: 20,
     },
     tabTextSelected: {
         color: colors.Text01,

@@ -8,3 +8,8 @@ export const GOALS_INDEX_NAME_PREFIX = 'dev_goals'
 export const NOTES_INDEX_NAME_PREFIX = 'dev_notes'
 export const CONTACTS_INDEX_NAME_PREFIX = 'dev_contacts'
 export const CHATS_INDEX_NAME_PREFIX = 'dev_updates'
+export const ARTIFACTS_INDEX_NAME_PREFIX = 'dev_artifacts'
+
+// Global search's own sixth tab. The other five share their numbers with the @-mention picker
+// (MENTION_MODAL_*_TAB in textInputHelper.js), which has no artifacts tab, so this one lives here.
+export const GLOBAL_SEARCH_ARTIFACTS_TAB = 5

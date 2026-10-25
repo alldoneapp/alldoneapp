@@ -46,6 +46,11 @@ describe('Required Firestore indexes', () => {
                 [C, asc('parentDone'), asc('userId'), asc('completed')],
             ],
             ['tasks', 'Done tab: show-more probe (doneTasks.js)', [C, asc('inDone'), asc('userId'), asc('completed')]],
+            [
+                'tasks',
+                'Artifact live data: open tasks by due date (artifactBridgeData.js)',
+                [C, asc('done'), asc('parentId'), asc('dueDate')],
+            ],
             ['tasks', 'Goal DV tasks by creation (firestore.js)', [C, asc('parentGoalId'), desc('created')]],
             ['tasks', 'Subtasks by sort order (firestore.js)', [C, asc('parentId'), desc('sortIndex')]],
             [

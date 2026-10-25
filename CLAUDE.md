@@ -603,6 +603,124 @@ under different names: a `wikiMarkdown.js` next to `WikiMarkdown.js` collides on
 case-insensitive filesystem. The renderer is deliberately self-written (no Markdown dependency, no
 HTML): page links, source chips and http(s) links are the only interactive output.
 
+### Project artifacts are code, and are never served from the app's origin
+
+The **Artefakte** tab (`components/ArtifactsView/`, `functions/Artifacts/`, plan and decisions in
+`ARTIFACTS_PLAN.md`) took the Chats slot in the five root tabs; Chats stays in the sidebar and behind
+the top bar's button. An artifact is what a project produced — an HTML dashboard, a report, a PDF,
+an image — at `artifactItems/{projectId}/artifacts/{id}`, with immutable versions in a `versions`
+subcollection and bytes at `artifacts/{projectId}/{id}/{versionId}/…` in Storage. It is read and its
+metadata edited exactly like a note (`isPublicFor` + the server-owned `readerIds` projection; the
+collection is in `OBJECT_COLLECTIONS`), and it opens in place at `/projects/{projectId}/artifacts/{id}`.
+
+**`serveArtifact` must never be reachable on an alldone.app host.** An HTML or SVG artifact is code
+a model wrote or somebody uploaded; on `my.alldone.app` it would run with the viewer's Firebase
+session (IndexedDB on that origin) and could do anything the viewer can — and assistants read
+email, so a crafted message can steer one into building such a page. The function is addressed by
+its own `cloudfunctions.net` URL (`getArtifactServeBaseUrl`), active types (`ACTIVE_MIME_TYPES`)
+get `Content-Security-Policy: sandbox …` **without** `allow-same-origin`, and `ArtifactPreview`
+frames them with the same flags. Never add `allow-same-origin` or `allow-top-navigation` to either:
+without the sandbox, every artifact on the shared function origin would get real storage and could
+read every other artifact's. A PDF is framed without the sandbox only because Chrome refuses to
+render one inside it. The type is derived from the file extension on the server, never taken from
+the client, because it decides whether a response is sandboxed. `browser-tests/artifacts` proves
+all of this in Chromium and is mutation-checked.
+
+**The address is the capability, like a note attachment's download-token URL.** Files live at
+`/a/{projectId}/{artifactId}/{serveSecret}/{path}` (`~{versionId}/` pins a version), so relative
+links inside a multi-file artifact resolve without a cookie. `serveSecret` rotates whenever anybody
+loses read access (`rotateServeSecretOnLostReaders` in the update trigger compares `readerIds`
+before and after, which covers turning private, a narrower audience and a member leaving, because
+the membership sync rewrites `readerIds`) and on "Reset link". Artifact bytes get **no** download
+token; reads go only through the function. `serveArtifact` caches an artifact document for 60s per
+instance, so a rotation lands within a minute.
+
+**Only Cloud Functions create artifacts and write versions and bytes** (`commitArtifactVersion`,
+`restoreArtifactVersion`, `resetArtifactLink`); `firestore.rules` refuses a client create and any
+client update touching a server-owned field (`artifactServerFieldsUnchanged`, mirrored by
+`ARTIFACT_SERVER_FIELDS` in `artifactModel.js`). Files reach the server base64-encoded inside the
+callable request, so an upload is capped at 20 MB (`MAX_ARTIFACT_UPLOAD_BYTES`) — deliberately, since
+Storage rules are console-managed and not in this repo, and a client-side staging upload would depend
+on them. The list queries carry one `array-contains` on `readerIds`/`followedReaderIds` and sort on
+the client, so no composite index is needed. Pinned by `functions/Artifacts/*.test.js`, the
+`project artifacts` block of the rules emulator suite and `components/ArtifactsView/*.test.js`.
+
+**Assistants write artifacts through the same commit as an upload.** One Tools Access key,
+`artifacts`, fans out to `get_artifacts`, `read_artifact`, `create_artifact` and `update_artifact`
+(`Artifacts/artifactToolSchemas.js`, executed by `artifactAssistant.js`; MCP lists the four names
+individually because an MCP caller has no assistant document). A tool acts for the **requesting
+user**, who must be a project member and becomes the owner; the assistant is recorded as the
+server-owned `creatorAssistantId` (and starts out as the artifact's thread `assistantId`, which stays
+client-editable like on every other object, because the chat assigns it). An artifact made in a private thread is private, and a thread that cannot
+be read counts as private, so an unknown thread never widens the audience. `update_artifact` sends
+only the change — exact `edits` (each `find` must occur once), whole `files`, `removePaths` — and
+`commitArtifactVersion({ keepUnchangedFiles })` copies every other file inside the bucket; the version
+the edits were made against (`baseVersionId`) is checked again in the commit transaction, so a
+concurrent version fails as `aborted` instead of being silently dropped. Results carry the **in-app**
+URL, never the serve URL: that one is the capability, and a chat can be readable by more people than
+the artifact. Existing assistants store their own `allowedTools` and get the key only through
+`migration/enableArtifactToolForAssistants.js` (dry run by default) or the checkbox.
+
+**"Save as artifact" copies an attachment the server already stores, and the URL is the only
+input** (`Artifacts/attachmentPromotion.js`, callable `saveAttachmentAsArtifact`). It is checked
+before a byte is read: `firebasestorage.googleapis.com`, this project's default bucket (no fetching
+of arbitrary URLs), a path under `attachments/`, `feedAttachments/` or `notesAttachments/`, and a
+`token` that is one of the file's own `firebaseStorageDownloadTokens` — the token is what makes an
+attachment URL a capability, so a wrong token answers exactly like a missing file. The copy is
+**private** to the person saving it, because the conversation may be readable by fewer people than
+the project. The chip action (`components/Tags/SaveAttachmentAsArtifactButton.js`) appears where
+`CommentElementsParser` renders with `inChat`, and inside the attachment blot only for a file
+uploaded into a note (`isNoteAttachmentUri`, i.e. `notesAttachments/`): a comment composer's chip
+is a draft. A blot is created without a project, so the chip resolves it from
+`quillTextInputProjectIdsByEditorId[editorId]`, which `NotesEditorView` registers; pinned by
+`formats/attachmentSaveAsArtifact.test.js` (a real quill 2 and the real blot).
+
+**An artifact is a full chat object (`artifacts`), so every object-type switch needs a case for
+it.** Comments live at `chatComments/{p}/artifacts/{id}`, followers at `followers/{p}/artifacts/{id}`;
+`chatsComments.js`, `getObject`, `setObjectAssistantEnabled`, the comment popup header and
+`LastObjectEditionHelper` each carry an `artifacts` branch. A missing one does not throw — the
+comment is stored and the artifact's preview, unread state or assistant reply silently stops. The
+artifact delete trigger also deletes its chat and clears `linkedParentArtifactsIds` backlinks.
+
+**Its history is a server record, and a version event is written in the version's own
+transaction** (`Artifacts/artifactHistory.js`, `…/artifacts/{id}/history`, no client write). Metadata
+edits a member makes straight in Firestore are derived by the update trigger under ids keyed on the
+trigger event, so a redelivery overwrites instead of duplicating; an update that moved the current
+version records nothing there, because the commit already wrote its entry.
+
+**Live project data hands viewer data to model-written code, and four rules keep that safe**
+(`Artifacts/artifactDataBridge.js`, host in `useArtifactDataBridge.js`, queries in
+`artifactBridgeData.js`). (1) The locked-down CSP follows the **address** (`?alldone-bridge=1`), not the
+artifact document — serveArtifact caches documents for 60s and browsers cache responses, so a policy
+decided by the document could be stale exactly when data is handed over. Never make the bridge
+answer a frame loaded without that parameter. (2) Only **project-shared** objects
+(`readerIds` contains 0) are returned, never private ones, because a page can still navigate its
+frame away with data in the URL, and WebRTC/DNS prefetching are beyond any page policy. (3) Only the
+document that said hello first is answered; a second hello ends the conversation. A load counter
+alone is not enough — a navigated document's scripts run before its `load` event, which
+`browser-tests/artifacts/bridge.js` caught. (4) `dataAccess` is server-owned and only the owner
+switches it (`setArtifactDataAccess`, or a commit by the owner). Run
+`node browser-tests/artifacts/bridge.js` after touching any of this; its control page must still
+reach the attacker server, or the "blocked" checks prove nothing.
+
+**The whole feature has an end-to-end run against the local emulators**
+(`node browser-tests/artifacts/e2e.js`, with `npm run emulators` and `npm run dev:web` running): it
+resets the LOCAL emulators, signs in, uploads a dashboard, checks the sandboxed preview, live data
+through the bridge, the backlink, the chat, the history, a reload onto a section, "Change with
+assistant" and the preview card in a note — 29 checks, screenshots in `ARTIFACT_E2E_SHOTS`. It signs
+in by storing an Auth-emulator session in `firebaseLocalStorageDb` instead of clicking through the
+Google widget, whose redirect needs apis.google.com. The dev build needs a filled `.env` (at least
+`GOOGLE_FIREBASE_WEB_PROJECT_ID=alldonestaging`, a parseable `GOOGLE_FIREBASE_WEB_DATABASE_URL` and
+`GOOGLE_FIREBASE_WEB_API_KEY=local-emulator-only`); an empty one boots to an endless loading screen
+(`projects//databases`). It found two bugs unit tests could not: an uploaded artifact opened without
+its address, and `awardXpSecondGen` failing on every comment locally because the Functions emulator
+drops `admin.firestore.FieldValue` — use `require('firebase-admin/firestore').FieldValue`.
+
+**A link to an artifact in a note can be a chip or a live card** (`formats/artifactEmbed.js`,
+`ArtifactsView/artifactNoteEmbed.js`). Both carry the in-app URL, so `scanLinkedObjects` records a
+backlink for either; the card is mounted through `renderEmbedContent` and reads the artifact with the
+viewer's own access.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:
@@ -3168,6 +3286,7 @@ VM agent templates and CLI updates: the runner always uses E2B's managed `claude
     - **Race + crash safety**: if a runner ever starts on a thread already held by another live job (the rare dispatch/claim race), it re-queues itself to the **front** and throws `VmThreadBusyError` — a clean deferral (no failure comment, no refund), relaunched by the current owner's drain. `drainStalledVmThreadQueues` (`onSchedule` every 2 min, `index.js`) is the crash backstop: it advances any thread with `queueLength > 0` whose lease has expired (owner died without draining) and relaunches the next job. A launch that fails definitively (or an ambiguous launch the reconciler later fails) also advances the queue so a follow-up is never wedged behind a job that never started.
     - **Cancellation**: cancelling a **queued** job (`cancelAssistantRunSecondGen` in `index.js`) settles it as `cancelled`, refunds the base Gold, removes it from the thread queue, and finalizes its status comment — it never sets `cancel_requested` (no runner would process it).
 - **File/artifact return**: the agent is told to save deliverable files to `/home/user/output/` only when the user requested a file or the work genuinely produces an artifact; normal chat answers should stay in the final message with no generated output file. Before tearing down the sandbox, the worker pulls those files out (`sandbox.files.list/read`), uploads them to Firebase Storage at `attachments/{commentId}/{file}` (with a `firebaseStorageDownloadTokens` metadata token), and attaches them to the result comment. **Inline downloadable rendering requires embedding an attachment token in the comment text** — `${ATTACHMENT_TRIGGER}{url}${ATTACHMENT_TRIGGER}{name}${ATTACHMENT_TRIGGER}false` (trigger `EbDsQTD14ahtSR5`, see `components/Feeds/Utils/HelperFunctions.js`), which the chat parses into a `FileDownloadableTag`. The `mediaContext` array alone does NOT render an inline download, and a bare filename in the text gets auto-linkified to a bogus URL by `REGEX_URL`, so always use the token. We also store `mediaContext` for the assistant read-side. Caps: 10 files, 20 MB/file, 40 MB total. Uses the existing `roles/storage.admin` on the firebase-adminsdk SA.
+- **The same deliverables also become project artifacts** (`Artifacts/vmArtifactPublisher.js`, additive: the chat attachments above are unchanged). A top-level folder in `/home/user/output/` holding an `index.html` is one web bundle, an `index.html` at the top makes the whole output one site, every other file is its own artifact. Each artifact carries the server-owned `vmOutputKey` (`{objectType}/{objectId}/{outputPath}`), so the next run in the same thread that writes the same folder or file saves a new version instead of a copy. Only groups the run touched are published, and a touched bundle is published whole (a version is a complete snapshot); the bytes are read while the sandbox is alive (`collectOutputArtifactGroups`, reusing what the attachments already read) and committed after the run. Owner is the requesting user, privacy follows the thread, the in-app links are appended under the answer and to the WhatsApp/origin notifications. Every step is best effort: a publishing failure is logged and never fails the run. Lives in the `vm-job-runner` image, so it ships with the next runner rebuild.
 - **Gold pricing is hybrid + metered** (`VM_JOB_BASE_GOLD` + `VM_GOLD_PER_MINUTE` + `VM_TOKENS_PER_GOLD` in `vmJob.js`): 20 Gold is charged up-front in `startVmJob` (refunded on failure), then the worker charges 10 Gold per started execution minute plus `round(totalTokens / tokensPerGold)` on completion. Tokens come from the agent's actual reported `usage` (Claude `result` event incl. `total_cost_usd`; Codex `turn.completed`), captured in the stream parser and stored on the `vmJobs` doc. When a personal Claude/Codex subscription is used, `tokenGoldTotal` is forced to zero; the 20 Gold base + 10 Gold per started VM minute still applies. API-billed token usage matches in-app assistant usage (100 tokens/Gold).
 - **Cloud Tasks IAM (three grants, NOT auto-configured by `firebase deploy`)** — all on the firebase-adminsdk SA (see gotcha above): (1) `roles/cloudtasks.enqueuer` at the **project level** (queue-scoped was observed not to be honored for firebase-admin's `enqueue()`), (2) `roles/iam.serviceAccountUser` on the SA itself (`actAs`, to mint the task's OIDC token), and (3) `roles/run.invoker` on the **`runvmjob`** Cloud Run service (gen2 lowercases the function name) so Cloud Tasks can invoke the worker. The denials surface one at a time as you fix them (`cloudtasks.tasks.create` → `iam.serviceAccounts.actAs` → `run.invoker`). Run `functions/e2b-template/grant-enqueuer.sh <projectId>` once per environment after deploy; it auto-detects the SA and applies all three.
 - **E2B SDK is pinned to `e2b@^1.x`** in `functions/package.json` — v2 cannot load under the CommonJS functions runtime (`ERR_REQUIRE_ESM` from its CJS bundle; `Dynamic require of node:url` from its ESM bundle under raw `node`). The Docker-free v2 **template build** tooling lives isolated in `functions/e2b-template/` (its own ESM package, run via `tsx`) and is excluded from the functions deploy via `firebase.json` `functions.ignore`.

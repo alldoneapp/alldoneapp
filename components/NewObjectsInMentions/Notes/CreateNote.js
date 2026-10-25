@@ -43,6 +43,7 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
     const [linkedParentGoalsUrl, setLinkedParentGoalsUrl] = useState([])
     const [linkedParentSkillsUrl, setLinkedParentSkillsUrl] = useState([])
     const [linkedParentAssistantsUrl, setLinkedParentAssistantsUrl] = useState([])
+    const [linkedParentArtifactsUrl, setLinkedParentArtifactsUrl] = useState([])
     const inputText = useRef()
 
     const cleanedTitle = note?.extendedTitle?.trim()
@@ -59,7 +60,8 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
         linkedParentProjectsUrl,
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
-        linkedParentAssistantsUrl
+        linkedParentAssistantsUrl,
+        linkedParentArtifactsUrl
     ) => {
         if (extendedTitle !== '') {
             setLinkedParentNotesUrl(linkedParentNotesUrl)
@@ -69,6 +71,7 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
             setLinkedParentGoalsUrl(linkedParentGoalsUrl)
             setLinkedParentSkillsUrl(linkedParentSkillsUrl)
             setLinkedParentAssistantsUrl(linkedParentAssistantsUrl)
+            setLinkedParentArtifactsUrl(linkedParentArtifactsUrl)
         }
         setNote(note => ({ ...note, extendedTitle }))
     }
@@ -140,6 +143,7 @@ export default function CreateNote({ projectId, containerStyle, selectItemToMent
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             { type: 'note', id: note.id }
         )

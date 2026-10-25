@@ -2765,6 +2765,13 @@ export const navigateToAllProjectsNotes = options => {
     return action
 }
 
+export const navigateToAllProjectsArtifacts = () => {
+    const action = {
+        type: 'Navigate to all projects artifacts',
+    }
+    return action
+}
+
 export const navigateToGoals = options => {
     const action = {
         type: 'Navigate to goals',

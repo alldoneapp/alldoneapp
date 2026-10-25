@@ -34,6 +34,12 @@ const MCP_DELEGATED_ASSISTANT_TOOLS = [
     'create_note',
     'update_note',
     'get_notes',
+    // Project artifacts. Listed individually like the browser tools: the `artifacts` Tools Access key
+    // belongs to an assistant document, which an MCP caller does not have.
+    'get_artifacts',
+    'read_artifact',
+    'create_artifact',
+    'update_artifact',
     // Contacts
     'update_contact',
     'get_contacts',

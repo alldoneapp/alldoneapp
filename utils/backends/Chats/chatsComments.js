@@ -20,6 +20,12 @@ import {
     resetSkillLastCommentData,
 } from '../Skills/skillsFirestore'
 import {
+    getArtifactData,
+    setArtifactAssistant,
+    updateArtifactLastCommentData,
+    resetArtifactLastCommentData,
+} from '../Artifacts/artifactsFirestore'
+import {
     addFollowerWithoutFeeds,
     earnGold,
     getDb,
@@ -77,6 +83,7 @@ import { setProjectLastChatActionDate } from '../Projects/projectsFirestore'
 import { getChatMeta, updateChatAssistant, updateChatData } from './chatsFirestore'
 import { BatchWrapper } from '../../../functions/BatchWrapper/batchWrapper'
 import {
+    FOLLOWER_ARTIFACTS_TYPE,
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
     FOLLOWER_GOALS_TYPE,
@@ -243,6 +250,17 @@ export const getParentObjectData = async (projectId, objectId, objectType) => {
                 followObjectsType = FOLLOWER_SKILLS_TYPE
             })
             break
+        case 'artifacts':
+            await getArtifactData(projectId, objectId).then(artifact => {
+                if (!artifact) return
+                object = artifact
+                isPublicFor = artifact.isPublicFor
+                assistantId = artifact.assistantId
+                parentObjectCreatorId = artifact.userId || artifact.creatorId
+                title = artifact.title
+                followObjectsType = FOLLOWER_ARTIFACTS_TYPE
+            })
+            break
         case 'assistants':
             const assistant = getAssistantInProject(projectId, objectId)
             if (!assistant) break
@@ -288,6 +306,10 @@ export const getParentObjectName = async (projectId, objectId, objectType) => {
             const skill = await getSkillData(projectId, objectId)
             if (skill) name = skill.extendedName
             break
+        case 'artifacts':
+            const artifact = await getArtifactData(projectId, objectId)
+            if (artifact) name = artifact.title
+            break
         case 'assistants':
             const assistant = getAssistantInProject(projectId, objectId)
             if (assistant) name = assistant.displayName
@@ -327,6 +349,9 @@ const updateParentObjectAssistantIfNeeded = (projectId, assistantId, objectId, o
                 break
             case 'skills':
                 setSkillAssistant(projectId, objectId, resolvedAssistantId, needGenerateUpdate)
+                break
+            case 'artifacts':
+                setArtifactAssistant(projectId, objectId, resolvedAssistantId)
                 break
         }
 
@@ -538,6 +563,7 @@ const queueParentCommentPreview = (batch, projectId, type, objectId, preview, co
         users: `projectsContacts/${projectId}/contacts/${objectId}`,
         skills: `skills/${projectId}/items/${objectId}`,
         assistants: `assistants/${projectId}/items/${objectId}`,
+        artifacts: `artifactItems/${projectId}/artifacts/${objectId}`,
     }
     if (paths[type]) batch.update(getDb().doc(paths[type]), data)
 }
@@ -1109,6 +1135,8 @@ const updateLastCommentDataOfChatParentObject = async (projectId, objectId, type
         await updateGoalLastCommentData(projectId, objectId, cleanedComment, commentType)
     } else if (type === 'notes') {
         await updateNoteLastCommentData(projectId, objectId, cleanedComment, commentType)
+    } else if (type === 'artifacts') {
+        await updateArtifactLastCommentData(projectId, objectId, cleanedComment, commentType)
     }
 }
 
@@ -1129,6 +1157,8 @@ export const repairChatMetadata = async (projectId, objectId, type) => {
         await resetGoalLastCommentData(projectId, objectId)
     } else if (type === 'notes') {
         await resetNoteLastCommentData(projectId, objectId)
+    } else if (type === 'artifacts') {
+        await resetArtifactLastCommentData(projectId, objectId)
     }
 }
 

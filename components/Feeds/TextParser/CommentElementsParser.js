@@ -153,6 +153,7 @@ export default function CommentElementsParser({
                                     uri={uri}
                                     style={elementSpace ? elementSpace : localStyles.element}
                                     inDetaliedView={inDetaliedView}
+                                    canSaveAsArtifact={!!inChat}
                                 />
                             )
                         } else if (type === IMAGE_ELEMENT) {

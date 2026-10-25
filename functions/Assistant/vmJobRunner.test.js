@@ -2351,6 +2351,65 @@ describe('VM runner artifact presentation', () => {
     })
 })
 
+describe('VM outputs as project artifacts', () => {
+    const OUT = '/home/user/output'
+    const RUN_START = 1_800_000_000_000
+    const file = (relativePath, text, { old = false } = {}) => ({
+        type: 'file',
+        name: relativePath.split('/').pop(),
+        path: `${OUT}/${relativePath}`,
+        size: Buffer.byteLength(text),
+        modifiedTime: new Date(old ? RUN_START - 3600000 : RUN_START + 1000).toISOString(),
+        text,
+    })
+    const sandboxWith = files => ({
+        files: {
+            list: jest.fn(async () => files),
+            read: jest.fn(async path => Buffer.from(files.find(entry => entry.path === path).text)),
+        },
+    })
+
+    test('publishes a touched bundle whole and reuses what was read for the chat attachments', async () => {
+        const files = [
+            file('dashboard/index.html', '<h1>v2</h1>'),
+            file('dashboard/style.css', 'h1{}', { old: true }),
+            file('old.pdf', '%PDF', { old: true }),
+        ]
+        const sandbox = sandboxWith(files)
+        const collected = await __private__.collectArtifacts(sandbox, 'job-1', RUN_START)
+        expect(collected.map(entry => entry.relativePath)).toEqual(['dashboard/index.html'])
+        sandbox.files.read.mockClear()
+
+        const groups = await __private__.collectOutputArtifactGroups(sandbox, 'job-1', RUN_START, collected)
+
+        expect(groups).toHaveLength(1)
+        expect(groups[0].outputPath).toBe('dashboard/')
+        expect(groups[0].files.map(entry => [entry.path, entry.bytes.toString()])).toEqual([
+            ['index.html', '<h1>v2</h1>'],
+            ['style.css', 'h1{}'],
+        ])
+        // Only the unchanged bundle file had to be read again.
+        expect(sandbox.files.read).toHaveBeenCalledTimes(1)
+        expect(sandbox.files.read).toHaveBeenCalledWith(`${OUT}/dashboard/style.css`, { format: 'bytes' })
+    })
+
+    test('never fails the run when the output cannot be listed or published', async () => {
+        const sandbox = { files: { list: jest.fn(async () => Promise.reject(new Error('gone'))) } }
+        await expect(__private__.collectOutputArtifactGroups(sandbox, 'job-1', RUN_START, [])).resolves.toEqual([])
+        await expect(
+            __private__.publishVmOutputs({ correlationId: 'job-1' }, {}, [
+                { outputPath: 'a.md', files: [{ relativePath: 'a.md', path: 'a.md', bytes: Buffer.from('#') }] },
+            ])
+        ).resolves.toEqual([])
+    })
+
+    test('tells the agent how its outputs become artifacts', () => {
+        const prompt = __private__.buildAgentPrompt({ objective: 'Build a dashboard', taskType: 'prototype' })
+        expect(prompt).toContain('a folder in /home/user/output/ that contains an index.html becomes one web artifact')
+        expect(prompt).toContain('write to the same folder or file name')
+    })
+})
+
 describe('VM completion chat metadata', () => {
     const createFirestoreMock = ({
         commentData = {},

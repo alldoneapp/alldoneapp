@@ -178,6 +178,18 @@ describe('object access projection', () => {
         })
     })
 
+    it('projects links to artifacts so an artifact can list the tasks and notes that mention it', () => {
+        const token = buildBacklinkToken('linkedParentArtifactsIds', 'artifact-1')
+
+        expect(
+            buildObjectAccessProjection(
+                { isPublicFor: ['member-1'], linkedParentArtifactsIds: ['artifact-1'] },
+                ['member-1', 'member-2'],
+                'observersIds'
+            )
+        ).toMatchObject({ backlinkIdsVisibleTo: { 'member-1': [token] } })
+    })
+
     it('projects the task project id from its authoritative document path', () => {
         expect(
             buildObjectAccessProjection(

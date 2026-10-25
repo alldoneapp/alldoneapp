@@ -14,6 +14,7 @@ const EXCLUDED_PARTS = new Set(['node_modules', 'HelperScripts', '__tests__', 'f
 // so the call-site AST only sees an identifier. Listing them here keeps that
 // deliberate indirection visible and reviewable.
 const INDIRECT_CLIENT_COLLECTIONS = [
+    'artifactItems',
     'assistantSkillImportJobs',
     'assistantSkillImports',
     'assistantSkills',

@@ -10,6 +10,9 @@ import URLsNotesTrigger from '../../URLSystem/Notes/URLsNotesTrigger'
 import URLsGoalsTrigger from '../../URLSystem/Goals/URLsGoalsTrigger'
 import URLsChatsTrigger from '../../URLSystem/Chats/URLsChatsTrigger'
 import URLsAssistantsTrigger from '../../URLSystem/Assistants/URLsAssistantsTrigger'
+import URLsArtifactsTrigger from '../../URLSystem/Artifacts/URLsArtifactsTrigger'
+import URLsArtifacts, { URL_ARTIFACT_DETAILS, URL_ARTIFACT_DETAILS_CHAT } from '../../URLSystem/Artifacts/URLsArtifacts'
+import * as URLsArtifactsConstants from '../../URLSystem/Artifacts/URLsArtifacts'
 import { URL_NOT_MATCH } from '../../URLSystem/URLSystemTrigger'
 import URLsTasks, {
     URL_ROOT,
@@ -80,6 +83,9 @@ import { getPeopleDocumentDescriptor } from '../../utils/People/peopleDocumentPa
 
 export const MIN_WIDTH_LINK_TAG = 100
 
+// An artifact is shared with its project when the whole project (0) may read it, like a note.
+const isSharedArtifact = data => Array.isArray(data?.isPublicFor) && data.isPublicFor.includes(0)
+
 export default function LinkTag({
     link = '',
     initialTitle,
@@ -139,6 +145,7 @@ export default function LinkTag({
         URLsChats,
         URLsSkills,
         URLsAssistants,
+        URLsArtifacts,
     ]
 
     const matchersList = [
@@ -150,6 +157,7 @@ export default function LinkTag({
         URLsChatsTrigger,
         URLsSkillsTrigger,
         URLsAssistantsTrigger,
+        URLsArtifactsTrigger,
     ]
 
     if (expandFullTitle) {
@@ -443,6 +451,15 @@ export default function LinkTag({
                     projectId = params.projectId
                     break
                 }
+                // Process artifact
+                case matchedObj.key.indexOf(URL_ARTIFACT_DETAILS) >= 0: {
+                    setTagIcon('layers')
+                    objectType = 'artifact'
+                    objectId = params.artifactId
+                    path = `artifactItems/${params.projectId}/artifacts/${params.artifactId}`
+                    projectId = params.projectId
+                    break
+                }
             }
 
             // check for object note url
@@ -528,6 +545,12 @@ export default function LinkTag({
                     objectType = 'topic'
                     break
                 }
+                // Process artifacts
+                case Object.values(URLsArtifactsConstants).includes(matchedObj.key): {
+                    setTagIcon('layers')
+                    objectType = 'artifact'
+                    break
+                }
             }
 
             // check for object note url
@@ -564,6 +587,7 @@ export default function LinkTag({
             URL_CONTACT_DETAILS_CHAT,
             URL_SKILL_DETAILS_CHAT,
             URL_ASSISTANT_DETAILS_CHAT,
+            URL_ARTIFACT_DETAILS_CHAT,
         ]
         if (notesTabs.includes(matchedObj.key)) {
             setTagIcon('comments-thread')
@@ -573,7 +597,8 @@ export default function LinkTag({
     const setSharedFromObject = (objectType, data) => {
         setShared(
             (objectType === 'task' && !TasksHelper.isPrivateTask(data)) ||
-                (objectType === 'note' && !isPrivateNote(data))
+                (objectType === 'note' && !isPrivateNote(data)) ||
+                (objectType === 'artifact' && isSharedArtifact(data))
         )
     }
 
@@ -616,6 +641,10 @@ export default function LinkTag({
                 setTitle(cleanedText)
                 break
             }
+            case 'artifact': {
+                setTitle(cleanTextMetaData(data.title || ''))
+                break
+            }
         }
     }
 
@@ -648,6 +677,9 @@ export default function LinkTag({
                 }
                 case 'topic': {
                     return FeedHelper.isPrivateTopic(data)
+                }
+                case 'artifact': {
+                    return !isSharedArtifact(data)
                 }
             }
         }

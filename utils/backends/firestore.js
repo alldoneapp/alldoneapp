@@ -89,6 +89,7 @@ import {
     shouldUseFirebaseEmulators,
 } from '../firebaseEmulators'
 import {
+    FOLLOWER_ARTIFACTS_TYPE,
     FOLLOWER_ASSISTANTS_TYPE,
     FOLLOWER_CONTACTS_TYPE,
     FOLLOWER_GOALS_TYPE,
@@ -3785,6 +3786,7 @@ export function mapNoteData(noteId, note) {
         linkedParentGoalsIds: note.linkedParentGoalsIds ? note.linkedParentGoalsIds : [],
         linkedParentSkillsIds: note.linkedParentSkillsIds ? note.linkedParentSkillsIds : [],
         linkedParentAssistantIds: note.linkedParentAssistantIds ? note.linkedParentAssistantIds : [],
+        linkedParentArtifactsIds: note.linkedParentArtifactsIds || [],
         linkedParentsInContentIds: note.linkedParentsInContentIds ? note.linkedParentsInContentIds : {},
         linkedParentsInTitleIds: note.linkedParentsInTitleIds ? note.linkedParentsInTitleIds : {},
         versionId: note.versionId ? note.versionId : CURRENT_DAY_VERSION_ID,
@@ -3917,6 +3919,7 @@ export function mapTaskData(taskId, task) {
         linkedParentGoalsIds: task.linkedParentGoalsIds ? task.linkedParentGoalsIds : [],
         linkedParentSkillsIds: task.linkedParentSkillsIds ? task.linkedParentSkillsIds : [],
         linkedParentAssistantIds: task.linkedParentAssistantIds ? task.linkedParentAssistantIds : [],
+        linkedParentArtifactsIds: task.linkedParentArtifactsIds || [],
         parentDone: task.parentDone ? task.parentDone : false,
         suggestedBy: task.suggestedBy ? task.suggestedBy : null,
         parentGoalId: task.parentGoalId ? task.parentGoalId : null,
@@ -5634,6 +5637,9 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         linkedParentGoalsUrl,
         linkedParentSkillsUrl,
         linkedParentAssistantsUrl,
+        // Artifacts have no backlink feed; they only need the ids, so every caller that does not
+        // collect them yet simply records none.
+        linkedParentArtifactsUrl = [],
     } = linkedParents
 
     if (
@@ -5721,6 +5727,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
     const linkedParentGoalsIds = []
     const linkedParentSkillsIds = []
     const linkedParentAssistantIds = []
+    const linkedParentArtifactsIds = []
 
     const updateObject = {
         linkedParentNotesIds,
@@ -5730,6 +5737,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         linkedParentGoalsIds,
         linkedParentSkillsIds,
         linkedParentAssistantIds,
+        linkedParentArtifactsIds,
     }
 
     extractIdsInto(linkedParentNotesIds, linkedParentNotesUrl, 6)
@@ -5739,6 +5747,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
     extractIdsInto(linkedParentGoalsIds, linkedParentGoalsUrl, 6)
     extractIdsInto(linkedParentSkillsIds, linkedParentSkillsUrl, 6)
     extractIdsInto(linkedParentAssistantIds, linkedParentAssistantsUrl, 6)
+    extractIdsInto(linkedParentArtifactsIds, linkedParentArtifactsUrl, 6)
 
     if (linkedObject.type === 'note') {
         const { notePartEdited } = linkedObject
@@ -5751,6 +5760,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
                   linkedParentGoalsIds: [],
                   linkedParentSkillsIds: [],
                   linkedParentAssistantIds: [],
+                  linkedParentArtifactsIds: [],
                   ...linkedObject.secondaryParentsIds,
               }
             : {
@@ -5761,6 +5771,7 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
                   linkedParentGoalsIds: [],
                   linkedParentSkillsIds: [],
                   linkedParentAssistantIds: [],
+                  linkedParentArtifactsIds: [],
               }
 
         if (notePartEdited === 'title') {
@@ -5790,6 +5801,9 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         const unduplicatedParentAssistantIds = secondaryParentsIds.linkedParentAssistantIds.filter(
             id => !linkedParentAssistantIds.includes(id)
         )
+        const unduplicatedParentArtifactsIds = (secondaryParentsIds.linkedParentArtifactsIds || []).filter(
+            id => !linkedParentArtifactsIds.includes(id)
+        )
         updateObject.linkedParentNotesIds = [...updateObject.linkedParentNotesIds, ...unduplicatedParentNotesIds]
         updateObject.linkedParentTasksIds = [...updateObject.linkedParentTasksIds, ...unduplicatedParentTasksIds]
         updateObject.linkedParentContactsIds = [
@@ -5805,6 +5819,10 @@ export function setLinkedParentObjects(projectId, linkedParents, linkedObject, i
         updateObject.linkedParentAssistantIds = [
             ...updateObject.linkedParentAssistantIds,
             ...unduplicatedParentAssistantIds,
+        ]
+        updateObject.linkedParentArtifactsIds = [
+            ...updateObject.linkedParentArtifactsIds,
+            ...unduplicatedParentArtifactsIds,
         ]
     }
 
@@ -6063,18 +6081,21 @@ export async function addFollowerWithoutFeeds(
             })
         })
 
-    if (followObjectsType === 'notes' && actionType !== 'delete') {
-        const note = (await db.doc(`noteItems/${projectId}/notes/${followObjectId}`).get()).data()
-        if (note) {
+    const followedListPath = getFollowedListObjectPath(projectId, followObjectsType, followObjectId)
+    if (followedListPath && actionType !== 'delete') {
+        const object = (await db.doc(followedListPath).get()).data()
+        if (object) {
+            const isPublicFor = Array.isArray(object.isPublicFor) ? object.isPublicFor : []
             const updateData = { followersIds: firebase.firestore.FieldValue.arrayUnion(userFollowingId) }
-            if (note.isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || note.isPublicFor.includes(userFollowingId)) {
+            if (isPublicFor.includes(FEED_PUBLIC_FOR_ALL) || isPublicFor.includes(userFollowingId)) {
                 updateData.isVisibleInFollowedFor = firebase.firestore.FieldValue.arrayUnion(userFollowingId)
             }
-            db.doc(`noteItems/${projectId}/notes/${followObjectId}`)
+            db.doc(followedListPath)
                 .set(updateData, { merge: true })
                 .catch(error => {
-                    console.error('[followers] Failed to update note follower state', {
+                    console.error('[followers] Failed to update follower state', {
                         projectId,
+                        followObjectsType,
                         followObjectId,
                         userFollowingId,
                         code: error?.code,
@@ -6083,6 +6104,14 @@ export async function addFollowerWithoutFeeds(
                 })
         }
     }
+}
+
+// Notes and artifacts carry their followers on the object itself, because their "Followed" list is
+// a query on that document rather than on the followers collection.
+function getFollowedListObjectPath(projectId, followObjectsType, followObjectId) {
+    if (followObjectsType === 'notes') return `noteItems/${projectId}/notes/${followObjectId}`
+    if (followObjectsType === FOLLOWER_ARTIFACTS_TYPE) return `artifactItems/${projectId}/artifacts/${followObjectId}`
+    return null
 }
 
 async function getObject(projectId, objectId, objectType) {
@@ -6104,6 +6133,9 @@ async function getObject(projectId, objectId, objectType) {
         return await getSkillData(projectId, objectId)
     } else if (objectType === 'assistants') {
         return await getAssistantData(projectId, objectId)
+    } else if (objectType === FOLLOWER_ARTIFACTS_TYPE) {
+        const artifact = (await db.doc(`artifactItems/${projectId}/artifacts/${objectId}`).get()).data()
+        return artifact ? { ...artifact, id: objectId } : null
     }
 }
 
@@ -6189,14 +6221,15 @@ async function removeFollowerWithoutFeeds(projectId, userFollowingId, followObje
         { merge: true }
     )
 
-    if (followObjectsType === 'notes') {
-        const note = (await db.doc(`noteItems/${projectId}/notes/${followObjectId}`).get()).data()
-        if (note) {
+    const followedListPath = getFollowedListObjectPath(projectId, followObjectsType, followObjectId)
+    if (followedListPath) {
+        const object = (await db.doc(followedListPath).get()).data()
+        if (object) {
             const updateData = {
                 followersIds: firebase.firestore.FieldValue.arrayRemove(userFollowingId),
                 isVisibleInFollowedFor: firebase.firestore.FieldValue.arrayRemove(userFollowingId),
             }
-            db.doc(`noteItems/${projectId}/notes/${followObjectId}`).set(updateData, { merge: true })
+            db.doc(followedListPath).set(updateData, { merge: true })
         }
     }
 }
@@ -6947,6 +6980,18 @@ export function getObjectFromUrl(objectType, url, callback) {
                 callback({ object: null, objectName: `Doesn't exist` })
             }
         })
+    } else if (objectType === 'artifact') {
+        // An artifact the viewer cannot read is, for the tag, an artifact that is not there.
+        db.doc(`artifactItems/${urlParts[4]}/artifacts/${urlParts[6]}`)
+            .get()
+            .then(doc => {
+                if (doc.exists) {
+                    callback({ object: doc.data(), objectName: doc.data().title })
+                } else {
+                    callback({ object: null, objectName: `Doesn't exist` })
+                }
+            })
+            .catch(() => callback({ object: null, objectName: `Doesn't exist` }))
     }
 }
 

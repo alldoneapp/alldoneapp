@@ -576,6 +576,8 @@ function getVmParentObjectPath(projectId, objectType, objectId) {
             return `skills/${projectId}/items/${objectId}`
         case 'tasks':
             return `items/${projectId}/tasks/${objectId}`
+        case 'artifacts':
+            return `artifactItems/${projectId}/artifacts/${objectId}`
         default:
             return null
     }
@@ -1315,7 +1317,8 @@ function buildAgentPrompt(vmJob, gitContext = null, gcpContext = null) {
         'Work autonomously to completion. Your final message will be delivered verbatim to the user as the result, so make it a complete, self-contained answer.',
         'The VM host owns all task-thread delivery and attributes it to the invoking assistant. Do not use an Alldone app, MCP tool, API, or task-update/comment tool to post your result, progress, status, or questions into the originating task/thread yourself; that would create a duplicate user-authored comment. Return normal output in your final message. In interactive mode, ask through the native interaction mechanism so the host can present the question with the correct assistant identity.',
         'IMPORTANT: Do not create an output file just to return a normal text/chat answer. Put the answer directly in your final message unless the user asked for a file or you genuinely produced an artifact.',
-        'If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.'
+        'If you produce any deliverable files (documents, HTML, spreadsheets, images, datasets, etc.) that are NOT part of the repository, SAVE them into the /home/user/output/ directory (an absolute path). Every file there is uploaded back to the user and attached to your result in the chat. Do not paste large file contents into your final message — put them in /home/user/output/ instead.',
+        'Deliverables are also published as project artifacts that open live in Alldone: a folder in /home/user/output/ that contains an index.html becomes one web artifact (relative links between its files keep working, give the page a <title>), and every other file becomes an artifact of its own. To update a deliverable from an earlier run in this thread, write to the same folder or file name; it becomes a new version of the same artifact. The links are added to your result automatically.'
     )
     return parts.join('\n')
 }
@@ -1413,7 +1416,15 @@ async function collectArtifacts(sandbox, correlationId, sinceMs = 0) {
                 const data = await sandbox.files.read(entry.path, { format: 'bytes' })
                 const buffer = Buffer.from(data)
                 totalBytes += buffer.length
-                artifacts.push({ fileName: entry.name, mimeType: mimeForFile(entry.name), bytes: buffer })
+                artifacts.push({
+                    fileName: entry.name,
+                    relativePath:
+                        typeof entry.path === 'string' && entry.path.startsWith(`${ARTIFACT_DIR}/`)
+                            ? entry.path.slice(ARTIFACT_DIR.length + 1)
+                            : entry.name,
+                    mimeType: mimeForFile(entry.name),
+                    bytes: buffer,
+                })
             } catch (error) {
                 console.warn('🖥️ VM JOB: failed reading artifact', {
                     correlationId,
@@ -1432,6 +1443,78 @@ async function collectArtifacts(sandbox, correlationId, sinceMs = 0) {
         return artifacts
     } catch (error) {
         console.warn('🖥️ VM JOB: collectArtifacts failed', { correlationId, error: error.message })
+        return []
+    }
+}
+
+// Group this run's deliverables into project artifacts and read the bytes they need while the
+// sandbox is still alive (see Artifacts/vmArtifactPublisher.js). A touched web bundle is published
+// whole, so its unchanged files are read too; files already read for the chat attachments are
+// reused. Best effort: returns [] on any failure, the chat attachments are unaffected.
+async function collectOutputArtifactGroups(sandbox, correlationId, sinceMs = 0, collected = []) {
+    try {
+        const { planVmOutputArtifacts } = require('../Artifacts/vmArtifactPublisher')
+        let entries
+        try {
+            entries = await sandbox.files.list(ARTIFACT_DIR, { depth: 5 })
+        } catch (_) {
+            return []
+        }
+        const groups = planVmOutputArtifacts(entries, { outputDir: ARTIFACT_DIR, sinceMs })
+        const known = new Map((collected || []).map(file => [file.relativePath, file.bytes]))
+        const withBytes = []
+        for (const group of groups) {
+            try {
+                const files = []
+                for (const file of group.files) {
+                    let bytes = known.get(file.relativePath)
+                    if (!bytes) {
+                        bytes = Buffer.from(
+                            await sandbox.files.read(`${ARTIFACT_DIR}/${file.relativePath}`, { format: 'bytes' })
+                        )
+                    }
+                    files.push({ ...file, bytes })
+                }
+                withBytes.push({ ...group, files })
+            } catch (error) {
+                console.warn('🖥️ VM JOB: could not read an output for its artifact', {
+                    correlationId,
+                    outputPath: group.outputPath,
+                    error: error.message,
+                })
+            }
+        }
+        return withBytes
+    } catch (error) {
+        console.warn('🖥️ VM JOB: collectOutputArtifactGroups failed', { correlationId, error: error.message })
+        return []
+    }
+}
+
+// Publish the collected groups as artifacts in the host thread's project, for the requesting user.
+async function publishVmOutputs(pendingWebhook, vmJob, groups) {
+    if (!Array.isArray(groups) || groups.length === 0) return []
+    try {
+        const { publishVmOutputArtifacts } = require('../Artifacts/vmArtifactPublisher')
+        const bytesByPath = new Map()
+        groups.forEach(group => group.files.forEach(file => bytesByPath.set(file.relativePath, file.bytes)))
+        return await publishVmOutputArtifacts({
+            job: {
+                projectId: pendingWebhook.projectId,
+                objectType: pendingWebhook.objectType,
+                objectId: pendingWebhook.objectId,
+                requestUserId: vmJob.requestUserId || pendingWebhook.userId,
+                assistantId: pendingWebhook.assistantId,
+                correlationId: pendingWebhook.correlationId,
+            },
+            groups,
+            readFile: async relativePath => bytesByPath.get(relativePath),
+        })
+    } catch (error) {
+        console.warn('🖥️ VM JOB: publishing outputs as artifacts failed', {
+            correlationId: pendingWebhook.correlationId,
+            error: error.message,
+        })
         return []
     }
 }
@@ -3923,6 +4006,12 @@ async function runAgentInSandbox(
         }
         // Collect deliverable files written during THIS run (while the sandbox is still alive).
         const artifacts = await collectArtifacts(sandbox, vmJob.correlationId, runStartMs)
+        const outputArtifactGroups = await collectOutputArtifactGroups(
+            sandbox,
+            vmJob.correlationId,
+            runStartMs,
+            artifacts
+        )
         if (subscriptionCredentialPrepared) {
             await persistAndRemoveSubscriptionCredential(sandbox, subscriptionAuth, vmJob.requestUserId)
             subscriptionCredentialPrepared = false
@@ -3940,6 +4029,7 @@ async function runAgentInSandbox(
             output,
             usage: state.usage,
             artifacts,
+            outputArtifactGroups,
             runtimeGoldCharged,
             attemptRuntimeMs: Date.now() - runStartMs,
             activeRuntimeMs: (Number(pendingWebhook?.vmActiveRuntimeMs) || 0) + (Date.now() - runStartMs),
@@ -4661,6 +4751,7 @@ async function runVmJobByCorrelationId(correlationId) {
             output,
             usage,
             artifacts,
+            outputArtifactGroups = [],
             runtimeGoldCharged = 0,
             attemptRuntimeMs = 0,
             activeRuntimeMs = 0,
@@ -4670,7 +4761,10 @@ async function runVmJobByCorrelationId(correlationId) {
         // attachment tokens (render as inline downloadable FileDownloadableTags). Keep the
         // tokens on their own first line so generated artifacts are visible before the VM answer.
         const mediaContext = await uploadArtifacts(pendingWebhook, artifacts)
-        const finalText = buildVmFinalCommentText(output, mediaContext)
+        // The same deliverables as project artifacts that open live, linked under the answer.
+        const { appendVmArtifactLinks } = require('../Artifacts/vmArtifactPublisher')
+        const publishedArtifacts = await publishVmOutputs(pendingWebhook, vmJob, outputArtifactGroups)
+        const finalText = appendVmArtifactLinks(buildVmFinalCommentText(output, mediaContext), publishedArtifacts)
 
         // Coding agents already return the MR/PR URL in their final result. Associate that
         // provider-validated URL with the host task and fetch its initial status server-side.
@@ -4688,7 +4782,7 @@ async function runVmJobByCorrelationId(correlationId) {
 
         // Auto-presentation: the agent's final message (+ attachments) becomes the comment.
         await writeStatusComment(pendingWebhook, finalText, { isFinal: true, output: finalText, mediaContext })
-        await notifyVmResultChannels(pendingWebhook, output, {
+        await notifyVmResultChannels(pendingWebhook, appendVmArtifactLinks(output, publishedArtifacts), {
             mediaContext,
             pendingRef,
             notificationType: 'completed',
@@ -4930,6 +5024,9 @@ module.exports = {
     MAX_VM_RUNTIME_MS,
     __private__: {
         buildAgentPrompt,
+        collectArtifacts,
+        collectOutputArtifactGroups,
+        publishVmOutputs,
         GIT_SETUP_SCRIPT,
         buildGitEnv,
         setupGitRepo,

@@ -23,6 +23,12 @@ describe('renderNoteEmbedAsText', () => {
     })
 
     test('never renders an embed as empty text', () => {
+        expect(
+            renderNoteEmbedAsText({
+                artifactEmbed: { title: 'Churn', url: 'https://my.alldone.app/projects/p/artifacts/a' },
+            })
+        ).toBe('[artifact: Churn](https://my.alldone.app/projects/p/artifacts/a)')
+        expect(renderNoteEmbedAsText({ artifactEmbed: {} })).toBe('[artifact: artifact]')
         expect(renderNoteEmbedAsText({ url: {} })).toBe('[link]')
         expect(renderNoteEmbedAsText({ somethingNew: { a: 1 } })).toBe('[somethingNew]')
         expect(renderNoteEmbedAsText(null)).toBe('[embed]')

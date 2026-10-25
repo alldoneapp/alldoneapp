@@ -68,6 +68,10 @@ function renderNoteEmbedAsText(embed) {
             return textOf(data.uri)
                 ? `[attachment: ${textOf(data.text) || 'file'}](${textOf(data.uri)})`
                 : `[attachment: ${textOf(data.text) || 'file'}]`
+        case 'artifactEmbed':
+            return textOf(data.url)
+                ? `[artifact: ${textOf(data.title) || 'artifact'}](${textOf(data.url)})`
+                : `[artifact: ${textOf(data.title) || 'artifact'}]`
         case 'commentTagFormat':
             return textOf(data.text) ? `[comment: ${textOf(data.text)}]` : '[comment]'
         case 'karma':

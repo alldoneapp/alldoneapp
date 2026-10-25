@@ -640,3 +640,37 @@ node browser-tests/at2660/run.js
 If Playwright is installed outside the repository, set `PLAYWRIGHT_MODULE` to its
 module path and, when needed, `PLAYWRIGHT_BROWSERS_PATH` to its browser directory.
 `--skip-build` reuses the previous harness bundle.
+
+### `section-tabs/` — every root tab label fits on a phone
+
+Renders the real `MainSectionTabsHeader` at the widths the app gives it on 320–419 px phones (a
+project's navigation is 48 px narrower than the viewport, All projects 32 px) in German, Spanish
+and English, with the app's own Roboto, and fails when any label is cut off. "Artefakte" /
+"Artefactos" took the Chats slot and are the longest labels, which is why the row has a second,
+13 px tier below `TIGHT_TABS_BREAKPOINT` (360 px). jsdom has no text metrics, so the jest suite can
+only pin the styles this measurement was taken with. Run before changing the tabs, their labels or
+a translation of one: `node browser-tests/section-tabs/run.js`.
+
+### `artifacts/` — an HTML artifact runs, and can do nothing else
+
+Project artifacts (`functions/Artifacts/`, `ARTIFACTS_PLAN.md`) are served by `serveArtifact` from
+an origin that is not the app's, with a CSP sandbox, and framed by `ArtifactPreview` with an
+iframe sandbox. Both omit `allow-same-origin` and `allow-top-navigation`. The guarantee lives
+entirely in how a browser applies origins and sandboxes, so it is only observable here.
+
+The harness runs the REAL `serveArtifact` handler (in-memory Firestore and Storage doubles) on
+`127.0.0.1` and a stand-in app page on `localhost` that holds a session in `localStorage`, a
+cookie and IndexedDB, and frames a two-file artifact with the sandbox string read straight out of
+`ArtifactPreview.js`. The artifact's script is loaded by a relative path (so the bundle case is
+covered) and tries to read the parent document, the app's session and cookies, its own storage,
+cookies and IndexedDB, and finally to navigate the app away. A second artifact is opened on its
+own, as "Open full screen" does, where only the CSP header protects it.
+
+It needs no build. Mutation-checked: adding `allow-same-origin` to the frame and dropping the CSP
+header fails 8 of the 19 checks (the artifact gets a real origin with storage of its own), while
+the app's session stays unreadable even then — the separate origin and the sandbox are two
+independent layers.
+
+```bash
+node browser-tests/artifacts/run.js
+```

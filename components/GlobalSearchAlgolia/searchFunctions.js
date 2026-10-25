@@ -21,7 +21,11 @@ import {
 export const goToObjectDetailView = (projectId, objectId, objectType, detailedViewType) => {
     store.dispatch([hideFloatPopup(), setGlobalSearchResults(null), hideGlobalSearchPopup()])
     const tabView = objectType === 'chats' ? 'chat' : objectType === 'notes' ? 'editor' : 'properties'
-    let linkUrl = `/projects/${projectId}/${objectType}/${objectId}/${tabView}`
+    // An artifact opens in place in the Artifacts tab, which has no properties sub-route.
+    let linkUrl =
+        objectType === 'artifacts'
+            ? `/projects/${projectId}/artifacts/${objectId}`
+            : `/projects/${projectId}/${objectType}/${objectId}/${tabView}`
     URLTrigger.directProcessUrl(NavigationService, linkUrl)
 }
 

@@ -13,7 +13,17 @@ const {
 } = require('./assistantRunIdempotency')
 const { HEARTBEAT_PROMPT_MAX_RUN_WALL_CLOCK_MS } = require('./assistantRunLimits')
 
-const COMMENT_OBJECT_TYPES = new Set(['tasks', 'topics', 'notes', 'goals', 'contacts', 'users', 'skills', 'assistants'])
+const COMMENT_OBJECT_TYPES = new Set([
+    'tasks',
+    'topics',
+    'notes',
+    'goals',
+    'contacts',
+    'users',
+    'skills',
+    'assistants',
+    'artifacts',
+])
 
 function isReplyCandidate(comment) {
     return (

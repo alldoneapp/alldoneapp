@@ -65,6 +65,14 @@ describe('assistant tool options', () => {
         expect(OPT_IN_ONLY_TOOLS.has('fetch_url')).toBe(false)
     })
 
+    test('offers the project artifact tools as one permission that is on by default', () => {
+        expect(TOOL_OPTIONS).toEqual(
+            expect.arrayContaining([{ key: 'artifacts', labelKey: 'Create and edit artifacts' }])
+        )
+        expect(DEFAULT_ALLOWED_TOOLS).toContain('artifacts')
+        expect(normalizeAllowedTools(['artifacts'])).toEqual(['artifacts'])
+    })
+
     test('keeps get_updates stable during normalization', () => {
         expect(normalizeAllowedTools(['get_updates', 'get_note', 'get_updates'])).toEqual(['get_updates', 'get_notes'])
     })

@@ -9,6 +9,8 @@ const {
 
 const removeProjectData = async (projectId, admin) => {
     const basePaths = [
+        // Each artifact's delete trigger removes its versions' bytes from Storage.
+        'artifactItems',
         'assistantTasks',
         'assistants',
         'chatComments',

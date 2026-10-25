@@ -10,6 +10,7 @@ export const LINKED_OBJECT_TYPE_TASK = 'task'
 export const LINKED_OBJECT_TYPE_GOAL = 'goal'
 export const LINKED_OBJECT_TYPE_SKILL = 'skill'
 export const LINKED_OBJECT_TYPE_ASSISTANT = 'assistant'
+export const LINKED_OBJECT_TYPE_ARTIFACT = 'artifact'
 
 export const LINKED_PARENT_TASK = 0
 export const LINKED_PARENT_NOTE = 1
@@ -127,6 +128,10 @@ const isValidChatLink = (url, projectId) => {
     return isValidLink(url, projectId, 'chats')
 }
 
+const isValidArtifactLink = (url, projectId) => {
+    return isValidLink(url, projectId, 'artifacts')
+}
+
 const isValidPreConfigTaskLink = (url, projectId) => {
     return isValidLink(url, projectId, 'preConfigTasks')
 }
@@ -185,6 +190,8 @@ const getUrlObject = (fullUrl, rootUrl, projectId, editorId, userIdAllowedToEdit
         linkedParentObjectType = 'skill'
     } else if (isValidAssistantLink(urlParts, _projectId)) {
         linkedParentObjectType = 'assistant'
+    } else if (isValidArtifactLink(urlParts, _projectId)) {
+        linkedParentObjectType = 'artifact'
     } else {
         linkedParentObjectType = 'plain'
     }
@@ -298,6 +305,7 @@ export {
     isValidGoalLink,
     isValidSkillLink,
     isValidAssistantLink,
+    isValidArtifactLink,
     isValidPreConfigTaskLink,
     getUrlObject,
     handleNestedLinks,

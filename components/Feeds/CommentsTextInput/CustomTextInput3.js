@@ -76,6 +76,7 @@ import {
     isValidProjectLink,
     isValidTaskLink,
     isValidAssistantLink,
+    isValidArtifactLink,
     getDvMainTabLink,
 } from '../../../utils/LinkingHelper'
 import Backend from '../../../utils/BackendBridge'
@@ -534,6 +535,14 @@ function CustomTextInput3(
                                 case 'skills':
                                     await setSkillAssistant(projectId, objectId, assistantId, true)
                                     break
+                                case 'artifacts': {
+                                    // Lazy: every editor in the app renders this input.
+                                    const {
+                                        setArtifactAssistant,
+                                    } = require('../../../utils/backends/Artifacts/artifactsFirestore')
+                                    await setArtifactAssistant(projectId, objectId, assistantId)
+                                    break
+                                }
                                 case 'chats':
                                 case 'topics':
                                     await updateChatAssistant(projectId, objectId, assistantId)
@@ -763,7 +772,8 @@ function CustomTextInput3(
         linkedProjectsUrls,
         linkedGoalsUrls,
         linkedSkillsUrls,
-        linkedAssistantUrls
+        linkedAssistantUrls,
+        linkedArtifactsUrls
     ) => {
         if (!onChangeText) return
 
@@ -780,7 +790,8 @@ function CustomTextInput3(
             linkedProjectsUrls,
             linkedGoalsUrls,
             linkedSkillsUrls,
-            linkedAssistantUrls
+            linkedAssistantUrls,
+            linkedArtifactsUrls
         )
     }
 
@@ -849,6 +860,7 @@ function CustomTextInput3(
                 linkedGoalsUrls,
                 linkedSkillsUrls,
                 linkedAssistantUrls,
+                linkedArtifactsUrls,
             } = getFinalText()
             notifyTextChange(
                 extendedText,
@@ -858,7 +870,8 @@ function CustomTextInput3(
                 linkedProjectsUrls,
                 linkedGoalsUrls,
                 linkedSkillsUrls,
-                linkedAssistantUrls
+                linkedAssistantUrls,
+                linkedArtifactsUrls
             )
         }
 
@@ -919,6 +932,7 @@ function CustomTextInput3(
         const linkedGoalsUrls = []
         const linkedSkillsUrls = []
         const linkedAssistantUrls = []
+        const linkedArtifactsUrls = []
 
         for (let i = 0; i < deltaContent.ops.length; i++) {
             const op = deltaContent.ops[i]
@@ -1018,6 +1032,8 @@ function CustomTextInput3(
                     linkedSkillsUrls.push(url.url)
                 else if (isValidAssistantLink(url.url, innerProjectId) && linkedAssistantUrls.indexOf(url.url) < 0)
                     linkedAssistantUrls.push(url.url)
+                else if (isValidArtifactLink(url.url, innerProjectId) && linkedArtifactsUrls.indexOf(url.url) < 0)
+                    linkedArtifactsUrls.push(url.url)
             } else {
                 if (isValidTaskLink(insert, innerProjectId) && linkedTasksUrls.indexOf(insert) < 0)
                     linkedTasksUrls.push(insert)
@@ -1033,6 +1049,8 @@ function CustomTextInput3(
                     linkedSkillsUrls.push(insert)
                 else if (isValidAssistantLink(insert, innerProjectId) && linkedAssistantUrls.indexOf(insert))
                     linkedAssistantUrls.push(insert)
+                else if (isValidArtifactLink(insert, innerProjectId) && linkedArtifactsUrls.indexOf(insert) < 0)
+                    linkedArtifactsUrls.push(insert)
                 finalText += insert
                 finalTextExtended += insert
             }
@@ -1049,6 +1067,7 @@ function CustomTextInput3(
             linkedGoalsUrls,
             linkedSkillsUrls,
             linkedAssistantUrls,
+            linkedArtifactsUrls,
         }
     }
 

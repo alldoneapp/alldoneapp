@@ -26,7 +26,7 @@ jest.mock('../../SettingsView/ProjectsSettings/ProjectHelper', () => ({
 }))
 jest.mock('../../AllSections/allSectionHelper', () => ({ allGoals: {} }))
 
-import MainSectionTabsHeader, { COMPACT_TABS_BREAKPOINT } from './MainSectionTabsHeader'
+import MainSectionTabsHeader, { COMPACT_TABS_BREAKPOINT, TIGHT_TABS_BREAKPOINT } from './MainSectionTabsHeader'
 import { setLanguage } from '../../../i18n/TranslationService'
 
 const buildState = () => ({
@@ -56,7 +56,8 @@ const flatten = style => StyleSheet.flatten(style)
  * The five section labels do not fit on one line in German or Spanish on a phone: at 16px with
  * 10px padding a side they need ~372px, and a 390px viewport leaves the card ~336px. The mobile
  * layout was a horizontal ScrollView, so "Chats" was simply cut off with nothing indicating that
- * the row could scroll. Below COMPACT_TABS_BREAKPOINT the row is now fixed, tighter and smaller.
+ * the row could scroll. Below COMPACT_TABS_BREAKPOINT the row is now fixed, tighter and smaller,
+ * and below TIGHT_TABS_BREAKPOINT ("Artefakte" took the Chats slot) smaller again.
  */
 describe('MainSectionTabsHeader compact mobile tabs', () => {
     const originalInnerWidth = window.innerWidth
@@ -70,23 +71,32 @@ describe('MainSectionTabsHeader compact mobile tabs', () => {
         setLanguage('en')
     })
 
-    it.each([320, 360, 390, 419])('renders a fixed single row with 15px labels at %ipx', width => {
+    // Whether the labels actually fit is measured in real Chromium by browser-tests/section-tabs;
+    // jsdom has no text metrics, so this pins the styles that measurement was taken with.
+    it.each([
+        [320, 13, 0],
+        [340, 13, 0],
+        [TIGHT_TABS_BREAKPOINT - 1, 13, 0],
+        [TIGHT_TABS_BREAKPOINT, 15, 1],
+        [390, 15, 1],
+        [419, 15, 1],
+    ])('renders a fixed single row at %ipx with %ipx labels and %ipx tab padding', (width, fontSize, padding) => {
         setViewportWidth(width)
         setLanguage('de')
         const tree = renderHeader()
 
         expect(tree.root.findAllByType(ScrollView)).toHaveLength(0)
-        expect(tabLabels(tree)).toEqual(['Aufgaben', 'Ziele', 'Notizen', 'Kontakte', 'Chats'])
+        expect(tabLabels(tree)).toEqual(['Aufgaben', 'Ziele', 'Notizen', 'Kontakte', 'Artefakte'])
 
         const buttons = tree.root.findAllByType(TouchableOpacity)
         expect(buttons).toHaveLength(5)
         buttons.forEach(button => {
             const buttonStyle = flatten(button.props.style)
-            expect(buttonStyle.paddingHorizontal).toBe(1)
+            expect(buttonStyle.paddingHorizontal).toBe(padding)
             expect(buttonStyle.flexShrink).toBe(1)
             const text = button.findByType(Text)
             expect(text.props.numberOfLines).toBe(1)
-            expect(flatten(text.props.style).fontSize).toBe(15)
+            expect(flatten(text.props.style).fontSize).toBe(fontSize)
         })
     })
 
@@ -107,12 +117,19 @@ describe('MainSectionTabsHeader compact mobile tabs', () => {
         expect(tree.root.findAllByType(ScrollView)).toHaveLength(1)
 
         act(() => {
-            setViewportWidth(360)
+            setViewportWidth(390)
             window.dispatchEvent(new Event('resize'))
         })
 
         expect(tree.root.findAllByType(ScrollView)).toHaveLength(0)
         expect(flatten(tree.root.findAllByType(Text)[0].props.style).fontSize).toBe(15)
+
+        act(() => {
+            setViewportWidth(320)
+            window.dispatchEvent(new Event('resize'))
+        })
+
+        expect(flatten(tree.root.findAllByType(Text)[0].props.style).fontSize).toBe(13)
 
         act(() => {
             setViewportWidth(COMPACT_TABS_BREAKPOINT)

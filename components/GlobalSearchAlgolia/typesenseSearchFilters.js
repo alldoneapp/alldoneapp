@@ -8,6 +8,7 @@
 import { FEED_PUBLIC_FOR_ALL } from '../Feeds/Utils/FeedsConstants'
 import { DEFAULT_WORKSTREAM_ID } from '../Workstreams/WorkstreamConstants'
 import {
+    ARTIFACTS_INDEX_NAME_PREFIX,
     CHATS_INDEX_NAME_PREFIX,
     CONTACTS_INDEX_NAME_PREFIX,
     GOALS_INDEX_NAME_PREFIX,
@@ -23,12 +24,14 @@ import {
 //   contacts     -> recorderUserId (the member who added the contact; NOT `uid`, which is
 //                   the contact's own identity)
 //   chats/topics -> creatorId
+//   artifacts    -> userId       (the owner, who is the person that created or uploaded it)
 export const CREATOR_ATTRIBUTE_BY_INDEX = {
     [TASKS_INDEX_NAME_PREFIX]: 'userId',
     [GOALS_INDEX_NAME_PREFIX]: 'creatorId',
     [NOTES_INDEX_NAME_PREFIX]: 'userId',
     [CONTACTS_INDEX_NAME_PREFIX]: 'recorderUserId',
     [CHATS_INDEX_NAME_PREFIX]: 'creatorId',
+    [ARTIFACTS_INDEX_NAME_PREFIX]: 'userId',
 }
 
 export const getProjectAccessIds = (loggedUser, projectId) => {

@@ -1,5 +1,21 @@
 import { isEqual } from 'lodash'
 
+const isEmptyList = value => Array.isArray(value) && value.length === 0
+
+// A field the document has never had and an empty list mean the same thing, also inside the
+// per-part maps of a note (linkedParentsInTitleIds / linkedParentsInContentIds). Without this a
+// newly introduced backlink field (linkedParentArtifactsIds) would rewrite every object once.
+export const sameBacklinks = (stored, next) => {
+    if (isEqual(stored, next)) return true
+    if (stored === undefined) return isEmptyList(next)
+    if (!stored || !next || typeof stored !== 'object' || typeof next !== 'object') return false
+    if (Array.isArray(stored) || Array.isArray(next)) return false
+    const keys = new Set([...Object.keys(stored), ...Object.keys(next)])
+    return [...keys].every(
+        key => sameBacklinks(stored[key], next[key]) || (next[key] === undefined && isEmptyList(stored[key]))
+    )
+}
+
 /**
  * Write recomputed backlink fields only when they actually differ (AT-2340).
  *
@@ -53,7 +69,7 @@ export const writeLinkedParentsIfChanged = async (ref, updateObject, { force = f
 
     if (!current) return write()
 
-    const unchanged = Object.keys(updateObject).every(key => isEqual(current[key], updateObject[key]))
+    const unchanged = Object.keys(updateObject).every(key => sameBacklinks(current[key], updateObject[key]))
     if (unchanged) return false
 
     return write()

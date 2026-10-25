@@ -553,6 +553,40 @@ describe('Current task context', () => {
                 'Task description: (empty)'
         )
     })
+
+    test('names the artifact a chat is attached to and how to change it', () => {
+        const context = buildCurrentObjectContextMessage({
+            projectId: 'project-1',
+            objectType: 'artifacts',
+            objectId: 'artifact-1',
+            projectData: { name: 'Alldone Product' },
+            objectData: {
+                title: 'Sales dashboard',
+                description: 'Q3 numbers',
+                kind: 'web',
+                entryPath: 'index.html',
+                fileCount: 2,
+                versionCount: 3,
+            },
+        })
+
+        expect(context).toContain('attached to the project artifact below')
+        expect(context).toContain('Artifact ID: artifact-1')
+        expect(context).toContain('Artifact title: Sales dashboard')
+        expect(context).toContain('Artifact description: Q3 numbers')
+        expect(context).toContain('Kind: web; entry file: index.html; files: 2; current version: 3')
+        expect(context).toContain('update_artifact')
+    })
+
+    test('falls back to the chat title when the artifact itself could not be read', () => {
+        const context = buildCurrentObjectContextMessage({
+            objectType: 'artifacts',
+            objectId: 'gone',
+            objectData: null,
+            chatData: { title: 'Sales dashboard' },
+        })
+        expect(context).toBe('This conversation is about an artifact titled: "Sales dashboard"')
+    })
 })
 
 describe('persisted dynamic tool cache', () => {
@@ -1812,6 +1846,12 @@ describe('Responses API compatibility helpers', () => {
             expect(getToolSearchNamespaceName('update_note')).toBe('alldone_notes')
             expect(getToolSearchNamespaceName('update_assistant_settings')).toBe('assistant_settings')
             expect(getToolSearchNamespaceName('web_search')).toBe('research')
+        })
+
+        test('keeps the four artifact tools in one namespace', () => {
+            for (const toolName of ['get_artifacts', 'read_artifact', 'create_artifact', 'update_artifact']) {
+                expect(getToolSearchNamespaceName(toolName)).toBe('artifacts')
+            }
         })
 
         test('keeps note tools out of the reserved notes namespace', () => {
@@ -6126,6 +6166,14 @@ describe('assistant heartbeat settings tool', () => {
         expect(systemMessages).toContain('Current heartbeat settings for this assistant:')
         expect(systemMessages).toContain('Check progress and mention the focus task.')
         expect(systemMessages).toContain('treat the current heartbeat prompt as the base text')
+    })
+
+    test('allows the four artifact tools exactly when the artifacts key is enabled', async () => {
+        for (const toolName of ['get_artifacts', 'read_artifact', 'create_artifact', 'update_artifact']) {
+            expect(await isToolAllowedForExecution([], toolName)).toBe(false)
+            expect(await isToolAllowedForExecution(['create_note'], toolName)).toBe(false)
+            expect(await isToolAllowedForExecution(['artifacts'], toolName)).toBe(true)
+        }
     })
 
     test('denies heartbeat settings tool execution when not allowed', async () => {

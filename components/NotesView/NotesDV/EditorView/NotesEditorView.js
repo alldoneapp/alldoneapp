@@ -57,6 +57,7 @@ import {
 import {
     getDvMainTabLink,
     isValidAssistantLink,
+    isValidArtifactLink,
     isValidContactLink,
     isValidGoalLink,
     isValidNoteLink,
@@ -306,10 +307,19 @@ const NotesEditorView = ({
         const linkedParentGoalsUrl = []
         const linkedParentSkillsUrl = []
         const linkedParentAssistantsUrl = []
+        const linkedParentArtifactsUrl = []
         for (let op of ops) {
             if (op.insert) {
-                const { url, mention, taskTagFormat } = op.insert
-                if (mention) {
+                const { url, mention, taskTagFormat, artifactEmbed } = op.insert
+                if (artifactEmbed) {
+                    // A preview card links to its artifact exactly as a link chip does.
+                    if (
+                        isValidArtifactLink(artifactEmbed.url, projectId) &&
+                        linkedParentArtifactsUrl.indexOf(artifactEmbed.url) < 0
+                    ) {
+                        linkedParentArtifactsUrl.push(artifactEmbed.url)
+                    }
+                } else if (mention) {
                     if (mention.userId !== NOT_USER_MENTIONED) {
                         const objectType = TasksHelper.getPeopleTypeUsingId(mention.userId, projectId)
                         const contactUrl = `${window.origin}${getDvMainTabLink(projectId, mention.userId, objectType)}`
@@ -337,6 +347,8 @@ const NotesEditorView = ({
                         linkedParentSkillsUrl.push(op.insert.url.url)
                     } else if (isValidAssistantLink(op.insert.url.url, projectId)) {
                         linkedParentAssistantsUrl.push(op.insert.url.url)
+                    } else if (isValidArtifactLink(op.insert.url.url, projectId)) {
+                        linkedParentArtifactsUrl.push(op.insert.url.url)
                     }
                 }
             }
@@ -351,6 +363,7 @@ const NotesEditorView = ({
                 linkedParentGoalsUrl,
                 linkedParentSkillsUrl,
                 linkedParentAssistantsUrl,
+                linkedParentArtifactsUrl,
             },
             {
                 type: 'note',

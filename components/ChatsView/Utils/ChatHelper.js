@@ -156,6 +156,8 @@ export const getChatIcon = chat => {
             return 'star'
         case 'assistants':
             return 'cpu'
+        case 'artifacts':
+            return 'layers'
     }
 }
 

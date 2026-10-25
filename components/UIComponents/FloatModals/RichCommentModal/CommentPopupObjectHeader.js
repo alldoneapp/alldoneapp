@@ -107,10 +107,21 @@ export default function CommentPopupObjectHeader({
         } else if (WATCHED_OBJECT_TYPES[normalizedObjectType]) {
             WATCHED_OBJECT_TYPES[normalizedObjectType](projectId, objectId, watcherKeyRef.current, updateObject)
         }
+        // Artifacts use their own listener rather than the shared watcher registry. Required lazily,
+        // like the row below, so the popup does not load the artifact modules for every other type.
+        const unwatchArtifact =
+            normalizedObjectType === 'artifacts'
+                ? require('../../../../utils/backends/Artifacts/artifactsFirestore').watchArtifact(
+                      projectId,
+                      objectId,
+                      updateObject
+                  )
+                : null
 
         return () => {
             mounted = false
             clearTimeout(loadTimeout)
+            if (unwatchArtifact) unwatchArtifact()
             if (normalizedObjectType === 'notes') {
                 unwatchNote(projectId, objectId)
             } else if (normalizedObjectType === 'contacts' || WATCHED_OBJECT_TYPES[normalizedObjectType]) {
@@ -250,6 +261,10 @@ const renderObject = ({
                     inCommentPopup
                 />
             )
+        case 'artifacts': {
+            const ArtifactRow = require('../../../ArtifactsView/ArtifactRow').default
+            return <ArtifactRow artifact={object} onPress={() => onOpen?.()} inCommentPopup />
+        }
         default:
             return <UnavailableObject objectType={objectType} />
     }

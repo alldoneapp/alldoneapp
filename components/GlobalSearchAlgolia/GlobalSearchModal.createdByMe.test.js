@@ -39,8 +39,8 @@ import { DV_TAB_ROOT_TASKS } from '../../utils/TabNavigationConstants'
 
 const searchCalls = []
 
-// The search batches all five tabs into one multi_search call; capturing each entry
-// separately keeps the assertions per-index.
+// The search batches the five original tabs into one multi_search call and searches
+// artifacts in a second one; capturing each entry separately keeps the assertions per-index.
 jest.mock('../../utils/typesenseSearch', () => ({
     warmTypesenseSearchCredentials: jest.fn(async () => true),
     multiSearchTypesense: async searches => {
@@ -95,6 +95,7 @@ const CREATOR_ATTRIBUTE_BY_INDEX = {
     dev_notes: 'userId',
     dev_contacts: 'recorderUserId',
     dev_updates: 'creatorId',
+    dev_artifacts: 'userId',
 }
 
 describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
@@ -162,7 +163,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
         await mount()
         await search('invoice')
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
             expect(call.filters).toContain(projectConjunct('project-1'))
             expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
@@ -211,7 +212,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         await setCreatedByMe(true)
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         expect(Object.keys(CREATOR_ATTRIBUTE_BY_INDEX).sort()).toEqual(searchCalls.map(c => c.indexName).sort())
         searchCalls.forEach(call => {
             expect(call.text).toBe('invoice')
@@ -259,7 +260,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         await setCreatedByMe(false)
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
             expect(call.filters).not.toContain(creatorConjunct(CREATOR_ATTRIBUTE_BY_INDEX[call.indexName], 'user-1'))
         })
@@ -288,7 +289,7 @@ describe('GlobalSearchModal — "only objects I created" (AT-2258)', () => {
 
         await act(async () => openTasksChip().props.onPress())
 
-        expect(searchCalls).toHaveLength(5)
+        expect(searchCalls).toHaveLength(6)
         searchCalls.forEach(call => {
             expect(call.text).toBe('invoice')
             if (call.indexName === 'dev_tasks') {
