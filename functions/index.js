@@ -6024,6 +6024,24 @@ exports.dispatchKnowledgeBaseIngests = onSchedule(
     }
 )
 
+// The project wiki is on by default for every project of an active user: switches on the projects
+// that never had a wiki, resumes the ones paused while their payer was away. Once a day is enough;
+// new projects and returning users are handled by their own triggers. See
+// KnowledgeBase/knowledgeBaseDefaults.js.
+exports.applyKnowledgeBaseDefaults = onSchedule(
+    {
+        schedule: '41 1 * * *',
+        timeZone: 'UTC',
+        timeoutSeconds: SCHEDULED_FUNCTION_TIMEOUT_SECONDS,
+        memory: '256MiB',
+        region: 'europe-west1',
+    },
+    async () => {
+        const { applyKnowledgeBaseDefaultsForActiveUsers } = require('./KnowledgeBase/knowledgeBaseDefaults')
+        await applyKnowledgeBaseDefaultsForActiveUsers()
+    }
+)
+
 exports.reconcileAssistantHeartbeatSchedules = onSchedule(
     {
         schedule: '17 2 * * *',

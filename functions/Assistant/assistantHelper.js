@@ -5088,16 +5088,10 @@ async function executeExternalIntegrationTool({
     }
 }
 
-async function getAssistantFeedUserForTool(db, projectId, assistantId, requestUserId, toolRuntimeContext = null) {
+async function getAssistantFeedUserForTool(db, projectId, assistantId, requestUserId) {
     if (!assistantId) {
         const { UserHelper } = require('../shared/UserHelper')
-        const { decorateFeedUserForRuntimeContext } = require('../shared/mcpActor')
-        // Without an assistant the actor is the user, and over MCP it is the user's agent: the
-        // feedUser then carries the channel, so what it writes says so (shared/mcpActor.js).
-        return decorateFeedUserForRuntimeContext(
-            await UserHelper.getFeedUserData(db, requestUserId),
-            toolRuntimeContext
-        )
+        return UserHelper.getFeedUserData(db, requestUserId)
     }
 
     try {
@@ -5675,13 +5669,7 @@ async function executeToolNativelyImpl(
                 routingConsistencyCorrection: createTaskProjectSelection.routingConsistencyCorrection || null,
             })
 
-            const feedUser = await getAssistantFeedUserForTool(
-                db,
-                targetProjectId || projectId,
-                assistantId,
-                creatorId,
-                toolRuntimeContext
-            )
+            const feedUser = await getAssistantFeedUserForTool(db, targetProjectId || projectId, assistantId, creatorId)
 
             // Get user's timezone for date parsing (normalize across possible fields)
             const userDoc = await db.collection('users').doc(creatorId).get()
@@ -6020,13 +6008,7 @@ async function executeToolNativelyImpl(
             )
             const noteProjectId = targetProject ? targetProject.id : projectId
 
-            const feedUser = await getAssistantFeedUserForTool(
-                db,
-                noteProjectId,
-                assistantId,
-                creatorId,
-                toolRuntimeContext
-            )
+            const feedUser = await getAssistantFeedUserForTool(db, noteProjectId, assistantId, creatorId)
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {
@@ -6986,13 +6968,7 @@ async function executeToolNativelyImpl(
             // Use shared service for find and update
             // toolArgs contains: taskId, taskName, projectId, projectName, completed, focus, name, description, dueDate, alertEnabled, estimation, updateAll
             try {
-                const feedUser = await getAssistantFeedUserForTool(
-                    db,
-                    projectId,
-                    assistantId,
-                    creatorId,
-                    toolRuntimeContext
-                )
+                const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
                 const normalizedToolArgs = { ...toolArgs }
                 const moveToProjectId =
                     typeof normalizedToolArgs.moveToProjectId === 'string'
@@ -7181,9 +7157,7 @@ async function executeToolNativelyImpl(
                         // Comments written via update_task should show up in the task's feed/chat
                         // history but must not mark the thread/comments as unread (no unread badge,
                         // push, or email). See TaskCommentService.addComment's `silent` handling.
-                        // An MCP client's comment is the exception: the user's agent wrote it while the
-                        // user was elsewhere, so it notifies like any comment (shared/mcpActor.js).
-                        silentComment: toolRuntimeContext?.sourceChannel !== 'mcp',
+                        silentComment: true,
                     }
                 )
 
@@ -7473,13 +7447,7 @@ async function executeToolNativelyImpl(
                 )
             }
 
-            const feedUser = await getAssistantFeedUserForTool(
-                db,
-                projectId,
-                assistantId,
-                creatorId,
-                toolRuntimeContext
-            )
+            const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {
@@ -7891,13 +7859,7 @@ async function executeToolNativelyImpl(
                 updates.photoURL300 = ''
             }
 
-            const feedUser = await getAssistantFeedUserForTool(
-                db,
-                targetProjectId || projectId,
-                assistantId,
-                creatorId,
-                toolRuntimeContext
-            )
+            const feedUser = await getAssistantFeedUserForTool(db, targetProjectId || projectId, assistantId, creatorId)
             const updateResult = await updateContactFields({
                 db,
                 projectId: targetProjectId,
@@ -7945,13 +7907,7 @@ async function executeToolNativelyImpl(
 
         case 'update_user_memory': {
             const db = admin.firestore()
-            const feedUser = await getAssistantFeedUserForTool(
-                db,
-                projectId,
-                assistantId,
-                creatorId,
-                toolRuntimeContext
-            )
+            const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
 
             return await updateUserMemory({
                 db,
@@ -7997,8 +7953,7 @@ async function executeToolNativelyImpl(
                 db,
                 targetProject.id || projectId,
                 assistantId,
-                creatorId,
-                toolRuntimeContext
+                creatorId
             )
 
             if (toolRuntimeContext?.resumeScheduledWorkflow) {
@@ -8068,8 +8023,7 @@ async function executeToolNativelyImpl(
                 db,
                 targetProjectId || projectId,
                 assistantId,
-                requestUserId,
-                toolRuntimeContext
+                requestUserId
             )
 
             return await updateUserDescription({

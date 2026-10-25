@@ -8,7 +8,6 @@ import FeedsTypesLeftHeader from '../Commons/FeedsTypesLeftHeader'
 import MultilineParser from '../TextParser/MultilineParser'
 import { generatorParserImageElement, generatorParserTextElement } from '../Utils/HelperFunctions'
 import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
-import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function TaskMovedInWorkflowFeed({
     feed,
@@ -23,7 +22,7 @@ export default function TaskMovedInWorkflowFeed({
     const { fromStepDescription, toStepDescription, isForward, isSubtask, creatorId, fromStepUserId, toStepUserId } =
         feed
 
-    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
+    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
     const { photoURL: fromStepAvatarURL } = getUserPresentationDataInProject(projectId, fromStepUserId)
     const { photoURL: toStepAvatarURL } = getUserPresentationDataInProject(projectId, toStepUserId)
 

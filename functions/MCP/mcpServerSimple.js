@@ -218,13 +218,6 @@ const { CloudOAuthHandler, CloudSessionManager, UserSessionManager } = require('
 
 // Import Alldone constants (still needed for other operations)
 const { OPEN_STEP, FEED_PUBLIC_FOR_ALL } = require('../Utils/HelperFunctionsCloud')
-const { resolveMcpClientLabel } = require('../shared/mcpActor')
-
-// What the token behind a request says about its client, per request. Everything an MCP client writes
-// is attributed to the user AND labelled with the client ("via Claude", shared/mcpActor.js); the label
-// comes from the name the client reported in `initialize`, which is remembered on its access token.
-const mcpCallerByRequest = new WeakMap()
-const MCP_CLIENT_NAME_MAX_LENGTH = 100
 
 /**
  * Rate Limiter using Firestore for persistence
@@ -667,7 +660,7 @@ class AlldoneSimpleMCPServer {
     // Authentication methods
 
     // Helper method to get user from Firebase ID token or OAuth access token
-    async getAuthenticatedUserFromToken(accessToken, callerInfo = null) {
+    async getAuthenticatedUserFromToken(accessToken) {
         if (!accessToken) {
             throw new Error('Access token is required')
         }
@@ -760,12 +753,6 @@ class AlldoneSimpleMCPServer {
                             tokenData.userId
                         }, new expiry: ${newExpiresAt.toDate().toISOString()}`
                     )
-                }
-
-                if (callerInfo) {
-                    callerInfo.accessToken = accessToken
-                    callerInfo.refreshToken = tokenData.refreshToken || null
-                    callerInfo.mcpClientName = tokenData.mcpClientName || null
                 }
 
                 return tokenData.userId
@@ -1025,42 +1012,13 @@ class AlldoneSimpleMCPServer {
             )
         }
 
-        const runtimeContext = await this.buildDelegatedToolRuntimeContext(userId, request)
+        const runtimeContext = await this.buildDelegatedToolRuntimeContext(userId)
 
         return await executeToolNatively(name, toolArgs, contextProjectId, null, userId, {}, runtimeContext)
     }
 
     hasNonEmptyString(value) {
         return typeof value === 'string' && value.trim().length > 0
-    }
-
-    // The client label ("Claude", "Codex") the tools stamp on what they write, or null when the
-    // token never reported a recognisable client (the app then shows "via MCP").
-    getMcpClientLabel(request) {
-        const callerInfo = request && typeof request === 'object' ? mcpCallerByRequest.get(request) : null
-        return resolveMcpClientLabel(callerInfo?.mcpClientName)
-    }
-
-    // Stores the client name from `initialize` on the access token (and its refresh token, so a
-    // refreshed token keeps it). Best effort: a session whose name could not be stored is only
-    // labelled "via MCP".
-    async rememberMcpClientName(request, rawClientName) {
-        try {
-            const callerInfo = request && typeof request === 'object' ? mcpCallerByRequest.get(request) : null
-            if (!callerInfo?.accessToken || !this.hasNonEmptyString(rawClientName)) return
-            const mcpClientName = rawClientName.trim().slice(0, MCP_CLIENT_NAME_MAX_LENGTH)
-            if (callerInfo.mcpClientName === mcpClientName) return
-
-            const db = admin.firestore()
-            const writes = [db.collection('oauthTokens').doc(callerInfo.accessToken).update({ mcpClientName })]
-            if (callerInfo.refreshToken) {
-                writes.push(db.collection('oauthRefreshTokens').doc(callerInfo.refreshToken).update({ mcpClientName }))
-            }
-            await Promise.allSettled(writes)
-            callerInfo.mcpClientName = mcpClientName
-        } catch (error) {
-            console.warn('MCP: failed to remember the client name', error && error.message)
-        }
     }
 
     /**
@@ -1116,7 +1074,7 @@ class AlldoneSimpleMCPServer {
      * themselves, but a few (date parsing, VM jobs) read it from here, so we
      * normalise it once and tag the call as coming from the MCP channel.
      */
-    async buildDelegatedToolRuntimeContext(userId, request = null) {
+    async buildDelegatedToolRuntimeContext(userId) {
         const db = admin.firestore()
         let userTimezoneOffset = null
         let language = ''
@@ -1138,7 +1096,6 @@ class AlldoneSimpleMCPServer {
 
         return {
             sourceChannel: 'mcp',
-            mcpClient: this.getMcpClientLabel(request),
             userTimezoneOffset,
             language,
             objectType: null,
@@ -1608,9 +1565,7 @@ class AlldoneSimpleMCPServer {
             }
 
             const accessToken = authHeader.substring(7)
-            const callerInfo = {}
-            const userId = await this.getAuthenticatedUserFromToken(accessToken, callerInfo)
-            if (typeof req === 'object') mcpCallerByRequest.set(req, callerInfo)
+            const userId = await this.getAuthenticatedUserFromToken(accessToken)
             return userId
         } catch (error) {
             if (
@@ -1963,7 +1918,6 @@ class AlldoneSimpleMCPServer {
                 // Check authentication status - return HTTP 401 if not authenticated (per MCP spec)
                 try {
                     await this.getAuthenticatedUserForClient(httpReq)
-                    await this.rememberMcpClientName(httpReq, clientInfo.name)
                 } catch (error) {
                     // Not authenticated - return HTTP 401 as required by MCP authorization spec
                     console.log('🔐 MCP Initialize: Authentication required, returning HTTP 401')
@@ -3329,7 +3283,6 @@ class AlldoneSimpleMCPServer {
                                 mcpSessionId: refreshData.mcpSessionId,
                                 scope: refreshData.scope,
                                 grantType: 'refresh_token',
-                                mcpClientName: refreshData.mcpClientName || null,
                                 createdAt: Timestamp.now(),
                                 expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
                             }
@@ -3342,7 +3295,6 @@ class AlldoneSimpleMCPServer {
                                 userId: refreshData.userId,
                                 mcpSessionId: refreshData.mcpSessionId,
                                 scope: refreshData.scope,
-                                mcpClientName: refreshData.mcpClientName || null,
                                 createdAt: Timestamp.now(),
                                 expiresAt: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 3600 * 1000)), // 30 days
                                 previousRefreshToken: refresh_token, // Audit trail
