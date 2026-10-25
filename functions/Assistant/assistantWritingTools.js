@@ -15,6 +15,9 @@ const WRITING_READ_TOOLS = new Set([
     'get_notes',
     'get_chat_attachment',
     'load_skill',
+    // Offered by the wiki itself, not by the assistant's toggles (knowledgeBaseAssistant.js gives
+    // writing runs read access). Without it here the run is offered the tool and then refused it.
+    'read_knowledge_page',
 ])
 
 function writingReadTools(tools) {
