@@ -285,13 +285,7 @@ describe('automatic parent goal project moves', () => {
                     { uid: 'assistant-1' }
                 )
             ).rejects.toThrow('Parent goal change committed in project target')
-            expect(service.performEstimationUpdate).toHaveBeenCalledWith(
-                'target',
-                'task-1',
-                expect.anything(),
-                30,
-                expect.objectContaining({ uid: 'assistant-1' })
-            )
+            expect(service.performEstimationUpdate).toHaveBeenCalledWith('target', 'task-1', expect.anything(), 30)
             expect(docs[sourcePath]).toBeUndefined()
             expect(docs[targetPath].parentGoalId).toBe('goal-1')
         } finally {

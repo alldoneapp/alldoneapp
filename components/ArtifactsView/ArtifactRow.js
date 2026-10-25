@@ -7,6 +7,7 @@ import { translate } from '../../i18n/TranslationService'
 import { formatArtifactDate, formatArtifactSize, getArtifactThumbnail } from './artifactPresentation'
 import { ARTIFACT_SOURCES } from '../../functions/Artifacts/artifactModel'
 import ArtifactThumbnail from './ArtifactThumbnail'
+import ArtifactContextLink from './ArtifactContextLink'
 
 const SOURCE_ICONS = { [ARTIFACT_SOURCES.ASSISTANT]: 'cpu', [ARTIFACT_SOURCES.VM]: 'terminal' }
 
@@ -18,10 +19,20 @@ function getServeUrl(projectId) {
 }
 
 // `inCommentPopup` draws the row on the comment popup's dark header instead of the light list.
-// `projectId` lets an image show itself; `onOpenSource` turns a linked upload's link badge into the
-// way to its source, now that pressing the row shows the file.
+// `projectId` lets an image show itself; `onOpenSource(artifact, source)` adds the line that leads
+// to where the artifact was made (the note a file was uploaded into, the thread an assistant made it
+// in), now that pressing the row shows the artifact itself.
 export default function ArtifactRow({ artifact, onPress, onOpenSource, projectId, inCommentPopup = false }) {
     const thumbnail = getArtifactThumbnail(artifact, getServeUrl(projectId))
+    const showsContext = !!onOpenSource
+    const metaParts = [
+        translate('Artifact edited at', { date: formatArtifactDate(artifact.lastEditionDate) }),
+        artifact.linkedUpload
+            ? !showsContext &&
+              translate('Artifact upload in', { title: artifact.linkedSources[0]?.title || translate('File') })
+            : formatArtifactSize(artifact.sizeBytes),
+        artifact.versionCount > 1 && translate('Artifact version', { number: artifact.versionCount }),
+    ].filter(Boolean)
     return (
         <TouchableOpacity
             testID={`artifact-row-${artifact.id}`}
@@ -42,35 +53,24 @@ export default function ArtifactRow({ artifact, onPress, onOpenSource, projectId
                     {artifact.title}
                 </Text>
                 <Text style={[localStyles.meta, inCommentPopup && localStyles.metaOnDark]} numberOfLines={1}>
-                    {translate('Artifact edited at', { date: formatArtifactDate(artifact.lastEditionDate) })}
-                    {' · '}
-                    {artifact.linkedUpload
-                        ? translate('Artifact upload in', {
-                              title: artifact.linkedSources[0].title || translate('File'),
-                          })
-                        : formatArtifactSize(artifact.sizeBytes)}
-                    {artifact.versionCount > 1
-                        ? ` · ${translate('Artifact version', { number: artifact.versionCount })}`
-                        : ''}
+                    {metaParts.join(' · ')}
                 </Text>
+                {showsContext && (
+                    <ArtifactContextLink
+                        compact
+                        projectId={projectId}
+                        artifact={artifact}
+                        onOpen={source => onOpenSource(artifact, source)}
+                        testID={`artifact-open-source-${artifact.id}`}
+                    />
+                )}
             </View>
             {/* What an artifact is besides its file: who made it, whether it reads live data, whether
                 people are talking about it. Small and quiet, the title stays the thing to read. */}
             <View style={localStyles.badges}>
-                {artifact.linkedUpload &&
-                    (onOpenSource ? (
-                        <TouchableOpacity
-                            testID={`artifact-open-source-${artifact.id}`}
-                            onPress={() => onOpenSource(artifact)}
-                            accessibilityRole="button"
-                            accessibilityLabel={translate('Open upload source')}
-                            style={localStyles.sourceButton}
-                        >
-                            <Icon name="link" size={16} color={badgeColor(inCommentPopup)} />
-                        </TouchableOpacity>
-                    ) : (
-                        <Icon name="link" size={14} color={badgeColor(inCommentPopup)} style={localStyles.badge} />
-                    ))}
+                {artifact.linkedUpload && !showsContext && (
+                    <Icon name="link" size={14} color={badgeColor(inCommentPopup)} style={localStyles.badge} />
+                )}
                 {!!SOURCE_ICONS[artifact.source] && (
                     <Icon
                         name={SOURCE_ICONS[artifact.source]}
@@ -126,14 +126,6 @@ const localStyles = StyleSheet.create({
     },
     icon: {
         marginRight: 12,
-    },
-    // A 28px target around the 16px icon, without moving the badges next to it.
-    sourceButton: {
-        padding: 6,
-        marginVertical: -6,
-        marginRight: -6,
-        marginLeft: 2,
-        borderRadius: 4,
     },
     texts: {
         flex: 1,

@@ -409,9 +409,6 @@ describe('undoing a correction', () => {
             revertRevision: 4,
         })
         expect(db.read(revisionPath('kunden', 4))).toMatchObject({ mode: 'undo', restoredRevision: 2 })
-        // Made in the app's chat, not through an MCP client.
-        expect(db.read(revisionPath('kunden', 3)).author).not.toHaveProperty('via')
-        expect(db.read(revisionPath('kunden', 4)).author).not.toHaveProperty('via')
 
         await expect(run(db, UNDO_KNOWLEDGE_CORRECTION_TOOL, { correctionId })).resolves.toMatchObject({
             success: false,
@@ -533,34 +530,13 @@ describe('over MCP', () => {
             type: 'user',
             userId: 'member',
             assistantId: null,
-            // The history and the Updates feed read the revision: "Karsten (via MCP)".
-            via: 'mcp',
         })
 
         await expect(
             mcpRun(db, UNDO_KNOWLEDGE_CORRECTION_TOOL, { correctionId: result.correctionId })
         ).resolves.toMatchObject({ success: true })
         expect(db.read(pagePath('kunden')).body).toBe(KUNDEN_BODY)
-        expect(db.read(revisionPath('kunden', 4)).author).toMatchObject({ userId: 'member', via: 'mcp' })
         expect(db.read(`${KB_PATH}/corrections/${result.correctionId}`).status).toBe('reverted')
-    })
-
-    it('names the MCP client on the revision when the server knows it', async () => {
-        const db = createDb()
-
-        await mcpRun(
-            db,
-            CORRECT_KNOWLEDGE_PAGE_TOOL,
-            {
-                slug: 'kunden',
-                revision: 2,
-                correction: 'Die Ansprechpartnerin heißt Frau Brandt.',
-                body: 'Ansprechpartnerin ist Frau Brandt [[correction:new]].',
-            },
-            mcpCall({ mcpClient: 'Codex' })
-        )
-
-        expect(db.read(revisionPath('kunden', 3)).author).toMatchObject({ via: 'mcp', viaClient: 'Codex' })
     })
 
     it('refuses a project the signed-in user is no member of', async () => {

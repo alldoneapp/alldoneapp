@@ -11,8 +11,7 @@ import {
     generatorParserTextElement,
     generatorParserViewElement,
 } from '../Utils/HelperFunctions'
-import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
-import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
+import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
 
 export default function TaskChangedProjectFeed({
     feed,
@@ -26,7 +25,7 @@ export default function TaskChangedProjectFeed({
     const [width, setWidth] = useState(0)
     const { projectName, projectColor, changeDirection, isSubtask, creatorId } = feed
 
-    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
+    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
 
     let firstEntryText
     if (isSubtask) {

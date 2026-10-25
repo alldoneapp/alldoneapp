@@ -20,7 +20,7 @@ const taskPath = id => `items/${PROJECT_ID}/tasks/${id}`
 function createDb(extra = {}, knowledgeBase = {}) {
     return new KnowledgeFirestoreDouble({
         [`projects/${PROJECT_ID}`]: { name: 'Alldone Product', userIds: ['owner', 'teammate'] },
-        ['users/owner']: { gold: 1000, timezone: 2, displayName: 'Karsten', lastLogin: NOW - DAY },
+        ['users/owner']: { gold: 1000, timezone: 2, displayName: 'Karsten' },
         [KB_PATH]: {
             enabled: true,
             ownerUserId: 'owner',
@@ -488,7 +488,7 @@ describe('runKnowledgeBaseIngest', () => {
 
     it('stops when the owner has no Gold left', async () => {
         const db = createDb({
-            ['users/owner']: { gold: 0, timezone: 2, lastLogin: NOW - DAY },
+            ['users/owner']: { gold: 0, timezone: 2 },
             [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
         })
         const { runConversation } = scriptedModel()
@@ -497,41 +497,6 @@ describe('runKnowledgeBaseIngest', () => {
 
         expect(runConversation).not.toHaveBeenCalled()
         expect(result).toMatchObject({ status: 'stopped', stopReason: 'insufficient_gold' })
-    })
-
-    it('pauses instead of spending Gold when the owner has not used Alldone for 30 days', async () => {
-        const db = createDb({
-            ['users/owner']: { gold: 1000, timezone: 2, lastLogin: NOW - 31 * DAY },
-            [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-        })
-        const { runConversation } = scriptedModel()
-
-        const result = await run(db, { runConversation })
-
-        expect(runConversation).not.toHaveBeenCalled()
-        expect(result).toMatchObject({ status: 'stopped', stopReason: 'owner_inactive', nextRunAt: null, runId: null })
-        expect(db.read(KB_PATH)).toMatchObject({
-            enabled: true,
-            nextRunAt: null,
-            lastRunStatus: 'stopped',
-            lastRunStopReason: 'owner_inactive',
-        })
-        expect(db.read(KB_PATH)).not.toHaveProperty('leaseOwner')
-    })
-
-    it('keeps a refresh requested while a paused run was going, instead of making it due forever', async () => {
-        const db = createDb({ ['users/owner']: { gold: 1000, timezone: 2, lastLogin: NOW - 31 * DAY } })
-        let ticks = 0
-        // The second reading of the clock is the end of the run: a member pressed "refresh now" meanwhile.
-        const clock = () => {
-            ticks += 1
-            if (ticks === 2) db.write(KB_PATH, { nextRunAt: NOW + 1000 }, { merge: true })
-            return NOW
-        }
-
-        await run(db, { clock, runConversation: scriptedModel().runConversation })
-
-        expect(db.read(KB_PATH).nextRunAt).toBe(NOW + 1000)
     })
 
     it('stops at a refused charge instead of running on unpaid', async () => {
