@@ -598,32 +598,6 @@ button on a page only opens a chat with the project's assistant (`createBotQuick
 writes the wiki itself. Pinned by `knowledgeBaseAssistant.test.js` and the `project wiki wiring`
 block in `assistantHelper.test.js`.
 
-**A page is the current state, never its history.** The revisions already keep every past version
-of a page, so `WIKI_RULES` in `knowledgeBaseIngest.js` forbids narrating how the project got there
-(meeting chronology, "first …, then …"), tells the model to replace a superseded statement and its
-citation instead of adding the new one beside it, and allows alternatives only while a question is
-still undecided: once decided, the decision and its reason stay and the rejected options go. Both
-ingest modes list source cards oldest first, so a later card wins a disagreement; the rebuild path
-sorts them itself because `loadKnowledgeSourcesByKeys` returns them in page order. The
-`correct_knowledge_page` body follows the same rule. Pinned by the `current state` case in
-`knowledgeBaseIngest.test.js`.
-
-An ingest run only rewrites a page when one of its sources changes, so pages written before these
-rules keep their history until a **one-time current-state pass** reaches them
-(`knowledgeCurrentStateRewrite.js`, requested by `migration/rewriteKnowledgeBasesToCurrentState.js`
-after `runKnowledgeBaseIngest` is deployed; dry run by default). The request is only a list of slugs
-on the wiki document (`currentStateRewrite.pendingSlugs`) plus making the wiki due; the run works
-through it after its rebuilds and before the delta, at most `MAX_CURRENT_STATE_REWRITES_PER_RUN`
-conversations per run, each from the page's own text plus the cards of the sources it cites, billed
-to the owner and stopped by the monthly cap like any other run. Three details: the store sees the
-rewrite as an ordinary `ingest` edit (it read the page first and keeps its `sourceKeys`; only a
-rebuild replaces them), so neither the store nor the Updates feed needs a new mode; a page this run
-has just rebuilt is skipped (`lastRunId`), and a page that is archived, hidden or has no readable
-source leaves the list without a model call; and a run stopped mid-conversation leaves that slug
-pending, so the page is rewritten by the next run rather than skipped. Pinned by
-`knowledgeCurrentStateRewrite.test.js` and the `one-time current-state pass` block of
-`knowledgeBaseIngest.test.js`.
-
 Keep the parser `components/WikiView/wikiMarkdownParser.js` and the renderer `WikiMarkdown.js`
 under different names: a `wikiMarkdown.js` next to `WikiMarkdown.js` collides on macOS's
 case-insensitive filesystem. The renderer is deliberately self-written (no Markdown dependency, no

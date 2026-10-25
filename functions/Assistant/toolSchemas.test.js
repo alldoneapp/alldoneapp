@@ -241,6 +241,15 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.create_note.function.description).toContain('Never call create_note again')
     })
 
+    test('lets create_note name its target project without requiring one', () => {
+        const parameters = toolSchemas.create_note.function.parameters
+
+        expect(parameters.properties.projectId.type).toBe('string')
+        expect(parameters.properties.projectName.type).toBe('string')
+        expect(parameters.properties.projectName.description).toContain('exact project name')
+        expect(parameters.required).toEqual(['title', 'content'])
+    })
+
     test('defines recurrence for task creation and updates', () => {
         const createRecurrence = toolSchemas.create_task.function.parameters.properties.recurrence
         const updateRecurrence = toolSchemas.update_task.function.parameters.properties.recurrence

@@ -8,18 +8,17 @@ The web client reads the wiki straight from Firestore (`utils/backends/Knowledge
 renders it in `components/WikiView/` (the `ROOT_WIKI` root tab, `/projects/{id}/wiki[/slug]`);
 its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-settings`).
 
-| Module                            | Role                                                                                    |
-| --------------------------------- | --------------------------------------------------------------------------------------- |
-| `knowledgeBaseModel.js`           | Paths, limits, slugs, `[[slug]]` / `[[task:ID]]` tokens, settings validation            |
-| `knowledgeBaseSettings.js`        | `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh` callables                     |
-| `collectKnowledgeSources.js`      | Delta of objects visible to the whole project, as source cards                          |
-| `knowledgeSourceInvalidation.js`  | Hides and empties pages citing a withdrawn object, redacts their revisions              |
-| `knowledgePageStore.js`           | The one place a page is written: citation, revision and concurrency checks              |
-| `knowledgeBaseIngest.js`          | One ingest run (rebuilds, current-state pass, delta), billed as `knowledge_base_ingest` |
-| `knowledgeCurrentStateRewrite.js` | Requests the one-time pass that rewrites existing pages to the current state            |
-| `knowledgeBaseDispatcher.js`      | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue                   |
-| `knowledgeBaseAssistant.js`       | Wiki index in assistant prompts; read, correct and undo tools                           |
-| `knowledgeBaseToolSchemas.js`     | Names and schemas of those tools (dependency-free, for `toolSchemas.js`)                |
+| Module                           | Role                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `knowledgeBaseModel.js`          | Paths, limits, slugs, `[[slug]]` / `[[task:ID]]` tokens, settings validation |
+| `knowledgeBaseSettings.js`       | `setKnowledgeBaseSettings`, `requestKnowledgeBaseRefresh` callables          |
+| `collectKnowledgeSources.js`     | Delta of objects visible to the whole project, as source cards               |
+| `knowledgeSourceInvalidation.js` | Hides and empties pages citing a withdrawn object, redacts their revisions   |
+| `knowledgePageStore.js`          | The one place a page is written: citation, revision and concurrency checks   |
+| `knowledgeBaseIngest.js`         | One ingest run (rebuilds, then delta), billed as `knowledge_base_ingest`     |
+| `knowledgeBaseDispatcher.js`     | Enqueues due runs onto the `runKnowledgeBaseIngest` Cloud Tasks queue        |
+| `knowledgeBaseAssistant.js`      | Wiki index in assistant prompts; read, correct and undo tools                |
+| `knowledgeBaseToolSchemas.js`    | Names and schemas of those tools (dependency-free, for `toolSchemas.js`)     |
 
 ## Deploying
 
@@ -48,18 +47,3 @@ its settings are the project details tab `PROJECT_WIKI` (`/project/{id}/wiki-set
    rather than trusting the deploy summary.
 
 No composite index is needed: every query is a single-field range or equality.
-
-## Rewriting existing pages to the current state (one-time)
-
-Pages written before the current-state rules may still narrate meetings or list options that have
-since been decided. After `runKnowledgeBaseIngest` is deployed, request the pass for every enabled
-wiki (or one, with `--project-id=<id>`); without `--execute` it only lists what it would request:
-
-```sh
-node migration/rewriteKnowledgeBasesToCurrentState.js --firebase-project-id=<projectId>
-node migration/rewriteKnowledgeBasesToCurrentState.js --firebase-project-id=<projectId> --execute
-```
-
-Each wiki becomes due at once, and its runs then rewrite up to ten pages each, continuing a minute
-later until the list on the wiki document (`currentStateRewrite`) is empty. It is billed to the
-wiki's owner and stops at the monthly cap like any other run; what is left continues next month.
