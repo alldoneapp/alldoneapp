@@ -13,6 +13,7 @@ import { UnreadEmailArchiveProvider } from './unreadEmailArchiveContext'
 import useGetUnreadChatMessages from '../../hooks/Chats/useGetUnreadChatMessages'
 import { performEmailLineAction } from '../../utils/backends/EmailLine/emailLineBackend'
 import { markChatMessagesAsRead } from '../../utils/backends/Chats/chatsComments'
+import { clearChatCommentsForLinkedEmails } from '../../utils/backends/Chats/markChatCommentsAsRead'
 import { ALL_TAB, FOLLOWED_TAB } from '../Feeds/Utils/FeedsConstants'
 
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }))
@@ -23,6 +24,11 @@ jest.mock('../../utils/backends/EmailLine/emailLineBackend', () => ({ performEma
 jest.mock('../../utils/backends/Chats/chatsComments', () => ({
     markChatMessagesAsRead: jest.fn(),
     markMessagesAsRead: jest.fn(),
+}))
+// The archive clears the unread state of the matching chat comments first and hands back the
+// rollback (AT-2424); the real module would pull in the whole Firestore client.
+jest.mock('../../utils/backends/Chats/markChatCommentsAsRead', () => ({
+    clearChatCommentsForLinkedEmails: jest.fn(),
 }))
 jest.mock('../../i18n/TranslationService', () => ({ translate: text => text }))
 
@@ -171,6 +177,7 @@ describe('bulk email archive on the Followed tab (AT-2256 follow-up)', () => {
         mockRowProps.length = 0
         mockAccessGranted = true
         performEmailLineAction.mockResolvedValue(undefined)
+        clearChatCommentsForLinkedEmails.mockResolvedValue(jest.fn())
     })
 
     it('offers "Archive emails" on the project line', () => {
