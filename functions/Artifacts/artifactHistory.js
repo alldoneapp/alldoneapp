@@ -1,7 +1,6 @@
 'use strict'
 
 const { getArtifactDocPath } = require('./artifactModel')
-const { getActorChannelFields, getLastEditorChannelFields } = require('../shared/mcpActor')
 
 // What happened to an artifact, in order: who created it, who saved which version and how, who
 // renamed it, shared it or reset its link (the artifact's "Updates", ARTIFACTS_PLAN.md §8). One
@@ -11,9 +10,6 @@ const { getActorChannelFields, getLastEditorChannelFields } = require('../shared
 //
 // Version events are written in the same transaction as the version itself; metadata edits, which
 // a member makes straight in Firestore, are derived by the update trigger from before/after.
-//
-// An event an MCP client caused in the user's name carries its marker (`via`, `viaClient`), so the
-// timeline says "Karsten Wysk (via Claude)" (shared/mcpActor.js).
 
 const ARTIFACT_HISTORY_TYPES = Object.freeze({
     CREATED: 'created',
@@ -46,7 +42,7 @@ function buildHistoryEvent(type, fields = {}) {
     if (fields.changeSummary) event.changeSummary = clip(fields.changeSummary)
     if (fields.from !== undefined) event.from = clip(fields.from)
     if (fields.to !== undefined) event.to = clip(fields.to)
-    return { ...event, ...getActorChannelFields(fields) }
+    return event
 }
 
 // The events of a commit: the artifact's creation, or the new version it now shows.
@@ -59,7 +55,6 @@ function buildVersionHistoryEvent({ created, version, userId, now }) {
         versionNumber: version.versionNumber,
         source: version.source,
         changeSummary: version.changeSummary,
-        ...getActorChannelFields(version),
     })
 }
 
@@ -70,29 +65,25 @@ function buildMetadataHistoryEvents(before = {}, after = {}, now = Date.now()) {
     if (!before || !after) return []
     if (before.currentVersionId !== after.currentVersionId) return []
     const actorId = after.lastEditorId || ''
-    // Whether that edit came through an MCP client: only a stamp written with this very edition counts.
-    const actorChannel = getLastEditorChannelFields(after)
     const events = []
     if ((before.title || '') !== (after.title || '')) {
         events.push(
             buildHistoryEvent(ARTIFACT_HISTORY_TYPES.RENAMED, {
                 date: now,
                 actorId,
-                ...actorChannel,
                 from: before.title || '',
                 to: after.title || '',
             })
         )
     }
     if ((before.description || '') !== (after.description || '')) {
-        events.push(buildHistoryEvent(ARTIFACT_HISTORY_TYPES.DESCRIPTION, { date: now, actorId, ...actorChannel }))
+        events.push(buildHistoryEvent(ARTIFACT_HISTORY_TYPES.DESCRIPTION, { date: now, actorId }))
     }
     if (before.isPrivate !== after.isPrivate && typeof after.isPrivate === 'boolean') {
         events.push(
             buildHistoryEvent(after.isPrivate ? ARTIFACT_HISTORY_TYPES.MADE_PRIVATE : ARTIFACT_HISTORY_TYPES.SHARED, {
                 date: now,
                 actorId,
-                ...actorChannel,
             })
         )
     }
@@ -126,7 +117,6 @@ function mapArtifactHistoryEvent(eventId, data = {}) {
         changeSummary: data.changeSummary || '',
         from: data.from || '',
         to: data.to || '',
-        ...getActorChannelFields(data),
     }
 }
 

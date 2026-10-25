@@ -100,6 +100,27 @@ test('execution rejects a hallucinated mutation even if the assistant normally p
     ])
 })
 
+test('execution reads a project wiki page but still refuses to correct one', async () => {
+    const mock = helper()
+    mock.executeToolNatively.mockResolvedValue({ success: true, page: { slug: 'kunden' } })
+    mock.collectAssistantTextWithToolCalls.mockImplementation(async options => {
+        await options.toolExecutor('read_knowledge_page', { slug: 'kunden' })
+        await options.onRoundComplete({ assistantText: 'Dear Alex,\nThursday works.' })
+        return {}
+    })
+    const result = await runWritingAssistant(request, mock)
+    expect(mock.executeToolNatively).toHaveBeenCalledWith('read_knowledge_page', { slug: 'kunden' })
+    expect(result.draftText).toBe('Dear Alex,\nThursday works.')
+
+    const refused = helper()
+    refused.collectAssistantTextWithToolCalls.mockImplementation(async options => {
+        await options.toolExecutor('correct_knowledge_page', { slug: 'kunden' })
+        return {}
+    })
+    await expect(runWritingAssistant(request, refused)).rejects.toThrow('Tool not permitted in writing mode')
+    expect(refused.executeToolNatively).not.toHaveBeenCalled()
+})
+
 test('a cancelled run cannot finish or charge Gold', async () => {
     const mock = helper()
     await expect(
