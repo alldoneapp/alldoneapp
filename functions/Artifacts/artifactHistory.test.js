@@ -86,3 +86,39 @@ describe('artifact history from metadata edits', () => {
         })
     })
 })
+
+describe('artifact history of what an MCP client did', () => {
+    const MCP_STAMP = { via: 'mcp', viaClient: 'Codex', editionDate: 2000 }
+
+    it('labels a metadata edit stamped with that very edition', () => {
+        const events = buildMetadataHistoryEvents(
+            BEFORE,
+            { ...BEFORE, title: 'Q3 sales', lastEditionDate: 2000, lastEditorVia: MCP_STAMP },
+            2000
+        )
+        expect(events).toEqual([expect.objectContaining({ type: 'renamed', via: 'mcp', viaClient: 'Codex' })])
+    })
+
+    it('does not label a later edit the app made without clearing the stamp', () => {
+        const events = buildMetadataHistoryEvents(
+            { ...BEFORE, lastEditorVia: MCP_STAMP },
+            { ...BEFORE, title: 'Q4 sales', lastEditionDate: 3000, lastEditorVia: MCP_STAMP },
+            3000
+        )
+        expect(events).toHaveLength(1)
+        expect(events[0]).not.toHaveProperty('via')
+    })
+
+    it('keeps the marker when an entry is read back, and only a known client', () => {
+        expect(
+            mapArtifactHistoryEvent('e1', { type: 'version', actorId: 'owner', via: 'mcp', viaClient: 'Claude' })
+        ).toEqual(expect.objectContaining({ via: 'mcp', viaClient: 'Claude' }))
+        expect(mapArtifactHistoryEvent('e2', { type: 'version', via: 'mcp', viaClient: '<b>x</b>' })).toEqual(
+            expect.objectContaining({ via: 'mcp' })
+        )
+        expect(
+            mapArtifactHistoryEvent('e2', { type: 'version', via: 'mcp', viaClient: '<b>x</b>' })
+        ).not.toHaveProperty('viaClient')
+        expect(mapArtifactHistoryEvent('e3', { type: 'version', actorId: 'owner' })).not.toHaveProperty('via')
+    })
+})

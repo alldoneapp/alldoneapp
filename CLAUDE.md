@@ -946,9 +946,10 @@ is right for access and ownership. Two things were wrong with that and both are 
 `{ via: 'mcp', viaClient: 'Claude' }` (`functions/shared/mcpActor.js`): the app could not tell the
 agent's work from the user's own, and the user was never notified of it, because every fan-out skips
 the actor. The marker is stamped on feeds (`generateFeedModel`, both copies), comments and their
-chat/push notifications (`TaskCommentService`), wiki revision authors, and a task's
-`lastEditorVia` (bound to `lastEditionDate`, because the app writes `lastEditorId` without knowing
-to clear it). The app renders it as "Karsten Wysk (via Claude)" (`utils/mcpActorLabel.js`,
+chat/push notifications (`TaskCommentService`), wiki revision authors, artifact versions and
+their history events (`commitArtifactVersion({ actorChannel })`, `setArtifactDataAccess`), and the
+`lastEditorVia` of a task or an artifact (bound to `lastEditionDate`, because the app writes
+`lastEditorId` without knowing to clear it; the artifact update trigger reads it to label a rename). The app renders it as "Karsten Wysk (via Claude)" (`utils/mcpActorLabel.js`,
 `getFeedCreatorPresentationData`); readers must keep using the user's id for avatar and navigation.
 Every notification path that skips the actor keeps the actor when the marker is present:
 `increaseFeedCount`, `TaskCommentService.addComment`, the wiki feed and the WhatsApp initiator guard
