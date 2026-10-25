@@ -69,6 +69,7 @@ function run(db, options = {}) {
         charge: jest.fn(async () => ({ success: true })),
         readNoteContent: async () => '',
         resolveUserNames: async () => ({ owner: 'Karsten' }),
+        notifyCapReached: jest.fn(async () => ({ notified: true })),
         ...options,
     })
 }
@@ -464,12 +465,40 @@ describe('runKnowledgeBaseIngest', () => {
             { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 100 } }
         )
         const { runConversation } = scriptedModel()
+        const notifyCapReached = jest.fn(async () => ({ notified: true }))
 
-        const result = await run(db, { runConversation })
+        const result = await run(db, { runConversation, notifyCapReached })
 
         expect(runConversation).not.toHaveBeenCalled()
         expect(result).toMatchObject({ status: 'stopped', stopReason: 'monthly_cap' })
         expect(db.read(KB_PATH).nextRunAt).toBe(Date.UTC(2026, 10, 1))
+        // The payer is told, after the stop is recorded, with what the notice needs to say.
+        expect(notifyCapReached).toHaveBeenCalledTimes(1)
+        expect(notifyCapReached).toHaveBeenCalledWith(
+            expect.objectContaining({
+                projectId: PROJECT_ID,
+                ownerUserId: 'owner',
+                ownerData: expect.objectContaining({ displayName: 'Karsten' }),
+                month: '2026-10',
+                spent: 100,
+                goldCap: 100,
+                resumesAt: Date.UTC(2026, 10, 1),
+            })
+        )
+    })
+
+    it('tells the payer when a run spends the last of the monthly cap mid-run', async () => {
+        const db = createDb(
+            { [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY } },
+            { monthlyGoldCap: 100, monthlyGold: { month: '2026-10', spent: 99 } }
+        )
+        const { runConversation } = scriptedModel()
+        const notifyCapReached = jest.fn(async () => ({ notified: true }))
+
+        const result = await run(db, { runConversation, notifyCapReached })
+
+        expect(result).toMatchObject({ status: 'stopped', stopReason: 'monthly_cap' })
+        expect(notifyCapReached).toHaveBeenCalledWith(expect.objectContaining({ spent: 101, goldCap: 100 }))
     })
 
     it('starts a new month with a fresh budget', async () => {
@@ -492,11 +521,13 @@ describe('runKnowledgeBaseIngest', () => {
             [taskPath('t1')]: { name: 'X', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
         })
         const { runConversation } = scriptedModel()
+        const notifyCapReached = jest.fn()
 
-        const result = await run(db, { runConversation })
+        const result = await run(db, { runConversation, notifyCapReached })
 
         expect(runConversation).not.toHaveBeenCalled()
         expect(result).toMatchObject({ status: 'stopped', stopReason: 'insufficient_gold' })
+        expect(notifyCapReached).not.toHaveBeenCalled()
     })
 
     it('pauses instead of spending Gold when the owner has not used Alldone for 30 days', async () => {

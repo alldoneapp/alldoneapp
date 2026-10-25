@@ -273,6 +273,36 @@ describe('ProjectWikiSettings', () => {
         expect(textOf(component.toJSON())).toContain('0 of 500 Gold spent this month')
     })
 
+    it('warns that the monthly limit is reached until a raised limit lets the wiki run again', () => {
+        const month = new Date(Date.now()).toISOString().slice(0, 7)
+        const pausedUntil = Date.now() + 5 * 24 * 60 * 60 * 1000
+        const component = mount({
+            enabled: true,
+            ownerUserId: 'me',
+            monthlyGoldCap: 500,
+            monthlyGold: { month, spent: 506 },
+            lastRunStopReason: 'monthly_cap',
+            nextRunAt: pausedUntil,
+        })
+
+        expect(textOf(component.root.findByProps({ testID: 'project-wiki-cap-reached' }).children)).toContain(
+            'The monthly Gold limit is reached. The wiki is paused until'
+        )
+
+        // Raising the limit makes the server schedule a run now, which ends the warning.
+        act(() =>
+            mockWatchers.knowledgeBase({
+                enabled: true,
+                ownerUserId: 'me',
+                monthlyGoldCap: 1000,
+                monthlyGold: { month, spent: 506 },
+                lastRunStopReason: 'monthly_cap',
+                nextRunAt: Date.now() - 1,
+            })
+        )
+        expect(component.root.findAllByProps({ testID: 'project-wiki-cap-reached' })).toHaveLength(0)
+    })
+
     it('saves the wiki rules', async () => {
         const component = mount({ enabled: true, ownerUserId: 'me', instructions: '' })
         const input = component.root.findByProps({ testID: 'project-wiki-instructions' })

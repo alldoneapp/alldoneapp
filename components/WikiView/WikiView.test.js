@@ -184,23 +184,81 @@ describe('WikiView', () => {
         expect(textOf(component.toJSON())).not.toContain('Set up wiki')
     })
 
-    it('shows the index beside the first page on a wide screen and opens another page', () => {
+    it.each([
+        ['a wide screen', false],
+        ['a phone', true],
+    ])('shows the index on its own on %s, then a page in its place', (label, phone) => {
+        mockState.smallScreenNavigation = phone
         const component = mount()
         deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
 
-        expect(component.root.findAllByProps({ testID: 'wiki-page-entscheidungen' })).not.toHaveLength(0)
-        expect(URLsWiki.push).toHaveBeenLastCalledWith(
-            'PROJECT_WIKI_PAGE',
-            null,
-            'p1',
-            'entscheidungen',
-            'Entscheidungen'
-        )
+        expect(component.root.findAllByProps({ testID: 'wiki-index' })).not.toHaveLength(0)
+        expect(component.root.findAllByProps({ testID: 'wiki-page-entscheidungen' })).toHaveLength(0)
+        expect(URLsWiki.push).toHaveBeenLastCalledWith('PROJECT_WIKI', null, 'p1')
 
         press(component, 'wiki-index-kunden')
 
+        expect(component.root.findAllByProps({ testID: 'wiki-index' })).toHaveLength(0)
         expect(component.root.findAllByProps({ testID: 'wiki-page-kunden' })).not.toHaveLength(0)
         expect(URLsWiki.push).toHaveBeenLastCalledWith('PROJECT_WIKI_PAGE', null, 'p1', 'kunden', 'Kunden')
+
+        pressText(component, 'All wiki pages')
+        expect(component.root.findAllByProps({ testID: 'wiki-index' })).not.toHaveLength(0)
+    })
+
+    it('says for every page when it last changed, in the index and on the page', () => {
+        const component = mount()
+        deliver({
+            knowledgeBase: { enabled: true, lastRunAt: Date.UTC(2026, 9, 25, 8) },
+            pages: [PAGES[0], { ...PAGES[1], updatedAt: Date.UTC(2026, 9, 24, 8) }],
+        })
+
+        const updated = slug => textOf(component.root.findByProps({ testID: `wiki-index-updated-${slug}` }).children)
+        expect(updated('entscheidungen')).toMatch(/^Last updated: 20\.10\.2026/)
+        expect(updated('kunden')).toMatch(/^Last updated: 24\.10\.2026/)
+        // The line above the index is about the wiki as a whole, and says so.
+        expect(textOf(component.root.findByProps({ testID: 'wiki-status' }).children)).toMatch(
+            /^Wiki last updated: 25\.10\.2026/
+        )
+
+        press(component, 'wiki-index-kunden')
+        expect(textOf(component.root.findByProps({ testID: 'wiki-page-updated' }).children)).toMatch(
+            /^Last updated: 24\.10\.2026/
+        )
+    })
+
+    it('says above the index that the wiki stands still at its monthly Gold limit', () => {
+        const month = new Date(Date.now()).toISOString().slice(0, 7)
+        const component = mount()
+        deliver({
+            knowledgeBase: {
+                enabled: true,
+                monthlyGold: { month, spent: 506 },
+                lastRunStopReason: 'monthly_cap',
+                nextRunAt: Date.now() + 24 * 60 * 60 * 1000,
+            },
+            pages: PAGES,
+        })
+
+        expect(textOf(component.root.findByProps({ testID: 'wiki-status' }).children)).toContain(
+            'Paused: the monthly Gold limit is reached.'
+        )
+    })
+
+    it('puts the settings in the project line as an icon centred like the other header actions', () => {
+        const component = mount()
+        deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
+
+        const [settings] = component.root.findAll(
+            node => node.props.accessibilityLabel === 'Wiki settings' && node.props.buttonStyle
+        )
+        // It used to be pushed 16px down, out of the 56px line.
+        expect(settings.props.buttonStyle).toMatchObject({ alignSelf: 'center', height: 32 })
+        expect(settings.props.buttonStyle).not.toHaveProperty('marginTop')
+        expect(settings.props.noBorder).toBe(true)
+
+        act(() => settings.props.onPress())
+        expect(openProjectWikiSettings).toHaveBeenCalledWith('p1')
     })
 
     it('lists what a page is built from and opens a cited object', () => {
@@ -225,27 +283,12 @@ describe('WikiView', () => {
         expect(status).toContain('It stays readable but is no longer updated')
     })
 
-    it('makes the index its own screen on a phone', () => {
-        mockState.smallScreenNavigation = true
-        const component = mount()
-        deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
-
-        expect(component.root.findAllByProps({ testID: 'wiki-index' })).not.toHaveLength(0)
-        expect(component.root.findAllByProps({ testID: 'wiki-page-entscheidungen' })).toHaveLength(0)
-        expect(URLsWiki.push).toHaveBeenLastCalledWith('PROJECT_WIKI', null, 'p1')
-
-        press(component, 'wiki-index-kunden')
-        expect(component.root.findAllByProps({ testID: 'wiki-index' })).toHaveLength(0)
-
-        pressText(component, 'All wiki pages')
-        expect(component.root.findAllByProps({ testID: 'wiki-index' })).not.toHaveLength(0)
-    })
-
     it('loads the history on demand and says when a revision lost its text', async () => {
         getKnowledgePageRevisions.mockResolvedValue([
             { id: '000003', revision: 3, createdAt: Date.UTC(2026, 9, 20, 8), reason: 'Neuer Kunde' },
             { id: '000002', revision: 2, createdAt: Date.UTC(2026, 9, 19, 8), redacted: true },
         ])
+        setWikiSelectedSlug('p1', 'entscheidungen')
         const component = mount()
         deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
         expect(getKnowledgePageRevisions).not.toHaveBeenCalled()
@@ -259,16 +302,17 @@ describe('WikiView', () => {
         expect(history).toContain('Neuer Kunde')
         expect(history).toContain('Text removed: a source it used became private or was deleted')
     })
-    it('opens the correction form for the page on display', () => {
+    it('opens the feedback form for the page on display from the top of the page', () => {
+        setWikiSelectedSlug('p1', 'entscheidungen')
         const component = mount()
         deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
 
-        press(component, 'wiki-suggest-correction')
+        pressText(component, 'Give feedback')
 
         expect(textOf(component.root.findByProps({ testID: 'wiki-correction-form' }).children)).toBe(
             'correcting entscheidungen'
         )
-        expect(component.root.findAllByProps({ testID: 'wiki-suggest-correction' })).toHaveLength(0)
+        expect(textOf(component.toJSON())).not.toContain('Give feedback')
     })
 
     it('offers to undo a correction only while it is the page’s latest revision', async () => {
@@ -289,6 +333,7 @@ describe('WikiView', () => {
             },
         ])
         undoKnowledgeCorrection.mockResolvedValue({ success: true })
+        setWikiSelectedSlug('p1', 'entscheidungen')
         const component = mount()
         deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
 
@@ -309,6 +354,7 @@ describe('WikiView', () => {
             { id: '000003', revision: 3, mode: 'correction', author: { correctionId: 'k1', name: 'Karsten' } },
         ])
         undoKnowledgeCorrection.mockRejectedValue(new Error('The page changed after this correction.'))
+        setWikiSelectedSlug('p1', 'entscheidungen')
         const component = mount()
         deliver({ knowledgeBase: { enabled: true }, pages: PAGES })
         await act(async () => {

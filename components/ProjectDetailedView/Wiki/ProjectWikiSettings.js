@@ -258,6 +258,11 @@ export default function ProjectWikiSettings({ project }) {
                     cap: settings.monthlyGoldCap,
                 })}
             </Text>
+            {settings.pausedAtMonthlyCap && (
+                <Text testID="project-wiki-cap-reached" style={[localStyles.hint, localStyles.error]}>
+                    {translate('Wiki monthly cap reached', { date: formatWikiDate(settings.nextRunAt) })}
+                </Text>
+            )}
 
             <Text style={[localStyles.label, localStyles.blockLabel]}>{translate('Instructions for the wiki')}</Text>
             <TextInput

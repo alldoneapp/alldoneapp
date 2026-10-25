@@ -36,7 +36,9 @@ const {
     loadKnowledgeSourcesByKeys,
 } = require('./collectKnowledgeSources')
 const {
+    KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON,
     KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON,
+    getKnowledgeBaseMonthKey,
     getKnowledgeBasePath,
     getKnowledgeCorrectionsPath,
     getKnowledgePagePath,
@@ -79,10 +81,6 @@ class KnowledgeBaseRunStop extends Error {
         super(reason)
         this.reason = reason
     }
-}
-
-function monthKey(now) {
-    return new Date(now).toISOString().slice(0, 7)
 }
 
 function startOfNextMonthUtc(now) {
@@ -418,6 +416,7 @@ async function runKnowledgeBaseIngest({
     readNoteContent,
     resolveUserNames,
     maxRunWallClockMs = KNOWLEDGE_BASE_INGEST_MAX_RUN_WALL_CLOCK_MS,
+    notifyCapReached = args => require('./knowledgeBaseCapNotice').notifyKnowledgeBaseCapReached(args),
 }) {
     if (!projectId) throw new Error('projectId is required')
     const startedAt = clock()
@@ -428,7 +427,7 @@ async function runKnowledgeBaseIngest({
     const ownerUserId = knowledgeBase.ownerUserId
     const modelKey = resolveKnowledgeBaseModel(knowledgeBase.model)
     const goldCap = resolveKnowledgeBaseMonthlyGoldCap(knowledgeBase.monthlyGoldCap)
-    const currentMonth = monthKey(startedAt)
+    const currentMonth = getKnowledgeBaseMonthKey(startedAt)
     const monthlyGold = {
         month: currentMonth,
         spent: knowledgeBase.monthlyGold?.month === currentMonth ? Number(knowledgeBase.monthlyGold.spent) || 0 : 0,
@@ -461,7 +460,7 @@ async function runKnowledgeBaseIngest({
 
     const conversation = async ({ systemPrompt, userPrompt, tools, label }) => {
         if (clock() + MIN_CONVERSATION_TIME_MS > deadline) throw new KnowledgeBaseRunStop('time')
-        if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop('monthly_cap')
+        if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
         await ensureRunDoc()
         const assertActive = async () => {
             if (clock() > deadline) throw new KnowledgeBaseRunStop('time')
@@ -496,7 +495,7 @@ async function runKnowledgeBaseIngest({
                         stats.goldSpent += gold
                     }
                 }
-                if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop('monthly_cap')
+                if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
             },
         })
     }
@@ -509,7 +508,7 @@ async function runKnowledgeBaseIngest({
             throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON)
         }
         if (!ownerSnapshot.exists || !(Number(ownerData.gold) > 0)) throw new KnowledgeBaseRunStop('insufficient_gold')
-        if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop('monthly_cap')
+        if (monthlyGold.spent >= goldCap) throw new KnowledgeBaseRunStop(KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON)
 
         const projectSnapshot = await db.doc(`projects/${projectId}`).get()
         const projectData = (projectSnapshot.exists && projectSnapshot.data()) || {}
@@ -715,7 +714,7 @@ async function runKnowledgeBaseIngest({
     const nextRunAt =
         stopReason === KNOWLEDGE_BASE_OWNER_INACTIVE_STOP_REASON
             ? null
-            : stopReason === 'monthly_cap'
+            : stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON
               ? startOfNextMonthUtc(finishedAt)
               : moreWork && !failure
                 ? finishedAt + CONTINUE_DELAY_MS
@@ -751,6 +750,22 @@ async function runKnowledgeBaseIngest({
         },
         fieldValue
     )
+
+    // Only after the stop is recorded: the notice links to settings that read it.
+    if (stopReason === KNOWLEDGE_BASE_MONTHLY_CAP_STOP_REASON) {
+        await notifyCapReached({
+            projectId,
+            ownerUserId,
+            ownerData,
+            month: monthlyGold.month,
+            spent: monthlyGold.spent,
+            goldCap,
+            resumesAt: nextRunAt,
+            db,
+            fieldValue,
+            now: finishedAt,
+        })
+    }
 
     return { status, stopReason, runId: runDocWritten ? leaseId : null, nextRunAt, changes, ...stats }
 }
