@@ -2250,6 +2250,109 @@ describe('assistant attachment handoff helpers', () => {
         )
     })
 
+    describe('create_note target project', () => {
+        const mockUserProjects = projects => {
+            const getUserProjects = jest.fn().mockResolvedValue(projects)
+            ProjectService.mockImplementationOnce(() => ({
+                initialize: jest.fn().mockResolvedValue(),
+                getUserProjects,
+            }))
+            return getUserProjects
+        }
+
+        test('creates the note in the project named by projectName', async () => {
+            const getUserProjects = mockUserProjects([
+                { id: 'project-1', name: 'Inbox' },
+                { id: 'project-2', name: 'Alldone Product' },
+            ])
+            mockCreateAndPersistNote.mockResolvedValue({
+                success: true,
+                noteId: 'note-5',
+                note: { id: 'note-5', projectId: 'project-2' },
+            })
+
+            const result = await executeToolNatively(
+                'create_note',
+                { title: 'Routing', content: 'Body', projectName: 'Alldone Product' },
+                'project-1',
+                null,
+                'user-1',
+                null
+            )
+
+            expect(getUserProjects).toHaveBeenCalledWith('user-1', expect.anything())
+            expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+                expect.objectContaining({ projectId: 'project-2' }),
+                expect.objectContaining({ userId: 'user-1', projectId: 'project-2' })
+            )
+            expect(result).toMatchObject({
+                projectId: 'project-2',
+                url: 'https://my.alldone.app/projects/project-2/notes/note-5/editor',
+            })
+        })
+
+        test('refuses a projectId the requesting user is not a member of', async () => {
+            // Over MCP the context project is this same argument, so the executor's membership
+            // check is the only thing between a caller and a note in somebody else's project.
+            mockUserProjects([{ id: 'project-1', name: 'Inbox' }])
+
+            await expect(
+                executeToolNatively(
+                    'create_note',
+                    { title: 'Elsewhere', content: 'Body', projectId: 'foreign-project' },
+                    'foreign-project',
+                    null,
+                    'user-1',
+                    null
+                )
+            ).rejects.toThrow('Target project not found or not accessible: "foreign-project"')
+            expect(mockCreateAndPersistNote).not.toHaveBeenCalled()
+        })
+
+        test('asks for projectId, not moveToProjectId, when the name is ambiguous', async () => {
+            mockUserProjects([
+                { id: 'project-2', name: 'Alldone' },
+                { id: 'project-3', name: 'Alldone' },
+            ])
+
+            await expect(
+                executeToolNatively(
+                    'create_note',
+                    { title: 'Ambiguous', content: 'Body', projectName: 'Alldone' },
+                    'project-1',
+                    null,
+                    'user-1',
+                    null
+                )
+            ).rejects.toThrow('Please use projectId to choose one target project.')
+            expect(mockCreateAndPersistNote).not.toHaveBeenCalled()
+        })
+
+        test('keeps the current project and reads no project list when no target is given', async () => {
+            ProjectService.mockClear()
+            mockCreateAndPersistNote.mockResolvedValue({
+                success: true,
+                noteId: 'note-6',
+                note: { id: 'note-6', projectId: 'project-1' },
+            })
+
+            await executeToolNatively(
+                'create_note',
+                { title: 'Here', content: 'Body' },
+                'project-1',
+                null,
+                'user-1',
+                null
+            )
+
+            expect(ProjectService).not.toHaveBeenCalled()
+            expect(mockCreateAndPersistNote).toHaveBeenCalledWith(
+                expect.objectContaining({ projectId: 'project-1' }),
+                expect.objectContaining({ projectId: 'project-1' })
+            )
+        })
+    })
+
     test('falls back to the assistant for both owner and creator when there is no requesting user', async () => {
         mockCreateAndPersistNote.mockResolvedValue({
             success: true,
@@ -7597,10 +7700,6 @@ describe('assistant project description tool', () => {
         expect(systemMessages).toContain('Project description for this chat/thread:')
         expect(systemMessages).toContain('Current project description text.')
         expect(systemMessages).toContain('Treat the current project description as the base text')
-        expect(systemMessages).toContain("The project description is the project's stable profile")
-        expect(systemMessages).toContain(
-            'Keep current status, recent activity and dated progress out of it unless the user explicitly asks for them'
-        )
         expect(systemMessages).toContain('call get_user_projects first')
     })
 

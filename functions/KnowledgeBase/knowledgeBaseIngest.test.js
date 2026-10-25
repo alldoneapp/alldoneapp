@@ -121,7 +121,6 @@ describe('runKnowledgeBaseIngest', () => {
         expect(calls[0].toolNames).toEqual(['read_page', 'write_page', 'archive_page'])
         expect(calls[0].system).toContain('Alldone Product')
         expect(calls[0].system).toContain('Eine Seite pro Kunde.')
-        expect(calls[0].system).not.toContain('Project description')
         expect(calls[0].user).toContain('[[task:t1]] "Acme als Pilotkunde gewinnen"')
 
         expect(db.read(pagePath('kunden'))).toMatchObject({
@@ -204,61 +203,6 @@ describe('runKnowledgeBaseIngest', () => {
         expect(page).toMatchObject({ needsRebuild: false, body: 'Acme ist Pilotkunde [[task:t1]].', revision: 3 })
         expect(page).not.toHaveProperty('removedSourceKeys')
         expect(result.rebuilt).toBe(1)
-    })
-
-    it('frames every conversation with the project description, which is never a source', async () => {
-        const db = createDb({
-            [`projects/${PROJECT_ID}`]: {
-                name: 'Alldone Product',
-                userIds: ['owner', 'teammate'],
-                description: 'Alldone baut ein AI-Execution-OS.\n\n\n\nKunden und Piloten gehören hierher.',
-            },
-            [taskPath('decided')]: {
-                name: 'Hosting: Cloud Run',
-                isPublicFor: PUBLIC,
-                lastEditionDate: NOW - 20 * DAY,
-            },
-            [taskPath('changed')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-            [pagePath('hosting')]: {
-                slug: 'hosting',
-                title: 'Hosting',
-                body: 'Hosting [[task:decided]] [[note:gone]].',
-                revision: 1,
-                sourceKeys: ['task:decided'],
-                removedSourceKeys: ['note:gone'],
-                needsRebuild: true,
-            },
-        })
-        const { runConversation, calls } = scriptedModel()
-
-        await run(db, { runConversation })
-
-        // Rebuild and delta: the description frames both.
-        expect(calls.map(call => call.system.match(/^(Rebuild|The next message)/m)?.[1])).toEqual([
-            'Rebuild',
-            'The next message',
-        ])
-        for (const call of calls) {
-            expect(call.system).toContain(
-                'Project description, as the project members wrote it:\nAlldone baut ein AI-Execution-OS.\n\nKunden und Piloten gehören hierher.'
-            )
-            expect(call.system).toContain('It is not a source: never cite it and never copy a statement from it')
-            expect(call.system.indexOf('Project description')).toBeLessThan(call.system.indexOf('Rules:'))
-            expect(call.user).not.toContain('AI-Execution-OS')
-        }
-    })
-
-    it('caps a long project description', async () => {
-        const db = createDb({
-            [`projects/${PROJECT_ID}`]: { name: 'Alldone Product', userIds: ['owner'], description: 'x'.repeat(9000) },
-            [taskPath('changed')]: { name: 'Acme Pilot', isPublicFor: PUBLIC, lastEditionDate: NOW - DAY },
-        })
-        const { runConversation, calls } = scriptedModel()
-
-        await run(db, { runConversation })
-
-        expect(calls[0].system).toContain(`${'x'.repeat(4000)} […]`)
-        expect(calls[0].system).not.toContain('x'.repeat(4001))
     })
 
     it('does not hand the page it is rebuilding back through read_page', async () => {

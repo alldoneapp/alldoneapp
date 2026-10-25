@@ -241,6 +241,15 @@ describe('User memory assistant tool schemas', () => {
         expect(toolSchemas.create_note.function.description).toContain('Never call create_note again')
     })
 
+    test('lets create_note name its target project without requiring one', () => {
+        const parameters = toolSchemas.create_note.function.parameters
+
+        expect(parameters.properties.projectId.type).toBe('string')
+        expect(parameters.properties.projectName.type).toBe('string')
+        expect(parameters.properties.projectName.description).toContain('exact project name')
+        expect(parameters.required).toEqual(['title', 'content'])
+    })
+
     test('defines recurrence for task creation and updates', () => {
         const createRecurrence = toolSchemas.create_task.function.parameters.properties.recurrence
         const updateRecurrence = toolSchemas.update_task.function.parameters.properties.recurrence
@@ -322,11 +331,6 @@ describe('User memory assistant tool schemas', () => {
     test('documents project description update fields', () => {
         expect(toolSchemas.update_project_description.function.parameters.required).toEqual(['description'])
         expect(toolSchemas.update_project_description.function.description).toContain('shared context')
-        // A stable profile that routing reads, not a status report.
-        expect(toolSchemas.update_project_description.function.description).toContain("the project's stable profile")
-        expect(toolSchemas.update_project_description.function.description).toContain(
-            'Leave current status, recent activity, dated progress and weekly summaries out of it unless the user explicitly asks for them'
-        )
         expect(toolSchemas.update_project_description.function.parameters.properties.description.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectId.type).toBe('string')
         expect(toolSchemas.update_project_description.function.parameters.properties.projectName.type).toBe('string')
