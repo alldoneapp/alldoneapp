@@ -661,17 +661,7 @@ URL, never the serve URL: that one is the capability, and a chat can be readable
 the artifact. Existing assistants store their own `allowedTools` and get the key only through
 `migration/enableArtifactToolForAssistants.js` (dry run by default) or the checkbox.
 
-**Linked uploads (AT-2828) supersede the original explicit-copy UI decision.** The All artifacts
-list additionally projects uploads from their readable source documents, comments and saved Yjs
-notes (`utils/backends/Artifacts/linkedUploads.js`). Existing uploads need no migration. One stored
-path yields one row; a row opens the source, never a new serving/public URL. Membership, original
-query rules and current source privacy gate the projection; removals and listener failures clear
-it, including pending asynchronous note loads. `uploadsRevision` on notes announces completed local
-Storage writes, including offline catch-up, without changing edition metadata. The chip's action is
-now "Show in artifacts" and opens All, without invoking the old copying callable. Full historical
-copies and VM artifacts remain independent (see `ARTIFACTS_PLAN.md` linked-upload limitations).
-
-**The legacy `saveAttachmentAsArtifact` callable copies an attachment the server already stores, and the URL is the only
+**"Save as artifact" copies an attachment the server already stores, and the URL is the only
 input** (`Artifacts/attachmentPromotion.js`, callable `saveAttachmentAsArtifact`). It is checked
 before a byte is read: `firebasestorage.googleapis.com`, this project's default bucket (no fetching
 of arbitrary URLs), a path under `attachments/`, `feedAttachments/` or `notesAttachments/`, and a
@@ -3596,6 +3586,39 @@ browser before trusting a bigger change.
   nesting `tslib` 2.8.1 inside 29 of its 44 `@firebase/*` packages; a flat copy hoists
   2.8.1 to the root and breaks the 1.x consumers (Stage 0 hit the inverse of this, where
   root tslib 1.11.1 shadowed the nested 2.x and threw `__spreadArray is not a function`).
+
+### Storage rules (`storage.rules`, `storage.notes.rules`)
+
+**Before these files, both buckets let any signed-in account read, list and write every object**
+(`allow read, write: if request.auth != null`, console-managed since 2021/2024): every note body in
+`notescontentprod`, every contact/assistant avatar, invoice logo and artifact in the default bucket,
+across all workspaces. `storage.rules` (default bucket `<project>.appspot.com`) and
+`storage.notes.rules` (the notes bucket) are now the source of truth and mirror `firestore.rules`:
+per-project folders require `projects/{projectId}.userIds` membership via cross-service
+`firestore.get()`, a non-member of a public project (`isShared != 2`) may read only a note whose
+`readerIds` holds `0` (exactly `canReadSharedObject`), `artifacts/` is server-only, and nothing may be
+listed except one comment's `attachments/{commentId}` folder (`AttachmentsTag` lists it).
+
+Three things are load-bearing. **The Admin SDK and token download URLs bypass these rules**, so they
+only decide what a browser may do through the Storage SDK (`put`, `getDownloadURL`, `listAll`,
+`delete`) — inventory those call sites (`utils/backends/firestore.js`, `notesFirestore.js`,
+`NotesOfflineCatchUp.js`) before adding a folder. **Members are checked by membership, not by a
+note's `readerIds`**: the browser writes the empty body right after creating the note document,
+before the server trigger has projected `readerIds`. **Cross-service `firestore.get()` needs the
+Storage service agent (`service-<number>@gcp-sa-firebasestorage.iam.gserviceaccount.com`) to hold
+`roles/firebaserules.firestoreServiceAgent`**; without it every lookup is an evaluation error, an
+error is a denial, and every note stops loading. The console grants it when it publishes such rules;
+the Rules API does not.
+
+Neither file is in `firebase.json`, so neither CI nor `firebase deploy` publishes them: publish with
+the Rules API (create a ruleset, PATCH `releases/firebase.storage/<bucket>`) and note the previous
+ruleset for rollback. Test first with `node ci/test-storage-rules.js <projectId>`, which runs 58
+cases through the Rules API test endpoint (real compiler, mocked `firestore.get`) and treats any
+compile warning as a failure — a type error such as `allPaths.matches(...)` (`allPaths` is a path,
+not a string) evaluates to an error and therefore to "deny" for everyone, while every DENY case
+still passes. Known gaps, deliberately left: a project member can read another member's private
+note body if they know its id, and `feedAttachments/` / `notesAttachments/` stay readable by any
+signed-in user who knows the random path.
 
 ### Firestore indexes (`firestore.indexes.json`)
 

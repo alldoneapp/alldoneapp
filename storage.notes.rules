@@ -1,0 +1,46 @@
+rules_version = '2';
+
+// Storage rules for the NOTES bucket (notescontentprod / notescontentstaging). Published through
+// the Firebase Rules API, not by CI. See "Storage rules" in CLAUDE.md.
+//
+// A note's body is a Yjs binary at notesData/{projectId}/{noteId}. The browser reads it with
+// getDownloadURL and writes it with put; the Admin SDK (Cloud Functions) is not bound by these
+// rules. Nothing else in this bucket is touched by a client.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function projectDoc(projectId) {
+      return firestore.get(/databases/(default)/documents/projects/$(projectId));
+    }
+
+    // Same authority as isProjectMember in firestore.rules: projects/{projectId}.userIds.
+    function isProjectMember(projectId) {
+      return signedIn() &&
+        projectDoc(projectId).data.userIds is list &&
+        request.auth.uid in projectDoc(projectId).data.userIds;
+    }
+
+    // Same as isPublicSharedProject in firestore.rules (2 = private). Signed-in only, as before.
+    function isPublicSharedProject(projectId) {
+      return signedIn() && projectDoc(projectId).data.get('isShared', 2) != 2;
+    }
+
+    // A non-member of a publicly shared project may read a note only if the note itself is public
+    // (readerIds holds the 0 sentinel), exactly as canReadSharedObject in firestore.rules.
+    function isPublicNoteOfSharedProject(projectId, noteId) {
+      return isPublicSharedProject(projectId) &&
+        0 in firestore.get(/databases/(default)/documents/noteItems/$(projectId)/notes/$(noteId)).data.get('readerIds', []);
+    }
+
+    // Members by membership, not by the note's readerIds: those are projected by a server
+    // trigger after the note document is created, and the browser writes the empty body
+    // before that happens.
+    match /notesData/{projectId}/{noteId} {
+      allow get: if isProjectMember(projectId) || isPublicNoteOfSharedProject(projectId, noteId);
+      allow write: if isProjectMember(projectId);
+    }
+  }
+}

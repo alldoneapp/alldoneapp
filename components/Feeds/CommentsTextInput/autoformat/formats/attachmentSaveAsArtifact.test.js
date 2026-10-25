@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * "Show in artifacts" inside a note: the REAL attachment blot inside a REAL quill 2 renders the REAL
+ * "Save as artifact" inside a note: the REAL attachment blot inside a REAL quill 2 renders the REAL
  * chip, which offers the action only for a file uploaded into a note, and resolves the note's
  * project from the editor registry because the blot itself is created without one.
  */
@@ -18,9 +18,6 @@ jest.mock('../../../../../redux/store', () => ({
 jest.mock('../../CustomTextInput3', () => ({ quillTextInputProjectIds: {} }))
 jest.mock('../../../../Premium/PremiumHelper', () => ({ checkIsLimitedByTraffic: () => false }))
 jest.mock('../../../../../utils/backends/Artifacts/artifactsFirestore', () => ({ saveAttachmentAsArtifact: jest.fn() }))
-
-jest.mock('../../../../../utils/HelperFunctions', () => ({ getCustomStyle: () => ({}), getFileSize: jest.fn() }))
-jest.mock('../../textInputHelper', () => ({ getAttachmentTagName: text => text, LOADING_MODE: 'loading' }))
 
 import Quill from 'quill'
 

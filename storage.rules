@@ -1,0 +1,109 @@
+rules_version = '2';
+
+// Storage rules for the DEFAULT bucket (<project>.appspot.com). Published through the Firebase
+// Rules API, not by CI: firebase.json carries no storage target. See "Storage rules" in CLAUDE.md.
+//
+// The Admin SDK (every Cloud Function) is not bound by these rules, and neither is a download URL
+// that carries its own token. These rules decide only what a BROWSER may do through the Storage
+// SDK: put, getDownloadURL/getMetadata (get), listAll (list) and delete.
+//
+// Rules combine with OR, so every top-level folder is matched exactly once below; the catch-all
+// at the end excludes the folders that have their own match.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function projectDoc(projectId) {
+      return firestore.get(/databases/(default)/documents/projects/$(projectId));
+    }
+
+    // Same authority as isProjectMember in firestore.rules: projects/{projectId}.userIds.
+    function isProjectMember(projectId) {
+      return signedIn() &&
+        projectDoc(projectId).data.userIds is list &&
+        request.auth.uid in projectDoc(projectId).data.userIds;
+    }
+
+    // Same as isPublicSharedProject in firestore.rules (2 = private). Signed-in only, as before.
+    function isPublicSharedProject(projectId) {
+      return signedIn() && projectDoc(projectId).data.get('isShared', 2) != 2;
+    }
+
+    // A non-member of a publicly shared project may read a note copy only if the note itself is
+    // public, exactly as canReadSharedObject in firestore.rules.
+    function isPublicNoteOfSharedProject(projectId, noteId) {
+      return isPublicSharedProject(projectId) &&
+        0 in firestore.get(/databases/(default)/documents/noteItems/$(projectId)/notes/$(noteId)).data.get('readerIds', []);
+    }
+
+    // Same as isAdministrator in firestore.rules.
+    function isAdministrator() {
+      return signedIn() &&
+        firestore.get(/databases/(default)/documents/roles/administrator).data.userId == request.auth.uid;
+    }
+
+    // Project artifacts: Cloud Functions write them, serveArtifact reads them behind the
+    // artifact's rotatable serve secret. No client access at all.
+    match /artifacts/{rest=**} {
+      allow read, write: if false;
+    }
+
+    // Copies of note bodies (the live body is in the notes bucket, storage.notes.rules).
+    match /noteVersionsData/{projectId}/{noteId}/{versionId} {
+      allow get: if isProjectMember(projectId) || isPublicNoteOfSharedProject(projectId, noteId);
+      allow write: if isProjectMember(projectId);
+    }
+
+    match /noteDailyVersionsData/{projectId}/{noteId} {
+      allow get: if isProjectMember(projectId) || isPublicNoteOfSharedProject(projectId, noteId);
+      allow write: if isProjectMember(projectId);
+    }
+
+    // Contact, assistant and feed avatars, uploaded under the project they belong to.
+    match /projectsContacts/{projectId}/{rest=**} {
+      allow read, write: if isProjectMember(projectId);
+    }
+
+    match /assistants/{projectId}/{rest=**} {
+      allow read, write: if isProjectMember(projectId) ||
+        (projectId == 'globalProject' && isAdministrator());
+    }
+
+    match /feeds/{projectId}/{rest=**} {
+      allow read, write: if isProjectMember(projectId);
+    }
+
+    match /invoiceLogos/{projectId}/{userId}/{rest=**} {
+      allow read, write: if request.auth.uid == userId && isProjectMember(projectId);
+    }
+
+    // Comment attachments carry no project in their path. AttachmentsTag lists one comment's
+    // folder for everyone who can see the comment, so a signed-in user may list and read inside
+    // a comment folder whose id they know, but cannot list the folder of all comments.
+    match /attachments/{commentId}/{rest=**} {
+      allow read, write: if signedIn();
+    }
+
+    // Uploads into feeds and notes: date / random hash / file name, no project in the path. The
+    // uploader resolves its download URL right after the put; everyone else uses that URL. No
+    // listing, so the random hash cannot be enumerated.
+    match /feedAttachments/{rest=**} {
+      allow get, write: if signedIn();
+    }
+
+    match /notesAttachments/{rest=**} {
+      allow get, write: if signedIn();
+    }
+
+    // Anything else is written by Cloud Functions only. A signed-in client may still resolve a
+    // single object it already knows the path of, but may not list, upload, overwrite or delete.
+    match /{topLevel}/{rest=**} {
+      allow get: if signedIn() && !(topLevel in [
+        'artifacts', 'noteVersionsData', 'noteDailyVersionsData', 'projectsContacts', 'assistants',
+        'feeds', 'invoiceLogos', 'attachments', 'feedAttachments', 'notesAttachments'
+      ]);
+    }
+  }
+}
