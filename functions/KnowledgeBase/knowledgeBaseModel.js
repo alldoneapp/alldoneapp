@@ -15,9 +15,10 @@
 // Functions write it, settings included (setKnowledgeBaseSettings).
 //
 // Deliberately not notes: notes are content users write, the wiki is derived data that can be
-// rebuilt from its sources. As notes, every ingest run would surface in the Updates feed, notify
-// followers, re-download and re-index each page, and every notes list in the app would have to
-// filter the pages out again.
+// rebuilt from its sources. As notes, every ingest run would notify followers, re-download and
+// re-index each page, and every notes list in the app would have to filter the pages out again.
+// The wiki does appear in the Updates feed, but on its own terms: one line per revision, no page
+// text, and no unread badge for the changes nobody in the project made (knowledgeWikiFeed.js).
 
 const {
     SELECTABLE_ASSISTANT_MODELS,

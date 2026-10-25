@@ -512,5 +512,4 @@ module.exports = {
     buildCorrectionCard,
     advanceKnowledgeCursor,
     chunkKnowledgeSources,
-    cleanText,
 }
