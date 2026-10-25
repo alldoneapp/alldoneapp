@@ -5,6 +5,8 @@ import { Text } from 'react-native'
 let mockArtifacts
 const mockUpload = jest.fn()
 const mockPush = jest.fn()
+const mockOpenSource = jest.fn()
+jest.mock('./uploadSourceLinks', () => ({ openUploadSource: (...args) => mockOpenSource(...args) }))
 
 jest.mock('react-redux', () => ({ useSelector: selector => selector({ loggedUser: { uid: 'owner' } }) }))
 jest.mock('./useArtifacts', () => ({
@@ -79,6 +81,7 @@ function dropEvent(files) {
 beforeEach(() => {
     mockUpload.mockReset()
     mockPush.mockReset()
+    mockOpenSource.mockReset()
     setSelectedArtifactId(PROJECT.id, null)
     mockArtifacts = [
         { id: 'newer', title: 'Q3 dashboard', kind: 'web', lastEditionDate: 2, sizeBytes: 10, versionCount: 2 },
@@ -164,4 +167,17 @@ it('filters by kind when there is more than one kind, and offers no filter other
     mockArtifacts = [mockArtifacts[0]]
     const single = await render()
     expect(single.root.findAllByProps({ testID: 'artifacts-kind-filter' })).toHaveLength(0)
+})
+
+it('opens a linked upload in its original source without creating an artifact detail or share link', async () => {
+    const source = { type: 'notes', id: 'original-note', title: 'Meeting notes' }
+    mockArtifacts = [
+        { id: 'upload:path', title: 'Existing.pdf', kind: 'pdf', linkedUpload: true, linkedSources: [source] },
+    ]
+    const tree = await render()
+    await act(async () => tree.root.findByProps({ testID: 'artifact-row-upload:path' }).props.onPress())
+    expect(mockOpenSource).toHaveBeenCalledWith('project-a', source)
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(mockUpload).not.toHaveBeenCalled()
+    expect(tree.root.findAllByProps({ testID: 'artifact-detail' })).toHaveLength(0)
 })

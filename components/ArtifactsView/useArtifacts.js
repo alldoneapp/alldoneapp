@@ -1,13 +1,19 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
+import { sortArtifactsByLastEdition } from '../../functions/Artifacts/artifactModel'
 
 import {
     watchArtifact,
     watchArtifactVersions,
     watchProjectArtifacts,
+    watchProjectUploads,
 } from '../../utils/backends/Artifacts/artifactsFirestore'
 
 export function useProjectArtifacts(projectId, followedOnly) {
+    const userId = useSelector(state => state.loggedUser?.uid)
     const [state, setState] = useState({ artifacts: [], loaded: false })
+    const [uploads, setUploads] = useState([])
+    const [uploadsError, setUploadsError] = useState(false)
 
     useEffect(() => {
         setState({ artifacts: [], loaded: false })
@@ -18,9 +24,16 @@ export function useProjectArtifacts(projectId, followedOnly) {
             artifacts => setState({ artifacts, loaded: true }),
             () => setState(current => ({ ...current, loaded: true }))
         )
-    }, [projectId, followedOnly])
+    }, [projectId, followedOnly, userId])
 
-    return state
+    useEffect(() => {
+        setUploads([])
+        setUploadsError(false)
+        if (!projectId || followedOnly) return undefined
+        return watchProjectUploads(projectId, setUploads, () => setUploadsError(true))
+    }, [projectId, followedOnly, userId])
+
+    return { ...state, uploadsError, artifacts: sortArtifactsByLastEdition([...state.artifacts, ...uploads]) }
 }
 
 // `undefined` while the first snapshot is pending, `null` when the artifact does not exist.

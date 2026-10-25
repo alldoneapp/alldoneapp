@@ -9,6 +9,7 @@ import * as Y from 'yjs'
 
 const mockGetNoteData = jest.fn()
 const mockPut = jest.fn()
+const mockUpdateUploads = jest.fn(() => Promise.resolve())
 const mockChild = jest.fn(() => ({ put: mockPut }))
 let mockStoreState = { activeNoteId: '' }
 let mockBrowserOffline = false
@@ -18,7 +19,11 @@ jest.mock('./BackendBridge', () => ({
     __esModule: true,
     default: { getNoteData: (...args) => mockGetNoteData(...args) },
 }))
-jest.mock('./backends/firestore', () => ({ notesStorage: { ref: () => ({ child: (...args) => mockChild(...args) }) } }))
+jest.mock('./backends/firestore', () => ({
+    notesStorage: { ref: () => ({ child: (...args) => mockChild(...args) }) },
+    getDb: () => ({ doc: () => ({ update: mockUpdateUploads }) }),
+    getId: () => 'caught-up',
+}))
 jest.mock('../redux/store', () => ({ __esModule: true, default: { getState: () => mockStoreState } }))
 jest.mock('./connectionState', () => ({ isBrowserOffline: () => mockBrowserOffline }))
 jest.mock('../components/NotesView/NotesDV/EditorView/noteLocalPersistence', () => ({
@@ -75,6 +80,7 @@ describe('NotesOfflineCatchUp', () => {
         expect(mockChild).toHaveBeenCalledWith('notesData/project-1/note-a')
         expect(mockPut).toHaveBeenCalledTimes(1)
         expect(textOf(mockPut.mock.calls[0][0])).toBe('Base plus an offline edit')
+        expect(mockUpdateUploads).toHaveBeenCalledWith({ uploadsRevision: 'caught-up' })
         expect(readPendingNoteUploads()).toEqual([])
     })
 
@@ -87,6 +93,7 @@ describe('NotesOfflineCatchUp', () => {
         await runNotesOfflineCatchUp()
 
         expect(mockPut).not.toHaveBeenCalled()
+        expect(mockUpdateUploads).not.toHaveBeenCalled()
         // Verified as unnecessary, so the entry is retired rather than retried forever.
         expect(readPendingNoteUploads()).toEqual([])
     })
