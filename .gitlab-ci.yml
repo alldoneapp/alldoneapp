@@ -703,7 +703,9 @@ deploy:cloud:functions:staging:
         - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
         - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > service_accounts/serv_account_key_master.json
         - echo "$GOOGLE_FUNCTIONS_ENV_DEV" > env_functions.json
-        - node -e 'JSON.parse(require("fs").readFileSync("env_functions.json", "utf8"))'
+        # Fail on a malformed blob without echoing it: V8's JSON.parse error quotes a slice of
+        # the input, and GitLab masks only whole variable values, not fragments of one.
+        - node -e 'try { JSON.parse(require("fs").readFileSync("env_functions.json", "utf8")) } catch (error) { console.error("env_functions.json is not valid JSON, check GOOGLE_FUNCTIONS_ENV_DEV"); process.exit(1) }'
         - chmod +x service_accounts/setup_functions.sh
         - npm run setup_functions
     script:
@@ -771,7 +773,8 @@ deploy:cloud:functions:production:
         - echo "$GOOGLE_SERVICE_ACCOUNT_DEVELOP" > service_accounts/serv_account_key_develop.json
         - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > service_accounts/serv_account_key_master.json
         - echo "$GOOGLE_FUNCTIONS_ENV_PROD" > env_functions.json
-        - node -e 'JSON.parse(require("fs").readFileSync("env_functions.json", "utf8"))'
+        # Fail on a malformed blob without echoing it (see the staging job).
+        - node -e 'try { JSON.parse(require("fs").readFileSync("env_functions.json", "utf8")) } catch (error) { console.error("env_functions.json is not valid JSON, check GOOGLE_FUNCTIONS_ENV_PROD"); process.exit(1) }'
         - chmod +x service_accounts/setup_functions.sh
         - npm run setup_functions
     script:
@@ -813,6 +816,10 @@ deploy:cloud:runner:staging:
         - gcloud auth activate-service-account --key-file=/tmp/runner-deploy-sa.json
         # Secrets baked into the image (getEnvFunctions reads functions/env_functions.json).
         - echo "$GOOGLE_FUNCTIONS_ENV_DEV" > functions/env_functions.json
+        # The same check as the functions deploy: a malformed blob would bake an image whose
+        # getEnvFunctions() silently returns empty secrets. cloud-sdk:slim has python3, not node,
+        # and Python's error names only the position, never the content.
+        - python3 -c 'import json; json.load(open("functions/env_functions.json"))' 2>/dev/null || { echo "functions/env_functions.json is not valid JSON, check GOOGLE_FUNCTIONS_ENV_DEV" >&2; exit 1; }
         # Match the functions deploy's MCP config replacement so the baked image is consistent.
         - |
             sed -i '/BEGIN-ENVS/,/END-ENVS/c\
@@ -855,6 +862,8 @@ deploy:cloud:runner:production:
         - echo "$GOOGLE_SERVICE_ACCOUNT_MASTER" > /tmp/runner-deploy-sa.json
         - gcloud auth activate-service-account --key-file=/tmp/runner-deploy-sa.json
         - echo "$GOOGLE_FUNCTIONS_ENV_PROD" > functions/env_functions.json
+        # Same check as the staging runner job.
+        - python3 -c 'import json; json.load(open("functions/env_functions.json"))' 2>/dev/null || { echo "functions/env_functions.json is not valid JSON, check GOOGLE_FUNCTIONS_ENV_PROD" >&2; exit 1; }
         - |
             sed -i '/BEGIN-ENVS/,/END-ENVS/c\
             const GOOGLE_FIREBASE_WEB_API_KEY = "'"$GOOGLE_FIREBASE_WEB_API_KEY_PROD"'"\
