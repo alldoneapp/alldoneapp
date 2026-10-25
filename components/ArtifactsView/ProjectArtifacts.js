@@ -16,6 +16,7 @@ import ArtifactFileViewer from './ArtifactFileViewer'
 import { ArtifactDropZone, ArtifactFileInput, ArtifactUploadStatus, useArtifactUploader } from './ArtifactUpload'
 import { useArtifactsActiveTab, useSelectedArtifactId } from './artifactsNavigationState'
 import { openUploadSource } from './uploadSourceLinks'
+import { getArtifactContextSources } from './artifactContext'
 import { openProjectArtifacts } from './artifactLinks'
 import { useProjectArtifacts } from './useArtifacts'
 import {
@@ -69,7 +70,8 @@ function EmptyArtifacts({ followedOnly }) {
 // One project's artifacts. In a single project it is the whole view and opens an artifact in place;
 // in All projects it is one section among many, hides itself while empty, and opening an artifact
 // switches to that project. Both show the newest few and the rest behind "show more", like Notes.
-// A linked upload opens in the file viewer where it is listed; its link badge leads to its source.
+// A linked upload opens in the file viewer where it is listed; every row's context line leads to
+// where the artifact was made.
 export default function ProjectArtifacts({ project, inAllProjects = false, onLoaded }) {
     const [activeTab] = useArtifactsActiveTab()
     const followedOnly = activeTab !== ALL_TAB
@@ -106,9 +108,11 @@ export default function ProjectArtifacts({ project, inAllProjects = false, onLoa
         if (loaded && onLoaded) onLoaded(project.id, artifacts.length)
     }, [loaded, artifacts.length])
 
-    const openSource = artifact => {
+    // Where the artifact was made: the source a file was uploaded into, or the thread an assistant
+    // created the artifact in.
+    const openSource = (artifact, source = getArtifactContextSources(artifact)[0]) => {
         setViewerFileId(null)
-        openUploadSource(project.id, artifact.linkedSources[0])
+        if (source) openUploadSource(project.id, source)
     }
 
     const openArtifact = artifact => {

@@ -1,4 +1,5 @@
 import {
+    getArtifactContextTitle,
     resetArtifactLastCommentData,
     setArtifactAssistant,
     setArtifactPrivacy,
@@ -147,4 +148,49 @@ it('watches the tasks and notes that link to the artifact through the per-reader
 
     unsubscribe()
     expect(unsubscribed).toEqual(['items/p/tasks', 'noteItems/p/notes'])
+})
+
+describe('the object an artifact was made in', () => {
+    it('reads its title with the viewer’s own access', async () => {
+        docs.set('items/p/tasks/t', { extendedName: 'Prepare the offsite', name: 'prepare the offsite' })
+        await expect(getArtifactContextTitle('p', { type: 'tasks', id: 't' })).resolves.toBe('Prepare the offsite')
+        docs.set('chatObjects/p/chats/c', { title: 'Launch plan' })
+        await expect(getArtifactContextTitle('p', { type: 'topics', id: 'c' })).resolves.toBe('Launch plan')
+    })
+
+    it('leads nowhere when the object is gone or the viewer may not read it', async () => {
+        await expect(getArtifactContextTitle('p', { type: 'notes', id: 'deleted' })).resolves.toBeNull()
+        getDb.mockReturnValue({
+            doc: () => ({
+                get: async () => {
+                    throw Object.assign(new Error('denied'), { code: 'permission-denied' })
+                },
+            }),
+        })
+        await expect(getArtifactContextTitle('p', { type: 'tasks', id: 'private' })).resolves.toBeNull()
+    })
+
+    it('still offers the way there when the title cannot be read just now', async () => {
+        getDb.mockReturnValue({
+            doc: () => ({
+                get: async () => {
+                    throw Object.assign(new Error('offline'), { code: 'unavailable' })
+                },
+            }),
+        })
+        await expect(getArtifactContextTitle('p', { type: 'tasks', id: 't' })).resolves.toBe('')
+    })
+
+    it('finds a global assistant behind the project path it is denied', async () => {
+        getDb.mockReturnValue({
+            doc: path => ({
+                get: async () => {
+                    if (path.startsWith('assistants/p/'))
+                        throw Object.assign(new Error(), { code: 'permission-denied' })
+                    return { exists: true, data: () => ({ displayName: 'Anna' }) }
+                },
+            }),
+        })
+        await expect(getArtifactContextTitle('p', { type: 'assistants', id: 'a' })).resolves.toBe('Anna')
+    })
 })

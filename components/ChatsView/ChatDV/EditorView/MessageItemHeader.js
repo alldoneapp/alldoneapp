@@ -13,6 +13,7 @@ import { getAssistantProjectId } from '../../../AdminPanel/Assistants/assistants
 import EmailNewBadge from '../../../Tags/EmailNewBadge'
 import AssistantAvatar from '../../../AdminPanel/Assistants/AssistantAvatar'
 import MessageSendStatus from './MessageSendStatus'
+import { withMcpActorLabel } from '../../../../utils/mcpActorLabel'
 
 export default function MessageItemHeader({
     projectId,
@@ -94,7 +95,7 @@ export default function MessageItemHeader({
                     <Image source={photoURL} style={localStyles.userImage} />
                 )}
                 <Text style={localStyles.userName} numberOfLines={1}>
-                    {displayName}
+                    {withMcpActorLabel(displayName, message)}
                 </Text>
             </TouchableOpacity>
             {editDisabled ? (

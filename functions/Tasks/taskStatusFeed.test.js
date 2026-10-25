@@ -95,4 +95,45 @@ describe('server-owned task status feeds', () => {
         )
         expect(mockCommit).toHaveBeenCalledTimes(1)
     })
+
+    test('a transition made through MCP is attributed to the user and labelled with the client', async () => {
+        const database = {
+            doc: jest.fn(path => ({
+                get: jest.fn(() =>
+                    Promise.resolve({
+                        exists: true,
+                        data: () =>
+                            path.startsWith('projects/') ? { userIds: ['user-1'] } : { displayName: 'Karsten' },
+                    })
+                ),
+            })),
+        }
+        const persist = newTask =>
+            persistTaskStatusFeed({
+                projectId: 'project-1',
+                taskId: 'task-1',
+                oldTask: { done: false },
+                newTask,
+                database,
+            })
+
+        await persist({
+            done: true,
+            lastEditionDate: 123,
+            lastEditorId: 'user-1',
+            lastEditorVia: { via: 'mcp', viaClient: 'Codex', editionDate: 123 },
+        })
+        expect(mockCreateTaskUpdatedFeed.mock.calls[0][4]).toEqual(
+            expect.objectContaining({ uid: 'user-1', via: 'mcp', viaClient: 'Codex' })
+        )
+
+        // The app edited the task after the MCP client did, and does not know to clear the stamp.
+        await persist({
+            done: true,
+            lastEditionDate: 456,
+            lastEditorId: 'user-1',
+            lastEditorVia: { via: 'mcp', viaClient: 'Codex', editionDate: 123 },
+        })
+        expect(mockCreateTaskUpdatedFeed.mock.calls[1][4]).not.toHaveProperty('via')
+    })
 })

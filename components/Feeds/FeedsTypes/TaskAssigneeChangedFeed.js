@@ -8,6 +8,7 @@ import FeedsTypesLeftHeader from '../Commons/FeedsTypesLeftHeader'
 import MultilineParser from '../TextParser/MultilineParser'
 import { generatorParserImageElement, generatorParserTextElement } from '../Utils/HelperFunctions'
 import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function TaskAssigneeChangedFeed({
     feed,
@@ -21,7 +22,7 @@ export default function TaskAssigneeChangedFeed({
     const [width, setWidth] = useState(0)
     const { oldAssigneeId, newAssigneeId, isSubtask, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
     const { photoURL: oldAssigneeAvatarURL, shortName: oldAssigneeName } = getUserPresentationDataInProject(
         projectId,
         oldAssigneeId

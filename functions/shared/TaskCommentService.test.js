@@ -313,4 +313,122 @@ describe('TaskCommentService', () => {
             expect.objectContaining({ creatorId: 'user-1', fromAssistant: false })
         )
     })
+
+    test('an MCP client comment is labelled and notifies the user it was written for', async () => {
+        const refs = new Map()
+        const taskData = {
+            name: 'Launch',
+            extendedName: 'Launch',
+            userId: 'user-1',
+            creatorId: 'user-1',
+            isPublicFor: [0, 'user-1'],
+        }
+        const doc = jest.fn(path => {
+            if (!refs.has(path)) {
+                refs.set(path, {
+                    path,
+                    get: jest
+                        .fn()
+                        .mockResolvedValue(
+                            path === 'items/project-1/tasks/task-1'
+                                ? { exists: true, data: () => taskData }
+                                : path === 'projects/project-1'
+                                  ? { exists: true, data: () => ({ name: 'Product' }) }
+                                  : path === 'followers/project-1/tasks/task-1'
+                                    ? { exists: true, data: () => ({ usersFollowing: ['user-2'] }) }
+                                    : { exists: false, data: () => ({}) }
+                        ),
+                })
+            }
+            return refs.get(path)
+        })
+        const transaction = { get: jest.fn(ref => ref.get()), set: jest.fn(), update: jest.fn() }
+        const batch = { set: jest.fn(), commit: jest.fn().mockResolvedValue() }
+        const service = new TaskCommentService({
+            database: {
+                doc,
+                runTransaction: jest.fn(callback => callback(transaction)),
+                batch: jest.fn(() => batch),
+            },
+        })
+
+        const result = await service.addComment({
+            projectId: 'project-1',
+            taskId: 'task-1',
+            comment: 'Opened the merge request.',
+            actor: { uid: 'user-1', displayName: 'Karsten Wysk', via: 'mcp', viaClient: 'Claude' },
+        })
+
+        // The user stays the author; the comment says it came through their MCP client.
+        expect(transaction.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'chatComments/project-1/tasks/task-1/comments/comment-1' }),
+            expect.objectContaining({ creatorId: 'user-1', fromAssistant: false, via: 'mcp', viaClient: 'Claude' })
+        )
+        // The actor is notified too, not only the other followers.
+        expect(result.notifiedFollowers).toBe(2)
+        expect(batch.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'chatNotifications/project-1/user-1/comment-1' }),
+            expect.objectContaining({ creatorId: 'user-1', via: 'mcp', viaClient: 'Claude' })
+        )
+        expect(batch.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'chatNotifications/project-1/user-2/comment-1' }),
+            expect.anything()
+        )
+        expect(batch.set).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'pushNotifications/comment-1' }),
+            expect.objectContaining({
+                userIds: ['user-2', 'user-1'],
+                initiatorId: 'user-1',
+                initiatorVia: 'mcp',
+                body: expect.stringContaining('Karsten Wysk (via Claude) commented: Opened the merge request.'),
+            })
+        )
+    })
+
+    test('a comment the user wrote themselves still notifies only the others', async () => {
+        const refs = new Map()
+        const taskData = { name: 'Launch', userId: 'user-1', creatorId: 'user-1', isPublicFor: [0, 'user-1'] }
+        const doc = jest.fn(path => {
+            if (!refs.has(path)) {
+                refs.set(path, {
+                    path,
+                    get: jest
+                        .fn()
+                        .mockResolvedValue(
+                            path === 'items/project-1/tasks/task-1'
+                                ? { exists: true, data: () => taskData }
+                                : path === 'followers/project-1/tasks/task-1'
+                                  ? { exists: true, data: () => ({ usersFollowing: ['user-2'] }) }
+                                  : { exists: false, data: () => ({}) }
+                        ),
+                })
+            }
+            return refs.get(path)
+        })
+        const transaction = { get: jest.fn(ref => ref.get()), set: jest.fn(), update: jest.fn() }
+        const batch = { set: jest.fn(), commit: jest.fn().mockResolvedValue() }
+        const service = new TaskCommentService({
+            database: {
+                doc,
+                runTransaction: jest.fn(callback => callback(transaction)),
+                batch: jest.fn(() => batch),
+            },
+        })
+
+        await service.addComment({
+            projectId: 'project-1',
+            taskId: 'task-1',
+            comment: 'Done.',
+            actor: { uid: 'user-1', displayName: 'Karsten Wysk' },
+        })
+
+        const commentData = transaction.set.mock.calls.find(([ref]) => ref.path.includes('/comments/'))[1]
+        expect(commentData).not.toHaveProperty('via')
+        const notifiedPaths = batch.set.mock.calls.map(([ref]) => ref.path)
+        expect(notifiedPaths).toContain('chatNotifications/project-1/user-2/comment-1')
+        expect(notifiedPaths).not.toContain('chatNotifications/project-1/user-1/comment-1')
+        const push = batch.set.mock.calls.find(([ref]) => ref.path === 'pushNotifications/comment-1')[1]
+        expect(push).not.toHaveProperty('initiatorVia')
+        expect(push.body).toContain('Karsten Wysk commented: Done.')
+    })
 })

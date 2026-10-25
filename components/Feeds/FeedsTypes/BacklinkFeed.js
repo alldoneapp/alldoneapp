@@ -13,7 +13,8 @@ import {
     generatorParserTextElement,
 } from '../Utils/HelperFunctions'
 import LinkTag from '../../Tags/LinkTag'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function BacklinkFeed({ feed, projectId, showNewFeedDot, feedActiveTab, lastChangeDateObject }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
@@ -22,7 +23,7 @@ export default function BacklinkFeed({ feed, projectId, showNewFeedDot, feedActi
     const { entryText, linkTag, creatorId } = feed
     const elementsData = []
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     const navigateToUserDv = () => {
         ContactsHelper.navigateToUserProfile(projectId, creatorId)

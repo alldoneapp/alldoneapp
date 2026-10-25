@@ -565,6 +565,24 @@ from the project's tasks, goals, notes and contacts (`functions/KnowledgeBase/`,
 write it; every write is a callable or the `runKnowledgeBaseIngest` worker. The member who switches
 it on pays (`knowledge_base_ingest` Gold, monthly cap, default model DeepSeek V4 Flash).
 
+**It is on by default for every project of an active user, and a run spends nothing on a payer who
+is away.** "Active" is the heartbeat rule (a login within `ACTIVE_USER_WINDOW_MS`, 30 days), imported
+through `knowledgeBaseSchedule.js` rather than re-declared. `knowledgeBaseDefaults.js` writes the
+default as a real document (`enabledBy: 'default'`, first run at the payer's next 03:00) for a
+project that has **no** `knowledgeBases/{projectId}` document at all; an existing document is a
+decision and is never switched back on. Three callers reach it: `onCreateProject`, the user trigger
+when somebody logs in after 30 days away, and the daily `applyKnowledgeBaseDefaults` sweep, which is
+also what reached the projects that existed before the default — there is no migration. The payer
+is the project's creator when they are an active member, otherwise the member being processed.
+Guides (`parentTemplateId`) and templates are excluded on purpose: a guide's `creatorId` is the
+template's author, who would otherwise pay for the wiki of every guide anybody starts. When the
+payer has been away 30 days the run stops with `owner_inactive` and clears `nextRunAt` (paused, no
+model call); the payer's return resumes it, and a wiki the default switched on moves to another
+active member once its payer is gone. A wiki a member switched on themselves (`enabledBy: 'member'`,
+or no field on wikis that predate the default) never changes hands that way — it waits. Note
+`releaseIngestLease` must not `Math.min` a null `nextRunAt` (it is `0`, i.e. due forever). Pinned by
+`knowledgeBaseDefaults.test.js` and the `owner_inactive` cases in `knowledgeBaseIngest.test.js`.
+
 **The ingest runs through the Admin SDK, so the visibility filter is the ONLY protection.**
 `isVisibleToWholeProject` in `collectKnowledgeSources.js` admits an object only when `isPublicFor`
 names `0` and it is not `isPrivate` (goals without `isPublicFor` count as public, matching
@@ -789,7 +807,7 @@ list additionally projects uploads from their readable source documents, comment
 notes (`utils/backends/Artifacts/linkedUploads.js`). Existing uploads need no migration. One stored
 path yields one row, which never gets a new serving/public URL: pressing it opens
 `ArtifactFileViewer` with the download URL the source itself embeds (an image's stored 300px copy is
-the row thumbnail), and its link badge opens the source. Only img/video/audio render inline; a PDF or
+the row thumbnail), and its context line opens the source. Only img/video/audio render inline; a PDF or
 other file goes to a new tab, because Chrome frames a PDF only unsandboxed and a stored file's content
 type is whatever the uploader's browser declared. Lists show 3 per project in All projects and 10 in
 one project, the rest behind `ShowMoreButton`, like Notes. Membership, original
@@ -798,6 +816,30 @@ it, including pending asynchronous note loads. `uploadsRevision` on notes announ
 Storage writes, including offline catch-up, without changing edition metadata. The chip's action is
 now "Show in artifacts" and opens All, without invoking the old copying callable. Full historical
 copies and VM artifacts remain independent (see `ARTIFACTS_PLAN.md` linked-upload limitations).
+
+**The Artifacts tab opens from what this device showed last time, and the listeners only update
+it** (`utils/backends/Artifacts/artifactsLocalCache.js`, an IndexedDB store with a memory mirror,
+keyed by user, project and tab). Without it every visit rebuilt the whole projection: one
+comment listener per task, note and goal of every project, and every note body downloaded from
+Storage four at a time, which is many seconds per project. Three rules make the cache safe. Real
+artifacts come from one query and its first snapshot replaces the remembered list. Linked uploads
+report `onChange(files, { settled })` and the remembered files stay (plus any new live file) until
+every source, comment thread and note body has answered once, so the list never shrinks to a
+partial result and grows back; a result that saw a listener fail is shown but never remembered,
+and a remembered list whose listener fails before confirming it is dropped. And a note body is
+only re-read when its `lastEditionDate`/`uploadsRevision` moved (the same stamps the watcher
+always re-read on), or after `NOTE_REFS_MAX_AGE_MS`, which bounds a body change that stamped
+nothing. **Comments are only listened to for objects that have a chat object**
+(`chatObjects/{p}/chats/{objectId}`), because every comment write creates or updates it; topics,
+user and assistant threads are always listened to. That replaced one Firestore query per object,
+almost all of them empty and each billed a read. A comment path that writes no chat object would
+make its uploads invisible here, so keep that invariant if a new comment writer is added.
+
+**Every artifact row leads to where the artifact was made** (`ArtifactContextLink`,
+`artifactContext.js`): a linked upload to its first source ("In Meeting notes +1"), and a full
+artifact with a `parentObject` to that object's thread ("Created in …"), also in the detail view.
+The parent's title is read once per session with the viewer's own access; a parent the viewer
+cannot read (or that is gone) gets no link at all.
 
 **The legacy `saveAttachmentAsArtifact` callable copies an attachment the server already stores, and the URL is the only
 input** (`Artifacts/attachmentPromotion.js`, callable `saveAttachmentAsArtifact`). It is checked
@@ -858,6 +900,32 @@ drops `admin.firestore.FieldValue` — use `require('firebase-admin/firestore').
 `ArtifactsView/artifactNoteEmbed.js`). Both carry the in-app URL, so `scanLinkedObjects` records a
 backlink for either; the card is mounted through `renderEmbedContent` and reads the artifact with the
 viewer's own access.
+
+### An MCP client acts in the user's name, and says so
+
+Claude, Codex and other MCP clients have no account of their own: every MCP tool runs as the
+OAuth-authenticated user (`assistantId = null`), so `creatorId` / `lastEditorId` is the user, which
+is right for access and ownership. Two things were wrong with that and both are fixed by one marker,
+`{ via: 'mcp', viaClient: 'Claude' }` (`functions/shared/mcpActor.js`): the app could not tell the
+agent's work from the user's own, and the user was never notified of it, because every fan-out skips
+the actor. The marker is stamped on feeds (`generateFeedModel`, both copies), comments and their
+chat/push notifications (`TaskCommentService`), wiki revision authors, and a task's
+`lastEditorVia` (bound to `lastEditionDate`, because the app writes `lastEditorId` without knowing
+to clear it). The app renders it as "Karsten Wysk (via Claude)" (`utils/mcpActorLabel.js`,
+`getFeedCreatorPresentationData`); readers must keep using the user's id for avatar and navigation.
+Every notification path that skips the actor keeps the actor when the marker is present:
+`increaseFeedCount`, `TaskCommentService.addComment`, the wiki feed and the WhatsApp initiator guard
+(`initiatorVia`). An MCP `update_task` comment is therefore not silent, unlike an assistant's.
+
+`viaClient` comes from the `clientInfo.name` the client sends with `initialize`, remembered on its
+`oauthTokens` / `oauthRefreshTokens` documents (`mcpClientName`, carried over on refresh), and is
+only ever one of the labels in `MCP_CLIENT_LABELS` — a client's self-description is rendered to every
+project member, so an unknown name is shown as "via MCP", never verbatim. Production clients report
+`codex-mcp-client`, `Anthropic/ClaudeAI`, `claude-code`. A token from before this shipped is labelled
+once its client next initializes. A new MCP-reachable tool that writes feeds or comments gets the
+marker for free if it builds its actor with `getAssistantFeedUserForTool(..., toolRuntimeContext)`.
+Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
+`functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
 
 ### Assistant Tool Checklist
 
