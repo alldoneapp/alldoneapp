@@ -1,0 +1,84 @@
+rules_version = '2';
+
+// Storage rules for the NOTES bucket (notescontentprod / notescontentstaging). Published through
+// the Firebase Rules API, not by CI. See "Storage rules" in CLAUDE.md.
+//
+// A note's body is a Yjs binary at notesData/{projectId}/{noteId}. The browser reads it with
+// getDownloadURL and writes it with put; the Admin SDK (Cloud Functions) is not bound by these
+// rules. Nothing else in this bucket is touched by a client.
+//
+// Cross-service rules may read at most TWO Firestore documents per evaluation. Every path below
+// reads the project and the note, never anything else.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function projectDoc(projectId) {
+      return firestore.get(/databases/(default)/documents/projects/$(projectId));
+    }
+
+    // Same authority as isProjectMember in firestore.rules: projects/{projectId}.userIds.
+    function isProjectMember(projectId) {
+      return signedIn() &&
+        projectDoc(projectId).data.userIds is list &&
+        request.auth.uid in projectDoc(projectId).data.userIds;
+    }
+
+    // Same as isPublicSharedProject in firestore.rules (2 = private). Signed-in only, as before.
+    function isPublicSharedProject(projectId) {
+      return signedIn() && projectDoc(projectId).data.get('isShared', 2) != 2;
+    }
+
+    function noteExists(projectId, noteId) {
+      return firestore.exists(/databases/(default)/documents/noteItems/$(projectId)/notes/$(noteId));
+    }
+
+    function note(projectId, noteId) {
+      return firestore.get(/databases/(default)/documents/noteItems/$(projectId)/notes/$(noteId)).data;
+    }
+
+    // canAccessObjectWhileProjectionIsPending in firestore.rules: the server-projected access
+    // fields name the caller, or, only while none of them exist yet (a note just created, before
+    // its projection trigger ran), isPublicFor does. A member therefore cannot read another
+    // member's private note.
+    function canAccessNote(projectId, noteId) {
+      return isProjectMember(projectId) && (
+        request.auth.uid in note(projectId, noteId).get('readerIds', []) ||
+        request.auth.uid in note(projectId, noteId).get('roleIdsVisibleTo', {}) ||
+        request.auth.uid in note(projectId, noteId).get('backlinkIdsVisibleTo', {}) ||
+        request.auth.uid in note(projectId, noteId).get('followedReaderIds', []) ||
+        note(projectId, noteId).get('followedByVisibleTo', {}).get(request.auth.uid, false) == true ||
+        (
+          !('readerIds' in note(projectId, noteId)) &&
+          !('roleIdsVisibleTo' in note(projectId, noteId)) &&
+          !('followedByVisibleTo' in note(projectId, noteId)) &&
+          !('followedReaderIds' in note(projectId, noteId)) &&
+          !('backlinkIdsVisibleTo' in note(projectId, noteId)) &&
+          note(projectId, noteId).get('isPublicFor', []).hasAny([0, request.auth.uid])
+        )
+      );
+    }
+
+    // canReadSharedObject in firestore.rules: a non-member of a public project may read a note
+    // that is public within it.
+    function canReadSharedNote(projectId, noteId) {
+      return isPublicSharedProject(projectId) && 0 in note(projectId, noteId).get('readerIds', []);
+    }
+
+    // While the note document does not exist, membership is enough (canProbeMissingObject):
+    // setNoteProject writes the body into the new project BEFORE the note document lands there.
+    // A body without a document reveals nothing about anybody's note.
+    function canUseNoteBody(projectId, noteId) {
+      return (isProjectMember(projectId) && !noteExists(projectId, noteId)) ||
+        (noteExists(projectId, noteId) && canAccessNote(projectId, noteId));
+    }
+
+    match /notesData/{projectId}/{noteId} {
+      allow get: if canUseNoteBody(projectId, noteId) ||
+        (noteExists(projectId, noteId) && canReadSharedNote(projectId, noteId));
+      allow write: if canUseNoteBody(projectId, noteId);
+    }
+  }
+}
