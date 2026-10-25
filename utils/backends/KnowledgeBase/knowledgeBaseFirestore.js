@@ -1,11 +1,13 @@
 import { getDb, runHttpsCallableFunction } from '../firestore'
 import {
     getKnowledgeBasePath,
+    getKnowledgePagePath,
     getKnowledgePageRevisionsPath,
     getKnowledgePagesPath,
     getKnowledgeRunsPath,
     isKnowledgePageVisible,
 } from '../../../functions/KnowledgeBase/knowledgeBaseModel'
+import { getWikiRevisionDocId } from '../../../functions/KnowledgeBase/knowledgeWikiFeedModel'
 
 // The project wiki is read straight from Firestore (members may read the whole
 // knowledgeBases/{projectId} tree) and written only through callables: no client may write it.
@@ -92,6 +94,49 @@ export async function getKnowledgePageRevisions(projectId, slug) {
         .limit(REVISIONS_LIMIT)
         .get()
     return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }))
+}
+
+const getRevisionPath = (projectId, slug, revision) =>
+    `${getKnowledgePageRevisionsPath(projectId, slug)}/${getWikiRevisionDocId(revision)}`
+
+const readData = async path => {
+    const snapshot = await getDb().doc(path).get()
+    return snapshot.exists ? snapshot.data() || {} : null
+}
+
+/**
+ * One revision of a page, the revision before it and the page as it is now: what the change view
+ * needs to show what that revision changed (components/WikiView/wikiDiff.resolveWikiChange). A
+ * revision whose text was removed because a source was withdrawn comes back `redacted`, exactly as
+ * stored, so the view can never show more than the wiki itself still holds.
+ */
+export async function getKnowledgePageChange(projectId, slug, revision) {
+    const db = getDb()
+    const number = Number(revision)
+    if (!db || !projectId || !slug || !Number.isInteger(number) || number < 1) return null
+    const [current, previous, page] = await Promise.all([
+        readData(getRevisionPath(projectId, slug, number)),
+        number > 1 ? readData(getRevisionPath(projectId, slug, number - 1)) : null,
+        readData(getKnowledgePagePath(projectId, slug)),
+    ])
+    return {
+        revision: current ? { id: getWikiRevisionDocId(number), ...current } : null,
+        previous,
+        page: page ? mapKnowledgePage(slug, page) : null,
+    }
+}
+
+/**
+ * The title a page had in one revision, for its line in the Updates feed (which stores no page
+ * text). An archive or a redacted revision has none, so the page's current title is used, and null
+ * when that was removed too.
+ */
+export async function getKnowledgeRevisionTitle(projectId, slug, revision) {
+    if (!getDb() || !projectId || !slug) return null
+    const stored = await readData(getRevisionPath(projectId, slug, revision))
+    if (typeof stored?.title === 'string' && stored.title.trim()) return stored.title
+    const page = await readData(getKnowledgePagePath(projectId, slug))
+    return typeof page?.title === 'string' && page.title.trim() ? page.title : null
 }
 
 export function saveKnowledgeBaseSettings(projectId, settings) {

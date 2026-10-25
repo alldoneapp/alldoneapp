@@ -1,7 +1,7 @@
 import { findIndex } from 'lodash'
 
 import { URL_NOT_MATCH } from '../URLSystemTrigger'
-import URLsWiki, { URL_PROJECT_WIKI, URL_PROJECT_WIKI_PAGE } from './URLsWiki'
+import URLsWiki, { URL_PROJECT_WIKI, URL_PROJECT_WIKI_PAGE, URL_PROJECT_WIKI_PAGE_CHANGE } from './URLsWiki'
 import URLsTasks, { URL_ALL_PROJECTS_TASKS_OPEN } from '../Tasks/URLsTasks'
 import store from '../../redux/store'
 import { navigateToAllProjectsTasks, setSelectedSidebarTab, storeCurrentUser, switchProject } from '../../redux/actions'
@@ -14,6 +14,9 @@ class URLsWikiTrigger {
         return {
             [URL_PROJECT_WIKI]: new RegExp('^/projects/(?<projectId>[\\w-]+)/wiki$'),
             [URL_PROJECT_WIKI_PAGE]: new RegExp('^/projects/(?<projectId>[\\w-]+)/wiki/(?<slug>[a-z0-9-]+)$'),
+            [URL_PROJECT_WIKI_PAGE_CHANGE]: new RegExp(
+                '^/projects/(?<projectId>[\\w-]+)/wiki/(?<slug>[a-z0-9-]+)/changes/(?<revision>[1-9][0-9]{0,6})$'
+            ),
         }
     }
 
@@ -29,12 +32,14 @@ class URLsWikiTrigger {
     static trigger = (navigation, pathname) => {
         const matchedObj = URLsWikiTrigger.match(pathname)
         const params = matchedObj.matches.groups
-        return URLsWikiTrigger.processURLProjectWiki(navigation, params.projectId, params.slug || null)
+        const revision = params.revision ? Number(params.revision) : null
+        return URLsWikiTrigger.processURLProjectWiki(navigation, params.projectId, params.slug || null, revision)
     }
 
     // The wiki is for the project's members only, so there is no join flow: anyone else lands on the
     // all-projects board, exactly as for an unknown URL.
-    static processURLProjectWiki = (navigation, projectId, slug) => {
+    // `revision` opens what that revision of the page changed (the Updates feed links there).
+    static processURLProjectWiki = (navigation, projectId, slug, revision = null) => {
         const { loggedUserProjects, loggedUser } = store.getState()
         const projectIndex = findIndex(loggedUserProjects, ['id', projectId])
 
@@ -46,13 +51,14 @@ class URLsWikiTrigger {
             return
         }
 
-        setWikiSelectedSlug(projectId, slug)
+        setWikiSelectedSlug(projectId, slug, revision)
         store.dispatch([
             setSelectedSidebarTab(DV_TAB_ROOT_WIKI),
             storeCurrentUser(loggedUser),
             switchProject(projectIndex),
         ])
-        URLsWiki.replace(slug ? URL_PROJECT_WIKI_PAGE : URL_PROJECT_WIKI, null, projectId, slug)
+        if (slug && revision) URLsWiki.replace(URL_PROJECT_WIKI_PAGE_CHANGE, null, projectId, slug, null, revision)
+        else URLsWiki.replace(slug ? URL_PROJECT_WIKI_PAGE : URL_PROJECT_WIKI, null, projectId, slug)
     }
 }
 
