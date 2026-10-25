@@ -3249,5 +3249,6 @@
     "Artifact upload in": "In %{title}",
     "Previous file": "Vorherige Datei",
     "Next file": "Nächste Datei",
-    "File": "Datei"
+    "File": "Datei",
+    "Actor via MCP client": "%{name} (via %{client})"
 }

@@ -40,6 +40,7 @@ const { BatchWrapper } = require('../BatchWrapper/batchWrapper')
 const { reconcileObjectFeedPrivacy } = require('./objectFeedPrivacy')
 const { FieldValue } = require('firebase-admin/firestore')
 const { withoutAccessProjection } = require('../shared/objectAccessProjection')
+const { getActorChannelFields, isMcpActor } = require('../shared/mcpActor')
 
 const initialDates = {
     'Initial of Minutes': 'm',
@@ -93,6 +94,7 @@ function generateFeedModel({ feedType, lastChangeDate, entryText, feedUser, obje
         creatorId: uid,
         objectId,
         isPublicFor: isPublicFor ? isPublicFor : [FEED_PUBLIC_FOR_ALL],
+        ...getActorChannelFields(feedUser),
     }
 
     if (entryText) feed.entryText = entryText
@@ -303,11 +305,15 @@ function increaseFeedCount(
                   ? projectUsersIdsForSpecialFeeds
                   : project.userIds
 
+        // A change made through MCP was made by the user's agent, not by the user at the keyboard,
+        // so it is news to them too (see shared/mcpActor.js).
+        const notifiedCreatorId = isMcpActor(feed) ? feed.creatorId : null
+
         // Guard against pseudo/public marker values appearing in project user IDs.
         // Notification counters are per real user; pseudo IDs can create oversized feedsCount docs.
         const usersToNotifyIds = usersWithAccessIds.filter(
             userId =>
-                userId !== feedCreator.uid &&
+                (userId !== feedCreator.uid || userId === notifiedCreatorId) &&
                 userId !== FEED_PUBLIC_FOR_ALL &&
                 userId !== 'FEED_PUBLIC_FOR_ALL' &&
                 userId !== null &&

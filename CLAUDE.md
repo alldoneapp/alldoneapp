@@ -877,6 +877,32 @@ drops `admin.firestore.FieldValue` — use `require('firebase-admin/firestore').
 backlink for either; the card is mounted through `renderEmbedContent` and reads the artifact with the
 viewer's own access.
 
+### An MCP client acts in the user's name, and says so
+
+Claude, Codex and other MCP clients have no account of their own: every MCP tool runs as the
+OAuth-authenticated user (`assistantId = null`), so `creatorId` / `lastEditorId` is the user, which
+is right for access and ownership. Two things were wrong with that and both are fixed by one marker,
+`{ via: 'mcp', viaClient: 'Claude' }` (`functions/shared/mcpActor.js`): the app could not tell the
+agent's work from the user's own, and the user was never notified of it, because every fan-out skips
+the actor. The marker is stamped on feeds (`generateFeedModel`, both copies), comments and their
+chat/push notifications (`TaskCommentService`), wiki revision authors, and a task's
+`lastEditorVia` (bound to `lastEditionDate`, because the app writes `lastEditorId` without knowing
+to clear it). The app renders it as "Karsten Wysk (via Claude)" (`utils/mcpActorLabel.js`,
+`getFeedCreatorPresentationData`); readers must keep using the user's id for avatar and navigation.
+Every notification path that skips the actor keeps the actor when the marker is present:
+`increaseFeedCount`, `TaskCommentService.addComment`, the wiki feed and the WhatsApp initiator guard
+(`initiatorVia`). An MCP `update_task` comment is therefore not silent, unlike an assistant's.
+
+`viaClient` comes from the `clientInfo.name` the client sends with `initialize`, remembered on its
+`oauthTokens` / `oauthRefreshTokens` documents (`mcpClientName`, carried over on refresh), and is
+only ever one of the labels in `MCP_CLIENT_LABELS` — a client's self-description is rendered to every
+project member, so an unknown name is shown as "via MCP", never verbatim. Production clients report
+`codex-mcp-client`, `Anthropic/ClaudeAI`, `claude-code`. A token from before this shipped is labelled
+once its client next initializes. A new MCP-reachable tool that writes feeds or comments gets the
+marker for free if it builds its actor with `getAssistantFeedUserForTool(..., toolRuntimeContext)`.
+Pinned by `functions/shared/mcpActor.test.js`, `functions/MCP/mcpClientAttribution.test.js`,
+`functions/Feeds/globalFeedsHelper.mcpActor.test.js` and the MCP cases in `TaskCommentService.test.js`.
+
 ### Assistant Tool Checklist
 
 When adding a new assistant tool, wire every layer, not just the backend schema:

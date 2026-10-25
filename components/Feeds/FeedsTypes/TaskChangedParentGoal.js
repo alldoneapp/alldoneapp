@@ -12,8 +12,9 @@ import {
     generatorParserCustomElement,
 } from '../Utils/HelperFunctions'
 import LinkTag from '../../Tags/LinkTag'
-import ContactsHelper, { getUserPresentationDataInProject } from '../../ContactsView/Utils/ContactsHelper'
+import ContactsHelper from '../../ContactsView/Utils/ContactsHelper'
 import { getDvMainTabLink } from '../../../utils/LinkingHelper'
+import { getFeedCreatorPresentationData } from '../Utils/feedCreatorPresentation'
 
 export default function TaskChangedParentGoal({ feed, projectId, showNewFeedDot, feedActiveTab }) {
     const activeModalInFeed = useSelector(state => state.activeModalInFeed)
@@ -21,7 +22,7 @@ export default function TaskChangedParentGoal({ feed, projectId, showNewFeedDot,
     const [width, setWidth] = useState(0)
     const { isSubtask, newParentGoalId, oldParentGoalId, turnedToTask, creatorId } = feed
 
-    const { photoURL, shortName } = getUserPresentationDataInProject(projectId, creatorId)
+    const { photoURL, shortName } = getFeedCreatorPresentationData(projectId, feed)
 
     let firstEntryText = ''
     let secondEntryText = ''
