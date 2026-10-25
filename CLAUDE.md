@@ -596,7 +596,8 @@ tools and the execution gate:
   `adaptToolSchemaForMcp` in `mcpServerSimple.js` rewrites exactly those parts of the shared
   descriptions. A correction made this way records `sourceChannel: 'mcp'` and `assistantId: null`.
   `__tests__/SettingsView/MCPSettingsToolParity.test.js` fails the build when the server serves a
-  tool that Settings → MCP cannot switch off (the six `browser_*` tools are a known exception).
+  tool that Settings → MCP cannot switch off, or when Settings lists a tool the server does not
+  serve; every MCP tool, the six `browser_*` tools included, is its own switch there.
 
 A correction is stored in `knowledgeBases/{id}/corrections/{id}` in the SAME transaction as the
 page revision it produced (`writeKnowledgePage`'s `onWrite`), is cited as `[[correction:ID]]`
