@@ -661,7 +661,17 @@ URL, never the serve URL: that one is the capability, and a chat can be readable
 the artifact. Existing assistants store their own `allowedTools` and get the key only through
 `migration/enableArtifactToolForAssistants.js` (dry run by default) or the checkbox.
 
-**"Save as artifact" copies an attachment the server already stores, and the URL is the only
+**Linked uploads (AT-2828) supersede the original explicit-copy UI decision.** The All artifacts
+list additionally projects uploads from their readable source documents, comments and saved Yjs
+notes (`utils/backends/Artifacts/linkedUploads.js`). Existing uploads need no migration. One stored
+path yields one row; a row opens the source, never a new serving/public URL. Membership, original
+query rules and current source privacy gate the projection; removals and listener failures clear
+it, including pending asynchronous note loads. `uploadsRevision` on notes announces completed local
+Storage writes, including offline catch-up, without changing edition metadata. The chip's action is
+now "Show in artifacts" and opens All, without invoking the old copying callable. Full historical
+copies and VM artifacts remain independent (see `ARTIFACTS_PLAN.md` linked-upload limitations).
+
+**The legacy `saveAttachmentAsArtifact` callable copies an attachment the server already stores, and the URL is the only
 input** (`Artifacts/attachmentPromotion.js`, callable `saveAttachmentAsArtifact`). It is checked
 before a byte is read: `firebasestorage.googleapis.com`, this project's default bucket (no fetching
 of arbitrary URLs), a path under `attachments/`, `feedAttachments/` or `notesAttachments/`, and a

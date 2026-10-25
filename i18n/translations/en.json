@@ -3561,7 +3561,7 @@
     "Artifact upload failed": "The upload failed. Please try again.",
     "No followed artifacts yet": "No followed artifacts yet",
     "No artifacts yet": "No artifacts yet",
-    "Artifacts explanation": "Upload dashboards, reports, PDFs or images by dropping them here. Each artifact gets its own address and is shown live.",
+    "Artifacts explanation": "Files uploaded in notes, tasks and conversations also appear here, linked to their source. Drop files here to create an artifact.",
     "No artifacts in your projects yet": "No artifacts in your projects yet",
     "Loading artifacts": "Loading artifacts…",
     "Loading artifact": "Loading…",
@@ -3639,5 +3639,8 @@
     "Artifact kind media": "Images & media",
     "Artifact kind data": "Data",
     "Artifact kind files": "Files",
-    "Artifact action needs internet": "This needs an internet connection. Try again once you are online."
+    "Artifact action needs internet": "This needs an internet connection. Try again once you are online.",
+    "Open upload source": "Open source",
+    "Some uploads could not be loaded": "Some uploads could not be loaded. Reopen Artifacts to retry.",
+    "Show in artifacts": "Show in artifacts"
 }
