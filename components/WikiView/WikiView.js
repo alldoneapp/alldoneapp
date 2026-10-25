@@ -11,17 +11,12 @@ import { translate, useTranslator } from '../../i18n/TranslationService'
 import { setNavigationRoute } from '../../redux/actions'
 import { DV_TAB_ROOT_WIKI } from '../../utils/TabNavigationConstants'
 import { checkIfSelectedProject } from '../SettingsView/ProjectsSettings/ProjectHelper'
-import URLsWiki, {
-    URL_PROJECT_WIKI,
-    URL_PROJECT_WIKI_PAGE,
-    URL_PROJECT_WIKI_PAGE_CHANGE,
-} from '../../URLSystem/Wiki/URLsWiki'
+import URLsWiki, { URL_PROJECT_WIKI, URL_PROJECT_WIKI_PAGE } from '../../URLSystem/Wiki/URLsWiki'
 import WikiMarkdown, { getWikiSourceLabel } from './WikiMarkdown'
 import WikiPageHistory from './WikiPageHistory'
-import WikiPageChange from './WikiPageChange'
 import WikiCorrectionForm from './WikiCorrectionForm'
 import { formatWikiDate, isKnowledgeBaseRunning, useKnowledgeBaseDoc, useKnowledgePages } from './useKnowledgeBase'
-import { setWikiSelectedSlug, useWikiSelectedRevision, useWikiSelectedSlug } from './wikiNavigationState'
+import { useWikiSelectedSlug } from './wikiNavigationState'
 import { openProjectWikiSettings, openWikiSource } from './wikiLinks'
 import { parseKnowledgeSourceKey } from '../../functions/KnowledgeBase/knowledgeBaseModel'
 
@@ -184,14 +179,7 @@ function WikiPage({ projectId, page, pageSlugs, onSelectPage, onBack }) {
             {correcting && (
                 <WikiCorrectionForm projectId={projectId} page={page} onClose={() => setCorrecting(false)} />
             )}
-            {showHistory && (
-                <WikiPageHistory
-                    projectId={projectId}
-                    slug={page.slug}
-                    currentRevision={page.revision}
-                    onOpenChange={revision => setWikiSelectedSlug(projectId, page.slug, revision)}
-                />
-            )}
+            {showHistory && <WikiPageHistory projectId={projectId} slug={page.slug} currentRevision={page.revision} />}
         </View>
     )
 }
@@ -201,46 +189,21 @@ export function ProjectWiki({ project }) {
     const knowledgeBase = useKnowledgeBaseDoc(project.id)
     const { pages, pendingRebuilds, loaded } = useKnowledgePages(project.id)
     const [selectedSlug, setSelectedSlug] = useWikiSelectedSlug(project.id)
-    const selectedRevision = useWikiSelectedRevision(project.id)
 
     const pageSlugs = useMemo(() => new Set(pages.map(page => page.slug)), [pages])
     const selectedPage = pages.find(page => page.slug === selectedSlug) || null
     // On a wide screen a page is always open; on a phone the index is a screen of its own.
     const shownPage = selectedPage || (!mobile ? pages[0] || null : null)
-    // A change is shown for any page, archived or hidden ones included: the Updates feed links to
-    // every change, and the page view only knows the pages people may read right now.
-    const shownChange = selectedSlug && selectedRevision ? { slug: selectedSlug, revision: selectedRevision } : null
 
     useEffect(() => {
-        if (shownChange) {
-            URLsWiki.push(
-                URL_PROJECT_WIKI_PAGE_CHANGE,
-                null,
-                project.id,
-                shownChange.slug,
-                selectedPage?.title,
-                shownChange.revision
-            )
-        } else if (shownPage) {
+        if (shownPage) {
             URLsWiki.push(URL_PROJECT_WIKI_PAGE, null, project.id, shownPage.slug, shownPage.title)
         } else {
             URLsWiki.push(URL_PROJECT_WIKI, null, project.id)
         }
-    }, [project.id, shownPage?.slug, shownChange?.slug, shownChange?.revision])
+    }, [project.id, shownPage?.slug])
 
     const loading = knowledgeBase === undefined || !loaded
-    const changeView = shownChange && (
-        <WikiPageChange
-            key={`${shownChange.slug}-${shownChange.revision}`}
-            projectId={project.id}
-            slug={shownChange.slug}
-            revision={shownChange.revision}
-            pageSlugs={pageSlugs}
-            onSelectRevision={revision => setWikiSelectedSlug(project.id, shownChange.slug, revision)}
-            onOpenPage={setSelectedSlug}
-            onBack={() => setSelectedSlug(null)}
-        />
-    )
 
     return (
         <ProjectSection projectId={project.id} projectColor={project.color} selected style={{ marginBottom: 32 }}>
@@ -260,8 +223,6 @@ export function ProjectWiki({ project }) {
             <ProjectSectionBody>
                 {loading ? (
                     <Text style={localStyles.statusText}>{translate('Loading wiki')}</Text>
-                ) : changeView && (mobile || pages.length === 0) ? (
-                    changeView
                 ) : pages.length === 0 ? (
                     <WikiEmptyState projectId={project.id} knowledgeBase={knowledgeBase} />
                 ) : (
@@ -284,20 +245,19 @@ export function ProjectWiki({ project }) {
                                 <View style={localStyles.indexColumn}>
                                     <WikiIndex
                                         pages={pages}
-                                        selectedSlug={shownChange ? shownChange.slug : shownPage?.slug}
+                                        selectedSlug={shownPage?.slug}
                                         onSelect={setSelectedSlug}
                                     />
                                 </View>
                                 <View style={localStyles.pageColumn}>
-                                    {changeView ||
-                                        (shownPage && (
-                                            <WikiPage
-                                                projectId={project.id}
-                                                page={shownPage}
-                                                pageSlugs={pageSlugs}
-                                                onSelectPage={setSelectedSlug}
-                                            />
-                                        ))}
+                                    {shownPage && (
+                                        <WikiPage
+                                            projectId={project.id}
+                                            page={shownPage}
+                                            pageSlugs={pageSlugs}
+                                            onSelectPage={setSelectedSlug}
+                                        />
+                                    )}
                                 </View>
                             </View>
                         )}

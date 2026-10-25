@@ -30,13 +30,9 @@ jest.mock('../Tasks/URLsTasks', () => ({
 import store from '../../redux/store'
 import URLsTasks from '../Tasks/URLsTasks'
 import URLsWikiTrigger from './URLsWikiTrigger'
-import { URL_PROJECT_WIKI, URL_PROJECT_WIKI_PAGE, URL_PROJECT_WIKI_PAGE_CHANGE } from './URLsWiki'
+import { URL_PROJECT_WIKI, URL_PROJECT_WIKI_PAGE } from './URLsWiki'
 import { URL_NOT_MATCH } from '../URLSystemTrigger'
-import {
-    getWikiSelectedRevision,
-    getWikiSelectedSlug,
-    setWikiSelectedSlug,
-} from '../../components/WikiView/wikiNavigationState'
+import { getWikiSelectedSlug, setWikiSelectedSlug } from '../../components/WikiView/wikiNavigationState'
 import { getProjectWikiPath } from '../../components/WikiView/wikiLinks'
 import { DV_TAB_ROOT_WIKI } from '../../utils/TabNavigationConstants'
 
@@ -63,32 +59,6 @@ describe('wiki URLs', () => {
     it('builds the same paths the trigger matches', () => {
         expect(URLsWikiTrigger.match(getProjectWikiPath('project-a')).key).toBe(URL_PROJECT_WIKI)
         expect(URLsWikiTrigger.match(getProjectWikiPath('project-a', 'kunden')).key).toBe(URL_PROJECT_WIKI_PAGE)
-        expect(URLsWikiTrigger.match(getProjectWikiPath('project-a', 'kunden', 12)).key).toBe(
-            URL_PROJECT_WIKI_PAGE_CHANGE
-        )
-    })
-
-    it('matches what one revision of a page changed, and only a real revision number', () => {
-        const change = URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes/12')
-        expect(change.key).toBe(URL_PROJECT_WIKI_PAGE_CHANGE)
-        expect(change.matches.groups).toMatchObject({ projectId: 'project-a', slug: 'kunden', revision: '12' })
-
-        expect(URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes/0')).toBe(URL_NOT_MATCH)
-        expect(URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes/x')).toBe(URL_NOT_MATCH)
-        expect(URLsWikiTrigger.match('/projects/project-a/wiki/kunden/changes')).toBe(URL_NOT_MATCH)
-    })
-
-    it('opens the change on its page, and opening the page alone closes it again', () => {
-        URLsWikiTrigger.trigger(navigation, '/projects/project-b/wiki/kunden/changes/4')
-
-        expect(getWikiSelectedSlug('project-b')).toBe('kunden')
-        expect(getWikiSelectedRevision('project-b')).toBe(4)
-        expect(window.location.pathname).toBe('/projects/project-b/wiki/kunden/changes/4')
-
-        URLsWikiTrigger.trigger(navigation, '/projects/project-b/wiki/kunden')
-
-        expect(getWikiSelectedSlug('project-b')).toBe('kunden')
-        expect(getWikiSelectedRevision('project-b')).toBeNull()
     })
 
     it('opens the wiki tab of a project the user belongs to, on the requested page', () => {
