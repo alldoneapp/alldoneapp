@@ -609,6 +609,28 @@ button on a page only opens a chat with the project's assistant (`createBotQuick
 writes the wiki itself. Pinned by `knowledgeBaseAssistant.test.js` and the `project wiki wiring`
 block in `assistantHelper.test.js`.
 
+**Every page revision is a line in the Updates feed, and the line carries no page text.**
+`onCreateKnowledgePageRevisionSecondGen` (`KnowledgeBase/knowledgeWikiFeed.js`) turns each new
+revision — ingest, rebuild, archive, correction, undo — into one feed entry under ONE feed object
+per project and day (objectId and type `wiki`, never the project id: `projectsFeeds` is keyed by
+object id alone and the project's own object lives there). The entry stores `wikiSlug`,
+`wikiRevision` and `wikiChange` and nothing else of the page — no title, summary or reason —
+because a withdrawn source is removed from the page and its revisions by
+`knowledgeSourceInvalidation.js`, and nothing would remove a copy from `feedsStore`, the followed
+stores, `feedsCount`, `projectsFeeds` and the activity summary. The client reads the title of that
+revision for the line (`useWikiFeedPageTitle`, falling back to the slug) and the diff from the
+revisions themselves. Only a change a member made (correction, undo) badges the other members;
+the wiki's own nightly changes are listed but badge nobody, which is what kept the wiki out of the
+feed in the first place. Ids are derived from slug + revision, so a redelivered trigger rewrites
+the same documents. A line opens `/projects/{id}/wiki/{slug}/changes/{revision}`
+(`WikiPageChange`, diff in `wikiDiff.js`: LCS over lines, word highlights inside an edited line,
+folded context), which also works for archived and hidden pages because it reads revisions, not
+the visible page list, and shows a redacted revision as removed and nothing more. Revisions record
+`created` so a new page reads "created", not "updated". Pinned by
+`knowledgeWikiFeed.test.js` (including that no page text reaches any feed document),
+`components/WikiView/wikiDiff.test.js`, the `what a revision changed` block of `WikiView.test.js`
+and `components/Feeds/FeedsObjects/WikiObject.test.js`.
+
 **The project description frames the wiki and is never one of its sources.** The two have
 separate jobs. The description (`projects/{id}.description`) is a short, stable profile written by
 people: what the project is, what belongs in it, standing rules. Task, calendar and Gmail routing,

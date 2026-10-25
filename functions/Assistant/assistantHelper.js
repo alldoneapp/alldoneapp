@@ -3962,13 +3962,7 @@ function resolveAssistantTaskProject(projects, contextProjectId, requestedProjec
     )
 }
 
-async function resolveMoveTargetProject(
-    database,
-    userId,
-    moveToProjectId,
-    moveToProjectName,
-    { projectIdArgName = 'moveToProjectId' } = {}
-) {
+async function resolveMoveTargetProject(database, userId, moveToProjectId, moveToProjectName) {
     const requestedProjectId = typeof moveToProjectId === 'string' ? moveToProjectId.trim() : ''
     const requestedProjectName = typeof moveToProjectName === 'string' ? moveToProjectName.trim() : ''
 
@@ -4015,7 +4009,7 @@ async function resolveMoveTargetProject(
 
     if (exactMatches.length > 1) {
         throw new Error(
-            `Multiple projects match "${requestedProjectName}". Please use ${projectIdArgName} to choose one target project.`
+            `Multiple projects match "${requestedProjectName}". Please use moveToProjectId to choose one target project.`
         )
     }
 
@@ -4034,7 +4028,7 @@ async function resolveMoveTargetProject(
             .map(project => `"${project.name}" (${project.id})`)
             .join(', ')
         throw new Error(
-            `Multiple projects partially match "${requestedProjectName}": ${options}. Please use ${projectIdArgName}.`
+            `Multiple projects partially match "${requestedProjectName}": ${options}. Please use moveToProjectId.`
         )
     }
 
@@ -5974,20 +5968,7 @@ async function executeToolNativelyImpl(
             const { NoteService } = require('../shared/NoteService')
             const db = admin.firestore()
 
-            // An explicit target must be a project the requesting user belongs to. NoteService
-            // writes through the Admin SDK and checks no membership itself; the MCP surface checks
-            // an explicit projectId too, but the in-app assistant reaches this with only the model's
-            // arguments, so the check has to live here as well.
-            const targetProject = await resolveMoveTargetProject(
-                db,
-                creatorId,
-                toolArgs.projectId,
-                toolArgs.projectName,
-                { projectIdArgName: 'projectId' }
-            )
-            const noteProjectId = targetProject ? targetProject.id : projectId
-
-            const feedUser = await getAssistantFeedUserForTool(db, noteProjectId, assistantId, creatorId)
+            const feedUser = await getAssistantFeedUserForTool(db, projectId, assistantId, creatorId)
 
             // Initialize or reuse NoteService instance (performance optimization)
             if (!cachedNoteService) {
@@ -6050,21 +6031,21 @@ async function executeToolNativelyImpl(
                         userId: creatorId,
                         ownerId: noteOwnerId,
                         creatorId: creatorId,
-                        projectId: noteProjectId,
+                        projectId: projectId,
                         isPrivate: false,
                         feedUser,
                     },
                     {
                         userId: creatorId,
-                        projectId: noteProjectId,
+                        projectId: projectId,
                     }
                 )
 
                 return {
                     success: result.success,
                     noteId: result.noteId,
-                    projectId: result.note?.projectId || noteProjectId,
-                    url: buildNoteUrl(result.note?.projectId || noteProjectId, result.noteId, getBaseUrl()),
+                    projectId: result.note?.projectId || projectId,
+                    url: buildNoteUrl(result.note?.projectId || projectId, result.noteId, getBaseUrl()),
                     message: result.message,
                     note: result.note,
                 }

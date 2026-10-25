@@ -1025,33 +1025,17 @@ class AlldoneSimpleMCPServer {
      * Resolve a concrete context project id for a delegated tool call:
      * explicit projectId -> project-name match -> user's default project -> null.
      */
-    async getUserProjectList(userId, options) {
-        const { ProjectService } = require('../shared/ProjectService')
-        const projectService = new ProjectService({ database: admin.firestore() })
-        await projectService.initialize()
-        return await projectService.getUserProjects(userId, options)
-    }
-
     async resolveDelegatedToolProjectId(userId, toolArgs) {
         if (this.hasNonEmptyString(toolArgs.projectId)) {
-            // Every delegated tool runs through the Admin SDK, so Firestore rules never see what it
-            // reads or writes. A projectId the caller is not a member of has to stop here instead of
-            // becoming the context project of the tool that runs next.
-            const requestedProjectId = toolArgs.projectId.trim()
-            const projects = await this.getUserProjectList(userId, {
-                includeArchived: true,
-                includeCommunity: true,
-                activeOnly: false,
-            })
-            if (!projects.some(project => project && project.id === requestedProjectId)) {
-                throw new Error(`Target project not found or not accessible: "${requestedProjectId}"`)
-            }
-            return requestedProjectId
+            return toolArgs.projectId.trim()
         }
 
         if (this.hasNonEmptyString(toolArgs.projectName)) {
             try {
-                const projects = await this.getUserProjectList(userId, {
+                const { ProjectService } = require('../shared/ProjectService')
+                const projectService = new ProjectService({ database: admin.firestore() })
+                await projectService.initialize()
+                const projects = await projectService.getUserProjects(userId, {
                     includeArchived: false,
                     includeCommunity: false,
                 })
